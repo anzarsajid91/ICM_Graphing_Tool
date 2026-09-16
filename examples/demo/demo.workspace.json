@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "Synthetic exclusion demonstration",
+  "source_references": {"observed":{"reference":"observed.csv"},"model":{"reference":"model.csv"},"rainfall":{"reference":"rainfall.csv"}},
+  "mappings": {"observed_depth":"depth","model_depth":"depth"},
+  "analysis": {"threshold_observed":1.0,"threshold_modelled":1.0,"max_gap_seconds":900},
+  "exclusions": [{"start":"2026-01-01T00:07:00","end":"2026-01-01T00:09:00","reason":"Synthetic EDM logger fault around sentinel sample","source":"demo","exclusion_id":"exc:demo-bad-period"}],
+  "annotations": [{"kind":"demo","text":"Synthetic data only; not representative of a real site."}],
+  "presentation": {}
+}
