@@ -14,6 +14,7 @@ from icm_workbench.analysis import (
 from icm_workbench.domain import ExclusionPeriod
 
 _CACHE = {}
+_SERIES_CACHE = {}
 
 
 def _jsonable(value):
@@ -49,18 +50,12 @@ def _load(path):
 
 def clear_cache():
     _CACHE.clear()
+    _SERIES_CACHE.clear()
     return True
 
 
 def _model_clock_timestamp(value):
-    """Return a timezone-naive timestamp for the workbench model-clock time basis.
-
-    ICM exports in this workbench are intentionally treated as model clock / unspecified
-    timezone. Browser/workspace inputs may nevertheless carry an offset or ``Z`` suffix.
-    Strip timezone metadata before comparisons so pandas never mixes aware and naive
-    timestamps. The browser runtime is responsible for preserving the user's wall-clock
-    value when serialising datetime-local controls.
-    """
+    """Return a timezone-naive timestamp for the workbench model-clock time basis."""
     if value in (None, ""):
         return None
     ts = pd.Timestamp(value)
@@ -87,24 +82,89 @@ def parse_source(path):
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
 
-def series_data(path, column=None, max_points=25000):
+def _prepared_series(path, column=None):
     parsed = _load(path)
     frame = parsed.frame
     cols = [c for c in frame.columns if c != "timestamp"]
     if not cols:
         raise ValueError("No value series available")
     col = column if column in cols else cols[0]
-    x = frame[["timestamp", col]].copy()
-    x["timestamp"] = pd.to_datetime(x["timestamp"], errors="coerce")
-    x[col] = pd.to_numeric(x[col], errors="coerce")
-    x = x.dropna(subset=["timestamp"]).sort_values("timestamp")
-    if len(x) > max_points:
-        idx = np.linspace(0, len(x) - 1, int(max_points)).astype(int)
-        x = x.iloc[idx]
+    key = (str(path), str(col))
+    if key not in _SERIES_CACHE:
+        x = frame[["timestamp", col]].copy()
+        x["timestamp"] = pd.to_datetime(x["timestamp"], errors="coerce")
+        x[col] = pd.to_numeric(x[col], errors="coerce")
+        x = x.dropna(subset=["timestamp"]).sort_values("timestamp").drop_duplicates("timestamp", keep="last").reset_index(drop=True)
+        _SERIES_CACHE[key] = x
+    return _SERIES_CACHE[key], col
+
+
+def _display_indices(values, max_points):
+    """Extrema/gap-aware downsampling for display, preserving line shape and gaps."""
+    n = len(values)
+    limit = max(2, int(max_points))
+    if n <= limit:
+        return np.arange(n, dtype=np.int64)
+    if limit < 8:
+        return np.unique(np.linspace(0, n - 1, limit).astype(np.int64))
+
+    # Four candidates per bucket: first, last, minimum and maximum finite value.
+    # This deliberately spends the display budget on peaks/troughs rather than
+    # uniformly sampling away short EDM/model events.
+    bucket_count = max(1, limit // 4)
+    edges = np.linspace(0, n, bucket_count + 1).astype(np.int64)
+    selected = {0, n - 1}
+    for left, right in zip(edges[:-1], edges[1:]):
+        if right <= left:
+            continue
+        selected.add(int(left))
+        selected.add(int(right - 1))
+        block = values[left:right]
+        finite = np.flatnonzero(np.isfinite(block))
+        if finite.size:
+            finite_values = block[finite]
+            selected.add(int(left + finite[int(np.argmin(finite_values))]))
+            selected.add(int(left + finite[int(np.argmax(finite_values))]))
+        # Preserve at least one null inside a bucket so Plotly does not bridge a
+        # missing-data gap simply because display downsampling removed the null.
+        missing = np.flatnonzero(~np.isfinite(block))
+        if missing.size:
+            selected.add(int(left + missing[0]))
+            selected.add(int(left + missing[-1]))
+
+    idx = np.asarray(sorted(selected), dtype=np.int64)
+    if len(idx) > limit:
+        idx = idx[np.unique(np.linspace(0, len(idx) - 1, limit).astype(np.int64))]
+    return idx
+
+
+def series_data(path, column=None, max_points=5000, start=None, end=None):
+    x, col = _prepared_series(path, column)
+    timestamps = x["timestamp"].to_numpy(dtype="datetime64[ns]")
+    lo = 0
+    hi = len(x)
+    start_ts = _model_clock_timestamp(start)
+    end_ts = _model_clock_timestamp(end)
+    if start_ts is not None:
+        lo = int(np.searchsorted(timestamps, np.datetime64(start_ts.to_datetime64()), side="left"))
+    if end_ts is not None:
+        hi = int(np.searchsorted(timestamps, np.datetime64(end_ts.to_datetime64()), side="right"))
+    lo = max(0, min(lo, len(x)))
+    hi = max(lo, min(hi, len(x)))
+    view = x.iloc[lo:hi]
+    raw_count = int(len(view))
+    values = view[col].to_numpy(dtype=float)
+    idx = _display_indices(values, max_points)
+    display = view.iloc[idx] if len(view) else view
     payload = {
         "column": str(col),
-        "timestamp": [None if pd.isna(t) else pd.Timestamp(t).isoformat() for t in x["timestamp"]],
-        "value": [None if pd.isna(v) else float(v) for v in x[col]],
+        "timestamp": [None if pd.isna(t) else pd.Timestamp(t).isoformat() for t in display["timestamp"]],
+        "value": [None if pd.isna(v) else float(v) for v in display[col]],
+        "raw_count": raw_count,
+        "display_count": int(len(display)),
+        "native_resolution": bool(raw_count <= int(max_points)),
+        "requested_start": None if start_ts is None else start_ts.isoformat(),
+        "requested_end": None if end_ts is None else end_ts.isoformat(),
     }
     return json.dumps(payload, ensure_ascii=False)
 
@@ -194,6 +254,7 @@ def spill_result(path, column, threshold, exclusions_json="[]", max_gap_seconds=
     payload["counting_windows"] = _records(result.get("counting_windows"))
     payload["monthly_counts"] = _records(result.get("monthly_counts"))
     payload["monthly_durations"] = _records(result.get("monthly_durations"))
+    payload["yearly_summary"] = _records(result.get("yearly_summary"))
     payload["events"] = [_jsonable(e) for e in result.get("events", [])]
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
