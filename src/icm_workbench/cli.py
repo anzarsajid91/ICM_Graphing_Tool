@@ -13,5 +13,5 @@ def main(argv=None):
         if args.batch_output:Path(args.batch_output).write_text(text,encoding="utf-8")
         else:print(text)
         return 2 if any(x.get("status")=="error" for x in result) else 0
-    from icm_workbench.ui.app import create_app
+    from icm_workbench.ui import create_app
     app=create_app(root);app.run(debug=False,host="127.0.0.1",port=args.port);return 0
