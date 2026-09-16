@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Zero-install ICM Calibration Workbench running locally in your browser." />
+  <title>ICM Calibration Workbench</title>
+  <link rel="stylesheet" href="assets/app.css" />
+  <script src="https://cdn.plot.ly/plotly-3.1.0.min.js" charset="utf-8"></script>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.29.4/full/pyodide.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>ICM Calibration Workbench</h1>
+      <p>Browser-local engineering review of ICM CSV, FDV and rainfall R exports.</p>
+    </div>
+    <div class="engine-status" id="engineStatus"><span class="status-dot booting"></span><span>Starting Python engine…</span></div>
+  </header>
+
+  <main class="shell">
+    <section class="panel source-panel">
+      <div class="panel-head">
+        <div><h2>1. Source pool</h2><p>Choose a local folder, add files, or drag and drop. Files stay on this device.</p></div>
+        <div class="actions">
+          <button class="btn primary" id="chooseFolderBtn">Choose folder</button>
+          <button class="btn" id="addFilesBtn">Add files</button>
+          <button class="btn quiet" id="clearPoolBtn">Clear pool</button>
+        </div>
+      </div>
+      <input id="fileInput" type="file" multiple accept=".csv,.fdv,.txt,.r" hidden />
+      <input id="folderInput" type="file" webkitdirectory multiple hidden />
+      <div class="dropzone" id="dropzone"><strong>Drop CSV / FDV / R files or a folder here</strong><span>Recognised: .csv, .fdv, .fdv.txt, .r, .r.txt</span></div>
+      <div class="pool-summary" id="poolSummary">No files loaded.</div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>File</th><th>Format</th><th>Rows</th><th>Period</th><th>Audit</th><th>Status</th></tr></thead><tbody id="poolBody"></tbody></table></div>
+    </section>
+
+    <section class="panel mapping-panel">
+      <div class="panel-head"><div><h2>2. Map series</h2><p>All parsed series are available from one common pool.</p></div><button class="btn primary" id="applyMappingBtn">Apply mapping</button></div>
+      <div class="mapping-grid">
+        <label>Observed series<select id="observedSelect"><option value="">Select…</option></select></label>
+        <label>Modelled / comparison series<select id="modelSelect" multiple size="4"></select><small>Ctrl/Cmd-click for multiple scenarios.</small></label>
+        <label>Rainfall series<select id="rainSelect"><option value="">None</option></select></label>
+        <label>Maximum interpolation gap<input id="gapInput" type="number" min="1" step="60" value="900" /><small>seconds; default 15 min.</small></label>
+      </div>
+      <div class="mapping-status" id="mappingStatus">Map at least one observed and one modelled series.</div>
+    </section>
+
+    <nav class="tabs" aria-label="Workbench sections">
+      <button class="tab active" data-tab="graph">Graph</button>
+      <button class="tab" data-tab="compare">Compare</button>
+      <button class="tab" data-tab="spills">Events &amp; spills</button>
+      <button class="tab" data-tab="storage">Storage</button>
+      <button class="tab" data-tab="workspace">Workspace &amp; report</button>
+    </nav>
+
+    <section class="tab-panel active" id="tab-graph">
+      <div class="panel"><div class="panel-head"><div><h2>Time-series review</h2><p>Observed, modelled/comparison and rainfall traces use the selected source pool mappings.</p></div><button class="btn" id="refreshGraphBtn">Refresh graph</button></div><div id="timeChart" class="chart"></div></div>
+    </section>
+
+    <section class="tab-panel" id="tab-compare">
+      <div class="panel">
+        <div class="panel-head"><div><h2>Calibration comparison</h2><p>Bounded interpolation; no bridging across gaps longer than the configured maximum.</p></div><button class="btn primary" id="runCompareBtn">Run comparison</button></div>
+        <div class="compare-controls"><label>Preview model time offset (min)<input id="offsetInput" type="number" value="0" step="1" /></label></div>
+        <div class="metric-grid" id="metricGrid"></div>
+        <div class="two-col"><div id="scatterChart" class="chart small"></div><div id="residualChart" class="chart small"></div></div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>Scenario</th><th>Pairs</th><th>RMSE</th><th>MAE</th><th>Bias</th><th>R²</th><th>NSE</th><th>KGE</th><th>Peak lag min</th></tr></thead><tbody id="scenarioBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-spills">
+      <div class="panel">
+        <div class="panel-head"><div><h2>Events, spills and exclusions</h2><p>Excluded time is removed from assessment; unexcluded missing time remains unknown.</p></div><button class="btn primary" id="runSpillsBtn">Calculate spills</button></div>
+        <div class="mapping-grid compact">
+          <label>Observed threshold<input id="obsThreshold" type="number" step="any" /></label>
+          <label>Model threshold<input id="modelThreshold" type="number" step="any" /></label>
+        </div>
+        <div class="subpanel">
+          <div class="subhead"><h3>Exclusion periods</h3><button class="btn" id="addExclusionBtn">Add period</button></div>
+          <div id="exclusionRows"></div>
+        </div>
+        <div class="two-col"><div><h3>Observed</h3><div id="obsSpillSummary"></div><div id="obsMonthly"></div></div><div><h3>Modelled</h3><div id="modelSpillSummary"></div><div id="modelMonthly"></div></div></div>
+        <h3>Physical spill intervals</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Dataset</th><th>Start</th><th>End</th><th>Duration hr</th></tr></thead><tbody id="eventBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-storage">
+      <div class="panel">
+        <div class="panel-head"><div><h2>Idealised storage screening</h2><p>Spill windows from the selected modelled level series; positive overflow flow integrated with real elapsed support and the same exclusions.</p></div><button class="btn primary" id="runStorageBtn">Calculate storage</button></div>
+        <div class="mapping-grid">
+          <label>Modelled level series<select id="storageLevelSelect"></select></label>
+          <label>Overflow flow series<select id="storageFlowSelect"></select></label>
+          <label>Level threshold<input id="storageThreshold" type="number" step="any" /></label>
+          <label>Target annual count<input id="targetCount" type="number" value="10" min="0" step="1" /></label>
+        </div>
+        <div id="storageSummary"></div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>Year</th><th>Counting block</th><th>Start</th><th>End</th><th>Volume m³</th><th>Physical discharges</th></tr></thead><tbody id="storageBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-workspace">
+      <div class="panel">
+        <div class="panel-head"><div><h2>Workspace &amp; report</h2><p>Save mappings, thresholds, exclusions and source fingerprints. Raw source files are not embedded.</p></div></div>
+        <div class="actions left"><button class="btn primary" id="downloadWorkspaceBtn">Download workspace JSON</button><button class="btn" id="loadWorkspaceBtn">Load workspace JSON</button><button class="btn" id="downloadReportBtn">Download HTML report</button></div>
+        <input id="workspaceInput" type="file" accept="application/json,.json" hidden />
+        <div class="report-status" id="workspaceStatus">Workspace not yet saved.</div>
+        <div class="privacy-note"><strong>Data handling:</strong> selected engineering files are processed in your browser. This application does not send them to the GitHub repository or to an application server.</div>
+      </div>
+    </section>
+  </main>
+
+  <footer><span>ICM Calibration Workbench — GitHub Pages browser edition</span><span id="footerBuild">Reference engine: Python core</span></footer>
+  <script type="module" src="assets/app.js"></script>
+</body>
+</html>
