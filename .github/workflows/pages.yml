@@ -2,7 +2,7 @@ name: GitHub Pages Workbench
 
 on:
   push:
-    branches: [main, feat/github-pages-zero-install]
+    branches: [main, feat/icm-workbench-modernisation]
     paths:
       - 'web/**'
       - 'src/icm_workbench/**'
@@ -94,8 +94,11 @@ jobs:
           path: _site
 
   deploy:
+    permissions:
+      pages: write
+      id-token: write
     environment:
-      name: github-pages
+      name: pages-release
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
