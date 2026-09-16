@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="ICM Graphing & Calibration Workbench — browser edition" />
+  <title>ICM Graphing & Calibration Workbench</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><div class="brand-mark">◒</div><div><h1>ICM Graphing & Calibration Workbench</h1><p>Visualise · Compare · Analyse · Calibrate</p></div></div>
+    <div class="top-actions"><span id="engineBadge" class="status-badge loading">Starting calculation engine…</span><a href="../" target="_blank" rel="noopener">GitHub</a></div>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <button class="nav active" data-view="data">Data & Files</button>
+      <button class="nav" data-view="compare">Compare & Plot</button>
+      <button class="nav" data-view="spills">Spill Analysis</button>
+      <button class="nav" data-view="events">Events & Exclusions</button>
+      <button class="nav" data-view="reports">Reports</button>
+      <button class="nav" data-view="workspace">Workspace</button>
+      <div class="privacy-note"><strong>Local by design</strong><span>Your ICM files are processed inside this browser tab and are not uploaded to GitHub.</span></div>
+    </aside>
+
+    <main class="main">
+      <section id="view-data" class="view active">
+        <div class="page-head"><div><h2>Data & Files</h2><p>Create one common pool from a local folder or drag-and-drop ICM exports, then assign each file a role.</p></div><button id="runAnalysis" class="button primary" disabled>Run analysis</button></div>
+        <div class="load-grid">
+          <div class="panel">
+            <h3>Load a local folder</h3><p class="muted">The browser asks permission for the folder; no path is transmitted anywhere.</p>
+            <label class="button primary file-button">Choose folder<input id="folderInput" type="file" webkitdirectory directory multiple hidden /></label>
+            <label class="button secondary file-button">Choose files<input id="fileInput" type="file" multiple accept=".csv,.fdv,.txt,.r,.json" hidden /></label>
+          </div>
+          <div id="dropZone" class="drop-zone" tabindex="0"><strong>Drag & drop files or a folder</strong><span>CSV · FDV · R/R.txt · TXT</span><small>Files stay in this browser session.</small></div>
+        </div>
+        <div id="poolSummary" class="summary-strip">No files loaded.</div>
+        <div class="panel pool-panel">
+          <div class="panel-head"><h3>Common file pool</h3><div><input id="poolSearch" class="input compact" type="search" placeholder="Search files…" /><button id="clearPool" class="button ghost">Clear</button></div></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>File</th><th>Format</th><th>Size</th><th>Parse status</th><th>Role</th><th>Series / channel</th><th></th></tr></thead><tbody id="poolBody"></tbody></table></div>
+        </div>
+        <div id="dataWarnings" class="message-area"></div>
+      </section>
+
+      <section id="view-compare" class="view">
+        <div class="page-head"><div><h2>Compare & Plot</h2><p>Observed and selected simulated series on a common time axis with audited calibration metrics.</p></div><div class="head-controls"><label>Start<input id="analysisStart" class="input" type="datetime-local" /></label><label>End<input id="analysisEnd" class="input" type="datetime-local" /></label></div></div>
+        <div id="metricCards" class="metric-grid"></div>
+        <div class="panel chart-panel"><div id="mainChart" class="chart"></div></div>
+        <div class="split-grid"><div class="panel"><h3>Residuals</h3><div id="residualChart" class="chart small"></div></div><div class="panel"><h3>Flow-duration / exceedance</h3><div id="fdcChart" class="chart small"></div></div></div>
+        <div id="comparisonTable" class="panel"></div>
+      </section>
+
+      <section id="view-spills" class="view">
+        <div class="page-head"><div><h2>Spill Analysis</h2><p>Physical above-threshold intervals are separated from 12/24 regulatory counting windows. Excluded time is removed; unknown gaps remain unknown.</p></div><button id="runSpills" class="button primary">Recalculate spills</button></div>
+        <div class="control-row"><label>Observed threshold<input id="obsThreshold" class="input" type="number" step="any" placeholder="Required" /></label><label>Model threshold<input id="modelThreshold" class="input" type="number" step="any" placeholder="Optional" /></label><label>Maximum known gap (min)<input id="maxGapMin" class="input" type="number" min="1" value="15" /></label></div>
+        <div id="spillSummary" class="metric-grid"></div>
+        <div class="split-grid"><div class="panel"><h3>Observed monthly spill counts</h3><div id="obsSpillTable"></div></div><div class="panel"><h3>Observed monthly spill duration</h3><div id="obsDurationTable"></div></div></div>
+        <div class="panel"><h3>Observed vs modelled spill comparison</h3><div id="spillCompareTable"></div></div>
+        <div id="spillMessages" class="message-area"></div>
+      </section>
+
+      <section id="view-events" class="view">
+        <div class="page-head"><div><h2>Events & Exclusions</h2><p>Define one or many audited exclusion periods for EDM/model faults, maintenance or other unusable data.</p></div><button id="addExclusion" class="button primary">Add exclusion</button></div>
+        <div class="panel"><div id="exclusionList"></div></div>
+        <div class="panel"><h3>Detected physical spill intervals</h3><div id="eventTable"></div></div>
+      </section>
+
+      <section id="view-reports" class="view">
+        <div class="page-head"><div><h2>Reports</h2><p>Generate reviewable outputs with thresholds, exclusions, source roles and calculation provenance.</p></div></div>
+        <div class="report-grid"><button id="downloadReport" class="report-card"><strong>Current assessment HTML</strong><span>Self-contained report with metrics, spill audit and exclusions.</span></button><button id="downloadWorkspaceReport" class="report-card"><strong>Analysis summary JSON</strong><span>Portable machine-readable summary for QA and review.</span></button></div>
+      </section>
+
+      <section id="view-workspace" class="view">
+        <div class="page-head"><div><h2>Workspace</h2><p>Save mappings, analysis settings and exclusions. Raw source files are never embedded.</p></div></div>
+        <div class="report-grid"><button id="exportWorkspace" class="report-card"><strong>Export workspace</strong><span>Save roles, selected channels, thresholds and exclusions.</span></button><label class="report-card file-button"><strong>Import workspace</strong><span>Restore configuration, then reselect the source folder/files.</span><input id="workspaceInput" type="file" accept="application/json,.json" hidden /></label></div>
+        <div id="workspaceMessage" class="message-area"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="busyOverlay" class="busy-overlay hidden"><div class="spinner"></div><strong id="busyText">Working…</strong></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
