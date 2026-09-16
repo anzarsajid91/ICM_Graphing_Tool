@@ -23,3 +23,9 @@ This directory is the zero-install delivery surface for the ICM Calibration Work
 ## Browser target
 
 Desktop Chromium-based browsers are the primary engineering target because they provide the most complete local-directory picker support. Other modern browsers retain file picker and drag/drop fallback paths.
+
+## Deployment gate
+
+`.github/workflows/pages.yml` runs the Python regression suite, browser-bridge tests, JavaScript/Python syntax checks and a real Playwright Chromium journey. That journey must ingest the demo source pool, map observed/model/rainfall series, render Plotly, calculate comparison metrics, apply an exclusion to spill assessment, execute storage screening and download workspace/report artifacts before the Pages build job can run.
+
+GitHub Pages must be enabled once for the repository with **GitHub Actions** selected as the Pages source. This is an account/repository setting rather than a software installation on user machines.
