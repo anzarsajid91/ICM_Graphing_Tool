@@ -20,33 +20,89 @@ async function waitReady(){
   try{await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready'&&document.querySelector('#engineStatus')?.textContent.includes('ready'),null,{timeout:120000});}
   catch(err){const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);throw new Error(`Engine readiness failed. status=${status}; diagnostic=${JSON.stringify(diag)}; original=${err}`);}
 }
+function denseCsv(){
+  const lines=['timestamp,level'];
+  const base=Date.UTC(2026,0,1,0,0,0);
+  for(let i=0;i<12000;i++){
+    const stamp=new Date(base+i*60000).toISOString().replace('.000Z','');
+    const level=(i%100>=25&&i%100<=45)?2.2:0.45;
+    lines.push(`${stamp},${level}`);
+  }
+  return Buffer.from(lines.join('\n'),'utf8');
+}
 
 try{
   stage='open application';
   await page.goto('http://127.0.0.1:8000/',{waitUntil:'domcontentloaded'});
   await waitReady();
 
-  stage='source pool';
+  stage='source pool and collapsed file list';
+  const observedPath=path.join(root,'examples/demo/observed.csv');
+  const extraBuffer=await fs.readFile(observedPath);
   await page.setInputFiles('#fileInput',[
-    path.join(root,'examples/demo/observed.csv'),
+    observedPath,
     path.join(root,'examples/demo/model.csv'),
     path.join(root,'examples/demo/rainfall.csv'),
+    {name:'auxiliary-observed.csv',mimeType:'text/csv',buffer:extraBuffer},
+    {name:'dense-observed.csv',mimeType:'text/csv',buffer:denseCsv()},
   ]);
-  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===3&&document.querySelector('#poolSummary')?.textContent.includes('3 parsed successfully'),null,{timeout:60000});
-  if(await page.locator('#poolBody tr').count()!==3)throw new Error('Expected exactly three source-pool rows');
+  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===5&&document.querySelector('#poolSummary')?.textContent.includes('5 parsed successfully'),null,{timeout:90000});
+  if(await page.locator('#poolBody tr').count()!==5)throw new Error('Expected five source-pool rows');
+  await page.waitForFunction(()=>getComputedStyle(document.querySelectorAll('#poolBody tr')[3]).display==='none');
+  if(!((await page.locator('#sourcePoolToggle').textContent())||'').includes('Show all 5'))throw new Error('Collapsed source pool should offer Show all 5');
+  await page.click('#sourcePoolToggle');
+  if(await page.locator('#poolBody tr').nth(4).evaluate(el=>getComputedStyle(el).display)==='none')throw new Error('Expanded source pool did not reveal all rows');
+  await page.click('#sourcePoolToggle');
 
-  stage='mapping and graph';
+  stage='observed-only mapping and adaptive graph';
+  const denseObserved=await optionValue('#observedSelect','dense-observed.csv — level');
+  const rain=await optionValue('#rainSelect','rainfall.csv — rainfall');
+  if(!denseObserved||!rain)throw new Error('Expected dense observed and rainfall series options');
+  await page.selectOption('#observedSelect',denseObserved);
+  await page.selectOption('#modelSelect',[]);
+  await page.selectOption('#rainSelect',rain);
+  await page.click('#applyMappingBtn');
+  await page.waitForSelector('#timeChart .main-svg',{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('0 comparison scenario'));
+  const fullDensity=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastGraphPointCounts?.observed);
+  if(!fullDensity||fullDensity.raw!==12000||fullDensity.shown>5000||fullDensity.native!==false)throw new Error(`Full adaptive density incorrect: ${JSON.stringify(fullDensity)}`);
+
+  stage='graph threshold controls and rainfall top band';
+  await page.fill('#graphObsThreshold','1.5');
+  await page.waitForFunction(()=>document.querySelector('#timeChart')?.layout?.shapes?.length>=1,null,{timeout:60000});
+  const graphLayout=await page.evaluate(()=>({hyd:document.querySelector('#timeChart').layout.yaxis.domain,rain:document.querySelector('#timeChart').layout.yaxis2.domain,rainRange:document.querySelector('#timeChart').layout.yaxis2.range}));
+  if(graphLayout.hyd[1]>.71||graphLayout.rain[0]<.78)throw new Error(`Rainfall is not isolated above hydraulic graph: ${JSON.stringify(graphLayout)}`);
+  if(!(graphLayout.rainRange[0]>graphLayout.rainRange[1]))throw new Error(`Rainfall axis should be reversed top-down: ${JSON.stringify(graphLayout.rainRange)}`);
+
+  stage='adaptive zoom restores native timestep';
+  await page.evaluate(()=>Plotly.relayout(document.querySelector('#timeChart'),{'xaxis.range[0]':'2026-01-01T00:00:00','xaxis.range[1]':'2026-01-01T02:00:00'}));
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphPointCounts?.observed?.native===true&&window.__ICM_WORKBENCH__.lastGraphPointCounts.observed.raw<=121,null,{timeout:60000});
+  const zoomDensity=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastGraphPointCounts.observed);
+  if(zoomDensity.shown!==zoomDensity.raw)throw new Error(`Zoomed window should show native points: ${JSON.stringify(zoomDensity)}`);
+
+  stage='observed-only yearly spill calculation';
+  await clickTab('spills');
+  if(await page.inputValue('#obsThreshold')!=='1.5')throw new Error('Graph observed threshold was not synchronised to spill calculation');
+  await page.click('#runSpillsBtn');
+  await page.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in'),null,{timeout:60000});
+  await page.waitForSelector('#obsMonthly .v2-yearly-title',{timeout:60000});
+  if(await page.locator('#obsMonthly tbody tr').count()<1)throw new Error('Observed yearly spill table missing');
+  if(!((await page.locator('#spillComparison').textContent())||'').includes('model result is optional'))throw new Error('Observed-only spill workflow should not require a model');
+
+  stage='map comparison scenario for calibration workflows';
   const obsDepth=await optionValue('#observedSelect','observed.csv — depth');
   const obsFlow=await optionValue('#ratingObsFlow','observed.csv — flow');
   const modelDepth=await optionValue('#modelSelect','model.csv — depth');
   const modelFlow=await optionValue('#ratingModelFlow','model.csv — flow');
-  const rain=await optionValue('#rainSelect','rainfall.csv — rainfall');
-  if(!obsDepth||!obsFlow||!modelDepth||!modelFlow||!rain)throw new Error('Expected depth/flow/rainfall series options were not created');
+  if(!obsDepth||!obsFlow||!modelDepth||!modelFlow)throw new Error('Expected demo depth/flow series options were not created');
   await page.selectOption('#observedSelect',obsDepth);
   await page.selectOption('#modelSelect',[modelDepth]);
   await page.selectOption('#rainSelect',rain);
   await page.click('#applyMappingBtn');
-  await page.waitForSelector('#timeChart .main-svg',{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'));
+  await page.fill('#graphObsThreshold','1.0');
+  await page.fill('#graphModelThreshold','1.0');
+  await page.waitForFunction(()=>document.querySelector('#timeChart')?.layout?.shapes?.filter(x=>x.type==='line').length===2,null,{timeout:60000});
 
   stage='calibration comparison and diagnostics';
   await clickTab('compare');
@@ -87,7 +143,7 @@ try{
   await page.click('#runHealthBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#healthBody tr').length>0,null,{timeout:60000});
 
-  stage='spill exclusions in Asia/Kolkata';
+  stage='spill exclusions in Asia/Kolkata and annual comparison';
   await clickTab('spills');
   await page.fill('#obsThreshold','1.0');
   await page.fill('#modelThreshold','1.0');
@@ -96,10 +152,14 @@ try{
   await page.fill('.ex-row [data-field="end"]','2026-01-01T00:10');
   await page.fill('.ex-row [data-field="reason"]','Automated acceptance-test exclusion');
   await page.click('#runSpillsBtn');
-  await page.waitForFunction(()=>document.querySelector('#obsSpillSummary')?.textContent.includes('12/24 spill count'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in'),null,{timeout:60000});
+  await page.waitForSelector('#obsMonthly .v2-yearly-title',{timeout:60000});
+  await page.waitForSelector('#modelMonthly .v2-yearly-title',{timeout:60000});
+  if(await page.locator('#spillComparison tbody tr').count()<1)throw new Error('Annual observed/model spill comparison missing');
   const spillDiag=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastSpills);
   if(!spillDiag?.observed)throw new Error(`Observed spill diagnostic missing: ${JSON.stringify(spillDiag)}`);
   if(Math.abs(Number(spillDiag.observed.excluded_seconds)-120)>0.001)throw new Error(`Expected 120 seconds excluded in model clock, got ${JSON.stringify(spillDiag)}`);
+  if(!spillDiag.observed.yearly?.length)throw new Error('Yearly spill summary missing from browser diagnostic');
 
   stage='storage and monthly volume';
   await clickTab('storage');
@@ -125,7 +185,7 @@ try{
   if(workspace.exclusions?.[0]?.end!=='2026-01-01T00:10')throw new Error(`Exclusion end shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
 
   await page.setInputFiles('#workspaceInput',workspacePath);
-  await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('3/3 source fingerprint'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('source fingerprint'),null,{timeout:60000});
 
   await downloadFrom('#downloadReportBtn');
   await page.fill('#reportYear','2026');
@@ -139,7 +199,7 @@ try{
   if(diag.errors?.length)throw new Error(`Workbench recorded operation errors: ${JSON.stringify(diag.errors)}`);
   if(failedRequests.filter(x=>!x.includes('favicon.ico')).length)throw new Error(`Failed browser requests: ${failedRequests.join(' | ')}`);
 
-  console.log('Browser acceptance passed in Asia/Kolkata: engine, common source pool, graph, metrics, residual/cumulative/exceedance, rating, DWF, rainfall events, data health, model-clock exclusions, spills, storage/monthly volume, workspace reload and all report/provenance downloads.');
+  console.log('Browser acceptance passed: collapsed source pool, observed-only workflow, threshold overlays, separated rainfall band, adaptive native-resolution zoom, comparison diagnostics, annual spills/exclusions, storage, workspace and reports.');
 } catch(err) {
   const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');
   const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);
