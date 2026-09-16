@@ -6,7 +6,8 @@ on:
     paths:
       - 'web/**'
       - 'src/icm_workbench/**'
-      - 'tests/web/**'
+      - 'tests/**'
+      - 'scripts/build_pages.py'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -34,11 +35,26 @@ jobs:
         run: python -m pip install -e . pytest
       - name: Run Python regression suite
         run: python -m pytest
-      - name: Validate browser JavaScript and bridge syntax
+      - name: Validate release browser source
         run: |
-          node --check web/assets/app.js
+          node --check web/assets/runtime.release.js
           node --check web/tests/smoke.mjs
-          python -m py_compile web/python_bridge.py
+          python -m py_compile web/python_bridge.py web/advanced_bridge.py scripts/build_pages.py
+      - name: Verify deterministic Pages package manifest
+        run: |
+          python scripts/build_pages.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          src = Path('src')
+          expected = [p.relative_to(src).as_posix() for p in sorted((src/'icm_workbench').rglob('*.py')) if '__pycache__' not in p.parts]
+          actual = json.loads(Path('_site/python/package-manifest.json').read_text())
+          assert actual == expected, (len(actual), len(expected))
+          staged = Path('_site/assets/runtime.js').read_bytes()
+          release = Path('web/assets/runtime.release.js').read_bytes()
+          assert staged == release
+          print(f'Pages manifest verified: {len(actual)} Python modules; release runtime staged exactly.')
+          PY
 
   browser-smoke:
     runs-on: ubuntu-latest
@@ -51,19 +67,13 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - name: Assemble static browser artifact
-        run: |
-          rm -rf _site
-          mkdir -p _site/python
-          cp -R web/. _site/
-          cp -R src/icm_workbench _site/python/icm_workbench
-          rm -rf _site/tests
-          touch _site/.nojekyll
+      - name: Assemble exact release artifact
+        run: python scripts/build_pages.py
       - name: Install Chromium acceptance runner
         run: |
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
-      - name: Exercise real browser workflow
+      - name: Exercise complete browser workflow
         run: |
           python -m http.server 8000 --directory _site >/tmp/icm-pages-http.log 2>&1 &
           node web/tests/smoke.mjs
@@ -73,14 +83,11 @@ jobs:
     needs: browser-smoke
     steps:
       - uses: actions/checkout@v6
-      - name: Build static Pages artifact
-        run: |
-          rm -rf _site
-          mkdir -p _site/python
-          cp -R web/. _site/
-          cp -R src/icm_workbench _site/python/icm_workbench
-          rm -rf _site/tests
-          touch _site/.nojekyll
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Build exact verified Pages artifact
+        run: python scripts/build_pages.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
