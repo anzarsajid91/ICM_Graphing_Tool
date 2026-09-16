@@ -1,0 +1,8 @@
+# Intentionally bounded requirements for the new workbench. A platform-specific
+# fully resolved lock must be generated/tested on the target Windows environment.
+dash>=2.17,<4
+plotly>=5.22,<7
+pandas>=2.2,<3
+numpy>=1.26,<3
+pyarrow>=14,<25
+pytest>=8,<10
