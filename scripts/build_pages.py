@@ -13,10 +13,10 @@ SITE = ROOT / "_site"
 
 
 def _inject_v2_assets() -> None:
-    """Load the reviewed release runtime as a classic script, then the UX overlay.
+    """Load the reviewed release runtime as classic scripts plus UX overlays.
 
-    The original runtime intentionally remains a separately reviewable source file.  The
-    V2 overlay needs access to its browser-local state/engine to provide observed-only
+    The original runtime intentionally remains a separately reviewable source file. The
+    V2 overlays need access to its browser-local state/engine to provide observed-only
     mapping, adaptive visible-range graph retrieval and the redesigned spill workflow.
     Classic scripts share the page's global lexical environment; ES modules do not.
     """
@@ -28,10 +28,11 @@ def _inject_v2_assets() -> None:
     )
     html = html.replace(
         '<script type="module" src="assets/runtime.js"></script>',
-        '<script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>',
+        '<script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>',
     )
-    if "workbench-v2.css" not in html or "workbench-v2.js" not in html:
-        raise RuntimeError("Could not inject V2 browser assets into Pages index")
+    required = ["workbench-v2.css", "workbench-v2.js", "workbench-v2-domfix.js"]
+    if not all(name in html for name in required):
+        raise RuntimeError("Could not inject all V2 browser assets into Pages index")
     index.write_text(html, encoding="utf-8")
 
 
@@ -63,7 +64,7 @@ def build() -> None:
         json.dumps(
             {
                 "commit": os.environ.get("GITHUB_SHA", "local"),
-                "runtime": "assets/runtime.release.js staged as assets/runtime.js + workbench-v2 overrides",
+                "runtime": "release runtime + V2 adaptive engineering UX and DOM integration fixes",
                 "python_module_count": len(manifest),
                 "ux_release": "v2-adaptive-engineering-review",
             },
