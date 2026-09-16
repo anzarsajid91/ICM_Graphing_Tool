@@ -16,6 +16,7 @@ page.on('requestfailed',r=>failedRequests.push(`${r.method()} ${r.url()} :: ${r.
 async function optionValue(selector,needle){return page.locator(`${selector} option`).evaluateAll((opts,n)=>opts.find(x=>x.textContent.includes(n))?.value||'',needle);}
 async function clickTab(name){await page.click(`[data-tab="${name}"]`);}
 async function downloadFrom(selector){const pending=page.waitForEvent('download');await page.click(selector);return pending;}
+async function filePayload(filePath,name=path.basename(filePath)){return {name,mimeType:'text/csv',buffer:await fs.readFile(filePath)};}
 async function waitReady(){
   try{await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready'&&document.querySelector('#engineStatus')?.textContent.includes('ready'),null,{timeout:120000});}
   catch(err){const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);throw new Error(`Engine readiness failed. status=${status}; diagnostic=${JSON.stringify(diag)}; original=${err}`);}
@@ -38,12 +39,14 @@ try{
 
   stage='source pool and collapsed file list';
   const observedPath=path.join(root,'examples/demo/observed.csv');
-  const extraBuffer=await fs.readFile(observedPath);
+  const modelPath=path.join(root,'examples/demo/model.csv');
+  const rainPath=path.join(root,'examples/demo/rainfall.csv');
+  const observedPayload=await filePayload(observedPath);
   await page.setInputFiles('#fileInput',[
-    observedPath,
-    path.join(root,'examples/demo/model.csv'),
-    path.join(root,'examples/demo/rainfall.csv'),
-    {name:'auxiliary-observed.csv',mimeType:'text/csv',buffer:extraBuffer},
+    observedPayload,
+    await filePayload(modelPath),
+    await filePayload(rainPath),
+    {name:'auxiliary-observed.csv',mimeType:'text/csv',buffer:Buffer.from(observedPayload.buffer)},
     {name:'dense-observed.csv',mimeType:'text/csv',buffer:denseCsv()},
   ]);
   await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===5&&document.querySelector('#poolSummary')?.textContent.includes('5 parsed successfully'),null,{timeout:90000});
