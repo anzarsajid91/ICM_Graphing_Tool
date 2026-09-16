@@ -1,0 +1,25 @@
+# Original application data and new local workbench state
+data/
+_icm_viewer_cache*/
+.icm-workbench-cache/
+*.parquet
+*.feather
+
+# Python
+.venv/
+.venv-workbench/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Generated exports / local workspaces
+reports/
+exports/
+*.local.workspace.json
+
+# Credentials and environment
+.env
+.env.*
+*.pem
+*.key
