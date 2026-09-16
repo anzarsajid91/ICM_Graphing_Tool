@@ -1,0 +1,6 @@
+{
+  "items": [
+    {"id":"demo-flow","observed":"observed.csv","observed_column":"flow","model":"model.csv","model_column":"flow","max_gap_seconds":900,
+     "exclusions":[{"start":"2026-01-01T00:07:00","end":"2026-01-01T00:09:00","reason":"Synthetic EDM logger fault","source":"demo"}]}
+  ]
+}
