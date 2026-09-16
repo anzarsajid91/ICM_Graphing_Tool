@@ -1,0 +1,79 @@
+name: Browser Workbench Pages
+
+on:
+  push:
+    branches: [feat/icm-workbench-modernisation]
+    paths:
+      - 'web/**'
+      - 'src/icm_workbench/**'
+      - '.github/workflows/pages-browser.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: JavaScript syntax check
+        run: node --check web/app.js
+      - name: Python bridge syntax check
+        run: python -m py_compile web/engine_bridge.py
+      - name: Repository calculation tests
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest
+          python -m pytest
+      - name: Verify browser engine references reviewed source modules
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('web/app.js').read_text(encoding='utf-8')
+          required=['analysis/spills.py','analysis/alignment.py','analysis/metrics.py','parsers/fdv.py','parsers/csv.py','parsers/rainfall.py']
+          missing=[x for x in required if x not in app]
+          assert not missing, f'Missing browser-mounted reviewed modules: {missing}'
+          print('Browser bridge source-module references verified.')
+          PY
+
+  deploy:
+    needs: validate
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Build static browser workbench
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf _site
+          mkdir -p _site/python
+          cp web/index.html web/styles.css web/app.js web/engine_bridge.py _site/
+          cp -R src/icm_workbench _site/python/icm_workbench
+          touch _site/.nojekyll
+          printf '%s\n' '{"commit":"'"$GITHUB_SHA"'","build":"GitHub Pages browser workbench"}' > _site/build.json
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
