@@ -52,6 +52,23 @@ def clear_cache():
     return True
 
 
+def _model_clock_timestamp(value):
+    """Return a timezone-naive timestamp for the workbench model-clock time basis.
+
+    ICM exports in this workbench are intentionally treated as model clock / unspecified
+    timezone. Browser/workspace inputs may nevertheless carry an offset or ``Z`` suffix.
+    Strip timezone metadata before comparisons so pandas never mixes aware and naive
+    timestamps. The browser runtime is responsible for preserving the user's wall-clock
+    value when serialising datetime-local controls.
+    """
+    if value in (None, ""):
+        return None
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is not None:
+        ts = ts.tz_localize(None)
+    return ts
+
+
 def parse_source(path):
     parsed = _load(path)
     frame = parsed.frame
@@ -97,7 +114,11 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
     mod = _load(model_path).frame.copy()
     if float(offset_minutes or 0):
         mod["timestamp"] = pd.to_datetime(mod["timestamp"], errors="coerce") + pd.to_timedelta(float(offset_minutes), unit="m")
-    paired = pair_series(obs, mod, obs_col, model_col, max_gap_seconds=float(max_gap_seconds), start=start, end=end)
+    paired = pair_series(
+        obs, mod, obs_col, model_col,
+        max_gap_seconds=float(max_gap_seconds),
+        start=_model_clock_timestamp(start), end=_model_clock_timestamp(end),
+    )
     metrics = calibration_metrics(paired)
     p = residual_series(paired) if not paired.empty else paired.copy()
     if not p.empty:
@@ -109,7 +130,7 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
 def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None):
     obs=_load(obs_path).frame; mod=_load(model_path).frame.copy()
     if float(offset_minutes or 0):mod["timestamp"]=pd.to_datetime(mod["timestamp"],errors="coerce")+pd.to_timedelta(float(offset_minutes),unit="m")
-    paired=pair_series(obs,mod,obs_col,model_col,max_gap_seconds=float(max_gap_seconds),start=start,end=end)
+    paired=pair_series(obs,mod,obs_col,model_col,max_gap_seconds=float(max_gap_seconds),start=_model_clock_timestamp(start),end=_model_clock_timestamp(end))
     residual=residual_series(paired) if not paired.empty else pd.DataFrame()
     cumulative=cumulative_volume(paired,float(max_gap_seconds)) if not paired.empty else pd.DataFrame()
     obs_exc=time_weighted_exceedance(obs,obs_col,float(max_gap_seconds)); mod_exc=time_weighted_exceedance(mod,model_col,float(max_gap_seconds))
@@ -122,7 +143,14 @@ def _exclusions(raw):
     items = json.loads(raw) if isinstance(raw, str) else raw
     out = []
     for item in items:
-        out.append(ExclusionPeriod(start=pd.Timestamp(item["start"]).to_pydatetime(), end=pd.Timestamp(item["end"]).to_pydatetime(), reason=str(item["reason"]), source=str(item.get("source", "user"))))
+        start = _model_clock_timestamp(item["start"])
+        end = _model_clock_timestamp(item["end"])
+        out.append(ExclusionPeriod(
+            start=start.to_pydatetime(),
+            end=end.to_pydatetime(),
+            reason=str(item["reason"]),
+            source=str(item.get("source", "user")),
+        ))
     return out
 
 
