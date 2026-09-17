@@ -31,11 +31,15 @@ function denseCsv(){
   }
   return Buffer.from(lines.join('\n'),'utf8');
 }
+function rainfallR(values){
+  return Buffer.from(`*CSTART\n2601010000 2601010006 2\n*CEND\n${values.join(' ')}\n`,'utf8');
+}
 
 try{
   stage='open application';
   await page.goto('http://127.0.0.1:8000/',{waitUntil:'domcontentloaded'});
   await waitReady();
+  if(!((await page.locator('footer').textContent())||'').includes('© 2026 Anzar Sajid'))throw new Error('Live footer copyright missing');
 
   stage='source pool and collapsed file list';
   const observedPath=path.join(root,'examples/demo/observed.csv');
@@ -109,6 +113,7 @@ try{
   await page.selectOption('#rainSelect',rain);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'));
+  await clickTab('graph');
   await page.fill('#graphObsThreshold','1.0');
   await page.fill('#graphModelThreshold','1.0');
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.layout?.shapes?.filter(x=>x.type==='line').length===2,null,{timeout:60000});
@@ -135,8 +140,19 @@ try{
   await page.click('#runDwfBtn');
   await page.waitForSelector('#dwfSummary .summary-box',{timeout:60000});
 
-  stage='rainfall event workflow';
+  stage='rainfall event workflow and cumulative multi-R plot';
   await clickTab('rain-events');
+  await page.setInputFiles('#fileInput',[
+    {name:'storm-alpha.r',mimeType:'text/plain',buffer:rainfallR([6,12,0,3])},
+    {name:'storm-beta.R',mimeType:'text/plain',buffer:rainfallR([3,3,3,3])},
+  ]);
+  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===7&&window.__ICM_WORKBENCH__.lastCumulativeRainfall?.files===2,null,{timeout:90000});
+  const cumulativeRain=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastCumulativeRainfall);
+  if(cumulativeRain.traces!==2)throw new Error(`Expected two cumulative rainfall traces: ${JSON.stringify(cumulativeRain)}`);
+  const totals=[...cumulativeRain.totals].sort((a,b)=>a.file.localeCompare(b.file));
+  if(Math.abs(Number(totals[0]?.total_mm)-0.7)>1e-9||Math.abs(Number(totals[1]?.total_mm)-0.4)>1e-9)throw new Error(`Unexpected cumulative rainfall totals: ${JSON.stringify(totals)}`);
+  await page.waitForSelector('#cumulativeRainChart .main-svg',{timeout:60000});
+
   await page.selectOption('#rainCriteriaMode','manual');
   await page.fill('#rainMinIntensity','1');
   await page.fill('#rainIntensityDuration','2');
@@ -196,10 +212,14 @@ try{
   await page.setInputFiles('#workspaceInput',workspacePath);
   await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('source fingerprint'),null,{timeout:60000});
 
-  // Analytical exclusions changed after the earlier comparison. Refresh before export.
+  // Workspace import intentionally invalidates calculated snapshots. Recalculate every
+  // analysis used by the report rather than weakening stale-result export guards.
   await clickTab('compare');
   await page.click('#runCompareBtn');
   await page.waitForFunction(()=>Boolean(state.comparisonSnapshot)&&state.comparisonSnapshot.signature===analysisSignature());
+  await clickTab('spills');
+  await page.click('#runSpillsBtn');
+  await page.waitForFunction(()=>Boolean(state.spillSnapshot)&&state.spillSnapshot.signature===analysisSignature(),null,{timeout:60000});
   await clickTab('workspace');
   const reportDownload=await downloadFrom('#downloadReportBtn');
   const report=await fs.readFile(await reportDownload.path(),'utf8');
@@ -216,7 +236,7 @@ try{
   if(diag.errors?.length)throw new Error(`Workbench recorded operation errors: ${JSON.stringify(diag.errors)}`);
   if(failedRequests.filter(x=>!x.includes('favicon.ico')).length)throw new Error(`Failed browser requests: ${failedRequests.join(' | ')}`);
 
-  console.log('Browser acceptance passed: collapsed source pool, observed-only workflow, threshold overlays, separated rainfall band, adaptive native-resolution zoom, comparison diagnostics, annual spills/exclusions, storage, workspace and reports.');
+  console.log('Browser acceptance passed: copyright footer, collapsed source pool, observed-only workflow, threshold overlays, separated rainfall band, adaptive native-resolution zoom, comparison diagnostics, multi-R cumulative rainfall, annual spills/exclusions, storage, workspace and reports.');
 } catch(err) {
   const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');
   const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);
