@@ -13,12 +13,13 @@ SITE = ROOT / "_site"
 
 
 def _inject_v2_assets() -> None:
-    """Load the reviewed release runtime as classic scripts plus UX overlays.
+    """Load the reviewed release runtime plus the current UX overlays.
 
     The original runtime intentionally remains a separately reviewable source file. The
-    V2 overlays need access to its browser-local state/engine to provide observed-only
-    mapping, adaptive visible-range graph retrieval and the redesigned spill workflow.
-    Classic scripts share the page's global lexical environment; ES modules do not.
+    UX overlays need access to its browser-local state/engine to provide observed-only
+    mapping, adaptive visible-range graph retrieval, the redesigned spill workflow and
+    cumulative multi-file rainfall review. Classic scripts share the page's global
+    lexical environment; ES modules do not.
     """
     index = SITE / "index.html"
     html = index.read_text(encoding="utf-8")
@@ -28,11 +29,11 @@ def _inject_v2_assets() -> None:
     )
     html = html.replace(
         '<script type="module" src="assets/runtime.js"></script>',
-        '<script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>',
+        '<script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>',
     )
-    required = ["workbench-v2.css", "workbench-v2.js", "workbench-v2-domfix.js"]
+    required = ["workbench-v2.css", "workbench-v2.js", "workbench-v2-domfix.js", "workbench-v3.js"]
     if not all(name in html for name in required):
-        raise RuntimeError("Could not inject all V2 browser assets into Pages index")
+        raise RuntimeError("Could not inject all browser UX assets into Pages index")
     index.write_text(html, encoding="utf-8")
 
 
@@ -45,8 +46,6 @@ def build() -> None:
     python_root.mkdir(parents=True, exist_ok=True)
     shutil.copytree(PACKAGE, python_root / "icm_workbench")
 
-    # The release runtime is deliberately staged over runtime.js so index.html has
-    # one stable script URL while development history remains reviewable in Git.
     shutil.copy2(WEB / "assets" / "runtime.release.js", SITE / "assets" / "runtime.js")
     _inject_v2_assets()
 
@@ -64,9 +63,9 @@ def build() -> None:
         json.dumps(
             {
                 "commit": os.environ.get("GITHUB_SHA", "local"),
-                "runtime": "release runtime + V2 adaptive engineering UX and DOM integration fixes",
+                "runtime": "release runtime + adaptive engineering UX + cumulative multi-file rainfall review",
                 "python_module_count": len(manifest),
-                "ux_release": "v2-adaptive-engineering-review",
+                "ux_release": "v3-cumulative-rainfall-and-release-gate",
             },
             indent=2,
         )
