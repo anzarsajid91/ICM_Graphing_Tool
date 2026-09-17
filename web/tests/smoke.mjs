@@ -81,7 +81,13 @@ try{
   await page.evaluate(()=>Plotly.relayout(document.querySelector('#timeChart'),{'xaxis.range[0]':'2026-01-01T00:00:00','xaxis.range[1]':'2026-01-01T02:00:00'}));
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphPointCounts?.observed?.native===true&&window.__ICM_WORKBENCH__.lastGraphPointCounts.observed.raw<=121,null,{timeout:60000});
   const zoomDensity=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastGraphPointCounts.observed);
-  if(zoomDensity.shown!==zoomDensity.raw)throw new Error(`Zoomed window should show native points: ${JSON.stringify(zoomDensity)}`);
+  if(zoomDensity.raw!==121||zoomDensity.shown!==zoomDensity.raw)throw new Error(`Zoomed window should show native points: ${JSON.stringify(zoomDensity)}`);
+
+  const plotted=await page.evaluate(()=>document.querySelector('#timeChart').data[0]);
+  if(plotted.x.length!==121||plotted.x[0]!=='2026-01-01T00:00:00'||plotted.x[120]!=='2026-01-01T02:00:00')throw new Error('Native source timestamps are incorrect');
+  if(plotted.y[25]!==2.2||plotted.y[46]!==0.45)throw new Error('Native source values are incorrect');
+  await page.evaluate(()=>Plotly.relayout(document.querySelector('#timeChart'),{'xaxis.autorange':true}));
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphPointCounts?.observed?.raw===12000);
 
   stage='observed-only yearly spill calculation';
   await clickTab('spills');
@@ -190,7 +196,15 @@ try{
   await page.setInputFiles('#workspaceInput',workspacePath);
   await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('source fingerprint'),null,{timeout:60000});
 
-  await downloadFrom('#downloadReportBtn');
+  // Analytical exclusions changed after the earlier comparison. Refresh before export.
+  await clickTab('compare');
+  await page.click('#runCompareBtn');
+  await page.waitForFunction(()=>Boolean(state.comparisonSnapshot)&&state.comparisonSnapshot.signature===analysisSignature());
+  await clickTab('workspace');
+  const reportDownload=await downloadFrom('#downloadReportBtn');
+  const report=await fs.readFile(await reportDownload.path(),'utf8');
+  if(!report.includes('© 2026 Anzar Sajid'))throw new Error('Report copyright missing');
+  if(!report.includes('Calculation snapshot'))throw new Error('Report snapshot missing');
   await page.fill('#reportYear','2026');
   await downloadFrom('#downloadFourPeriodBtn');
   await downloadFrom('#downloadManifestBtn');

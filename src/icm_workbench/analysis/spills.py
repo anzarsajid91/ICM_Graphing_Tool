@@ -117,7 +117,7 @@ def detect_spill_intervals(df, value_col, threshold, *, start=None, end=None, ma
             "analysis_seconds": requested,
             "assessable_seconds": float(assessable),
             "coverage_fraction": 0.0,
-            "status": "partial" if assessable > 0 else "complete",
+            "status": "partial" if assessable > 0 else "unavailable",
             "threshold": float(threshold),
             "method": "instantaneous-linear-threshold-v2-vectorised",
             "analysis_start": s,
@@ -206,8 +206,10 @@ def detect_spill_intervals(df, value_col, threshold, *, start=None, end=None, ma
         "excluded_seconds": float(excluded),
         "analysis_seconds": requested,
         "assessable_seconds": float(assessable),
-        "coverage_fraction": float(coverage),
-        "status": "complete" if unknown <= 1e-6 else "partial",
+        "coverage_fraction": float(coverage) if assessable > 0 else None,
+        "valid_seconds": float(valid_seconds),
+        "requested_coverage_fraction": valid_seconds / requested,
+        "status": "unavailable" if valid_seconds <= 1e-6 else ("complete" if unknown <= 1e-6 else "partial"),
         "threshold": float(threshold),
         "method": "instantaneous-linear-threshold-v2-vectorised",
         "analysis_start": s,
@@ -302,7 +304,7 @@ def yearly_spill_summary(counts, durations, start, end):
             "spill_count": int(count_map.get(year, 0)),
             "duration_hours": float(duration_map.get(year, 0.0)),
         }
-        for year in range(int(s.year), int(e.year) + 1)
+        for year in range(int(s.year), int((e - pd.Timedelta(nanoseconds=1)).year) + 1)
     ])
 
 
@@ -320,14 +322,46 @@ def spill_assessment(df, value_col, threshold, *, start=None, end=None, max_gap_
     durations = monthly_spill_durations(physical["events"])
     counts = monthly_spill_counts(counting)
     yearly = yearly_spill_summary(counts, durations, physical.get("analysis_start"), physical.get("analysis_end"))
+    # Count uncertainty is separate from physical coverage. Exclusions cannot
+    # establish a dry reset; compatibility counts are provisional in masked windows.
+    def count_status(p):
+        if p["status"] == "unavailable":
+            return "unavailable"
+        if p["unknown_seconds"] > 1e-6:
+            return "partial/unknown-gap"
+        if p["excluded_seconds"] > 1e-6:
+            return "partial/excluded-window"
+        return "definitive"
+
+    yearly_rows = []
+    for row in yearly.to_dict("records"):
+        year = row["year"]
+        ys = max(pd.Timestamp(physical["analysis_start"]), pd.Timestamp(year=year, month=1, day=1))
+        ye = min(pd.Timestamp(physical["analysis_end"]), pd.Timestamp(year=year+1, month=1, day=1))
+        coverage = detect_spill_intervals(df, value_col, threshold, start=ys, end=ye,
+                                         max_gap_seconds=max_gap_seconds, exclusions=exclusions)
+        valid = coverage.get("valid_seconds", 0.0)
+        status = count_status(coverage)
+        row.update(requested_hours=coverage["analysis_seconds"]/3600,
+                   valid_hours=valid/3600, unknown_hours=coverage["unknown_seconds"]/3600,
+                   excluded_hours=coverage["excluded_seconds"]/3600,
+                   eligible_coverage=coverage["coverage_fraction"],
+                   requested_coverage=valid/coverage["analysis_seconds"],
+                   count_status=status)
+        if status == "unavailable":
+            row["spill_count"] = None
+            row["duration_hours"] = None
+        yearly_rows.append(row)
+    yearly = pd.DataFrame(yearly_rows)
     return {
         **physical,
         "counting_windows": counting,
         "monthly_counts": counts,
         "monthly_durations": durations,
         "yearly_summary": yearly,
-        "total_spill_count": int(counting["spills"].sum()) if not counting.empty else 0,
+        "total_spill_count": None if physical["status"] == "unavailable" else (int(counting["spills"].sum()) if not counting.empty else 0),
         "total_spill_duration_hours": float(sum(e["duration_seconds"] for e in physical["events"]) / 3600.0),
-        "count_status": "definitive" if physical["status"] == "complete" else "partial/unknown-gap",
-        "exclusion_audit": [e.to_dict() for e in normalise_exclusions(exclusions)],
+        "count_status": count_status(physical),
+        "count_policy": "compatibility-12-24; masked or unknown windows provisional; wall-clock retained",
+        "exclusion_audit": [e.to_dict() for e in exclusions],
     }

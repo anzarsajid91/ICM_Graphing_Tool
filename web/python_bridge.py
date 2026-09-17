@@ -21,7 +21,7 @@ def _jsonable(value):
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
     if isinstance(value, np.generic):
-        return value.item()
+        return _jsonable(value.item())
     if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
         return None
     if isinstance(value, dict):
@@ -138,7 +138,7 @@ def _display_indices(values, max_points):
     return idx
 
 
-def series_data(path, column=None, max_points=5000, start=None, end=None):
+def series_data(path, column=None, max_points=5000, start=None, end=None, max_gap_seconds=900.0):
     x, col = _prepared_series(path, column)
     timestamps = x["timestamp"].to_numpy(dtype="datetime64[ns]")
     lo = 0
@@ -155,11 +155,25 @@ def series_data(path, column=None, max_points=5000, start=None, end=None):
     raw_count = int(len(view))
     values = view[col].to_numpy(dtype=float)
     idx = _display_indices(values, max_points)
+    # Preserve every segment boundary, even when topology exceeds the display budget.
+    stamps = view["timestamp"].to_numpy(dtype="datetime64[ns]").astype(np.int64)
+    breaks = np.flatnonzero((np.diff(stamps) > float(max_gap_seconds)*1e9) | ~np.isfinite(values[:-1]) | ~np.isfinite(values[1:])) + 1
+    if len(breaks):
+        idx = np.unique(np.r_[idx, breaks-1, breaks])
     display = view.iloc[idx] if len(view) else view
+    plot_t, plot_v = [], []
+    break_set = set(breaks.tolist())
+    for position, value, stamp in zip(idx, display[col], display["timestamp"]):
+        if int(position) in break_set:
+            plot_t.append(None); plot_v.append(None)
+        plot_t.append(pd.Timestamp(stamp).isoformat())
+        plot_v.append(None if pd.isna(value) else float(value))
     payload = {
         "column": str(col),
-        "timestamp": [None if pd.isna(t) else pd.Timestamp(t).isoformat() for t in display["timestamp"]],
-        "value": [None if pd.isna(v) else float(v) for v in display[col]],
+        "timestamp": plot_t,
+        "value": plot_v,
+        "topology_exceeds_budget": len(display) > int(max_points),
+        "gap_separator_count": len(plot_t) - len(display),
         "raw_count": raw_count,
         "display_count": int(len(display)),
         "native_resolution": bool(raw_count <= int(max_points)),
@@ -169,7 +183,10 @@ def series_data(path, column=None, max_points=5000, start=None, end=None):
     return json.dumps(payload, ensure_ascii=False)
 
 
-def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None):
+def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
+    oq, mq = _quantity(obs_path, obs_col), _quantity(model_path, model_col)
+    if not oq or not mq or oq != mq:
+        raise ValueError("Comparison requires matching declared quantities; depth and level are distinct.")
     obs = _load(obs_path).frame
     mod = _load(model_path).frame.copy()
     if float(offset_minutes or 0):
@@ -179,6 +196,8 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
         max_gap_seconds=float(max_gap_seconds),
         start=_model_clock_timestamp(start), end=_model_clock_timestamp(end),
     )
+    for exc in _exclusions(exclusions_json):
+        paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
     metrics = calibration_metrics(paired)
     p = residual_series(paired) if not paired.empty else paired.copy()
     if not p.empty:
@@ -187,14 +206,24 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
 
-def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None):
+def _quantity(path, column):
+    metadata = getattr(_load(path), "metadata", {})
+    return metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
+
+
+def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
     obs=_load(obs_path).frame; mod=_load(model_path).frame.copy()
-    if float(offset_minutes or 0):mod["timestamp"]=pd.to_datetime(mod["timestamp"],errors="coerce")+pd.to_timedelta(float(offset_minutes),unit="m")
+    if float(offset_minutes or 0):
+        mod["timestamp"]=pd.to_datetime(mod["timestamp"],errors="coerce")+pd.to_timedelta(float(offset_minutes),unit="m")
     paired=pair_series(obs,mod,obs_col,model_col,max_gap_seconds=float(max_gap_seconds),start=_model_clock_timestamp(start),end=_model_clock_timestamp(end))
+    for exc in _exclusions(exclusions_json):
+        paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
     residual=residual_series(paired) if not paired.empty else pd.DataFrame()
-    cumulative=cumulative_volume(paired,float(max_gap_seconds)) if not paired.empty else pd.DataFrame()
-    obs_exc=time_weighted_exceedance(obs,obs_col,float(max_gap_seconds)); mod_exc=time_weighted_exceedance(mod,model_col,float(max_gap_seconds))
-    return json.dumps(_jsonable({"residual":_records(residual),"cumulative":_records(cumulative),"observed_exceedance":_records(obs_exc),"modelled_exceedance":_records(mod_exc)}),ensure_ascii=False)
+    is_flow = _quantity(obs_path, obs_col) == _quantity(model_path, model_col) == "flow" and not _exclusions(exclusions_json)
+    cumulative=cumulative_volume(paired,float(max_gap_seconds)) if is_flow and not paired.empty else pd.DataFrame()
+    obs_exc=time_weighted_exceedance(paired,"obs",float(max_gap_seconds)) if is_flow else pd.DataFrame()
+    mod_exc=time_weighted_exceedance(paired,"sim",float(max_gap_seconds)) if is_flow else pd.DataFrame()
+    return json.dumps(_jsonable({"residual":_records(residual),"cumulative":_records(cumulative),"observed_exceedance":_records(obs_exc),"modelled_exceedance":_records(mod_exc),"flow_diagnostics_available":is_flow,"reason":None if is_flow else "Cumulative volume and flow duration require two declared flow channels and currently an unmasked assessment. Exact masked diagnostic integration is pending.","integration_method":"instantaneous-trapezoidal-v2","exceedance_method":"left-support-time-weighted"}),ensure_ascii=False)
 
 
 def _exclusions(raw):
@@ -203,6 +232,8 @@ def _exclusions(raw):
     items = json.loads(raw) if isinstance(raw, str) else raw
     out = []
     for item in items:
+        if item.get("enabled") is False:
+            continue
         start = _model_clock_timestamp(item["start"])
         end = _model_clock_timestamp(item["end"])
         out.append(ExclusionPeriod(
@@ -210,6 +241,7 @@ def _exclusions(raw):
             end=end.to_pydatetime(),
             reason=str(item["reason"]),
             source=str(item.get("source", "user")),
+            exclusion_id=item.get("id", item.get("exclusion_id")),
         ))
     return out
 
@@ -247,9 +279,9 @@ def event_response_result(obs_path,obs_col,model_path,model_col,events_json,base
     return json.dumps(_jsonable({"rows":rows}),ensure_ascii=False)
 
 
-def spill_result(path, column, threshold, exclusions_json="[]", max_gap_seconds=900.0):
+def spill_result(path, column, threshold, exclusions_json="[]", max_gap_seconds=900.0, start=None, end=None):
     frame = _load(path).frame
-    result = spill_assessment(frame, column, float(threshold), max_gap_seconds=float(max_gap_seconds), exclusions=_exclusions(exclusions_json))
+    result = spill_assessment(frame, column, float(threshold), start=_model_clock_timestamp(start), end=_model_clock_timestamp(end), max_gap_seconds=float(max_gap_seconds), exclusions=_exclusions(exclusions_json))
     payload = dict(result)
     payload["counting_windows"] = _records(result.get("counting_windows"))
     payload["monthly_counts"] = _records(result.get("monthly_counts"))
@@ -259,11 +291,11 @@ def spill_result(path, column, threshold, exclusions_json="[]", max_gap_seconds=
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
 
-def storage_result(level_path, level_col, flow_path, flow_col, threshold, exclusions_json="[]", target_count=10, max_gap_seconds=900.0):
+def storage_result(level_path, level_col, flow_path, flow_col, threshold, exclusions_json="[]", target_count=10, max_gap_seconds=900.0, start=None, end=None):
     level = _load(level_path).frame
     flow = _load(flow_path).frame
     exc = _exclusions(exclusions_json)
-    physical = detect_spill_intervals(level, level_col, float(threshold), max_gap_seconds=float(max_gap_seconds), exclusions=exc)
+    physical = detect_spill_intervals(level, level_col, float(threshold), start=_model_clock_timestamp(start), end=_model_clock_timestamp(end), max_gap_seconds=float(max_gap_seconds), exclusions=exc)
     blocks = spill_block_volumes(physical["events"], flow, flow_col, max_gap_seconds=float(max_gap_seconds), exclusions=exc)
     screening = idealised_storage_screening(blocks, target_count=int(target_count))
     payload = {

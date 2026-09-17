@@ -47,6 +47,7 @@ jobs:
           node --check web/assets/workbench-v2.js
           node --check web/assets/workbench-v2-domfix.js
           node --check web/tests/smoke.mjs
+          node web/tests/runtime-unit.mjs
           python -m py_compile web/python_bridge.py web/advanced_bridge.py scripts/build_pages.py
       - name: Verify deterministic Pages package manifest and V2 staging
         run: |
@@ -92,8 +93,17 @@ jobs:
           python -m http.server 8000 --directory _site >/tmp/icm-pages-http.log 2>&1 &
           node web/tests/smoke.mjs
 
+      - name: Retain browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failure-${{ github.sha }}
+          path: |
+            /tmp/icm-workbench-failure.png
+            /tmp/icm-pages-http.log
+
   build:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       pages: write
@@ -113,7 +123,7 @@ jobs:
           path: _site
 
   deploy:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       pages: write
       id-token: write

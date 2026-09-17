@@ -14,3 +14,14 @@
 | BC10 | P/C | Display downsampling could erase gaps. | Display-only extrema-aware downsampling preserves explicit segment separators. | Gap-separator test. | `display-downsample-v1` |
 
 No regulatory/utility profile is re-labelled as approved. Existing 12/24 semantics are retained as a compatibility method whose project applicability still requires confirmation.
+
+
+## 17 September retry
+- C: all-excluded/no-valid-support spill domains become unavailable, rather than definitive zero.
+- M: masked count windows labelled provisional under the compatibility 12/24 policy; physical durations remain exact retained support.
+- C: yearly coverage is local to each year; exclusive midnight year-end does not add a year.
+- C: cumulative instantaneous-flow diagnostics use trapezoids; 0→2→0 m³/s over 120 s yields 120 m³.
+- C: cross-quantity comparisons rejected; flow-only diagnostics withheld for depth/level.
+- E: scoped editable exclusions, explicit spill model, stale-report guards and presentation attribution.
+- P: core calculation engine retained; obsolete graph redraw route retired.
+Browser behavior is implemented-unverified pending staged acceptance; see checkpoint.

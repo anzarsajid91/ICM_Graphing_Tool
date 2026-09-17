@@ -84,7 +84,7 @@
   }
 
   function installGraphControls() {
-    const panel = $('#tab-graph .panel');
+    const panel = document.querySelector('#tab-graph .panel');
     const details = panel?.querySelector('details.subpanel');
     if (!panel || !details || document.getElementById('v2GraphToolbar')) return;
     const toolbar = document.createElement('div');
@@ -127,13 +127,14 @@
   }
 
   function installSpillStatus() {
-    const thresholdGrid = $('#tab-spills .mapping-grid.compact');
+    const thresholdGrid = document.querySelector('#tab-spills .mapping-grid.compact');
     if (!thresholdGrid || document.getElementById('spillRunStatus')) return;
     const status = document.createElement('div');
     status.id = 'spillRunStatus';
     status.className = 'v2-operation-status';
     status.textContent = 'Set one or both thresholds, then calculate. A comparison model is optional.';
     thresholdGrid.insertAdjacentElement('afterend', status);
+    const label=document.createElement('label');label.textContent='Active model for spill assessment';const select=document.createElement('select');select.id='spillModelSelect';label.appendChild(select);thresholdGrid.appendChild(label);
     const comparisonHeading = $('spillComparison')?.previousElementSibling;
     if (comparisonHeading) comparisonHeading.textContent = 'Observed vs modelled yearly comparison';
   }
@@ -151,9 +152,15 @@
     state.mapping.rain = $('rainSelect').value;
     const obs = mappingObject(state.mapping.observed);
     const models = currentModels();
-    if (!obs) throw new Error('Select an observed series. A model comparison series is optional.');
-    $('mappingStatus').textContent = `Observed: ${seriesLabel(obs.item, obs.col)} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`;
+    if (!obs && !state.mapping.rain) throw new Error('Select an observed or rainfall series.');
+    $('mappingStatus').textContent = `Observed: ${obs?seriesLabel(obs.item, obs.col):'not mapped'} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`;
     renderModelColourControls();
+    renderExclusions();
+    const select=$('spillModelSelect');
+    const previous=select.value;
+    select.innerHTML='<option value="">No model selected</option>'+state.mapping.models.map(key=>{const m=mappingObject(key);return `<option value="${esc(key)}">${esc(seriesLabel(m.item,m.col))}</option>`;}).join('');
+    if(state.mapping.models.includes(previous))select.value=previous;
+    if(state.mapping.models.length===1)select.value=state.mapping.models[0];
     autoSuggestAdvanced(allSeries());
     ui.graphRange = null;
     await v2DrawGraph(null);
@@ -166,6 +173,7 @@
       path: source.item.virtualPath,
       column: source.col,
       max_points: DISPLAY_POINTS,
+      max_gap_seconds:Number($('gapInput').value||900),
       start: range?.[0] || null,
       end: range?.[1] || null,
     };
@@ -175,6 +183,7 @@
 
   function v2GraphShapes() {
     const shapes = [];
+    for(const e of exclusionPayload(false)){if(e.enabled)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:'#b45309',opacity:.12,line:{width:0},layer:'below',label:{text:e.reason}});}
     const obs = nullableNumber($('graphObsThreshold')?.value ?? $('obsThreshold').value);
     const model = nullableNumber($('graphModelThreshold')?.value ?? $('modelThreshold').value);
     if ($('showGraphObsThreshold')?.checked !== false && obs !== null) {
@@ -208,7 +217,7 @@
   }
 
   async function v2DrawGraph(range=ui.graphRange) {
-    if (!state.mapping.observed) {
+    if (!state.mapping.observed && !state.mapping.rain) {
       Plotly.purge('timeChart');
       return;
     }
@@ -216,11 +225,12 @@
     ui.graphRefreshing = true;
     const pointCounts = {};
     try {
-      const obs = await v2SeriesFor(state.mapping.observed, range);
+      const obs = await v2SeriesFor(state.mapping.observed || state.mapping.rain, range);
       if (!obs || generation !== ui.graphGeneration) return;
-      pointCounts.observed = {raw:obs.data.raw_count, shown:obs.data.display_count, native:obs.data.native_resolution};
+      pointCounts.observed = {raw:obs.data.raw_count, shown:obs.data.display_count, native:obs.data.native_resolution, topology:obs.data.topology_exceeds_budget};
       const traces = [{x:obs.data.timestamp,y:obs.data.value,name:`Observed · ${obs.col}`,mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:1.7},yaxis:'y'}];
 
+      if(!state.mapping.observed)traces.length=0;
       let index = 0;
       for (const key of state.mapping.models) {
         const model = await v2SeriesFor(key, range);
@@ -241,7 +251,7 @@
         }
       }
 
-      const xaxis = {title:'Time',rangeslider:{visible:true,thickness:.06},showgrid:false};
+      const xaxis = {title:'Time',autorange:!range,rangeslider:{visible:true,thickness:.06},showgrid:false};
       if (range?.length === 2) {
         xaxis.range = range;
         xaxis.autorange = false;
@@ -263,6 +273,7 @@
       };
       await Plotly.react('timeChart', traces, layout, {responsive:true,displaylogo:false,scrollZoom:true});
       wireAdaptiveZoom();
+      if (generation !== ui.graphGeneration) return;
       ui.graphRange = range;
       window.__ICM_WORKBENCH__.lastGraphPointCounts = pointCounts;
       window.__ICM_WORKBENCH__.lastGraphRange = range;
@@ -270,7 +281,7 @@
       if (density) {
         const native = Object.values(pointCounts).every(x => x.native);
         const total = Object.values(pointCounts).reduce((sum,x)=>sum+(x.shown||0),0);
-        density.innerHTML = `<strong>${native?'Native timestep detail':'Adaptive display'} · ${total.toLocaleString()} plotted points</strong>${native?'Visible window is showing every available source timestep.':`Each trace is capped near ${DISPLAY_POINTS.toLocaleString()} points; zoom in for finer detail.`}`;
+        density.innerHTML = `<strong>${native?'Native timestep detail':'Adaptive display'} · ${total.toLocaleString()} plotted points</strong>${Object.values(pointCounts).some(x=>x.topology)?'Display budget exceeded to preserve missing-data breaks.':native?'Visible window is showing every available source timestep.':`Each trace is capped near ${DISPLAY_POINTS.toLocaleString()} points; zoom in for finer detail.`}`;
       }
     } finally {
       ui.graphRefreshing = false;
@@ -290,17 +301,17 @@
     if (!chart || chart.__v2AdaptiveZoom) return;
     chart.__v2AdaptiveZoom = true;
     chart.on('plotly_relayout', event => {
-      if (ui.graphRefreshing) return;
       const range = relayoutRange(event);
       if (range === undefined) return;
       ui.graphRange = range;
+      ++ui.graphGeneration;
       clearTimeout(ui.graphTimer);
       ui.graphTimer = setTimeout(() => void v2DrawGraph(range), 220);
     });
   }
 
   function scheduleGraphRedraw(delay=120) {
-    if (!state.mapping.observed || !$('timeChart')) return;
+    if ((!state.mapping.observed && !state.mapping.rain) || !$('timeChart')) return;
     clearTimeout(ui.graphTimer);
     ui.graphTimer = setTimeout(() => void v2DrawGraph(ui.graphRange), delay);
   }
@@ -312,7 +323,7 @@
   function annualTable(result) {
     if (!result) return '<div class="v2-empty">Not calculated for this dataset.</div>';
     const rows = annualRows(result);
-    const annual = rows.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Year</th><th>12/24 spill count</th><th>Spill duration (hr)</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${x.year}</td><td>${x.spill_count}</td><td>${fmt(x.duration_hours,2)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="v2-empty">No assessed calendar years.</div>';
+    const annual = rows.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Year</th><th>12/24 spill count</th><th>Spill duration (hr)</th><th>Valid h</th><th>Unknown h</th><th>Excluded h</th><th>Requested h</th><th>Status</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${x.year}</td><td>${fmt(x.spill_count,0)}</td><td>${fmt(x.duration_hours,2)}</td><td>${fmt(x.valid_hours,2)}</td><td>${fmt(x.unknown_hours,2)}</td><td>${fmt(x.excluded_hours,2)}</td><td>${fmt(x.requested_hours,2)}</td><td>${esc(x.count_status)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="v2-empty">No assessed calendar years.</div>';
     const monthly = monthlyTable(result);
     return `<div class="v2-yearly-title"><h4>Yearly spill summary</h4><span>${esc(result.count_status||result.status||'')}</span></div>${annual}<details class="v2-monthly-detail"><summary>Monthly detail</summary>${monthly}</details>`;
   }
@@ -321,12 +332,11 @@
     const observed = state.spills.observed;
     const model = state.spills.model;
     if (!observed || !model) return '<div class="v2-empty">A model result is optional. Select and calculate a model only when an observed/model comparison is required.</div>';
-    if (observed.count_status !== 'definitive' || model.count_status !== 'definitive') return '<div class="privacy-note"><strong>Comparison withheld:</strong> one or both datasets contain unexcluded unknown coverage. Resolve or explicitly exclude the unusable period before interpreting differences.</div>';
     const om = new Map(annualRows(observed).map(x=>[Number(x.year),x]));
     const mm = new Map(annualRows(model).map(x=>[Number(x.year),x]));
     const years = [...new Set([...om.keys(),...mm.keys()])].sort((a,b)=>a-b);
     if (!years.length) return '<div class="v2-empty">No annual spill results.</div>';
-    return `<div class="table-wrap spill-annual-compare"><table class="data-table"><thead><tr><th>Year</th><th>Observed count</th><th>Model count</th><th>Count difference</th><th>Observed duration hr</th><th>Model duration hr</th><th>Duration difference hr</th></tr></thead><tbody>${years.map(year=>{const o=om.get(year)||{spill_count:0,duration_hours:0},m=mm.get(year)||{spill_count:0,duration_hours:0};return `<tr><td>${year}</td><td>${o.spill_count||0}</td><td>${m.spill_count||0}</td><td>${(m.spill_count||0)-(o.spill_count||0)}</td><td>${fmt(o.duration_hours||0,2)}</td><td>${fmt(m.duration_hours||0,2)}</td><td>${fmt((m.duration_hours||0)-(o.duration_hours||0),2)}</td></tr>`;}).join('')}</tbody></table></div>`;
+    return `<p>Individual assessment domains. Differences are withheld because coverage and masks may differ.</p><div class="table-wrap"><table class="data-table"><thead><tr><th>Year</th><th>Observed count</th><th>Model count</th><th>Observed duration h</th><th>Model duration h</th></tr></thead><tbody>${years.map(year=>{const o=om.get(year),m=mm.get(year);return `<tr><td>${year}</td><td>${fmt(o?.spill_count,0)}</td><td>${fmt(m?.spill_count,0)}</td><td>${fmt(o?.duration_hours,2)}</td><td>${fmt(m?.duration_hours,2)}</td></tr>`;}).join('')}</tbody></table></div>`;
   }
 
   function renderSpillsV2() {
@@ -348,13 +358,16 @@
 
   async function v2RunSpills() {
     const observed = mappingObject(state.mapping.observed);
-    const model = currentModels()[0];
+    const model = mappingObject($('spillModelSelect').value);
     if (!observed && !model) throw new Error('Map an observed series first. A model series is optional.');
     const observedThreshold = $('obsThreshold').value;
     const modelThreshold = $('modelThreshold').value;
     if (observedThreshold === '' && (!model || modelThreshold === '')) throw new Error('Enter at least one spill threshold.');
 
-    const exclusions = JSON.stringify(exclusionPayload());
+    const exclusionsFor=(role,key)=>JSON.stringify(exclusionPayload(true,role,key));
+    const bounds=analysisBounds();
+    const config=JSON.parse(JSON.stringify(workspaceObject()));
+    const signature=analysisSignature();
     const gap = Number($('gapInput').value || 900);
     state.spills = {};
     const started = performance.now();
@@ -362,13 +375,14 @@
     if (observed && observedThreshold !== '') {
       setOperationStatus('Calculating observed EDM spills…', 'running');
       await nextPaint();
-      state.spills.observed = await engine.call('spill_result',{path:observed.item.virtualPath,column:observed.col,threshold:Number(observedThreshold),exclusions_json:exclusions,max_gap_seconds:gap});
+      state.spills.observed = await engine.call('spill_result',{path:observed.item.virtualPath,column:observed.col,threshold:Number(observedThreshold),exclusions_json:exclusionsFor('observed',state.mapping.observed),max_gap_seconds:gap,...bounds});
     }
     if (model && modelThreshold !== '') {
       setOperationStatus('Calculating modelled spills…', 'running');
       await nextPaint();
-      state.spills.model = await engine.call('spill_result',{path:model.item.virtualPath,column:model.col,threshold:Number(modelThreshold),exclusions_json:exclusions,max_gap_seconds:gap});
+      state.spills.model = await engine.call('spill_result',{path:model.item.virtualPath,column:model.col,threshold:Number(modelThreshold),exclusions_json:exclusionsFor('model',$('spillModelSelect').value),max_gap_seconds:gap,...bounds});
     }
+    state.spillSnapshot={config,signature,results:JSON.parse(JSON.stringify(state.spills))};
     renderSpillsV2();
     const elapsed = (performance.now()-started)/1000;
     setOperationStatus(`Completed in ${elapsed.toFixed(1)} s. Yearly 12/24 counts and physical durations are shown below.`, 'done');
@@ -391,6 +405,10 @@
     }
   }
 
+  window.ICMGraph = {draw: v2DrawGraph, applyMapping: v2ApplyMapping};
+  const exActions=$('addExclusionBtn').parentElement;
+  const rangeButton=document.createElement('button');rangeButton.className='btn quiet';rangeButton.textContent='Exclude visible period';rangeButton.onclick=()=>{const range=ui.graphRange;if(!range)return;addExclusionRow({start:modelClock(range[0]),end:modelClock(range[1])});};exActions.appendChild(rangeButton);
+  const undoButton=document.createElement('button');undoButton.className='btn quiet';undoButton.textContent='Undo removal';undoButton.onclick=()=>{const row=state.deletedExclusions?.pop();if(row){state.exclusions.push(row);renderExclusions();void drawTimeChart();}};exActions.appendChild(undoButton);
   installSourcePoolControl();
   installGraphControls();
   installSpillStatus();

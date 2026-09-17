@@ -8,7 +8,15 @@ def residual_series(paired):
 
 
 def cumulative_volume(paired,max_gap_seconds=900.0):
-    x=paired[["timestamp","obs","sim"]].copy().sort_values("timestamp"); dt=pd.to_datetime(x.timestamp).diff().dt.total_seconds().shift(-1); valid=dt.gt(0)&dt.le(max_gap_seconds); x["obs_increment_m3"]=np.where(valid,x.obs*dt,np.nan); x["sim_increment_m3"]=np.where(valid,x.sim*dt,np.nan); x["obs_cumulative_m3"]=x.obs_increment_m3.fillna(0).cumsum(); x["sim_cumulative_m3"]=x.sim_increment_m3.fillna(0).cumsum(); x["gap"]=~valid; return x
+    x=paired[["timestamp","obs","sim"]].copy().sort_values("timestamp")
+    dt=pd.to_datetime(x.timestamp).diff().dt.total_seconds()
+    valid=dt.gt(0)&dt.le(max_gap_seconds)&x.obs.notna()&x.sim.notna()&x.obs.shift().notna()&x.sim.shift().notna()
+    for name in ("obs","sim"):
+        increments=((x[name]+x[name].shift())*0.5*dt).where(valid)
+        x[f"{name}_increment_m3"]=increments
+        x[f"{name}_cumulative_m3"]=increments.fillna(0).cumsum()
+    x["gap"]=~valid
+    return x
 
 
 def time_weighted_exceedance(df,value_col,max_gap_seconds=900.0):

@@ -1,3 +1,9 @@
+# Current feature parity
+
+The [requirements ledger](requirements-ledger.md) supersedes the historical status labels below. Core tests do not establish browser/export parity.
+
+## Historical matrix
+
 # Feature parity matrix
 
 **Implemented** means present in the new core with automated/local verification where feasible. **Partial** means a meaningful migration path exists but full legacy/UI parity or target-environment evidence remains. Real-export/Windows items remain UAT gates.

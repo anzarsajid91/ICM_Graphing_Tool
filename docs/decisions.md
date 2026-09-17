@@ -23,3 +23,10 @@ New report HTML escapes untrusted text and includes the exclusion audit. Reports
 
 ## D08 — Local security boundary
 The CLI binds to loopback only. Source references are resolved beneath the registered data root, including symlink resolution. This release makes no claim of safety for unauthenticated internet exposure.
+
+
+## D09 — Retry integrity decisions (17 September 2026)
+Interpreter calls are serialized. All graph callers route to the adaptive renderer; the DOM workaround is retired. Individual spill domains are displayed without unqualified differences. Masked counts are provisional, all-excluded periods unavailable. Unresolved workspace fingerprints are not replaced by matching filenames. Masked cumulative/FDC diagnostics are withheld pending exact support implementation.
+
+## D10 — Presentation attribution
+Display © 2026 Anzar Sajid in the app footer and both browser HTML report types. This does not change repository licensing or third-party attribution.
