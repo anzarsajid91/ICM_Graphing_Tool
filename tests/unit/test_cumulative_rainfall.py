@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
 if str(WEB) not in sys.path:
@@ -30,8 +32,8 @@ def test_cumulative_rainfall_integrates_full_interval_series_before_display_samp
 
     assert result["raw_count"] == 4
     assert result["display_count"] <= 4
-    assert result["interval_min"] == 2.0
-    assert result["final_total_mm"] == 1.4
+    assert result["interval_min"] == pytest.approx(2.0)
+    assert result["final_total_mm"] == pytest.approx(1.4)
     assert result["complete"] is True
     assert result["integration_method"] == "interval-average intensity × interval minutes / 60"
 
@@ -42,5 +44,5 @@ def test_cumulative_rainfall_flags_sentinel_intervals_as_partial(tmp_path):
 
     assert result["missing_count"] == 1
     assert result["complete"] is False
-    assert result["final_total_mm"] == 0.3
+    assert result["final_total_mm"] == pytest.approx(0.3)
     assert None in result["value"]
