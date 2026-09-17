@@ -87,3 +87,5 @@ footer{max-width:1600px;padding:0 26px}
   .shell{padding:10px}.panel{padding:13px}.v2-graph-toolbar{grid-template-columns:1fr}.v2-density{grid-column:auto}.chart{height:520px;min-height:440px}
   .summary-box{grid-template-columns:1fr 1fr}
 }
+
+.ex-row{display:grid;grid-template-columns:70px 1fr 1fr 1fr 2fr auto;gap:8px}.ex-row input,.ex-row select{min-width:0;width:100%}textarea{width:100%}

@@ -8,6 +8,6 @@ def parse_file(path):
     p=Path(path);low=p.name.lower()
     if low.endswith((".fdv",".fdv.txt")):return parse_fdv(p)
     if low.endswith((".r",".r.txt")) and not low.endswith(".fdv.txt"):return parse_rainfall_r(p)
-    if low.endswith(".csv"):return parse_csv(p)
+    if low.endswith((".csv", ".hyd")):return parse_csv(p)
     raise ValueError(f"Unsupported file format: {p.name}")
 __all__=["ParsedData","parse_file","parse_csv","parse_fdv","parse_rainfall_r"]

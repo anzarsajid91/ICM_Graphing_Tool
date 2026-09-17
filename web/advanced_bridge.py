@@ -42,9 +42,9 @@ def dwf_scaled(flow_path,flow_col,rain_path=None,rain_col="rainfall",rain_factor
     return json.dumps(python_bridge._jsonable(result),ensure_ascii=False)
 
 
-def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshold,exclusions_json="[]",max_gap_seconds=900.0):
+def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshold,exclusions_json="[]",max_gap_seconds=900.0,start=None,end=None):
     level=python_bridge._load(level_path).frame; flow=python_bridge._load(flow_path).frame; exclusions=python_bridge._exclusions(exclusions_json)
-    physical=detect_spill_intervals(level,level_col,float(threshold),max_gap_seconds=float(max_gap_seconds),exclusions=exclusions)
+    physical=detect_spill_intervals(level,level_col,float(threshold),start=python_bridge._model_clock_timestamp(start),end=python_bridge._model_clock_timestamp(end),max_gap_seconds=float(max_gap_seconds),exclusions=exclusions)
     monthly={}
     for event in physical.get("events",[]):
         for start,end in split_interval_by_month(event["start"],event["end"]):

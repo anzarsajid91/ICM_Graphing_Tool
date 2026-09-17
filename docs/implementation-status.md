@@ -1,3 +1,9 @@
+# Current implementation status
+
+See [resume checkpoint](resume-checkpoint.md) and [requirements ledger](requirements-ledger.md) for the 17 September retry. Full completion is pending. Browser and real-export gates remain open.
+
+## Historical status (superseded)
+
 # Implementation status
 
 **Branch:** `feat/icm-workbench-modernisation`  

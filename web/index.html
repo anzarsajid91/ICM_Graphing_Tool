@@ -21,7 +21,7 @@
         <div><h2>1. Source pool</h2><p>Choose a local folder, add files, or drag and drop. Source data stays on this device.</p></div>
         <div class="actions"><button class="btn primary" id="chooseFolderBtn">Choose folder</button><button class="btn" id="addFilesBtn">Add files</button><button class="btn quiet" id="clearPoolBtn">Clear pool</button></div>
       </div>
-      <input id="fileInput" type="file" multiple accept=".csv,.fdv,.txt,.r" hidden />
+      <input id="fileInput" type="file" multiple accept=".hyd,.csv,.fdv,.txt,.r" hidden />
       <input id="folderInput" type="file" webkitdirectory multiple hidden />
       <div class="dropzone" id="dropzone"><strong>Drop CSV / FDV / R files or a folder here</strong><span>Recognised: .csv, .fdv, .fdv.txt, .r, .r.txt</span></div>
       <div class="pool-summary" id="poolSummary">No files loaded.</div>
@@ -149,7 +149,7 @@
     </section>
   </main>
 
-  <footer><span>ICM Calibration Workbench — GitHub Pages browser edition</span><span id="footerBuild">Reference engine: Python core</span></footer>
+  <section class="panel"><label>Review notes and assumptions<textarea id="reviewNotes" rows="3" placeholder="Notes are exported separately from computed results"></textarea></label></section><footer><span>ICM Calibration Workbench — © 2026 Anzar Sajid</span><span id="footerBuild">Reference engine: Python core</span></footer>
   <script type="module" src="assets/runtime.js"></script>
 </body>
 </html>

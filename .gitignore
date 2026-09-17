@@ -23,3 +23,8 @@ exports/
 .env.*
 *.pem
 *.key
+
+# Browser build and local dependencies
+_site/
+node_modules/
+web/tests/baseline-local.mjs
