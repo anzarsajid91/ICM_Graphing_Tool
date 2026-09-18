@@ -28,3 +28,7 @@ exports/
 _site/
 node_modules/
 web/tests/baseline-local.mjs
+
+# Representative real-export UAT stays local by default
+tests/representative/data/
+tests/representative/manifest.local.json
