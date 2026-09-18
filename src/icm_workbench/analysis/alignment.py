@@ -2,7 +2,25 @@ from __future__ import annotations
 
 import pandas as pd
 
+from .exclusions import interval_excluded_seconds, normalise_exclusions
 from .validity import validity_summary
+
+
+def _subtract_interval(start, end, exclusions):
+    pieces = [(pd.Timestamp(start), pd.Timestamp(end))]
+    for exc in normalise_exclusions(exclusions):
+        es, ee = pd.Timestamp(exc.start), pd.Timestamp(exc.end)
+        nxt = []
+        for a, b in pieces:
+            if ee <= a or es >= b:
+                nxt.append((a, b))
+                continue
+            if es > a:
+                nxt.append((a, min(es, b)))
+            if ee < b:
+                nxt.append((max(ee, a), b))
+        pieces = [(a, b) for a, b in nxt if b > a]
+    return pieces
 
 
 def _valid_segments(df, value_col, max_gap_seconds):
@@ -86,8 +104,15 @@ def pair_series(
     ).dropna(subset=["obs", "sim"])
 
 
-def time_coverage(df, value_col, start, end, max_gap_seconds=900.0):
-    """Return support coverage using the common validity-state contract."""
+def time_coverage(
+    df,
+    value_col,
+    start,
+    end,
+    max_gap_seconds=900.0,
+    exclusions=(),
+):
+    """Return disjoint support coverage using the common validity-state contract."""
     s, e = pd.Timestamp(start), pd.Timestamp(end)
     requested = max(float((e - s).total_seconds()), 0.0)
     if requested <= 0:
@@ -97,11 +122,15 @@ def time_coverage(df, value_col, start, end, max_gap_seconds=900.0):
             "valid_seconds": 0.0,
             "missing_seconds": 0.0,
             "unknown_seconds": 0.0,
+            "excluded_seconds": 0.0,
             "uncovered_seconds": 0.0,
             "coverage_fraction": None,
             "status": "unavailable",
             "validity": validity,
         }
+
+    exclusions = normalise_exclusions(exclusions)
+    excluded_seconds = float(interval_excluded_seconds(s, e, exclusions))
 
     x = df[["timestamp", value_col]].copy()
     x["timestamp"] = pd.to_datetime(x.timestamp, errors="coerce")
@@ -124,23 +153,32 @@ def time_coverage(df, value_col, start, end, max_gap_seconds=900.0):
         a, b = max(t0, s), min(t1, e)
         if b <= a:
             continue
-        seconds = float((b - a).total_seconds())
+        retained = float(
+            sum(
+                (q - p).total_seconds()
+                for p, q in _subtract_interval(a, b, exclusions)
+            )
+        )
+        if retained <= 0:
+            continue
         v0 = x.iloc[i][value_col]
         v1 = x.iloc[i + 1][value_col]
         if dt > float(max_gap_seconds):
-            unknown_seconds += seconds
+            unknown_seconds += retained
         elif pd.isna(v0) or pd.isna(v1):
-            missing_seconds += seconds
+            missing_seconds += retained
         else:
-            valid_seconds += seconds
+            valid_seconds += retained
 
+    assessable = max(0.0, requested - excluded_seconds)
     uncovered_seconds = max(
         0.0,
-        requested - valid_seconds - missing_seconds - unknown_seconds,
+        assessable - valid_seconds - missing_seconds - unknown_seconds,
     )
     validity = validity_summary(
         requested_seconds=requested,
         valid_seconds=valid_seconds,
+        excluded_seconds=excluded_seconds,
         missing_seconds=missing_seconds,
         unknown_seconds=unknown_seconds,
         uncovered_seconds=uncovered_seconds,
@@ -150,6 +188,7 @@ def time_coverage(df, value_col, start, end, max_gap_seconds=900.0):
         "valid_seconds": valid_seconds,
         "missing_seconds": missing_seconds,
         "unknown_seconds": validity["unknown_seconds"],
+        "excluded_seconds": excluded_seconds,
         "uncovered_seconds": uncovered_seconds,
         "coverage_fraction": validity["coverage_fraction"],
         "status": validity["calculation_status"],
