@@ -73,3 +73,16 @@ States apply to this retry, not historical completion claims. Core evidence: `te
 | F13 | Snapshot/stale guards added; every report operation not yet reconciled |
 | F14 | Pre-cleaning sentinel audit retained; ordering/duplicate policy incomplete |
 | F15 | Branch-safe deployment/failure artifacts; full dependency lock and visible build identity incomplete |
+
+
+## 18 September correctness-tranche update
+
+| Requirement | State after phase-1 implementation |
+|---|---|
+| U04 / FP02 unit contract | implemented-unverified: generic CSV explicit units convert to canonical SI; unresolved dimensional work is blocked or requires explicit storage override |
+| U07 / FP05 rainfall contract | implemented-unverified: actual support replaces median-step depth/event arithmetic; final support requires declared interval |
+| FP11 DWF validity | implemented-unverified: missing/incomplete rainfall is unknown, never dry |
+| FP16 / FP17 storage | implemented-unverified: level/flow units and support coverage gate dimensional results; partial headlines withheld |
+| E07 workspace migration | implemented-unverified: v1/v2→v3 migration in Python/browser; future versions rejected |
+| F06 / F13 state lifecycle | improved: source clearing invalidates exclusions and derived state; wider single action/dependency model remains planned |
+| T20 representative real exports | still blocked: requires user/project-provided anonymised actual exports and independent engineering reconciliation |
