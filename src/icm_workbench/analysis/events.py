@@ -1,32 +1,148 @@
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from icm_workbench.analysis.exclusions import apply_exclusions
+from icm_workbench.analysis.rainfall import rainfall_support_segments
 
 
-def detect_rainfall_events(rain,*,intensity_col="rainfall",minimum_intensity=5.0,minimum_intensity_duration_min=6.0,minimum_depth_mm=5.0,minimum_event_duration_min=60.0,dry_gap_min=15.0,exclusions=()):
-    if rain is None or rain.empty:return []
-    r,_=apply_exclusions(rain,exclusions,[intensity_col]); r=r[["timestamp",intensity_col]].copy(); r["timestamp"]=pd.to_datetime(r.timestamp,errors="coerce"); r[intensity_col]=pd.to_numeric(r[intensity_col],errors="coerce"); r=r.dropna(subset=["timestamp"]).sort_values("timestamp"); deltas=r.timestamp.diff().dropna().dt.total_seconds().div(60); dt=float(deltas[deltas>0].median()) if (deltas>0).any() else 2.0
-    events=[]; vals=[]; times=[]; dry=0.0; active=False
-    def close():
-        if not vals or not times:return
-        arr=np.asarray(vals,dtype=float); valid=np.isfinite(arr)
-        if not valid.any():return
-        duration=len(arr)*dt; depth=float(np.nansum(np.maximum(arr,0.0))*dt/60.0); peak=float(np.nanmax(arr)); cur=best=0.0
-        for v in arr:
-            if np.isfinite(v) and v>=minimum_intensity: cur+=dt; best=max(best,cur)
-            else: cur=0.0
-        if duration>=minimum_event_duration_min and depth>=minimum_depth_mm and best>=minimum_intensity_duration_min:
-            events.append({"event":len(events)+1,"start":times[0],"end":times[-1],"duration_min":duration,"total_depth_mm":depth,"peak_intensity":peak,"intensity_streak_min":best,"criteria":{"min_intensity":minimum_intensity,"min_intensity_duration_min":minimum_intensity_duration_min,"min_depth_mm":minimum_depth_mm,"min_event_duration_min":minimum_event_duration_min,"dry_gap_min":dry_gap_min}})
-    for t,raw in zip(r.timestamp,r[intensity_col]):
-        if pd.isna(raw):
-            if active: close(); vals=[]; times=[]; active=False; dry=0.0
+def detect_rainfall_events(
+    rain,
+    *,
+    intensity_col="rainfall",
+    minimum_intensity=5.0,
+    minimum_intensity_duration_min=6.0,
+    minimum_depth_mm=5.0,
+    minimum_event_duration_min=60.0,
+    dry_gap_min=15.0,
+    exclusions=(),
+    semantics="intensity",
+    declared_interval_minutes=None,
+    max_gap_seconds=None,
+):
+    """Detect rainfall events using actual timestamp support.
+
+    Missing or unsupported intervals terminate an event. A final intensity
+    value contributes only when a declared regular interval is supplied.
+    """
+    if rain is None or getattr(rain, "empty", True):
+        return []
+
+    r, _ = apply_exclusions(rain, exclusions, [intensity_col])
+    segments = rainfall_support_segments(
+        r,
+        intensity_col,
+        semantics=semantics,
+        declared_interval_minutes=declared_interval_minutes,
+        max_gap_seconds=max_gap_seconds,
+    )
+    if segments.empty:
+        return []
+
+    events: list[dict] = []
+    active: list[dict] = []
+    dry_start = None
+    dry_seconds = 0.0
+
+    def close(end_override=None):
+        nonlocal active, dry_start, dry_seconds
+        if not active:
+            dry_start = None
+            dry_seconds = 0.0
+            return
+
+        event_start = pd.Timestamp(active[0]["start"])
+        event_end = pd.Timestamp(end_override) if end_override is not None else pd.Timestamp(active[-1]["end"])
+        if event_end <= event_start:
+            active = []
+            dry_start = None
+            dry_seconds = 0.0
+            return
+
+        selected = [x for x in active if pd.Timestamp(x["start"]) < event_end]
+        if not selected:
+            active = []
+            dry_start = None
+            dry_seconds = 0.0
+            return
+
+        duration_min = float((event_end - event_start).total_seconds() / 60.0)
+        total_depth = 0.0
+        peak = -np.inf
+        streak = best_streak = 0.0
+        for seg in selected:
+            a = pd.Timestamp(seg["start"])
+            b = min(pd.Timestamp(seg["end"]), event_end)
+            seconds = max(0.0, float((b - a).total_seconds()))
+            if seconds <= 0:
+                continue
+            value = float(seg["value"])
+            peak = max(peak, value)
+            if semantics == "intensity":
+                total_depth += max(value, 0.0) * seconds / 3600.0
+            else:
+                total_depth += max(float(seg["depth_mm"]), 0.0) * seconds / float(seg["support_seconds"])
+            if value >= float(minimum_intensity):
+                streak += seconds / 60.0
+                best_streak = max(best_streak, streak)
+            else:
+                streak = 0.0
+
+        if (
+            duration_min >= float(minimum_event_duration_min)
+            and total_depth >= float(minimum_depth_mm)
+            and best_streak >= float(minimum_intensity_duration_min)
+        ):
+            events.append(
+                {
+                    "event": len(events) + 1,
+                    "start": event_start,
+                    "end": event_end,
+                    "duration_min": duration_min,
+                    "total_depth_mm": float(total_depth),
+                    "peak_intensity": float(peak) if np.isfinite(peak) else None,
+                    "intensity_streak_min": float(best_streak),
+                    "coverage_status": "complete",
+                    "rainfall_semantics": semantics,
+                    "criteria": {
+                        "min_intensity": float(minimum_intensity),
+                        "min_intensity_duration_min": float(minimum_intensity_duration_min),
+                        "min_depth_mm": float(minimum_depth_mm),
+                        "min_event_duration_min": float(minimum_event_duration_min),
+                        "dry_gap_min": float(dry_gap_min),
+                    },
+                }
+            )
+        active = []
+        dry_start = None
+        dry_seconds = 0.0
+
+    for row in segments.to_dict("records"):
+        if not bool(row["valid"]):
+            if active:
+                close(pd.Timestamp(row["start"]))
             continue
-        v=float(raw)
-        if not active and v>0: active=True; vals=[v]; times=[pd.Timestamp(t)]; dry=0.0
-        elif active:
-            vals.append(v); times.append(pd.Timestamp(t)); dry=dry+dt if v<=0 else 0.0
-            if dry>=dry_gap_min:
-                n=max(1,int(round(dry/dt))); vals,times=vals[:-n],times[:-n]; close(); vals=[]; times=[]; active=False; dry=0.0
-    if active: close()
+
+        value = float(row["value"])
+        if not active:
+            if value > 0:
+                active = [row]
+                dry_start = None
+                dry_seconds = 0.0
+            continue
+
+        active.append(row)
+        if value <= 0:
+            if dry_start is None:
+                dry_start = pd.Timestamp(row["start"])
+            dry_seconds += float(row["support_seconds"])
+            if dry_seconds / 60.0 >= float(dry_gap_min):
+                close(dry_start)
+        else:
+            dry_start = None
+            dry_seconds = 0.0
+
+    if active:
+        close()
     return events
