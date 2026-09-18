@@ -138,7 +138,11 @@ try{
   stage='calibration comparison and diagnostics';
   await clickTab('compare');
   await page.click('#runCompareBtn');
-  await page.waitForFunction(()=>document.querySelectorAll('#scenarioBody tr').length===1&&document.querySelectorAll('#metricGrid .metric').length>=8,null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelectorAll('#scenarioBody tr').length===1&&document.querySelectorAll('#metricGrid .metric').length>=10,null,{timeout:60000});
+  const comparisonValidity=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastComparisonValidity);
+  if(!comparisonValidity||comparisonValidity.status!=='complete'||Math.abs(Number(comparisonValidity.coverage)-1)>1e-9)throw new Error(`Comparison validity contract not surfaced correctly: ${JSON.stringify(comparisonValidity)}`);
+  const metricText=await page.locator('#metricGrid').textContent();
+  if(!metricText.includes('Calculation status')||!metricText.includes('Valid support'))throw new Error('Comparison validity cards are missing');
   for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])await page.waitForSelector(`#${id} .main-svg`,{timeout:60000});
 
   stage='flow-depth rating';
