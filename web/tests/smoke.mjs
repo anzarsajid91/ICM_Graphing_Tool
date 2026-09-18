@@ -220,7 +220,7 @@ try{
   await clickTab('data-health');
   await page.click('#runHealthBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#healthBody tr').length>0,null,{timeout:60000});
-  const healthHead=await page.locator('#tab-data-health thead').textContent();
+  const healthHead=await page.locator('#healthBody').evaluate(el=>el.closest('table')?.querySelector('thead')?.textContent||'');
   if(!healthHead.includes('Flatline')||!healthHead.includes('Out of range')||!healthHead.includes('Zero %'))throw new Error('Enhanced FDV flow-survey screening columns are missing');
 
   stage='professional FDV and rainfall assessment';
