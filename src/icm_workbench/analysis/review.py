@@ -11,9 +11,18 @@ def rating_curve_fit(depth, flow):
     d=pd.to_numeric(depth,errors="coerce"); q=pd.to_numeric(flow,errors="coerce")
     mask=d.notna()&q.notna()&(d>0)&(q>0); d=d[mask].astype(float); q=q[mask].astype(float)
     if len(d)<5:return {"ok":False,"n":int(len(d)),"message":"At least 5 positive depth-flow pairs are required."}
-    x=np.log10(d.to_numpy()); y=np.log10(q.to_numpy()); b,loga=np.polyfit(x,y,1); pred=loga+b*x
-    ss_res=float(np.sum((y-pred)**2)); ss_tot=float(np.sum((y-y.mean())**2)); r2=float(1-ss_res/ss_tot) if ss_tot>0 else np.nan
-    return {"ok":True,"n":int(len(d)),"a":float(10**loga),"b":float(b),"r2":r2,"depth_min":float(d.min()),"depth_max":float(d.max())}
+    x=np.log10(d.to_numpy()); y=np.log10(q.to_numpy()); b,loga=np.polyfit(x,y,1); pred_log=loga+b*x
+    pred=10**pred_log
+    ss_res=float(np.sum((y-pred_log)**2)); ss_tot=float(np.sum((y-y.mean())**2)); r2=float(1-ss_res/ss_tot) if ss_tot>0 else np.nan
+    rmse_log10=float(np.sqrt(np.mean((y-pred_log)**2)))
+    ape=np.abs((pred-q.to_numpy())/q.to_numpy())*100.0
+    return {
+        "ok":True,"n":int(len(d)),"a":float(10**loga),"b":float(b),"r2":r2,
+        "rmse_log10":rmse_log10,
+        "median_abs_percent_error":float(np.median(ape)) if len(ape) else np.nan,
+        "depth_min":float(d.min()),"depth_max":float(d.max()),
+        "flow_min":float(q.min()),"flow_max":float(q.max()),
+    }
 
 
 def weekly_data_assessment(df,max_gap_seconds=900.0):
