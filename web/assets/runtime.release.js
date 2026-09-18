@@ -487,24 +487,81 @@ function reportYearlySpills(r){
   return '<div class="table-wrap"><table><thead><tr><th>Year</th><th>12/24 count</th><th>Duration h</th><th>Valid h</th><th>Unknown h</th><th>Excluded h</th><th>Status</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.year)+'</td><td>'+fmt(x.spill_count,0)+'</td><td>'+fmt(x.duration_hours,2)+'</td><td>'+fmt(x.valid_hours,2)+'</td><td>'+fmt(x.unknown_hours,2)+'</td><td>'+fmt(x.excluded_hours,2)+'</td><td>'+esc(x.count_status||'—')+'</td></tr>').join('')+'</tbody></table></div>';
 }
 async function reportChart(id,width,height){try{return await Plotly.toImage($(id),{format:'svg',width:width,height:height});}catch{return'';}}
+function reportDomMetricStrip(id){
+  const el=$(id);
+  if(!el||!el.innerHTML.trim())return '';
+  return `<div class="graph-metrics">${el.innerHTML}</div>`;
+}
+function reportSummaryUnit(summary){
+  if(!summary)return '—';
+  return summary.unit || (summary.unit_status==='unresolved'?'unresolved source unit':'source unit');
+}
+function reportSummaryQuantity(summary,fallback='Value'){
+  const q=String(summary?.quantity||'').toLowerCase();
+  return ({depth:'Depth',level:'Level',flow:'Flow',velocity:'Velocity',rainfall:'Rainfall'})[q]||fallback;
+}
+function reportValue(v,digits=3){return v===null||v===undefined||!Number.isFinite(Number(v))?'—':fmt(Number(v),digits);}
+function reportGraphStats(rows,start,end){
+  if(!rows?.length)return '';
+  const body=rows.map(row=>{
+    const s=row.summary||{},rain=s.quantity==='rainfall';
+    const unit=reportSummaryUnit(s);
+    return `<tr><td><span class="swatch" style="background:${esc(row.color||'#667085')}"></span>${esc(row.role||'Series')}</td><td>${esc(reportSummaryQuantity(s,row.fallback||'Value'))}</td><td>${esc(unit)}</td><td>${reportValue(s.minimum)}</td><td>${reportValue(s.mean)}</td><td>${reportValue(s.maximum)}</td><td>${reportValue(s.median)}</td><td>${s.valid_samples??'—'}</td><td>${rain?reportValue(s.rain_total_mm)+' mm':'—'}</td><td>${rain?reportValue(s.rain_peak_intensity_mm_h)+' mm/h':'—'}</td><td>${rain?reportValue(s.rain_mean_intensity_mm_h)+' mm/h':'—'}</td><td>${rain?reportValue(s.rain_wet_hours,2)+' h':'—'}</td><td>${rain&&s.rain_coverage_fraction!=null?fmt(Number(s.rain_coverage_fraction)*100,1)+'%':'—'}</td></tr>`;
+  }).join('');
+  return `<div class="graph-stats"><div class="graph-stats-head"><strong>Engineering graph statistics</strong><span>${esc(modelClock(start||rows[0]?.summary?.start||''))} → ${esc(modelClock(end||rows[0]?.summary?.end||''))}</span></div><div class="table-wrap"><table><thead><tr><th>Series</th><th>Quantity</th><th>Unit</th><th>Min</th><th>Mean</th><th>Max</th><th>Median</th><th>Valid samples</th><th>Rain total</th><th>Rain peak</th><th>Rain mean</th><th>Wet duration</th><th>Coverage</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+}
+function hexToRgba(hex,alpha=.28){
+  const clean=String(hex||'#5ea2e6').replace('#','');
+  const full=clean.length===3?clean.split('').map(x=>x+x).join(''):clean;
+  const n=parseInt(full,16);
+  if(!Number.isFinite(n))return `rgba(94,162,230,${alpha})`;
+  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${alpha})`;
+}
+async function reportSeries(key,start,end,maxPoints=18000){
+  const x=mappingObject(key);if(!x)return null;
+  const data=await engine.call('series_data',{path:x.item.virtualPath,column:x.col,max_points:maxPoints,start,end,max_gap_seconds:Number($('gapInput').value||900)});
+  return {...x,data};
+}
+async function reportSeriesSummary(key,start,end,scale=1){
+  const x=mappingObject(key);if(!x)return null;
+  return engine.call('series_summary',{path:x.item.virtualPath,column:x.col,start,end,scale,max_gap_seconds:Number($('gapInput').value||900),end_exclusive:true});
+}
 async function downloadReport(){
   assertFreshResults();
   if(!state.mapping.observed)throw new Error('Apply a mapping before exporting the report.');
-  const images=await Promise.all([reportChart('timeChart',1400,650),reportChart('scatterChart',680,440),reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440)]);
-  const timeImg=images[0],scatterImg=images[1],residImg=images[2],cumulativeImg=images[3],exceedanceImg=images[4];
+  const images=await Promise.all([
+    reportChart('timeChart',1400,650),reportChart('scatterChart',680,440),reportChart('residualChart',680,440),
+    reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440),reportChart('ratingChart',1100,520),
+    reportChart('cumulativeRainChart',1100,480),
+  ]);
+  const [timeImg,scatterImg,residImg,cumulativeImg,exceedanceImg,ratingImg,cumulativeRainImg]=images;
   const w=state.spillSnapshot&&state.spillSnapshot.config||state.comparisonSnapshot&&state.comparisonSnapshot.config||workspaceObject();
-  const scenarioRows=state.comparisons.map((x,i)=>x.result?'<tr><td>Model '+(i+1)+' · '+esc(x.model.item.displayName)+' · '+esc(x.model.col)+'</td><td>'+(x.result.metrics.pairs==null?'—':x.result.metrics.pairs)+'</td><td>'+fmt(x.result.metrics.rmse)+'</td><td>'+fmt(x.result.metrics.mae)+'</td><td>'+fmt(x.result.metrics.mean_bias)+'</td><td>'+fmt(x.result.metrics.r2_correlation)+'</td><td>'+fmt(x.result.metrics.nse)+'</td><td>'+esc(x.result.calculation_status||'—')+'</td><td>'+(x.result.coverage_fraction==null?'—':fmt(x.result.coverage_fraction*100,1)+'%')+'</td></tr>':'').join('');
-  const scenarioTable=scenarioRows?'<div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Pairs</th><th>RMSE</th><th>MAE</th><th>Bias</th><th>R²</th><th>NSE</th><th>Status</th><th>Valid support</th></tr></thead><tbody>'+scenarioRows+'</tbody></table></div>':'<p class="muted">No scenario comparison has been calculated.</p>';
-  let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints.</div>';
+  const scenarioRows=[];
+  state.comparisons.forEach((x,i)=>{
+    for(const [period,result] of [['Full',x.full_result],['Selected',x.selected_result]]){
+      if(!result)continue;
+      const m=result.metrics||{};
+      scenarioRows.push(`<tr><td>Model ${i+1} · ${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${period}</td><td>${m.pairs??'—'}</td><td>${result.coverage_fraction==null?'—':fmt(result.coverage_fraction*100,1)+'%'}</td><td>${fmt(m.rmse)}</td><td>${fmt(m.mae)}</td><td>${fmt(m.mean_bias)}</td><td>${fmt(m.r2_correlation)}</td><td>${fmt(m.nse)}</td><td>${fmt(m.kge_2009)}</td><td>${esc(comparisonUnitLabel(result))}</td><td>${esc(result.calculation_status||'—')}</td></tr>`);
+    }
+  });
+  const scenarioTable=scenarioRows.length?`<div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Period</th><th>Pairs</th><th>Coverage</th><th>RMSE</th><th>MAE</th><th>Bias</th><th>R²</th><th>NSE</th><th>KGE</th><th>Unit</th><th>Status</th></tr></thead><tbody>${scenarioRows.join('')}</tbody></table></div>`:'<p class="muted">No scenario comparison has been calculated.</p>';
+  let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Every graph is paired with its engineering statistics or calculation-status band; source-unit uncertainty is shown rather than silently assumed.</div>';
   body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
-  if(timeImg)body+='<figure class="figure"><img src="'+timeImg+'" alt="Hydraulic time-series graph"><figcaption>Observed, modelled and rainfall time-series for the current mapped assessment.</figcaption></figure>';
+  if(timeImg){
+    const graphRows=diagnostic.lastGraphMetrics||[];
+    body+='<h2>Time-series review</h2><figure class="figure"><img src="'+timeImg+'" alt="Hydraulic time-series graph"><figcaption>Observed, modelled and rainfall time-series for the currently displayed graph period.</figcaption></figure>'+reportGraphStats(graphRows,diagnostic.lastGraphRange?.[0],diagnostic.lastGraphRange?.[1]);
+  }
   body+='<h2>Scenario comparison</h2>'+scenarioTable;
-  const diag=[];
-  if(scatterImg)diag.push('<figure class="figure"><img src="'+scatterImg+'" alt="Observed versus modelled scatter plot"><figcaption>Observed versus modelled paired values.</figcaption></figure>');
-  if(residImg)diag.push('<figure class="figure"><img src="'+residImg+'" alt="Residual plot"><figcaption>Model minus observed residual through time.</figcaption></figure>');
-  if(cumulativeImg)diag.push('<figure class="figure"><img src="'+cumulativeImg+'" alt="Cumulative flow volume plot"><figcaption>Cumulative-volume diagnostic where dimensional flow support is available.</figcaption></figure>');
-  if(exceedanceImg)diag.push('<figure class="figure"><img src="'+exceedanceImg+'" alt="Flow duration plot"><figcaption>Time-weighted exceedance diagnostic where available.</figcaption></figure>');
-  if(diag.length)body+='<div class="report-grid">'+diag.join('')+'</div>';
+  if(scatterImg||residImg||cumulativeImg||exceedanceImg){
+    body+='<div class="report-grid">';
+    if(scatterImg)body+='<div><figure class="figure"><img src="'+scatterImg+'" alt="Observed versus modelled scatter plot"><figcaption>Like-for-like observed versus modelled pairs with a 1:1 reference.</figcaption></figure>'+reportDomMetricStrip('scatterMetrics')+'</div>';
+    if(residImg)body+='<div><figure class="figure"><img src="'+residImg+'" alt="Residual plot"><figcaption>Model minus observed residual through time.</figcaption></figure>'+reportDomMetricStrip('residualMetrics')+'</div>';
+    if(cumulativeImg)body+='<div><figure class="figure"><img src="'+cumulativeImg+'" alt="Cumulative flow volume plot"><figcaption>Cumulative-volume diagnostic where dimensional flow support is available.</figcaption></figure>'+reportDomMetricStrip('cumulativeMetrics')+'</div>';
+    if(exceedanceImg)body+='<div><figure class="figure"><img src="'+exceedanceImg+'" alt="Flow duration plot"><figcaption>Time-weighted exceedance diagnostic where available.</figcaption></figure>'+reportDomMetricStrip('exceedanceMetrics')+'</div>';
+    body+='</div>';
+  }
+  if(state.ratingResult&&ratingImg)body+='<h2>Flow–depth rating diagnostic</h2><figure class="figure"><img src="'+ratingImg+'" alt="Flow-depth rating diagnostic"><figcaption>Observed empirical rating reference and modelled rating behaviour.</figcaption></figure>'+reportDomMetricStrip('ratingMetrics');
+  if(cumulativeRainImg&&$('cumulativeRainTotals')?.innerHTML.trim())body+='<h2>Rainfall assessment</h2><figure class="figure"><img src="'+cumulativeRainImg+'" alt="Cumulative rainfall plot"><figcaption>Cumulative rainfall depth by source rainfall file.</figcaption></figure>'+$('cumulativeRainTotals').innerHTML;
   body+='<h2>Spill / EDM assessment</h2><div class="report-grid"><div class="card"><h3>Observed / EDM</h3>'+spillSummaryHtml(state.spills.observed)+reportYearlySpills(state.spills.observed)+'</div><div class="card"><h3>Modelled</h3>'+spillSummaryHtml(state.spills.model)+reportYearlySpills(state.spills.model)+'</div></div>';
   body+='<h2>Exclusions</h2>'+reportExclusions(w);
   const notes=$('reviewNotes')&&$('reviewNotes').value||'';
@@ -516,55 +573,75 @@ async function downloadReport(){
   $('workspaceStatus').textContent='Professional HTML engineering report downloaded.';
 }
 async function reportTraces(period){
-  const obs=await seriesFor(state.mapping.observed,18000);
-  if(!obs)return{traces:[],hasRain:false,rainMax:1,hydraulicTitle:'Hydraulic value'};
-  const inside=s=>{const t=modelClock(s);return t>=period[0]&&t<period[1];};
-  const traces=[],ox=[],oy=[];
-  obs.data.timestamp.forEach((t,i)=>{if(inside(t)){ox.push(t);oy.push(obs.data.value[i]);}});
-  traces.push({x:ox,y:oy,name:'Observed',mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2}});
-  let i=0;
-  for(const key of state.mapping.models){
-    const m=await seriesFor(key,18000),x=[],y=[];
-    if(!m)continue;
-    m.data.timestamp.forEach((t,j)=>{if(inside(t)){x.push(t);y.push(m.data.value[j]);}});
-    traces.push({x:x,y:y,name:'Model '+(i+1),mode:'lines',connectgaps:false,line:{color:state.modelColours[key]||palette[i%palette.length],width:1.6}});
-    i+=1;
-  }
-  let hasRain=false,rainMax=1;
-  if(state.mapping.rain){
-    const r=await seriesFor(state.mapping.rain,18000),x=[],y=[],factor=Number($('rainFactor').value||1);
-    if(r){
-      r.data.timestamp.forEach((t,j)=>{if(inside(t)){x.push(t);y.push(r.data.value[j]==null?null:Number(r.data.value[j])*factor);}});
-      const finite=y.filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
-      rainMax=finite.length?Math.max(...finite)*1.12:1;
-      traces.push({x:x,y:y,name:'Rainfall',type:'bar',yaxis:'y2',opacity:.55,marker:{color:$('rainColor').value}});
-      hasRain=true;
+  const [a,b]=period;
+  const traces=[],metrics=[];
+  let hydraulicTitle='Hydraulic value',hasRain=false,rainMax=1,rainTitle='Rainfall';
+  if(state.mapping.observed){
+    const obs=await reportSeries(state.mapping.observed,a,b,18000);
+    const summary=await reportSeriesSummary(state.mapping.observed,a,b,1);
+    if(obs){
+      const x=[],y=[];obs.data.timestamp.forEach((t,i)=>{const mt=modelClock(t);if(t&&mt>=a&&mt<b){x.push(t);y.push(obs.data.value[i]);}});
+      traces.push({x,y,name:'Observed',mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2}});
+      metrics.push({role:'Observed',summary,color:$('obsColor').value,fallback:obs.col});
+      hydraulicTitle=`${reportSummaryQuantity(summary,obs.col)}${reportSummaryUnit(summary)!=='—'?` (${reportSummaryUnit(summary)})`:''}`;
     }
   }
-  return{traces:traces,hasRain:hasRain,rainMax:rainMax>0?rainMax:1,hydraulicTitle:obs.col};
+  let i=0;
+  for(const key of state.mapping.models){
+    const model=await reportSeries(key,a,b,18000);
+    const summary=await reportSeriesSummary(key,a,b,1);
+    if(!model)continue;
+    const x=[],y=[];model.data.timestamp.forEach((t,j)=>{const mt=modelClock(t);if(t&&mt>=a&&mt<b){x.push(t);y.push(model.data.value[j]);}});
+    const color=state.modelColours[key]||palette[i%palette.length];
+    traces.push({x,y,name:`Model ${i+1}`,mode:'lines',connectgaps:false,line:{color,width:1.6}});
+    metrics.push({role:`Model ${i+1}`,summary,color,fallback:model.col});
+    i+=1;
+  }
+  if(state.mapping.rain){
+    const factor=Number($('rainFactor').value||1);
+    const rain=await reportSeries(state.mapping.rain,a,b,18000);
+    const summary=await reportSeriesSummary(state.mapping.rain,a,b,factor);
+    if(rain){
+      const x=[],y=[];rain.data.timestamp.forEach((t,j)=>{const mt=modelClock(t);if(t&&mt>=a&&mt<b){x.push(t);y.push(rain.data.value[j]==null?null:Number(rain.data.value[j])*factor);}});
+      const finite=y.filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
+      rainMax=finite.length?Math.max(...finite)*1.12:1;
+      const color=$('rainColor').value;
+      traces.push({x,y,name:'Rainfall',type:'scatter',mode:'lines',yaxis:'y2',connectgaps:false,line:{color,width:1.1,shape:'hv'},fill:'tozeroy',fillcolor:hexToRgba(color,.34),hovertemplate:'%{x}<br>Rainfall %{y:.3f}<extra></extra>'});
+      metrics.push({role:'Rainfall',summary,color,fallback:'Rainfall'});
+      hasRain=true;
+      rainTitle=summary?.rain_semantics==='intensity'?'Rainfall intensity':'Rainfall';
+    }
+  }
+  return{traces,metrics,hasRain,rainMax:rainMax>0?rainMax:1,hydraulicTitle,rainTitle};
 }
 async function downloadFourPeriod(){
   assertFreshResults();
   const year=Number($('reportYear').value);
   if(!year)throw new Error('Enter the report year.');
   const periods=[['Complete year',year+'-01-01T00:00:00',(year+1)+'-01-01T00:00:00'],['January – April',year+'-01-01T00:00:00',year+'-05-01T00:00:00'],['May – August',year+'-05-01T00:00:00',year+'-09-01T00:00:00'],['September – December',year+'-09-01T00:00:00',(year+1)+'-01-01T00:00:00']];
-  const images=[],holder=document.createElement('div');
-  holder.style='position:fixed;left:-10000px;top:0;width:1400px;height:760px';
+  const pages=[],holder=document.createElement('div');
+  holder.style='position:fixed;left:-10000px;top:0;width:1400px;height:650px';
   document.body.appendChild(holder);
   try{
-    for(const p of periods){
-      const title=p[0],a=p[1],b=p[2],result=await reportTraces([a,b]);
-      const layout={template:'plotly_white',title:{text:year+' — '+title,x:.01,xanchor:'left',font:{size:20}},height:760,margin:{l:75,r:85,t:80,b:85},xaxis:{range:[a,b],title:'Time',showgrid:false,automargin:true},yaxis:{title:result.hydraulicTitle||'Hydraulic value',domain:result.hasRain?[0,.70]:[0,1],showgrid:true,gridcolor:'#e7edf2',automargin:true},legend:{orientation:'h',x:0,y:1.04,xanchor:'left',yanchor:'bottom',font:{size:11}},bargap:0};
-      if(result.hasRain)layout.yaxis2={title:'Rainfall',domain:[.80,1],anchor:'x',side:'right',range:[result.rainMax,0],showgrid:false,zeroline:false,automargin:true};
+    for(const [title,a,b] of periods){
+      const result=await reportTraces([a,b]);
+      const layout={
+        template:'plotly_white',height:650,margin:{l:78,r:92,t:72,b:66},
+        xaxis:{range:[a,b],title:'Time',showgrid:false,automargin:true},
+        yaxis:{title:result.hydraulicTitle||'Hydraulic value',domain:result.hasRain?[0,.67]:[0,1],showgrid:true,gridcolor:'#e7edf2',automargin:true},
+        legend:{orientation:'h',x:0,y:1.105,xanchor:'left',yanchor:'bottom',font:{size:11},bgcolor:'rgba(255,255,255,.88)',borderwidth:0},
+        bargap:0,
+      };
+      if(result.hasRain)layout.yaxis2={title:result.rainTitle,domain:[.79,1],anchor:'x',side:'right',range:[result.rainMax,0],showgrid:false,zeroline:false,automargin:true};
       await Plotly.newPlot(holder,result.traces,layout,{staticPlot:true,displaylogo:false,responsive:false});
-      images.push([title,a,b,await Plotly.toImage(holder,{format:'svg',width:1400,height:760})]);
+      pages.push({title,a,b,img:await Plotly.toImage(holder,{format:'svg',width:1400,height:650}),metrics:result.metrics});
       Plotly.purge(holder);
     }
   }finally{Plotly.purge(holder);holder.remove();}
   const w=workspaceObject();
-  let body='<div class="note"><strong>Four-period graph report.</strong> The complete year and three fixed four-month windows use the same mapped series, trace colours and source data. Graphs are rendered at report resolution with a compact legend and a separate rainfall band.</div><h2>Series key</h2>'+reportMappingTable(w);
-  body+=images.map(x=>'<section class="report-page"><h2>'+esc(x[0])+'</h2><p class="muted">'+esc(x[1].replace('T',' '))+' to '+esc(x[2].replace('T',' '))+' · end exclusive</p><figure class="figure"><img src="'+x[3]+'" alt="'+esc(x[0])+' time-series graph"><figcaption>Hydraulic traces use the lower panel. Rainfall, where mapped, uses a separate reversed upper band to preserve readability.</figcaption></figure></section>').join('');
-  const html=reportShell('ICM Calibration Workbench — '+year+' Four-Period Report','Annual hydraulic time-series review',body,true);
+  let body='<div class="note"><strong>Four-period graph report.</strong> Each page uses a dedicated rainfall band, compact non-overlapping legend and an ICM-style engineering statistics table calculated from the native fixed-period series.</div><h2>Series key</h2>'+reportMappingTable(w);
+  body+=pages.map(x=>`<section class="report-page"><h2>${esc(x.title)}</h2><p class="muted">${esc(x.a.replace('T',' '))} to ${esc(x.b.replace('T',' '))} · end exclusive</p><figure class="figure"><img src="${x.img}" alt="${esc(x.title)} time-series graph"><figcaption>Hydraulic traces use the lower panel; rainfall uses the separate reversed upper band.</figcaption></figure>${reportGraphStats(x.metrics,x.a,x.b)}</section>`).join('');
+  const html=reportShell('ICM Calibration Workbench — '+year+' Four-Period Report','Annual hydraulic time-series review with period statistics',body,true);
   downloadBlob('icm-'+year+'-four-period-report.html',html,'text/html');
   $('workspaceStatus').textContent='Professional four-period HTML report downloaded.';
 }
