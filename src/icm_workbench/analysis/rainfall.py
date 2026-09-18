@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from icm_workbench.analysis.validity import validity_summary
+
 
 def rainfall_support_segments(
     rain: pd.DataFrame,
@@ -20,7 +22,12 @@ def rainfall_support_segments(
     assigned support when a declared regular interval is supplied.
     """
     columns = [
-        "start", "end", "value", "support_seconds", "depth_mm", "valid",
+        "start",
+        "end",
+        "value",
+        "support_seconds",
+        "depth_mm",
+        "valid",
         "status",
     ]
     if rain is None or getattr(rain, "empty", True) or value_col not in rain.columns:
@@ -59,12 +66,13 @@ def rainfall_support_segments(
         support = float((end - start).total_seconds())
         if support <= 0:
             continue
+
         value = row[value_col]
         status = "valid"
         valid = bool(pd.notna(value))
         if max_gap_seconds is not None and support > float(max_gap_seconds):
             valid = False
-            status = "unknown_gap"
+            status = "unknown"
         elif not valid:
             status = "missing"
 
@@ -98,7 +106,7 @@ def rainfall_accumulation(
     declared_interval_minutes: float | None = None,
     max_gap_seconds: float | None = None,
 ) -> dict:
-    """Accumulate rainfall with explicit support and completeness information."""
+    """Accumulate rainfall with explicit support and the common validity model."""
     seg = rainfall_support_segments(
         rain,
         value_col,
@@ -107,12 +115,16 @@ def rainfall_accumulation(
         max_gap_seconds=max_gap_seconds,
     )
     if seg.empty:
+        validity = validity_summary(requested_seconds=0.0, valid_seconds=0.0)
         return {
             "total_depth_mm": None,
             "valid_seconds": 0.0,
             "unknown_seconds": 0.0,
+            "missing_seconds": 0.0,
+            "requested_seconds": 0.0,
             "coverage_fraction": None,
             "status": "unavailable",
+            "validity": validity,
             "segments": seg,
             "semantics": semantics,
             "declared_interval_minutes": declared_interval_minutes,
@@ -120,17 +132,27 @@ def rainfall_accumulation(
 
     requested = float(seg["support_seconds"].sum())
     valid = float(seg.loc[seg["valid"], "support_seconds"].sum())
-    unknown = max(0.0, requested - valid)
+    missing = float(seg.loc[seg["status"].eq("missing"), "support_seconds"].sum())
+    explicit_unknown = float(seg.loc[seg["status"].eq("unknown"), "support_seconds"].sum())
     total = float(seg.loc[seg["valid"], "depth_mm"].sum())
-    coverage = valid / requested if requested > 0 else None
-    status = "complete" if unknown <= 1e-9 else ("partial" if valid > 0 else "unavailable")
+
+    validity = validity_summary(
+        requested_seconds=requested,
+        valid_seconds=valid,
+        missing_seconds=missing,
+        unknown_seconds=explicit_unknown,
+        uncovered_seconds=0.0,
+    )
     return {
         "total_depth_mm": total if valid > 0 else None,
         "valid_seconds": valid,
-        "unknown_seconds": unknown,
+        # Preserve the legacy aggregate while exposing the detailed state split.
+        "unknown_seconds": max(0.0, requested - valid),
+        "missing_seconds": missing,
         "requested_seconds": requested,
-        "coverage_fraction": coverage,
-        "status": status,
+        "coverage_fraction": validity["coverage_fraction"],
+        "status": validity["calculation_status"],
+        "validity": validity,
         "segments": seg,
         "semantics": semantics,
         "declared_interval_minutes": declared_interval_minutes,
@@ -153,7 +175,15 @@ def daily_rainfall_support(
         declared_interval_minutes=declared_interval_minutes,
         max_gap_seconds=max_gap_seconds,
     )
-    columns = ["day", "depth_mm", "valid_seconds", "unknown_seconds", "coverage_fraction", "status"]
+    columns = [
+        "day",
+        "depth_mm",
+        "valid_seconds",
+        "missing_seconds",
+        "unknown_seconds",
+        "coverage_fraction",
+        "status",
+    ]
     if seg.empty:
         return pd.DataFrame(columns=columns)
 
@@ -166,13 +196,25 @@ def daily_rainfall_support(
             part_end = min(stop, midnight)
             seconds = float((part_end - cursor).total_seconds())
             day = cursor.normalize()
-            rec = daily.setdefault(day, {"depth_mm": 0.0, "valid_seconds": 0.0, "unknown_seconds": 0.0})
+            rec = daily.setdefault(
+                day,
+                {
+                    "depth_mm": 0.0,
+                    "valid_seconds": 0.0,
+                    "missing_seconds": 0.0,
+                    "unknown_seconds": 0.0,
+                },
+            )
             if bool(row.valid):
                 rec["valid_seconds"] += seconds
                 if semantics == "intensity":
                     rec["depth_mm"] += max(float(row.value), 0.0) * seconds / 3600.0
                 else:
-                    rec["depth_mm"] += float(row.depth_mm) * seconds / float(row.support_seconds)
+                    rec["depth_mm"] += (
+                        float(row.depth_mm) * seconds / float(row.support_seconds)
+                    )
+            elif row.status == "missing":
+                rec["missing_seconds"] += seconds
             else:
                 rec["unknown_seconds"] += seconds
             cursor = part_end
@@ -180,20 +222,28 @@ def daily_rainfall_support(
     rows = []
     for day in sorted(daily):
         rec = daily[day]
-        represented = rec["valid_seconds"] + rec["unknown_seconds"]
+        represented = (
+            rec["valid_seconds"]
+            + rec["missing_seconds"]
+            + rec["unknown_seconds"]
+        )
         uncovered = max(0.0, 86400.0 - represented)
-        coverage = rec["valid_seconds"] / 86400.0
-        status = "complete" if rec["valid_seconds"] >= 86400.0 - 1e-6 and rec["unknown_seconds"] <= 1e-6 else (
-            "partial" if rec["valid_seconds"] > 0 else "unavailable"
+        validity = validity_summary(
+            requested_seconds=86400.0,
+            valid_seconds=rec["valid_seconds"],
+            missing_seconds=rec["missing_seconds"],
+            unknown_seconds=rec["unknown_seconds"],
+            uncovered_seconds=uncovered,
         )
         rows.append(
             {
                 "day": day,
                 "depth_mm": float(rec["depth_mm"]),
                 "valid_seconds": float(rec["valid_seconds"]),
-                "unknown_seconds": float(rec["unknown_seconds"] + uncovered),
-                "coverage_fraction": float(min(1.0, max(0.0, coverage))),
-                "status": status,
+                "missing_seconds": float(rec["missing_seconds"]),
+                "unknown_seconds": float(validity["unknown_seconds"]),
+                "coverage_fraction": validity["coverage_fraction"],
+                "status": validity["calculation_status"],
             }
         )
     return pd.DataFrame(rows, columns=columns)
