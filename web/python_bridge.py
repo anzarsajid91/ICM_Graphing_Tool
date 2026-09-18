@@ -194,6 +194,37 @@ def _comparison_domain(observed, modelled, start=None, end=None):
     return (s,e) if e>s else (None,None)
 
 
+def _comparison_coverage(observed, obs_col, modelled, model_col, domain_start, domain_end, max_gap_seconds, exclusions):
+    if domain_start is None or domain_end is None:
+        empty={"status":"unavailable","coverage_fraction":None,"requested_seconds":0.0,"valid_seconds":0.0,"excluded_seconds":0.0,"missing_seconds":0.0,"unknown_seconds":0.0,"uncovered_seconds":0.0,"validity":None}
+        return {"status":"unavailable","coverage_fraction":None,"observed":dict(empty),"modelled":dict(empty),"validity_model":"validity-v1"}
+    observed_coverage=time_coverage(
+        observed,obs_col,domain_start,domain_end,
+        max_gap_seconds=float(max_gap_seconds),exclusions=exclusions,
+    )
+    modelled_coverage=time_coverage(
+        modelled,model_col,domain_start,domain_end,
+        max_gap_seconds=float(max_gap_seconds),exclusions=exclusions,
+    )
+    fractions=[x.get("coverage_fraction") for x in (observed_coverage,modelled_coverage) if x.get("coverage_fraction") is not None]
+    coverage=min(fractions) if len(fractions)==2 else None
+    statuses={observed_coverage.get("status"),modelled_coverage.get("status")}
+    if "unavailable" in statuses or coverage is None:
+        status="unavailable"
+    elif statuses=={"complete"}:
+        status="complete"
+    else:
+        status="partial"
+    return {
+        "status":status,
+        "coverage_fraction":coverage,
+        "observed":observed_coverage,
+        "modelled":modelled_coverage,
+        "validity_model":"validity-v1",
+        "coverage_basis":"minimum of observed/modelled eligible support; metrics use bounded valid pairs",
+    }
+
+
 def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
     oq, mq = _quantity(obs_path, obs_col), _quantity(model_path, model_col)
     if not oq or not mq or oq != mq:
@@ -209,19 +240,10 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
         start=domain_start, end=domain_end,
     )
     exclusions=_exclusions(exclusions_json)
-    if domain_start is not None and domain_end is not None and not paired_raw.empty:
-        coverage=time_coverage(
-            paired_raw,"obs",domain_start,domain_end,
-            max_gap_seconds=float(max_gap_seconds),
-            exclusions=exclusions,
-        )
-    else:
-        coverage={
-            "status":"unavailable","coverage_fraction":None,
-            "requested_seconds":0.0,"valid_seconds":0.0,
-            "excluded_seconds":0.0,"unknown_seconds":0.0,
-            "uncovered_seconds":0.0,"validity":None,
-        }
+    coverage=_comparison_coverage(
+        obs,obs_col,mod,model_col,domain_start,domain_end,
+        float(max_gap_seconds),exclusions,
+    )
     paired=paired_raw.copy()
     for exc in exclusions:
         paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
@@ -321,19 +343,10 @@ def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=
         start=domain_start,end=domain_end,
     )
     exclusions=_exclusions(exclusions_json)
-    if domain_start is not None and domain_end is not None and not paired_raw.empty:
-        coverage=time_coverage(
-            paired_raw,"obs",domain_start,domain_end,
-            max_gap_seconds=float(max_gap_seconds),
-            exclusions=exclusions,
-        )
-    else:
-        coverage={
-            "status":"unavailable","coverage_fraction":None,
-            "requested_seconds":0.0,"valid_seconds":0.0,
-            "excluded_seconds":0.0,"unknown_seconds":0.0,
-            "uncovered_seconds":0.0,"validity":None,
-        }
+    coverage=_comparison_coverage(
+        obs,obs_col,mod,model_col,domain_start,domain_end,
+        float(max_gap_seconds),exclusions,
+    )
     paired=paired_raw.copy()
     for exc in exclusions:
         paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
