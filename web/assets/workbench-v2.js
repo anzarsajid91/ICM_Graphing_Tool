@@ -216,14 +216,65 @@
     return peak > 0 ? peak * 1.12 : 1;
   }
 
+  function summaryUnit(summary) {
+    if (!summary) return '—';
+    if (summary.unit) return String(summary.unit);
+    return summary.unit_status === 'unresolved' ? 'unresolved' : 'source unit';
+  }
+
+  function summaryQuantity(summary, fallback='Value') {
+    const q = String(summary?.quantity || '').toLowerCase();
+    return ({depth:'Depth',level:'Level',flow:'Flow',velocity:'Velocity',rainfall:'Rainfall'})[q] || fallback;
+  }
+
+  function hydraulicAxisTitle(summary, fallback) {
+    const quantity = summaryQuantity(summary, fallback || 'Hydraulic value');
+    const unit = summaryUnit(summary);
+    return unit && unit !== '—' && unit !== 'unresolved' ? `${quantity} (${unit})` : quantity;
+  }
+
+  function scaledRainSummary(summary, factor) {
+    if (!summary) return null;
+    const out = {...summary};
+    for (const key of ['minimum','mean','median','maximum','rain_total_mm','rain_mean_intensity_mm_h','rain_peak_intensity_mm_h']) {
+      if (out[key] !== null && out[key] !== undefined && Number.isFinite(Number(out[key]))) out[key] = Number(out[key]) * factor;
+    }
+    return out;
+  }
+
+  function metricValue(value, digits=3) {
+    return value === null || value === undefined || !Number.isFinite(Number(value)) ? '—' : fmt(Number(value), digits);
+  }
+
+  function renderTimeChartMetrics(rows, range) {
+    const host = $('timeChartMetrics');
+    if (!host) return;
+    if (!rows.length) { host.innerHTML=''; return; }
+    const first = rows.find(x=>x.summary?.start) || rows[0];
+    const start = range?.[0] || first.summary?.start || '—';
+    const end = range?.[1] || first.summary?.end || '—';
+    const body = rows.map(row => {
+      const s = row.summary || {};
+      const rainfall = s.quantity === 'rainfall';
+      const unit = rainfall ? (s.rain_semantics === 'incremental_depth' ? 'mm/interval' : (summaryUnit(s)==='unresolved'?'source unit':summaryUnit(s))) : summaryUnit(s);
+      const rainfallExtra = rainfall
+        ? `<td>${metricValue(s.rain_total_mm)} mm</td><td>${metricValue(s.rain_peak_intensity_mm_h)} mm/h</td><td>${metricValue(s.rain_wet_hours,2)} h</td><td>${s.rain_coverage_fraction==null?'—':fmt(Number(s.rain_coverage_fraction)*100,1)+'%'}</td>`
+        : '<td>—</td><td>—</td><td>—</td><td>—</td>';
+      return `<tr><td class="series-cell"><span class="graph-metric-swatch" style="background:${esc(row.color)}"></span>${esc(row.role)}</td><td>${esc(summaryQuantity(s,row.fallback||'Value'))}</td><td class="${unit==='unresolved'?'audit-warn':''}">${esc(unit)}</td><td>${metricValue(s.minimum)}</td><td>${metricValue(s.mean)}</td><td>${metricValue(s.maximum)}</td><td>${metricValue(s.median)}</td><td>${s.valid_samples??'—'}</td>${rainfallExtra}</tr>`;
+    }).join('');
+    host.innerHTML = `<div class="graph-metric-head"><strong>Engineering graph statistics</strong><span>${esc(modelClock(start))} → ${esc(modelClock(end))}</span></div><table class="graph-metric-table"><thead><tr><th>Series</th><th>Quantity</th><th>Unit</th><th>Min</th><th>Mean</th><th>Max</th><th>Median</th><th>Valid samples</th><th>Rain total</th><th>Rain peak</th><th>Wet duration</th><th>Coverage</th></tr></thead><tbody>${body}</tbody></table>`;
+  }
+
   async function v2DrawGraph(range=ui.graphRange) {
     if (!state.mapping.observed && !state.mapping.rain) {
       Plotly.purge('timeChart');
+      if ($('timeChartMetrics')) $('timeChartMetrics').innerHTML='';
       return;
     }
     const generation = ++ui.graphGeneration;
     ui.graphRefreshing = true;
     const pointCounts = {};
+    const metricRows = [];
     try {
       const obs = await v2SeriesFor(state.mapping.observed || state.mapping.rain, range);
       if (!obs || generation !== ui.graphGeneration) return;
@@ -231,12 +282,15 @@
       const traces = [{x:obs.data.timestamp,y:obs.data.value,name:`Observed · ${obs.col}`,mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:1.7},yaxis:'y'}];
 
       if(!state.mapping.observed)traces.length=0;
+      else metricRows.push({role:'Observed',summary:obs.data.summary,color:$('obsColor').value,fallback:obs.col});
       let index = 0;
       for (const key of state.mapping.models) {
         const model = await v2SeriesFor(key, range);
         if (!model || generation !== ui.graphGeneration) return;
         pointCounts[`model_${index+1}`] = {raw:model.data.raw_count,shown:model.data.display_count,native:model.data.native_resolution};
-        traces.push({x:model.data.timestamp,y:model.data.value,name:`Model ${index+1} · ${model.col}`,meta:model.item.displayName,mode:'lines',connectgaps:false,line:{color:state.modelColours[key]||palette[index%palette.length],width:1.35},yaxis:'y'});
+        const modelColor=state.modelColours[key]||palette[index%palette.length];
+        traces.push({x:model.data.timestamp,y:model.data.value,name:`Model ${index+1} · ${model.col}`,meta:model.item.displayName,mode:'lines',connectgaps:false,line:{color:modelColor,width:1.35},yaxis:'y'});
+        metricRows.push({role:`Model ${index+1}`,summary:model.data.summary,color:modelColor,fallback:model.col});
         index += 1;
       }
 
@@ -249,7 +303,8 @@
           const factor = Number($('rainFactor').value || 1);
           rainValues = rain.data.value.map(v => v == null ? null : Number(v) * factor);
           pointCounts.rainfall = {raw:rain.data.raw_count,shown:rain.data.display_count,native:rain.data.native_resolution};
-          traces.push({x:rain.data.timestamp,y:rainValues,name:'Rainfall',type:'bar',yaxis:'y2',marker:{color:rain.data.timestamp.map(t=>inEvent(t)?$('rainEventColor').value:$('rainColor').value)},opacity:.72,hovertemplate:'%{x}<br>Rainfall %{y:.3f}<extra></extra>'});
+          traces.push({x:rain.data.timestamp,y:rainValues,name:'Rainfall',type:'bar',yaxis:'y2',marker:{color:rain.data.timestamp.map(t=>inEvent(t)?$('rainEventColor').value:$('rainColor').value)},opacity:.78,hovertemplate:'%{x}<br>Rainfall %{y:.3f}<extra></extra>'});
+          metricRows.push({role:'Rainfall',summary:scaledRainSummary(rain.data.summary,factor),color:$('rainColor').value,fallback:'Rainfall'});
         }
       }
 
@@ -265,14 +320,16 @@
         hovermode:'x unified',
         legend:{orientation:'h',y:1.06,x:0,xanchor:'left',font:{size:11}},
         xaxis,
-        yaxis:{title:obs.col,domain:hasRain?[0,.70]:[0,1],anchor:'x',showgrid:true,gridcolor:'#e8eef3',zerolinecolor:'#d9e2ea',automargin:true},
+        yaxis:{title:hydraulicAxisTitle(obs.data.summary,obs.col),domain:hasRain?[0,.70]:[0,1],anchor:'x',showgrid:true,gridcolor:'#e8eef3',zerolinecolor:'#d9e2ea',automargin:true},
         shapes:v2GraphShapes(),
         annotations:v2GraphAnnotations(),
         uirevision:'icm-main-v2',
         bargap:0,
       };
       if (hasRain) {
-        layout.yaxis2 = {title:'Rainfall',domain:[.79,1],anchor:'x',side:'right',range:[rainfallMaximum(rainValues),0],showgrid:false,zeroline:false,automargin:true};
+        const rainMetric=metricRows.find(x=>x.summary?.quantity==='rainfall')?.summary;
+        const rainUnit=rainMetric?.rain_semantics==='incremental_depth'?'mm/interval':(summaryUnit(rainMetric)==='unresolved'?'source unit':summaryUnit(rainMetric));
+        layout.yaxis2 = {title:`Rainfall (${rainUnit})`,domain:[.79,1],anchor:'x',side:'right',range:[rainfallMaximum(rainValues),0],showgrid:false,zeroline:false,automargin:true};
       }
       await Plotly.react('timeChart', traces, layout, {responsive:true,displaylogo:false,scrollZoom:true});
       wireAdaptiveZoom();
@@ -280,6 +337,8 @@
       ui.graphRange = range;
       window.__ICM_WORKBENCH__.lastGraphPointCounts = pointCounts;
       window.__ICM_WORKBENCH__.lastGraphRange = range;
+      renderTimeChartMetrics(metricRows,range);
+      window.__ICM_WORKBENCH__.lastGraphMetrics = metricRows;
       const density = $('graphDensity');
       if (density) {
         const native = Object.values(pointCounts).every(x => x.native);
