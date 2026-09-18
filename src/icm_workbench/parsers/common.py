@@ -39,16 +39,66 @@ def infer_quantity(text):
     if "depth" in n:return "depth"
     return None
 
+def _unit_key(unit):
+    if unit is None:return ""
+    u=str(unit).strip().lower().replace("³","3").replace("²","2")
+    u=u.replace("per","/").replace("·","").replace(" ","")
+    u=u.replace("sec","s").replace("second","s").replace("seconds","s")
+    u=u.replace("hour","h").replace("hours","h").replace("hr","h")
+    u=u.replace("day","d").replace("days","d")
+    u=u.replace("litres","l").replace("liters","l").replace("litre","l").replace("liter","l")
+    u=u.replace("metres","m").replace("meters","m").replace("metre","m").replace("meter","m")
+    return u
+
 def canonical_unit(quantity,unit):
-    u=normalise(unit).replace("_per_","_") if unit else ""
+    u=_unit_key(unit)
     if quantity in ("depth","level"):
-        if u in {"m","metre","metres","meter","meters","m_ad","maod"}:return "m",1.0
+        if u in {"m","m_ad","mad","maod"}:return "m",1.0
         if u in {"mm","millimetre","millimetres","millimeter","millimeters"}:return "m",0.001
     if quantity=="flow":
-        if u in {"m3_s","m3s","m_3_s","cumec","cumecs"}:return "m³/s",1.0
-        if u in {"l_s","ls","lps","litre_s","litres_s"}:return "m³/s",0.001
-    if quantity=="velocity" and u in {"m_s","ms","mps"}:return "m/s",1.0
+        if u in {"m3/s","m3s","cumec","cumecs"}:return "m³/s",1.0
+        if u in {"l/s","ls","lps"}:return "m³/s",0.001
+        if u in {"ml/d","mld","megalitre/d","megalitres/d","megaliter/d","megaliters/d"}:return "m³/s",1000.0/86400.0
+        if u in {"m3/d","m3d"}:return "m³/s",1.0/86400.0
+    if quantity=="velocity" and u in {"m/s","ms","mps"}:return "m/s",1.0
     if quantity=="rainfall":
-        if u in {"mm_h","mm_hr","mm_hour","mm_per_h"}:return "mm/h",1.0
-        if u in {"mm","millimetres","millimeters"}:return "mm",1.0
+        if u in {"mm/h","mmh","mm/h"}:return "mm/h",1.0
+        if u in {"mm"}:return "mm",1.0
     return None,None
+
+def detect_unit(text,quantity=None):
+    """Extract a defensible engineering unit from a header/label.
+
+    Returns the original unit spelling when recognized, otherwise None.
+    """
+    raw=str(text or "").strip()
+    bracketed=re.findall(r"[\(\[]\s*([^\)\]]+?)\s*[\)\]]",raw)
+    candidates=list(reversed(bracketed))
+    low=raw.lower().replace("³","3")
+    patterns=[
+        (r"(?i)\bml\s*/\s*d\b","Ml/d"),
+        (r"(?i)\bm\s*3\s*/\s*s\b","m3/s"),
+        (r"(?i)\bl\s*/\s*s\b","L/s"),
+        (r"(?i)\bm\s*3\s*/\s*d\b","m3/d"),
+        (r"(?i)\bmm\s*/\s*(?:h|hr|hour)\b","mm/h"),
+        (r"(?i)\bm\s*/\s*s\b","m/s"),
+    ]
+    for pat,label in patterns:
+        if re.search(pat,raw):candidates.append(label)
+    n=normalise(low)
+    suffixes=[
+        ("ml_d","Ml/d"),("mld","Ml/d"),("m3_s","m3/s"),("m_3_s","m3/s"),
+        ("l_s","L/s"),("lps","L/s"),("m3_d","m3/d"),("mm_h","mm/h"),
+        ("mm_hr","mm/h"),("m_s","m/s"),("mps","m/s"),
+    ]
+    for suffix,label in suffixes:
+        if n.endswith(suffix):candidates.append(label)
+    if quantity in {"depth","level"}:
+        if re.search(r"(?i)(?:^|[\(\[\s_])mm(?:$|[\)\]\s_])",raw):candidates.append("mm")
+        elif re.search(r"(?i)(?:^|[\(\[\s_])m(?:$|[\)\]\s_])",raw):candidates.append("m")
+    if quantity=="rainfall" and re.search(r"(?i)(?:^|[\(\[\s_])mm(?:$|[\)\]\s_])",raw):
+        candidates.append("mm")
+    for candidate in candidates:
+        canon,_=canonical_unit(quantity,candidate)
+        if canon is not None:return str(candidate).strip()
+    return None

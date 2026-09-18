@@ -1,6 +1,6 @@
-# Requirements ledger — current retry
+# Requirements ledger — current engineering baseline
 
-States apply to this retry, not historical completion claims. Core evidence: `tests/unit/test_resume_regressions.py`, `tests/web/test_browser_bridge_native.py`, existing regression suite. Browser code: `web/assets/runtime.release.js`, `workbench-v2.js`; bridge: `web/python_bridge.py`. Browser smoke is blocked pending permitted execution; the current local runtime cannot launch Chromium. The consolidated 17 September implementation plan remains authoritative.
+States below preserve the original implementation-plan traceability. Core evidence includes `tests/unit/test_resume_regressions.py`, `tests/unit/test_engineering_correctness_phase1.py`, `tests/unit/test_representative_validation.py`, `tests/web/test_browser_bridge_native.py` and the Chromium Pages acceptance workflow. Browser code is staged deterministically from `web/assets/runtime.release.js` and the shared Python engine. Local Chromium availability is no longer a release blocker because pull requests execute the exact staged browser artifact in GitHub Actions. Representative real-export/domain reconciliation remains a separate evidence gate.
 
 | ID | Current implementation / next action | State |
 |---|---|---|
@@ -73,3 +73,18 @@ States apply to this retry, not historical completion claims. Core evidence: `te
 | F13 | Snapshot/stale guards added; every report operation not yet reconciled |
 | F14 | Pre-cleaning sentinel audit retained; ordering/duplicate policy incomplete |
 | F15 | Branch-safe deployment/failure artifacts; full dependency lock and visible build identity incomplete |
+
+
+## 18 September correctness-tranche update
+
+| Requirement | State after phase-1 implementation |
+|---|---|
+| U04 / FP02 unit contract | implemented + automated regression coverage: recognised explicit generic-CSV units convert once to canonical SI; unresolved dimensional work is blocked or requires explicit user resolution |
+| U07 / FP05 rainfall contract | implemented + automated regression coverage: actual support replaces median-step depth/event arithmetic; final intensity support requires a declared interval |
+| FP11 DWF validity | implemented + automated regression coverage: missing/incomplete rainfall is unknown, never dry |
+| FP16 / FP17 storage | implemented + automated regression coverage: level/flow units and support coverage gate dimensional results; partial headlines are withheld |
+| BK-006 validity architecture | validity-v1 foundation implemented across integration, rainfall, spill coverage, time coverage/scenario comparison and browser result payloads; suspect/invalid are reserved states ready for richer P1 telemetry QA |
+| E07 workspace migration | implemented + regression coverage: v1/v2→v3 migration in Python/browser; future versions rejected |
+| F06 / F13 state lifecycle | source clearing invalidates exclusions and derived state; wider single action/dependency model remains planned architecture work |
+| T20 / BK-007 representative real exports | validation harness, manifest template and sign-off protocol implemented; actual anonymised real exports and independent engineering expected values remain external input |
+| Browser release gate | GitHub Actions executes Python, deterministic Pages verification and Chromium acceptance on artifact-changing PR heads; merge requires the final head to be green |

@@ -49,7 +49,7 @@ jobs:
           node --check web/assets/workbench-v3.js
           node --check web/tests/smoke.mjs
           node web/tests/runtime-unit.mjs
-          python -m py_compile web/python_bridge.py web/advanced_bridge.py scripts/build_pages.py
+          python -m py_compile web/python_bridge.py web/advanced_bridge.py scripts/build_pages.py scripts/validate_representative_exports.py
       - name: Verify deterministic Pages package manifest and UX staging
         run: |
           python scripts/build_pages.py

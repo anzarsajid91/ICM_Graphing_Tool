@@ -2,25 +2,56 @@
 
 [Open the browser tool](https://anzarsajid91.github.io/ICM_Graphing_Tool/)
 
-The GitHub Pages edition processes local exports through the shared Python engine. Initial loading requires access to the pinned browser dependencies. Add files or choose a folder, map observed/model/rainfall channels, then inspect the graph and run the relevant assessment.
+The primary product is a local-first browser workbench for auditable review of
+InfoWorks ICM and related hydraulic datasets. The GitHub Pages edition processes
+selected local exports through the shared Python engineering engine in Pyodide;
+source data is not intentionally uploaded to an application server.
 
-**Remediation is not yet released.** See [current checkpoint](docs/resume-checkpoint.md) and [requirements ledger](docs/requirements-ledger.md). Local changes have not been pushed, merged or deployed; real-export validation and browser acceptance remain pending.
+Current capabilities include observed/model scenario plotting and comparison,
+rainfall/event assessment, DWF screening, telemetry/data-quality review,
+physical spill detection with separate 12/24 compatibility counting, reversible
+reason-coded exclusions, idealised storage screening, workspaces and evidence
+exports.
+
+Engineering calculations use explicit unit and support contracts. Dimensional
+results are withheld when units are unresolved, missing rainfall is not treated
+as dry weather, rainfall calculations use actual timestamp support, and
+partial/unknown coverage is surfaced instead of being silently converted to a
+definitive result. See [behaviour and methodology changes](docs/behaviour-changes.md).
+
+Automated Python and Chromium release gates protect the deployed artifact.
+Representative real-export engineering reconciliation remains a separate domain
+UAT requirement before describing the tool as field-validated for a project.
+The repository includes a
+[representative-validation protocol](tests/representative/README.md) and
+machine-readable acceptance harness.
 
 Presentation copyright: © 2026 Anzar Sajid.
 
+## Product direction
+
+The intended end state is an ICM verification and hydraulic-data workbench:
+import once, classify series once, and reuse the same governed data/validity
+state across telemetry QA, rainfall, DWF, event response, calibration,
+spill/EDM and reporting workflows. Development follows controlled,
+regression-tested phases rather than a rewrite of the working browser product.
+
 ## Historical desktop documentation
 
-The original application is retained. The following documentation describes that legacy workflow and is not evidence of browser feature completion.
+The original desktop/Dash application is retained for reference/fallback. The
+following notes describe that legacy workflow and must not be read as the
+current browser methodology.
 
-# ICM CSV Calibration Viewer V17
+### ICM CSV Calibration Viewer V17
 
-Local Dash/Python tool for ICM calibration review, observed/modelled comparison, rainfall overlay, V16 12/24 spill count assessment, V17 scatter comparison, multi-link simulated profile selection, and separate modelled overflow storage screening.
+The legacy viewer provided local Dash/Python graphing, observed/modelled
+comparison, rainfall overlay, V16 12/24 spill-count assessment, V17 scatter
+comparison, multi-link simulated profile selection and separate modelled
+overflow storage screening.
 
-## Launch
-Run `install.bat` once, then `launch.bat`. Place CSV exports in the `data` folder or pass a data folder path to `app.py`.
+Run `install.bat` once, then `launch.bat`. Place CSV exports in the `data`
+folder or pass a data folder path to `app.py`.
 
-## V17 key controls
-- Apply / Refresh Graph updates time-series, scatter, statistics band and existing spill assessment.
-- Calculate Storage Requirement is separate and does not run during graph refresh.
-- Storage screening uses overflow link flow CSV + Threshold 2 + ranked 12/24 spill-block volumes. Target is <=10 spills/year, so the 11th largest annual block volume is reported as required storage.
-- Known placeholder values 9999, -9999, 99999 and -99999 are converted to zero.
+Historical V17 converted placeholder values such as 9999/-9999 to zero. The
+current engineering workbench deliberately does **not** retain that behaviour:
+known sentinels are treated as missing and audited.
