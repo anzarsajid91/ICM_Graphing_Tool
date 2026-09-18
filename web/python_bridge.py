@@ -139,6 +139,82 @@ def _display_indices(values, max_points):
     return idx
 
 
+def _series_summary_payload(path, column, view, *, scale=1.0, max_gap_seconds=900.0):
+    parsed = _load(path)
+    contract = _series_contract(path, column)
+    values = pd.to_numeric(view[column], errors="coerce") * float(scale)
+    finite = values[np.isfinite(values)]
+    start = None if view.empty else pd.to_datetime(view["timestamp"], errors="coerce").min()
+    end = None if view.empty else pd.to_datetime(view["timestamp"], errors="coerce").max()
+    unit = contract.get("canonical_unit") or contract.get("original_unit")
+    summary = {
+        "quantity": contract.get("quantity"),
+        "unit": unit,
+        "unit_status": contract.get("unit_status"),
+        "samples": int(len(view)),
+        "valid_samples": int(finite.count()),
+        "start": None if pd.isna(start) else pd.Timestamp(start).isoformat(),
+        "end": None if pd.isna(end) else pd.Timestamp(end).isoformat(),
+        "minimum": float(finite.min()) if len(finite) else None,
+        "mean": float(finite.mean()) if len(finite) else None,
+        "median": float(finite.median()) if len(finite) else None,
+        "maximum": float(finite.max()) if len(finite) else None,
+        "scale": float(scale),
+    }
+    if contract.get("quantity") == "rainfall" and not view.empty:
+        metadata = getattr(parsed, "metadata", {}) or {}
+        interval = metadata.get("interval_min")
+        semantics = "incremental_depth" if contract.get("canonical_unit") == "mm" else "intensity"
+        rain = view[["timestamp", column]].copy()
+        rain[column] = pd.to_numeric(rain[column], errors="coerce") * float(scale)
+        accumulation = rainfall_accumulation(
+            rain,
+            column,
+            semantics=semantics,
+            declared_interval_minutes=float(interval) if interval else None,
+            max_gap_seconds=_rain_support_gap_seconds(parsed),
+        )
+        segments = accumulation.get("segments")
+        wet_seconds = 0.0
+        if segments is not None and not getattr(segments, "empty", True):
+            wet = segments["valid"].astype(bool) & pd.to_numeric(segments["value"], errors="coerce").fillna(0).gt(0)
+            wet_seconds = float(pd.to_numeric(segments.loc[wet, "support_seconds"], errors="coerce").fillna(0).sum())
+        valid_seconds = float(accumulation.get("valid_seconds") or 0.0)
+        summary.update({
+            "rain_total_mm": accumulation.get("total_depth_mm"),
+            "rain_coverage_fraction": accumulation.get("coverage_fraction"),
+            "rain_status": accumulation.get("status"),
+            "rain_wet_hours": wet_seconds / 3600.0,
+            "rain_valid_hours": valid_seconds / 3600.0,
+            "rain_mean_intensity_mm_h": (
+                float(accumulation.get("total_depth_mm")) / (valid_seconds / 3600.0)
+                if accumulation.get("total_depth_mm") is not None and valid_seconds > 0 and semantics == "intensity"
+                else None
+            ),
+            "rain_peak_intensity_mm_h": float(finite.max()) if len(finite) and semantics == "intensity" else None,
+            "rain_semantics": semantics,
+        })
+    return _jsonable(summary)
+
+
+def series_summary(path, column=None, start=None, end=None, scale=1.0, max_gap_seconds=900.0):
+    x, col = _prepared_series(path, column)
+    view = x
+    start_ts = _model_clock_timestamp(start)
+    end_ts = _model_clock_timestamp(end)
+    if start_ts is not None:
+        view = view[pd.to_datetime(view["timestamp"], errors="coerce") >= start_ts]
+    if end_ts is not None:
+        view = view[pd.to_datetime(view["timestamp"], errors="coerce") <= end_ts]
+    payload = _series_summary_payload(
+        path, col, view,
+        scale=float(scale),
+        max_gap_seconds=float(max_gap_seconds),
+    )
+    payload["column"] = str(col)
+    return json.dumps(_jsonable(payload), ensure_ascii=False)
+
+
 def series_data(path, column=None, max_points=5000, start=None, end=None, max_gap_seconds=900.0):
     x, col = _prepared_series(path, column)
     timestamps = x["timestamp"].to_numpy(dtype="datetime64[ns]")
@@ -180,6 +256,11 @@ def series_data(path, column=None, max_points=5000, start=None, end=None, max_ga
         "native_resolution": bool(raw_count <= int(max_points)),
         "requested_start": None if start_ts is None else start_ts.isoformat(),
         "requested_end": None if end_ts is None else end_ts.isoformat(),
+        "summary": _series_summary_payload(
+            path, col, view,
+            scale=1.0,
+            max_gap_seconds=float(max_gap_seconds),
+        ),
     }
     return json.dumps(payload, ensure_ascii=False)
 
@@ -225,12 +306,12 @@ def _comparison_coverage(observed, obs_col, modelled, model_col, domain_start, d
     }
 
 
-def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
-    oq, mq = _quantity(obs_path, obs_col), _quantity(model_path, model_col)
-    if not oq or not mq or oq != mq:
-        raise ValueError("Comparison requires matching declared quantities; depth and level are distinct.")
-    obs = _load(obs_path).frame
-    mod = _load(model_path).frame.copy()
+def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]", quantity_override=None, unit_override=None):
+    obs, mod, effective = _comparison_frames(
+        obs_path, obs_col, model_path, model_col,
+        quantity_override=quantity_override,
+        unit_override=unit_override,
+    )
     if float(offset_minutes or 0):
         mod["timestamp"] = pd.to_datetime(mod["timestamp"], errors="coerce") + pd.to_timedelta(float(offset_minutes), unit="m")
     domain_start,domain_end=_comparison_domain(obs,mod,start,end)
@@ -258,6 +339,10 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
         "coverage_fraction":coverage.get("coverage_fraction"),
         "coverage":coverage,
         "validity_model":"validity-v1",
+        "quantity":effective["quantity"],
+        "unit":effective["unit"],
+        "unit_status":effective["unit_status"],
+        "comparison_contract":effective,
     }
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
@@ -300,6 +385,80 @@ def _series_contract(path, column, unit_override=None):
     }
 
 
+def _comparison_frames(obs_path, obs_col, model_path, model_col, *, quantity_override=None, unit_override=None):
+    obs_contract = _series_contract(obs_path, obs_col)
+    model_contract = _series_contract(model_path, model_col)
+    declared_obs = obs_contract.get("quantity")
+    declared_model = model_contract.get("quantity")
+    override = None if quantity_override in (None, "", "auto") else str(quantity_override)
+    if override:
+        if declared_obs and declared_obs != override:
+            raise ValueError(f"Observed series is declared as {declared_obs}; it cannot be overridden as {override}.")
+        if declared_model and declared_model != override:
+            raise ValueError(f"Model series is declared as {declared_model}; it cannot be overridden as {override}.")
+        quantity = override
+    else:
+        if not declared_obs or not declared_model:
+            raise ValueError("Comparison quantity is unresolved. Select the comparison quantity explicitly.")
+        if declared_obs != declared_model:
+            raise ValueError(f"Comparison requires matching quantities; observed={declared_obs}, model={declared_model}.")
+        quantity = declared_obs
+
+    obs = _load(obs_path).frame.copy()
+    mod = _load(model_path).frame.copy()
+    unit_mode = None if unit_override in (None, "", "auto") else str(unit_override)
+    resolved_obs = obs_contract.get("canonical_unit")
+    resolved_model = model_contract.get("canonical_unit")
+
+    obs_scale = model_scale = 1.0
+    unit = None
+    unit_status = "unresolved"
+    if unit_mode == "same":
+        if resolved_obs and resolved_model and resolved_obs != resolved_model:
+            raise ValueError(f"Resolved source units differ ({resolved_obs} vs {resolved_model}); choose an explicit comparison unit.")
+        if (resolved_obs and not resolved_model) or (resolved_model and not resolved_obs):
+            raise ValueError("Only one source has a resolved unit. Choose an explicit comparison unit so the unresolved source can be converted.")
+        unit = resolved_obs or resolved_model or "source unit"
+        unit_status = "resolved" if resolved_obs and resolved_model else "user-confirmed-same-source"
+    elif unit_mode:
+        canonical, factor = canonical_unit(quantity, unit_mode)
+        if canonical is None or factor is None:
+            raise ValueError(f"Unit {unit_mode!r} is not valid for comparison quantity {quantity!r}.")
+        unit = canonical
+        if resolved_obs:
+            if resolved_obs != canonical:
+                raise ValueError(f"Observed source resolves to {resolved_obs}; requested comparison unit resolves to {canonical}.")
+        else:
+            obs_scale = float(factor)
+        if resolved_model:
+            if resolved_model != canonical:
+                raise ValueError(f"Model source resolves to {resolved_model}; requested comparison unit resolves to {canonical}.")
+        else:
+            model_scale = float(factor)
+        unit_status = "resolved-by-source-and-user"
+    else:
+        if not resolved_obs or not resolved_model:
+            raise ValueError("Comparison unit is unresolved. Select an explicit engineering unit or confirm 'same source unit'.")
+        if resolved_obs != resolved_model:
+            raise ValueError(f"Resolved source units differ ({resolved_obs} vs {resolved_model}).")
+        unit = resolved_obs
+        unit_status = "resolved"
+
+    obs[obs_col] = pd.to_numeric(obs[obs_col], errors="coerce") * obs_scale
+    mod[model_col] = pd.to_numeric(mod[model_col], errors="coerce") * model_scale
+    return obs, mod, {
+        "quantity": quantity,
+        "unit": unit,
+        "unit_status": unit_status,
+        "observed_scale": obs_scale,
+        "model_scale": model_scale,
+        "observed_declared_quantity": declared_obs,
+        "model_declared_quantity": declared_model,
+        "observed_source_unit": resolved_obs or obs_contract.get("original_unit"),
+        "model_source_unit": resolved_model or model_contract.get("original_unit"),
+    }
+
+
 def _scaled_dimensional_frame(path, column, *, unit_override=None, allowed_quantities=(), required_canonical_unit=None):
     contract = _series_contract(path, column, unit_override=unit_override)
     if allowed_quantities and contract["quantity"] not in set(allowed_quantities):
@@ -331,9 +490,12 @@ def _rain_support_gap_seconds(parsed):
     return None
 
 
-def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
-    obs=_load(obs_path).frame
-    mod=_load(model_path).frame.copy()
+def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]", quantity_override=None, unit_override=None):
+    obs,mod,effective=_comparison_frames(
+        obs_path,obs_col,model_path,model_col,
+        quantity_override=quantity_override,
+        unit_override=unit_override,
+    )
     if float(offset_minutes or 0):
         mod["timestamp"]=pd.to_datetime(mod["timestamp"],errors="coerce")+pd.to_timedelta(float(offset_minutes),unit="m")
     domain_start,domain_end=_comparison_domain(obs,mod,start,end)
@@ -351,15 +513,12 @@ def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=
     for exc in exclusions:
         paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
     residual=residual_series(paired) if not paired.empty else pd.DataFrame()
-    obs_contract=_series_contract(obs_path,obs_col)
-    mod_contract=_series_contract(model_path,model_col)
-    compatible_flow=(
-        obs_contract["quantity"]=="flow"
-        and mod_contract["quantity"]=="flow"
-        and obs_contract["canonical_unit"]=="m³/s"
-        and mod_contract["canonical_unit"]=="m³/s"
+    is_flow=(
+        effective["quantity"]=="flow"
+        and effective["unit"]=="m³/s"
+        and effective["unit_status"]!="user-confirmed-same-source"
+        and not exclusions
     )
-    is_flow=compatible_flow and not exclusions
     cumulative=cumulative_volume(paired,float(max_gap_seconds)) if is_flow and not paired.empty else pd.DataFrame()
     obs_exc=time_weighted_exceedance(paired,"obs",float(max_gap_seconds)) if is_flow else pd.DataFrame()
     mod_exc=time_weighted_exceedance(paired,"sim",float(max_gap_seconds)) if is_flow else pd.DataFrame()
@@ -367,10 +526,12 @@ def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=
         reason=None
     elif exclusions:
         reason="Cumulative volume and flow-duration diagnostics are withheld for masked assessments until exact masked support is routed through the common integration contract."
-    elif obs_contract["quantity"]!="flow" or mod_contract["quantity"]!="flow":
-        reason="Cumulative volume and flow-duration diagnostics require two declared flow channels."
+    elif effective["quantity"]!="flow":
+        reason="Cumulative volume and flow-duration diagnostics require a flow-to-flow comparison."
+    elif effective["unit"]!="m³/s" or effective["unit_status"]=="user-confirmed-same-source":
+        reason="Cumulative volume requires both flow series to be resolved to m³/s. Statistical comparison remains available."
     else:
-        reason="Cumulative volume withheld because one or both flow units are unresolved. Resolve both series to m³/s-compatible source units."
+        reason="Flow diagnostics unavailable."
     return json.dumps(_jsonable({
         "residual":_records(residual),
         "cumulative":_records(cumulative),
@@ -378,8 +539,7 @@ def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=
         "modelled_exceedance":_records(mod_exc),
         "flow_diagnostics_available":is_flow,
         "reason":reason,
-        "observed_contract":obs_contract,
-        "modelled_contract":mod_contract,
+        "comparison_contract":effective,
         "cumulative_unit":"m³" if is_flow else None,
         "flow_unit":"m³/s" if is_flow else None,
         "integration_method":"instantaneous-trapezoidal-v2",
@@ -389,6 +549,7 @@ def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=
         "coverage":coverage,
         "validity_model":"validity-v1",
     }),ensure_ascii=False)
+
 
 def _exclusions(raw):
     if not raw:
