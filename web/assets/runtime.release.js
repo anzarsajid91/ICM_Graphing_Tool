@@ -449,7 +449,7 @@ function saveNamedWorkspace(){const name=$('workspaceName').value.trim();if(!nam
 function renderNamedWorkspaces(){const all=readNamedWorkspaces(),s=$('namedWorkspaceSelect'),prev=s.value;s.innerHTML='<option value="">Select saved workspace…</option>'+Object.keys(all).sort().map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');if(all[prev])s.value=prev;}
 async function loadNamedWorkspace(){const name=$('namedWorkspaceSelect').value,all=readNamedWorkspaces();if(!name||!all[name])throw new Error('Select a saved browser workspace.');await applyWorkspace(all[name]);}
 
-function analysisSignature(){const w=workspaceObject();return JSON.stringify({mapping:w.mapping,analysis:w.analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual});}
+function analysisSignature(){const w=workspaceObject();const analysis={...w.analysis};delete analysis.comparison_plot_period;return JSON.stringify({mapping:w.mapping,analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual});}
 function assertFreshResults(){const sig=analysisSignature();for(const [label,snapshot] of [['Spill',state.spillSnapshot],['Comparison',state.comparisonSnapshot]]){if(snapshot && snapshot.signature!==sig)throw new Error(`${label} results are stale. Recalculate after changing analytical inputs before exporting.`);}}
 
 function reportCss(landscape=false){
