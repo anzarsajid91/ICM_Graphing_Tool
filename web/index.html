@@ -129,10 +129,10 @@
     <section class="tab-panel" id="tab-storage">
       <div class="panel">
         <div class="panel-head"><div><h2>Idealised storage screening &amp; modelled spill volumes</h2><p>Spill windows from modelled level; positive overflow flow integrated using actual elapsed support and the same exclusions.</p></div><button class="btn primary" id="runStorageBtn">Calculate storage</button></div>
-        <div class="mapping-grid"><label>Modelled level series<select id="storageLevelSelect"></select></label><label>Overflow flow series<select id="storageFlowSelect"></select></label><label>Level threshold<input id="storageThreshold" type="number" step="any" /></label><label>Target annual count<input id="targetCount" type="number" value="10" min="0" step="1" /></label></div>
+        <div class="mapping-grid"><label>Modelled level series<select id="storageLevelSelect"></select></label><label>Level unit override<select id="storageLevelUnit"><option value="">Auto from source</option><option value="m">m</option><option value="mm">mm</option></select><small>Use only when the source unit is unresolved.</small></label><label>Overflow flow series<select id="storageFlowSelect"></select></label><label>Flow unit override<select id="storageFlowUnit"><option value="">Auto from source</option><option value="m3/s">m³/s</option><option value="L/s">L/s</option><option value="Ml/d">Ml/d</option></select><small>Required for dimensional volume if source units are unresolved.</small></label><label>Level threshold<input id="storageThreshold" type="number" step="any" /><small>Enter in the resolved source/override level unit.</small></label><label>Target annual count<input id="targetCount" type="number" value="10" min="0" step="1" /></label></div>
         <div id="storageSummary"></div>
         <h3>Monthly modelled spill volume</h3><div id="monthlyVolume"></div>
-        <h3>Ranked counting blocks</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Year</th><th>Counting block</th><th>Start</th><th>End</th><th>Volume m³</th><th>Physical discharges</th></tr></thead><tbody id="storageBody"></tbody></table></div>
+        <h3>Ranked counting blocks</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Year</th><th>Counting block</th><th>Start</th><th>End</th><th>Volume m³</th><th>Coverage</th><th>Status</th><th>Physical discharges</th></tr></thead><tbody id="storageBody"></tbody></table></div>
       </div>
     </section>
 
