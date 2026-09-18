@@ -236,7 +236,7 @@
         const model = await v2SeriesFor(key, range);
         if (!model || generation !== ui.graphGeneration) return;
         pointCounts[`model_${index+1}`] = {raw:model.data.raw_count,shown:model.data.display_count,native:model.data.native_resolution};
-        traces.push({x:model.data.timestamp,y:model.data.value,name:`Model · ${model.item.displayName} · ${model.col}`,mode:'lines',connectgaps:false,line:{color:state.modelColours[key]||palette[index%palette.length],width:1.35},yaxis:'y'});
+        traces.push({x:model.data.timestamp,y:model.data.value,name:`Model ${index+1} · ${model.col}`,meta:model.item.displayName,mode:'lines',connectgaps:false,line:{color:state.modelColours[key]||palette[index%palette.length],width:1.35},yaxis:'y'});
         index += 1;
       }
 
