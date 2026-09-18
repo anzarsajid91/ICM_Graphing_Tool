@@ -17,6 +17,26 @@ async function optionValue(selector,needle){return page.locator(`${selector} opt
 async function clickTab(name){await page.click(`[data-tab="${name}"]`);}
 async function downloadFrom(selector){const pending=page.waitForEvent('download');await page.click(selector);return pending;}
 async function filePayload(filePath,name=path.basename(filePath)){return {name,mimeType:'text/csv',buffer:await fs.readFile(filePath)};}
+async function inspectReportHtml(html,minFigures=1){
+  const p=await context.newPage();
+  try{
+    await p.setContent(html,{waitUntil:'domcontentloaded'});
+    await p.waitForFunction(()=>[...document.images].every(x=>x.complete),null,{timeout:30000});
+    return await p.evaluate((minFigures)=>{
+      const root=document.documentElement;
+      const figures=[...document.querySelectorAll('.figure img')];
+      const zero=figures.filter(x=>x.getBoundingClientRect().width<=0||x.getBoundingClientRect().height<=0).length;
+      return {
+        overflow:root.scrollWidth-root.clientWidth,
+        figures:figures.length,
+        zero,
+        headers:document.querySelectorAll('.report-header').length,
+        tables:document.querySelectorAll('.table-wrap').length,
+        minFigures,
+      };
+    },minFigures);
+  }finally{await p.close();}
+}
 async function waitReady(){
   try{await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready'&&document.querySelector('#engineStatus')?.textContent.includes('ready'),null,{timeout:120000});}
   catch(err){const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);throw new Error(`Engine readiness failed. status=${status}; diagnostic=${JSON.stringify(diag)}; original=${err}`);}
@@ -256,12 +276,16 @@ try{
   if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
   if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
   if(!report.includes('report-grid')||!report.includes('table-wrap'))throw new Error('Professional report layout classes missing');
+  const reportLayout=await inspectReportHtml(report,3);
+  if(reportLayout.headers!==1||reportLayout.figures<reportLayout.minFigures||reportLayout.zero||reportLayout.overflow>2)throw new Error(`Assessment report visual containment failed: ${JSON.stringify(reportLayout)}`);
   await page.fill('#reportYear','2026');
   const fourDownload=await downloadFrom('#downloadFourPeriodBtn');
   const fourReport=await fs.readFile(await fourDownload.path(),'utf8');
   if(!fourReport.includes('Four-Period Report')||!fourReport.includes('separate rainfall band'))throw new Error('Four-period report methodology/layout note missing');
   if((fourReport.match(/class="report-page"/g)||[]).length!==4)throw new Error('Four-period report should contain four print-safe period pages');
   if(!fourReport.includes('A4 landscape'))throw new Error('Four-period report should use landscape print layout');
+  const fourLayout=await inspectReportHtml(fourReport,4);
+  if(fourLayout.headers!==1||fourLayout.figures!==4||fourLayout.zero||fourLayout.overflow>2)throw new Error(`Four-period report visual containment failed: ${JSON.stringify(fourLayout)}`);
   await downloadFrom('#downloadManifestBtn');
 
   stage='final browser diagnostics';
