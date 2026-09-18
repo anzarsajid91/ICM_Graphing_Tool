@@ -61,18 +61,35 @@ try{
   if(await page.locator('#poolBody tr').nth(4).evaluate(el=>getComputedStyle(el).display)==='none')throw new Error('Expanded source pool did not reveal all rows');
   await page.click('#sourcePoolToggle');
 
-  stage='observed-only mapping and adaptive graph';
+  stage='observed-only mapping without rainfall';
   const denseObserved=await optionValue('#observedSelect','dense-observed.csv — level');
   const rain=await optionValue('#rainSelect','rainfall.csv — rainfall');
   if(!denseObserved||!rain)throw new Error('Expected dense observed and rainfall series options');
   await page.selectOption('#observedSelect',denseObserved);
   await page.selectOption('#modelSelect',[]);
-  await page.selectOption('#rainSelect',rain);
+  await page.selectOption('#rainSelect','');
   await page.click('#applyMappingBtn');
   await page.waitForSelector('#timeChart .main-svg',{timeout:60000});
-  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('0 comparison scenario'));
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('0 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall not mapped'));
   const fullDensity=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastGraphPointCounts?.observed);
   if(!fullDensity||fullDensity.raw!==12000||fullDensity.shown>5000||fullDensity.native!==false)throw new Error(`Full adaptive density incorrect: ${JSON.stringify(fullDensity)}`);
+  const observedOnlyLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return {traceCount:chart.data.length,hasRainTrace:chart.data.some(t=>t.yaxis==='y2'),hasY2:Boolean(chart.layout.yaxis2),hydDomain:chart.layout.yaxis.domain};});
+  if(observedOnlyLayout.traceCount!==1||observedOnlyLayout.hasRainTrace||observedOnlyLayout.hasY2||observedOnlyLayout.hydDomain[0]!==0||observedOnlyLayout.hydDomain[1]!==1)throw new Error(`Observed-only/no-rain graph layout incorrect: ${JSON.stringify(observedOnlyLayout)}`);
+
+  stage='same-series observed and comparison mapping without rainfall';
+  await page.selectOption('#modelSelect',[denseObserved]);
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall not mapped'));
+  await page.waitForFunction(()=>document.querySelector('#timeChart')?.data?.length===2,null,{timeout:60000});
+  const comparisonNoRainLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return {traceCount:chart.data.length,hasRainTrace:chart.data.some(t=>t.yaxis==='y2'),hasY2:Boolean(chart.layout.yaxis2),hydDomain:chart.layout.yaxis.domain};});
+  if(comparisonNoRainLayout.traceCount!==2||comparisonNoRainLayout.hasRainTrace||comparisonNoRainLayout.hasY2||comparisonNoRainLayout.hydDomain[0]!==0||comparisonNoRainLayout.hydDomain[1]!==1)throw new Error(`Observed+comparison/no-rain graph layout incorrect: ${JSON.stringify(comparisonNoRainLayout)}`);
+
+  stage='observed-only mapping with rainfall';
+  await page.selectOption('#modelSelect',[]);
+  await page.selectOption('#rainSelect',rain);
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('0 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall mapped'));
+  await page.waitForFunction(()=>Boolean(document.querySelector('#timeChart')?.layout?.yaxis2),null,{timeout:60000});
 
   stage='graph threshold controls and rainfall top band';
   await page.fill('#graphObsThreshold','1.5');

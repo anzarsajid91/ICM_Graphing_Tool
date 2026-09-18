@@ -241,9 +241,11 @@
       }
 
       let rainValues = [];
+      let hasRain = false;
       if (state.mapping.rain) {
         const rain = await v2SeriesFor(state.mapping.rain, range);
         if (rain && generation === ui.graphGeneration) {
+          hasRain = true;
           const factor = Number($('rainFactor').value || 1);
           rainValues = rain.data.value.map(v => v == null ? null : Number(v) * factor);
           pointCounts.rainfall = {raw:rain.data.raw_count,shown:rain.data.display_count,native:rain.data.native_resolution};
@@ -256,7 +258,6 @@
         xaxis.range = range;
         xaxis.autorange = false;
       }
-      const hasRain = Boolean(state.mapping.rain);
       const layout = {
         template:'plotly_white',
         height:690,
@@ -265,12 +266,14 @@
         legend:{orientation:'h',y:1.06,x:0,xanchor:'left',font:{size:11}},
         xaxis,
         yaxis:{title:obs.col,domain:hasRain?[0,.70]:[0,1],anchor:'x',showgrid:true,gridcolor:'#e8eef3',zerolinecolor:'#d9e2ea',automargin:true},
-        yaxis2:hasRain?{title:'Rainfall',domain:[.79,1],anchor:'x',side:'right',range:[rainfallMaximum(rainValues),0],showgrid:false,zeroline:false,automargin:true}:undefined,
         shapes:v2GraphShapes(),
         annotations:v2GraphAnnotations(),
         uirevision:'icm-main-v2',
         bargap:0,
       };
+      if (hasRain) {
+        layout.yaxis2 = {title:'Rainfall',domain:[.79,1],anchor:'x',side:'right',range:[rainfallMaximum(rainValues),0],showgrid:false,zeroline:false,automargin:true};
+      }
       await Plotly.react('timeChart', traces, layout, {responsive:true,displaylogo:false,scrollZoom:true});
       wireAdaptiveZoom();
       if (generation !== ui.graphGeneration) return;
