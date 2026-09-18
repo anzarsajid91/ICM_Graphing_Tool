@@ -208,6 +208,7 @@ try{
   const level=await optionValue('#storageLevelSelect','model.csv — depth');
   const flow=await optionValue('#storageFlowSelect','model.csv — flow');
   await page.selectOption('#storageLevelSelect',level);await page.selectOption('#storageFlowSelect',flow);
+  await page.selectOption('#storageLevelUnit','m');await page.selectOption('#storageFlowUnit','m3/s');
   await page.fill('#storageThreshold','1.0');
   await page.click('#runStorageBtn');
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.lastStorage),null,{timeout:60000});
