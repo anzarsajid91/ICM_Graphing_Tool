@@ -66,10 +66,10 @@
 
   function rainfallTotalsTable(results) {
     if (!results.length) return '';
-    return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Rainfall file</th><th>Period</th><th>Interval</th><th>Native samples</th><th>Cumulative depth</th><th>Status</th></tr></thead><tbody>${results.map(({item,data}) => {
+    return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Rainfall file</th><th>Period</th><th>Interval</th><th>Native samples</th><th>Cumulative depth</th><th>Peak intensity</th><th>Mean intensity</th><th>Median intensity</th><th>Wet duration</th><th>Valid support</th><th>Coverage</th><th>Status</th></tr></thead><tbody>${results.map(({item,data}) => {
       const status = data.complete ? 'Complete' : `Partial — ${data.missing_count} missing interval(s)`;
       const period = data.start && data.end ? `${esc(modelClock(data.start))} → ${esc(modelClock(data.end))}` : '—';
-      return `<tr><td>${esc(item.displayName)}</td><td>${period}</td><td>${fmt(data.interval_min,2)} min</td><td>${data.raw_count ?? '—'}</td><td><strong>${fmt(data.final_total_mm,3)} mm</strong></td><td class="${data.complete?'audit-good':'audit-warn'}">${esc(status)}</td></tr>`;
+      return `<tr><td>${esc(item.displayName)}</td><td>${period}</td><td>${fmt(data.interval_min,2)} min</td><td>${data.raw_count ?? '—'}</td><td><strong>${fmt(data.final_total_mm,3)} mm</strong></td><td>${fmt(data.peak_intensity_mm_h,3)} mm/h</td><td>${fmt(data.mean_intensity_mm_h,3)} mm/h</td><td>${fmt(data.median_intensity_mm_h,3)} mm/h</td><td>${fmt(data.wet_hours,2)} h</td><td>${fmt(data.valid_hours,2)} h</td><td>${data.coverage_fraction==null?'—':fmt(Number(data.coverage_fraction)*100,1)+'%'}</td><td class="${data.complete?'audit-good':'audit-warn'}">${esc(status)}</td></tr>`;
     }).join('')}</tbody></table></div>`;
   }
 
