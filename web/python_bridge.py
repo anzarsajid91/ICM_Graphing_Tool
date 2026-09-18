@@ -197,7 +197,7 @@ def _series_summary_payload(path, column, view, *, scale=1.0, max_gap_seconds=90
     return _jsonable(summary)
 
 
-def series_summary(path, column=None, start=None, end=None, scale=1.0, max_gap_seconds=900.0):
+def series_summary(path, column=None, start=None, end=None, scale=1.0, max_gap_seconds=900.0, end_exclusive=False):
     x, col = _prepared_series(path, column)
     view = x
     start_ts = _model_clock_timestamp(start)
@@ -205,7 +205,8 @@ def series_summary(path, column=None, start=None, end=None, scale=1.0, max_gap_s
     if start_ts is not None:
         view = view[pd.to_datetime(view["timestamp"], errors="coerce") >= start_ts]
     if end_ts is not None:
-        view = view[pd.to_datetime(view["timestamp"], errors="coerce") <= end_ts]
+        timestamps = pd.to_datetime(view["timestamp"], errors="coerce")
+        view = view[timestamps < end_ts] if bool(end_exclusive) else view[timestamps <= end_ts]
     payload = _series_summary_payload(
         path, col, view,
         scale=float(scale),
