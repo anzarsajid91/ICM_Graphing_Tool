@@ -129,7 +129,41 @@
     </section>
 
     <section class="tab-panel" id="tab-data-health">
-      <div class="panel"><div class="panel-head"><div><h2>Flow-survey data assessment</h2><p>Parser audit plus weekly completeness, ranges, gaps, inactive response and flatline screening for FDV/CSV channels.</p></div><button class="btn primary" id="runHealthBtn">Assess all source files</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>File</th><th>Week ending</th><th>Channel</th><th>Coverage %</th><th>Min</th><th>Mean</th><th>Max</th><th>Zero %</th><th>Flatline h</th><th>Out of range</th><th>Large gaps</th><th>RAG</th><th>Comment</th></tr></thead><tbody id="healthBody"></tbody></table></div></div>
+      <div class="panel">
+        <div class="panel-head"><div><h2>Flow-survey data assessment</h2><p>Fast source QA plus professional rainfall-response assessment derived from the Flow-Survey-Assessment-Tools workflow.</p></div><button class="btn primary" id="runHealthBtn">Assess all source files</button></div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>File</th><th>Week ending</th><th>Channel</th><th>Coverage %</th><th>Min</th><th>Mean</th><th>Max</th><th>Zero %</th><th>Flatline h</th><th>Out of range</th><th>Large gaps</th><th>RAG</th><th>Comment</th></tr></thead><tbody id="healthBody"></tbody></table></div>
+
+        <div class="subpanel survey-professional">
+          <div class="subhead">
+            <div><h3>Professional FDV + rainfall assessment</h3><p>Map the monitor channels and its associated rainfall gauge. All loaded .R files are used automatically as network rainfall context for operational coverage, spatial variability, WAPUG qualification and gauge-fault evidence.</p></div>
+            <button class="btn primary" id="runProfessionalSurveyBtn" type="button">Run professional assessment</button>
+          </div>
+          <div class="mapping-grid survey-mapping">
+            <label>Depth series<select id="surveyDepthSelect"><option value="">None</option></select><small>Resolved to metres before assessment.</small></label>
+            <label>Depth unit override<select id="surveyDepthUnit"><option value="">Auto from source</option><option value="m">m</option><option value="mm">mm</option></select></label>
+            <label>Velocity series<select id="surveyVelocitySelect"><option value="">None</option></select><small>Resolved to m/s before assessment.</small></label>
+            <label>Velocity unit override<select id="surveyVelocityUnit"><option value="">Auto from source</option><option value="m/s">m/s</option></select></label>
+            <label>Flow series<select id="surveyFlowSelect"><option value="">None</option></select><small>Resolved to m³/s before assessment.</small></label>
+            <label>Flow unit override<select id="surveyFlowUnit"><option value="">Auto from source</option><option value="m3/s">m³/s</option><option value="L/s">L/s</option><option value="Ml/d">Ml/d</option></select></label>
+            <label>Monitor rainfall gauge<select id="surveyRainSelect"><option value="">Select…</option></select><small>The rainfall series physically associated with this monitor.</small></label>
+            <label>Catchment population<select id="surveyPopulation"><option value="over50">Greater than 50,000</option><option value="under50">50,000 or less</option></select><small>Sets WAPUG streak/event duration to 6/60 or 4/30 minutes.</small></label>
+          </div>
+          <label class="check survey-cutoff"><input id="surveyApplyFaultCutoff" type="checkbox" /> Apply the companion two-consecutive-event gauge cutoff to subsequent network WAPUG qualification <small>Raw rainfall is never deleted. Leave off to treat the cutoff as review evidence only.</small></label>
+          <div id="professionalSurveyStatus" class="pool-summary">Map at least one FDV channel and the monitor rainfall gauge, then run the assessment.</div>
+          <div id="professionalSurveySummary"></div>
+
+          <h3>Rain-gauge status and fault evidence</h3>
+          <div class="table-wrap"><table class="data-table survey-table"><thead><tr><th>Gauge</th><th>Operational coverage</th><th>Event strikes</th><th>Daily strikes</th><th>Dynamic status</th><th>First fault</th><th>Recovery</th><th>Suggested cutoff</th><th>RAG</th></tr></thead><tbody id="professionalGaugeBody"></tbody></table></div>
+
+          <h3>Network WAPUG candidate events</h3>
+          <div class="table-wrap"><table class="data-table survey-table"><thead><tr><th>Event</th><th>Start</th><th>End</th><th>Duration min</th><th>Operational gauges</th><th>Mean depth mm</th><th>Spatial CV %</th><th>Network qualified</th></tr></thead><tbody id="professionalRainEventBody"></tbody></table></div>
+
+          <h3>Weekly monitor performance</h3>
+          <div class="table-wrap"><table class="data-table survey-table wide"><thead><tr><th>Week ending</th><th>Rain mm</th><th>WAPUG</th><th>IW suitable</th><th>Depth cov %</th><th>D corr</th><th>D lag min</th><th>D linked</th><th>D score</th><th>V corr</th><th>V lag min</th><th>V linked</th><th>V score</th><th>Q linked</th><th>Q score</th><th>RAG</th><th>Decision path</th></tr></thead><tbody id="professionalWeeklyBody"></tbody></table></div>
+
+          <details class="survey-method"><summary>Assessment method and thresholds</summary><div id="professionalSurveyMethod" class="method-grid"></div></details>
+        </div>
+      </div>
     </section>
 
     <section class="tab-panel" id="tab-spills">

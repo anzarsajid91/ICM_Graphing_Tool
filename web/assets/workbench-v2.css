@@ -93,3 +93,23 @@ footer{max-width:1600px;padding:0 26px}
 }
 
 .ex-row{display:grid;grid-template-columns:70px 1fr 1fr 1fr 2fr auto;gap:8px}.ex-row input,.ex-row select{min-width:0;width:100%}textarea{width:100%}
+
+/* Professional flow-survey / rainfall assessment */
+.survey-professional{margin-top:16px;border-left:3px solid #8bb7d8;background:#f7fafc}
+.survey-professional .subhead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}
+.survey-professional .subhead h3{margin:0 0 3px}
+.survey-professional .subhead p{margin:0;max-width:920px;color:#65798a;font-size:11.5px;line-height:1.45}
+.survey-mapping{grid-template-columns:repeat(4,minmax(150px,1fr))}
+.survey-cutoff{display:flex;align-items:flex-start;gap:7px;margin:10px 0 12px;padding:9px 10px;border:1px solid #d9e4ec;border-radius:6px;background:#fff;color:#3f5669}
+.survey-cutoff input{min-height:14px;width:14px;height:14px;margin:2px 0 0;flex:0 0 auto}
+.survey-cutoff small{display:block;color:#738596;font-weight:400}
+.survey-summary{grid-template-columns:repeat(6,minmax(105px,1fr))}
+.survey-table{min-width:1080px}
+.survey-table.wide{min-width:1850px}
+.survey-method{margin-top:12px;border-top:1px solid #dce5ec;padding-top:10px}
+.survey-method summary{cursor:pointer;color:#36556e;font-size:12px;font-weight:650}
+.survey-method .method-grid{margin-top:8px}
+#professionalSurveyStatus{margin:10px 0}
+@media(max-width:1200px){.survey-mapping{grid-template-columns:repeat(2,minmax(180px,1fr))}.survey-summary{grid-template-columns:repeat(3,minmax(120px,1fr))}}
+@media(max-width:700px){.survey-professional .subhead{display:block}.survey-professional .subhead .btn{margin-top:9px}.survey-mapping{grid-template-columns:1fr}.survey-summary{grid-template-columns:1fr 1fr}}
+

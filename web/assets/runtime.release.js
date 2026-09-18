@@ -255,6 +255,7 @@ async function downloadReport(){
   if(timeImg)body+='<figure class="figure"><img src="'+timeImg+'" alt="Hydraulic time-series graph"><figcaption>Observed, modelled and rainfall time-series for the current mapped assessment.</figcaption></figure>';
   body+='<h3>Graph statistics</h3>'+graphStatisticsHtml(window.__ICM_WORKBENCH__.lastGraphStatistics||[]);
   body+='<h2>Scenario comparison</h2>'+scenarioTable;
+  if(window.__ICM_WORKBENCH__.professionalSurveyReportHtml)body+=window.__ICM_WORKBENCH__.professionalSurveyReportHtml;
   const diag=[];
   if(scatterImg)diag.push('<figure class="figure"><img src="'+scatterImg+'" alt="Observed versus modelled scatter plot"><figcaption>Observed versus modelled paired values.</figcaption></figure>');
   if(residImg)diag.push('<figure class="figure"><img src="'+residImg+'" alt="Residual plot"><figcaption>Model minus observed residual through time.</figcaption></figure>');
@@ -266,7 +267,7 @@ async function downloadReport(){
   const notes=$('reviewNotes')&&$('reviewNotes').value||'';
   body+='<h2>Reviewer notes</h2><div class="card">'+(notes?'<p>'+esc(notes).replaceAll('\n','<br>')+'</p>':'<p class="muted">No reviewer notes recorded.</p>')+'</div>';
   body+='<h2>Source provenance</h2>'+reportSources(w);
-  body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({spills:state.spillSnapshot,comparison:state.comparisonSnapshot},null,2))+'</pre></details>';
+  body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({spills:state.spillSnapshot,comparison:state.comparisonSnapshot,professional_flow_survey:window.__ICM_WORKBENCH__.lastProfessionalSurvey||null},null,2))+'</pre></details>';
   const html=reportShell('ICM Calibration Workbench — Engineering Assessment','Professional hydraulic data review and model-verification output',body,false);
   downloadBlob('icm-workbench-report-'+new Date().toISOString().slice(0,10)+'.html',html,'text/html');
   $('workspaceStatus').textContent='Professional HTML engineering report downloaded.';

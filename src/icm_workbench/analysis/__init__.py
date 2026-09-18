@@ -10,6 +10,7 @@ from .rainfall import rainfall_support_segments,rainfall_accumulation,daily_rain
 from .events import detect_rainfall_events
 from .diagnostics import residual_series,cumulative_volume,time_weighted_exceedance
 from .review import rating_curve_fit,weekly_data_assessment,dry_weather_flow,event_response_summary
+from .survey_assessment import wapug_population_preset,network_rainfall_assessment,monitor_weekly_assessment
 
 __all__=[
     "VALIDITY_STATES","CALCULATION_STATUSES","validity_summary","validity_status",
@@ -19,5 +20,5 @@ __all__=[
     "compare_scenarios","preview_time_offset","spill_block_volumes","idealised_storage_screening",
     "rainfall_support_segments","rainfall_accumulation","daily_rainfall_support","multi_gauge_rainfall_assessment","detect_rainfall_events",
     "residual_series","cumulative_volume","time_weighted_exceedance","rating_curve_fit","weekly_data_assessment",
-    "dry_weather_flow","event_response_summary",
+    "dry_weather_flow","event_response_summary","wapug_population_preset","network_rainfall_assessment","monitor_weekly_assessment",
 ]

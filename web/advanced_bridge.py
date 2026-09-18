@@ -244,3 +244,165 @@ def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshol
         "level_contract":level_contract,
         "flow_contract":flow_contract,
     }),ensure_ascii=False)
+
+def professional_flow_survey_result(
+    depth_path=None,
+    depth_col=None,
+    velocity_path=None,
+    velocity_col=None,
+    flow_path=None,
+    flow_col=None,
+    rain_path=None,
+    rain_col="rainfall",
+    network_sources_json="[]",
+    population_above_50k=True,
+    apply_fault_cutoff=False,
+    rain_factor=1.0,
+    depth_unit_override=None,
+    velocity_unit_override=None,
+    flow_unit_override=None,
+):
+    """Run the advanced Flow-Survey-Assessment-Tools workflow in browser-local Python."""
+    from icm_workbench.analysis.survey_assessment import (
+        monitor_weekly_assessment,
+        network_rainfall_assessment,
+    )
+
+    def _channel(path, column, quantity, override, canonical):
+        if not path or not column:
+            return None, None
+        allowed = ("depth", "level") if quantity == "depth" else (quantity,)
+        frame, contract = python_bridge._scaled_dimensional_frame(
+            path,
+            column,
+            unit_override=override,
+            allowed_quantities=allowed,
+            required_canonical_unit=canonical,
+        )
+        out = frame[["timestamp", column]].copy().rename(columns={column: quantity})
+        return out, contract
+
+    depth, depth_contract = _channel(
+        depth_path, depth_col, "depth", depth_unit_override, "m"
+    )
+    velocity, velocity_contract = _channel(
+        velocity_path,
+        velocity_col,
+        "velocity",
+        velocity_unit_override,
+        "m/s",
+    )
+    flow, flow_contract = _channel(
+        flow_path, flow_col, "flow", flow_unit_override, "m³/s"
+    )
+
+    hydraulic = None
+    for part in (depth, velocity, flow):
+        if part is None:
+            continue
+        part = part.copy()
+        part["timestamp"] = pd.to_datetime(part["timestamp"], errors="coerce")
+        part = part.dropna(subset=["timestamp"]).sort_values("timestamp")
+        if hydraulic is None:
+            hydraulic = part
+        else:
+            hydraulic = hydraulic.merge(part, on="timestamp", how="outer")
+    if hydraulic is None or hydraulic.empty:
+        raise ValueError(
+            "Select at least one resolved SI hydraulic channel (depth, velocity or flow)."
+        )
+    hydraulic = (
+        hydraulic.sort_values("timestamp")
+        .drop_duplicates("timestamp", keep="last")
+    )
+
+    if not rain_path:
+        raise ValueError("Select the rainfall gauge associated with this monitor.")
+    rain_parsed = python_bridge._load(rain_path)
+    rain = rain_parsed.frame.copy()
+    if rain_col not in rain.columns:
+        raise ValueError(f"Mapped rainfall column {rain_col!r} is unavailable.")
+    rain[rain_col] = (
+        pd.to_numeric(rain[rain_col], errors="coerce") * float(rain_factor)
+    )
+    rain_meta = getattr(rain_parsed, "metadata", {}) or {}
+    rain_interval = rain_meta.get("interval_min")
+    rain_interval = float(rain_interval) if rain_interval else None
+
+    sources = (
+        json.loads(network_sources_json)
+        if isinstance(network_sources_json, str)
+        else list(network_sources_json or [])
+    )
+    gauges = {}
+    mapped_key = str(rain_path)
+    for source in sources:
+        path = source.get("path")
+        if not path:
+            continue
+        parsed = python_bridge._load(path)
+        frame = parsed.frame.copy()
+        column = source.get("column")
+        if column not in frame.columns:
+            columns = [c for c in frame.columns if c != "timestamp"]
+            if not columns:
+                continue
+            column = columns[0]
+        frame[column] = (
+            pd.to_numeric(frame[column], errors="coerce") * float(rain_factor)
+        )
+        metadata = getattr(parsed, "metadata", {}) or {}
+        interval = metadata.get("interval_min")
+        gauges[str(source.get("name") or path)] = (
+            frame,
+            column,
+            float(interval) if interval else None,
+        )
+
+    if not any(str(source.get("path")) == mapped_key for source in sources):
+        mapped_name = str(
+            rain_meta.get("site")
+            or rain_meta.get("name")
+            or "Mapped monitor rainfall"
+        )
+        gauges[mapped_name] = (rain, rain_col, rain_interval)
+
+    network = network_rainfall_assessment(
+        gauges,
+        population_above_50k=bool(population_above_50k),
+        apply_fault_cutoff=bool(apply_fault_cutoff),
+    )
+    monitor = monitor_weekly_assessment(
+        hydraulic,
+        rain,
+        rain_col=rain_col,
+        rain_interval_min=rain_interval,
+        depth_col="depth" if depth is not None else None,
+        velocity_col="velocity" if velocity is not None else None,
+        flow_col="flow" if flow is not None else None,
+        population_above_50k=bool(population_above_50k),
+        network_wapug_events=network.get("qualified_wapug_events") or None,
+    )
+    payload = {
+        "network": network,
+        "monitor": monitor,
+        "contracts": {
+            "depth": depth_contract,
+            "velocity": velocity_contract,
+            "flow": flow_contract,
+            "rainfall": {
+                "conversion_factor": float(rain_factor),
+                "interval_min": rain_interval,
+            },
+        },
+        "source_policy": {
+            "mapped_rainfall_used_for_monitor": True,
+            "all_loaded_r_files_used_for_network_context": True,
+            "raw_sources_mutated": False,
+            "fault_cutoff_applied_to_network_qualification": bool(
+                apply_fault_cutoff
+            ),
+        },
+    }
+    return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
+

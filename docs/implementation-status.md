@@ -61,15 +61,20 @@ support directly with the calibration metrics.
 - Rainfall assessment now includes all-R cumulative depth plus multi-gauge operational coverage, spatial CV and repeated zero-response review flags.
 - FDV/R parsers now accept ICM continuation headers, named constants and scientific notation while retaining explicit unit conversion and sentinel-to-missing behaviour.
 - Cross-repository decisions and deferred contracts are recorded in `docs/companion-repository-assessment.md`.
+- The advanced `Flow-Survey-Assessment-Tools` tranche is now implemented in the shared engine and browser workflow: population-gated network WAPUG events; ≥90% rainfall support and ≤40% spatial-CV gating; event-level two-strike cutoff evidence plus daily fault/recovery history; dry/low-rain spell evidence; 0–12 h rainfall→hydraulic lag/correlation; 28-day dry-weather diurnal residual baselines with 6 h ADP; 18 h event linkage; channel evidence scores; and weekly monitor RAG/decision paths.
+- The monitor workflow explicitly maps depth/velocity/flow plus the associated rain gauge. All loaded .R files are automatically used as network rainfall context; source rainfall is never mutated and applying a suggested fault cutoff to network WAPUG qualification is opt-in.
+- Advanced findings are rendered in the Data health workspace and included in the professional HTML report/audit appendix after calculation. Changing professional inputs invalidates the browser result until it is recalculated.
+- Regression evidence includes dedicated numerical tests for population WAPUG gating, fault cutoff, dynamic recovery and lagged residual response, plus Chromium acceptance of the end-to-end UI/report workflow.
 
 ## Next product phases
 
 Phase 1 correctness does not bundle the broader product roadmap. Subsequent
 regression-controlled phases remain:
 
-- P1 — explicit time basis/DST, richer telemetry QA, professional DWF and
-  multi-gauge rainfall workspaces, event-centred verification, governed spill
-  policies and reproducible evidence manifests.
+- P1 — explicit time basis/DST, governed spill policies and reproducible
+  evidence manifests. The professional FDV/multi-gauge rainfall, DWF-residual
+  and event-response tranche is now implemented; representative utility/project
+  reconciliation remains a domain-UAT requirement.
 - P2 — state/action consolidation, hydraulic/rating diagnostics, transparent
   mapping assistance, engineering presets and complete evidence packages.
 - P3 — linked flow/depth/velocity diagnostics, progress/cancellation/recovery,

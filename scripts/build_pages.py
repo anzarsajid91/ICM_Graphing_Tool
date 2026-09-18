@@ -63,9 +63,9 @@ def build() -> None:
         json.dumps(
             {
                 "commit": os.environ.get("GITHUB_SHA", "local"),
-                "runtime": "release runtime + adaptive engineering UX + cumulative multi-file rainfall review",
+                "runtime": "release runtime + adaptive engineering UX + professional FDV/multi-gauge rainfall assessment",
                 "python_module_count": len(manifest),
-                "ux_release": "v3-cumulative-rainfall-and-release-gate",
+                "ux_release": "v4-professional-flow-survey-rainfall-assessment",
             },
             indent=2,
         )
