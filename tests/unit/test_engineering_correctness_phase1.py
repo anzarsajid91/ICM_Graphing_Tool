@@ -228,3 +228,35 @@ def test_scenario_metrics_expose_validity_coverage():
     assert row["observed_coverage_fraction"]==pytest.approx(1.0)
     assert row["model_coverage_fraction"]==pytest.approx(1.0)
     assert row["validity_model"]=="validity-v1"
+
+
+
+def test_time_coverage_exclusion_and_missing_are_disjoint():
+    from icm_workbench.domain import ExclusionPeriod
+    t0=pd.Timestamp("2026-01-01 00:00")
+    frame=pd.DataFrame(
+        {
+            "timestamp":[t0,t0+pd.Timedelta(minutes=10)],
+            "level":[1.0,float("nan")],
+        }
+    )
+    result=time_coverage(
+        frame,
+        "level",
+        t0,
+        t0+pd.Timedelta(minutes=10),
+        max_gap_seconds=900,
+        exclusions=[
+            ExclusionPeriod(
+                t0+pd.Timedelta(minutes=2),
+                t0+pd.Timedelta(minutes=4),
+                "known bad telemetry",
+            )
+        ],
+    )
+    assert result["excluded_seconds"]==pytest.approx(120)
+    assert result["missing_seconds"]==pytest.approx(480)
+    assert result["unknown_seconds"]==pytest.approx(0)
+    assert result["uncovered_seconds"]==pytest.approx(0)
+    assert result["status"]=="unavailable"
+    assert sum(result["validity"]["states"].values())==pytest.approx(600)
