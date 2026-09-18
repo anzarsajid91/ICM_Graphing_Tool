@@ -133,7 +133,7 @@ def rainfall_accumulation(
     requested = float(seg["support_seconds"].sum())
     valid = float(seg.loc[seg["valid"], "support_seconds"].sum())
     missing = float(seg.loc[seg["status"].eq("missing"), "support_seconds"].sum())
-    explicit_unknown = float(seg.loc[seg["status"].eq("unknown"), "support_seconds"].sum())
+    explicit_unknown = float(seg.loc[seg["status"].eq("unknown_gap"), "support_seconds"].sum())
     total = float(seg.loc[seg["valid"], "depth_mm"].sum())
 
     validity = validity_summary(
