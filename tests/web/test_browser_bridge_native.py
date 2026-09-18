@@ -19,7 +19,8 @@ def test_bridge_compare_and_spills():
     assert cmp['validity_model']=='validity-v1'
     assert cmp['calculation_status'] in {'complete','partial'}
     assert 0 < cmp['coverage_fraction'] <= 1
-    assert cmp['coverage']['validity']['model']=='validity-v1'
+    assert cmp['coverage']['observed']['validity']['model']=='validity-v1'
+    assert cmp['coverage']['modelled']['validity']['model']=='validity-v1'
     spills=json.loads(bridge.spill_result(obs,'depth',1.0,'[]',max_gap_seconds=300))
     assert spills['total_spill_count']>=0
     assert spills['count_status'] in {'definitive','partial/unknown-gap'}
