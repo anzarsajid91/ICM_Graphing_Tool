@@ -25,3 +25,20 @@ No regulatory/utility profile is re-labelled as approved. Existing 12/24 semanti
 - E: scoped editable exclusions, explicit spill model, stale-report guards and presentation attribution.
 - P: core calculation engine retained; obsolete graph redraw route retired.
 Browser behavior is implemented-unverified pending staged acceptance; see checkpoint.
+
+
+## 18 September engineering-correctness phase 1
+
+| ID | Class | Old behaviour | New behaviour | Verification / effect | Method |
+|---|---|---|---|---|---|
+| BC11 | C | Generic CSV numeric values were treated as already-canonical regardless of header units. | Recognised explicit units are converted once to canonical SI; unresolved units remain explicitly unresolved. | L/s and Ml/d conversion regressions; unknown-unit regression. | `unit-contract-v1` |
+| BC12 | C | Rainfall depth/event duration used one median timestep. | Intensity is integrated over actual timestamp support; a final intensity sample only receives declared regular support. | Irregular-timestamp analytical fixtures. | `rain-support-v2` |
+| BC13 | C | Missing rainfall was filled with zero for dry-day selection. | Incomplete rainfall support makes the candidate day unknown and ineligible for DWF. | Missing-interval DWF regression. | `dwf-validity-v2` |
+| BC14 | C | Storage/spill-volume results could look definitive with unresolved units or incomplete flow support. | Dimensional storage/volume is unit-gated; incomplete/excluded/uncovered support propagates partial/unavailable state and required storage is withheld. | Unit/coverage/storage regressions. | `storage-coverage-v2` |
+| BC15 | C/E | Source reset left exclusions/derived browser state behind. | Clearing the source pool invalidates mappings, exclusions, histories, colours and derived analytical state. | Browser runtime state regression / smoke gate. | `state-invalidation-v1` |
+| BC16 | E | Python workspace service rejected anything except v1; browser had independent v3 behaviour. | v1/v2 migrate deterministically to v3; browser also validates/migrates v1/v2 and rejects future schemas. | Workspace migration regressions. | `workspace-schema-v3` |
+| BC17 | R | Corrupt named-workspace local storage could break loading. | Corrupt local state is quarantined and an empty usable store is recovered. | JavaScript runtime regression. | `workspace-recovery-v1` |
+| BC18 | C/E | Coverage/status vocabulary differed between rainfall, integration, spill and comparison paths, and excluded time could overlap unknown support in accounting. | A shared `validity-v1` contract provides valid/suspect/invalid/excluded/missing/unknown states plus complete/partial/unavailable status; exclusions are removed before missing/unknown classification. | Cross-workflow unit regressions, browser-bridge regression and Chromium comparison-status acceptance. | `validity-v1` |
+| BC19 | E | Representative real-export acceptance had no reusable machine-readable gate. | Local manifest-driven parser/unit/sample reconciliation with SHA-256 evidence and a documented hydraulic-modeller sign-off protocol. | Harness unit test; actual field corpus remains project/user input. | `representative-uat-v1` |
+
+These are correctness changes. They deliberately preserve the local-first Pages/Pyodide product path and the existing physical-spill versus 12/24 counting separation.

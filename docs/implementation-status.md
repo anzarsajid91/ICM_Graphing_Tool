@@ -1,40 +1,71 @@
-# Current implementation status
+# Current implementation status — 18 September 2026
 
-See [resume checkpoint](resume-checkpoint.md) and [requirements ledger](requirements-ledger.md) for the 17 September retry. Full completion is pending. Browser and real-export gates remain open.
+This document records the engineering-correctness release state for PR #4 and
+the remaining gates. GitHub Pages remains the primary zero-install product and
+the shared Python package remains the authoritative calculation engine.
 
-## Historical status (superseded)
+## Engineering-correctness phase 1
 
-# Implementation status
-
-**Branch:** `feat/icm-workbench-modernisation`  
-**Baseline:** `4bbf00d2d44715353d3ca12e21114edae9346b85`
-
-## Work packages
-
-| WP | Status | Evidence / blocker |
+| Backlog item | State | Evidence / remaining gate |
 |---|---|---|
-| WP0 Baseline/inventory | Complete for connector-visible source inspection | baseline commit/tree/blob identities recorded; raw-file SHA-256 still requires materialised checkout |
-| WP1 Package/startup/tests | Implemented, target validation pending | new package/CLI/BAT scripts/CI; original scripts untouched |
-| WP2 Parsers/data quality | Partial | CSV/HYD/FDV/R adapters and import audits; representative actual exports pending |
-| WP3 Engineering calculations | Core complete against synthetic/analytic fixtures | integration, bounded alignment, metrics, spills, exclusions, month split, corrected screening |
-| WP4 Interface/result lifecycle | Partial | Data/Compare/Events/Spills/Report shell and exclusion editor; browser acceptance pending |
-| WP5 Enhancements/workspaces | Partial | scenario table, residual/cumulative/exceedance core, events, workspace JSON, offset preview, exclusions, batch runner, report notes structure |
-| WP6 Reports/performance/robustness | Partial | offline HTML and escaping; legacy report parity/benchmarks/cache robustness pending |
-| WP7 Package/docs/review | In progress | scripts/CI/method docs present; CI/draft PR and remaining acceptance evidence pending |
+| BK-001 authoritative units | implemented | Generic CSV unit detection/conversion; canonical SI metadata; unresolved dimensional operations are withheld unless explicitly resolved. |
+| BK-002 missing rainfall != dry | implemented | DWF only accepts days with complete rainfall support; missing/uncovered rainfall is unknown, never dry. |
+| BK-003 actual-support rainfall | implemented | Cumulative rainfall and event calculations use actual timestamp support; final intensity support requires a declared interval. |
+| BK-004 deterministic invalidation | implemented for source reset | Clearing the source pool invalidates mappings, exclusions, histories, colours and derived browser state. The wider single-action dependency architecture remains a later consolidation task. |
+| BK-005 storage coverage/unit gating | implemented | Level/flow unit contracts are explicit; spill-volume support is tracked and storage headline values are withheld for partial/unavailable support. |
+| BK-006 common validity architecture | implemented as validity-v1 foundation | Canonical valid/suspect/invalid/excluded/missing/unknown states and complete/partial/unavailable calculation status are shared across integration, rainfall, spill coverage, time coverage/scenario comparison and browser result payloads. Suspect/invalid states are intentionally available for the richer telemetry-QA detectors planned in P1. |
+| BK-007 representative engineering corpus | harness implemented; real data/sign-off outstanding | A local, fingerprinted manifest-driven validation harness and domain-UAT protocol now exist. Actual anonymised ICM/HYD, FDV and rainfall exports plus independently known expected results are still required before project field-validation can be claimed. |
 
-## Local executed validation
-Environment: Python 3.13.5, pandas 2.2.3, NumPy 2.3.5, Plotly 6.5.2, pytest 9.0.2. Dash/pyarrow were absent locally.
+## Release evidence required for merge
 
-```text
-22 core/unit/integration tests passed
-python -m compileall -q src tests  # passed
-```
+The artifact-changing head must pass all of the following before merge:
 
-Coverage includes 120 m³ integration, exact exclusion splitting, no long-gap bridging, undefined constant-series NSE, multi-exclusion audit, exclusion-split spills, partial status for unknown gaps, month-boundary durations, 7,200 m³ same-window discharge aggregation, sentinel→missing parsing, FDV truncation rejection, workspace round-trip, batch fault isolation, HTML escaping, scenario common-domain comparison, non-mutating time-offset preview, gap-aware plotting and synthetic demo pipeline.
+1. Python regression suite on Ubuntu and Windows.
+2. Python compile checks.
+3. JavaScript runtime regressions and syntax checks.
+4. Deterministic Pages build/package-manifest verification.
+5. Chromium acceptance against the exact staged Pages artifact.
+6. No unresolved PR review issue that changes engineering behaviour.
 
-## Outstanding release gates
-1. GitHub CI must provide Linux + Windows Python 3.12 evidence; failures must be repaired rather than described as passed.
-2. Browser journeys/accessibility/screenshots remain pending until Dash runtime is exercised.
-3. Original annual/four-graph/spill report parity is not yet fully migrated.
-4. Performance/memory/corrupt-cache benchmarks remain pending.
-5. T20 remains release-blocking until representative real ICM CSV/HYD, FDV and R files are independently reconciled on the intended Windows environment.
+After merge, the same Pages workflow must verify, build and deploy the exact
+`main` artifact successfully.
+
+Representative real-export reconciliation is deliberately a **domain assurance
+gate**, not a reason to weaken or bypass automated release gates. It remains
+required before describing the tool as validated for a specific utility/project.
+
+## Correctness architecture delivered
+
+The validity-v1 contract is the common support vocabulary:
+
+- `valid`
+- `suspect`
+- `invalid`
+- `excluded`
+- `missing`
+- `unknown`
+
+Every governed calculation exposes `complete`, `partial` or `unavailable`
+status with coverage where meaningful. Excluded support is removed before
+missing/unknown classification so the same time cannot be silently
+double-counted into two states.
+
+The browser comparison workflow now surfaces calculation status and valid
+support directly with the calibration metrics.
+
+## Next product phases
+
+Phase 1 correctness does not bundle the broader product roadmap. Subsequent
+regression-controlled phases remain:
+
+- P1 — explicit time basis/DST, richer telemetry QA, professional DWF and
+  multi-gauge rainfall workspaces, event-centred verification, governed spill
+  policies and reproducible evidence manifests.
+- P2 — state/action consolidation, hydraulic/rating diagnostics, transparent
+  mapping assistance, engineering presets and complete evidence packages.
+- P3 — linked flow/depth/velocity diagnostics, progress/cancellation/recovery,
+  large-data performance limits and release/user documentation.
+- P4 — network/map context and advisory sensor change-point research only after
+  the core workbench is production-ready.
+
+No rewrite of the working local-first architecture is implied by these phases.

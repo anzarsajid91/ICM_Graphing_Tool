@@ -138,7 +138,11 @@ try{
   stage='calibration comparison and diagnostics';
   await clickTab('compare');
   await page.click('#runCompareBtn');
-  await page.waitForFunction(()=>document.querySelectorAll('#scenarioBody tr').length===1&&document.querySelectorAll('#metricGrid .metric').length>=8,null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelectorAll('#scenarioBody tr').length===1&&document.querySelectorAll('#metricGrid .metric').length>=10,null,{timeout:60000});
+  const comparisonValidity=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastComparisonValidity);
+  if(!comparisonValidity||comparisonValidity.status!=='partial'||!(Number(comparisonValidity.coverage)>0&&Number(comparisonValidity.coverage)<1))throw new Error(`Comparison validity contract should expose the demo telemetry gap as partial support: ${JSON.stringify(comparisonValidity)}`);
+  const metricText=await page.locator('#metricGrid').textContent();
+  if(!metricText.includes('Calculation status')||!metricText.includes('Valid support'))throw new Error('Comparison validity cards are missing');
   for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])await page.waitForSelector(`#${id} .main-svg`,{timeout:60000});
 
   stage='flow-depth rating';
@@ -208,6 +212,7 @@ try{
   const level=await optionValue('#storageLevelSelect','model.csv — depth');
   const flow=await optionValue('#storageFlowSelect','model.csv — flow');
   await page.selectOption('#storageLevelSelect',level);await page.selectOption('#storageFlowSelect',flow);
+  await page.selectOption('#storageLevelUnit','m');await page.selectOption('#storageFlowUnit','m3/s');
   await page.fill('#storageThreshold','1.0');
   await page.click('#runStorageBtn');
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.lastStorage),null,{timeout:60000});

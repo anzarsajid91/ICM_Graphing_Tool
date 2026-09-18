@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "replace-with-real-icm-flow-export",
+      "path": "data/REPLACE_ME.csv",
+      "expected": {
+        "min_rows": 2,
+        "columns": ["timestamp", "Flow (L/s)"],
+        "series": {
+          "Flow (L/s)": {
+            "quantity": "flow",
+            "original_unit": "L/s",
+            "canonical_unit": "m³/s",
+            "unit_status": "resolved"
+          }
+        },
+        "samples": [
+          {
+            "column": "Flow (L/s)",
+            "timestamp": "2026-01-01 00:00:00",
+            "value": 1.0,
+            "tolerance": 1e-09
+          }
+        ]
+      }
+    }
+  ]
+}

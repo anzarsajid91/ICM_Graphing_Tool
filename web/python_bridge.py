@@ -5,10 +5,11 @@ import numpy as np
 import pandas as pd
 
 from icm_workbench.parsers import parse_file
+from icm_workbench.parsers.common import canonical_unit
 from icm_workbench.analysis import (
     pair_series, calibration_metrics, spill_assessment, detect_spill_intervals,
     spill_block_volumes, idealised_storage_screening, detect_rainfall_events,
-    residual_series, cumulative_volume, time_weighted_exceedance,
+    residual_series, cumulative_volume, time_weighted_exceedance, time_coverage,
     rating_curve_fit, weekly_data_assessment, dry_weather_flow, event_response_summary,
 )
 from icm_workbench.domain import ExclusionPeriod
@@ -183,6 +184,47 @@ def series_data(path, column=None, max_points=5000, start=None, end=None, max_ga
     return json.dumps(payload, ensure_ascii=False)
 
 
+def _comparison_domain(observed, modelled, start=None, end=None):
+    obs_ts=pd.to_datetime(observed["timestamp"],errors="coerce").dropna()
+    mod_ts=pd.to_datetime(modelled["timestamp"],errors="coerce").dropna()
+    if obs_ts.empty or mod_ts.empty:
+        return None,None
+    s=_model_clock_timestamp(start) if start is not None else max(pd.Timestamp(obs_ts.min()),pd.Timestamp(mod_ts.min()))
+    e=_model_clock_timestamp(end) if end is not None else min(pd.Timestamp(obs_ts.max()),pd.Timestamp(mod_ts.max()))
+    return (s,e) if e>s else (None,None)
+
+
+def _comparison_coverage(observed, obs_col, modelled, model_col, domain_start, domain_end, max_gap_seconds, exclusions):
+    if domain_start is None or domain_end is None:
+        empty={"status":"unavailable","coverage_fraction":None,"requested_seconds":0.0,"valid_seconds":0.0,"excluded_seconds":0.0,"missing_seconds":0.0,"unknown_seconds":0.0,"uncovered_seconds":0.0,"validity":None}
+        return {"status":"unavailable","coverage_fraction":None,"observed":dict(empty),"modelled":dict(empty),"validity_model":"validity-v1"}
+    observed_coverage=time_coverage(
+        observed,obs_col,domain_start,domain_end,
+        max_gap_seconds=float(max_gap_seconds),exclusions=exclusions,
+    )
+    modelled_coverage=time_coverage(
+        modelled,model_col,domain_start,domain_end,
+        max_gap_seconds=float(max_gap_seconds),exclusions=exclusions,
+    )
+    fractions=[x.get("coverage_fraction") for x in (observed_coverage,modelled_coverage) if x.get("coverage_fraction") is not None]
+    coverage=min(fractions) if len(fractions)==2 else None
+    statuses={observed_coverage.get("status"),modelled_coverage.get("status")}
+    if "unavailable" in statuses or coverage is None:
+        status="unavailable"
+    elif statuses=={"complete"}:
+        status="complete"
+    else:
+        status="partial"
+    return {
+        "status":status,
+        "coverage_fraction":coverage,
+        "observed":observed_coverage,
+        "modelled":modelled_coverage,
+        "validity_model":"validity-v1",
+        "coverage_basis":"minimum of observed/modelled eligible support; metrics use bounded valid pairs",
+    }
+
+
 def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
     oq, mq = _quantity(obs_path, obs_col), _quantity(model_path, model_col)
     if not oq or not mq or oq != mq:
@@ -191,19 +233,34 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
     mod = _load(model_path).frame.copy()
     if float(offset_minutes or 0):
         mod["timestamp"] = pd.to_datetime(mod["timestamp"], errors="coerce") + pd.to_timedelta(float(offset_minutes), unit="m")
-    paired = pair_series(
+    domain_start,domain_end=_comparison_domain(obs,mod,start,end)
+    paired_raw = pair_series(
         obs, mod, obs_col, model_col,
         max_gap_seconds=float(max_gap_seconds),
-        start=_model_clock_timestamp(start), end=_model_clock_timestamp(end),
+        start=domain_start, end=domain_end,
     )
-    for exc in _exclusions(exclusions_json):
+    exclusions=_exclusions(exclusions_json)
+    coverage=_comparison_coverage(
+        obs,obs_col,mod,model_col,domain_start,domain_end,
+        float(max_gap_seconds),exclusions,
+    )
+    paired=paired_raw.copy()
+    for exc in exclusions:
         paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
     metrics = calibration_metrics(paired)
     p = residual_series(paired) if not paired.empty else paired.copy()
     if not p.empty:
         p["residual"] = p["residual_model_minus_observed"]
-    payload = {"metrics": metrics, "paired": _records(p)}
+    payload = {
+        "metrics": metrics,
+        "paired": _records(p),
+        "calculation_status":coverage.get("status","unavailable"),
+        "coverage_fraction":coverage.get("coverage_fraction"),
+        "coverage":coverage,
+        "validity_model":"validity-v1",
+    }
     return json.dumps(_jsonable(payload), ensure_ascii=False)
+
 
 
 def _quantity(path, column):
@@ -211,20 +268,127 @@ def _quantity(path, column):
     return metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
 
 
+def _series_contract(path, column, unit_override=None):
+    parsed = _load(path)
+    metadata = getattr(parsed, "metadata", {}) or {}
+    details = {}
+    if isinstance(metadata.get("series_metadata"), dict):
+        details = dict(metadata["series_metadata"].get(column) or {})
+    if not details and isinstance(metadata.get("channels"), dict):
+        details = dict(metadata["channels"].get(column) or {})
+    quantity = details.get("quantity") or metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
+    original_unit = details.get("original_unit", metadata.get("original_unit"))
+    resolved_unit = details.get("canonical_unit", metadata.get("canonical_unit"))
+    status = details.get("unit_status") or ("resolved" if resolved_unit else "unresolved")
+    scale = 1.0
+    source = "metadata" if resolved_unit else "unresolved"
+    if not resolved_unit and unit_override:
+        resolved_unit, factor = canonical_unit(quantity, unit_override)
+        if resolved_unit is None or factor is None:
+            raise ValueError(f"Unsupported unit override {unit_override!r} for {quantity or 'unknown quantity'}.")
+        scale = float(factor)
+        original_unit = str(unit_override)
+        status = "resolved-by-user"
+        source = "user override"
+    return {
+        "quantity": quantity,
+        "original_unit": original_unit,
+        "canonical_unit": resolved_unit,
+        "unit_status": status,
+        "scale_to_canonical": scale,
+        "unit_source": source,
+    }
+
+
+def _scaled_dimensional_frame(path, column, *, unit_override=None, allowed_quantities=(), required_canonical_unit=None):
+    contract = _series_contract(path, column, unit_override=unit_override)
+    if allowed_quantities and contract["quantity"] not in set(allowed_quantities):
+        raise ValueError(
+            f"Series {column!r} is declared as {contract['quantity'] or 'unknown quantity'}; "
+            f"expected one of {sorted(set(allowed_quantities))}."
+        )
+    if required_canonical_unit and contract["canonical_unit"] != required_canonical_unit:
+        raise ValueError(
+            f"Dimensional calculation withheld: resolve {column!r} to {required_canonical_unit}. "
+            f"Current unit is {contract['original_unit'] or 'unknown'}."
+        )
+    frame = _load(path).frame.copy()
+    frame[column] = pd.to_numeric(frame[column], errors="coerce") * float(contract["scale_to_canonical"])
+    return frame, contract
+
+
+def _rain_support_gap_seconds(parsed):
+    metadata = getattr(parsed, "metadata", {}) or {}
+    interval = metadata.get("interval_min")
+    if interval:
+        return float(interval) * 60.0 * 1.5
+    frame = parsed.frame
+    if "timestamp" in frame and len(frame) >= 2:
+        d = pd.to_datetime(frame["timestamp"], errors="coerce").sort_values().diff().dt.total_seconds()
+        d = d[d > 0]
+        if len(d):
+            return float(d.median()) * 1.5
+    return None
+
+
 def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
-    obs=_load(obs_path).frame; mod=_load(model_path).frame.copy()
+    obs=_load(obs_path).frame
+    mod=_load(model_path).frame.copy()
     if float(offset_minutes or 0):
         mod["timestamp"]=pd.to_datetime(mod["timestamp"],errors="coerce")+pd.to_timedelta(float(offset_minutes),unit="m")
-    paired=pair_series(obs,mod,obs_col,model_col,max_gap_seconds=float(max_gap_seconds),start=_model_clock_timestamp(start),end=_model_clock_timestamp(end))
-    for exc in _exclusions(exclusions_json):
+    domain_start,domain_end=_comparison_domain(obs,mod,start,end)
+    paired_raw=pair_series(
+        obs,mod,obs_col,model_col,
+        max_gap_seconds=float(max_gap_seconds),
+        start=domain_start,end=domain_end,
+    )
+    exclusions=_exclusions(exclusions_json)
+    coverage=_comparison_coverage(
+        obs,obs_col,mod,model_col,domain_start,domain_end,
+        float(max_gap_seconds),exclusions,
+    )
+    paired=paired_raw.copy()
+    for exc in exclusions:
         paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
     residual=residual_series(paired) if not paired.empty else pd.DataFrame()
-    is_flow = _quantity(obs_path, obs_col) == _quantity(model_path, model_col) == "flow" and not _exclusions(exclusions_json)
+    obs_contract=_series_contract(obs_path,obs_col)
+    mod_contract=_series_contract(model_path,model_col)
+    compatible_flow=(
+        obs_contract["quantity"]=="flow"
+        and mod_contract["quantity"]=="flow"
+        and obs_contract["canonical_unit"]=="m³/s"
+        and mod_contract["canonical_unit"]=="m³/s"
+    )
+    is_flow=compatible_flow and not exclusions
     cumulative=cumulative_volume(paired,float(max_gap_seconds)) if is_flow and not paired.empty else pd.DataFrame()
     obs_exc=time_weighted_exceedance(paired,"obs",float(max_gap_seconds)) if is_flow else pd.DataFrame()
     mod_exc=time_weighted_exceedance(paired,"sim",float(max_gap_seconds)) if is_flow else pd.DataFrame()
-    return json.dumps(_jsonable({"residual":_records(residual),"cumulative":_records(cumulative),"observed_exceedance":_records(obs_exc),"modelled_exceedance":_records(mod_exc),"flow_diagnostics_available":is_flow,"reason":None if is_flow else "Cumulative volume and flow duration require two declared flow channels and currently an unmasked assessment. Exact masked diagnostic integration is pending.","integration_method":"instantaneous-trapezoidal-v2","exceedance_method":"left-support-time-weighted"}),ensure_ascii=False)
-
+    if is_flow:
+        reason=None
+    elif exclusions:
+        reason="Cumulative volume and flow-duration diagnostics are withheld for masked assessments until exact masked support is routed through the common integration contract."
+    elif obs_contract["quantity"]!="flow" or mod_contract["quantity"]!="flow":
+        reason="Cumulative volume and flow-duration diagnostics require two declared flow channels."
+    else:
+        reason="Cumulative volume withheld because one or both flow units are unresolved. Resolve both series to m³/s-compatible source units."
+    return json.dumps(_jsonable({
+        "residual":_records(residual),
+        "cumulative":_records(cumulative),
+        "observed_exceedance":_records(obs_exc),
+        "modelled_exceedance":_records(mod_exc),
+        "flow_diagnostics_available":is_flow,
+        "reason":reason,
+        "observed_contract":obs_contract,
+        "modelled_contract":mod_contract,
+        "cumulative_unit":"m³" if is_flow else None,
+        "flow_unit":"m³/s" if is_flow else None,
+        "integration_method":"instantaneous-trapezoidal-v2",
+        "exceedance_method":"left-support-time-weighted",
+        "calculation_status":coverage.get("status","unavailable"),
+        "coverage_fraction":coverage.get("coverage_fraction"),
+        "coverage":coverage,
+        "validity_model":"validity-v1",
+    }),ensure_ascii=False)
 
 def _exclusions(raw):
     if not raw:
@@ -247,10 +411,36 @@ def _exclusions(raw):
 
 
 def rainfall_event_result(path,column,minimum_intensity=5.0,minimum_intensity_duration_min=6.0,minimum_depth_mm=5.0,minimum_event_duration_min=60.0,dry_gap_min=15.0,exclusions_json="[]"):
-    frame=_load(path).frame
-    events=detect_rainfall_events(frame,intensity_col=column,minimum_intensity=float(minimum_intensity),minimum_intensity_duration_min=float(minimum_intensity_duration_min),minimum_depth_mm=float(minimum_depth_mm),minimum_event_duration_min=float(minimum_event_duration_min),dry_gap_min=float(dry_gap_min),exclusions=_exclusions(exclusions_json))
-    return json.dumps(_jsonable({"events":events,"count":len(events),"criteria":{"minimum_intensity":float(minimum_intensity),"minimum_intensity_duration_min":float(minimum_intensity_duration_min),"minimum_depth_mm":float(minimum_depth_mm),"minimum_event_duration_min":float(minimum_event_duration_min),"dry_gap_min":float(dry_gap_min)}}),ensure_ascii=False)
-
+    parsed=_load(path)
+    frame=parsed.frame
+    metadata=getattr(parsed,"metadata",{}) or {}
+    interval=metadata.get("interval_min")
+    events=detect_rainfall_events(
+        frame,
+        intensity_col=column,
+        minimum_intensity=float(minimum_intensity),
+        minimum_intensity_duration_min=float(minimum_intensity_duration_min),
+        minimum_depth_mm=float(minimum_depth_mm),
+        minimum_event_duration_min=float(minimum_event_duration_min),
+        dry_gap_min=float(dry_gap_min),
+        exclusions=_exclusions(exclusions_json),
+        semantics="intensity",
+        declared_interval_minutes=float(interval) if interval else None,
+        max_gap_seconds=_rain_support_gap_seconds(parsed),
+    )
+    return json.dumps(_jsonable({
+        "events":events,
+        "count":len(events),
+        "criteria":{
+            "minimum_intensity":float(minimum_intensity),
+            "minimum_intensity_duration_min":float(minimum_intensity_duration_min),
+            "minimum_depth_mm":float(minimum_depth_mm),
+            "minimum_event_duration_min":float(minimum_event_duration_min),
+            "dry_gap_min":float(dry_gap_min),
+            "support_method":"actual elapsed intervals",
+            "declared_interval_min":float(interval) if interval else None,
+        }
+    }),ensure_ascii=False)
 
 def data_assessment(path,max_gap_seconds=900.0):
     parsed=_load(path); weekly=weekly_data_assessment(parsed.frame,float(max_gap_seconds))
@@ -268,10 +458,22 @@ def rating_result(obs_path,model_path=None,depth_col="depth",flow_col="flow",mod
 
 
 def dwf_result(flow_path,flow_col,rain_path=None,rain_col="rainfall",dry_day_mm=1.0,baseline_days=28,min_dry_days=5,adp_hours=6.0):
-    flow=_load(flow_path).frame; rain=_load(rain_path).frame if rain_path else None
-    result=dry_weather_flow(flow,flow_col,rain,rain_col,dry_day_mm=float(dry_day_mm),baseline_days=int(baseline_days),min_dry_days=int(min_dry_days),adp_hours=float(adp_hours))
+    flow=_load(flow_path).frame
+    rain_parsed=_load(rain_path) if rain_path else None
+    rain=rain_parsed.frame if rain_parsed is not None else None
+    metadata=getattr(rain_parsed,"metadata",{}) or {} if rain_parsed is not None else {}
+    interval=metadata.get("interval_min") if rain_parsed is not None else None
+    result=dry_weather_flow(
+        flow,flow_col,rain,rain_col,
+        dry_day_mm=float(dry_day_mm),
+        baseline_days=int(baseline_days),
+        min_dry_days=int(min_dry_days),
+        adp_hours=float(adp_hours),
+        rain_semantics="intensity",
+        rain_interval_min=float(interval) if interval else None,
+        rain_max_gap_seconds=_rain_support_gap_seconds(rain_parsed) if rain_parsed is not None else None,
+    )
     return json.dumps(_jsonable(result),ensure_ascii=False)
-
 
 def event_response_result(obs_path,obs_col,model_path,model_col,events_json,baseline_hours=3.0,post_hours=6.0):
     events=json.loads(events_json) if isinstance(events_json,str) else events_json
@@ -291,17 +493,50 @@ def spill_result(path, column, threshold, exclusions_json="[]", max_gap_seconds=
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
 
-def storage_result(level_path, level_col, flow_path, flow_col, threshold, exclusions_json="[]", target_count=10, max_gap_seconds=900.0, start=None, end=None):
-    level = _load(level_path).frame
-    flow = _load(flow_path).frame
-    exc = _exclusions(exclusions_json)
-    physical = detect_spill_intervals(level, level_col, float(threshold), start=_model_clock_timestamp(start), end=_model_clock_timestamp(end), max_gap_seconds=float(max_gap_seconds), exclusions=exc)
-    blocks = spill_block_volumes(physical["events"], flow, flow_col, max_gap_seconds=float(max_gap_seconds), exclusions=exc)
-    screening = idealised_storage_screening(blocks, target_count=int(target_count))
-    payload = {
-        "physical": {k: _jsonable(v) for k, v in physical.items() if k != "events"},
-        "events": [_jsonable(e) for e in physical.get("events", [])],
-        "blocks": _records(blocks),
-        "screening": _records(screening),
+def storage_result(level_path, level_col, flow_path, flow_col, threshold, exclusions_json="[]", target_count=10, max_gap_seconds=900.0, start=None, end=None, level_unit_override=None, flow_unit_override=None):
+    level,level_contract=_scaled_dimensional_frame(
+        level_path,level_col,
+        unit_override=level_unit_override,
+        allowed_quantities=("level","depth"),
+        required_canonical_unit="m",
+    )
+    flow,flow_contract=_scaled_dimensional_frame(
+        flow_path,flow_col,
+        unit_override=flow_unit_override,
+        allowed_quantities=("flow",),
+        required_canonical_unit="m³/s",
+    )
+    exc=_exclusions(exclusions_json)
+    threshold_m=float(threshold)*float(level_contract["scale_to_canonical"])
+    physical=detect_spill_intervals(
+        level,level_col,threshold_m,
+        start=_model_clock_timestamp(start),
+        end=_model_clock_timestamp(end),
+        max_gap_seconds=float(max_gap_seconds),
+        exclusions=exc,
+    )
+    blocks=spill_block_volumes(physical["events"],flow,flow_col,max_gap_seconds=float(max_gap_seconds),exclusions=exc)
+    screening=idealised_storage_screening(blocks,target_count=int(target_count))
+    if physical.get("status")!="complete" and not screening.empty:
+        screening=screening.copy()
+        screening["required_storage_m3"]=None
+        screening["max_block_volume_m3"]=None
+        screening["annual_block_volume_m3"]=None
+        screening["status"]="partial" if physical.get("valid_seconds",0)>0 else "unavailable"
+        screening["reason"]="Required storage withheld because the level series has incomplete support over the assessment period."
+    screen_statuses=set(screening["status"]) if not screening.empty and "status" in screening else set()
+    overall="complete" if physical.get("status")=="complete" and (not screen_statuses or screen_statuses=={"complete"}) else (
+        "partial" if physical.get("valid_seconds",0)>0 else "unavailable"
+    )
+    payload={
+        "calculation_status":overall,
+        "level_contract":level_contract,
+        "flow_contract":flow_contract,
+        "threshold_canonical_m":threshold_m,
+        "physical":{k:_jsonable(v) for k,v in physical.items() if k!="events"},
+        "events":[_jsonable(e) for e in physical.get("events",[])],
+        "blocks":_records(blocks),
+        "screening":_records(screening),
     }
-    return json.dumps(payload, ensure_ascii=False)
+    return json.dumps(_jsonable(payload),ensure_ascii=False)
+
