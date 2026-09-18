@@ -56,4 +56,4 @@ Historical V17 converted placeholder values such as 9999/-9999 to zero. The
 current engineering workbench deliberately does **not** retain that behaviour:
 known sentinels are treated as missing and audited.
 
-The browser workbench also provides native-resolution graph statistics, enhanced weekly FDV quality screening, cumulative multi-file rainfall and multi-gauge rainfall consistency screening. See `docs/companion-repository-assessment.md` for the cross-repository integration boundary.
+The browser workbench also provides native-resolution graph statistics and a professional Flow-Survey-Assessment-Tools workflow: enhanced weekly FDV QA, cumulative multi-file rainfall, network WAPUG/CV qualification, gauge strike/cutoff/recovery evidence, dry-weather residual baselines, rainfall→hydraulic lag/correlation, 18 h event linkage, channel scores and weekly RAG decision paths. See `docs/companion-repository-assessment.md` for the implemented cross-repository boundary and method thresholds.
