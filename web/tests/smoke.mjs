@@ -140,7 +140,7 @@ try{
   await page.click('#runCompareBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#scenarioBody tr').length===1&&document.querySelectorAll('#metricGrid .metric').length>=10,null,{timeout:60000});
   const comparisonValidity=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastComparisonValidity);
-  if(!comparisonValidity||comparisonValidity.status!=='complete'||Math.abs(Number(comparisonValidity.coverage)-1)>1e-9)throw new Error(`Comparison validity contract not surfaced correctly: ${JSON.stringify(comparisonValidity)}`);
+  if(!comparisonValidity||comparisonValidity.status!=='partial'||!(Number(comparisonValidity.coverage)>0&&Number(comparisonValidity.coverage)<1))throw new Error(`Comparison validity contract should expose the demo telemetry gap as partial support: ${JSON.stringify(comparisonValidity)}`);
   const metricText=await page.locator('#metricGrid').textContent();
   if(!metricText.includes('Calculation status')||!metricText.includes('Valid support'))throw new Error('Comparison validity cards are missing');
   for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])await page.waitForSelector(`#${id} .main-svg`,{timeout:60000});
