@@ -437,12 +437,18 @@ def _comparison_frames(obs_path, obs_col, model_path, model_col, *, quantity_ove
             model_scale = float(factor)
         unit_status = "resolved-by-source-and-user"
     else:
-        if not resolved_obs or not resolved_model:
-            raise ValueError("Comparison unit is unresolved. Select an explicit engineering unit or confirm 'same source unit'.")
-        if resolved_obs != resolved_model:
+        if not resolved_obs and not resolved_model:
+            # Statistical comparison is still valid in the common numeric source unit,
+            # but dimensional interpretation (for example m³ volume) remains withheld.
+            unit = "source unit"
+            unit_status = "unresolved-same-source"
+        elif not resolved_obs or not resolved_model:
+            raise ValueError("Only one source has a resolved unit. Select an explicit comparison unit so the unresolved source can be converted.")
+        elif resolved_obs != resolved_model:
             raise ValueError(f"Resolved source units differ ({resolved_obs} vs {resolved_model}).")
-        unit = resolved_obs
-        unit_status = "resolved"
+        else:
+            unit = resolved_obs
+            unit_status = "resolved"
 
     obs[obs_col] = pd.to_numeric(obs[obs_col], errors="coerce") * obs_scale
     mod[model_col] = pd.to_numeric(mod[model_col], errors="coerce") * model_scale
