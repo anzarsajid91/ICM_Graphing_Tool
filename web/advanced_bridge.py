@@ -11,20 +11,46 @@ from icm_workbench.analysis import (
 )
 
 
-def rating_sources_result(obs_depth_path,obs_depth_col,obs_flow_path,obs_flow_col,model_depth_path=None,model_depth_col=None,model_flow_path=None,model_flow_col=None,max_gap_seconds=900.0):
+def rating_sources_result(obs_depth_path,obs_depth_col,obs_flow_path,obs_flow_col,model_depth_path=None,model_depth_col=None,model_flow_path=None,model_flow_col=None,max_gap_seconds=900.0,start=None,end=None):
+    start_ts=python_bridge._model_clock_timestamp(start)
+    end_ts=python_bridge._model_clock_timestamp(end)
     def fit(depth_path,depth_col,flow_path,flow_col):
-        depth=python_bridge._load(depth_path).frame; flow=python_bridge._load(flow_path).frame
-        paired=pair_series(depth,flow,depth_col,flow_col,max_gap_seconds=float(max_gap_seconds))
-        if paired.empty:return {"ok":False,"n":0,"message":"No bounded depth/flow pairs available."}
-        result=rating_curve_fit(paired["obs"],paired["sim"]); result["points"]=python_bridge._records(paired.rename(columns={"obs":"depth","sim":"flow"}))
+        depth=python_bridge._load(depth_path).frame
+        flow=python_bridge._load(flow_path).frame
+        paired=pair_series(
+            depth,flow,depth_col,flow_col,
+            max_gap_seconds=float(max_gap_seconds),
+            start=start_ts,end=end_ts,
+        )
+        depth_contract=python_bridge._series_contract(depth_path,depth_col)
+        flow_contract=python_bridge._series_contract(flow_path,flow_col)
+        if paired.empty:
+            return {
+                "ok":False,"n":0,"message":"No bounded depth/flow pairs available.",
+                "depth_contract":depth_contract,"flow_contract":flow_contract,
+            }
+        result=rating_curve_fit(paired["obs"],paired["sim"])
+        result["points"]=python_bridge._records(paired.rename(columns={"obs":"depth","sim":"flow"}))
+        result["depth_contract"]=depth_contract
+        result["flow_contract"]=flow_contract
         return result
     observed=fit(obs_depth_path,obs_depth_col,obs_flow_path,obs_flow_col)
     modelled=None
-    if model_depth_path and model_flow_path and model_depth_col and model_flow_col:modelled=fit(model_depth_path,model_depth_col,model_flow_path,model_flow_col)
-    payload={"observed":observed,"modelled":modelled}
+    if model_depth_path and model_flow_path and model_depth_col and model_flow_col:
+        modelled=fit(model_depth_path,model_depth_col,model_flow_path,model_flow_col)
+    payload={"observed":observed,"modelled":modelled,"period":{"start":start_ts,"end":end_ts}}
     if observed.get("ok") and modelled and modelled.get("ok"):
         payload["coefficient_difference_percent"]=100.0*(modelled["a"]-observed["a"])/observed["a"] if observed["a"] else None
         payload["exponent_difference"]=modelled["b"]-observed["b"]
+        common_min=max(float(observed["depth_min"]),float(modelled["depth_min"]))
+        common_max=min(float(observed["depth_max"]),float(modelled["depth_max"]))
+        if common_max>common_min:
+            xs=np.geomspace(common_min,common_max,80)
+            obs_ref=float(observed["a"])*xs**float(observed["b"])
+            model_ref=float(modelled["a"])*xs**float(modelled["b"])
+            pct=np.where(obs_ref!=0,(model_ref-obs_ref)/obs_ref*100.0,np.nan)
+            finite=pct[np.isfinite(pct)]
+            payload["median_model_deviation_from_observed_reference_percent"]=float(np.median(finite)) if len(finite) else None
     return json.dumps(python_bridge._jsonable(payload),ensure_ascii=False)
 
 
@@ -119,6 +145,25 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
         "missing_count":missing_count,
         "negative_count":int((pd.to_numeric(x[column],errors="coerce")<0).sum()),
         "final_total_mm":result["total_depth_mm"],
+        "peak_intensity_mm_h": (
+            float(pd.to_numeric(x[column],errors="coerce").max())
+            if pd.to_numeric(x[column],errors="coerce").notna().any() else None
+        ),
+        "mean_intensity_mm_h": (
+            float(result["total_depth_mm"])/(float(result["valid_seconds"])/3600.0)
+            if result["total_depth_mm"] is not None and float(result["valid_seconds"] or 0)>0 else None
+        ),
+        "median_intensity_mm_h": (
+            float(pd.to_numeric(x[column],errors="coerce").median())
+            if pd.to_numeric(x[column],errors="coerce").notna().any() else None
+        ),
+        "wet_hours": (
+            float(seg.loc[
+                seg["valid"].astype(bool) & pd.to_numeric(seg["value"],errors="coerce").fillna(0).gt(0),
+                "support_seconds"
+            ].sum())/3600.0 if not seg.empty else 0.0
+        ),
+        "valid_hours":float(result["valid_seconds"] or 0.0)/3600.0,
         "complete":complete,
         "calculation_status":result["status"],
         "coverage_fraction":result["coverage_fraction"],
