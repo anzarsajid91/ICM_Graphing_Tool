@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from icm_workbench.analysis.rainfall import daily_rainfall_support
+
 
 def rating_curve_fit(depth, flow):
     """Fit Q=a*H**b using positive finite depth/flow pairs in log10 space."""
@@ -38,29 +40,109 @@ def weekly_data_assessment(df,max_gap_seconds=900.0):
     return pd.DataFrame(rows)
 
 
-def dry_weather_flow(flow_df,flow_col,rainfall_df=None,rain_col="rainfall",dry_day_mm=1.0,baseline_days=28,min_dry_days=5,adp_hours=6.0):
-    """Screening DWF baseline: dry day <= threshold, recent baseline, daily minimum ADP rolling mean."""
-    if flow_df is None or getattr(flow_df,"empty",True) or flow_col not in flow_df.columns:return {"available":"No","reason":"Observed flow unavailable."}
-    f=flow_df[["timestamp",flow_col]].copy(); f["timestamp"]=pd.to_datetime(f.timestamp,errors="coerce"); f[flow_col]=pd.to_numeric(f[flow_col],errors="coerce"); f=f.dropna(subset=["timestamp",flow_col]).sort_values("timestamp")
-    if f.empty:return {"available":"No","reason":"No valid observed flow."}
-    d=f.timestamp.diff().dt.total_seconds().div(60); d=d[d>0]; step=float(d.median()) if len(d) else np.nan
+def dry_weather_flow(
+    flow_df,
+    flow_col,
+    rainfall_df=None,
+    rain_col="rainfall",
+    dry_day_mm=1.0,
+    baseline_days=28,
+    min_dry_days=5,
+    adp_hours=6.0,
+    rain_semantics="intensity",
+    rain_interval_min=None,
+    rain_max_gap_seconds=None,
+):
+    """Validity-aware screening DWF baseline.
+
+    A day is eligible only when rainfall support is complete for that civil/model
+    clock day. Missing or uncovered rainfall is unknown, never dry.
+    """
+    if flow_df is None or getattr(flow_df,"empty",True) or flow_col not in flow_df.columns:
+        return {"available":"No","reason":"Observed flow unavailable.","calculation_status":"unavailable"}
+    f=flow_df[["timestamp",flow_col]].copy()
+    f["timestamp"]=pd.to_datetime(f.timestamp,errors="coerce")
+    f[flow_col]=pd.to_numeric(f[flow_col],errors="coerce")
+    f=f.dropna(subset=["timestamp",flow_col]).sort_values("timestamp")
+    if f.empty:
+        return {"available":"No","reason":"No valid observed flow.","calculation_status":"unavailable"}
+
+    d=f.timestamp.diff().dt.total_seconds().div(60)
+    d=d[d>0]
+    step=float(d.median()) if len(d) else np.nan
     f["day"]=f.timestamp.dt.floor("D")
+
     if rainfall_df is None or getattr(rainfall_df,"empty",True) or rain_col not in rainfall_df.columns:
-        return {"available":"Partial","reason":"Rainfall unavailable; all flow records used.","average_dwf":float(f[flow_col].mean()),"dry_days_used":None}
-    r=rainfall_df[["timestamp",rain_col]].copy(); r["timestamp"]=pd.to_datetime(r.timestamp,errors="coerce"); r[rain_col]=pd.to_numeric(r[rain_col],errors="coerce").fillna(0.0); r=r.dropna(subset=["timestamp"]).sort_values("timestamp")
-    rd=r.timestamp.diff().dt.total_seconds().div(3600); rd=rd[rd>0]; rain_step_h=float(rd.median()) if len(rd) else 0.0
-    # Rain parser may represent intensity or depth; this is explicitly a screening approximation matching the legacy workbench convention.
-    daily=r.assign(day=r.timestamp.dt.floor("D")).groupby("day")[rain_col].sum()*(rain_step_h if rain_step_h>0 else 1.0)
-    dry=set(daily[daily<=float(dry_day_mm)].index); cutoff=f.day.max()-pd.Timedelta(days=int(baseline_days)); chosen=sorted(day for day in dry if day>=cutoff and day<=f.day.max())
-    use=f[f.day.isin(chosen)].copy(); daily_min=[]
+        return {
+            "available":"Unavailable",
+            "reason":"Rainfall unavailable; dry-weather days cannot be established.",
+            "average_dwf":None,
+            "dry_days_used":0,
+            "calculation_status":"unavailable",
+            "candidate_days":[],
+        }
+
+    daily=daily_rainfall_support(
+        rainfall_df,
+        rain_col,
+        semantics=rain_semantics,
+        declared_interval_minutes=rain_interval_min,
+        max_gap_seconds=rain_max_gap_seconds,
+    )
+    if daily.empty:
+        return {
+            "available":"Unavailable",
+            "reason":"Rainfall contains no assessable support; dry-weather days cannot be established.",
+            "average_dwf":None,
+            "dry_days_used":0,
+            "calculation_status":"unavailable",
+            "candidate_days":[],
+        }
+
+    daily_by_day={pd.Timestamp(row.day):row for row in daily.itertuples(index=False)}
+    last_day=f["day"].max()
+    cutoff=last_day-pd.Timedelta(days=int(baseline_days))
+    candidate_days=[]
+    chosen=[]
+    for day in sorted(pd.unique(f.loc[(f["day"]>=cutoff)&(f["day"]<=last_day),"day"])):
+        day=pd.Timestamp(day)
+        row=daily_by_day.get(day)
+        if row is None:
+            candidate_days.append({"day":day,"status":"unknown","reason":"No rainfall support for day.","rainfall_depth_mm":None,"rainfall_coverage_fraction":0.0})
+            continue
+        coverage=float(row.coverage_fraction)
+        depth=float(row.depth_mm)
+        if row.status!="complete" or coverage<0.999999:
+            candidate_days.append({"day":day,"status":"unknown","reason":"Rainfall support is incomplete.","rainfall_depth_mm":depth,"rainfall_coverage_fraction":coverage})
+            continue
+        if depth<=float(dry_day_mm):
+            chosen.append(day)
+            candidate_days.append({"day":day,"status":"dry","reason":"Complete rainfall support and depth at/below threshold.","rainfall_depth_mm":depth,"rainfall_coverage_fraction":coverage})
+        else:
+            candidate_days.append({"day":day,"status":"wet","reason":"Rainfall depth exceeds dry-day threshold.","rainfall_depth_mm":depth,"rainfall_coverage_fraction":coverage})
+
+    use=f[f.day.isin(chosen)].copy()
+    daily_min=[]
     if np.isfinite(step) and step>0:
         window=max(1,int(round(float(adp_hours)*60.0/step)))
         for _,g in use.groupby("day"):
             s=pd.to_numeric(g[flow_col],errors="coerce").rolling(window=window,min_periods=max(1,window//2)).mean()
             if s.notna().any():daily_min.append(float(s.min()))
     value=float(np.nanmean(daily_min)) if daily_min else (float(use[flow_col].mean()) if not use.empty else np.nan)
-    return {"available":"Yes" if len(chosen)>=int(min_dry_days) else "Low confidence","average_dwf":value if np.isfinite(value) else None,"dry_days_used":int(len(chosen)),"dry_day_threshold_mm":float(dry_day_mm),"baseline_days":int(baseline_days),"minimum_dry_days":int(min_dry_days),"adp_hours":float(adp_hours)}
-
+    enough=len(chosen)>=int(min_dry_days)
+    return {
+        "available":"Yes" if enough else "Low confidence",
+        "average_dwf":value if np.isfinite(value) else None,
+        "dry_days_used":int(len(chosen)),
+        "dry_day_threshold_mm":float(dry_day_mm),
+        "baseline_days":int(baseline_days),
+        "minimum_dry_days":int(min_dry_days),
+        "adp_hours":float(adp_hours),
+        "calculation_status":"complete" if enough else "partial",
+        "rainfall_semantics":rain_semantics,
+        "rainfall_interval_min":None if rain_interval_min is None else float(rain_interval_min),
+        "candidate_days":candidate_days,
+    }
 
 def event_response_summary(observed,modelled,events,obs_col,model_col,baseline_hours=3.0,post_hours=6.0):
     """Per-rainfall-event peak uplift and timing comparison without assigning a subjective pass/fail score."""
