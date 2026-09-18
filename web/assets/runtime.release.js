@@ -317,7 +317,57 @@ function useGraphZoom(){
     $('comparisonPeriodStatus').textContent='No finite graph zoom is active. Zoom the time-series graph first, then use this button.';
   }
 }
-async function runRating(){const od=mappingObject($('ratingObsDepth').value),of=mappingObject($('ratingObsFlow').value),md=mappingObject($('ratingModelDepth').value),mf=mappingObject($('ratingModelFlow').value);if(!od||!of)throw new Error('Select observed depth and flow.');const args={obs_depth_path:od.item.virtualPath,obs_depth_col:od.col,obs_flow_path:of.item.virtualPath,obs_flow_col:of.col,max_gap_seconds:Number($('gapInput').value||900)};if(md&&mf)Object.assign(args,{model_depth_path:md.item.virtualPath,model_depth_col:md.col,model_flow_path:mf.item.virtualPath,model_flow_col:mf.col});const r=await engine.call('rating_sources_result',args,'advanced_bridge'),o=r.observed||{},m=r.modelled||null;$('ratingSummary').innerHTML=`<div class="summary-box"><div><strong>${o.ok?`Q=${fmt(o.a,4)}H^${fmt(o.b,4)}`:'Unavailable'}</strong><span>Observed fit</span></div><div><strong>${o.ok?fmt(o.r2,4):'—'}</strong><span>Observed R²</span></div><div><strong>${m?.ok?`Q=${fmt(m.a,4)}H^${fmt(m.b,4)}`:'Unavailable'}</strong><span>Model fit</span></div><div><strong>${m?.ok?fmt(m.r2,4):'—'}</strong><span>Model R²</span></div></div>`;const traces=[];for(const[label,fit,color]of[['Observed',o,$('obsColor').value],['Modelled',m,state.modelColours[state.mapping.models[0]]||palette[0]]]){if(!fit?.ok)continue;const pts=fit.points||[];traces.push({x:pts.map(x=>x.depth),y:pts.map(x=>x.flow),mode:'markers',name:label,marker:{size:5,opacity:.35,color}});const x=Array.from({length:80},(_,i)=>fit.depth_min+(fit.depth_max-fit.depth_min)*i/79);traces.push({x,y:x.map(h=>fit.a*h**fit.b),mode:'lines',name:`${label} fit`,line:{color,width:2}});}await Plotly.react('ratingChart',traces,{template:'plotly_white',title:'Flow–depth rating',xaxis:{title:'Depth'},yaxis:{title:'Flow'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});}
+function ratingAxisUnit(contract,fallback){
+  return contract?.canonical_unit||contract?.original_unit||fallback||'source unit';
+}
+function renderRatingResult(r){
+  state.ratingResult=r;
+  const o=r?.observed||{},m=r?.modelled||null;
+  const showFits=$('ratingShowFits')?.checked!==false,showReference=$('ratingShowReference')?.checked!==false,log=$('ratingLogScale')?.checked===true;
+  const obsColor=$('obsColor').value,modelColor=state.modelColours[state.mapping.models[0]]||palette[0];
+  const traces=[];
+  if(o.ok){
+    const pts=o.points||[];
+    traces.push({x:pts.map(x=>x.depth),y:pts.map(x=>x.flow),mode:'markers',name:'Observed samples',marker:{size:5,opacity:.32,color:obsColor}});
+    if(showReference){
+      const xs=Array.from({length:100},(_,i)=>o.depth_min+(o.depth_max-o.depth_min)*i/99);
+      traces.push({x:xs,y:xs.map(h=>o.a*h**o.b),mode:'lines',name:'Observed reference fit',line:{color:obsColor,width:2.4}});
+    }
+  }
+  if(m?.ok){
+    const pts=m.points||[];
+    traces.push({x:pts.map(x=>x.depth),y:pts.map(x=>x.flow),mode:'markers',name:'Modelled samples',marker:{size:5,opacity:.25,color:modelColor}});
+    if(showFits){
+      const xs=Array.from({length:100},(_,i)=>m.depth_min+(m.depth_max-m.depth_min)*i/99);
+      traces.push({x:xs,y:xs.map(h=>m.a*h**m.b),mode:'lines',name:'Modelled fit',line:{color:modelColor,width:2}});
+    }
+  }
+  const depthUnit=ratingAxisUnit(o.depth_contract,m?.depth_contract?.canonical_unit||'source unit');
+  const flowUnit=ratingAxisUnit(o.flow_contract,m?.flow_contract?.canonical_unit||'source unit');
+  Plotly.react('ratingChart',traces,{
+    template:'plotly_white',title:{text:`Flow–depth rating · ${activeComparisonPeriod().label}`,x:.02,xanchor:'left',font:{size:15}},
+    xaxis:{title:`Depth (${depthUnit})`,type:log?'log':'linear'},yaxis:{title:`Flow (${flowUnit})`,type:log?'log':'linear'},
+    legend:{orientation:'h',y:1.03,x:1,xanchor:'right',yanchor:'bottom',font:{size:10}},margin:{l:70,r:24,t:72,b:62},
+  },{responsive:true,displaylogo:false});
+  const cards=[
+    ['Observed n',o.n??'—'],['Observed a',fmt(o.a)],['Observed b',fmt(o.b)],['Observed R²',fmt(o.r2)],['Observed log RMSE',fmt(o.rmse_log10)],
+    ['Model n',m?.n??'—'],['Model a',fmt(m?.a)],['Model b',fmt(m?.b)],['Model R²',fmt(m?.r2)],['Model log RMSE',fmt(m?.rmse_log10)],
+    ['Δa %',fmt(r?.coefficient_difference_percent,2)],['Δb',fmt(r?.exponent_difference,4)],['Median model deviation %',fmt(r?.median_model_deviation_from_observed_reference_percent,2)],
+  ];
+  $('ratingSummary').innerHTML=`<div class="summary-box">${cards.map(([k,v])=>`<div><strong>${esc(v)}</strong><span>${esc(k)}</span></div>`).join('')}</div>`;
+  chartMetricStrip('ratingMetrics','Rating-curve methodology',[
+    ['Reference','Observed empirical Q = aHᵇ fit'],['Period',activeComparisonPeriod().label],['Observed MAPE',o.median_abs_percent_error==null?'—':fmt(o.median_abs_percent_error,2)+'%'],['Model MAPE',m?.median_abs_percent_error==null?'—':fmt(m.median_abs_percent_error,2)+'%']
+  ]);
+}
+async function runRating(){
+  const od=mappingObject($('ratingObsDepth').value),of=mappingObject($('ratingObsFlow').value),md=mappingObject($('ratingModelDepth').value),mf=mappingObject($('ratingModelFlow').value);
+  if(!od||!of)throw new Error('Flow–depth rating requires observed depth and observed flow. For depth-vs-depth model verification use Run comparison above.');
+  const active=activeComparisonPeriod();
+  const args={obs_depth_path:od.item.virtualPath,obs_depth_col:od.col,obs_flow_path:of.item.virtualPath,obs_flow_col:of.col,max_gap_seconds:Number($('gapInput').value||900),...active.bounds};
+  if(md&&mf)Object.assign(args,{model_depth_path:md.item.virtualPath,model_depth_col:md.col,model_flow_path:mf.item.virtualPath,model_flow_col:mf.col});
+  const r=await engine.call('rating_sources_result',args,'advanced_bridge');
+  renderRatingResult(r);
+}
 async function runDwf(){const flow=mappingObject($('dwfFlowSelect').value),rain=mappingObject(state.mapping.rain);if(!flow)throw new Error('Select observed flow.');const r=await engine.call('dwf_scaled',{flow_path:flow.item.virtualPath,flow_col:flow.col,rain_path:rain?.item.virtualPath||null,rain_col:rain?.col||'rainfall',rain_factor:Number($('rainFactor').value||1),dry_day_mm:Number($('dwfDryDay').value||1),baseline_days:Number($('dwfBaselineDays').value||28),min_dry_days:5,adp_hours:Number($('dwfAdpHours').value||6)},'advanced_bridge');$('dwfSummary').innerHTML=`<div class="summary-box"><div><strong>${esc(r.available)}</strong><span>availability/confidence</span></div><div><strong>${fmt(r.average_dwf,5)}</strong><span>average DWF</span></div><div><strong>${r.dry_days_used??'—'}</strong><span>dry days used</span></div><div><strong>${fmt(r.dry_day_threshold_mm,2)} mm</strong><span>dry-day threshold</span></div><div><strong>${r.baseline_days??'—'}</strong><span>baseline days</span></div><div><strong>${fmt(r.adp_hours,1)} hr</strong><span>ADP window</span></div></div>${r.reason?`<div class="pool-summary">${esc(r.reason)}</div>`:''}`;}
 
 function exclusionPayload(strict=true,role=null,key=null){
