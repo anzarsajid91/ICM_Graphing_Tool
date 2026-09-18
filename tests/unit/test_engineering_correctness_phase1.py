@@ -11,6 +11,10 @@ from icm_workbench.analysis import (
     rainfall_accumulation,
     spill_block_volumes,
     idealised_storage_screening,
+    integrate_series,
+    time_coverage,
+    validity_summary,
+    compare_scenarios,
 )
 from icm_workbench.parsers.csv import parse_tabular_csv
 from icm_workbench.services.workspace import SCHEMA_VERSION, migrate_workspace_dict, workspace_from_dict
@@ -151,3 +155,76 @@ def test_workspace_v1_v2_v3_migrate_to_v3(version):
     assert migrated["schema_version"]==SCHEMA_VERSION==3
     workspace=workspace_from_dict(data)
     assert workspace.schema_version==3
+
+
+
+def test_validity_contract_has_canonical_states_and_status():
+    summary=validity_summary(
+        requested_seconds=600,
+        valid_seconds=420,
+        excluded_seconds=60,
+        missing_seconds=60,
+        unknown_seconds=30,
+        uncovered_seconds=30,
+    )
+    assert tuple(summary["states"])==("valid","suspect","invalid","excluded","missing","unknown")
+    assert summary["assessable_seconds"]==pytest.approx(540)
+    assert summary["states"]["unknown"]==pytest.approx(60)
+    assert summary["coverage_fraction"]==pytest.approx(420/540)
+    assert summary["calculation_status"]=="partial"
+
+
+def test_integration_exclusion_over_missing_support_is_not_double_counted():
+    t0=pd.Timestamp("2026-01-01 00:00")
+    frame=pd.DataFrame(
+        {
+            "timestamp":[t0,t0+pd.Timedelta(minutes=10)],
+            "flow":[1.0,float("nan")],
+        }
+    )
+    from icm_workbench.domain import ExclusionPeriod
+    result=integrate_series(
+        frame,
+        "flow",
+        t0,
+        t0+pd.Timedelta(minutes=10),
+        max_gap_seconds=900,
+        exclusions=[ExclusionPeriod(t0+pd.Timedelta(minutes=2),t0+pd.Timedelta(minutes=4),"bad telemetry")],
+    )
+    assert result["excluded_seconds"]==pytest.approx(120)
+    assert result["gap_seconds"]==pytest.approx(480)
+    assert result["uncovered_seconds"]==pytest.approx(0)
+    assert result["validity"]["states"]["unknown"]==pytest.approx(480)
+    assert result["status"]=="unavailable"
+
+
+def test_time_coverage_reports_missing_and_uncovered_support():
+    t0=pd.Timestamp("2026-01-01 00:00")
+    frame=pd.DataFrame(
+        {
+            "timestamp":[t0,t0+pd.Timedelta(minutes=5),t0+pd.Timedelta(minutes=10)],
+            "level":[1.0,float("nan"),1.0],
+        }
+    )
+    result=time_coverage(frame,"level",t0,t0+pd.Timedelta(minutes=15),max_gap_seconds=600)
+    assert result["missing_seconds"]==pytest.approx(600)
+    assert result["uncovered_seconds"]==pytest.approx(300)
+    assert result["valid_seconds"]==pytest.approx(0)
+    assert result["status"]=="unavailable"
+
+
+def test_scenario_metrics_expose_validity_coverage():
+    t=pd.date_range("2026-01-01",periods=4,freq="5min")
+    observed=pd.DataFrame({"timestamp":t,"flow":[1.0,1.0,1.0,1.0]})
+    modelled=pd.DataFrame({"timestamp":t,"flow":[1.0,1.1,0.9,1.0]})
+    result=compare_scenarios(
+        observed,
+        "flow",
+        {"base":(modelled,"flow")},
+        max_gap_seconds=600,
+    )
+    row=result.iloc[0]
+    assert row["calculation_status"]=="complete"
+    assert row["observed_coverage_fraction"]==pytest.approx(1.0)
+    assert row["model_coverage_fraction"]==pytest.approx(1.0)
+    assert row["validity_model"]=="validity-v1"
