@@ -113,8 +113,97 @@ function graphAnnotations(){const out=[],a=nullableNumber($('obsThreshold').valu
 async function drawTimeChart(){return window.ICMGraph?.draw();}
 
 function analysisBounds(){return {start:modelClock($('analysisStart').value)||null,end:modelClock($('analysisEnd').value)||null};}
-async function runCompare(){const obs=mappingObject(state.mapping.observed),models=currentModels();if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();state.comparisons=[];for(const m of models){try{state.comparisons.push({model:m,result:await engine.call('compare_series',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,max_gap_seconds:gap,offset_minutes:offset,...bounds,exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])})});}catch(err){state.comparisons.push({model:m,error:String(err?.message||err)});}}await renderComparisons();state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};}
-const metricCard=(k,v)=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`;
+function selectedComparisonBounds(){
+  const b=analysisBounds();
+  if(!b.start&&!b.end)return null;
+  if(!b.start||!b.end)throw new Error('Selected-period comparison requires both start and end.');
+  if(b.end<=b.start)throw new Error('Selected-period end must be after start.');
+  return b;
+}
+function comparisonContractArgs(){
+  return {
+    quantity_override:$('comparisonQuantity')?.value||'auto',
+    unit_override:$('comparisonUnit')?.value||'auto',
+  };
+}
+function activeComparisonPeriod(){
+  const wantsSelected=$('comparisonPlotPeriod')?.value==='selected';
+  const selected=selectedComparisonBounds();
+  return wantsSelected&&selected?{key:'selected',label:'Selected period',bounds:selected}:{key:'full',label:'Full overlapping period',bounds:{start:null,end:null}};
+}
+function comparisonResultFor(entry,key){return key==='selected'?(entry.selected_result||entry.full_result):entry.full_result;}
+function syncActiveComparisonResults(){
+  const key=activeComparisonPeriod().key;
+  for(const entry of state.comparisons)entry.result=comparisonResultFor(entry,key);
+}
+function comparisonUnitLabel(result){
+  const unit=result?.unit;
+  if(unit&&unit!=='source unit')return unit;
+  return result?.unit_status?.startsWith('unresolved')?'source unit (unresolved)':(unit||'source unit');
+}
+function metricCard(k,v){return `<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`;}
+function periodMetricPanel(title,result,note=''){
+  if(!result)return `<section class="metric-period"><h4>${esc(title)}</h4><div class="period-note">Not calculated.</div></section>`;
+  const m=result.metrics||{},coverage=result.coverage_fraction;
+  const cards=[
+    ['Status',result.calculation_status||'unavailable'],
+    ['Coverage',coverage==null?'—':fmt(Number(coverage)*100,1)+'%'],
+    ['Pairs',m.pairs??'—'],
+    ['RMSE',fmt(m.rmse)],
+    ['MAE',fmt(m.mae)],
+    ['Mean bias',fmt(m.mean_bias)],
+    ['R²',fmt(m.r2_correlation)],
+    ['NSE',fmt(m.nse)],
+    ['KGE 2009',fmt(m.kge_2009)],
+    ['Obs mean',fmt(m.obs_mean)],
+    ['Model mean',fmt(m.sim_mean)],
+    ['Peak lag min',fmt(m.peak_timing_minutes_model_minus_observed,2)],
+  ].map(([k,v])=>metricCard(k,v)).join('');
+  return `<section class="metric-period"><h4>${esc(title)} · ${esc(result.quantity||'value')} · ${esc(comparisonUnitLabel(result))}</h4><div class="metric-grid">${cards}</div>${note?`<div class="period-note">${esc(note)}</div>`:''}</section>`;
+}
+function renderComparisonErrors(){
+  const errors=state.comparisons.filter(x=>x.error||x.selected_error);
+  $('comparisonErrors').innerHTML=errors.map((x,i)=>{
+    const msg=x.error||x.selected_error;
+    return `<div class="privacy-note audit-bad"><strong>Model ${i+1} comparison unavailable:</strong> ${esc(msg)}</div>`;
+  }).join('');
+}
+async function runCompare(){
+  const obs=mappingObject(state.mapping.observed),models=currentModels();
+  if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');
+  const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),selected=selectedComparisonBounds(),contract=comparisonContractArgs();
+  const signature=analysisSignature(),config=workspaceObject();
+  state.comparisons=[];
+  for(const m of models){
+    const common={
+      obs_path:obs.item.virtualPath,obs_col:obs.col,
+      model_path:m.item.virtualPath,model_col:m.col,
+      max_gap_seconds:gap,offset_minutes:offset,
+      exclusions_json:JSON.stringify([
+        ...exclusionPayload(true,'observed',state.mapping.observed),
+        ...exclusionPayload(true,'model',sourceKey(m.id,m.col)),
+      ]),
+      ...contract,
+    };
+    const entry={model:m,full_result:null,selected_result:null,result:null,error:null,selected_error:null};
+    try{entry.full_result=await engine.call('compare_series',{...common,start:null,end:null});}
+    catch(err){entry.error=String(err?.message||err);}
+    if(selected){
+      try{entry.selected_result=await engine.call('compare_series',{...common,...selected});}
+      catch(err){entry.selected_error=String(err?.message||err);}
+    }
+    state.comparisons.push(entry);
+  }
+  syncActiveComparisonResults();
+  await renderComparisons();
+  state.comparisonSnapshot={
+    signature,config,
+    results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({
+      model:workspaceSeries(sourceKey(x.model.id,x.model.col)),
+      full_result:x.full_result,selected_result:x.selected_result,error:x.error,selected_error:x.selected_error,
+    }))),
+  };
+}
 async function renderComparisons(){const ok=state.comparisons.filter(x=>x.result),first=ok[0];if(!first){$('metricGrid').innerHTML='<div class="pool-summary">No valid comparison pairs.</div>';return;}const m=first.result.metrics||{},status=first.result.calculation_status||'unavailable',coverage=first.result.coverage_fraction;$('metricGrid').innerHTML=[['Calculation status',status],['Valid support',coverage===null||coverage===undefined?'—':fmt(Number(coverage)*100,2)+'%'],['Pairs',m.pairs],['RMSE',fmt(m.rmse)],['MAE',fmt(m.mae)],['Mean bias',fmt(m.mean_bias)],['R²',fmt(m.r2_correlation)],['NSE',fmt(m.nse)],['KGE 2009',fmt(m.kge_2009)],['Obs peak',fmt(m.obs_peak)],['Model peak',fmt(m.sim_peak)],['Peak lag min',fmt(m.peak_timing_minutes_model_minus_observed,2)]].map(([k,v])=>metricCard(k,v)).join('');diagnostic.lastComparisonValidity={status,coverage};let p=first.result.paired||[];const log=$('scatterScale').value==='log';if(log)p=p.filter(x=>Number(x.obs)>0&&Number(x.sim)>0);const vals=p.flatMap(x=>[Number(x.obs),Number(x.sim)]).filter(Number.isFinite),lo=Math.min(...vals),hi=Math.max(...vals),scatter=[{x:p.map(x=>x.obs),y:p.map(x=>x.sim),mode:'markers',name:'Paired',marker:{size:5,opacity:.5,color:'#0a66c2'}}];if(Number.isFinite(lo)&&Number.isFinite(hi))scatter.push({x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1',line:{dash:'dash',color:'#667085'}});await Plotly.react('scatterChart',scatter,{template:'plotly_white',title:`Observed vs modelled${log?' — log scale':''}`,xaxis:{title:'Observed',type:log?'log':'linear'},yaxis:{title:'Modelled',type:log?'log':'linear'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});await Plotly.react('residualChart',[{x:p.map(x=>x.timestamp),y:p.map(x=>x.residual),mode:'lines',name:'Model − observed',line:{color:'#a62929',width:1.4}}],{template:'plotly_white',title:'Residual through time',xaxis:{title:'Time'},yaxis:{title:'Residual'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});const obs=mappingObject(state.mapping.observed),d=await engine.call('diagnostic_result',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:first.model.item.virtualPath,model_col:first.model.col,max_gap_seconds:Number($('gapInput').value||900),offset_minutes:Number($('offsetInput').value||0),...analysisBounds(),exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(first.model.id,first.model.col))])}),cum=d.cumulative||[];await Plotly.react('cumulativeChart',[{x:cum.map(x=>x.timestamp),y:cum.map(x=>x.obs_cumulative_m3),name:'Observed cumulative',mode:'lines'},{x:cum.map(x=>x.timestamp),y:cum.map(x=>x.sim_cumulative_m3),name:'Model cumulative',mode:'lines'}],{template:'plotly_white',title:d.flow_diagnostics_available?'Cumulative volume':'Unavailable — flow inputs and unmasked support required',xaxis:{title:'Time'},yaxis:{title:/flow/i.test(obs.col)?'m³':'value × s'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});const oe=d.observed_exceedance||[],me=d.modelled_exceedance||[],okey=oe.length?Object.keys(oe[0]).find(k=>!['exceedance_fraction','weight'].includes(k)):null,mkey=me.length?Object.keys(me[0]).find(k=>!['exceedance_fraction','weight'].includes(k)):null;await Plotly.react('exceedanceChart',[{x:oe.map(x=>100*x.exceedance_fraction),y:oe.map(x=>x[okey]),name:'Observed',mode:'lines'},{x:me.map(x=>100*x.exceedance_fraction),y:me.map(x=>x[mkey]),name:'Modelled',mode:'lines'}],{template:'plotly_white',title:d.flow_diagnostics_available?'Flow duration — left-support time weighting':'Unavailable — flow inputs and unmasked support required',xaxis:{title:'Exceedance %'},yaxis:{title:'Value'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});$('scenarioBody').innerHTML=state.comparisons.map(x=>{const q=x.result?.metrics||{};return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${q.pairs??'—'}</td><td>${fmt(q.rmse)}</td><td>${fmt(q.mae)}</td><td>${fmt(q.mean_bias)}</td><td>${fmt(q.r2_correlation)}</td><td>${fmt(q.nse)}</td><td>${fmt(q.kge_2009)}</td><td>${fmt(q.peak_timing_minutes_model_minus_observed,2)}</td></tr>`;}).join('');}
 function useGraphZoom(){const r=$('timeChart')?.layout?.xaxis?.range;if(r?.length===2){$('analysisStart').value=toLocalInput(r[0]);$('analysisEnd').value=toLocalInput(r[1]);}}
 
