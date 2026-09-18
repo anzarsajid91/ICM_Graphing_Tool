@@ -80,27 +80,52 @@
           </div>
         </details>
         <div id="timeChart" class="chart"></div>
+        <div id="timeChartMetrics" class="graph-metrics" aria-live="polite"></div>
       </div>
     </section>
 
     <section class="tab-panel" id="tab-compare">
       <div class="panel">
         <div class="panel-head"><div><h2>Calibration comparison</h2><p>Bounded interpolation; no bridging across gaps longer than the configured maximum.</p></div><button class="btn primary" id="runCompareBtn">Run comparison</button></div>
-        <div class="mapping-grid compact-wide">
-          <label>Analysis start<input id="analysisStart" type="datetime-local" /></label>
-          <label>Analysis end<input id="analysisEnd" type="datetime-local" /></label>
-          <label>Preview model time offset (min)<input id="offsetInput" type="number" value="0" step="1" /></label>
-          <label>Scatter scale<select id="scatterScale"><option value="linear">Linear</option><option value="log">Log (positive pairs only)</option></select></label>
+        <div class="comparison-contract">
+          <div>
+            <h3>Comparison contract</h3>
+            <p>Observed-to-model statistics compare like-for-like hydraulic quantities. If generic CSV headers do not declare quantity or units, confirm them here rather than silently assuming.</p>
+          </div>
+          <div class="mapping-grid compact-wide">
+            <label>Comparison quantity<select id="comparisonQuantity"><option value="auto">Auto from source</option><option value="depth">Depth</option><option value="level">Level</option><option value="flow">Flow</option><option value="velocity">Velocity</option></select></label>
+            <label>Comparison unit<select id="comparisonUnit"><option value="auto">Auto from source</option><option value="same">Same source unit (confirmed)</option><option value="m">m</option><option value="mm">mm</option><option value="m3/s">m³/s</option><option value="L/s">L/s</option><option value="Ml/d">Ml/d</option><option value="m/s">m/s</option></select></label>
+            <label>Plot / diagnostic period<select id="comparisonPlotPeriod"><option value="full">Full overlapping period</option><option value="selected">Selected period</option></select></label>
+            <label>Scatter scale<select id="scatterScale"><option value="linear">Linear</option><option value="log">Log (positive pairs only)</option></select></label>
+          </div>
         </div>
-        <div class="actions left"><button class="btn" id="useZoomPeriodBtn">Use graph zoom as period</button><button class="btn" id="clearPeriodBtn">Clear period</button></div>
-        <div class="metric-grid" id="metricGrid"></div>
-        <div class="two-col"><div id="scatterChart" class="chart small"></div><div id="residualChart" class="chart small"></div></div>
-        <div class="two-col"><div id="cumulativeChart" class="chart small"></div><div id="exceedanceChart" class="chart small"></div></div>
-        <h3>Scenario table</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Scenario</th><th>Pairs</th><th>RMSE</th><th>MAE</th><th>Bias</th><th>R²</th><th>NSE</th><th>KGE</th><th>Peak lag min</th></tr></thead><tbody id="scenarioBody"></tbody></table></div>
+        <div class="mapping-grid compact-wide">
+          <label>Selected-period start<input id="analysisStart" type="datetime-local" /></label>
+          <label>Selected-period end<input id="analysisEnd" type="datetime-local" /></label>
+          <label>Preview model time offset (min)<input id="offsetInput" type="number" value="0" step="1" /></label>
+          <div class="period-status" id="comparisonPeriodStatus">Full-period metrics are always calculated. Set a selected period only when a focused comparison is required.</div>
+        </div>
+        <div class="actions left"><button class="btn" id="useZoomPeriodBtn">Use graph zoom as selected period</button><button class="btn" id="clearPeriodBtn">Clear selected period</button></div>
+        <div id="comparisonErrors"></div>
+        <div id="metricGrid" class="comparison-metrics"></div>
+        <div class="two-col chart-grid">
+          <div class="chart-card"><div id="scatterChart" class="chart small"></div><div id="scatterMetrics" class="graph-metrics compact"></div></div>
+          <div class="chart-card"><div id="residualChart" class="chart small"></div><div id="residualMetrics" class="graph-metrics compact"></div></div>
+        </div>
+        <div class="two-col chart-grid">
+          <div class="chart-card"><div id="cumulativeChart" class="chart small"></div><div id="cumulativeMetrics" class="graph-metrics compact"></div></div>
+          <div class="chart-card"><div id="exceedanceChart" class="chart small"></div><div id="exceedanceMetrics" class="graph-metrics compact"></div></div>
+        </div>
+        <h3>Scenario statistics</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Scenario</th><th>Period</th><th>Pairs</th><th>Coverage</th><th>RMSE</th><th>MAE</th><th>Bias</th><th>R²</th><th>NSE</th><th>KGE</th><th>Peak lag min</th></tr></thead><tbody id="scenarioBody"></tbody></table></div>
 
-        <div class="subpanel"><div class="subhead"><h3>Flow–depth rating diagnostics</h3><button class="btn" id="runRatingBtn">Fit rating curves</button></div>
+        <div class="subpanel rating-panel"><div class="subhead"><div><h3>Flow–depth rating diagnostic</h3><p>Separate hydraulic diagnostic: depth is plotted against flow. The observed fitted rating is the empirical reference curve; the main comparison charts above are used for depth-vs-depth, flow-vs-flow, level-vs-level or velocity-vs-velocity verification.</p></div><button class="btn" id="runRatingBtn">Fit rating curves</button></div>
           <div class="mapping-grid compact-wide"><label>Observed depth<select id="ratingObsDepth"></select></label><label>Observed flow<select id="ratingObsFlow"></select></label><label>Modelled depth<select id="ratingModelDepth"></select></label><label>Modelled flow<select id="ratingModelFlow"></select></label></div>
-          <div id="ratingSummary"></div><div id="ratingChart" class="chart small"></div>
+          <div class="rating-controls">
+            <label class="check-label"><input id="ratingShowFits" type="checkbox" checked />Show fitted curves</label>
+            <label class="check-label"><input id="ratingShowReference" type="checkbox" checked />Show observed reference curve</label>
+            <label class="check-label"><input id="ratingLogScale" type="checkbox" />Logarithmic axes</label>
+          </div>
+          <div id="ratingSummary"></div><div id="ratingChart" class="chart small"></div><div id="ratingMetrics" class="graph-metrics compact"></div>
         </div>
 
         <div class="subpanel"><div class="subhead"><h3>Dry-weather-flow baseline</h3><button class="btn" id="runDwfBtn">Calculate DWF</button></div>
