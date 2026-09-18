@@ -240,6 +240,75 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
 
+
+def _quantity(path, column):
+    metadata = getattr(_load(path), "metadata", {})
+    return metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
+
+
+def _series_contract(path, column, unit_override=None):
+    parsed = _load(path)
+    metadata = getattr(parsed, "metadata", {}) or {}
+    details = {}
+    if isinstance(metadata.get("series_metadata"), dict):
+        details = dict(metadata["series_metadata"].get(column) or {})
+    if not details and isinstance(metadata.get("channels"), dict):
+        details = dict(metadata["channels"].get(column) or {})
+    quantity = details.get("quantity") or metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
+    original_unit = details.get("original_unit", metadata.get("original_unit"))
+    resolved_unit = details.get("canonical_unit", metadata.get("canonical_unit"))
+    status = details.get("unit_status") or ("resolved" if resolved_unit else "unresolved")
+    scale = 1.0
+    source = "metadata" if resolved_unit else "unresolved"
+    if not resolved_unit and unit_override:
+        resolved_unit, factor = canonical_unit(quantity, unit_override)
+        if resolved_unit is None or factor is None:
+            raise ValueError(f"Unsupported unit override {unit_override!r} for {quantity or 'unknown quantity'}.")
+        scale = float(factor)
+        original_unit = str(unit_override)
+        status = "resolved-by-user"
+        source = "user override"
+    return {
+        "quantity": quantity,
+        "original_unit": original_unit,
+        "canonical_unit": resolved_unit,
+        "unit_status": status,
+        "scale_to_canonical": scale,
+        "unit_source": source,
+    }
+
+
+def _scaled_dimensional_frame(path, column, *, unit_override=None, allowed_quantities=(), required_canonical_unit=None):
+    contract = _series_contract(path, column, unit_override=unit_override)
+    if allowed_quantities and contract["quantity"] not in set(allowed_quantities):
+        raise ValueError(
+            f"Series {column!r} is declared as {contract['quantity'] or 'unknown quantity'}; "
+            f"expected one of {sorted(set(allowed_quantities))}."
+        )
+    if required_canonical_unit and contract["canonical_unit"] != required_canonical_unit:
+        raise ValueError(
+            f"Dimensional calculation withheld: resolve {column!r} to {required_canonical_unit}. "
+            f"Current unit is {contract['original_unit'] or 'unknown'}."
+        )
+    frame = _load(path).frame.copy()
+    frame[column] = pd.to_numeric(frame[column], errors="coerce") * float(contract["scale_to_canonical"])
+    return frame, contract
+
+
+def _rain_support_gap_seconds(parsed):
+    metadata = getattr(parsed, "metadata", {}) or {}
+    interval = metadata.get("interval_min")
+    if interval:
+        return float(interval) * 60.0 * 1.5
+    frame = parsed.frame
+    if "timestamp" in frame and len(frame) >= 2:
+        d = pd.to_datetime(frame["timestamp"], errors="coerce").sort_values().diff().dt.total_seconds()
+        d = d[d > 0]
+        if len(d):
+            return float(d.median()) * 1.5
+    return None
+
+
 def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
     obs=_load(obs_path).frame
     mod=_load(model_path).frame.copy()
