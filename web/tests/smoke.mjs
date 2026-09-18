@@ -17,6 +17,26 @@ async function optionValue(selector,needle){return page.locator(`${selector} opt
 async function clickTab(name){await page.click(`[data-tab="${name}"]`);}
 async function downloadFrom(selector){const pending=page.waitForEvent('download');await page.click(selector);return pending;}
 async function filePayload(filePath,name=path.basename(filePath)){return {name,mimeType:'text/csv',buffer:await fs.readFile(filePath)};}
+async function inspectReportHtml(html,minFigures=1){
+  const p=await context.newPage();
+  try{
+    await p.setContent(html,{waitUntil:'domcontentloaded'});
+    await p.waitForFunction(()=>[...document.images].every(x=>x.complete),null,{timeout:30000});
+    return await p.evaluate((minFigures)=>{
+      const root=document.documentElement;
+      const figures=[...document.querySelectorAll('.figure img')];
+      const zero=figures.filter(x=>x.getBoundingClientRect().width<=0||x.getBoundingClientRect().height<=0).length;
+      return {
+        overflow:root.scrollWidth-root.clientWidth,
+        figures:figures.length,
+        zero,
+        headers:document.querySelectorAll('.report-header').length,
+        tables:document.querySelectorAll('.table-wrap').length,
+        minFigures,
+      };
+    },minFigures);
+  }finally{await p.close();}
+}
 async function waitReady(){
   try{await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready'&&document.querySelector('#engineStatus')?.textContent.includes('ready'),null,{timeout:120000});}
   catch(err){const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);throw new Error(`Engine readiness failed. status=${status}; diagnostic=${JSON.stringify(diag)}; original=${err}`);}
@@ -65,6 +85,7 @@ try{
   const denseObserved=await optionValue('#observedSelect','dense-observed.csv — level');
   const rain=await optionValue('#rainSelect','rainfall.csv — rainfall');
   if(!denseObserved||!rain)throw new Error('Expected dense observed and rainfall series options');
+  if((await page.inputValue('#obsColor')).toLowerCase()!=='#d32f2f')throw new Error('Observed default colour should be red');
   await page.selectOption('#observedSelect',denseObserved);
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect','');
@@ -130,6 +151,10 @@ try{
   await page.selectOption('#rainSelect',rain);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'));
+  const modelColour=await page.inputValue('#modelColourControls .model-colour');
+  const colourWidth=await page.locator('#modelColourControls .model-colour').evaluate(el=>el.getBoundingClientRect().width);
+  if(modelColour.toLowerCase()!=='#5b5bd6')throw new Error(`First model default colour should be indigo-blue, got ${modelColour}`);
+  if(colourWidth>90)throw new Error(`Model colour picker should be a compact swatch, width=${colourWidth}`);
   await clickTab('graph');
   await page.fill('#graphObsThreshold','1.0');
   await page.fill('#graphModelThreshold','1.0');
@@ -242,13 +267,25 @@ try{
   await clickTab('spills');
   await page.click('#runSpillsBtn');
   await page.waitForFunction(()=>Boolean(state.spillSnapshot)&&state.spillSnapshot.signature===analysisSignature(),null,{timeout:60000});
+  const spillLayout=await page.evaluate(()=>{const panel=document.querySelector('#tab-spills .panel')?.getBoundingClientRect();const wraps=[...document.querySelectorAll('#tab-spills .two-col .table-wrap')].map(x=>x.getBoundingClientRect());return {panelRight:panel?.right||0,wraps:wraps.map(x=>({left:x.left,right:x.right,width:x.width}))};});
+  if(spillLayout.wraps.some(x=>x.right>spillLayout.panelRight+1))throw new Error(`Spill yearly tables escape the panel: ${JSON.stringify(spillLayout)}`);
   await clickTab('workspace');
   const reportDownload=await downloadFrom('#downloadReportBtn');
   const report=await fs.readFile(await reportDownload.path(),'utf8');
   if(!report.includes('© 2026 Anzar Sajid'))throw new Error('Report copyright missing');
-  if(!report.includes('Calculation snapshot'))throw new Error('Report snapshot missing');
+  if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
+  if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
+  if(!report.includes('report-grid')||!report.includes('table-wrap'))throw new Error('Professional report layout classes missing');
+  const reportLayout=await inspectReportHtml(report,3);
+  if(reportLayout.headers!==1||reportLayout.figures<reportLayout.minFigures||reportLayout.zero||reportLayout.overflow>2)throw new Error(`Assessment report visual containment failed: ${JSON.stringify(reportLayout)}`);
   await page.fill('#reportYear','2026');
-  await downloadFrom('#downloadFourPeriodBtn');
+  const fourDownload=await downloadFrom('#downloadFourPeriodBtn');
+  const fourReport=await fs.readFile(await fourDownload.path(),'utf8');
+  if(!fourReport.includes('Four-Period Report')||!fourReport.includes('separate rainfall band'))throw new Error('Four-period report methodology/layout note missing');
+  if((fourReport.match(/class="report-page"/g)||[]).length!==4)throw new Error('Four-period report should contain four print-safe period pages');
+  if(!fourReport.includes('A4 landscape'))throw new Error('Four-period report should use landscape print layout');
+  const fourLayout=await inspectReportHtml(fourReport,4);
+  if(fourLayout.headers!==1||fourLayout.figures!==4||fourLayout.zero||fourLayout.overflow>2)throw new Error(`Four-period report visual containment failed: ${JSON.stringify(fourLayout)}`);
   await downloadFrom('#downloadManifestBtn');
 
   stage='final browser diagnostics';

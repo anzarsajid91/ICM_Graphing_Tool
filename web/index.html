@@ -52,16 +52,33 @@
     <section class="tab-panel active" id="tab-graph">
       <div class="panel">
         <div class="panel-head"><div><h2>Time-series review</h2><p>Observed, multiple model/comparison and rainfall traces with shared zoom.</p></div><button class="btn" id="refreshGraphBtn">Refresh graph</button></div>
-        <details class="subpanel"><summary><strong>Appearance &amp; overlays</strong></summary><div class="mapping-grid compact-wide">
-          <label>Observed colour<input id="obsColor" type="color" value="#101828" /></label>
-          <label>Rainfall colour<input id="rainColor" type="color" value="#5ea2e6" /></label>
-          <label>Rainfall conversion factor<input id="rainFactor" type="number" value="1" step="any" /></label>
-          <label>Rainfall axis maximum<input id="rainAxisMax" type="number" placeholder="Auto" step="any" /></label>
-          <label>Threshold 1 label<input id="threshold1Label" value="Observed spill level" /></label>
-          <label>Threshold 1 colour<input id="threshold1Color" type="color" value="#8000ff" /></label>
-          <label>Threshold 2 label<input id="threshold2Label" value="Model spill level" /></label>
-          <label>Threshold 2 colour<input id="threshold2Color" type="color" value="#d0ad00" /></label>
-        </div><div id="modelColourControls" class="colour-grid"></div></details>
+        <details class="subpanel appearance-panel"><summary><strong>Appearance &amp; overlays</strong></summary>
+          <div class="appearance-group">
+            <h3>Series colours</h3>
+            <p class="appearance-hint">Observed is red by default; the first model scenario uses indigo-blue. Each additional model receives a distinct trace colour.</p>
+            <div class="appearance-colours">
+              <label>Observed<input id="obsColor" type="color" value="#d32f2f" /></label>
+              <label>Rainfall<input id="rainColor" type="color" value="#5ea2e6" /></label>
+            </div>
+            <div id="modelColourControls" class="colour-grid"></div>
+          </div>
+          <div class="appearance-group">
+            <h3>Rainfall display</h3>
+            <div class="mapping-grid compact-wide">
+              <label>Conversion factor<input id="rainFactor" type="number" value="1" step="any" /></label>
+              <label>Axis maximum<input id="rainAxisMax" type="number" placeholder="Auto" step="any" /></label>
+            </div>
+          </div>
+          <div class="appearance-group">
+            <h3>Threshold overlays</h3>
+            <div class="mapping-grid compact-wide">
+              <label>Observed threshold label<input id="threshold1Label" value="Observed spill level" /></label>
+              <label>Observed threshold colour<input id="threshold1Color" type="color" value="#8000ff" /></label>
+              <label>Model threshold label<input id="threshold2Label" value="Model spill level" /></label>
+              <label>Model threshold colour<input id="threshold2Color" type="color" value="#d0ad00" /></label>
+            </div>
+          </div>
+        </details>
         <div id="timeChart" class="chart"></div>
       </div>
     </section>
