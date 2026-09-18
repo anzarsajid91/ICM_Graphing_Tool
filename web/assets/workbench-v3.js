@@ -403,6 +403,14 @@
         setTimeout(populateProfessionalSurveySelectors, 0);
       }
     }, true);
+    document.addEventListener('change', event => {
+      const id = event.target?.id || '';
+      if (['surveyDepthSelect','surveyVelocitySelect','surveyFlowSelect','surveyRainSelect','surveyPopulation','surveyApplyFaultCutoff','surveyDepthUnit','surveyVelocityUnit','surveyFlowUnit','rainFactor'].includes(id)) {
+        window.__ICM_WORKBENCH__.lastProfessionalSurvey = null;
+        window.__ICM_WORKBENCH__.professionalSurveyReportHtml = '';
+        if ($('professionalSurveyStatus')) $('professionalSurveyStatus').textContent = 'Assessment inputs changed. Re-run the professional assessment before relying on or exporting these findings.';
+      }
+    }, true);
   }
 
   ensureCopyrightFooter();
