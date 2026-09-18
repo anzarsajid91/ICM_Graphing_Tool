@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from icm_workbench.analysis.exclusions import normalise_exclusions
+from icm_workbench.analysis.validity import validity_summary
 from icm_workbench.domain import ExclusionPeriod
 
 
@@ -83,14 +84,16 @@ def detect_spill_intervals(df, value_col, threshold, *, start=None, end=None, ma
     x = x.dropna(subset=["timestamp"]).sort_values("timestamp").drop_duplicates("timestamp", keep="last")
 
     if x.empty:
+        validity = validity_summary(requested_seconds=0.0, valid_seconds=0.0)
         return {
             "events": [],
             "unknown_seconds": 0.0,
             "excluded_seconds": 0.0,
             "analysis_seconds": 0.0,
             "assessable_seconds": 0.0,
-            "coverage_fraction": 0.0,
+            "coverage_fraction": None,
             "status": "unavailable",
+            "validity": validity,
             "analysis_start": None,
             "analysis_end": None,
         }
@@ -110,14 +113,22 @@ def detect_spill_intervals(df, value_col, threshold, *, start=None, end=None, ma
         retained = sum((b - a).total_seconds() for a, b in _subtract(s, e, ex))
         excluded = requested - retained
         assessable = max(0.0, requested - excluded)
+        validity = validity_summary(
+            requested_seconds=requested,
+            valid_seconds=0.0,
+            excluded_seconds=excluded,
+            unknown_seconds=assessable,
+            uncovered_seconds=0.0,
+        )
         return {
             "events": [],
             "unknown_seconds": float(assessable),
             "excluded_seconds": float(excluded),
             "analysis_seconds": requested,
             "assessable_seconds": float(assessable),
-            "coverage_fraction": 0.0,
-            "status": "partial" if assessable > 0 else "unavailable",
+            "coverage_fraction": validity["coverage_fraction"],
+            "status": validity["calculation_status"],
+            "validity": validity,
             "threshold": float(threshold),
             "method": "instantaneous-linear-threshold-v2-vectorised",
             "analysis_start": s,
@@ -198,7 +209,14 @@ def detect_spill_intervals(df, value_col, threshold, *, start=None, end=None, ma
     excluded = requested - retained
     assessable = max(0.0, requested - excluded)
     unknown = max(0.0, assessable - valid_seconds)
-    coverage = min(1.0, valid_seconds / assessable) if assessable > 0 else 0.0
+    validity = validity_summary(
+        requested_seconds=requested,
+        valid_seconds=valid_seconds,
+        excluded_seconds=excluded,
+        unknown_seconds=unknown,
+        uncovered_seconds=0.0,
+    )
+    coverage = validity["coverage_fraction"]
 
     return {
         "events": [ev.to_dict() for ev in events],
@@ -209,7 +227,8 @@ def detect_spill_intervals(df, value_col, threshold, *, start=None, end=None, ma
         "coverage_fraction": float(coverage) if assessable > 0 else None,
         "valid_seconds": float(valid_seconds),
         "requested_coverage_fraction": valid_seconds / requested,
-        "status": "unavailable" if valid_seconds <= 1e-6 else ("complete" if unknown <= 1e-6 else "partial"),
+        "status": validity["calculation_status"],
+        "validity": validity,
         "threshold": float(threshold),
         "method": "instantaneous-linear-threshold-v2-vectorised",
         "analysis_start": s,
