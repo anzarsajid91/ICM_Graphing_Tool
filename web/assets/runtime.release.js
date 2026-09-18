@@ -468,7 +468,7 @@ function reportMappingTable(w){
 }
 function reportSettingsTable(w){
   const a=w.analysis||{};
-  const rows=[['Time basis',w.time_basis||'model clock/unspecified'],['Analysis start',a.analysis_start||'Full available period'],['Analysis end',a.analysis_end||'Full available period'],['Maximum interpolation gap',(a.max_gap_seconds==null?'—':fmt(a.max_gap_seconds,0)+' s')],['Observed spill threshold',a.observed_threshold==null?'—':a.observed_threshold],['Model spill threshold',a.model_threshold==null?'—':a.model_threshold],['Model time offset',fmt(a.time_offset_minutes||0,1)+' min'],['Rainfall conversion factor',fmt(a.rain_factor==null?1:a.rain_factor,4)]];
+  const rows=[['Time basis',w.time_basis||'model clock/unspecified'],['Selected-period start',a.analysis_start||'Not set'],['Selected-period end',a.analysis_end||'Not set'],['Comparison quantity',a.comparison_quantity||'auto'],['Comparison unit',a.comparison_unit||'auto'],['Maximum interpolation gap',(a.max_gap_seconds==null?'—':fmt(a.max_gap_seconds,0)+' s')],['Observed spill threshold',a.observed_threshold==null?'—':a.observed_threshold],['Model spill threshold',a.model_threshold==null?'—':a.model_threshold],['Model time offset',fmt(a.time_offset_minutes||0,1)+' min'],['Rainfall conversion factor',fmt(a.rain_factor==null?1:a.rain_factor,4)]];
   return '<div class="table-wrap"><table><tbody>'+rows.map(x=>'<tr><th>'+esc(x[0])+'</th><td>'+esc(x[1])+'</td></tr>').join('')+'</tbody></table></div>';
 }
 function reportExclusions(w){
