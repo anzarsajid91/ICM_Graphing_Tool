@@ -45,6 +45,7 @@ def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.
         exclusions=python_bridge._exclusions(exclusions_json),
         semantics="intensity",
         declared_interval_minutes=float(interval) if interval else None,
+        max_gap_seconds=python_bridge._rain_support_gap_seconds(parsed),
     )
     return json.dumps(python_bridge._jsonable({
         "events":events,
@@ -132,21 +133,90 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
     return json.dumps(python_bridge._jsonable(payload),ensure_ascii=False)
 
 def dwf_scaled(flow_path,flow_col,rain_path=None,rain_col="rainfall",rain_factor=1.0,dry_day_mm=1.0,baseline_days=28,min_dry_days=5,adp_hours=6.0):
-    flow=python_bridge._load(flow_path).frame; rain=None
+    flow=python_bridge._load(flow_path).frame
+    rain=None
+    rain_parsed=None
     if rain_path:
-        rain=python_bridge._load(rain_path).frame.copy(); rain[rain_col]=pd.to_numeric(rain[rain_col],errors="coerce")*float(rain_factor)
-    result=dry_weather_flow(flow,flow_col,rain,rain_col,dry_day_mm=float(dry_day_mm),baseline_days=int(baseline_days),min_dry_days=int(min_dry_days),adp_hours=float(adp_hours))
+        rain_parsed=python_bridge._load(rain_path)
+        rain=rain_parsed.frame.copy()
+        rain[rain_col]=pd.to_numeric(rain[rain_col],errors="coerce")*float(rain_factor)
+    metadata=getattr(rain_parsed,"metadata",{}) or {} if rain_parsed is not None else {}
+    interval=metadata.get("interval_min") if rain_parsed is not None else None
+    result=dry_weather_flow(
+        flow,flow_col,rain,rain_col,
+        dry_day_mm=float(dry_day_mm),
+        baseline_days=int(baseline_days),
+        min_dry_days=int(min_dry_days),
+        adp_hours=float(adp_hours),
+        rain_semantics="intensity",
+        rain_interval_min=float(interval) if interval else None,
+        rain_max_gap_seconds=python_bridge._rain_support_gap_seconds(rain_parsed) if rain_parsed is not None else None,
+    )
     result["rain_conversion_factor"]=float(rain_factor)
     return json.dumps(python_bridge._jsonable(result),ensure_ascii=False)
 
-
-def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshold,exclusions_json="[]",max_gap_seconds=900.0,start=None,end=None):
-    level=python_bridge._load(level_path).frame; flow=python_bridge._load(flow_path).frame; exclusions=python_bridge._exclusions(exclusions_json)
-    physical=detect_spill_intervals(level,level_col,float(threshold),start=python_bridge._model_clock_timestamp(start),end=python_bridge._model_clock_timestamp(end),max_gap_seconds=float(max_gap_seconds),exclusions=exclusions)
+def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshold,exclusions_json="[]",max_gap_seconds=900.0,start=None,end=None,level_unit_override=None,flow_unit_override=None,**_ignored):
+    level,level_contract=python_bridge._scaled_dimensional_frame(
+        level_path,level_col,
+        unit_override=level_unit_override,
+        allowed_quantities=("level","depth"),
+        required_canonical_unit="m",
+    )
+    flow,flow_contract=python_bridge._scaled_dimensional_frame(
+        flow_path,flow_col,
+        unit_override=flow_unit_override,
+        allowed_quantities=("flow",),
+        required_canonical_unit="m³/s",
+    )
+    exclusions=python_bridge._exclusions(exclusions_json)
+    threshold_m=float(threshold)*float(level_contract["scale_to_canonical"])
+    physical=detect_spill_intervals(
+        level,level_col,threshold_m,
+        start=python_bridge._model_clock_timestamp(start),
+        end=python_bridge._model_clock_timestamp(end),
+        max_gap_seconds=float(max_gap_seconds),
+        exclusions=exclusions,
+    )
     monthly={}
     for event in physical.get("events",[]):
-        for start,end in split_interval_by_month(event["start"],event["end"]):
-            result=integrate_series(flow,flow_col,start,end,semantics="instantaneous",max_gap_seconds=float(max_gap_seconds),exclusions=exclusions,positive_only=True)
-            key=(int(pd.Timestamp(start).year),int(pd.Timestamp(start).month)); rec=monthly.setdefault(key,{"year":key[0],"month":key[1],"volume_m3":0.0,"valid_seconds":0.0,"gap_seconds":0.0,"excluded_seconds":0.0})
-            rec["volume_m3"]+=float(result["integral"]); rec["valid_seconds"]+=float(result["valid_seconds"]); rec["gap_seconds"]+=float(result["gap_seconds"]); rec["excluded_seconds"]+=float(result["excluded_seconds"])
-    return json.dumps(python_bridge._jsonable({"rows":[monthly[k] for k in sorted(monthly)]}),ensure_ascii=False)
+        for part_start,part_end in split_interval_by_month(event["start"],event["end"]):
+            result=integrate_series(flow,flow_col,part_start,part_end,semantics="instantaneous",max_gap_seconds=float(max_gap_seconds),exclusions=exclusions,positive_only=True)
+            requested=float((pd.Timestamp(part_end)-pd.Timestamp(part_start)).total_seconds())
+            represented=float(result["valid_seconds"])+float(result["gap_seconds"])+float(result["excluded_seconds"])
+            uncovered=max(0.0,requested-represented)
+            key=(int(pd.Timestamp(part_start).year),int(pd.Timestamp(part_start).month))
+            rec=monthly.setdefault(key,{
+                "year":key[0],"month":key[1],"volume_m3":0.0,
+                "requested_seconds":0.0,"valid_seconds":0.0,"gap_seconds":0.0,
+                "excluded_seconds":0.0,"uncovered_seconds":0.0,
+            })
+            rec["volume_m3"]+=float(result["integral"])
+            rec["requested_seconds"]+=requested
+            rec["valid_seconds"]+=float(result["valid_seconds"])
+            rec["gap_seconds"]+=float(result["gap_seconds"])
+            rec["excluded_seconds"]+=float(result["excluded_seconds"])
+            rec["uncovered_seconds"]+=uncovered
+    rows=[]
+    for key in sorted(monthly):
+        rec=monthly[key]
+        complete=(
+            rec["requested_seconds"]>0
+            and rec["gap_seconds"]<=1e-9
+            and rec["excluded_seconds"]<=1e-9
+            and rec["uncovered_seconds"]<=1e-9
+            and rec["valid_seconds"]>=rec["requested_seconds"]-1e-9
+            and physical.get("status")=="complete"
+        )
+        rec["status"]="complete" if complete else ("partial" if rec["valid_seconds"]>0 else "unavailable")
+        rec["coverage_fraction"]=rec["valid_seconds"]/rec["requested_seconds"] if rec["requested_seconds"]>0 else None
+        if not complete:
+            rec["volume_m3_partial"]=rec["volume_m3"]
+            rec["volume_m3"]=None
+        rows.append(rec)
+    return json.dumps(python_bridge._jsonable({
+        "rows":rows,
+        "calculation_status":"complete" if physical.get("status")=="complete" and all(r["status"]=="complete" for r in rows) else ("partial" if physical.get("valid_seconds",0)>0 else "unavailable"),
+        "level_contract":level_contract,
+        "flow_contract":flow_contract,
+    }),ensure_ascii=False)
+
