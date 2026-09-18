@@ -35,7 +35,7 @@ def test_cumulative_rainfall_integrates_full_interval_series_before_display_samp
     assert result["interval_min"] == pytest.approx(2.0)
     assert result["final_total_mm"] == pytest.approx(1.4)
     assert result["complete"] is True
-    assert result["integration_method"] == "interval-average intensity × interval minutes / 60"
+    assert result["integration_method"] == "actual-support interval-average intensity × elapsed time; declared interval used only for final support"
 
 
 def test_cumulative_rainfall_flags_sentinel_intervals_as_partial(tmp_path):
