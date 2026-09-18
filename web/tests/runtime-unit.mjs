@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 const source=fs.readFileSync('web/assets/runtime.release.js','utf8').replace(/start\(\);\s*$/, '');
 const store=new Map();const localStorage={getItem:k=>store.has(k)?store.get(k):null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)};
-const sandbox={window:{},console,document:{getElementById:()=>null},setTimeout,clearTimeout,crypto:globalThis.crypto,localStorage};
+const sandbox={window:{},console,document:{getElementById:()=>null},setTimeout,clearTimeout,crypto:globalThis.crypto,localStorage,store};
 vm.createContext(sandbox);
 vm.runInContext(source,sandbox);
 await vm.runInContext(`(async()=>{
