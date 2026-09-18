@@ -46,7 +46,10 @@
       </div>
       <div id="cumulativeRainSummary" class="pool-summary">No rainfall .R files loaded.</div>
       <div id="cumulativeRainChart" class="chart small"></div>
-      <div id="cumulativeRainTotals"></div>`;
+      <div id="cumulativeRainTotals"></div>
+      <h3>Multi-gauge rainfall quality screening</h3>
+      <div id="multiGaugeRainSummary" class="pool-summary">Load at least two rainfall gauges for spatial screening.</div>
+      <div id="multiGaugeRainTable"></div>`;
     head.insertAdjacentElement('afterend', section);
 
     $('refreshCumulativeRainBtn').addEventListener('click', event => {
@@ -73,10 +76,16 @@
     }).join('')}</tbody></table></div>`;
   }
 
+  function rainfallQualityTable(result) {
+    if (!result?.gauges?.length) return '';
+    return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Gauge</th><th>Operational days</th><th>Operational coverage</th><th>Zero-response strikes</th><th>Repeated zero response</th><th>RAG</th></tr></thead><tbody>${result.gauges.map(x=>`<tr><td>${esc(x.gauge)}</td><td>${x.operational_days} / ${x.days_assessed}</td><td>${fmt(x.operational_coverage_percent,1)}%</td><td>${x.zero_response_strikes}</td><td>${x.repeated_zero_response?'Review':'No'}</td><td class="${x.status==='Green'?'audit-good':'audit-warn'}">${esc(x.status)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
   async function renderCumulativeRainfall(force=false) {
     const chart = $('cumulativeRainChart');
     const summary = $('cumulativeRainSummary');
     const totals = $('cumulativeRainTotals');
+    const qaSummary=$('multiGaugeRainSummary'),qaTable=$('multiGaugeRainTable');
     if (!chart || !summary || !totals) return;
     if (!engine.ready) {
       summary.textContent = 'Rainfall engine is still starting…';
@@ -92,6 +101,8 @@
       Plotly.purge(chart);
       summary.textContent = 'No parsed .R / .R.txt rainfall files are currently loaded.';
       totals.innerHTML = '';
+      if(qaSummary)qaSummary.textContent='Load at least two rainfall gauges for spatial screening.';
+      if(qaTable)qaTable.innerHTML='';
       window.__ICM_WORKBENCH__.lastCumulativeRainfall = {files:0,traces:0,totals:[]};
       return;
     }
@@ -137,6 +148,15 @@
     const incomplete = results.filter(x => !x.data.complete).length;
     summary.textContent = `${results.length} rainfall .R file(s) plotted · conversion factor ${factor} · cumulative depth uses interval-average intensity × interval duration. ${incomplete ? `${incomplete} trace(s) contain missing rainfall intervals and are flagged partial.` : 'All plotted rainfall intervals are complete.'}`;
     totals.innerHTML = rainfallTotalsTable(results);
+    if(qaSummary&&qaTable){
+      if(results.length<2){qaSummary.textContent='One rainfall gauge loaded; cross-gauge variability and zero-response screening require at least two.';qaTable.innerHTML='';}
+      else{
+        const quality=await engine.call('multi_gauge_rainfall_result',{sources_json:JSON.stringify(results.map(({item,column})=>({path:item.virtualPath,column,name:item.displayName}))),conversion_factor:factor},'advanced_bridge');
+        qaSummary.textContent=`${quality.gauge_count} gauges assessed · ${quality.non_uniform_day_count} operational day(s) exceed the ${quality.criteria.variability_cv_limit_percent}% spatial CV screen. Repeated zero response is flagged after ${quality.criteria.strikes_required} strike days within ${quality.criteria.rolling_window_days} days; flags require engineering review and do not remove data.`;
+        qaTable.innerHTML=rainfallQualityTable(quality);
+        window.__ICM_WORKBENCH__.lastRainfallQuality=quality;
+      }
+    }
     window.__ICM_WORKBENCH__.lastCumulativeRainfall = {
       files:results.length,
       traces:traces.length,

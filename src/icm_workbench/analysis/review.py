@@ -16,8 +16,36 @@ def rating_curve_fit(depth, flow):
     return {"ok":True,"n":int(len(d)),"a":float(10**loga),"b":float(b),"r2":r2,"depth_min":float(d.min()),"depth_max":float(d.max())}
 
 
+def _longest_flatline_minutes(values, timestamps, tolerance):
+    vals=pd.to_numeric(values,errors="coerce").to_numpy(dtype=float)
+    ts=pd.to_datetime(timestamps,errors="coerce")
+    longest=0.0;run_start=None
+    for i in range(1,len(vals)):
+        contiguous=pd.notna(ts.iloc[i-1]) and pd.notna(ts.iloc[i])
+        same=np.isfinite(vals[i-1]) and np.isfinite(vals[i]) and abs(vals[i]-vals[i-1])<=float(tolerance)
+        if contiguous and same:
+            if run_start is None:run_start=i-1
+            longest=max(longest,float((ts.iloc[i]-ts.iloc[run_start]).total_seconds()/60.0))
+        else:run_start=None
+    return longest
+
+
+def _channel_contract(name):
+    key=str(name).lower()
+    if "velocity" in key or key in {"vel","v"}:return {"range":(0.0,10.0),"tolerance":1e-3,"zero_eps":0.05}
+    if "depth" in key or "level" in key:return {"range":(0.0,10.0),"tolerance":1e-4,"zero_eps":0.01}
+    if "flow" in key or "discharge" in key:return {"range":(0.0,None),"tolerance":1e-6,"zero_eps":0.005}
+    return {"range":(None,None),"tolerance":1e-9,"zero_eps":1e-9}
+
+
 def weekly_data_assessment(df,max_gap_seconds=900.0):
-    """Time-localised weekly completeness/range/gap findings for each numeric channel."""
+    """Weekly flow-survey QA with explicit, reviewable sensor-screening evidence.
+
+    Thresholds mirror the proven FDV assessment scripts: coverage and gaps remain
+    primary, while out-of-range, inactive/zero response and 6 h/48 h flatlines
+    raise amber/red review flags. These are observations, not declarations that a
+    logger is faulty.
+    """
     if df is None or getattr(df,"empty",True) or "timestamp" not in df.columns:return pd.DataFrame()
     x=df.copy(); x["timestamp"]=pd.to_datetime(x["timestamp"],errors="coerce"); x=x.dropna(subset=["timestamp"]).sort_values("timestamp")
     channels=[c for c in x.columns if c!="timestamp" and pd.to_numeric(x[c],errors="coerce").notna().any()]
@@ -31,12 +59,26 @@ def weekly_data_assessment(df,max_gap_seconds=900.0):
             if np.isfinite(median) and median>0 and len(g)>1:
                 span=max((g.timestamp.max()-g.timestamp.min()).total_seconds(),median); expected=max(1,int(round(span/median))+1); coverage=min(100.0,100.0*int(valid.sum())/expected)
             else: coverage=100.0*float(valid.mean()) if len(valid) else 0.0
-            notes=[]
+            contract=_channel_contract(col);lo,hi=contract["range"]
+            out_of_range=pd.Series(False,index=vals.index)
+            if lo is not None:out_of_range|=vals<lo
+            if hi is not None:out_of_range|=vals>hi
+            out_count=int(out_of_range.fillna(False).sum())
+            finite=vals[valid]
+            zero_fraction=float((finite.abs()<=contract["zero_eps"]).mean()) if len(finite) else np.nan
+            flatline_min=_longest_flatline_minutes(vals.reset_index(drop=True),g.timestamp.reset_index(drop=True),contract["tolerance"])
+            notes=[];severity=0
             if coverage<60:notes.append("low coverage")
             elif coverage<90:notes.append("partial coverage")
             if gap_count:notes.append(f"{gap_count} gap(s) > {float(max_gap_seconds)/60:g} min")
-            rag="Red" if coverage<60 else ("Amber" if coverage<90 or gap_count else "Green")
-            rows.append({"week_ending":pd.Timestamp(week),"channel":str(col),"rows":int(len(g)),"valid_values":int(valid.sum()),"coverage_percent":float(coverage),"minimum":float(vals.min()) if valid.any() else np.nan,"maximum":float(vals.max()) if valid.any() else np.nan,"large_gap_count":gap_count,"rag":rag,"comment":"; ".join(notes) if notes else "No major weekly completeness issue detected."})
+            if coverage<60:severity=max(severity,2)
+            elif coverage<90 or gap_count:severity=max(severity,1)
+            if out_count:notes.append(f"{out_count} value(s) outside screening range");severity=max(severity,2)
+            if np.isfinite(zero_fraction) and zero_fraction>=.95:notes.append(f"inactive/near-zero for {zero_fraction*100:.1f}% of valid samples");severity=max(severity,2)
+            if flatline_min>=2880:notes.append(f"severe flatline {flatline_min/60:.1f} h");severity=max(severity,2)
+            elif flatline_min>=360:notes.append(f"flatline {flatline_min/60:.1f} h");severity=max(severity,1)
+            rag=("Green","Amber","Red")[severity]
+            rows.append({"week_ending":pd.Timestamp(week),"channel":str(col),"rows":int(len(g)),"valid_values":int(valid.sum()),"coverage_percent":float(coverage),"minimum":float(vals.min()) if valid.any() else np.nan,"maximum":float(vals.max()) if valid.any() else np.nan,"mean":float(vals.mean()) if valid.any() else np.nan,"zero_percent":float(zero_fraction*100) if np.isfinite(zero_fraction) else np.nan,"flatline_minutes":float(flatline_min),"out_of_range_count":out_count,"large_gap_count":gap_count,"rag":rag,"comment":"; ".join(notes) if notes else "No major weekly completeness, range or response issue detected."})
     return pd.DataFrame(rows)
 
 

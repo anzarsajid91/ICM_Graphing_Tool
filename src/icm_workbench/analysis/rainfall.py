@@ -247,3 +247,63 @@ def daily_rainfall_support(
             }
         )
     return pd.DataFrame(rows, columns=columns)
+
+
+def multi_gauge_rainfall_assessment(
+    gauges: dict,
+    *,
+    operational_coverage_fraction: float = 0.90,
+    variability_cv_limit_percent: float = 40.0,
+    wet_day_threshold_mm: float = 2.0,
+    zero_tolerance_mm: float = 0.01,
+    other_gauges_wet_fraction: float = 0.60,
+    strikes_required: int = 2,
+    rolling_window_days: int = 7,
+) -> dict:
+    """Screen multi-gauge rainfall coverage, spatial CV and repeated zero response.
+
+    ``gauges`` maps a gauge label to ``(frame, value_column, interval_minutes)``.
+    Flags are review evidence only and never remove or impute source data.
+    """
+    daily_by_gauge={}
+    for name,spec in gauges.items():
+        frame,column,interval=spec
+        daily=daily_rainfall_support(
+            frame,column,semantics="intensity",declared_interval_minutes=interval,
+            max_gap_seconds=(float(interval)*90.0 if interval else None),
+        )
+        if not daily.empty:daily_by_gauge[str(name)]=daily.set_index("day")
+    if not daily_by_gauge:return {"gauge_count":0,"daily":[],"gauges":[],"method":"rainfall-qc-v1"}
+
+    days=sorted(set().union(*(set(x.index) for x in daily_by_gauge.values())))
+    daily_rows=[];strike_days={name:[] for name in daily_by_gauge}
+    for day in days:
+        operational={}
+        for name,table in daily_by_gauge.items():
+            if day not in table.index:continue
+            row=table.loc[day]
+            if isinstance(row,pd.DataFrame):row=row.iloc[-1]
+            if float(row.get("coverage_fraction",0.0) or 0.0)>=float(operational_coverage_fraction):
+                operational[name]=float(row.get("depth_mm",0.0) or 0.0)
+        depths=np.asarray(list(operational.values()),dtype=float)
+        mean=float(np.mean(depths)) if len(depths) else np.nan
+        cv=float(np.std(depths,ddof=0)/mean*100.0) if len(depths)>=2 and mean>0 else np.nan
+        uniform=None if not np.isfinite(cv) else bool(cv<=float(variability_cv_limit_percent))
+        strikes=[]
+        if len(operational)>=2 and np.isfinite(mean) and mean>=float(wet_day_threshold_mm):
+            for name,depth in operational.items():
+                others=[v for other,v in operational.items() if other!=name]
+                wet_fraction=float(np.mean(np.asarray(others)>0.0)) if others else 0.0
+                if depth<=float(zero_tolerance_mm) and wet_fraction>=float(other_gauges_wet_fraction):
+                    strikes.append(name);strike_days[name].append(pd.Timestamp(day))
+        daily_rows.append({"day":pd.Timestamp(day),"operational_gauges":len(operational),"network_mean_depth_mm":None if not np.isfinite(mean) else mean,"spatial_cv_percent":None if not np.isfinite(cv) else cv,"uniform_within_limit":uniform,"zero_response_gauges":strikes})
+
+    gauge_rows=[]
+    for name,table in daily_by_gauge.items():
+        operational_days=int((pd.to_numeric(table["coverage_fraction"],errors="coerce")>=float(operational_coverage_fraction)).sum())
+        strikes=sorted(strike_days[name]);repeated=False
+        for day in strikes:
+            count=sum(1 for other in strikes if day-pd.Timedelta(days=int(rolling_window_days)-1)<=other<=day)
+            if count>=int(strikes_required):repeated=True;break
+        gauge_rows.append({"gauge":name,"days_assessed":int(len(table)),"operational_days":operational_days,"operational_coverage_percent":100.0*operational_days/max(1,len(table)),"zero_response_strikes":len(strikes),"repeated_zero_response":repeated,"status":"Amber" if repeated or operational_days<len(table) else "Green"})
+    return {"gauge_count":len(daily_by_gauge),"daily":daily_rows,"gauges":gauge_rows,"non_uniform_day_count":sum(1 for row in daily_rows if row["uniform_within_limit"] is False),"criteria":{"operational_coverage_percent":operational_coverage_fraction*100.0,"variability_cv_limit_percent":variability_cv_limit_percent,"wet_day_threshold_mm":wet_day_threshold_mm,"zero_tolerance_mm":zero_tolerance_mm,"other_gauges_wet_fraction":other_gauges_wet_fraction,"strikes_required":strikes_required,"rolling_window_days":rolling_window_days},"method":"support-aware daily depth; operational gauge CV; repeated zero-response screening"}

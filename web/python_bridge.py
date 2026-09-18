@@ -11,6 +11,7 @@ from icm_workbench.analysis import (
     spill_block_volumes, idealised_storage_screening, detect_rainfall_events,
     residual_series, cumulative_volume, time_weighted_exceedance, time_coverage,
     rating_curve_fit, weekly_data_assessment, dry_weather_flow, event_response_summary,
+    rainfall_accumulation,
 )
 from icm_workbench.domain import ExclusionPeriod
 
@@ -140,7 +141,7 @@ def _display_indices(values, max_points):
 
 
 def series_data(path, column=None, max_points=5000, start=None, end=None, max_gap_seconds=900.0):
-    x, col = _prepared_series(path, column)
+    parsed=_load(path);x, col = _prepared_series(path, column)
     timestamps = x["timestamp"].to_numpy(dtype="datetime64[ns]")
     lo = 0
     hi = len(x)
@@ -169,6 +170,30 @@ def series_data(path, column=None, max_points=5000, start=None, end=None, max_ga
             plot_t.append(None); plot_v.append(None)
         plot_t.append(pd.Timestamp(stamp).isoformat())
         plot_v.append(None if pd.isna(value) else float(value))
+    numeric=pd.to_numeric(view[col],errors="coerce")
+    finite=numeric[np.isfinite(numeric)]
+    channel=(getattr(parsed,"metadata",{}) or {}).get("channels",{}).get(str(col),{})
+    quantity=channel.get("quantity") or (getattr(parsed,"metadata",{}) or {}).get("quantity")
+    unit=channel.get("canonical_unit") or (getattr(parsed,"metadata",{}) or {}).get("canonical_unit")
+    statistics={
+        "quantity":quantity or str(col),"unit":unit,"valid_count":int(len(finite)),
+        "missing_count":int(numeric.isna().sum()),"minimum":float(finite.min()) if len(finite) else None,
+        "mean":float(finite.mean()) if len(finite) else None,"median":float(finite.median()) if len(finite) else None,
+        "maximum":float(finite.max()) if len(finite) else None,"total":None,"total_unit":None,
+        "valid_support_seconds":0.0,"status":"unavailable" if not len(finite) else "complete",
+    }
+    if len(view)>=2:
+        times=pd.to_datetime(view["timestamp"],errors="coerce").reset_index(drop=True);vals=numeric.reset_index(drop=True)
+        seconds=times.diff().dt.total_seconds();valid=(seconds>0)&(seconds<=float(max_gap_seconds))&vals.notna()&vals.shift(1).notna()
+        support=float(seconds[valid].sum());statistics["valid_support_seconds"]=support
+        if support>0:
+            integral=float((((vals+vals.shift(1))/2.0)*seconds).where(valid,0.0).sum())
+            statistics["time_weighted_mean"]=integral/support
+            if quantity=="flow" and unit=="m³/s":statistics.update(total=integral,total_unit="m³")
+    if quantity=="rainfall":
+        interval=(getattr(parsed,"metadata",{}) or {}).get("interval_min")
+        rain=rainfall_accumulation(view,str(col),semantics="intensity",declared_interval_minutes=float(interval) if interval else None,max_gap_seconds=float(max_gap_seconds))
+        statistics.update(total=rain.get("total_depth_mm"),total_unit="mm",valid_support_seconds=rain.get("valid_seconds",0.0),status=rain.get("status","unavailable"))
     payload = {
         "column": str(col),
         "timestamp": plot_t,
@@ -180,6 +205,7 @@ def series_data(path, column=None, max_points=5000, start=None, end=None, max_ga
         "native_resolution": bool(raw_count <= int(max_points)),
         "requested_start": None if start_ts is None else start_ts.isoformat(),
         "requested_end": None if end_ts is None else end_ts.isoformat(),
+        "statistics":_jsonable(statistics),
     }
     return json.dumps(payload, ensure_ascii=False)
 
@@ -539,4 +565,3 @@ def storage_result(level_path, level_col, flow_path, flow_col, threshold, exclus
         "screening":_records(screening),
     }
     return json.dumps(_jsonable(payload),ensure_ascii=False)
-

@@ -53,6 +53,15 @@ double-counted into two states.
 The browser comparison workflow now surfaces calculation status and valid
 support directly with the calibration metrics.
 
+## Repository-wide polish and survey assessment pass
+
+- Time-series graphs now include a contained statistics band calculated from native source values. It reports quantity, resolved unit, valid/missing counts, minimum, time-weighted mean where supported, median, maximum, dimensional flow volume and rainfall depth.
+- Assessment and four-period HTML reports include the same statistics without relying on the Plotly legend area.
+- FDV weekly assessment now screens completeness, large gaps, range violations, near-zero/inactive response and 6 h/48 h flatlines.
+- Rainfall assessment now includes all-R cumulative depth plus multi-gauge operational coverage, spatial CV and repeated zero-response review flags.
+- FDV/R parsers now accept ICM continuation headers, named constants and scientific notation while retaining explicit unit conversion and sentinel-to-missing behaviour.
+- Cross-repository decisions and deferred contracts are recorded in `docs/companion-repository-assessment.md`.
+
 ## Next product phases
 
 Phase 1 correctness does not bundle the broader product roadmap. Subsequent
