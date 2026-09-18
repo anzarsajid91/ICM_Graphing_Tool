@@ -7,7 +7,7 @@ import pandas as pd
 import python_bridge
 from icm_workbench.analysis import (
     pair_series,rating_curve_fit,detect_spill_intervals,integrate_series,split_interval_by_month,
-    detect_rainfall_events,dry_weather_flow,rainfall_accumulation,
+    detect_rainfall_events,dry_weather_flow,rainfall_accumulation,validity_summary,
 )
 
 
@@ -124,6 +124,8 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
         "coverage_fraction":result["coverage_fraction"],
         "valid_seconds":result["valid_seconds"],
         "unknown_seconds":result["unknown_seconds"],
+        "missing_seconds":result.get("missing_seconds",0.0),
+        "validity":result.get("validity"),
         "conversion_factor":float(conversion_factor),
         "interval_min":float(interval) if interval else None,
         "start":pd.Timestamp(x["timestamp"].iloc[0]).isoformat(),
@@ -181,9 +183,8 @@ def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshol
     for event in physical.get("events",[]):
         for part_start,part_end in split_interval_by_month(event["start"],event["end"]):
             result=integrate_series(flow,flow_col,part_start,part_end,semantics="instantaneous",max_gap_seconds=float(max_gap_seconds),exclusions=exclusions,positive_only=True)
-            requested=float((pd.Timestamp(part_end)-pd.Timestamp(part_start)).total_seconds())
-            represented=float(result["valid_seconds"])+float(result["gap_seconds"])+float(result["excluded_seconds"])
-            uncovered=max(0.0,requested-represented)
+            requested=float(result.get("requested_seconds",(pd.Timestamp(part_end)-pd.Timestamp(part_start)).total_seconds()))
+            uncovered=float(result.get("uncovered_seconds",0.0))
             key=(int(pd.Timestamp(part_start).year),int(pd.Timestamp(part_start).month))
             rec=monthly.setdefault(key,{
                 "year":key[0],"month":key[1],"volume_m3":0.0,
@@ -207,8 +208,16 @@ def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshol
             and rec["valid_seconds"]>=rec["requested_seconds"]-1e-9
             and physical.get("status")=="complete"
         )
-        rec["status"]="complete" if complete else ("partial" if rec["valid_seconds"]>0 else "unavailable")
-        rec["coverage_fraction"]=rec["valid_seconds"]/rec["requested_seconds"] if rec["requested_seconds"]>0 else None
+        validity=validity_summary(
+            requested_seconds=rec["requested_seconds"],
+            valid_seconds=rec["valid_seconds"],
+            excluded_seconds=rec["excluded_seconds"],
+            unknown_seconds=rec["gap_seconds"],
+            uncovered_seconds=rec["uncovered_seconds"],
+        )
+        rec["status"]="complete" if complete else validity["calculation_status"]
+        rec["coverage_fraction"]=validity["coverage_fraction"]
+        rec["validity"]=validity
         if not complete:
             rec["volume_m3_partial"]=rec["volume_m3"]
             rec["volume_m3"]=None
