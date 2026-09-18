@@ -9,7 +9,7 @@ from icm_workbench.parsers.common import canonical_unit
 from icm_workbench.analysis import (
     pair_series, calibration_metrics, spill_assessment, detect_spill_intervals,
     spill_block_volumes, idealised_storage_screening, detect_rainfall_events,
-    residual_series, cumulative_volume, time_weighted_exceedance,
+    residual_series, cumulative_volume, time_weighted_exceedance, time_coverage,
     rating_curve_fit, weekly_data_assessment, dry_weather_flow, event_response_summary,
 )
 from icm_workbench.domain import ExclusionPeriod
@@ -184,6 +184,16 @@ def series_data(path, column=None, max_points=5000, start=None, end=None, max_ga
     return json.dumps(payload, ensure_ascii=False)
 
 
+def _comparison_domain(observed, modelled, start=None, end=None):
+    obs_ts=pd.to_datetime(observed["timestamp"],errors="coerce").dropna()
+    mod_ts=pd.to_datetime(modelled["timestamp"],errors="coerce").dropna()
+    if obs_ts.empty or mod_ts.empty:
+        return None,None
+    s=_model_clock_timestamp(start) if start is not None else max(pd.Timestamp(obs_ts.min()),pd.Timestamp(mod_ts.min()))
+    e=_model_clock_timestamp(end) if end is not None else min(pd.Timestamp(obs_ts.max()),pd.Timestamp(mod_ts.max()))
+    return (s,e) if e>s else (None,None)
+
+
 def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
     oq, mq = _quantity(obs_path, obs_col), _quantity(model_path, model_col)
     if not oq or not mq or oq != mq:
@@ -192,87 +202,42 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
     mod = _load(model_path).frame.copy()
     if float(offset_minutes or 0):
         mod["timestamp"] = pd.to_datetime(mod["timestamp"], errors="coerce") + pd.to_timedelta(float(offset_minutes), unit="m")
-    paired = pair_series(
+    domain_start,domain_end=_comparison_domain(obs,mod,start,end)
+    paired_raw = pair_series(
         obs, mod, obs_col, model_col,
         max_gap_seconds=float(max_gap_seconds),
-        start=_model_clock_timestamp(start), end=_model_clock_timestamp(end),
+        start=domain_start, end=domain_end,
     )
-    for exc in _exclusions(exclusions_json):
+    exclusions=_exclusions(exclusions_json)
+    if domain_start is not None and domain_end is not None and not paired_raw.empty:
+        coverage=time_coverage(
+            paired_raw,"obs",domain_start,domain_end,
+            max_gap_seconds=float(max_gap_seconds),
+            exclusions=exclusions,
+        )
+    else:
+        coverage={
+            "status":"unavailable","coverage_fraction":None,
+            "requested_seconds":0.0,"valid_seconds":0.0,
+            "excluded_seconds":0.0,"unknown_seconds":0.0,
+            "uncovered_seconds":0.0,"validity":None,
+        }
+    paired=paired_raw.copy()
+    for exc in exclusions:
         paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
     metrics = calibration_metrics(paired)
     p = residual_series(paired) if not paired.empty else paired.copy()
     if not p.empty:
         p["residual"] = p["residual_model_minus_observed"]
-    payload = {"metrics": metrics, "paired": _records(p)}
-    return json.dumps(_jsonable(payload), ensure_ascii=False)
-
-
-def _quantity(path, column):
-    metadata = getattr(_load(path), "metadata", {})
-    return metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
-
-
-def _series_contract(path, column, unit_override=None):
-    parsed = _load(path)
-    metadata = getattr(parsed, "metadata", {}) or {}
-    details = {}
-    if isinstance(metadata.get("series_metadata"), dict):
-        details = dict(metadata["series_metadata"].get(column) or {})
-    if not details and isinstance(metadata.get("channels"), dict):
-        details = dict(metadata["channels"].get(column) or {})
-    quantity = details.get("quantity") or metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
-    original_unit = details.get("original_unit", metadata.get("original_unit"))
-    resolved_unit = details.get("canonical_unit", metadata.get("canonical_unit"))
-    status = details.get("unit_status") or ("resolved" if resolved_unit else "unresolved")
-    scale = 1.0
-    source = "metadata" if resolved_unit else "unresolved"
-    if not resolved_unit and unit_override:
-        resolved_unit, factor = canonical_unit(quantity, unit_override)
-        if resolved_unit is None or factor is None:
-            raise ValueError(f"Unsupported unit override {unit_override!r} for {quantity or 'unknown quantity'}.")
-        scale = float(factor)
-        original_unit = str(unit_override)
-        status = "resolved-by-user"
-        source = "user override"
-    return {
-        "quantity": quantity,
-        "original_unit": original_unit,
-        "canonical_unit": resolved_unit,
-        "unit_status": status,
-        "scale_to_canonical": scale,
-        "unit_source": source,
+    payload = {
+        "metrics": metrics,
+        "paired": _records(p),
+        "calculation_status":coverage.get("status","unavailable"),
+        "coverage_fraction":coverage.get("coverage_fraction"),
+        "coverage":coverage,
+        "validity_model":"validity-v1",
     }
-
-
-def _scaled_dimensional_frame(path, column, *, unit_override=None, allowed_quantities=(), required_canonical_unit=None):
-    contract = _series_contract(path, column, unit_override=unit_override)
-    if allowed_quantities and contract["quantity"] not in set(allowed_quantities):
-        raise ValueError(
-            f"Series {column!r} is declared as {contract['quantity'] or 'unknown quantity'}; "
-            f"expected one of {sorted(set(allowed_quantities))}."
-        )
-    if required_canonical_unit and contract["canonical_unit"] != required_canonical_unit:
-        raise ValueError(
-            f"Dimensional calculation withheld: resolve {column!r} to {required_canonical_unit}. "
-            f"Current unit is {contract['original_unit'] or 'unknown'}."
-        )
-    frame = _load(path).frame.copy()
-    frame[column] = pd.to_numeric(frame[column], errors="coerce") * float(contract["scale_to_canonical"])
-    return frame, contract
-
-
-def _rain_support_gap_seconds(parsed):
-    metadata = getattr(parsed, "metadata", {}) or {}
-    interval = metadata.get("interval_min")
-    if interval:
-        return float(interval) * 60.0 * 1.5
-    frame = parsed.frame
-    if "timestamp" in frame and len(frame) >= 2:
-        d = pd.to_datetime(frame["timestamp"], errors="coerce").sort_values().diff().dt.total_seconds()
-        d = d[d > 0]
-        if len(d):
-            return float(d.median()) * 1.5
-    return None
+    return json.dumps(_jsonable(payload), ensure_ascii=False)
 
 
 def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
@@ -280,8 +245,27 @@ def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=
     mod=_load(model_path).frame.copy()
     if float(offset_minutes or 0):
         mod["timestamp"]=pd.to_datetime(mod["timestamp"],errors="coerce")+pd.to_timedelta(float(offset_minutes),unit="m")
-    paired=pair_series(obs,mod,obs_col,model_col,max_gap_seconds=float(max_gap_seconds),start=_model_clock_timestamp(start),end=_model_clock_timestamp(end))
+    domain_start,domain_end=_comparison_domain(obs,mod,start,end)
+    paired_raw=pair_series(
+        obs,mod,obs_col,model_col,
+        max_gap_seconds=float(max_gap_seconds),
+        start=domain_start,end=domain_end,
+    )
     exclusions=_exclusions(exclusions_json)
+    if domain_start is not None and domain_end is not None and not paired_raw.empty:
+        coverage=time_coverage(
+            paired_raw,"obs",domain_start,domain_end,
+            max_gap_seconds=float(max_gap_seconds),
+            exclusions=exclusions,
+        )
+    else:
+        coverage={
+            "status":"unavailable","coverage_fraction":None,
+            "requested_seconds":0.0,"valid_seconds":0.0,
+            "excluded_seconds":0.0,"unknown_seconds":0.0,
+            "uncovered_seconds":0.0,"validity":None,
+        }
+    paired=paired_raw.copy()
     for exc in exclusions:
         paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
     residual=residual_series(paired) if not paired.empty else pd.DataFrame()
@@ -318,6 +302,10 @@ def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=
         "flow_unit":"m³/s" if is_flow else None,
         "integration_method":"instantaneous-trapezoidal-v2",
         "exceedance_method":"left-support-time-weighted",
+        "calculation_status":coverage.get("status","unavailable"),
+        "coverage_fraction":coverage.get("coverage_fraction"),
+        "coverage":coverage,
+        "validity_model":"validity-v1",
     }),ensure_ascii=False)
 
 def _exclusions(raw):
