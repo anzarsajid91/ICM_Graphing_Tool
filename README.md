@@ -55,3 +55,5 @@ folder or pass a data folder path to `app.py`.
 Historical V17 converted placeholder values such as 9999/-9999 to zero. The
 current engineering workbench deliberately does **not** retain that behaviour:
 known sentinels are treated as missing and audited.
+
+The browser workbench also provides native-resolution graph statistics, enhanced weekly FDV quality screening, cumulative multi-file rainfall and multi-gauge rainfall consistency screening. See `docs/companion-repository-assessment.md` for the cross-repository integration boundary.

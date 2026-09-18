@@ -7,7 +7,7 @@ import pandas as pd
 import python_bridge
 from icm_workbench.analysis import (
     pair_series,rating_curve_fit,detect_spill_intervals,integrate_series,split_interval_by_month,
-    detect_rainfall_events,dry_weather_flow,rainfall_accumulation,validity_summary,
+    detect_rainfall_events,dry_weather_flow,rainfall_accumulation,validity_summary,multi_gauge_rainfall_assessment,
 )
 
 
@@ -134,6 +134,22 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
     }
     return json.dumps(python_bridge._jsonable(payload),ensure_ascii=False)
 
+
+def multi_gauge_rainfall_result(sources_json,conversion_factor=1.0):
+    sources=json.loads(sources_json) if isinstance(sources_json,str) else list(sources_json or [])
+    gauges={}
+    for source in sources:
+        parsed=python_bridge._load(source["path"]);frame=parsed.frame.copy();column=source.get("column")
+        if column not in frame.columns:
+            columns=[c for c in frame.columns if c!="timestamp"]
+            if not columns:continue
+            column=columns[0]
+        frame[column]=pd.to_numeric(frame[column],errors="coerce")*float(conversion_factor)
+        interval=(getattr(parsed,"metadata",{}) or {}).get("interval_min")
+        gauges[str(source.get("name") or source["path"])]=(frame,column,float(interval) if interval else None)
+    result=multi_gauge_rainfall_assessment(gauges);result["conversion_factor"]=float(conversion_factor)
+    return json.dumps(python_bridge._jsonable(result),ensure_ascii=False)
+
 def dwf_scaled(flow_path,flow_col,rain_path=None,rain_col="rainfall",rain_factor=1.0,dry_day_mm=1.0,baseline_days=28,min_dry_days=5,adp_hours=6.0):
     flow=python_bridge._load(flow_path).frame
     rain=None
@@ -228,4 +244,3 @@ def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshol
         "level_contract":level_contract,
         "flow_contract":flow_contract,
     }),ensure_ascii=False)
-

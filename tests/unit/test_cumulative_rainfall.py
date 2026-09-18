@@ -12,6 +12,7 @@ if str(WEB) not in sys.path:
     sys.path.insert(0, str(WEB))
 
 import advanced_bridge  # noqa: E402
+import python_bridge  # noqa: E402
 
 
 def _write_r(path: Path, values: str) -> Path:
@@ -46,3 +47,15 @@ def test_cumulative_rainfall_flags_sentinel_intervals_as_partial(tmp_path):
     assert result["complete"] is False
     assert result["final_total_mm"] == pytest.approx(0.3)
     assert None in result["value"]
+
+
+def test_series_data_exposes_native_statistics_and_rain_total(tmp_path):
+    source=_write_r(tmp_path/"stats.R","6 12 0 3")
+    result=json.loads(python_bridge.series_data(str(source),"rainfall",max_points=2))
+    stats=result["statistics"]
+    assert stats["quantity"]=="rainfall"
+    assert stats["minimum"]==0
+    assert stats["mean"]==pytest.approx(5.25)
+    assert stats["maximum"]==12
+    assert stats["total"]==pytest.approx(0.7)
+    assert stats["total_unit"]=="mm"
