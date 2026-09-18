@@ -223,6 +223,28 @@ try{
   const healthHead=await page.locator('#tab-data-health thead').textContent();
   if(!healthHead.includes('Flatline')||!healthHead.includes('Out of range')||!healthHead.includes('Zero %'))throw new Error('Enhanced FDV flow-survey screening columns are missing');
 
+  stage='professional FDV and rainfall assessment';
+  const surveyDepth=await optionValue('#surveyDepthSelect','observed.csv — depth');
+  const surveyVelocity=await optionValue('#surveyVelocitySelect','observed.csv — velocity');
+  const surveyFlow=await optionValue('#surveyFlowSelect','observed.csv — flow');
+  const surveyRain=await optionValue('#surveyRainSelect','rainfall.csv — rainfall');
+  if(!surveyDepth||!surveyVelocity||!surveyFlow||!surveyRain)throw new Error('Professional survey mapping options are missing');
+  await page.selectOption('#surveyDepthSelect',surveyDepth);
+  await page.selectOption('#surveyVelocitySelect',surveyVelocity);
+  await page.selectOption('#surveyFlowSelect',surveyFlow);
+  await page.selectOption('#surveyRainSelect',surveyRain);
+  await page.selectOption('#surveyDepthUnit','m');
+  await page.selectOption('#surveyVelocityUnit','m/s');
+  await page.selectOption('#surveyFlowUnit','m3/s');
+  await page.selectOption('#surveyPopulation','under50');
+  await page.click('#runProfessionalSurveyBtn');
+  await page.waitForFunction(()=>document.querySelector('#professionalSurveyStatus')?.textContent.includes('Assessment complete'),null,{timeout:90000});
+  const professional=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastProfessionalSurvey);
+  if(!professional?.network||professional.network.gauge_count<2)throw new Error(`Professional rainfall network assessment missing: ${JSON.stringify(professional)}`);
+  if(!professional?.monitor?.weeks?.length)throw new Error(`Professional weekly monitor assessment missing: ${JSON.stringify(professional)}`);
+  if(await page.locator('#professionalWeeklyBody tr').count()<1)throw new Error('Professional weekly monitor table is empty');
+  if(!((await page.locator('#professionalSurveyMethod').textContent())||'').includes('18 h'))throw new Error('Professional assessment methodology is not exposed in the UI');
+
   stage='spill exclusions in Asia/Kolkata and annual comparison';
   await clickTab('spills');
   await page.fill('#obsThreshold','1.0');
@@ -285,6 +307,7 @@ try{
   if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
   if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
   if(!report.includes('Graph statistics')||!report.includes('Integrated total'))throw new Error('Assessment report graph statistics missing');
+  if(!report.includes('Professional flow-survey / rainfall assessment')||!report.includes('professional_flow_survey'))throw new Error('Professional flow-survey assessment missing from report/audit appendix');
   if(!report.includes('report-grid')||!report.includes('table-wrap'))throw new Error('Professional report layout classes missing');
   const reportLayout=await inspectReportHtml(report,3);
   if(reportLayout.headers!==1||reportLayout.figures<reportLayout.minFigures||reportLayout.zero||reportLayout.overflow>2)throw new Error(`Assessment report visual containment failed: ${JSON.stringify(reportLayout)}`);
