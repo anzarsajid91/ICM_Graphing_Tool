@@ -547,6 +547,20 @@ function reportYearlySpills(r){
   return '<div class="table-wrap"><table><thead><tr><th>Year</th><th>12/24 count</th><th>Duration h</th><th>Valid h</th><th>Unknown h</th><th>Excluded h</th><th>Status</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.year)+'</td><td>'+fmt(x.spill_count,0)+'</td><td>'+fmt(x.duration_hours,2)+'</td><td>'+fmt(x.valid_hours,2)+'</td><td>'+fmt(x.unknown_hours,2)+'</td><td>'+fmt(x.excluded_hours,2)+'</td><td>'+esc(x.count_status||'—')+'</td></tr>').join('')+'</tbody></table></div>';
 }
 async function reportChart(id,width,height){try{return await Plotly.toImage($(id),{format:'svg',width:width,height:height});}catch{return'';}}
+function reportProjectRegistry(){
+  const registry=window.ICMProjectRegistry?.snapshot();
+  if(!registry||!registry.assets?.length)return '<p class="muted">No classified project assets available.</p>';
+  const sourceMap=new Map((registry.sources||[]).map(x=>[x.id,x]));
+  const seriesMap=new Map((registry.series||[]).map(x=>[x.key,x]));
+  const rows=registry.assets.map(asset=>{
+    const sources=(asset.sourceIds||[]).map(id=>sourceMap.get(id)).filter(Boolean);
+    const quantities=[...new Set((asset.seriesKeys||[]).map(key=>seriesMap.get(key)?.quantity).filter(Boolean))];
+    const relationships=(registry.relationships||[]).filter(x=>x.from===asset.id||x.to===asset.id).map(x=>x.type==='upstream-flow'?x.from+' → '+x.to:x.from+' ↔ '+x.to);
+    const roles=[...new Set(sources.map(x=>x.role).filter(Boolean))];
+    return '<tr><td><strong>'+esc(asset.id)+'</strong><br><span class="muted">'+esc(asset.kind||'asset')+'</span></td><td>'+esc(roles.join(', ')||'—')+'</td><td>'+esc(sources.map(x=>x.name).join(', ')||'association only')+'</td><td>'+esc(quantities.join(', ')||'—')+'</td><td>'+esc(relationships.join(', ')||'—')+'</td></tr>';
+  }).join('');
+  return '<div class="note"><strong>Canonical project context.</strong> Files are classified once into assets, engineering series and workbook relationships; the same registry is reused across workflows.</div><div class="table-wrap"><table><thead><tr><th>Asset</th><th>Role</th><th>Source</th><th>Quantities</th><th>Relationships</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
 async function downloadReport(){
   assertFreshResults();
   if(!state.mapping.observed)throw new Error('Apply a mapping before exporting the report.');
@@ -571,6 +585,7 @@ async function downloadReport(){
   body+='<h2>Exclusions</h2>'+reportExclusions(w);
   const notes=$('reviewNotes')&&$('reviewNotes').value||'';
   body+='<h2>Reviewer notes</h2><div class="card">'+(notes?'<p>'+esc(notes).replaceAll('\n','<br>')+'</p>':'<p class="muted">No reviewer notes recorded.</p>')+'</div>';
+  body+='<h2>Project data context</h2>'+reportProjectRegistry();
   body+='<h2>Source provenance</h2>'+reportSources(w);
   body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({spills:state.spillSnapshot,comparison:state.comparisonSnapshot,professional_flow_survey:window.__ICM_WORKBENCH__.lastProfessionalSurvey||null,project_registry:window.ICMProjectRegistry?.snapshot()||null,execution:diagnostic.execution||'unknown'},null,2))+'</pre></details>';
   const html=reportShell('ICM Calibration Workbench — Engineering Assessment','Professional hydraulic data review and model-verification output',body,false);
