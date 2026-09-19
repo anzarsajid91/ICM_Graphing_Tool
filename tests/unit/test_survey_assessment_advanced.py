@@ -176,3 +176,60 @@ def test_monitor_assessment_uses_dry_baseline_and_detects_lagged_event_response(
     assert week["depth_linked_events"] >= 2
     assert week["rag"] == "Green"
     assert week["depth_score"] >= 70
+
+
+
+def test_monitor_assessment_exclusions_do_not_reduce_assessable_coverage():
+    ts = pd.date_range("2026-01-05 00:00", periods=60, freq="2min")
+    hydraulic = pd.DataFrame(
+        {"timestamp": ts, "depth": np.full(len(ts), 0.30)}
+    )
+    rainfall = pd.DataFrame(
+        {"timestamp": ts, "rainfall": np.zeros(len(ts))}
+    )
+    result = monitor_weekly_assessment(
+        hydraulic,
+        rainfall,
+        rain_col="rainfall",
+        rain_interval_min=2.0,
+        depth_col="depth",
+        exclusions=[
+            {
+                "start": pd.Timestamp("2026-01-05 00:20"),
+                "end": pd.Timestamp("2026-01-05 00:40"),
+            }
+        ],
+    )
+    week = result["weeks"][0]
+    assert week["excluded_samples"] == 10
+    assert week["assessable_samples"] == 50
+    assert week["depth_coverage_percent"] == 100.0
+    assert result["analysis_controls"][
+        "excluded_samples_removed_from_coverage_denominator"
+    ] is True
+
+
+def test_monitor_assessment_analysis_bounds_filter_output_weeks_not_antecedent_source():
+    ts = pd.date_range("2026-01-05 00:00", periods=14 * 24, freq="1h")
+    hydraulic = pd.DataFrame(
+        {"timestamp": ts, "depth": np.full(len(ts), 0.30)}
+    )
+    rainfall = pd.DataFrame(
+        {"timestamp": ts, "rainfall": np.zeros(len(ts))}
+    )
+    result = monitor_weekly_assessment(
+        hydraulic,
+        rainfall,
+        rain_col="rainfall",
+        rain_interval_min=60.0,
+        depth_col="depth",
+        analysis_start=pd.Timestamp("2026-01-12 00:00"),
+        analysis_end=pd.Timestamp("2026-01-18 23:00"),
+    )
+    assert len(result["weeks"]) == 1
+    assert pd.Timestamp(result["weeks"][0]["start"]) >= pd.Timestamp(
+        "2026-01-12 00:00"
+    )
+    assert result["analysis_controls"]["start"] == pd.Timestamp(
+        "2026-01-12 00:00"
+    )
