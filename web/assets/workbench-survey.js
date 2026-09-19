@@ -28,6 +28,38 @@
       spills: 'Spills',
       workspace: 'Report',
     };
+    const workflow = {
+      graph: {
+        label: 'Data',
+        description: 'Map source channels and review observed, modelled and rainfall time series before moving into engineering diagnostics.',
+        tools: ['Source mapping', 'Time-series graph', 'Threshold overlays', 'Graph statistics'],
+      },
+      'data-health': {
+        label: 'Survey',
+        description: 'Assess flow-survey completeness, response and network context using the survey association workbook where supplied.',
+        tools: ['fm_rg_assoc', 'Data health', 'FSAT Event Response', 'Flow continuity / volume balance'],
+      },
+      'rain-events': {
+        label: 'Rainfall',
+        description: 'Review rainfall quality and identify wet-weather events and their hydraulic response.',
+        tools: ['Gauge assessment', 'WAPUG / manual events', 'Event bands', 'Hydraulic response'],
+      },
+      compare: {
+        label: 'Verification',
+        description: 'Compare observed and modelled hydraulics over a controlled period and investigate where the model differs.',
+        tools: ['Pairs & calibration metrics', 'Residuals', 'Cumulative / exceedance', 'Depth & rating diagnostics', 'Storage'],
+      },
+      spills: {
+        label: 'Spills',
+        description: 'Assess observed/EDM and model spill behaviour with explicit validity, exclusions and reporting periods.',
+        tools: ['12/24 counting', 'Duration / volume', 'Exclusions', 'Yearly / monthly summaries'],
+      },
+      workspace: {
+        label: 'Report',
+        description: 'Save the review state and produce reproducible engineering outputs with provenance and audit context.',
+        tools: ['Workspace persistence', 'HTML engineering report', 'Source provenance', 'Audit appendix'],
+      },
+    };
     const order = ['graph', 'data-health', 'rain-events', 'compare', 'spills', 'workspace'];
     for (const name of order) {
       const button = nav.querySelector('.tab[data-tab="' + name + '"]');
@@ -47,14 +79,27 @@
       verification.appendChild(storage);
     }
 
-    if (!document.getElementById('workflowGuide')) {
-      const guide = document.createElement('div');
+    let guide = document.getElementById('workflowGuide');
+    if (!guide) {
+      guide = document.createElement('section');
       guide.id = 'workflowGuide';
       guide.className = 'workflow-guide';
-      guide.innerHTML =
-        '<strong>Workflow:</strong> Data for rapid graph review · Survey for complete flow-survey QA/response/continuity · Rainfall for gauge/event diagnostics · Verification for model comparison and storage screening · Spills for EDM/model spill assessment · Report for reproducible outputs.';
+      guide.setAttribute('aria-live', 'polite');
       nav.insertAdjacentElement('afterend', guide);
     }
+    const renderWorkflow = name => {
+      const item = workflow[name] || workflow.graph;
+      guide.dataset.tab = name || 'graph';
+      guide.innerHTML =
+        '<div class="workflow-guide-head"><strong id="workflowGuideTitle">Workflow</strong><span class="workflow-current">' + esc(item.label) + '</span></div>' +
+        '<div class="workflow-guide-body"><p>' + esc(item.description) + '</p><div class="workflow-tools" aria-label="' + esc(item.label) + ' tools">' +
+        item.tools.map(tool => '<span>' + esc(tool) + '</span>').join('') + '</div></div>';
+    };
+    renderWorkflow(nav.querySelector('.tab.active')?.dataset.tab || 'graph');
+    nav.addEventListener('click', event => {
+      const button = event.target.closest('.tab[data-tab]');
+      if (button && workflow[button.dataset.tab]) renderWorkflow(button.dataset.tab);
+    });
   }
 
   function installSharedAnalysisControls() {
