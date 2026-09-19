@@ -261,6 +261,10 @@ def professional_flow_survey_result(
     depth_unit_override=None,
     velocity_unit_override=None,
     flow_unit_override=None,
+    exclusions_json="[]",
+    start=None,
+    end=None,
+    max_gap_seconds=900.0,
 ):
     """Run the advanced Flow-Survey-Assessment-Tools workflow in browser-local Python."""
     from icm_workbench.analysis.survey_assessment import (
@@ -328,6 +332,15 @@ def professional_flow_survey_result(
     rain_meta = getattr(rain_parsed, "metadata", {}) or {}
     rain_interval = rain_meta.get("interval_min")
     rain_interval = float(rain_interval) if rain_interval else None
+    exclusions = python_bridge._exclusions(exclusions_json)
+    analysis_start = python_bridge._model_clock_timestamp(start)
+    analysis_end = python_bridge._model_clock_timestamp(end)
+    for exc in exclusions:
+        stamp = pd.to_datetime(rain["timestamp"], errors="coerce")
+        rain.loc[
+            (stamp >= pd.Timestamp(exc.start)) & (stamp < pd.Timestamp(exc.end)),
+            rain_col,
+        ] = np.nan
 
     sources = (
         json.loads(network_sources_json)
@@ -351,6 +364,12 @@ def professional_flow_survey_result(
         frame[column] = (
             pd.to_numeric(frame[column], errors="coerce") * float(rain_factor)
         )
+        for exc in exclusions:
+            stamp = pd.to_datetime(frame["timestamp"], errors="coerce")
+            frame.loc[
+                (stamp >= pd.Timestamp(exc.start)) & (stamp < pd.Timestamp(exc.end)),
+                column,
+            ] = np.nan
         metadata = getattr(parsed, "metadata", {}) or {}
         interval = metadata.get("interval_min")
         gauges[str(source.get("name") or path)] = (
@@ -382,6 +401,9 @@ def professional_flow_survey_result(
         flow_col="flow" if flow is not None else None,
         population_above_50k=bool(population_above_50k),
         network_wapug_events=network.get("qualified_wapug_events") or None,
+        analysis_start=analysis_start,
+        analysis_end=analysis_end,
+        exclusions=exclusions,
     )
     payload = {
         "network": network,
@@ -402,6 +424,10 @@ def professional_flow_survey_result(
             "fault_cutoff_applied_to_network_qualification": bool(
                 apply_fault_cutoff
             ),
+            "analysis_start": analysis_start,
+            "analysis_end": analysis_end,
+            "exclusion_count": len(exclusions),
+            "max_gap_seconds": float(max_gap_seconds),
         },
     }
     return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
@@ -553,6 +579,12 @@ def professional_survey_batch_result(
             continue
         try:
             frame, interval = _survey_rain_source(path, column, rain_factor)
+            for exc in exclusions:
+                stamp = pd.to_datetime(frame["timestamp"], errors="coerce")
+                frame.loc[
+                    (stamp >= pd.Timestamp(exc.start)) & (stamp < pd.Timestamp(exc.end)),
+                    column,
+                ] = np.nan
             gauges[name] = (frame, column, interval)
             rain_lookup[name] = (frame, column, interval)
         except Exception as exc:
@@ -658,6 +690,9 @@ def professional_survey_batch_result(
             flow_col="flow" if "flow" in hydraulic.columns else None,
             population_above_50k=bool(population_above_50k),
             network_wapug_events=network.get("qualified_wapug_events") or None,
+            analysis_start=analysis_start,
+            analysis_end=analysis_end,
+            exclusions=exclusions,
         )
         if analysis_start or analysis_end:
             filtered = []
