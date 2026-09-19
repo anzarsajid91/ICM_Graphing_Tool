@@ -61,6 +61,7 @@ jobs:
           python scripts/build_pages.py
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
           src = Path('src')
           expected = [p.relative_to(src).as_posix() for p in sorted((src/'icm_workbench').rglob('*.py')) if '__pycache__' not in p.parts]
@@ -70,18 +71,25 @@ jobs:
           release = Path('web/assets/runtime.release.js').read_bytes()
           assert staged == release
           html = Path('_site/index.html').read_text(encoding='utf-8')
-          assert '<script src="assets/domain-registry.js"></script>' in html
-          assert '<script src="assets/runtime.js"></script>' in html
+          token = os.environ.get('GITHUB_SHA', 'local')
+          assert f'<meta name="icm-build-sha" content="{token}" />' in html
+          versioned = [
+              'assets/app.css',
+              'assets/workbench-v2.css',
+              'assets/workbench-survey.css',
+              'assets/domain-registry.js',
+              'assets/runtime.js',
+              'assets/workbench-v2.js',
+              'assets/workbench-v2-domfix.js',
+              'assets/workbench-v3.js',
+              'assets/workbench-survey.js',
+          ]
+          for asset in versioned:
+              assert f'{asset}?v={token}' in html, asset
           assert 'pyodide/v0.29.4/full/pyodide.js' not in html
           assert Path('_site/assets/analysis-worker.js').exists()
           assert Path('_site/assets/domain-registry.js').exists()
-          assert '<script src="assets/workbench-v2.js"></script>' in html
-          assert '<script src="assets/workbench-v2-domfix.js"></script>' in html
-          assert '<script src="assets/workbench-v3.js"></script>' in html
-          assert '<script src="assets/workbench-survey.js"></script>' in html
-          assert 'assets/workbench-survey.css' in html
           assert 'xlsx@0.18.5' in html
-          assert 'workbench-v2.css' in html
           assert 'type="module" src="assets/runtime.js"' not in html
           print(f'Pages manifest verified: {len(actual)} Python modules; current browser UX staged exactly.')
           PY

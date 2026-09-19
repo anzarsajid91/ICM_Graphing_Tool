@@ -102,8 +102,14 @@ try{
     execution:window.__ICM_WORKBENCH__?.execution,
     mainThreadPyodide:typeof loadPyodide,
     registryMounted:Boolean(window.ICMProjectRegistry&&document.querySelector('#domainRegistryPanel')),
+    pageBuild:document.querySelector('meta[name="icm-build-sha"]')?.content||null,
+    runtimeBuild:window.__ICM_WORKBENCH__?.buildToken||null,
+    workerBuild:window.__ICM_WORKBENCH__?.workerBuildToken||null,
+    localAssetUrls:[...document.querySelectorAll('script[src],link[href]')].map(el=>el.src||el.href).filter(url=>/\/assets\//.test(url)&&new URL(url).origin===location.origin),
   }));
   if(architecture.execution!=='web-worker'||architecture.mainThreadPyodide!=='undefined'||!architecture.registryMounted)throw new Error('Worker/domain architecture not active: '+JSON.stringify(architecture));
+  if(!architecture.pageBuild||architecture.pageBuild!==architecture.runtimeBuild||architecture.pageBuild!==architecture.workerBuild)throw new Error('Page/runtime/worker release versions are not coherent: '+JSON.stringify(architecture));
+  if(architecture.localAssetUrls.some(url=>!new URL(url).searchParams.get('v')))throw new Error('A local JS/CSS asset is not release-versioned: '+JSON.stringify(architecture.localAssetUrls));
   if(!((await page.locator('footer').textContent())||'').includes('© 2026 Anzar Sajid'))throw new Error('Live footer copyright missing');
 
   stage='source pool and collapsed file list';
