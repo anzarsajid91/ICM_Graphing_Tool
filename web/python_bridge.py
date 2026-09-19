@@ -252,9 +252,17 @@ def _comparison_coverage(observed, obs_col, modelled, model_col, domain_start, d
 
 
 def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
-    oq, mq = _quantity(obs_path, obs_col), _quantity(model_path, model_col)
-    if not oq or not mq or oq != mq:
-        raise ValueError("Comparison requires matching declared quantities; depth and level are distinct.")
+    oq, mq = _comparison_quantity(obs_path, obs_col), _comparison_quantity(model_path, model_col)
+    if not oq or not mq:
+        raise ValueError(
+            "Comparison quantity could not be resolved for one or both selected series. "
+            "Use matching hydraulic channels (for example depth with depth, flow with flow)."
+        )
+    if oq != mq:
+        raise ValueError(
+            f"Comparison requires matching quantities; selected channels resolve to {oq!r} and {mq!r}. "
+            "Depth and absolute level remain distinct."
+        )
     obs = _load(obs_path).frame
     mod = _load(model_path).frame.copy()
     if float(offset_minutes or 0):
@@ -284,6 +292,8 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
         "coverage_fraction":coverage.get("coverage_fraction"),
         "coverage":coverage,
         "validity_model":"validity-v1",
+        "observed_quantity": oq,
+        "modelled_quantity": mq,
     }
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
@@ -292,6 +302,51 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
 def _quantity(path, column):
     metadata = getattr(_load(path), "metadata", {})
     return metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
+
+
+def _column_quantity_hint(column):
+    """Conservative fallback when an export has no explicit quantity metadata.
+
+    This is intentionally name-based and keeps depth and absolute level distinct.
+    It exists so otherwise-valid observed/model comparisons are not rejected solely
+    because one parser/export omitted quantity metadata.
+    """
+    key = re.sub(r"[^a-z0-9]+", "", str(column or "").lower())
+    if not key:
+        return None
+    if any(token in key for token in ("rainfall", "rain", "precip")):
+        return "rainfall"
+    if any(token in key for token in ("velocity", "vel")):
+        return "velocity"
+    if any(token in key for token in ("discharge", "flow")):
+        return "flow"
+    if "depth" in key:
+        return "depth"
+    if any(token in key for token in ("waterlevel", "level", "stage")):
+        return "level"
+    return None
+
+
+def _comparison_quantity(path, column):
+    declared = _quantity(path, column)
+    if declared is not None:
+        text = str(declared).strip().lower()
+        aliases = {
+            "discharge": "flow",
+            "q": "flow",
+            "vel": "velocity",
+            "water depth": "depth",
+            "water_depth": "depth",
+            "water level": "level",
+            "water_level": "level",
+            "stage": "level",
+            "rain": "rainfall",
+            "precipitation": "rainfall",
+        }
+        text = aliases.get(text, text)
+        if text in {"flow", "velocity", "depth", "level", "rainfall"}:
+            return text
+    return _column_quantity_hint(column)
 
 
 def _series_contract(path, column, unit_override=None):
