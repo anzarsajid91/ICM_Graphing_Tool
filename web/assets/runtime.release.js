@@ -15,6 +15,17 @@ const diagnostic = {
   }),
 };
 window.__ICM_WORKBENCH__ = diagnostic;
+diagnostic.sourcePoolRevision = 0;
+function notifySourcePoolChanged(reason='changed'){
+  const detail={
+    reason,
+    revision:++diagnostic.sourcePoolRevision,
+    fileCount:state.files.size,
+    readyFiles:[...state.files.values()].filter(item=>item.status==='ready').length,
+  };
+  diagnostic.sourcePool=detail;
+  window.dispatchEvent(new CustomEvent('icm:source-pool-changed',{detail}));
+}
 const buildToken=document.querySelector('meta[name="icm-build-sha"]')?.content||'local';
 diagnostic.buildToken=buildToken;
 
@@ -299,6 +310,7 @@ function setOptions(select,all,{none=false,preserve=true}={}){const prev=preserv
 async function ingestFiles(files){
   const list=[...files].filter(f=>f&&recognised(f.name));
   if(!list.length){$('poolSummary').textContent='No recognised CSV / FDV / R files found.';return;}
+  let sourcePoolChanged=false;
   operationUpdate(`Loading ${list.length} source file${list.length===1?'':'s'}`,0,'Preparing local files for parsing.');
   for(let index=0;index<list.length;index+=1){
     const file=list[index];
@@ -307,7 +319,7 @@ async function ingestFiles(files){
     operationUpdate(`Parsing file ${index+1} of ${list.length}`,Math.round(100*index/list.length),displayName);
     await operationPaint();
     const started=performance.now();
-    const id=crypto.randomUUID(),item={id,file,displayName,virtualPath:`/data/${id}_${safeName(file.name)}`,status:'loading',parsed:null,hash:null,error:null,loadSeconds:null};state.files.set(id,item);renderPool();
+    const id=crypto.randomUUID(),item={id,file,displayName,virtualPath:`/data/${id}_${safeName(file.name)}`,status:'loading',parsed:null,hash:null,error:null,loadSeconds:null};state.files.set(id,item);sourcePoolChanged=true;renderPool();
     try{
       const buffer=await file.arrayBuffer();
       item.hash=await sha256Bytes(buffer);
@@ -324,6 +336,7 @@ async function ingestFiles(files){
     await operationPaint();
   }
   operationUpdate('Source loading complete',100,`${list.length} selected file${list.length===1?'':'s'} processed.`);
+  if(sourcePoolChanged)notifySourcePoolChanged('ingest');
 }
 function renderPool(){
   const items=[...state.files.values()];$('poolSummary').textContent=items.length?`${items.length} file(s) in the source pool · ${items.filter(x=>x.status==='ready').length} parsed successfully.`:'No files loaded.';
@@ -750,7 +763,7 @@ async function chooseFolder(){if('showDirectoryPicker'in window){try{const handl
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
-  eventGuard('chooseFolderBtn','poolSummary',chooseFolder);$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>guarded('poolSummary',()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>guarded('poolSummary',()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';});
+  eventGuard('chooseFolderBtn','poolSummary',chooseFolder);$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>guarded('poolSummary',()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>guarded('poolSummary',()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);guarded('poolSummary',async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=`${files.length} dropped file${files.length===1?'':'s'} detected · preparing import…`;await ingestFiles(files);});});
   eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('modelSelect').addEventListener('change',()=>{renderModelColourControls();autoSuggestAdvanced(allSeries());});eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
   eventGuard('runCompareBtn','metricGrid',runCompare);$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);eventGuard('runDwfBtn','dwfSummary',runDwf);
