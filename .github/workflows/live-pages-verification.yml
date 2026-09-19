@@ -52,12 +52,13 @@ jobs:
             live_sha="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("commit", ""))' 2>/dev/null || true)"
             live_contract="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("live_verification_contract", 0))' 2>/dev/null || true)"
             execution_model="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("execution_model", ""))' 2>/dev/null || true)"
-            if [ "$live_sha" = "$TARGET_SHA" ] && [ "${live_contract:-0}" -ge 1 ]; then
-              echo "Live Pages commit verified: $live_sha · contract $live_contract · execution ${execution_model:-unspecified}"
+            cache_coherence="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("cache_coherence", ""))' 2>/dev/null || true)"
+            if [ "$live_sha" = "$TARGET_SHA" ] && [ "${live_contract:-0}" -ge 2 ] && [ "$cache_coherence" = "sha-versioned-local-assets" ]; then
+              echo "Live Pages commit verified: $live_sha · contract $live_contract · execution ${execution_model:-unspecified} · cache ${cache_coherence:-unspecified}"
               printf '%s\n' "$body" > /tmp/live-build.json
               exit 0
             fi
-            echo "Attempt $attempt/36: live commit '${live_sha:-unavailable}', contract '${live_contract:-0}', execution '${execution_model:-unspecified}'"
+            echo "Attempt $attempt/36: live commit '${live_sha:-unavailable}', contract '${live_contract:-0}', execution '${execution_model:-unspecified}', cache '${cache_coherence:-unspecified}'"
             sleep 10
           done
           echo "::error::Pages never exposed expected commit $TARGET_SHA"

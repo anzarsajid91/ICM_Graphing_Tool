@@ -15,6 +15,8 @@ const diagnostic = {
   }),
 };
 window.__ICM_WORKBENCH__ = diagnostic;
+const buildToken=document.querySelector('meta[name="icm-build-sha"]')?.content||'local';
+diagnostic.buildToken=buildToken;
 
 const recognised = (name) => { const n=String(name||'').toLowerCase(); return n.endsWith('.hyd')||n.endsWith('.csv')||n.endsWith('.fdv')||n.endsWith('.fdv.txt')||n.endsWith('.r')||n.endsWith('.r.txt'); };
 const esc = (s) => String(s ?? '').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]));
@@ -161,7 +163,7 @@ class BrowserPythonEngine {
   }
   _spawn(){
     if(typeof Worker!=='function')throw new Error('Web Workers are not available in this browser.');
-    this.worker=new Worker('assets/analysis-worker.js');
+    this.worker=new Worker(`assets/analysis-worker.js?v=${encodeURIComponent(buildToken)}`);
     this.worker.addEventListener('message',event=>this._message(event.data||{}));
     this.worker.addEventListener('error',event=>{
       const message=event?.message||'Python analysis worker failed.';
@@ -204,6 +206,10 @@ class BrowserPythonEngine {
       diagnostic.status='ready';
       diagnostic.execution='web-worker';
       diagnostic.manifestCount=Number(info?.manifestCount||0);
+      diagnostic.workerBuildToken=info?.buildToken||null;
+      if(diagnostic.workerBuildToken&&diagnostic.workerBuildToken!==buildToken){
+        throw new Error(`Worker asset version mismatch: page ${buildToken}, worker ${diagnostic.workerBuildToken}.`);
+      }
       return info;
     }).finally(()=>{this.booting=null;});
     return this.booting;

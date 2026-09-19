@@ -12,7 +12,7 @@ PACKAGE = SRC / "icm_workbench"
 SITE = ROOT / "_site"
 
 
-def _inject_v2_assets() -> None:
+def _inject_v2_assets(build_token: str) -> None:
     """Load the reviewed release runtime plus the current UX overlays.
 
     The original runtime intentionally remains a separately reviewable source file. The
@@ -34,6 +34,26 @@ def _inject_v2_assets() -> None:
     required = ["domain-registry.js", "workbench-v2.css", "workbench-v2.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "xlsx@0.18.5"]
     if not all(name in html for name in required):
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
+
+    # GitHub Pages/CDN may retain same-named static assets across deployments.
+    # Version every local script/style URL with the exact release SHA so index,
+    # browser runtime, worker and Python package cannot be mixed across releases.
+    local_assets = [
+        "assets/app.css",
+        "assets/workbench-v2.css",
+        "assets/workbench-survey.css",
+        "assets/domain-registry.js",
+        "assets/runtime.js",
+        "assets/workbench-v2.js",
+        "assets/workbench-v2-domfix.js",
+        "assets/workbench-v3.js",
+        "assets/workbench-survey.js",
+    ]
+    for asset in local_assets:
+        html = html.replace(f'"{asset}"', f'"{asset}?v={build_token}"')
+
+    build_meta = f'  <meta name="icm-build-sha" content="{build_token}" />\n'
+    html = html.replace('  <meta name="description"', build_meta + '  <meta name="description"', 1)
     index.write_text(html, encoding="utf-8")
 
 
@@ -47,7 +67,8 @@ def build() -> None:
     shutil.copytree(PACKAGE, python_root / "icm_workbench")
 
     shutil.copy2(WEB / "assets" / "runtime.release.js", SITE / "assets" / "runtime.js")
-    _inject_v2_assets()
+    build_token = os.environ.get("GITHUB_SHA", "local")
+    _inject_v2_assets(build_token)
 
     manifest = [
         path.relative_to(SRC).as_posix()
@@ -62,7 +83,7 @@ def build() -> None:
     (SITE / "build.json").write_text(
         json.dumps(
             {
-                "build_schema_version": 1,
+                "build_schema_version": 2,
                 "commit": os.environ.get("GITHUB_SHA", "local"),
                 "runtime": "worker-isolated Python kernel + canonical project registry + current engineering UX",
                 "python_module_count": len(manifest),
@@ -71,7 +92,9 @@ def build() -> None:
                 "execution_model": "pyodide-web-worker",
                 "engineering_api": "icm_workbench.browser_api+advanced_api",
                 "domain_registry": "icm-project-registry-v1",
-                "live_verification_contract": 1,
+                "asset_version": build_token,
+                "cache_coherence": "sha-versioned-local-assets",
+                "live_verification_contract": 2,
             },
             indent=2,
         )
