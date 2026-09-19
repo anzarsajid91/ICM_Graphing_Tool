@@ -699,9 +699,15 @@ def fsat_event_response_assessment(
     start: Any = None,
     end: Any = None,
     exclusions: list[Any] | None = None,
+    rain_exclusions: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Port FSAT Event Response diameter gates and derived criteria."""
-    exclusions = list(exclusions or [])
+    hydraulic_exclusions = list(exclusions or [])
+    rainfall_exclusions = (
+        hydraulic_exclusions
+        if rain_exclusions is None
+        else list(rain_exclusions or [])
+    )
     if hydraulic is None or getattr(hydraulic, "empty", True):
         return {"rows": [], "reason": "Hydraulic data unavailable.", "method": "fsat-event-response-v60-browser"}
     rain = rain_frame[["timestamp", rain_col]].copy()
@@ -713,13 +719,19 @@ def fsat_event_response_assessment(
         .drop_duplicates("timestamp", keep="last")
     )
     rain_series = pd.Series(rain[rain_col].to_numpy(dtype=float), index=rain["timestamp"])
-    rain_series = _mask_exclusions_series(rain_series, exclusions)
+    rain_series = _mask_exclusions_series(rain_series, rainfall_exclusions)
     interval = float(rain_interval_min or 2.0)
     rain_increment = rain_series * interval / 60.0
 
-    depth = _mask_exclusions_series(_indexed_series(hydraulic, depth_col), exclusions)
-    velocity = _mask_exclusions_series(_indexed_series(hydraulic, velocity_col), exclusions)
-    flow = _mask_exclusions_series(_indexed_series(hydraulic, flow_col), exclusions)
+    depth = _mask_exclusions_series(
+        _indexed_series(hydraulic, depth_col), hydraulic_exclusions
+    )
+    velocity = _mask_exclusions_series(
+        _indexed_series(hydraulic, velocity_col), hydraulic_exclusions
+    )
+    flow = _mask_exclusions_series(
+        _indexed_series(hydraulic, flow_col), hydraulic_exclusions
+    )
     dt_candidates = []
     for series in (depth, velocity, flow):
         if len(series.index) > 1:
@@ -897,6 +909,11 @@ def fsat_event_response_assessment(
             "dwf_window_hours": 24,
             "raw_depth_rise_threshold_m": 0.10,
             "raw_velocity_rise_threshold_m_s": 0.15,
+        },
+        "exclusion_policy": {
+            "hydraulic_exclusion_count": len(hydraulic_exclusions),
+            "rainfall_exclusion_count": len(rainfall_exclusions),
+            "scoped": True,
         },
         "method": "fsat-event-response-v60-browser",
         "method_note": "Min D and response-ratio thresholds are ported from fdv_weekly_assessment_irish_water_v60.py. Raw D/V response thresholds are used because browser-loaded FDV sources do not carry the companion workbook residual columns.",
