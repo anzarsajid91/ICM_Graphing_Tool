@@ -19,7 +19,12 @@ as dry weather, rainfall calculations use actual timestamp support, and
 partial/unknown coverage is surfaced instead of being silently converted to a
 definitive result. See [behaviour and methodology changes](docs/behaviour-changes.md).
 
-Automated Python and Chromium release gates protect the deployed artifact.
+Automated Python and Chromium release gates protect the deployed artifact. A
+second post-deployment verifier waits for the public GitHub Pages site to expose
+the exact release SHA, then reruns the full browser workflow against the live
+application and creates a `live-regression` issue if the deployed site fails.
+See [the live improvement loop](docs/live-improvement-loop.md).
+
 Representative real-export engineering reconciliation remains a separate domain
 UAT requirement before describing the tool as field-validated for a project.
 The repository includes a

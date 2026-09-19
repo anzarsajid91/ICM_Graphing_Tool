@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const root=process.cwd();
+const baseUrl=(process.env.ICM_BASE_URL||'http://127.0.0.1:8000/').replace(/\/?$/,'/');
+const liveMode=Boolean(process.env.ICM_BASE_URL);
 const browser=await chromium.launch({headless:true});
 const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true,timezoneId:'Asia/Kolkata'});
 const page=await context.newPage();
@@ -17,6 +19,12 @@ async function optionValue(selector,needle){return page.locator(`${selector} opt
 async function clickTab(name){await page.click(`[data-tab="${name}"]`);}
 async function downloadFrom(selector){const pending=page.waitForEvent('download');await page.click(selector);return pending;}
 async function filePayload(filePath,name=path.basename(filePath)){return {name,mimeType:'text/csv',buffer:await fs.readFile(filePath)};}
+async function captureEvidence(name){
+  const dir=process.env.ICM_EVIDENCE_DIR;
+  if(!dir)return;
+  await fs.mkdir(dir,{recursive:true});
+  await page.screenshot({path:path.join(dir,`${name}.png`),fullPage:true});
+}
 async function inspectReportHtml(html,minFigures=1){
   const p=await context.newPage();
   try{
@@ -88,7 +96,7 @@ async function associationWorkbook(){
 
 try{
   stage='open application';
-  await page.goto('http://127.0.0.1:8000/',{waitUntil:'domcontentloaded'});
+  await page.goto(baseUrl+(liveMode?`?live_verify=${Date.now()}`:''),{waitUntil:'domcontentloaded'});
   await waitReady();
   if(!((await page.locator('footer').textContent())||'').includes('© 2026 Anzar Sajid'))throw new Error('Live footer copyright missing');
 
@@ -162,6 +170,7 @@ try{
   if(graphStatsText.includes('Median')||graphStatsText.includes('Integrated total')||graphStatsText.includes('Missing')||graphStatsText.includes('Status'))throw new Error('Graph statistics were not decluttered: '+graphStatsText);
   const noRangeSlider=await page.evaluate(()=>!document.querySelector('#timeChart')?.layout?.xaxis?.rangeslider?.visible);
   if(!noRangeSlider)throw new Error('Main graph overview/range slider should be removed');
+  await captureEvidence('01-data-graph');
 
   stage='adaptive zoom restores native timestep';
   await page.evaluate(()=>Plotly.relayout(document.querySelector('#timeChart'),{'xaxis.range[0]':'2026-01-01T00:00:00','xaxis.range[1]':'2026-01-01T02:00:00'}));
@@ -333,6 +342,7 @@ try{
   const fm03Balance=(completeSurvey.volume_balance?.rows||[]).find(x=>x.downstream_monitor==='FM03');
   if(!fm03Balance||fm03Balance.rag!=='Green'||fm03Balance.legacy_fsat_status!=='OK')throw new Error('Expected FM03 downstream volume balance to reconcile Green/OK: '+JSON.stringify(fm03Balance));
   if(!((await page.locator('#surveyBalanceTable').textContent())||'').includes('Likely source / first check'))throw new Error('Volume-balance diagnostic recommendation column is missing');
+  await captureEvidence('02-survey-schematic');
 
   stage='FDV automatic multi-variable graph';
   const fmDepth=await optionValue('#observedSelect','FM01.fdv — depth');
@@ -418,6 +428,7 @@ try{
   await clickTab('workspace');
   const reportSpacing=await page.evaluate(()=>{const top=document.querySelector('#namedWorkspaceSelect')?.closest('.actions')?.getBoundingClientRect();const bottom=document.querySelector('.report-actions')?.getBoundingClientRect();return{gap:top&&bottom?bottom.top-top.bottom:null};});
   if(reportSpacing.gap!=null&&reportSpacing.gap<8)throw new Error('Report action controls are still crowded: '+JSON.stringify(reportSpacing));
+  await captureEvidence('03-report-workspace');
   const reportDownload=await downloadFrom('#downloadReportBtn');
   const report=await fs.readFile(await reportDownload.path(),'utf8');
   if(!report.includes('© 2026 Anzar Sajid'))throw new Error('Report copyright missing');
@@ -474,8 +485,9 @@ try{
   if(materialErrors.length)throw new Error(`Browser console/page errors: ${materialErrors.join(' | ')}`);
   if(diag.errors?.length)throw new Error(`Workbench recorded operation errors: ${JSON.stringify(diag.errors)}`);
   if(failedRequests.filter(x=>!x.includes('favicon.ico')).length)throw new Error(`Failed browser requests: ${failedRequests.join(' | ')}`);
+  await captureEvidence('04-final-state');
 
-  console.log('Browser acceptance passed: hardened multi-file drag/drop, auxiliary column filtering, FDV depth/flow/velocity auto-graphing, dense adaptive zoom, no range slider, compact statistics/reports, unified spill dash style, survey schematic, collapsible workflows, survey assessment, spills, storage and workspace outputs.');
+  console.log(`${liveMode?'Live Pages':'Local artifact'} browser acceptance passed at ${baseUrl}: hardened multi-file drag/drop, auxiliary column filtering, FDV depth/flow/velocity auto-graphing, dense adaptive zoom, no range slider, compact statistics/reports, unified spill dash style, survey schematic, collapsible workflows, survey assessment, spills, storage and workspace outputs.`);
 } catch(err) {
   const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');
   const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);
@@ -484,7 +496,7 @@ try{
   console.error(`Workbench diagnostic: ${JSON.stringify(diag)}`);
   console.error(`Console errors: ${JSON.stringify(consoleErrors)}`);
   console.error(`Failed requests: ${JSON.stringify(failedRequests)}`);
-  await page.screenshot({path:'/tmp/icm-workbench-failure.png',fullPage:true}).catch(()=>{});
+  await page.screenshot({path:process.env.ICM_FAILURE_SCREENSHOT||'/tmp/icm-workbench-failure.png',fullPage:true}).catch(()=>{});
   throw err;
 } finally {
   await browser.close();
