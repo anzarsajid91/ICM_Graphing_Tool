@@ -306,7 +306,7 @@ try{
   if(!completeSurvey.source_policy?.association_workbook_authoritative)throw new Error('Association workbook precedence is not explicit in complete survey result');
   const fm03Balance=(completeSurvey.volume_balance?.rows||[]).find(x=>x.downstream_monitor==='FM03');
   if(!fm03Balance||fm03Balance.rag!=='Green'||fm03Balance.legacy_fsat_status!=='OK')throw new Error('Expected FM03 downstream volume balance to reconcile Green/OK: '+JSON.stringify(fm03Balance));
-  if(!document.querySelector('#surveyBalanceTable')?.textContent.includes('Likely source / first check'))throw new Error('Volume-balance diagnostic recommendation column is missing');
+  if(!((await page.locator('#surveyBalanceTable').textContent())||'').includes('Likely source / first check'))throw new Error('Volume-balance diagnostic recommendation column is missing');
 
   stage='spill exclusions in Asia/Kolkata and annual comparison';
   await clickTab('spills');
