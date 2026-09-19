@@ -1,7 +1,8 @@
 (() => {
   'use strict';
 
-  const DISPLAY_POINTS = 5000;
+  const FULL_DISPLAY_POINTS = 15000;
+  const ZOOM_DISPLAY_POINTS = 60000;
   const ui = {
     poolExpanded: false,
     graphRange: null,
@@ -106,7 +107,7 @@
         </label>
         <label class="v2-show-toggle"><input id="showGraphModelThreshold" type="checkbox" checked /> Show line</label>
       </div>
-      <div class="v2-density" id="graphDensity"><strong>Adaptive display</strong>Full view uses up to ${DISPLAY_POINTS.toLocaleString()} points/trace. Zoom in for native timestep detail.</div>`;
+      <div class="v2-density" id="graphDensity"><strong>Adaptive display</strong>Full view uses up to ${FULL_DISPLAY_POINTS.toLocaleString()} points per trace; zoomed windows use up to ${ZOOM_DISPLAY_POINTS.toLocaleString()}.</div>`;
     panel.insertBefore(toolbar, details);
     const chart = document.getElementById('timeChart');
     if (chart && !document.getElementById('graphStatistics')) {
@@ -184,7 +185,7 @@
     const args = {
       path: source.item.virtualPath,
       column: source.col,
-      max_points: DISPLAY_POINTS,
+      max_points: range ? ZOOM_DISPLAY_POINTS : FULL_DISPLAY_POINTS,
       max_gap_seconds:Number($('gapInput').value||900),
       start: range?.[0] || null,
       end: range?.[1] || null,
@@ -202,7 +203,7 @@
       shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:obs,y1:obs,line:{color:$('threshold1Color').value,width:2,dash:'dash'}});
     }
     if ($('showGraphModelThreshold')?.checked !== false && model !== null) {
-      shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:model,y1:model,line:{color:$('threshold2Color').value,width:2,dash:'dot'}});
+      shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:model,y1:model,line:{color:$('threshold2Color').value,width:2,dash:'dash'}});
     }
     if ($('showEventOverlay').checked) {
       for (const e of state.rainEvents) shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:$('rainEventColor').value,opacity:.08,line:{width:0},layer:'below'});
@@ -231,12 +232,11 @@
     return `${fmt(Number(value),3)}${unit ? ` ${unit}` : ''}`;
   }
 
-  function renderGraphStatistics(rows, range) {
+  function renderGraphStatistics(rows) {
     const target = $('graphStatistics');
     if (!target) return;
-    if (!rows.length) { target.innerHTML='<div class="v2-empty">No valid series statistics for the visible graph period.</div>'; return; }
-    const period=range&&range.length===2?`${modelClock(range[0])} → ${modelClock(range[1])}`:'Full plotted period';
-    target.innerHTML=`<div class="v2-stats-head"><div><strong>Graph statistics</strong><span>${esc(period)} · calculated from native source values, not downsampled display points</span></div></div><div class="table-wrap"><table class="data-table v2-stats-table"><thead><tr><th>Role / series</th><th>Quantity</th><th>Unit</th><th>Valid</th><th>Missing</th><th>Minimum</th><th>Mean</th><th>Median</th><th>Maximum</th><th>Integrated total</th><th>Status</th></tr></thead><tbody>${rows.map(row=>{const s=row.statistics||{},factor=row.factor||1,scale=v=>v==null?v:Number(v)*factor,total=s.total==null?s.total:Number(s.total)*(s.quantity==='rainfall'?factor:1);return `<tr><td><strong>${esc(row.role)}</strong><br><span>${esc(row.label)}</span></td><td>${esc(s.quantity||'—')}</td><td>${esc(s.unit||'unresolved')}</td><td>${s.valid_count??'—'}</td><td>${s.missing_count??'—'}</td><td>${statisticValue(scale(s.minimum),s.unit)}</td><td>${statisticValue(scale(s.time_weighted_mean??s.mean),s.unit)}</td><td>${statisticValue(scale(s.median),s.unit)}</td><td>${statisticValue(scale(s.maximum),s.unit)}</td><td>${statisticValue(total,s.total_unit)}</td><td>${esc(s.status||'—')}</td></tr>`;}).join('')}</tbody></table></div>`;
+    if (!rows.length) { target.innerHTML='<div class="v2-empty">No graph statistics available.</div>'; return; }
+    target.innerHTML=`<div class="table-wrap"><table class="data-table v2-stats-table compact"><thead><tr><th>Series</th><th>Unit</th><th>Minimum</th><th>Mean</th><th>Maximum</th></tr></thead><tbody>${rows.map(row=>{const s=row.statistics||{},factor=row.factor||1,scale=v=>v==null?v:Number(v)*factor;return `<tr><td><strong>${esc(row.compact_label||row.role||'Series')}</strong></td><td>${esc(s.unit||'—')}</td><td>${statisticValue(scale(s.minimum))}</td><td>${statisticValue(scale(s.time_weighted_mean??s.mean))}</td><td>${statisticValue(scale(s.maximum))}</td></tr>`;}).join('')}</tbody></table></div>`;
     window.__ICM_WORKBENCH__.lastGraphStatistics=rows;
   }
 
@@ -249,21 +249,41 @@
     ui.graphRefreshing = true;
     const pointCounts = {}, statisticRows=[];
     try {
-      const obs = await v2SeriesFor(state.mapping.observed || state.mapping.rain, range);
-      if (!obs || generation !== ui.graphGeneration) return;
-      pointCounts.observed = {raw:obs.data.raw_count, shown:obs.data.display_count, native:obs.data.native_resolution, topology:obs.data.topology_exceeds_budget};
-      if(state.mapping.observed)statisticRows.push({role:'Observed',label:seriesLabel(obs.item,obs.col),statistics:obs.data.statistics});
-      const traces = [{x:obs.data.timestamp,y:obs.data.value,name:`Observed · ${obs.col}`,mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:1.7},yaxis:'y'}];
+      const observedSources=observedGraphSeries();
+      const fdvMode=observedSources.length>=2;
+      const quantityColours={depth:$('obsColor').value,flow:'#008b95',velocity:'#ef7d00',level:$('obsColor').value};
+      const axisFor=q=>fdvMode?(q==='flow'?'y3':q==='velocity'?'y4':'y'):'y';
+      const traces=[];
+      const quantities=new Set();
 
-      if(!state.mapping.observed)traces.length=0;
-      let index = 0;
+      for(let observedIndex=0;observedIndex<observedSources.length;observedIndex+=1){
+        const source=observedSources[observedIndex];
+        const obs=await v2SeriesFor(source.key,range);
+        if(!obs||generation!==ui.graphGeneration)return;
+        const quantity=String(seriesQuantity(obs.item,obs.col)||source.quantity||'').toLowerCase();
+        if(quantity)quantities.add(quantity);
+        pointCounts[observedIndex===0?'observed':`observed_${quantity||observedIndex+1}`]={raw:obs.data.raw_count,shown:obs.data.display_count,native:obs.data.native_resolution,topology:obs.data.topology_exceeds_budget};
+        statisticRows.push({role:'Observed',compact_label:compactGraphRole('Observed',obs.item,obs.col),label:seriesLabel(obs.item,obs.col),statistics:obs.data.statistics});
+        traces.push({
+          x:obs.data.timestamp,y:obs.data.value,
+          name:fdvMode?`Observed ${quantity||obs.col}`:`Observed · ${obs.col}`,
+          mode:'lines',connectgaps:false,
+          line:{color:quantityColours[quantity]||$('obsColor').value,width:fdvMode?1.45:1.7},
+          yaxis:axisFor(quantity),
+          hovertemplate:`%{x}<br>${esc(quantity||obs.col)} %{y:.4g}<extra></extra>`,
+        });
+      }
+
+      let modelIndex = 0;
       for (const key of state.mapping.models) {
         const model = await v2SeriesFor(key, range);
         if (!model || generation !== ui.graphGeneration) return;
-        pointCounts[`model_${index+1}`] = {raw:model.data.raw_count,shown:model.data.display_count,native:model.data.native_resolution};
-        statisticRows.push({role:`Model ${index+1}`,label:seriesLabel(model.item,model.col),statistics:model.data.statistics});
-        traces.push({x:model.data.timestamp,y:model.data.value,name:`Model ${index+1} · ${model.col}`,meta:model.item.displayName,mode:'lines',connectgaps:false,line:{color:state.modelColours[key]||palette[index%palette.length],width:1.35},yaxis:'y'});
-        index += 1;
+        const quantity=String(seriesQuantity(model.item,model.col)||'').toLowerCase();
+        if(quantity)quantities.add(quantity);
+        pointCounts[`model_${modelIndex+1}`] = {raw:model.data.raw_count,shown:model.data.display_count,native:model.data.native_resolution,topology:model.data.topology_exceeds_budget};
+        statisticRows.push({role:`Model ${modelIndex+1}`,compact_label:compactGraphRole(`Model ${modelIndex+1}`,model.item,model.col),label:seriesLabel(model.item,model.col),statistics:model.data.statistics});
+        traces.push({x:model.data.timestamp,y:model.data.value,name:`Model ${modelIndex+1} · ${model.col}`,meta:model.item.displayName,mode:'lines',connectgaps:false,line:{color:state.modelColours[key]||palette[modelIndex%palette.length],width:1.35},yaxis:axisFor(quantity)});
+        modelIndex += 1;
       }
 
       let rainValues = [];
@@ -274,8 +294,8 @@
           hasRain = true;
           const factor = Number($('rainFactor').value || 1);
           rainValues = rain.data.value.map(v => v == null ? null : Number(v) * factor);
-          pointCounts.rainfall = {raw:rain.data.raw_count,shown:rain.data.display_count,native:rain.data.native_resolution};
-          statisticRows.push({role:'Rainfall',label:seriesLabel(rain.item,rain.col),statistics:rain.data.statistics,factor});
+          pointCounts.rainfall = {raw:rain.data.raw_count,shown:rain.data.display_count,native:rain.data.native_resolution,topology:rain.data.topology_exceeds_budget};
+          statisticRows.push({role:'Rainfall',compact_label:compactGraphRole('Rainfall',rain.item,rain.col),label:seriesLabel(rain.item,rain.col),statistics:rain.data.statistics,factor});
           traces.push({x:rain.data.timestamp,y:rainValues,name:'Rainfall',type:'bar',yaxis:'y2',marker:{color:rain.data.timestamp.map(t=>inEvent(t)?$('rainEventColor').value:$('rainColor').value)},opacity:.72,hovertemplate:'%{x}<br>Rainfall %{y:.3f}<extra></extra>'});
         }
       }
@@ -286,27 +306,32 @@
         traces.push({x:[null],y:[null],mode:'lines',name:$('threshold1Label').value||'Observed / EDM spill threshold',hoverinfo:'skip',showlegend:true,line:{color:$('threshold1Color').value,width:2,dash:'dash'}});
       }
       if ($('showGraphModelThreshold')?.checked !== false && modelThreshold !== null) {
-        traces.push({x:[null],y:[null],mode:'lines',name:$('threshold2Label').value||'Model spill threshold',hoverinfo:'skip',showlegend:true,line:{color:$('threshold2Color').value,width:2,dash:'dot'}});
+        traces.push({x:[null],y:[null],mode:'lines',name:$('threshold2Label').value||'Model spill threshold',hoverinfo:'skip',showlegend:true,line:{color:$('threshold2Color').value,width:2,dash:'dash'}});
       }
 
-      const xaxis = {title:'Time',autorange:!range,rangeslider:{visible:true,thickness:.06},showgrid:false};
+      const extraHydraulicAxes=fdvMode&&(quantities.has('flow')||quantities.has('velocity'));
+      const xaxis = {title:'Time',autorange:!range,showgrid:false,domain:extraHydraulicAxes?[0,.90]:[0,1]};
       if (range?.length === 2) {
         xaxis.range = range;
         xaxis.autorange = false;
       }
+      const hydraulicDomain=hasRain?[0,.70]:[0,1];
+      const depthUnit=observedSources.map(s=>seriesUnit(s.item,s.col)).find((_,i)=>String(observedSources[i]?.quantity||seriesQuantity(observedSources[i]?.item,observedSources[i]?.col)||'').toLowerCase()==='depth')||'m';
       const layout = {
         template:'plotly_white',
         height:690,
-        margin:{l:66,r:68,t:112,b:62},
+        margin:{l:72,r:extraHydraulicAxes?138:68,t:112,b:58},
         hovermode:'x unified',
         legend:{orientation:'h',y:1.16,x:0,xanchor:'left',yanchor:'bottom',font:{size:11},traceorder:'normal',itemwidth:38},
         xaxis,
-        yaxis:{title:obs.col,domain:hasRain?[0,.70]:[0,1],anchor:'x',showgrid:true,gridcolor:'#e8eef3',zerolinecolor:'#d9e2ea',automargin:true},
+        yaxis:{title:fdvMode?`Depth (${depthUnit})`:(observedSources[0]?.col||'Value'),domain:hydraulicDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zerolinecolor:'#d9e2ea',automargin:true},
         shapes:v2GraphShapes(),
         annotations:v2GraphAnnotations(),
-        uirevision:'icm-main-v2',
+        uirevision:'icm-main-v3',
         bargap:0,
       };
+      if(fdvMode&&quantities.has('flow'))layout.yaxis3={title:'Flow (m³/s)',domain:hydraulicDomain,overlaying:'y',side:'right',anchor:'x',showgrid:false,zeroline:false,automargin:true};
+      if(fdvMode&&quantities.has('velocity'))layout.yaxis4={title:'Velocity (m/s)',domain:hydraulicDomain,overlaying:'y',side:'right',anchor:'free',position:.985,showgrid:false,zeroline:false,automargin:true};
       if (hasRain) {
         layout.yaxis2 = {title:'Rainfall',domain:[.79,1],anchor:'x',side:'right',range:[rainfallMaximum(rainValues),0],showgrid:false,zeroline:false,automargin:true};
       }
@@ -316,12 +341,13 @@
       ui.graphRange = range;
       window.__ICM_WORKBENCH__.lastGraphPointCounts = pointCounts;
       window.__ICM_WORKBENCH__.lastGraphRange = range;
-      renderGraphStatistics(statisticRows,range);
+      window.__ICM_WORKBENCH__.lastGraphMode = fdvMode?'fdv-multi-variable':'single-series';
+      renderGraphStatistics(statisticRows);
       const density = $('graphDensity');
       if (density) {
         const native = Object.values(pointCounts).every(x => x.native);
         const total = Object.values(pointCounts).reduce((sum,x)=>sum+(x.shown||0),0);
-        density.innerHTML = `<strong>${native?'Native timestep detail':'Adaptive display'} · ${total.toLocaleString()} plotted points</strong>${Object.values(pointCounts).some(x=>x.topology)?'Display budget exceeded to preserve missing-data breaks.':native?'Visible window is showing every available source timestep.':`Each trace is capped near ${DISPLAY_POINTS.toLocaleString()} points; zoom in for finer detail.`}`;
+        density.innerHTML = `<strong>${native?'Native timestep detail':'Adaptive display'} · ${total.toLocaleString()} plotted points</strong>${native?'Visible window is showing every available source timestep.':`Zoom further for native detail; zoomed traces may use up to ${ZOOM_DISPLAY_POINTS.toLocaleString()} points each.`}`;
       }
     } finally {
       ui.graphRefreshing = false;
