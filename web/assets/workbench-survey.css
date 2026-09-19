@@ -190,3 +190,37 @@
     grid-template-columns:1fr;
   }
 }
+
+/* Collapsible engineering tool sections */
+.tool-main-section,
+.subpanel[data-collapsible="true"]{position:relative}
+.tool-main-head{margin-bottom:0;padding:2px 0}
+.tool-collapse-toggle{margin-left:auto;white-space:nowrap}
+.tool-collapse-body{display:block}
+.tool-collapsed>.tool-collapse-body{display:none}
+.tool-collapsed>.subhead,
+.tool-collapsed>.panel-head{margin-bottom:0}
+.subhead{align-items:flex-start}
+.subhead>.tool-collapse-toggle,
+.panel-head>.tool-collapse-toggle{flex:0 0 auto}
+.tool-main-section{margin:10px 0 14px;padding:10px 12px;border:1px solid var(--line,#d9e1e8);border-radius:8px;background:#fbfcfd}
+
+/* Association-driven monitor schematic */
+.survey-schematic{margin:12px 0 14px;padding:12px 14px;border:1px solid #d6e1e9;border-radius:10px;background:#fbfdff;overflow:hidden}
+.survey-schematic-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:8px}
+.survey-schematic-head strong{display:block;color:#18324a;font-size:13px}
+.survey-schematic-head>div>span{display:block;color:#64798a;font-size:11px;margin-top:2px}
+.schematic-legend{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.schematic-legend span{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:700;border:1px solid transparent}
+.survey-schematic svg{display:block;width:100%;height:auto;min-height:180px}
+.schematic-pipe-outer{fill:none;stroke:#d7e2e9;stroke-width:11;stroke-linecap:round}
+.schematic-pipe-inner{fill:none;stroke:#66879d;stroke-width:2.4;stroke-linecap:round}
+.schematic-monitor-name{font-size:15px;font-weight:750;fill:#1f3548}
+.schematic-monitor-meta{font-size:10.5px;fill:#617688}
+.schematic-note{margin-top:5px;color:#708291;font-size:10.5px}
+@media(max-width:760px){
+  .survey-schematic-head{display:block}
+  .schematic-legend{justify-content:flex-start;margin-top:8px}
+  .survey-schematic{overflow-x:auto}
+  .survey-schematic svg{min-width:760px}
+}

@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 
 import python_bridge
+
+_SURVEY_BATCH_CACHE = {}
 from icm_workbench.analysis import (
     pair_series,rating_curve_fit,detect_spill_intervals,integrate_series,split_interval_by_month,
     detect_rainfall_events,dry_weather_flow,rainfall_accumulation,validity_summary,multi_gauge_rainfall_assessment,
@@ -489,6 +491,71 @@ def _survey_channel(path, column, quantity, unit_override=None):
     return out, contract
 
 
+def _survey_hydraulic_bundle(source):
+    """Build one canonical hydraulic frame per source without repeating full-frame copies.
+
+    This preserves the existing dimensional contracts while avoiding three separate
+    _scaled_dimensional_frame calls and two outer merges for a normal FDV source.
+    """
+    path = source.get("path")
+    if not path:
+        return None, {}
+    parsed = python_bridge._load(path)
+    base = parsed.frame
+    if base is None or getattr(base, "empty", True) or "timestamp" not in base.columns:
+        return None, {}
+    out = pd.DataFrame({"timestamp": pd.to_datetime(base["timestamp"], errors="coerce")})
+    contracts = {}
+    for quantity, key in (
+        ("depth", "depth_col"),
+        ("velocity", "velocity_col"),
+        ("flow", "flow_col"),
+    ):
+        column = source.get(key)
+        channel_path = source.get(f"{quantity}_path") or path
+        if not column or channel_path != path or column not in base.columns:
+            if column and channel_path and channel_path != path:
+                frame, contract = _survey_channel(
+                    channel_path,
+                    column,
+                    quantity,
+                    source.get(f"{quantity}_unit_override"),
+                )
+                if frame is not None:
+                    out = out.merge(frame, on="timestamp", how="outer")
+                    contracts[quantity] = contract
+            continue
+        contract = python_bridge._series_contract(
+            path,
+            column,
+            unit_override=source.get(f"{quantity}_unit_override"),
+        )
+        allowed = {"depth", "level"} if quantity == "depth" else {quantity}
+        if contract["quantity"] not in allowed:
+            raise ValueError(
+                f"Series {column!r} is declared as {contract['quantity'] or 'unknown quantity'}; "
+                f"expected one of {sorted(allowed)}."
+            )
+        required = {"depth": "m", "velocity": "m/s", "flow": "m³/s"}[quantity]
+        if contract["canonical_unit"] != required:
+            raise ValueError(
+                f"Dimensional calculation withheld: resolve {column!r} to {required}. "
+                f"Current unit is {contract['original_unit'] or 'unknown'}."
+            )
+        out[quantity] = pd.to_numeric(base[column], errors="coerce") * float(contract["scale_to_canonical"])
+        contracts[quantity] = contract
+    value_columns = [c for c in ("depth", "velocity", "flow") if c in out.columns]
+    if not value_columns:
+        return None, contracts
+    out = (
+        out.dropna(subset=["timestamp"])
+        .sort_values("timestamp")
+        .drop_duplicates("timestamp", keep="last")
+        .reset_index(drop=True)
+    )
+    return out, contracts
+
+
 def _survey_rain_source(path, column="rainfall", factor=1.0):
     if not path:
         return None, None
@@ -601,6 +668,24 @@ def professional_survey_batch_result(
     analysis_start = python_bridge._model_clock_timestamp(start)
     analysis_end = python_bridge._model_clock_timestamp(end)
 
+    cache_key = (
+        str(association_json),
+        str(monitor_sources_json),
+        str(rain_sources_json),
+        bool(population_above_50k),
+        bool(apply_fault_cutoff),
+        float(rain_factor),
+        str(hydraulic_exclusions_json if hydraulic_exclusions_json is not None else exclusions_json),
+        str(rainfall_exclusions_json if rainfall_exclusions_json is not None else exclusions_json),
+        float(max_gap_seconds),
+        None if analysis_start is None else analysis_start.isoformat(),
+        None if analysis_end is None else analysis_end.isoformat(),
+        float(amber_tolerance_percent),
+    )
+    cached = _SURVEY_BATCH_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     gauges = {}
     rain_lookup = {}
     rain_issues = []
@@ -612,12 +697,13 @@ def professional_survey_batch_result(
             continue
         try:
             frame, interval = _survey_rain_source(path, column, rain_factor)
-            for exc in rainfall_exclusions:
+            if rainfall_exclusions:
                 stamp = pd.to_datetime(frame["timestamp"], errors="coerce")
-                frame.loc[
-                    (stamp >= pd.Timestamp(exc.start)) & (stamp < pd.Timestamp(exc.end)),
-                    column,
-                ] = np.nan
+                for exc in rainfall_exclusions:
+                    frame.loc[
+                        (stamp >= pd.Timestamp(exc.start)) & (stamp < pd.Timestamp(exc.end)),
+                        column,
+                    ] = np.nan
             gauges[name] = (frame, column, interval)
             rain_lookup[_survey_name_token(name)] = (frame, column, interval)
         except Exception as exc:
@@ -653,33 +739,13 @@ def professional_survey_batch_result(
                 "diameter_mm": assoc.get("diameter_mm"),
             })
             continue
-        channel_frames = []
-        contracts = {}
-        for quantity, key in (
-            ("depth", "depth_col"),
-            ("velocity", "velocity_col"),
-            ("flow", "flow_col"),
-        ):
-            column = source.get(key)
-            path = source.get(f"{quantity}_path") or source.get("path")
-            if not path or not column:
-                continue
-            try:
-                frame, contract = _survey_channel(
-                    path,
-                    column,
-                    quantity,
-                    source.get(f"{quantity}_unit_override"),
-                )
-                if frame is not None:
-                    channel_frames.append(frame)
-                    contracts[quantity] = contract
-                    if quantity == "flow":
-                        volume_flows[monitor] = frame
-            except Exception as exc:
-                contracts[quantity] = {"unit_status": "error", "reason": str(exc)}
+        try:
+            hydraulic, contracts = _survey_hydraulic_bundle(source)
+        except Exception as exc:
+            hydraulic = None
+            contracts = {"source": {"unit_status": "error", "reason": str(exc)}}
 
-        if not channel_frames:
+        if hydraulic is None or hydraulic.empty:
             monitor_rows.append({
                 "monitor": monitor,
                 "status": "unavailable",
@@ -689,15 +755,8 @@ def professional_survey_batch_result(
                 "contracts": contracts,
             })
             continue
-
-        hydraulic = channel_frames[0]
-        for frame in channel_frames[1:]:
-            hydraulic = hydraulic.merge(frame, on="timestamp", how="outer")
-        hydraulic = (
-            hydraulic.sort_values("timestamp")
-            .drop_duplicates("timestamp", keep="last")
-            .reset_index(drop=True)
-        )
+        if "flow" in hydraulic.columns:
+            volume_flows[monitor] = hydraulic[["timestamp", "flow"]].copy()
 
         rg = str(assoc.get("rain_gauge") or "").strip()
         rain_spec = rain_lookup.get(_survey_name_token(rg))
@@ -862,4 +921,8 @@ def professional_survey_batch_result(
         },
         "method": "complete-survey-fsat-v1",
     }
-    return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
+    encoded = json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
+    _SURVEY_BATCH_CACHE[cache_key] = encoded
+    while len(_SURVEY_BATCH_CACHE) > 4:
+        _SURVEY_BATCH_CACHE.pop(next(iter(_SURVEY_BATCH_CACHE)))
+    return encoded

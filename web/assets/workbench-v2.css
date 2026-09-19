@@ -73,7 +73,7 @@ details.subpanel[open]>summary{margin-bottom:12px}
 .v2-graph-statistics{margin-top:10px;border:1px solid var(--v2-border);border-radius:7px;background:#fbfcfd;padding:10px 12px;overflow:hidden}
 .v2-stats-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;color:#29445d}
 .v2-stats-head strong{display:block;font-size:12.5px}.v2-stats-head span{display:block;color:#66788a;font-size:10.5px;margin-top:1px}
-.v2-stats-table{min-width:1120px}.v2-stats-table td:first-child{min-width:190px}.v2-stats-table td:first-child span{color:#66788a;font-size:10.5px;overflow-wrap:anywhere}
+.v2-stats-table{min-width:620px}.v2-stats-table td:first-child{min-width:210px}.v2-stats-table.compact th,.v2-stats-table.compact td{padding:7px 10px}.v2-stats-table.compact td:first-child{font-weight:650;color:#28465f}
 .data-table{font-size:12px}
 .data-table th{background:#f1f5f8;color:#566b7d;font-size:10.5px;padding:7px 9px}
 .data-table td{padding:7px 9px}
@@ -131,3 +131,6 @@ footer{max-width:1600px;padding:0 26px}
 @media(max-width:1200px){.survey-mapping{grid-template-columns:repeat(2,minmax(180px,1fr))}.survey-summary{grid-template-columns:repeat(3,minmax(120px,1fr))}}
 @media(max-width:700px){.survey-professional .subhead{display:block}.survey-professional .subhead .btn{margin-top:9px}.survey-mapping{grid-template-columns:1fr}.survey-summary{grid-template-columns:1fr 1fr}}
 
+
+.report-actions{margin-top:14px;padding-top:2px}
+#namedWorkspaceSelect{margin-left:4px}

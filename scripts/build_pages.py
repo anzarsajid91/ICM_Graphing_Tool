@@ -63,9 +63,9 @@ def build() -> None:
         json.dumps(
             {
                 "commit": os.environ.get("GITHUB_SHA", "local"),
-                "runtime": "release runtime + usability/progress workflow + complete-survey engineering UX",
+                "runtime": "release runtime + hardened ingestion + FDV multi-variable graph + collapsible survey engineering UX",
                 "python_module_count": len(manifest),
-                "ux_release": "v6-usability-progress-verification",
+                "ux_release": "v7-fdv-graph-survey-ux",
             },
             indent=2,
         )

@@ -16,6 +16,91 @@
   const isAssociationFile = file => /^fm_rg_assoc(?:\.[^.]+)?\.xlsx$/i.test(file && file.name || '') || /^fm_rg_assoc\.xlsx$/i.test(file && file.name || '');
   const ragClass = value => 'rag-' + String(value || 'Grey').toLowerCase();
   const boolMark = value => value === true ? 'Pass' : value === false ? 'Fail' : '—';
+  const ragRank = { Grey:0, Green:1, Amber:2, Red:3 };
+
+  function monitorRagMap(result) {
+    const map = new Map();
+    const apply = (name, rag) => {
+      if (!name || !(rag in ragRank)) return;
+      const current = map.get(name) || 'Grey';
+      if (ragRank[rag] > ragRank[current]) map.set(name, rag);
+    };
+    for (const row of result && result.rows || []) {
+      apply(String(row.downstream_monitor || ''), String(row.rag || 'Grey'));
+      for (const evidence of row.qa_evidence || []) apply(String(evidence.monitor || ''), String(evidence.rag || 'Grey'));
+    }
+    return map;
+  }
+
+  function surveySchematicHtml(result) {
+    const records = survey.association && survey.association.records || [];
+    if (!records.length) return '<div class="v2-empty">Load fm_rg_assoc.xlsx to generate the monitor connectivity schematic.</div>';
+    const nodes = new Map();
+    for (const record of records) {
+      nodes.set(record.monitor, {...record, upstream:[...(record.upstream || [])]});
+      for (const upstream of record.upstream || []) if (!nodes.has(upstream)) nodes.set(upstream, {monitor:upstream, upstream:[], inferred:true});
+    }
+    const levels = new Map([...nodes.keys()].map(name => [name, 0]));
+    for (let pass=0; pass<nodes.size+2; pass+=1) {
+      let changed=false;
+      for (const record of records) {
+        const upstream=record.upstream||[];
+        const next=upstream.length?Math.max(...upstream.map(name=>levels.get(name)||0))+1:0;
+        if (next>(levels.get(record.monitor)||0)) { levels.set(record.monitor,next); changed=true; }
+      }
+      if(!changed)break;
+    }
+    const maxLevel=Math.max(0,...levels.values());
+    const groups=new Map();
+    for(const [name,level] of levels){if(!groups.has(level))groups.set(level,[]);groups.get(level).push(name);}
+    for(const names of groups.values())names.sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    const maxRows=Math.max(1,...[...groups.values()].map(x=>x.length));
+    const height=Math.max(210,maxRows*102+70), width=1000;
+    const positions=new Map();
+    for(const [level,names] of groups){
+      const x=maxLevel?90+(820*level/maxLevel):500;
+      names.forEach((name,index)=>positions.set(name,{x,y:70+(height-120)*(index+1)/(names.length+1)}));
+    }
+    const status=monitorRagMap(result);
+    const colours={
+      Green:{fill:'#e8f5e9',stroke:'#2e7d32',dot:'#2e7d32'},
+      Amber:{fill:'#fff8e1',stroke:'#c28b00',dot:'#c28b00'},
+      Red:{fill:'#ffebee',stroke:'#c62828',dot:'#c62828'},
+      Grey:{fill:'#f1f4f6',stroke:'#82909b',dot:'#82909b'},
+    };
+    const edges=[];
+    for(const record of records){
+      const target=positions.get(record.monitor); if(!target)continue;
+      for(const upstream of record.upstream||[]){
+        const source=positions.get(upstream); if(!source)continue;
+        const x1=source.x+76,x2=target.x-76,mid=(x1+x2)/2;
+        edges.push('<path class="schematic-pipe-outer" d="M '+x1+' '+source.y+' C '+mid+' '+source.y+', '+mid+' '+target.y+', '+x2+' '+target.y+'"></path>'+
+          '<path class="schematic-pipe-inner" d="M '+x1+' '+source.y+' C '+mid+' '+source.y+', '+mid+' '+target.y+', '+x2+' '+target.y+'" marker-end="url(#flowArrow)"></path>');
+      }
+    }
+    const nodeSvg=[];
+    for(const [name,node] of nodes){
+      const p=positions.get(name),rag=status.get(name)||'Grey',colour=colours[rag]||colours.Grey;
+      const meta=[];
+      if(node.rain_gauge)meta.push(node.rain_gauge);
+      if(node.diameter_mm!=null)meta.push(fmt(node.diameter_mm,0)+' mm');
+      nodeSvg.push('<g class="schematic-monitor" transform="translate('+(p.x-74)+' '+(p.y-30)+')">'+
+        '<title>'+esc(name)+' · '+esc(rag)+' · '+esc(meta.join(' · ')||'association node')+'</title>'+
+        '<rect width="148" height="60" rx="13" fill="'+colour.fill+'" stroke="'+colour.stroke+'" stroke-width="2"></rect>'+
+        '<circle cx="18" cy="19" r="7" fill="'+colour.dot+'"></circle>'+
+        '<text x="31" y="23" class="schematic-monitor-name">'+esc(name)+'</text>'+
+        '<text x="18" y="44" class="schematic-monitor-meta">'+esc(meta.join(' · ')||'flow monitor')+'</text></g>');
+    }
+    return '<div class="survey-schematic"><div class="survey-schematic-head"><div><strong>Association schematic</strong><span>Connectivity from fm_rg_assoc.xlsx; layout is schematic, not geographic.</span></div>'+
+      '<div class="schematic-legend"><span class="rag-green">Green</span><span class="rag-amber">Amber</span><span class="rag-red">Red</span><span class="rag-grey">Not assessed</span></div></div>'+
+      '<svg viewBox="0 0 '+width+' '+height+'" role="img" aria-label="Flow monitor association schematic"><defs><marker id="flowArrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#66879d"></path></marker></defs>'+
+      edges.join('')+nodeSvg.join('')+'</svg><div class="schematic-note">Node colour shows the worst available RAG evidence over the current assessed period; Grey means no current result.</div></div>';
+  }
+
+  function renderSurveySchematic(result=survey.balance) {
+    const target=document.getElementById('surveyNetworkSchematic');
+    if(target)target.innerHTML=surveySchematicHtml(result);
+  }
 
   function simplifyNavigation() {
     const nav = document.querySelector('nav.tabs');
@@ -164,7 +249,7 @@
       '<div class="subhead"><div><h3>Flow continuity / volume-balance diagnostic</h3>' +
       '<p>Preserves the carried-forward FSAT weekly W-SUN OK/Not OK result and adds support-aware RAG screening. This is a diagnostic, not a closed-system mass balance: lateral/unmonitored inflows, storage and timing effects remain possible.</p></div>' +
       '<button class="btn" id="runSurveyBalanceBtn" type="button">Recalculate volume balance</button></div>' +
-      '<div id="surveyBalanceSummary"></div><div id="surveyBalanceTable"></div>';
+      '<div id="surveyNetworkSchematic"></div><div id="surveyBalanceSummary"></div><div id="surveyBalanceTable"></div>';
     full.insertAdjacentElement('afterend', balance);
 
     document.getElementById('chooseAssocBtn').addEventListener('click', () => document.getElementById('assocFileInput').click());
@@ -389,6 +474,7 @@
       status.textContent = 'No association workbook loaded. You can load it directly or include it in the selected survey folder.';
       summary.innerHTML = '';
       table.innerHTML = '';
+      renderSurveySchematic(null);
       return;
     }
     const records = association.records || [];
@@ -413,6 +499,7 @@
         '<td class="survey-conflict">' + esc(associationConflictText(record)) + '</td></tr>';
     }).join('');
     table.innerHTML = '<div class="survey-table-wrap"><table class="data-table survey-table"><thead><tr><th>Monitor</th><th>Rain gauge</th><th>Pipe diameter</th><th>Upstream trace</th><th>FDV source</th><th>RG source</th><th>Workbook precedence / conflicts</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    renderSurveySchematic(survey.balance);
   }
 
   function currentControls() {
@@ -469,6 +556,7 @@
     button.textContent = 'Assessing complete survey…';
     const status = document.getElementById('completeSurveyStatus');
     status.textContent = 'Running network rainfall qualification, weekly monitor assessment, Event Response and flow-continuity diagnostics…';
+    const started=performance.now();
     try {
       const controls = currentControls();
       const result = await engine.call('professional_survey_batch_result', {
@@ -490,6 +578,8 @@
       survey.balance = result.volume_balance || null;
       renderCompleteSurvey(result);
       renderVolumeBalance(survey.balance);
+      const elapsed=(performance.now()-started)/1000;
+      status.innerHTML='<strong>Complete survey assessment calculated.</strong> Workbook mappings were authoritative · '+fmt(elapsed,1)+' s.';
       return result;
     } finally {
       button.disabled = false;
@@ -557,6 +647,7 @@
     const summary = document.getElementById('surveyBalanceSummary');
     const table = document.getElementById('surveyBalanceTable');
     if (!summary || !table) return;
+    renderSurveySchematic(result);
     if (!result) {
       summary.innerHTML = '<div class="pool-summary">Volume balance not calculated.</div>';
       table.innerHTML = '';
@@ -600,6 +691,57 @@
       html += '<div class="table-wrap"><table><thead><tr><th>Week</th><th>Downstream</th><th>Upstream</th><th>Downstream m³</th><th>Upstream m³</th><th>Ratio</th><th>Legacy</th><th>RAG</th><th>First check</th><th>QA evidence</th><th>Recommendation</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
     }
     return html;
+  }
+
+  function addCollapseControl(container, header, label='section') {
+    if(!container||!header||container.dataset.collapsible==='true')return;
+    const body=document.createElement('div');
+    body.className='tool-collapse-body';
+    const movable=[...container.children].filter(child=>child!==header);
+    if(!movable.length)return;
+    header.insertAdjacentElement('afterend',body);
+    for(const child of movable)body.appendChild(child);
+    const toggle=document.createElement('button');
+    toggle.type='button';
+    toggle.className='btn quiet tool-collapse-toggle';
+    toggle.textContent='Collapse';
+    toggle.setAttribute('aria-expanded','true');
+    header.appendChild(toggle);
+    toggle.addEventListener('click',event=>{
+      event.preventDefault();
+      event.stopPropagation();
+      const collapsed=container.classList.toggle('tool-collapsed');
+      toggle.textContent=collapsed?'Expand':'Collapse';
+      toggle.setAttribute('aria-expanded',String(!collapsed));
+      toggle.setAttribute('aria-label',(collapsed?'Expand ':'Collapse ')+label);
+      setTimeout(()=>window.dispatchEvent(new Event('resize')),0);
+    });
+    container.dataset.collapsible='true';
+  }
+
+  function installCollapsibleTools() {
+    for(const panel of document.querySelectorAll('.tab-panel > .panel, .embedded-workflow > .panel')){
+      const head=panel.querySelector(':scope > .panel-head');
+      if(!head)continue;
+      // Keep injected sub-tools independent rather than hiding them with the main workflow.
+      const directSubpanels=[...panel.children].filter(x=>x.classList?.contains('subpanel')||x.classList?.contains('embedded-workflow'));
+      if(directSubpanels.length){
+        const main=document.createElement('div');
+        main.className='tool-main-section';
+        const movable=[...panel.children].filter(x=>x!==head&&!directSubpanels.includes(x));
+        if(movable.length){
+          head.insertAdjacentElement('afterend',main);
+          for(const child of movable)main.appendChild(child);
+          addCollapseControl(main,(()=>{const h=document.createElement('div');h.className='subhead tool-main-head';h.innerHTML='<div><h3>Main workflow</h3></div>';main.prepend(h);return h;})(),'main workflow');
+        }
+      }else{
+        addCollapseControl(panel,head,(head.querySelector('h2')?.textContent||'workflow').trim());
+      }
+    }
+    for(const subpanel of document.querySelectorAll('.tab-panel .subpanel:not(details), .embedded-workflow .subpanel:not(details)')){
+      const head=subpanel.querySelector(':scope > .subhead');
+      if(head)addCollapseControl(subpanel,head,(head.querySelector('h3')?.textContent||'tool').trim());
+    }
   }
 
   function wireIngestion() {
@@ -696,6 +838,7 @@
   simplifyNavigation();
   installSharedAnalysisControls();
   installSurveyPanels();
+  installCollapsibleTools();
   wireIngestion();
   wireInvalidation();
   wireWorkspacePersistence();
