@@ -259,8 +259,8 @@ try{
   if(navLabels.join('|')!=='Data|Survey|Rainfall|Verification|Spills|Report')throw new Error('Unexpected simplified navigation: '+JSON.stringify(navLabels));
   if(await page.locator('.tab[data-tab="storage"]').count()!==0)throw new Error('Storage should be embedded under Verification, not exposed as a top-level tab');
   await page.setInputFiles('#assocFileInput',await associationWorkbook());
-  await page.waitForFunction(()=>document.querySelector('#surveyAssociationStatus')?.textContent.includes('fm_rg_assoc.xlsx'),null,{timeout:60000});
-  if(await page.locator('#surveyAssociationTable tbody tr').count()!==3)throw new Error('Association workbook did not produce three survey relationships');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.survey?.association?.records?.length===3&&document.querySelectorAll('#surveyAssociationTable tbody > tr').length===3,null,{timeout:60000});
+  if(await page.locator('#surveyAssociationTable tbody > tr').count()!==3)throw new Error('Association workbook did not produce three survey relationships');
   const assocText=await page.locator('#surveyAssociationPanel').textContent();
   if(!assocText.includes('authoritative')||!assocText.includes('FM03')||!assocText.includes('RG02'))throw new Error('Association precedence/context is not visible in Survey');
   const assocLayout=await page.evaluate(()=>{const panel=document.querySelector('#surveyAssociationPanel').getBoundingClientRect();const wrap=document.querySelector('#surveyAssociationTable .survey-table-wrap').getBoundingClientRect();return{panelRight:panel.right,wrapRight:wrap.right};});
