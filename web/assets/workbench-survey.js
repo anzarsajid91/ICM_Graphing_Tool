@@ -817,17 +817,72 @@
     const coreApplyWorkspace = applyWorkspace;
     applyWorkspace = async function(value) {
       const saved = value && value.survey;
-      await coreApplyWorkspace(value);
-      if (saved && saved.association) {
-        survey.association = saved.association;
-        survey.associationSource = saved.association_source || null;
-        if (document.getElementById('surveyBalanceTolerance')) document.getElementById('surveyBalanceTolerance').value = saved.balance_tolerance_percent == null ? 10 : saved.balance_tolerance_percent;
-        if (document.getElementById('surveyPopulation')) document.getElementById('surveyPopulation').value = saved.population_above_50k === false ? 'under50' : 'over50';
-        if (document.getElementById('surveyApplyFaultCutoff')) document.getElementById('surveyApplyFaultCutoff').checked = Boolean(saved.apply_fault_cutoff);
-        await refreshAssociationConflicts();
-        renderAssociation();
+      const status = document.getElementById('workspaceStatus');
+      if (status) {
+        status.setAttribute('aria-busy', 'true');
+        status.textContent = 'Restoring workspace… relinking sources, mappings, graph and survey context.';
+      }
+      try {
+        const restored = await coreApplyWorkspace(value);
+        if (saved && saved.association) {
+          survey.association = saved.association;
+          survey.associationSource = saved.association_source || null;
+          if (document.getElementById('surveyBalanceTolerance')) document.getElementById('surveyBalanceTolerance').value = saved.balance_tolerance_percent == null ? 10 : saved.balance_tolerance_percent;
+          if (document.getElementById('surveyPopulation')) document.getElementById('surveyPopulation').value = saved.population_above_50k === false ? 'under50' : 'over50';
+          if (document.getElementById('surveyApplyFaultCutoff')) document.getElementById('surveyApplyFaultCutoff').checked = Boolean(saved.apply_fault_cutoff);
+          await refreshAssociationConflicts();
+          renderAssociation();
+        }
+        if (status) status.textContent = 'Workspace loaded. ' + Number(restored && restored.matched || 0) + '/' + Number(restored && restored.expected || 0) + ' source fingerprint(s) matched the current pool.';
+        renderReportPreflight();
+        return restored;
+      } finally {
+        if (status) status.removeAttribute('aria-busy');
       }
     };
+  }
+
+  function readinessState(snapshot) {
+    if (!snapshot) return { state: 'not-calculated', label: 'Not calculated' };
+    if (snapshot.signature && typeof analysisSignature === 'function' && snapshot.signature !== analysisSignature()) {
+      return { state: 'stale', label: 'Stale' };
+    }
+    return { state: 'fresh', label: 'Fresh' };
+  }
+
+  function renderReportPreflight() {
+    const root = document.getElementById('reportReadinessGrid');
+    if (!root) return;
+    const comparison = readinessState(state.comparisonSnapshot);
+    const spill = readinessState(state.spillSnapshot);
+    const professional = window.__ICM_WORKBENCH__.lastProfessionalSurvey ?
+      { state: 'fresh', label: 'Fresh' } : { state: 'not-calculated', label: 'Not calculated' };
+    const complete = survey.batch ?
+      { state: 'fresh', label: 'Fresh' } : { state: 'not-calculated', label: 'Not calculated' };
+    const association = survey.association ?
+      { state: 'loaded', label: 'Loaded' } : { state: 'not-loaded', label: 'Not loaded' };
+    const rows = [
+      ['comparison', 'Comparison', comparison],
+      ['spill', 'Spill / EDM', spill],
+      ['professional-survey', 'Professional survey', professional],
+      ['complete-survey', 'Complete survey', complete],
+      ['survey-association', 'Survey association', association],
+    ];
+    root.innerHTML = rows.map(([key, label, status]) =>
+      '<div class="report-readiness-item" data-result="' + esc(key) + '">' +
+      '<span>' + esc(label) + '</span>' +
+      '<strong class="report-readiness-state" data-state="' + esc(status.state) + '">' + esc(status.label) + '</strong>' +
+      '</div>'
+    ).join('');
+  }
+
+  function wireReportPreflight() {
+    document.addEventListener('click', event => {
+      if (event.target && event.target.closest && event.target.closest('.tab[data-tab="workspace"]')) {
+        setTimeout(renderReportPreflight, 0);
+      }
+    }, true);
+    renderReportPreflight();
   }
 
   function wireSurveyReport() {
@@ -865,5 +920,6 @@
   wireInvalidation();
   wireWorkspacePersistence();
   wireSurveyReport();
+  wireReportPreflight();
   renderAssociation();
 })();
