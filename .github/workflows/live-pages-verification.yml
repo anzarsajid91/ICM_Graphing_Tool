@@ -74,6 +74,7 @@ jobs:
       - name: Exercise the deployed application
         env:
           ICM_BASE_URL: ${{ env.SITE_URL }}
+          ICM_EVIDENCE_DIR: /tmp/icm-live-evidence
         run: |
           set -o pipefail
           node web/tests/smoke.mjs 2>&1 | tee /tmp/icm-live-pages.log
@@ -88,6 +89,7 @@ jobs:
           path: |
             /tmp/icm-live-pages.log
             /tmp/icm-live-pages-failure.png
+            /tmp/icm-live-evidence/
             /tmp/live-build.json
 
       - name: Create or update live-regression issue
