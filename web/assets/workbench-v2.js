@@ -25,6 +25,8 @@
     button.disabled = true;
     button.classList.add('is-busy');
     button.textContent = runningText;
+    operationBegin(target);
+    operationUpdate(operationLabel(target), null, runningText);
     await nextPaint();
     try {
       return await fn();
@@ -34,6 +36,7 @@
       else showError(target, message);
       return null;
     } finally {
+      operationEnd();
       button.disabled = false;
       button.classList.remove('is-busy');
       button.textContent = old;
