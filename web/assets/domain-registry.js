@@ -200,7 +200,8 @@
         const quantities=[...new Set(asset.seriesKeys.map(k=>this.series.get(k)?.quantity).filter(Boolean))];
         const rel=this.relationships.filter(x=>x.from===asset.id||x.to===asset.id);
         const relText=rel.slice(0,3).map(x=>x.type==='upstream-flow'?`${x.from} → ${x.to}`:`${x.from} ↔ ${x.to}`).join(', ');
-        return `<tr><td><strong>${escape(asset.id)}</strong><br><small>${escape(asset.kind)}</small></td><td>${escape(sourceNames.map(n=>this.sources.get(asset.sourceIds[sourceNames.indexOf(n)])?.role).filter(Boolean)[0]||asset.kind)}</td><td>${escape(sourceNames.join(', ')||'association only')}</td><td>${escape(quantities.join(', ')||'—')}</td><td>${escape(relText||'—')}</td></tr>`;
+        const role=asset.sourceIds.map(id=>this.sources.get(id)?.role).find(Boolean)||asset.kind;
+        return `<tr><td><strong>${escape(asset.id)}</strong><br><small>${escape(asset.kind)}</small></td><td>${escape(role)}</td><td>${escape(sourceNames.join(', ')||'association only')}</td><td>${escape(quantities.join(', ')||'—')}</td><td>${escape(relText||'—')}</td></tr>`;
       }).join('');
     }
   }
