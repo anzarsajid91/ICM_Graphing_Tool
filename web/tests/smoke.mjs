@@ -146,6 +146,9 @@ try{
   stage='graph threshold controls and rainfall top band';
   await page.fill('#graphObsThreshold','1.5');
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.layout?.shapes?.length>=1,null,{timeout:60000});
+  const thresholdPresentation=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{legendNames:(chart.data||[]).map(t=>t.name),annotations:(chart.layout.annotations||[]).map(a=>a.text)}}); 
+  if(!thresholdPresentation.legendNames.includes('Observed spill level'))throw new Error(`Observed spill threshold is not represented in the top legend: ${JSON.stringify(thresholdPresentation)}`);
+  if(thresholdPresentation.annotations.includes('Observed spill level'))throw new Error('Observed spill threshold label should not be stamped on the threshold line');
   const graphLayout=await page.evaluate(()=>({hyd:document.querySelector('#timeChart').layout.yaxis.domain,rain:document.querySelector('#timeChart').layout.yaxis2.domain,rainRange:document.querySelector('#timeChart').layout.yaxis2.range}));
   if(graphLayout.hyd[1]>.71||graphLayout.rain[0]<.78)throw new Error(`Rainfall is not isolated above hydraulic graph: ${JSON.stringify(graphLayout)}`);
   if(!(graphLayout.rainRange[0]>graphLayout.rainRange[1]))throw new Error(`Rainfall axis should be reversed top-down: ${JSON.stringify(graphLayout.rainRange)}`);
@@ -189,7 +192,7 @@ try{
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'));
   const modelColour=await page.inputValue('#modelColourControls .model-colour');
   const colourWidth=await page.locator('#modelColourControls .model-colour').evaluate(el=>el.getBoundingClientRect().width);
-  if(modelColour.toLowerCase()!=='#5b5bd6')throw new Error(`First model default colour should be indigo-blue, got ${modelColour}`);
+  if(modelColour.toLowerCase()!=='#2547b8')throw new Error(`First model default colour should be cobalt blue, got ${modelColour}`);
   if(colourWidth>90)throw new Error(`Model colour picker should be a compact swatch, width=${colourWidth}`);
   await clickTab('graph');
   await page.fill('#graphObsThreshold','1.0');
@@ -206,14 +209,20 @@ try{
   if(!metricText.includes('Calculation status')||!metricText.includes('Valid support'))throw new Error('Comparison validity cards are missing');
   for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])await page.waitForSelector(`#${id} .main-svg`,{timeout:60000});
 
-  stage='flow-depth rating';
+  stage='depth-only agreement fit';
   const od=await optionValue('#ratingObsDepth','observed.csv — depth');
   const of=await optionValue('#ratingObsFlow','observed.csv — flow');
   const md=await optionValue('#ratingModelDepth','model.csv — depth');
   const mf=await optionValue('#ratingModelFlow','model.csv — flow');
-  await page.selectOption('#ratingObsDepth',od);await page.selectOption('#ratingObsFlow',of);await page.selectOption('#ratingModelDepth',md);await page.selectOption('#ratingModelFlow',mf);
+  await page.selectOption('#ratingObsDepth',od);await page.selectOption('#ratingObsFlow','');await page.selectOption('#ratingModelDepth',md);await page.selectOption('#ratingModelFlow','');
   await page.click('#runRatingBtn');
-  await page.waitForSelector('#ratingSummary .summary-box',{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Depth pairs'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#ratingChart')?.data?.length>=3,null,{timeout:60000});
+
+  stage='flow-depth rating';
+  await page.selectOption('#ratingObsFlow',of);await page.selectOption('#ratingModelFlow',mf);
+  await page.click('#runRatingBtn');
+  await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Observed fit'),null,{timeout:60000});
   await page.waitForSelector('#ratingChart .main-svg',{timeout:60000});
 
   stage='dry weather flow';
@@ -258,6 +267,10 @@ try{
   const navLabels=await page.locator('nav.tabs .tab').allTextContents();
   if(navLabels.join('|')!=='Data|Survey|Rainfall|Verification|Spills|Report')throw new Error('Unexpected simplified navigation: '+JSON.stringify(navLabels));
   if(await page.locator('.tab[data-tab="storage"]').count()!==0)throw new Error('Storage should be embedded under Verification, not exposed as a top-level tab');
+  const workflowGuide=await page.locator('#workflowGuide').textContent();
+  if(!workflowGuide.includes('Workflow')||!workflowGuide.includes('Survey')||!workflowGuide.includes('FSAT Event Response')||!workflowGuide.includes('volume balance'))throw new Error('Contextual Survey workflow guide is incomplete: '+workflowGuide);
+  const activeTabStyle=await page.locator('nav.tabs .tab.active').evaluate(el=>({fontWeight:getComputedStyle(el).fontWeight,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
+  if(Number(activeTabStyle.fontWeight)<700||activeTabStyle.background==='rgba(0, 0, 0, 0)')throw new Error('Active workflow tab does not visually stand out: '+JSON.stringify(activeTabStyle));
   await page.setInputFiles('#assocFileInput',await associationWorkbook());
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.survey?.association?.records?.length===3&&document.querySelectorAll('#surveyAssociationTable tbody > tr').length===3,null,{timeout:60000});
   if(await page.locator('#surveyAssociationTable tbody > tr').count()!==3)throw new Error('Association workbook did not produce three survey relationships');
@@ -396,6 +409,25 @@ try{
   if(fourLayout.headers!==1||fourLayout.figures!==4||fourLayout.zero||fourLayout.overflow>2)throw new Error(`Four-period report visual containment failed: ${JSON.stringify(fourLayout)}`);
   await downloadFrom('#downloadManifestBtn');
 
+  stage='multi-file drag and drop regression';
+  const beforeDrop=await page.locator('#poolBody tr').count();
+  await page.evaluate(()=>{
+    const textA='timestamp,depth\n2026-02-01T00:00:00,0.2\n2026-02-01T00:15:00,0.3\n';
+    const textB='timestamp,depth\n2026-02-01T00:00:00,0.4\n2026-02-01T00:15:00,0.5\n';
+    const a=new File([textA],'drag-a.csv',{type:'text/csv',lastModified:1770000000000});
+    const b=new File([textB],'drag-b.csv',{type:'text/csv',lastModified:1770000001000});
+    const event=new Event('drop',{bubbles:true,cancelable:true});
+    Object.defineProperty(event,'dataTransfer',{value:{
+      items:[{getAsFile:()=>a}],
+      files:[a,b],
+    }});
+    document.querySelector('#dropzone').dispatchEvent(event);
+  });
+  await page.waitForFunction(expected=>document.querySelectorAll('#poolBody tr').length===expected,beforeDrop+2,{timeout:90000});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].slice(-2).every(row=>row.textContent.includes('Ready')),null,{timeout:90000});
+  const operationUi=await page.evaluate(()=>({exists:Boolean(document.querySelector('#globalOperation')),hidden:document.querySelector('#globalOperation')?.hidden,bodyBusy:document.body.classList.contains('operation-busy')}));
+  if(!operationUi.exists||operationUi.hidden!==true||operationUi.bodyBusy)throw new Error('Global operation indicator did not return to an idle state: '+JSON.stringify(operationUi));
+
   stage='final browser diagnostics';
   const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__);
   const materialErrors=consoleErrors.filter(x=>!x.includes('favicon.ico'));
@@ -403,7 +435,7 @@ try{
   if(diag.errors?.length)throw new Error(`Workbench recorded operation errors: ${JSON.stringify(diag.errors)}`);
   if(failedRequests.filter(x=>!x.includes('favicon.ico')).length)throw new Error(`Failed browser requests: ${failedRequests.join(' | ')}`);
 
-  console.log('Browser acceptance passed: copyright footer, collapsed source pool, observed-only workflow, threshold overlays, separated rainfall band, adaptive native-resolution zoom, comparison diagnostics, multi-R cumulative rainfall, annual spills/exclusions, storage, workspace and reports.');
+  console.log('Browser acceptance passed: multi-file drag/drop, global operation feedback, workflow hierarchy, cobalt model default, top-legend thresholds, separated rainfall band, graph statistics, depth-only fitting, comparison diagnostics, survey workflows, spills, storage, workspace and reports.');
 } catch(err) {
   const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');
   const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);
