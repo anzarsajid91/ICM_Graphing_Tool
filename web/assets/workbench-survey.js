@@ -760,14 +760,12 @@
   }
 
   function wireInvalidation() {
-    const pool = document.getElementById('poolBody');
-    if (pool) new MutationObserver(() => {
+    window.addEventListener('icm:source-pool-changed', () => {
       if (survey.association) {
         renderAssociation();
-        survey.batch = null;
-        survey.balance = null;
+        if (survey.batch || survey.balance) invalidateSurveyResults('Source pool changed.');
       }
-    }).observe(pool, { childList: true, subtree: true });
+    });
     document.addEventListener('change', event => {
       const id = event.target && event.target.id || '';
       if (['analysisStart', 'analysisEnd', 'gapInput', 'surveyPopulation', 'surveyApplyFaultCutoff', 'rainFactor', 'surveyBalanceTolerance'].includes(id)) {
@@ -879,7 +877,7 @@
   function wireReportPreflight() {
     document.addEventListener('click', event => {
       if (event.target && event.target.closest && event.target.closest('.tab[data-tab="workspace"]')) {
-        setTimeout(renderReportPreflight, 0);
+        renderReportPreflight();
       }
     }, true);
     renderReportPreflight();
