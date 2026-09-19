@@ -107,7 +107,7 @@ async function guarded(target,fn){
   }
 }
 
-class BrowserPythonEngineclass BrowserPythonEngine {
+class BrowserPythonEngine {
   constructor(){this.pyodide=null;this.ready=false;this.queue=Promise.resolve();}
   async boot(){
     if(typeof loadPyodide!=='function')throw new Error('Pinned Pyodide loader was not available. Check network/content filtering.');
@@ -181,7 +181,7 @@ async function ingestFiles(files){
   }
   operationUpdate('Source loading complete',100,\`\${list.length} selected file\${list.length===1?'':'s'} processed.\`);
 }
-function renderPool(){function renderPool(){
+function renderPool(){
   const items=[...state.files.values()];$('poolSummary').textContent=items.length?`${items.length} file(s) in the source pool · ${items.filter(x=>x.status==='ready').length} parsed successfully.`:'No files loaded.';
   $('poolBody').innerHTML=items.map(item=>{const p=item.parsed||{},audit=p.audit||{};const sent=Number(audit.sentinel_count||0)+(audit.column_audit?Object.values(audit.column_audit).reduce((a,x)=>a+Number(x.sentinel_count||0),0):0);const malformed=Number(audit.malformed_rows||0)+Number(audit.invalid_timestamps||0);const period=p.start?`${esc(modelClock(p.start))} → ${esc(modelClock(p.end))}`:'—';const auditText=item.status==='ready'?`${sent} sentinel; ${malformed} malformed/invalid`:item.error||'Parsing…';return `<tr><td><div class="file-name">${esc(item.displayName)}</div><small>${mb(item.file.size)} · SHA ${item.hash?item.hash.slice(0,10):'…'}</small></td><td>${esc(p.format||'—')}</td><td>${p.rows??'—'}</td><td>${period}</td><td class="${(sent||malformed)?'audit-warn':'audit-good'}">${esc(auditText)}</td><td>${item.status==='ready'?`Ready${Number.isFinite(item.loadSeconds)?` · ${fmt(item.loadSeconds,1)} s`:''}`:item.status==='error'?'<span class="audit-bad">Error</span>':'Loading…'}</td></tr>`;}).join('');
 }
