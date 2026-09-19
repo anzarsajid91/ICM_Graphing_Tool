@@ -28,7 +28,7 @@ body{background:var(--v2-bg);color:var(--v2-ink);font-size:13px}
 .global-operation{position:fixed;inset:0;z-index:9999;pointer-events:none}
 .global-operation[hidden]{display:none!important}
 .global-operation:before{content:"";position:fixed;inset:0;background:rgba(244,247,250,.22);backdrop-filter:blur(.6px);pointer-events:none}
-.global-operation-card{position:fixed;top:84px;right:24px;width:min(430px,calc(100vw - 32px));display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start;padding:14px 15px;border:1px solid #b8cde0;border-radius:10px;background:rgba(255,255,255,.98);box-shadow:0 12px 34px rgba(15,34,52,.18);color:#20384e}
+.global-operation-card{position:fixed;top:84px;right:24px;width:min(520px,calc(100vw - 32px));display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:start;padding:14px 15px;border:1px solid #b8cde0;border-radius:10px;background:rgba(255,255,255,.98);box-shadow:0 12px 34px rgba(15,34,52,.18);color:#20384e}
 .global-operation-spinner{width:22px;height:22px;margin-top:2px;border:3px solid #c6d8e7;border-top-color:var(--v2-blue);border-radius:50%;animation:v2spin .8s linear infinite}
 .global-operation-copy{min-width:0;display:grid;gap:4px}
 .global-operation-copy strong{font-size:13px;color:#18324a}
@@ -134,3 +134,20 @@ footer{max-width:1600px;padding:0 26px}
 
 .report-actions{margin-top:14px;padding-top:2px}
 #namedWorkspaceSelect{margin-left:4px}
+
+/* Canonical project registry */
+.domain-registry-panel{margin:12px 0;padding:0;overflow:hidden}
+.domain-registry-panel>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;cursor:pointer;background:#f8fbfd;border-bottom:1px solid transparent;list-style:none}
+.domain-registry-panel[open]>summary{border-bottom-color:#d8e3eb}
+.domain-registry-panel>summary::-webkit-details-marker{display:none}
+.domain-registry-panel>summary strong{color:#173b5b;font-size:13px}
+#domainRegistrySummary{color:#627789;font-size:11px;font-weight:600}
+.domain-registry-body{padding:12px 14px 14px}
+.domain-registry-body>p{margin:0 0 10px;color:#64788a;font-size:11.5px}
+.domain-registry-body .summary-box{grid-template-columns:repeat(6,minmax(0,1fr))}
+.domain-registry-body .data-table{min-width:720px}
+@media(max-width:900px){.domain-registry-body .summary-box{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:620px){.domain-registry-panel>summary{display:block}.domain-registry-panel>summary span{display:block;margin-top:4px}.domain-registry-body .summary-box{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.global-operation-cancel{pointer-events:auto;align-self:center;padding:6px 9px;font-size:10.5px}
+.global-operation-cancel:disabled{opacity:.55;cursor:wait}
