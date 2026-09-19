@@ -244,6 +244,7 @@ let cancellingOperation=false;
 async function cancelCurrentOperation(){
   if(cancellingOperation||!engine.worker)return;
   cancellingOperation=true;
+  operationDepth+=1;
   const button=document.getElementById('globalOperationCancel');
   if(button)button.disabled=true;
   operationUpdate('Cancelling operation…',null,'Restarting the isolated analysis worker and restoring parsed source files.');
@@ -260,6 +261,7 @@ async function cancelCurrentOperation(){
   }finally{
     cancellingOperation=false;
     if(button)button.disabled=false;
+    operationEnd();
   }
 }
 
