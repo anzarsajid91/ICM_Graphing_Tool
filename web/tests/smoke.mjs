@@ -54,6 +54,37 @@ function denseCsv(){
 function rainfallR(values){
   return Buffer.from(`*CSTART\n2601010000 2601010006 2\n*CEND\n${values.join(' ')}\n`,'utf8');
 }
+function surveyFdv(monitor,flow,depth,velocity,count=200){
+  const header=[
+    `**IDENTIFIER: 1,${monitor}`,
+    '**FIELD: 3,FLOW,DEPTH,VELOCITY',
+    '**UNITS: 3,m3/s,m,m/s',
+    '**CONSTANTS: 2,START,INTERVAL',
+    '*CSTART',
+    '2601050000 2',
+    '*CEND',
+  ];
+  const data=Array.from({length:count},()=>`${flow} ${depth} ${velocity}`);
+  return Buffer.from([...header,...data].join('\n')+'\n','utf8');
+}
+function surveyRainfallR(){
+  const values=Array.from({length:200},(_,i)=>i<20?12:0);
+  return Buffer.from(`*CSTART\n2601050000 2601050640 2\n*CEND\n${values.join(' ')}\n`,'utf8');
+}
+async function associationWorkbook(){
+  const bytes=await page.evaluate(()=>{
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet([
+      ['FDV_Name','RG','Pipe Diameter (mm)','Upstream Trace'],
+      ['FM03','RG02',600,'FM01, FM02'],
+      ['FM01','RG01',450,''],
+      ['FM02','RG01',450,''],
+    ]);
+    XLSX.utils.book_append_sheet(wb,ws,'Associations');
+    return Array.from(new Uint8Array(XLSX.write(wb,{type:'array',bookType:'xlsx'})));
+  });
+  return {name:'fm_rg_assoc.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(bytes)};
+}
 
 try{
   stage='open application';
@@ -223,6 +254,18 @@ try{
   const healthHead=await page.locator('#healthBody').evaluate(el=>el.closest('table')?.querySelector('thead')?.textContent||'');
   if(!healthHead.includes('Flatline')||!healthHead.includes('Out of range')||!healthHead.includes('Zero %'))throw new Error('Enhanced FDV flow-survey screening columns are missing');
 
+  stage='association workbook and simplified survey navigation';
+  const navLabels=await page.locator('nav.tabs .tab').allTextContents();
+  if(navLabels.join('|')!=='Data|Survey|Rainfall|Verification|Spills|Report')throw new Error('Unexpected simplified navigation: '+JSON.stringify(navLabels));
+  if(await page.locator('.tab[data-tab="storage"]').count()!==0)throw new Error('Storage should be embedded under Verification, not exposed as a top-level tab');
+  await page.setInputFiles('#assocFileInput',await associationWorkbook());
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.survey?.association?.records?.length===3&&document.querySelectorAll('#surveyAssociationTable tbody > tr').length===3,null,{timeout:60000});
+  if(await page.locator('#surveyAssociationTable tbody > tr').count()!==3)throw new Error('Association workbook did not produce three survey relationships');
+  const assocText=await page.locator('#surveyAssociationPanel').textContent();
+  if(!assocText.includes('authoritative')||!assocText.includes('FM03')||!assocText.includes('RG02'))throw new Error('Association precedence/context is not visible in Survey');
+  const assocLayout=await page.evaluate(()=>{const panel=document.querySelector('#surveyAssociationPanel').getBoundingClientRect();const wrap=document.querySelector('#surveyAssociationTable .survey-table-wrap').getBoundingClientRect();return{panelRight:panel.right,wrapRight:wrap.right};});
+  if(assocLayout.wrapRight>assocLayout.panelRight+1)throw new Error('Survey association table escapes its panel: '+JSON.stringify(assocLayout));
+
   stage='professional FDV and rainfall assessment';
   const surveyDepth=await optionValue('#surveyDepthSelect','observed.csv — depth');
   const surveyVelocity=await optionValue('#surveyVelocitySelect','observed.csv — velocity');
@@ -245,6 +288,26 @@ try{
   if(await page.locator('#professionalWeeklyBody tr').count()<1)throw new Error('Professional weekly monitor table is empty');
   if(!((await page.locator('#professionalSurveyMethod').textContent())||'').includes('18 h'))throw new Error('Professional assessment methodology is not exposed in the UI');
 
+  stage='complete association-driven survey assessment';
+  await page.setInputFiles('#fileInput',[
+    {name:'FM01.fdv',mimeType:'text/plain',buffer:surveyFdv('FM01',0.10,0.20,0.40)},
+    {name:'FM02.fdv',mimeType:'text/plain',buffer:surveyFdv('FM02',0.10,0.20,0.40)},
+    {name:'FM03.fdv',mimeType:'text/plain',buffer:surveyFdv('FM03',0.25,0.30,0.50)},
+    {name:'RG01.r',mimeType:'text/plain',buffer:surveyRainfallR()},
+    {name:'RG02.r',mimeType:'text/plain',buffer:surveyRainfallR()},
+  ]);
+  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===12,null,{timeout:90000});
+  await page.waitForFunction(()=>document.querySelector('#surveyAssociationSummary')?.textContent.includes('3/3'),null,{timeout:60000});
+  await page.selectOption('#surveyPopulation','under50');
+  await page.click('#runCompleteSurveyBtn');
+  await page.waitForFunction(()=>document.querySelector('#completeSurveyStatus')?.textContent.includes('Complete survey assessment calculated'),null,{timeout:120000});
+  const completeSurvey=await page.evaluate(()=>window.__ICM_WORKBENCH__.survey?.batch);
+  if(!completeSurvey||completeSurvey.monitors?.length!==3)throw new Error('Complete survey did not assess all association-workbook monitors: '+JSON.stringify(completeSurvey));
+  if(!completeSurvey.source_policy?.association_workbook_authoritative)throw new Error('Association workbook precedence is not explicit in complete survey result');
+  const fm03Balance=(completeSurvey.volume_balance?.rows||[]).find(x=>x.downstream_monitor==='FM03');
+  if(!fm03Balance||fm03Balance.rag!=='Green'||fm03Balance.legacy_fsat_status!=='OK')throw new Error('Expected FM03 downstream volume balance to reconcile Green/OK: '+JSON.stringify(fm03Balance));
+  if(!((await page.locator('#surveyBalanceTable').textContent())||'').includes('Likely source / first check'))throw new Error('Volume-balance diagnostic recommendation column is missing');
+
   stage='spill exclusions in Asia/Kolkata and annual comparison';
   await clickTab('spills');
   await page.fill('#obsThreshold','1.0');
@@ -264,7 +327,8 @@ try{
   if(!spillDiag.observed.yearly?.length)throw new Error('Yearly spill summary missing from browser diagnostic');
 
   stage='storage and monthly volume';
-  await clickTab('storage');
+  await clickTab('compare');
+  await page.locator('#tab-storage').scrollIntoViewIfNeeded();
   const level=await optionValue('#storageLevelSelect','model.csv — depth');
   const flow=await optionValue('#storageFlowSelect','model.csv — flow');
   await page.selectOption('#storageLevelSelect',level);await page.selectOption('#storageFlowSelect',flow);
@@ -300,6 +364,15 @@ try{
   await page.waitForFunction(()=>Boolean(state.spillSnapshot)&&state.spillSnapshot.signature===analysisSignature(),null,{timeout:60000});
   const spillLayout=await page.evaluate(()=>{const panel=document.querySelector('#tab-spills .panel')?.getBoundingClientRect();const wraps=[...document.querySelectorAll('#tab-spills .two-col .table-wrap')].map(x=>x.getBoundingClientRect());return {panelRight:panel?.right||0,wraps:wraps.map(x=>({left:x.left,right:x.right,width:x.width}))};});
   if(spillLayout.wraps.some(x=>x.right>spillLayout.panelRight+1))throw new Error(`Spill yearly tables escape the panel: ${JSON.stringify(spillLayout)}`);
+  // File/exclusion changes correctly invalidate survey snapshots. Re-run both the
+  // legacy single-monitor assessment and the association-driven complete survey
+  // so report assertions exercise fresh, auditable results.
+  await clickTab('data-health');
+  await page.click('#runProfessionalSurveyBtn');
+  await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.lastProfessionalSurvey),null,{timeout:120000});
+  await page.click('#runCompleteSurveyBtn');
+  await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.survey?.batch),null,{timeout:120000});
+
   await clickTab('workspace');
   const reportDownload=await downloadFrom('#downloadReportBtn');
   const report=await fs.readFile(await reportDownload.path(),'utf8');
@@ -308,6 +381,7 @@ try{
   if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
   if(!report.includes('Graph statistics')||!report.includes('Integrated total'))throw new Error('Assessment report graph statistics missing');
   if(!report.includes('Professional flow-survey / rainfall assessment')||!report.includes('professional_flow_survey'))throw new Error('Professional flow-survey assessment missing from report/audit appendix');
+  if(!report.includes('Complete flow-survey context')||!report.includes('Flow continuity / volume balance')||!report.includes('fm_rg_assoc.xlsx'))throw new Error('Association-driven complete survey context missing from exported report');
   if(!report.includes('report-grid')||!report.includes('table-wrap'))throw new Error('Professional report layout classes missing');
   const reportLayout=await inspectReportHtml(report,3);
   if(reportLayout.headers!==1||reportLayout.figures<reportLayout.minFigures||reportLayout.zero||reportLayout.overflow>2)throw new Error(`Assessment report visual containment failed: ${JSON.stringify(reportLayout)}`);

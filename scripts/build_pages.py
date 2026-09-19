@@ -25,13 +25,13 @@ def _inject_v2_assets() -> None:
     html = index.read_text(encoding="utf-8")
     html = html.replace(
         '<link rel="stylesheet" href="assets/app.css" />',
-        '<link rel="stylesheet" href="assets/app.css" />\n  <link rel="stylesheet" href="assets/workbench-v2.css" />',
+        '<link rel="stylesheet" href="assets/app.css" />\n  <link rel="stylesheet" href="assets/workbench-v2.css" />\n  <link rel="stylesheet" href="assets/workbench-survey.css" />',
     )
     html = html.replace(
         '<script type="module" src="assets/runtime.js"></script>',
-        '<script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>',
+        '<script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>\n  <script src="assets/workbench-survey.js"></script>',
     )
-    required = ["workbench-v2.css", "workbench-v2.js", "workbench-v2-domfix.js", "workbench-v3.js"]
+    required = ["workbench-v2.css", "workbench-v2.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "xlsx@0.18.5"]
     if not all(name in html for name in required):
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
     index.write_text(html, encoding="utf-8")
@@ -63,9 +63,9 @@ def build() -> None:
         json.dumps(
             {
                 "commit": os.environ.get("GITHUB_SHA", "local"),
-                "runtime": "release runtime + adaptive engineering UX + professional FDV/multi-gauge rainfall assessment",
+                "runtime": "release runtime + complete-survey association workflow + adaptive engineering UX",
                 "python_module_count": len(manifest),
-                "ux_release": "v4-professional-flow-survey-rainfall-assessment",
+                "ux_release": "v5-complete-survey-association-workflow",
             },
             indent=2,
         )

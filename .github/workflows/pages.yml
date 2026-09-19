@@ -47,6 +47,7 @@ jobs:
           node --check web/assets/workbench-v2.js
           node --check web/assets/workbench-v2-domfix.js
           node --check web/assets/workbench-v3.js
+          node --check web/assets/workbench-survey.js
           node --check web/tests/smoke.mjs
           node web/tests/runtime-unit.mjs
           python -m py_compile web/python_bridge.py web/advanced_bridge.py scripts/build_pages.py scripts/validate_representative_exports.py
@@ -68,6 +69,9 @@ jobs:
           assert '<script src="assets/workbench-v2.js"></script>' in html
           assert '<script src="assets/workbench-v2-domfix.js"></script>' in html
           assert '<script src="assets/workbench-v3.js"></script>' in html
+          assert '<script src="assets/workbench-survey.js"></script>' in html
+          assert 'assets/workbench-survey.css' in html
+          assert 'xlsx@0.18.5' in html
           assert 'workbench-v2.css' in html
           assert 'type="module" src="assets/runtime.js"' not in html
           print(f'Pages manifest verified: {len(actual)} Python modules; current browser UX staged exactly.')
