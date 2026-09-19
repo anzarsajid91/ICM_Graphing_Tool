@@ -1,0 +1,165 @@
+name: Live Pages Verification
+
+on:
+  workflow_run:
+    workflows: ["GitHub Pages Workbench"]
+    types: [completed]
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: live-pages-verification
+  cancel-in-progress: true
+
+jobs:
+  verify-live:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.event == 'push'
+      )
+    runs-on: ubuntu-latest
+    env:
+      SITE_URL: https://anzarsajid91.github.io/ICM_Graphing_Tool/
+      TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      ICM_FAILURE_SCREENSHOT: /tmp/icm-live-pages-failure.png
+
+    steps:
+      - name: Check out the deployed revision
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Wait until Pages serves the exact commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Waiting for $SITE_URL to serve $TARGET_SHA"
+          for attempt in $(seq 1 36); do
+            body="$(curl -fsSL --retry 2 --retry-delay 2 "${SITE_URL}build.json?verify=${TARGET_SHA}-${attempt}" 2>/dev/null || true)"
+            live_sha="$(printf '%s' "$body" | python3 -c 'import json,sys
+          try:
+              print(json.load(sys.stdin).get("commit", ""))
+          except Exception:
+              print("")' 2>/dev/null || true)"
+            if [ "$live_sha" = "$TARGET_SHA" ]; then
+              echo "Live Pages commit verified: $live_sha"
+              printf '%s\n' "$body" > /tmp/live-build.json
+              exit 0
+            fi
+            echo "Attempt $attempt/36: live commit is '${live_sha:-unavailable}'"
+            sleep 10
+          done
+          echo "::error::Pages never exposed expected commit $TARGET_SHA"
+          curl -fsSL "${SITE_URL}build.json?final=${TARGET_SHA}" || true
+          exit 1
+
+      - name: Install Chromium acceptance runner
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Exercise the deployed application
+        env:
+          ICM_BASE_URL: ${{ env.SITE_URL }}
+        run: |
+          set -o pipefail
+          node web/tests/smoke.mjs 2>&1 | tee /tmp/icm-live-pages.log
+
+      - name: Capture live verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-pages-verification-${{ env.TARGET_SHA }}
+          if-no-files-found: ignore
+          retention-days: 30
+          path: |
+            /tmp/icm-live-pages.log
+            /tmp/icm-live-pages-failure.png
+            /tmp/live-build.json
+
+      - name: Create or update live-regression issue
+        if: failure()
+        uses: actions/github-script@v8
+        env:
+          EXPECTED_SHA: ${{ env.TARGET_SHA }}
+          SITE_URL: ${{ env.SITE_URL }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const label = 'live-regression';
+            try {
+              await github.rest.issues.getLabel({owner, repo, name: label});
+            } catch {
+              await github.rest.issues.createLabel({
+                owner, repo, name: label, color: 'B60205',
+                description: 'Failure reproduced against the deployed GitHub Pages application'
+              });
+            }
+            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
+            const body = [
+              '## Automated live Pages regression',
+              '',
+              'The post-deployment acceptance suite failed against the **actual public GitHub Pages application**.',
+              '',
+              `- Expected deployed commit: \`${process.env.EXPECTED_SHA}\``,
+              `- Live application: ${process.env.SITE_URL}`,
+              `- Workflow evidence: ${runUrl}`,
+              `- Detected: ${new Date().toISOString()}`,
+              '',
+              'The workflow artifact contains the browser log, live build metadata, and a full-page failure screenshot when the browser test reached the application.',
+              '',
+              '### Repair policy',
+              'A repair may be made automatically when it is confined to UI/CSS, browser integration, ingestion, plotting, report presentation, deployment, or implementation performance **without changing engineering results**.',
+              '',
+              'Do **not** auto-merge a repair that changes hydraulic methodology, WAPUG/FSAT criteria, spill-counting rules, volume-balance equations, validity semantics, unit contracts, or engineering thresholds. Those changes require engineering review.',
+              '',
+              'Every repair must add or strengthen a regression test and must pass Python, JavaScript, release-artifact, Chromium, and subsequent live-Pages verification before this issue is closed.'
+            ].join('\n');
+            const open = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', labels: label, per_page: 20
+            });
+            const existing = open.data.find(x => x.title === 'Live Pages regression');
+            if (existing) {
+              await github.rest.issues.createComment({owner, repo, issue_number: existing.number, body});
+            } else {
+              await github.rest.issues.create({
+                owner, repo, title: 'Live Pages regression', body, labels: [label]
+              });
+            }
+
+      - name: Close resolved live-regression issue
+        if: success()
+        uses: actions/github-script@v8
+        env:
+          VERIFIED_SHA: ${{ env.TARGET_SHA }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const open = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', labels: 'live-regression', per_page: 20
+            });
+            for (const issue of open.data) {
+              if (issue.title !== 'Live Pages regression') continue;
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: issue.number,
+                body: `Live Pages verification passed for \`${process.env.VERIFIED_SHA}\`. Closing the continuous regression signal.`
+              });
+              await github.rest.issues.update({
+                owner, repo, issue_number: issue.number, state: 'closed'
+              });
+            }
