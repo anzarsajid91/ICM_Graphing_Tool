@@ -209,10 +209,8 @@
 
   function v2GraphAnnotations() {
     const out = [];
-    const obs = nullableNumber($('graphObsThreshold')?.value ?? $('obsThreshold').value);
-    const model = nullableNumber($('graphModelThreshold')?.value ?? $('modelThreshold').value);
-    if ($('showGraphObsThreshold')?.checked !== false && obs !== null) out.push({xref:'paper',x:.995,yref:'y',y:obs,text:$('threshold1Label').value||'Observed / EDM spill threshold',showarrow:false,xanchor:'right',yanchor:'bottom',font:{size:10,color:$('threshold1Color').value},bgcolor:'rgba(255,255,255,.75)'});
-    if ($('showGraphModelThreshold')?.checked !== false && model !== null) out.push({xref:'paper',x:.995,yref:'y',y:model,text:$('threshold2Label').value||'Model spill threshold',showarrow:false,xanchor:'right',yanchor:'bottom',font:{size:10,color:$('threshold2Color').value},bgcolor:'rgba(255,255,255,.75)'});
+    // Threshold labels are represented in the top legend, not stamped onto the
+    // hydraulic trace itself. Event identifiers remain lightweight annotations.
     if ($('showEventOverlay').checked) for (const e of state.rainEvents) out.push({xref:'x',x:e.start,yref:'paper',y:1,text:`E${e.event}`,showarrow:false,yanchor:'bottom',font:{size:9,color:'#8a4b00'}});
     return out;
   }
@@ -279,6 +277,15 @@
         }
       }
 
+      const observedThreshold = nullableNumber($('graphObsThreshold')?.value ?? $('obsThreshold').value);
+      const modelThreshold = nullableNumber($('graphModelThreshold')?.value ?? $('modelThreshold').value);
+      if ($('showGraphObsThreshold')?.checked !== false && observedThreshold !== null) {
+        traces.push({x:[null],y:[null],mode:'lines',name:$('threshold1Label').value||'Observed / EDM spill threshold',hoverinfo:'skip',showlegend:true,line:{color:$('threshold1Color').value,width:2,dash:'dash'}});
+      }
+      if ($('showGraphModelThreshold')?.checked !== false && modelThreshold !== null) {
+        traces.push({x:[null],y:[null],mode:'lines',name:$('threshold2Label').value||'Model spill threshold',hoverinfo:'skip',showlegend:true,line:{color:$('threshold2Color').value,width:2,dash:'dot'}});
+      }
+
       const xaxis = {title:'Time',autorange:!range,rangeslider:{visible:true,thickness:.06},showgrid:false};
       if (range?.length === 2) {
         xaxis.range = range;
@@ -287,9 +294,9 @@
       const layout = {
         template:'plotly_white',
         height:690,
-        margin:{l:66,r:68,t:96,b:62},
+        margin:{l:66,r:68,t:112,b:62},
         hovermode:'x unified',
-        legend:{orientation:'h',y:1.14,x:0,xanchor:'left',yanchor:'bottom',font:{size:11},traceorder:'normal'},
+        legend:{orientation:'h',y:1.16,x:0,xanchor:'left',yanchor:'bottom',font:{size:11},traceorder:'normal',itemwidth:38},
         xaxis,
         yaxis:{title:obs.col,domain:hasRain?[0,.70]:[0,1],anchor:'x',showgrid:true,gridcolor:'#e8eef3',zerolinecolor:'#d9e2ea',automargin:true},
         shapes:v2GraphShapes(),
