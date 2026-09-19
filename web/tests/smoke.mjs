@@ -442,6 +442,22 @@ try{
   await page.click('#runCompleteSurveyBtn');
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.survey?.batch),null,{timeout:120000});
 
+  // Regression guard for live-regression #11: presentation-only rerenders must
+  // not invalidate a fresh engineering result when the exclusion state is unchanged.
+  const surveyBeforeExclusionRerender=await page.evaluate(()=>({
+    batch:Boolean(window.__ICM_WORKBENCH__.survey?.batch),
+    balance:Boolean(window.__ICM_WORKBENCH__.survey?.balance),
+    exclusions:JSON.stringify(state.exclusions||[]),
+  }));
+  await page.evaluate(()=>renderExclusions());
+  await page.waitForTimeout(0);
+  const surveyAfterExclusionRerender=await page.evaluate(()=>({
+    batch:Boolean(window.__ICM_WORKBENCH__.survey?.batch),
+    balance:Boolean(window.__ICM_WORKBENCH__.survey?.balance),
+    exclusions:JSON.stringify(state.exclusions||[]),
+  }));
+  if(!surveyAfterExclusionRerender.batch||!surveyAfterExclusionRerender.balance||surveyAfterExclusionRerender.exclusions!==surveyBeforeExclusionRerender.exclusions)throw new Error(`DOM-only exclusion rerender invalidated unchanged survey results: ${JSON.stringify({before:surveyBeforeExclusionRerender,after:surveyAfterExclusionRerender})}`);
+
   await clickTab('workspace');
   const reportSpacing=await page.evaluate(()=>{const top=document.querySelector('#namedWorkspaceSelect')?.closest('.actions')?.getBoundingClientRect();const bottom=document.querySelector('.report-actions')?.getBoundingClientRect();return{gap:top&&bottom?bottom.top-top.bottom:null};});
   if(reportSpacing.gap!=null&&reportSpacing.gap<8)throw new Error('Report action controls are still crowded: '+JSON.stringify(reportSpacing));
