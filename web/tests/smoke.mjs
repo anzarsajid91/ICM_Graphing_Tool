@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const root=process.cwd();
+const baseUrl=(process.env.ICM_BASE_URL||'http://127.0.0.1:8000/').replace(/\/?$/,'/');
+const liveMode=Boolean(process.env.ICM_BASE_URL);
 const browser=await chromium.launch({headless:true});
 const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true,timezoneId:'Asia/Kolkata'});
 const page=await context.newPage();
@@ -88,7 +90,7 @@ async function associationWorkbook(){
 
 try{
   stage='open application';
-  await page.goto('http://127.0.0.1:8000/',{waitUntil:'domcontentloaded'});
+  await page.goto(baseUrl+(liveMode?`?live_verify=${Date.now()}`:''),{waitUntil:'domcontentloaded'});
   await waitReady();
   if(!((await page.locator('footer').textContent())||'').includes('© 2026 Anzar Sajid'))throw new Error('Live footer copyright missing');
 
@@ -475,7 +477,7 @@ try{
   if(diag.errors?.length)throw new Error(`Workbench recorded operation errors: ${JSON.stringify(diag.errors)}`);
   if(failedRequests.filter(x=>!x.includes('favicon.ico')).length)throw new Error(`Failed browser requests: ${failedRequests.join(' | ')}`);
 
-  console.log('Browser acceptance passed: hardened multi-file drag/drop, auxiliary column filtering, FDV depth/flow/velocity auto-graphing, dense adaptive zoom, no range slider, compact statistics/reports, unified spill dash style, survey schematic, collapsible workflows, survey assessment, spills, storage and workspace outputs.');
+  console.log(`${liveMode?'Live Pages':'Local artifact'} browser acceptance passed at ${baseUrl}: hardened multi-file drag/drop, auxiliary column filtering, FDV depth/flow/velocity auto-graphing, dense adaptive zoom, no range slider, compact statistics/reports, unified spill dash style, survey schematic, collapsible workflows, survey assessment, spills, storage and workspace outputs.`);
 } catch(err) {
   const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');
   const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);
@@ -484,7 +486,7 @@ try{
   console.error(`Workbench diagnostic: ${JSON.stringify(diag)}`);
   console.error(`Console errors: ${JSON.stringify(consoleErrors)}`);
   console.error(`Failed requests: ${JSON.stringify(failedRequests)}`);
-  await page.screenshot({path:'/tmp/icm-workbench-failure.png',fullPage:true}).catch(()=>{});
+  await page.screenshot({path:process.env.ICM_FAILURE_SCREENSHOT||'/tmp/icm-workbench-failure.png',fullPage:true}).catch(()=>{});
   throw err;
 } finally {
   await browser.close();
