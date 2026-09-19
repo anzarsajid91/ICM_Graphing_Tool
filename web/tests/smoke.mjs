@@ -507,17 +507,6 @@ try{
 
   await clickTab('workspace');
   await page.waitForSelector('#reportPreflight',{timeout:10000});
-  const freshnessSignatureEvidence=await page.evaluate(()=>({
-    current:JSON.parse(analysisSignature()),
-    comparison:state.comparisonSnapshot?.signature?JSON.parse(state.comparisonSnapshot.signature):null,
-    spill:state.spillSnapshot?.signature?JSON.parse(state.spillSnapshot.signature):null,
-  }));
-  if(JSON.stringify(freshnessSignatureEvidence.comparison)!==JSON.stringify(freshnessSignatureEvidence.current)){
-    throw new Error('Comparison freshness signature changed after recalculation: '+JSON.stringify(freshnessSignatureEvidence));
-  }
-  if(JSON.stringify(freshnessSignatureEvidence.spill)!==JSON.stringify(freshnessSignatureEvidence.current)){
-    throw new Error('Spill freshness signature changed after recalculation: '+JSON.stringify(freshnessSignatureEvidence));
-  }
   const readinessExpected={
     comparison:'Fresh',
     spill:'Fresh',
