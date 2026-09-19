@@ -443,7 +443,8 @@ try{
 
   stage='simulated-series auxiliary column filtering';
   await page.setInputFiles('#fileInput',{name:'simulated-export.csv',mimeType:'text/csv',buffer:Buffer.from('timestamp,Seconds,Dummy Nodes\n2026-02-01T00:00:00,0,1.0\n2026-02-01T00:01:00,60,1.1\n')});
-  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(r=>r.textContent.includes('simulated-export.csv')),null,{timeout:60000});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(r=>r.textContent.includes('simulated-export.csv')&&r.textContent.includes('Ready')),null,{timeout:60000});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#modelSelect option')].filter(o=>o.textContent.includes('simulated-export.csv')).length===1,null,{timeout:60000});
   const simOptions=await page.locator('#modelSelect option').evaluateAll(opts=>opts.filter(o=>o.textContent.includes('simulated-export.csv')).map(o=>o.textContent));
   if(simOptions.length!==1||simOptions.some(x=>/—\s*Seconds\b/i.test(x)))throw new Error('Simulated export should expose one user series and hide auxiliary Seconds: '+JSON.stringify(simOptions));
 
