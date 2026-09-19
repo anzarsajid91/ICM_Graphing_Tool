@@ -512,7 +512,10 @@ async function downloadFourPeriod(){
   try{
     for(const p of periods){
       const title=p[0],a=p[1],b=p[2],result=await reportTraces([a,b]);
-      const layout={template:'plotly_white',title:{text:year+' — '+title,x:.01,xanchor:'left',font:{size:20}},height:760,margin:{l:75,r:85,t:112,b:85},xaxis:{range:[a,b],title:'Time',showgrid:false,automargin:true},yaxis:{title:result.hydraulicTitle||'Hydraulic value',domain:result.hasRain?[0,.70]:[0,1],showgrid:true,gridcolor:'#e7edf2',automargin:true},legend:{orientation:'h',x:0,y:1.12,xanchor:'left',yanchor:'bottom',font:{size:11},traceorder:'normal'},bargap:0};
+      const hydDomain=result.hasRain?[0,.70]:[0,1],extraAxes=result.fdvMode&&(result.quantities.includes('flow')||result.quantities.includes('velocity'));
+      const layout={template:'plotly_white',title:{text:year+' — '+title,x:.01,xanchor:'left',font:{size:20}},height:760,margin:{l:75,r:extraAxes?145:85,t:112,b:72},xaxis:{range:[a,b],domain:extraAxes?[0,.90]:[0,1],title:'Time',showgrid:false,automargin:true},yaxis:{title:result.fdvMode?'Depth (m)':(result.hydraulicTitle||'Hydraulic value'),domain:hydDomain,showgrid:true,gridcolor:'#e7edf2',automargin:true},legend:{orientation:'h',x:0,y:1.12,xanchor:'left',yanchor:'bottom',font:{size:11},traceorder:'normal'},bargap:0};
+      if(result.fdvMode&&result.quantities.includes('flow'))layout.yaxis3={title:'Flow (m³/s)',domain:hydDomain,overlaying:'y',side:'right',anchor:'x',showgrid:false,zeroline:false,automargin:true};
+      if(result.fdvMode&&result.quantities.includes('velocity'))layout.yaxis4={title:'Velocity (m/s)',domain:hydDomain,overlaying:'y',side:'right',anchor:'free',position:.985,showgrid:false,zeroline:false,automargin:true};
       if(result.hasRain)layout.yaxis2={title:'Rainfall',domain:[.80,1],anchor:'x',side:'right',range:[result.rainMax,0],showgrid:false,zeroline:false,automargin:true};
       await Plotly.newPlot(holder,result.traces,layout,{staticPlot:true,displaylogo:false,responsive:false});
       images.push([title,a,b,await Plotly.toImage(holder,{format:'svg',width:1400,height:760}),result.statistics]);
