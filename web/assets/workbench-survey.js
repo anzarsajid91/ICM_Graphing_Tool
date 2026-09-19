@@ -199,6 +199,25 @@
     invalidateSurveyResults('Association workbook changed.');
   }
 
+  async function refreshAssociationConflicts() {
+    if (!survey.association || !(survey.association.records || []).length) return;
+    const headers = ['monitor', 'rain gauge', 'diameter', 'upstream'];
+    const rows = survey.association.records.map(record => [
+      record.monitor,
+      record.rain_gauge || '',
+      record.diameter_mm == null ? '' : record.diameter_mm,
+      (record.upstream || []).join(', '),
+    ]);
+    const refreshed = await engine.call('survey_association_result', {
+      headers_json: JSON.stringify(headers),
+      rows_json: JSON.stringify(rows),
+      inferred_json: JSON.stringify(inferredSurveyMetadata()),
+    }, 'advanced_bridge');
+    refreshed.sheet_name = survey.association.sheet_name || survey.associationSource?.sheet || null;
+    survey.association = refreshed;
+    renderAssociation();
+  }
+
   function fdvItems() {
     return [...state.files.values()].filter(item =>
       item.status === 'ready' && String(item.parsed && item.parsed.format || '') === 'fdv_ascii'
@@ -394,6 +413,7 @@
         max_gap_seconds: controls.max_gap_seconds,
         start: controls.start,
         end: controls.end,
+        amber_tolerance_percent: controls.amber_tolerance_percent,
       }, 'advanced_bridge');
       survey.batch = result;
       survey.balance = result.volume_balance || null;
@@ -484,9 +504,9 @@
       '<td>' + (row.balance_ratio == null ? '—' : fmt(row.balance_ratio, 3)) + '</td><td>' + esc(row.legacy_fsat_status || 'NA') + '</td>' +
       '<td><span class="rag-pill ' + ragClass(row.rag) + '">' + esc(row.rag || 'Grey') + '</span></td>' +
       '<td>' + (row.minimum_coverage_fraction == null ? '—' : fmt(row.minimum_coverage_fraction * 100, 1) + '%') + '</td>' +
-      '<td class="likely-source">' + esc(row.likely_source || '—') + '</td><td class="recommendation-cell">' + esc(row.recommendation || '—') + '</td></tr>'
+      '<td class="likely-source">' + esc(row.likely_source || '—') + '</td><td>' + esc((row.qa_evidence || []).map(x => x.monitor + ' ' + x.rag).join('; ') || '—') + '</td><td class="recommendation-cell">' + esc(row.recommendation || '—') + '</td></tr>'
     ).join('');
-    table.innerHTML = '<div class="survey-table-wrap tall"><table class="data-table survey-table balance-table"><thead><tr><th>Week ending</th><th>Downstream</th><th>Upstream trace</th><th>Downstream vol. m³</th><th>Upstream sum m³</th><th>Balance ratio</th><th>Legacy FSAT</th><th>RAG</th><th>Min coverage</th><th>Likely source / first check</th><th>Recommendation</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    table.innerHTML = '<div class="survey-table-wrap tall"><table class="data-table survey-table balance-table"><thead><tr><th>Week ending</th><th>Downstream</th><th>Upstream trace</th><th>Downstream vol. m³</th><th>Upstream sum m³</th><th>Balance ratio</th><th>Legacy FSAT</th><th>RAG</th><th>Min coverage</th><th>Likely source / first check</th><th>QA evidence</th><th>Recommendation</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
   function surveyReportHtml() {
@@ -506,7 +526,7 @@
       const rows = balance.rows.map(row =>
         '<tr><td>' + esc(row.week_ending || '—') + '</td><td>' + esc(row.downstream_monitor) + '</td><td>' + esc((row.upstream_monitors || []).join(', ')) + '</td><td>' + (row.downstream_volume_m3 == null ? '—' : fmt(row.downstream_volume_m3, 1)) + '</td><td>' + (row.upstream_sum_m3 == null ? '—' : fmt(row.upstream_sum_m3, 1)) + '</td><td>' + (row.balance_ratio == null ? '—' : fmt(row.balance_ratio, 3)) + '</td><td>' + esc(row.legacy_fsat_status || 'NA') + '</td><td>' + esc(row.rag || 'Grey') + '</td><td>' + esc(row.likely_source || '—') + '</td><td>' + esc(row.recommendation || '—') + '</td></tr>'
       ).join('');
-      html += '<div class="table-wrap"><table><thead><tr><th>Week</th><th>Downstream</th><th>Upstream</th><th>Downstream m³</th><th>Upstream m³</th><th>Ratio</th><th>Legacy</th><th>RAG</th><th>First check</th><th>Recommendation</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+      html += '<div class="table-wrap"><table><thead><tr><th>Week</th><th>Downstream</th><th>Upstream</th><th>Downstream m³</th><th>Upstream m³</th><th>Ratio</th><th>Legacy</th><th>RAG</th><th>First check</th><th>QA evidence</th><th>Recommendation</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
     }
     return html;
   }
@@ -519,6 +539,7 @@
       for (const file of associations) await loadAssociationWorkbook(file);
       const dataFiles = list.filter(file => !isAssociationFile(file));
       if (dataFiles.length) await coreIngest(dataFiles);
+      if (survey.association) await refreshAssociationConflicts();
       renderAssociation();
     };
   }
@@ -568,6 +589,7 @@
         if (document.getElementById('surveyBalanceTolerance')) document.getElementById('surveyBalanceTolerance').value = saved.balance_tolerance_percent == null ? 10 : saved.balance_tolerance_percent;
         if (document.getElementById('surveyPopulation')) document.getElementById('surveyPopulation').value = saved.population_above_50k === false ? 'under50' : 'over50';
         if (document.getElementById('surveyApplyFaultCutoff')) document.getElementById('surveyApplyFaultCutoff').checked = Boolean(saved.apply_fault_cutoff);
+        await refreshAssociationConflicts();
         renderAssociation();
       }
     };
