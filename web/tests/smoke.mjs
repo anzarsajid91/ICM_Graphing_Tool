@@ -98,6 +98,12 @@ try{
   stage='open application';
   await page.goto(baseUrl+(liveMode?`?live_verify=${Date.now()}`:''),{waitUntil:'domcontentloaded'});
   await waitReady();
+  const architecture=await page.evaluate(()=>({
+    execution:window.__ICM_WORKBENCH__?.execution,
+    mainThreadPyodide:typeof loadPyodide,
+    registryMounted:Boolean(window.ICMProjectRegistry&&document.querySelector('#domainRegistryPanel')),
+  }));
+  if(architecture.execution!=='web-worker'||architecture.mainThreadPyodide!=='undefined'||!architecture.registryMounted)throw new Error('Worker/domain architecture not active: '+JSON.stringify(architecture));
   if(!((await page.locator('footer').textContent())||'').includes('© 2026 Anzar Sajid'))throw new Error('Live footer copyright missing');
 
   stage='source pool and collapsed file list';
@@ -114,6 +120,9 @@ try{
   ]);
   await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===5&&document.querySelector('#poolSummary')?.textContent.includes('5 parsed successfully'),null,{timeout:90000});
   if(await page.locator('#poolBody tr').count()!==5)throw new Error('Expected five source-pool rows');
+  const registryAfterInitialLoad=await page.evaluate(()=>window.ICMProjectRegistry?.snapshot());
+  if(!registryAfterInitialLoad||registryAfterInitialLoad.sources.length!==5||registryAfterInitialLoad.series.length<5)throw new Error('Canonical project registry did not classify the initial source pool: '+JSON.stringify(registryAfterInitialLoad));
+  if(!registryAfterInitialLoad.sources.some(x=>x.role==='model')||!registryAfterInitialLoad.sources.some(x=>x.role==='rainfall'))throw new Error('Project registry role classification is incomplete: '+JSON.stringify(registryAfterInitialLoad.sources));
   await page.waitForFunction(()=>getComputedStyle(document.querySelectorAll('#poolBody tr')[3]).display==='none');
   if(!((await page.locator('#sourcePoolToggle').textContent())||'').includes('Show all 5'))throw new Error('Collapsed source pool should offer Show all 5');
   await page.click('#sourcePoolToggle');
@@ -290,6 +299,8 @@ try{
   if(await page.locator('#surveyAssociationTable tbody > tr').count()!==3)throw new Error('Association workbook did not produce three survey relationships');
   const assocText=await page.locator('#surveyAssociationPanel').textContent();
   if(!assocText.includes('authoritative')||!assocText.includes('FM03')||!assocText.includes('RG02'))throw new Error('Association precedence/context is not visible in Survey');
+  const registryWithRelationships=await page.evaluate(()=>window.ICMProjectRegistry?.snapshot());
+  if(!registryWithRelationships||registryWithRelationships.relationships.length<5||!registryWithRelationships.assets.some(x=>x.id==='FM03'))throw new Error('Association workbook was not projected into the project registry: '+JSON.stringify(registryWithRelationships));
   const assocLayout=await page.evaluate(()=>{const panel=document.querySelector('#surveyAssociationPanel').getBoundingClientRect();const wrap=document.querySelector('#surveyAssociationTable .survey-table-wrap').getBoundingClientRect();return{panelRight:panel.right,wrapRight:wrap.right};});
   if(assocLayout.wrapRight>assocLayout.panelRight+1)throw new Error('Survey association table escapes its panel: '+JSON.stringify(assocLayout));
 
@@ -433,6 +444,7 @@ try{
   const report=await fs.readFile(await reportDownload.path(),'utf8');
   if(!report.includes('© 2026 Anzar Sajid'))throw new Error('Report copyright missing');
   if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
+  if(!report.includes('project_registry')||!report.includes('web-worker'))throw new Error('Report audit appendix is missing canonical project registry / worker execution provenance');
   if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
   if(!report.includes('Graph statistics')||!report.includes('Minimum')||!report.includes('Mean')||!report.includes('Maximum'))throw new Error('Assessment report compact graph statistics missing');
   if(report.includes('<th>Median</th>')||report.includes('<th>Integrated total</th>'))throw new Error('Assessment report graph statistics were not simplified');
