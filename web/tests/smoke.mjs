@@ -54,6 +54,23 @@ function denseCsv(){
 function rainfallR(values){
   return Buffer.from(`*CSTART\n2601010000 2601010006 2\n*CEND\n${values.join(' ')}\n`,'utf8');
 }
+function surveyFdv(monitor,flow,depth,velocity,count=200){
+  const header=[
+    `**IDENTIFIER: 1,${monitor}`,
+    '**FIELD: 3,FLOW,DEPTH,VELOCITY',
+    '**UNITS: 3,m3/s,m,m/s',
+    '**CONSTANTS: 2,START,INTERVAL',
+    '*CSTART',
+    '2601050000 2',
+    '*CEND',
+  ];
+  const data=Array.from({length:count},()=>`${flow} ${depth} ${velocity}`);
+  return Buffer.from([...header,...data].join('\n')+'\n','utf8');
+}
+function surveyRainfallR(){
+  const values=Array.from({length:200},(_,i)=>i<20?12:0);
+  return Buffer.from(`*CSTART\n2601050000 2601050640 2\n*CEND\n${values.join(' ')}\n`,'utf8');
+}
 async function associationWorkbook(){
   const bytes=await page.evaluate(()=>{
     const wb=XLSX.utils.book_new();
@@ -270,6 +287,26 @@ try{
   if(!professional?.monitor?.weeks?.length)throw new Error(`Professional weekly monitor assessment missing: ${JSON.stringify(professional)}`);
   if(await page.locator('#professionalWeeklyBody tr').count()<1)throw new Error('Professional weekly monitor table is empty');
   if(!((await page.locator('#professionalSurveyMethod').textContent())||'').includes('18 h'))throw new Error('Professional assessment methodology is not exposed in the UI');
+
+  stage='complete association-driven survey assessment';
+  await page.setInputFiles('#fileInput',[
+    {name:'FM01.fdv',mimeType:'text/plain',buffer:surveyFdv('FM01',0.10,0.20,0.40)},
+    {name:'FM02.fdv',mimeType:'text/plain',buffer:surveyFdv('FM02',0.10,0.20,0.40)},
+    {name:'FM03.fdv',mimeType:'text/plain',buffer:surveyFdv('FM03',0.25,0.30,0.50)},
+    {name:'RG01.r',mimeType:'text/plain',buffer:surveyRainfallR()},
+    {name:'RG02.r',mimeType:'text/plain',buffer:surveyRainfallR()},
+  ]);
+  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===12,null,{timeout:90000});
+  await page.waitForFunction(()=>document.querySelector('#surveyAssociationSummary')?.textContent.includes('3/3'),null,{timeout:60000});
+  await page.selectOption('#surveyPopulation','under50');
+  await page.click('#runCompleteSurveyBtn');
+  await page.waitForFunction(()=>document.querySelector('#completeSurveyStatus')?.textContent.includes('Complete survey assessment calculated'),null,{timeout:120000});
+  const completeSurvey=await page.evaluate(()=>window.__ICM_WORKBENCH__.survey?.batch);
+  if(!completeSurvey||completeSurvey.monitors?.length!==3)throw new Error('Complete survey did not assess all association-workbook monitors: '+JSON.stringify(completeSurvey));
+  if(!completeSurvey.source_policy?.association_workbook_authoritative)throw new Error('Association workbook precedence is not explicit in complete survey result');
+  const fm03Balance=(completeSurvey.volume_balance?.rows||[]).find(x=>x.downstream_monitor==='FM03');
+  if(!fm03Balance||fm03Balance.rag!=='Green'||fm03Balance.legacy_fsat_status!=='OK')throw new Error('Expected FM03 downstream volume balance to reconcile Green/OK: '+JSON.stringify(fm03Balance));
+  if(!document.querySelector('#surveyBalanceTable')?.textContent.includes('Likely source / first check'))throw new Error('Volume-balance diagnostic recommendation column is missing');
 
   stage='spill exclusions in Asia/Kolkata and annual comparison';
   await clickTab('spills');
