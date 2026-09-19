@@ -93,6 +93,29 @@ def test_irregular_rainfall_uses_actual_support_not_median_timestep():
     assert events[0]["total_depth_mm"]==pytest.approx(1.2)
 
 
+def test_rainfall_gap_is_reported_as_unknown_in_validity_audit():
+    rain=pd.DataFrame(
+        {
+            "timestamp":pd.to_datetime([
+                "2026-01-01 00:00",
+                "2026-01-01 00:02",
+                "2026-01-01 00:12",
+            ]),
+            "rainfall":[6.0,6.0,6.0],
+        }
+    )
+    accumulation=rainfall_accumulation(
+        rain,
+        "rainfall",
+        semantics="intensity",
+        max_gap_seconds=300,
+    )
+    assert accumulation["status"]=="partial"
+    assert accumulation["coverage_fraction"]==pytest.approx(2/12)
+    assert accumulation["unknown_seconds"]==pytest.approx(10*60)
+    assert accumulation["validity"]["states"]["unknown"]==pytest.approx(10*60)
+
+
 def test_declared_interval_is_only_basis_for_final_rainfall_support():
     rain=pd.DataFrame(
         {
