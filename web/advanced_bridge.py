@@ -406,3 +406,334 @@ def professional_flow_survey_result(
     }
     return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
 
+
+
+def survey_association_result(headers_json="[]", rows_json="[]", inferred_json="{}"):
+    from icm_workbench.analysis.survey_context import (
+        merge_authoritative_associations,
+        normalise_association_table,
+    )
+    headers = json.loads(headers_json) if isinstance(headers_json, str) else list(headers_json or [])
+    rows = json.loads(rows_json) if isinstance(rows_json, str) else list(rows_json or [])
+    inferred = json.loads(inferred_json) if isinstance(inferred_json, str) else dict(inferred_json or {})
+    normalised = normalise_association_table(headers, rows)
+    merged = merge_authoritative_associations(normalised["records"], inferred)
+    payload = {
+        **normalised,
+        "records": merged["records"],
+        "conflicts": merged["conflicts"],
+        "precedence": merged["precedence"],
+    }
+    return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
+
+
+def _survey_channel(path, column, quantity, unit_override=None):
+    if not path or not column:
+        return None, None
+    allowed = ("depth", "level") if quantity == "depth" else (quantity,)
+    canonical = {"depth": "m", "velocity": "m/s", "flow": "m³/s"}[quantity]
+    frame, contract = python_bridge._scaled_dimensional_frame(
+        path,
+        column,
+        unit_override=unit_override,
+        allowed_quantities=allowed,
+        required_canonical_unit=canonical,
+    )
+    out = frame[["timestamp", column]].copy().rename(columns={column: quantity})
+    return out, contract
+
+
+def _survey_rain_source(path, column="rainfall", factor=1.0):
+    if not path:
+        return None, None
+    parsed = python_bridge._load(path)
+    frame = parsed.frame.copy()
+    if column not in frame.columns:
+        available = [c for c in frame.columns if c != "timestamp"]
+        if not available:
+            raise ValueError(f"Rainfall source {path!r} has no value column.")
+        column = available[0]
+    frame[column] = pd.to_numeric(frame[column], errors="coerce") * float(factor)
+    metadata = getattr(parsed, "metadata", {}) or {}
+    interval = metadata.get("interval_min")
+    return frame, float(interval) if interval else None
+
+
+def survey_volume_balance_result(
+    association_json="[]",
+    monitor_sources_json="[]",
+    exclusions_json="[]",
+    max_gap_seconds=900.0,
+    start=None,
+    end=None,
+    amber_tolerance_percent=10.0,
+):
+    from icm_workbench.analysis.survey_context import survey_volume_balance
+
+    associations = json.loads(association_json) if isinstance(association_json, str) else list(association_json or [])
+    sources = json.loads(monitor_sources_json) if isinstance(monitor_sources_json, str) else list(monitor_sources_json or [])
+    exclusions = python_bridge._exclusions(exclusions_json)
+    flows = {}
+    contracts = {}
+    missing = []
+    for source in sources:
+        monitor = str(source.get("monitor") or "").strip()
+        path = source.get("path")
+        column = source.get("flow_col")
+        if not monitor or not path or not column:
+            if monitor:
+                missing.append({"monitor": monitor, "reason": "flow source not mapped"})
+            continue
+        try:
+            frame, contract = _survey_channel(
+                path,
+                column,
+                "flow",
+                source.get("flow_unit_override"),
+            )
+            if frame is None:
+                missing.append({"monitor": monitor, "reason": "flow channel unavailable"})
+                continue
+            flows[monitor] = frame
+            contracts[monitor] = contract
+        except Exception as exc:
+            missing.append({"monitor": monitor, "reason": str(exc)})
+
+    result = survey_volume_balance(
+        flows,
+        associations,
+        start=python_bridge._model_clock_timestamp(start),
+        end=python_bridge._model_clock_timestamp(end),
+        exclusions=exclusions,
+        max_gap_seconds=float(max_gap_seconds),
+        amber_tolerance_percent=float(amber_tolerance_percent),
+    )
+    result["contracts"] = contracts
+    result["source_issues"] = missing
+    result["association_precedence"] = "fm_rg_assoc.xlsx"
+    return json.dumps(python_bridge._jsonable(result), ensure_ascii=False)
+
+
+def professional_survey_batch_result(
+    association_json="[]",
+    monitor_sources_json="[]",
+    rain_sources_json="[]",
+    population_above_50k=True,
+    apply_fault_cutoff=False,
+    rain_factor=1.0,
+    exclusions_json="[]",
+    max_gap_seconds=900.0,
+    start=None,
+    end=None,
+):
+    from icm_workbench.analysis.survey_assessment import (
+        monitor_weekly_assessment,
+        network_rainfall_assessment,
+    )
+    from icm_workbench.analysis.survey_context import (
+        fsat_event_response_assessment,
+        survey_volume_balance,
+    )
+
+    associations = json.loads(association_json) if isinstance(association_json, str) else list(association_json or [])
+    monitor_sources = json.loads(monitor_sources_json) if isinstance(monitor_sources_json, str) else list(monitor_sources_json or [])
+    rain_sources = json.loads(rain_sources_json) if isinstance(rain_sources_json, str) else list(rain_sources_json or [])
+    exclusions = python_bridge._exclusions(exclusions_json)
+    analysis_start = python_bridge._model_clock_timestamp(start)
+    analysis_end = python_bridge._model_clock_timestamp(end)
+
+    gauges = {}
+    rain_lookup = {}
+    rain_issues = []
+    for source in rain_sources:
+        name = str(source.get("name") or source.get("gauge") or "").strip()
+        path = source.get("path")
+        column = source.get("column") or "rainfall"
+        if not name or not path:
+            continue
+        try:
+            frame, interval = _survey_rain_source(path, column, rain_factor)
+            gauges[name] = (frame, column, interval)
+            rain_lookup[name] = (frame, column, interval)
+        except Exception as exc:
+            rain_issues.append({"gauge": name, "reason": str(exc)})
+
+    network = network_rainfall_assessment(
+        gauges,
+        population_above_50k=bool(population_above_50k),
+        apply_fault_cutoff=bool(apply_fault_cutoff),
+    )
+
+    source_by_monitor = {
+        str(x.get("monitor") or "").strip(): x
+        for x in monitor_sources
+        if str(x.get("monitor") or "").strip()
+    }
+    assoc_by_monitor = {
+        str(x.get("monitor") or "").strip(): x
+        for x in associations
+        if str(x.get("monitor") or "").strip()
+    }
+    monitor_rows = []
+    volume_flows = {}
+
+    for monitor, assoc in assoc_by_monitor.items():
+        source = source_by_monitor.get(monitor)
+        if not source:
+            monitor_rows.append({
+                "monitor": monitor,
+                "status": "unavailable",
+                "reason": "No FDV source matched this workbook monitor.",
+                "rain_gauge": assoc.get("rain_gauge"),
+                "diameter_mm": assoc.get("diameter_mm"),
+            })
+            continue
+        channel_frames = []
+        contracts = {}
+        for quantity, key in (
+            ("depth", "depth_col"),
+            ("velocity", "velocity_col"),
+            ("flow", "flow_col"),
+        ):
+            column = source.get(key)
+            path = source.get(f"{quantity}_path") or source.get("path")
+            if not path or not column:
+                continue
+            try:
+                frame, contract = _survey_channel(
+                    path,
+                    column,
+                    quantity,
+                    source.get(f"{quantity}_unit_override"),
+                )
+                if frame is not None:
+                    channel_frames.append(frame)
+                    contracts[quantity] = contract
+                    if quantity == "flow":
+                        volume_flows[monitor] = frame
+            except Exception as exc:
+                contracts[quantity] = {"unit_status": "error", "reason": str(exc)}
+
+        if not channel_frames:
+            monitor_rows.append({
+                "monitor": monitor,
+                "status": "unavailable",
+                "reason": "No usable depth, velocity or flow channel.",
+                "rain_gauge": assoc.get("rain_gauge"),
+                "diameter_mm": assoc.get("diameter_mm"),
+                "contracts": contracts,
+            })
+            continue
+
+        hydraulic = channel_frames[0]
+        for frame in channel_frames[1:]:
+            hydraulic = hydraulic.merge(frame, on="timestamp", how="outer")
+        hydraulic = (
+            hydraulic.sort_values("timestamp")
+            .drop_duplicates("timestamp", keep="last")
+            .reset_index(drop=True)
+        )
+
+        rg = str(assoc.get("rain_gauge") or "").strip()
+        rain_spec = rain_lookup.get(rg)
+        if not rain_spec:
+            monitor_rows.append({
+                "monitor": monitor,
+                "status": "partial",
+                "reason": f"Workbook-mapped rainfall gauge {rg or '—'} is not loaded/matched.",
+                "rain_gauge": rg or None,
+                "diameter_mm": assoc.get("diameter_mm"),
+                "contracts": contracts,
+            })
+            continue
+        rain_frame, rain_col, rain_interval = rain_spec
+
+        weekly = monitor_weekly_assessment(
+            hydraulic,
+            rain_frame,
+            rain_col=rain_col,
+            rain_interval_min=rain_interval,
+            depth_col="depth" if "depth" in hydraulic.columns else None,
+            velocity_col="velocity" if "velocity" in hydraulic.columns else None,
+            flow_col="flow" if "flow" in hydraulic.columns else None,
+            population_above_50k=bool(population_above_50k),
+            network_wapug_events=network.get("qualified_wapug_events") or None,
+        )
+        if analysis_start or analysis_end:
+            filtered = []
+            for week in weekly.get("weeks", []):
+                week_start = pd.Timestamp(week.get("start"))
+                week_end = pd.Timestamp(week.get("end"))
+                if analysis_start is not None and week_end < pd.Timestamp(analysis_start):
+                    continue
+                if analysis_end is not None and week_start > pd.Timestamp(analysis_end):
+                    continue
+                filtered.append(week)
+            weekly["weeks"] = filtered
+            weekly["analysis_period"] = {
+                "start": analysis_start,
+                "end": analysis_end,
+            }
+
+        event_response = fsat_event_response_assessment(
+            hydraulic,
+            rain_frame,
+            rain_col=rain_col,
+            rain_interval_min=rain_interval,
+            diameter_mm=assoc.get("diameter_mm"),
+            network_wapug_events=network.get("qualified_wapug_events") or [],
+            depth_col="depth" if "depth" in hydraulic.columns else None,
+            velocity_col="velocity" if "velocity" in hydraulic.columns else None,
+            flow_col="flow" if "flow" in hydraulic.columns else None,
+            monitor_type=str(source.get("monitor_type") or "FM"),
+            start=analysis_start,
+            end=analysis_end,
+            exclusions=exclusions,
+        )
+
+        monitor_rows.append({
+            "monitor": monitor,
+            "status": "complete",
+            "rain_gauge": rg,
+            "diameter_mm": assoc.get("diameter_mm"),
+            "upstream": assoc.get("upstream", []),
+            "weekly": weekly,
+            "event_response": event_response,
+            "contracts": contracts,
+        })
+
+    volume = survey_volume_balance(
+        volume_flows,
+        associations,
+        start=analysis_start,
+        end=analysis_end,
+        exclusions=exclusions,
+        max_gap_seconds=float(max_gap_seconds),
+    ) if volume_flows else {
+        "rows": [],
+        "summary": {"Green": 0, "Amber": 0, "Red": 0, "Grey": 0},
+        "reason": "No mapped flow channels available for volume balance.",
+        "method": "weekly-volume-balance-v2",
+    }
+
+    payload = {
+        "association": associations,
+        "network": network,
+        "monitors": monitor_rows,
+        "volume_balance": volume,
+        "source_issues": {"rainfall": rain_issues},
+        "analysis_controls": {
+            "start": analysis_start,
+            "end": analysis_end,
+            "exclusion_count": len(exclusions),
+            "max_gap_seconds": float(max_gap_seconds),
+        },
+        "source_policy": {
+            "association_workbook_authoritative": True,
+            "mapped_rainfall_used_per_monitor": True,
+            "all_loaded_rainfall_used_for_network_context": True,
+            "raw_sources_mutated": False,
+        },
+        "method": "complete-survey-fsat-v1",
+    }
+    return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
