@@ -194,8 +194,7 @@ def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshol
         start=python_bridge._model_clock_timestamp(start),
         end=python_bridge._model_clock_timestamp(end),
         max_gap_seconds=float(max_gap_seconds),
-        exclusions=hydraulic_exclusions,
-        rain_exclusions=rainfall_exclusions,
+        exclusions=exclusions,
     )
     monthly={}
     for event in physical.get("events",[]):
