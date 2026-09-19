@@ -760,14 +760,12 @@
   }
 
   function wireInvalidation() {
-    const pool = document.getElementById('poolBody');
-    if (pool) new MutationObserver(() => {
+    window.addEventListener('icm:source-pool-changed', () => {
       if (survey.association) {
         renderAssociation();
-        survey.batch = null;
-        survey.balance = null;
+        if (survey.batch || survey.balance) invalidateSurveyResults('Source pool changed.');
       }
-    }).observe(pool, { childList: true, subtree: true });
+    });
     document.addEventListener('change', event => {
       const id = event.target && event.target.id || '';
       if (['analysisStart', 'analysisEnd', 'gapInput', 'surveyPopulation', 'surveyApplyFaultCutoff', 'rainFactor', 'surveyBalanceTolerance'].includes(id)) {
