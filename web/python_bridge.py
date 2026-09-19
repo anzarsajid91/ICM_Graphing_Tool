@@ -261,7 +261,8 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
         )
     if oq != mq:
         raise ValueError(
-            f"Comparison requires matching quantities; selected channels resolve to {oq!r} and {mq!r}. "
+            f"Comparison requires matching declared quantities (or safely inferred quantities); "
+            f"selected channels resolve to {oq!r} and {mq!r}. "
             "Depth and absolute level remain distinct."
         )
     obs = _load(obs_path).frame
