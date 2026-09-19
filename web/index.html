@@ -192,6 +192,10 @@
         <div class="mapping-grid compact-wide"><label>Named local workspace<input id="workspaceName" placeholder="e.g. FM12 calibration review" /></label><label>Four-period report year<input id="reportYear" type="number" min="1900" max="2200" /></label></div>
         <div class="actions left"><button class="btn" id="saveNamedWorkspaceBtn">Save in browser</button><button class="btn" id="loadNamedWorkspaceBtn">Load named</button><select id="namedWorkspaceSelect" class="inline-select"><option value="">Select saved workspace…</option></select></div>
         <div class="actions left report-actions"><button class="btn primary" id="downloadWorkspaceBtn">Download workspace JSON</button><button class="btn" id="loadWorkspaceBtn">Load workspace JSON</button><button class="btn" id="downloadReportBtn">Download assessment HTML</button><button class="btn" id="downloadFourPeriodBtn">Download four-period HTML</button><button class="btn" id="downloadManifestBtn">Download provenance CSV</button></div>
+        <div class="report-preflight" id="reportPreflight" aria-live="polite">
+          <div class="report-preflight-head"><strong>Report readiness</strong><span>Shows current result state only; it does not recalculate engineering analyses.</span></div>
+          <div class="report-readiness-grid" id="reportReadinessGrid"></div>
+        </div>
         <input id="workspaceInput" type="file" accept="application/json,.json" hidden />
         <div class="report-status" id="workspaceStatus">Workspace not yet saved.</div>
         <div class="privacy-note"><strong>Data handling:</strong> selected engineering files are processed in your browser. This application does not send them to the GitHub repository or to an application server.</div>
