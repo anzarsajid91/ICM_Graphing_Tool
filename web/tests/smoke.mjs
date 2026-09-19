@@ -338,6 +338,12 @@ try{
   const fdvGraph=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{names:chart.data.map(t=>t.name),axes:chart.data.filter(t=>/^Observed /.test(t.name||'')).map(t=>t.yaxis||'y'),hasY3:Boolean(chart.layout.yaxis3),hasY4:Boolean(chart.layout.yaxis4),stats:[...document.querySelectorAll('#graphStatistics tbody tr')].map(r=>r.textContent)}}); 
   if(!fdvGraph.names.some(x=>/Observed depth/i.test(x))||!fdvGraph.names.some(x=>/Observed flow/i.test(x))||!fdvGraph.names.some(x=>/Observed velocity/i.test(x))||!fdvGraph.hasY3||!fdvGraph.hasY4)throw new Error('FDV graph did not auto-expand depth/flow/velocity with independent scaling: '+JSON.stringify(fdvGraph));
   if(fdvGraph.stats.length<3)throw new Error('FDV graph should expose compact statistics for all three hydraulic variables');
+  // Restore the comparison mapping used by the remainder of the acceptance workflow.
+  await page.selectOption('#observedSelect',obsDepth);
+  await page.selectOption('#modelSelect',[modelDepth]);
+  await page.selectOption('#rainSelect',rain);
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
   const completeSurvey=await page.evaluate(()=>window.__ICM_WORKBENCH__.survey?.batch);
   if(!completeSurvey||completeSurvey.monitors?.length!==3)throw new Error('Complete survey did not assess all association-workbook monitors: '+JSON.stringify(completeSurvey));
   if(!completeSurvey.source_policy?.association_workbook_authoritative)throw new Error('Association workbook precedence is not explicit in complete survey result');
