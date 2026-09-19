@@ -877,7 +877,7 @@
   function wireReportPreflight() {
     document.addEventListener('click', event => {
       if (event.target && event.target.closest && event.target.closest('.tab[data-tab="workspace"]')) {
-        setTimeout(renderReportPreflight, 0);
+        renderReportPreflight();
       }
     }, true);
     renderReportPreflight();
