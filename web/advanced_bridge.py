@@ -417,7 +417,8 @@ def professional_flow_survey_result(
         network_wapug_events=network.get("qualified_wapug_events") or None,
         analysis_start=analysis_start,
         analysis_end=analysis_end,
-        exclusions=exclusions,
+        exclusions=hydraulic_exclusions,
+        rain_exclusions=rainfall_exclusions,
     )
     payload = {
         "network": network,
