@@ -44,7 +44,7 @@ async function waitReady(){
 function denseCsv(){
   const lines=['timestamp,level'];
   const base=Date.UTC(2026,0,1,0,0,0);
-  for(let i=0;i<12000;i++){
+  for(let i=0;i<40000;i++){
     const stamp=new Date(base+i*60000).toISOString().replace('.000Z','');
     const level=(i%100>=25&&i%100<=45)?2.2:0.45;
     lines.push(`${stamp},${level}`);
@@ -124,7 +124,7 @@ try{
   await page.waitForSelector('#timeChart .main-svg',{timeout:60000});
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('0 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall not mapped'));
   const fullDensity=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastGraphPointCounts?.observed);
-  if(!fullDensity||fullDensity.raw!==12000||fullDensity.shown>5000||fullDensity.native!==false)throw new Error(`Full adaptive density incorrect: ${JSON.stringify(fullDensity)}`);
+  if(!fullDensity||fullDensity.raw!==40000||fullDensity.shown>15000||fullDensity.native!==false)throw new Error(`Full adaptive density incorrect: ${JSON.stringify(fullDensity)}`);
   const observedOnlyLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return {traceCount:chart.data.length,hasRainTrace:chart.data.some(t=>t.yaxis==='y2'),hasY2:Boolean(chart.layout.yaxis2),hydDomain:chart.layout.yaxis.domain};});
   if(observedOnlyLayout.traceCount!==1||observedOnlyLayout.hasRainTrace||observedOnlyLayout.hasY2||observedOnlyLayout.hydDomain[0]!==0||observedOnlyLayout.hydDomain[1]!==1)throw new Error(`Observed-only/no-rain graph layout incorrect: ${JSON.stringify(observedOnlyLayout)}`);
 
@@ -149,6 +149,8 @@ try{
   const thresholdPresentation=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{legendNames:(chart.data||[]).map(t=>t.name),annotations:(chart.layout.annotations||[]).map(a=>a.text)}}); 
   if(!thresholdPresentation.legendNames.includes('Observed spill level'))throw new Error(`Observed spill threshold is not represented in the top legend: ${JSON.stringify(thresholdPresentation)}`);
   if(thresholdPresentation.annotations.includes('Observed spill level'))throw new Error('Observed spill threshold label should not be stamped on the threshold line');
+  const thresholdDashes=await page.evaluate(()=>document.querySelector('#timeChart').data.filter(t=>/spill (level|threshold)/i.test(t.name||'')).map(t=>t.line?.dash));
+  if(thresholdDashes.length&&new Set(thresholdDashes).size!==1)throw new Error('Observed and model spill legend lines should use the same dashed style: '+JSON.stringify(thresholdDashes));
   const graphLayout=await page.evaluate(()=>({hyd:document.querySelector('#timeChart').layout.yaxis.domain,rain:document.querySelector('#timeChart').layout.yaxis2.domain,rainRange:document.querySelector('#timeChart').layout.yaxis2.range}));
   if(graphLayout.hyd[1]>.71||graphLayout.rain[0]<.78)throw new Error(`Rainfall is not isolated above hydraulic graph: ${JSON.stringify(graphLayout)}`);
   if(!(graphLayout.rainRange[0]>graphLayout.rainRange[1]))throw new Error(`Rainfall axis should be reversed top-down: ${JSON.stringify(graphLayout.rainRange)}`);
@@ -156,7 +158,10 @@ try{
   const graphStatsLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart').getBoundingClientRect(),stats=document.querySelector('#graphStatistics').getBoundingClientRect();return{chartBottom:chart.bottom,statsTop:stats.top,overflow:document.querySelector('#graphStatistics').scrollWidth-document.querySelector('#graphStatistics').clientWidth};});
   if(graphStatsLayout.statsTop<graphStatsLayout.chartBottom-1)throw new Error(`Graph statistics overlap the chart: ${JSON.stringify(graphStatsLayout)}`);
   const graphStatsText=await page.locator('#graphStatistics').textContent();
-  if(!graphStatsText.includes('Minimum')||!graphStatsText.includes('Mean')||!graphStatsText.includes('Integrated total'))throw new Error('ICM-style graph statistics fields are missing');
+  if(!graphStatsText.includes('Minimum')||!graphStatsText.includes('Mean')||!graphStatsText.includes('Maximum')||!graphStatsText.includes('Unit'))throw new Error('Compact ICM-style graph statistics fields are missing');
+  if(graphStatsText.includes('Median')||graphStatsText.includes('Integrated total')||graphStatsText.includes('Missing')||graphStatsText.includes('Status'))throw new Error('Graph statistics were not decluttered: '+graphStatsText);
+  const noRangeSlider=await page.evaluate(()=>!document.querySelector('#timeChart')?.layout?.xaxis?.rangeslider?.visible);
+  if(!noRangeSlider)throw new Error('Main graph overview/range slider should be removed');
 
   stage='adaptive zoom restores native timestep';
   await page.evaluate(()=>Plotly.relayout(document.querySelector('#timeChart'),{'xaxis.range[0]':'2026-01-01T00:00:00','xaxis.range[1]':'2026-01-01T02:00:00'}));
@@ -168,7 +173,7 @@ try{
   if(plotted.x.length!==121||plotted.x[0]!=='2026-01-01T00:00:00'||plotted.x[120]!=='2026-01-01T02:00:00')throw new Error('Native source timestamps are incorrect');
   if(plotted.y[25]!==2.2||plotted.y[46]!==0.45)throw new Error('Native source values are incorrect');
   await page.evaluate(()=>Plotly.relayout(document.querySelector('#timeChart'),{'xaxis.autorange':true}));
-  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphPointCounts?.observed?.raw===12000);
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphPointCounts?.observed?.raw===40000);
 
   stage='observed-only yearly spill calculation';
   await clickTab('spills');
@@ -314,6 +319,25 @@ try{
   await page.selectOption('#surveyPopulation','under50');
   await page.click('#runCompleteSurveyBtn');
   await page.waitForFunction(()=>document.querySelector('#completeSurveyStatus')?.textContent.includes('Complete survey assessment calculated'),null,{timeout:120000});
+  const schematic=await page.evaluate(()=>({nodes:document.querySelectorAll('#surveyNetworkSchematic .schematic-monitor').length,pipes:document.querySelectorAll('#surveyNetworkSchematic .schematic-pipe-inner').length,text:document.querySelector('#surveyNetworkSchematic')?.textContent||''}));
+  if(schematic.nodes<3||schematic.pipes<2||!schematic.text.includes('Association schematic'))throw new Error('Association-driven flow monitor schematic is incomplete: '+JSON.stringify(schematic));
+  const completeToggle=page.locator('#completeSurveyPanel .tool-collapse-toggle').first();
+  if(await completeToggle.count()){
+    await completeToggle.click();
+    if(!(await page.locator('#completeSurveyPanel').evaluate(el=>el.classList.contains('tool-collapsed'))))throw new Error('Complete Survey section did not collapse');
+    await completeToggle.click();
+  }
+
+  stage='FDV automatic multi-variable graph';
+  const fmDepth=await optionValue('#observedSelect','FM01.fdv — depth');
+  if(!fmDepth)throw new Error('FM01 FDV depth option missing');
+  await page.selectOption('#observedSelect',fmDepth);
+  await page.selectOption('#modelSelect',[]);
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphMode==='fdv-multi-variable',null,{timeout:60000});
+  const fdvGraph=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{names:chart.data.map(t=>t.name),axes:chart.data.filter(t=>/^Observed /.test(t.name||'')).map(t=>t.yaxis||'y'),hasY3:Boolean(chart.layout.yaxis3),hasY4:Boolean(chart.layout.yaxis4),stats:[...document.querySelectorAll('#graphStatistics tbody tr')].map(r=>r.textContent)}}); 
+  if(!fdvGraph.names.some(x=>/Observed depth/i.test(x))||!fdvGraph.names.some(x=>/Observed flow/i.test(x))||!fdvGraph.names.some(x=>/Observed velocity/i.test(x))||!fdvGraph.hasY3||!fdvGraph.hasY4)throw new Error('FDV graph did not auto-expand depth/flow/velocity with independent scaling: '+JSON.stringify(fdvGraph));
+  if(fdvGraph.stats.length<3)throw new Error('FDV graph should expose compact statistics for all three hydraulic variables');
   const completeSurvey=await page.evaluate(()=>window.__ICM_WORKBENCH__.survey?.batch);
   if(!completeSurvey||completeSurvey.monitors?.length!==3)throw new Error('Complete survey did not assess all association-workbook monitors: '+JSON.stringify(completeSurvey));
   if(!completeSurvey.source_policy?.association_workbook_authoritative)throw new Error('Association workbook precedence is not explicit in complete survey result');
@@ -387,12 +411,15 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.survey?.batch),null,{timeout:120000});
 
   await clickTab('workspace');
+  const reportSpacing=await page.evaluate(()=>{const top=document.querySelector('#namedWorkspaceSelect')?.closest('.actions')?.getBoundingClientRect();const bottom=document.querySelector('.report-actions')?.getBoundingClientRect();return{gap:top&&bottom?bottom.top-top.bottom:null};});
+  if(reportSpacing.gap!=null&&reportSpacing.gap<8)throw new Error('Report action controls are still crowded: '+JSON.stringify(reportSpacing));
   const reportDownload=await downloadFrom('#downloadReportBtn');
   const report=await fs.readFile(await reportDownload.path(),'utf8');
   if(!report.includes('© 2026 Anzar Sajid'))throw new Error('Report copyright missing');
   if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
   if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
-  if(!report.includes('Graph statistics')||!report.includes('Integrated total'))throw new Error('Assessment report graph statistics missing');
+  if(!report.includes('Graph statistics')||!report.includes('Minimum')||!report.includes('Mean')||!report.includes('Maximum'))throw new Error('Assessment report compact graph statistics missing');
+  if(report.includes('<th>Median</th>')||report.includes('<th>Integrated total</th>'))throw new Error('Assessment report graph statistics were not simplified');
   if(!report.includes('Professional flow-survey / rainfall assessment')||!report.includes('professional_flow_survey'))throw new Error('Professional flow-survey assessment missing from report/audit appendix');
   if(!report.includes('Complete flow-survey context')||!report.includes('Flow continuity / volume balance')||!report.includes('fm_rg_assoc.xlsx'))throw new Error('Association-driven complete survey context missing from exported report');
   if(!report.includes('report-grid')||!report.includes('table-wrap'))throw new Error('Professional report layout classes missing');
@@ -408,6 +435,12 @@ try{
   const fourLayout=await inspectReportHtml(fourReport,4);
   if(fourLayout.headers!==1||fourLayout.figures!==4||fourLayout.zero||fourLayout.overflow>2)throw new Error(`Four-period report visual containment failed: ${JSON.stringify(fourLayout)}`);
   await downloadFrom('#downloadManifestBtn');
+
+  stage='simulated-series auxiliary column filtering';
+  await page.setInputFiles('#fileInput',{name:'simulated-export.csv',mimeType:'text/csv',buffer:Buffer.from('timestamp,Seconds,Dummy Nodes\n2026-02-01T00:00:00,0,1.0\n2026-02-01T00:01:00,60,1.1\n')});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(r=>r.textContent.includes('simulated-export.csv')),null,{timeout:60000});
+  const simOptions=await page.locator('#modelSelect option').evaluateAll(opts=>opts.filter(o=>o.textContent.includes('simulated-export.csv')).map(o=>o.textContent));
+  if(simOptions.length!==1||simOptions.some(x=>/—\s*Seconds\b/i.test(x)))throw new Error('Simulated export should expose one user series and hide auxiliary Seconds: '+JSON.stringify(simOptions));
 
   stage='multi-file drag and drop regression';
   const beforeDrop=await page.locator('#poolBody tr').count();
@@ -436,7 +469,7 @@ try{
   if(diag.errors?.length)throw new Error(`Workbench recorded operation errors: ${JSON.stringify(diag.errors)}`);
   if(failedRequests.filter(x=>!x.includes('favicon.ico')).length)throw new Error(`Failed browser requests: ${failedRequests.join(' | ')}`);
 
-  console.log('Browser acceptance passed: multi-file drag/drop, global operation feedback, workflow hierarchy, cobalt model default, top-legend thresholds, separated rainfall band, graph statistics, depth-only fitting, comparison diagnostics, survey workflows, spills, storage, workspace and reports.');
+  console.log('Browser acceptance passed: hardened multi-file drag/drop, auxiliary column filtering, FDV depth/flow/velocity auto-graphing, dense adaptive zoom, no range slider, compact statistics/reports, unified spill dash style, survey schematic, collapsible workflows, survey assessment, spills, storage and workspace outputs.');
 } catch(err) {
   const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');
   const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);
