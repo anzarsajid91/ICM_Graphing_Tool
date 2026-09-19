@@ -171,8 +171,7 @@
   }
 
   function wireAutomaticCumulativeRefresh() {
-    const body = $('poolBody');
-    if (body) new MutationObserver(() => scheduleCumulativeRainfall(500)).observe(body,{childList:true,subtree:true});
+    window.addEventListener('icm:source-pool-changed', () => scheduleCumulativeRainfall(120));
     document.addEventListener('change', event => {
       if (event.target?.id === 'rainFactor') scheduleCumulativeRainfall(120);
     }, true);
@@ -398,12 +397,15 @@
       event.preventDefault();
       guarded('professionalSurveyStatus', runProfessionalSurvey);
     });
-    const body = $('poolBody');
-    if (body) new MutationObserver(() => {
+    window.addEventListener('icm:source-pool-changed', () => {
       populateProfessionalSurveySelectors();
+      const hadResult=Boolean(window.__ICM_WORKBENCH__.lastProfessionalSurvey);
       window.__ICM_WORKBENCH__.lastProfessionalSurvey = null;
       window.__ICM_WORKBENCH__.professionalSurveyReportHtml = '';
-    }).observe(body,{childList:true,subtree:true});
+      if (hadResult && $('professionalSurveyStatus')) {
+        $('professionalSurveyStatus').textContent = 'Source pool changed. Re-run the professional assessment before relying on or exporting these findings.';
+      }
+    });
     document.addEventListener('click', event => {
       if (event.target?.closest?.('.tab[data-tab="data-health"]')) {
         setTimeout(populateProfessionalSurveySelectors, 0);
