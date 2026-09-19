@@ -49,11 +49,7 @@ jobs:
           echo "Waiting for $SITE_URL to serve $TARGET_SHA"
           for attempt in $(seq 1 36); do
             body="$(curl -fsSL --retry 2 --retry-delay 2 "${SITE_URL}build.json?verify=${TARGET_SHA}-${attempt}" 2>/dev/null || true)"
-            live_sha="$(printf '%s' "$body" | python3 -c 'import json,sys
-          try:
-              print(json.load(sys.stdin).get("commit", ""))
-          except Exception:
-              print("")' 2>/dev/null || true)"
+            live_sha="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("commit", ""))' 2>/dev/null || true)"
             if [ "$live_sha" = "$TARGET_SHA" ]; then
               echo "Live Pages commit verified: $live_sha"
               printf '%s\n' "$body" > /tmp/live-build.json
