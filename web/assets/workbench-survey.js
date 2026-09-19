@@ -775,9 +775,29 @@
       }
     }, true);
     const exclusions = document.getElementById('exclusionRows');
-    if (exclusions) new MutationObserver(() => {
-      if (survey.batch || survey.balance) invalidateSurveyResults('Exclusion periods changed.');
-    }).observe(exclusions, { childList: true, subtree: true, attributes: true });
+    if (exclusions) {
+      const exclusionSignature = () => JSON.stringify((state.exclusions || []).map(item => ({
+        enabled: item.enabled !== false,
+        start: modelClock(item.start) || '',
+        end: modelClock(item.end) || '',
+        scope: item.scope || 'both',
+        reason: String(item.reason || ''),
+      })));
+      let lastExclusionSignature = exclusionSignature();
+      const invalidateForExclusionStateChange = () => {
+        const next = exclusionSignature();
+        if (next === lastExclusionSignature) return;
+        lastExclusionSignature = next;
+        if (survey.batch || survey.balance) invalidateSurveyResults('Exclusion periods changed.');
+      };
+      new MutationObserver(invalidateForExclusionStateChange)
+        .observe(exclusions, { childList: true, subtree: true, attributes: true });
+      document.addEventListener('change', event => {
+        if (event.target && event.target.closest && event.target.closest('#exclusionRows')) {
+          invalidateForExclusionStateChange();
+        }
+      });
+    }
   }
 
   function wireWorkspacePersistence() {
