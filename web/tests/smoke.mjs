@@ -424,7 +424,14 @@ try{
   // and graph restoration has actually finished.
   await page.evaluate(()=>{
     const original=window.ICMGraph.applyMapping;
-    window.__workspaceRestoreProbe={completed:false};
+    const status=document.querySelector('#workspaceStatus');
+    window.__workspaceRestoreProbe={completed:false,prematureLoaded:false};
+    const observer=new MutationObserver(()=>{
+      if(status?.textContent.includes('Workspace loaded.')&&!window.__workspaceRestoreProbe.completed){
+        window.__workspaceRestoreProbe.prematureLoaded=true;
+      }
+    });
+    if(status)observer.observe(status,{childList:true,subtree:true,characterData:true});
     window.ICMGraph.applyMapping=async function(...args){
       await new Promise(resolve=>setTimeout(resolve,300));
       try{return await original.apply(this,args);}
@@ -435,14 +442,15 @@ try{
     };
   });
   await page.setInputFiles('#workspaceInput',workspacePath);
-  await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('source fingerprint'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('Workspace loaded.'),null,{timeout:60000});
+  await page.waitForFunction(()=>!document.body.classList.contains('operation-busy'),null,{timeout:10000});
   const restoreReady=await page.evaluate(()=>({
     mappingCompleted:Boolean(window.__workspaceRestoreProbe?.completed),
-    operationBusy:document.body.classList.contains('operation-busy'),
+    prematureLoaded:Boolean(window.__workspaceRestoreProbe?.prematureLoaded),
     observedMapped:Boolean(state.mapping.observed),
     plottedTraces:Array.isArray(document.querySelector('#timeChart')?.data)?document.querySelector('#timeChart').data.length:0,
   }));
-  if(!restoreReady.mappingCompleted||restoreReady.operationBusy||!restoreReady.observedMapped||restoreReady.plottedTraces<1)throw new Error(`Workspace announced loaded before restoration completed: ${JSON.stringify(restoreReady)}`);
+  if(!restoreReady.mappingCompleted||restoreReady.prematureLoaded||!restoreReady.observedMapped||restoreReady.plottedTraces<1)throw new Error(`Workspace announced loaded before restoration completed: ${JSON.stringify(restoreReady)}`);
 
   // Workspace import intentionally invalidates calculated snapshots. Recalculate every
   // analysis used by the report rather than weakening stale-result export guards.
@@ -481,9 +489,18 @@ try{
 
   await clickTab('workspace');
   await page.waitForSelector('#reportPreflight',{timeout:10000});
-  const reportPreflight=(await page.locator('#reportPreflight').textContent())||'';
-  for(const expected of ['ComparisonFresh','Spill / EDMFresh','Professional surveyFresh','Complete surveyFresh','Survey associationLoaded']){
-    if(!reportPreflight.replace(/\\s+/g,'').includes(expected.replace(/\\s+/g,'')))throw new Error(`Report readiness is missing ${expected}: ${reportPreflight}`);
+  const readinessExpected={
+    comparison:'Fresh',
+    spill:'Fresh',
+    'professional-survey':'Fresh',
+    'complete-survey':'Fresh',
+    'survey-association':'Loaded',
+  };
+  for(const [key,expected] of Object.entries(readinessExpected)){
+    const item=page.locator(`#reportPreflight [data-result="${key}"]`);
+    if(await item.count()!==1)throw new Error(`Report readiness row missing for ${key}`);
+    const value=(await item.locator('.report-readiness-state').textContent())||'';
+    if(value.trim()!==expected)throw new Error(`Report readiness for ${key} expected ${expected}, got ${value}`);
   }
   const reportSpacing=await page.evaluate(()=>{const top=document.querySelector('#namedWorkspaceSelect')?.closest('.actions')?.getBoundingClientRect();const bottom=document.querySelector('.report-actions')?.getBoundingClientRect();return{gap:top&&bottom?bottom.top-top.bottom:null};});
   if(reportSpacing.gap!=null&&reportSpacing.gap<8)throw new Error('Report action controls are still crowded: '+JSON.stringify(reportSpacing));
