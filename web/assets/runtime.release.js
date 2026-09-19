@@ -151,43 +151,82 @@ async function guarded(target,fn){
 }
 
 class BrowserPythonEngine {
-  constructor(){this.pyodide=null;this.ready=false;this.queue=Promise.resolve();}
-  async boot(){
-    if(typeof loadPyodide!=='function')throw new Error('Pinned Pyodide loader was not available. Check network/content filtering.');
-    this.pyodide=await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.29.4/full/'});
-    await this.pyodide.loadPackage(['numpy','pandas']);
-    const manifestResponse=await fetch('python/package-manifest.json',{cache:'no-cache'});
-    if(!manifestResponse.ok)throw new Error(`Python package manifest unavailable (${manifestResponse.status}).`);
-    const files=await manifestResponse.json();
-    if(!Array.isArray(files)||!files.length)throw new Error('Python package manifest is empty or invalid.');
-    this.pyodide.FS.mkdirTree('/workbench');this.pyodide.FS.mkdirTree('/data');
-    for(const rel of files){
-      if(!String(rel).startsWith('icm_workbench/')||!String(rel).endsWith('.py'))throw new Error(`Unsafe manifest entry: ${rel}`);
-      const parent=`/workbench/${rel}`.split('/').slice(0,-1).join('/');this.pyodide.FS.mkdirTree(parent);
-      const r=await fetch(`python/${rel}`,{cache:'no-cache'});if(!r.ok)throw new Error(`Could not load reference engine module ${rel} (${r.status}).`);
-      this.pyodide.FS.writeFile(`/workbench/${rel}`,await r.text(),{encoding:'utf8'});
-    }
-    for(const name of ['python_bridge.py','advanced_bridge.py']){
-      const r=await fetch(name,{cache:'no-cache'});if(!r.ok)throw new Error(`Could not load ${name} (${r.status}).`);
-      this.pyodide.FS.writeFile(`/workbench/${name}`,await r.text(),{encoding:'utf8'});
-    }
-    await this.pyodide.runPythonAsync(`import sys\nsys.path.insert(0,'/workbench')\nimport python_bridge, advanced_bridge`);
-    this.ready=true;diagnostic.status='ready';diagnostic.manifestCount=files.length;
+  constructor(){
+    this.worker=null;
+    this.ready=false;
+    this.sequence=0;
+    this.pending=new Map();
+    this.booting=null;
   }
-  async addFile(item,bytes=null){if(!this.ready)throw new Error('Reference Python engine is not ready.');const payload=bytes instanceof Uint8Array?bytes:new Uint8Array(await item.file.arrayBuffer());this.pyodide.FS.writeFile(item.virtualPath,payload);}
-  async call(name,args={},module='python_bridge'){
-    if(!this.ready)throw new Error('Reference Python engine is not ready.');
-    if(!['python_bridge','advanced_bridge'].includes(module))throw new Error('Unsupported browser bridge.');
-    const payload=JSON.stringify(args);
-    const operation=this.queue.then(async()=>{
-      this.pyodide.globals.set('_bridge_args',payload);
-      const out=await this.pyodide.runPythonAsync(`import json, ${module}\n_a=json.loads(_bridge_args)\n${module}.${name}(**_a)`);
-      return typeof out==='string'?JSON.parse(out):out;
+  _spawn(){
+    if(typeof Worker!=='function')throw new Error('Web Workers are not available in this browser.');
+    this.worker=new Worker('assets/analysis-worker.js');
+    this.worker.addEventListener('message',event=>this._message(event.data||{}));
+    this.worker.addEventListener('error',event=>{
+      const message=event?.message||'Python analysis worker failed.';
+      diagnostic.errors.push({time:new Date().toISOString(),target:'analysis-worker',message});
+      for(const [,entry] of this.pending)entry.reject(new Error(message));
+      this.pending.clear();
+      this.ready=false;
     });
-    this.queue=operation.catch(()=>{});
-    return operation;
   }
-  async clear(){if(this.ready)await this.call('clear_cache');}
+  _message(message){
+    if(message.type==='progress'){
+      diagnostic.worker={stage:message.stage,progress:message.percent,detail:message.detail,time:new Date().toISOString()};
+      if(operationDepth>0&&message.stage!=='Analysis complete'){
+        operationUpdate(message.stage,message.percent,message.detail||'Engineering calculation is running off the UI thread.');
+      }
+      return;
+    }
+    if(message.type!=='result')return;
+    const entry=this.pending.get(message.id);
+    if(!entry)return;
+    this.pending.delete(message.id);
+    if(message.ok)entry.resolve(message.result);
+    else entry.reject(new Error(message.error||'Python analysis worker operation failed.'));
+  }
+  _request(type,payload={},transfer=[]){
+    if(!this.worker)throw new Error('Python analysis worker has not started.');
+    const id=`analysis-${++this.sequence}`;
+    return new Promise((resolve,reject)=>{
+      this.pending.set(id,{resolve,reject,type});
+      try{this.worker.postMessage({id,type,...payload},transfer);}
+      catch(error){this.pending.delete(id);reject(error);}
+    });
+  }
+  async boot(){
+    if(this.ready)return {ready:true,manifestCount:diagnostic.manifestCount,execution:'web-worker'};
+    if(this.booting)return this.booting;
+    this._spawn();
+    this.booting=this._request('boot').then(info=>{
+      this.ready=true;
+      diagnostic.status='ready';
+      diagnostic.execution='web-worker';
+      diagnostic.manifestCount=Number(info?.manifestCount||0);
+      return info;
+    }).finally(()=>{this.booting=null;});
+    return this.booting;
+  }
+  async addFile(item,bytes=null){
+    if(!this.ready)throw new Error('Reference Python worker is not ready.');
+    const payload=bytes instanceof Uint8Array?bytes:new Uint8Array(await item.file.arrayBuffer());
+    const buffer=payload.byteOffset===0&&payload.byteLength===payload.buffer.byteLength?payload.buffer:payload.slice().buffer;
+    return this._request('addFile',{path:item.virtualPath,bytes:buffer},[buffer]);
+  }
+  async call(name,args={},module='python_bridge'){
+    if(!this.ready)throw new Error('Reference Python worker is not ready.');
+    if(!['python_bridge','advanced_bridge'].includes(module))throw new Error('Unsupported browser bridge.');
+    return this._request('call',{name,args,module});
+  }
+  async clear(){if(this.ready)return this._request('clear');return true;}
+  terminate(reason='Analysis worker restarted.'){
+    if(this.worker)this.worker.terminate();
+    this.worker=null;
+    this.ready=false;
+    this.booting=null;
+    for(const [,entry] of this.pending)entry.reject(new Error(reason));
+    this.pending.clear();
+  }
 }
 const engine=new BrowserPythonEngine();
 
@@ -562,5 +601,5 @@ function wireEvents(){
   $('addExclusionBtn').addEventListener('click',()=>addExclusionRow());eventGuard('runSpillsBtn','obsSpillSummary',runSpills);eventGuard('runStorageBtn','storageSummary',runStorage);
   $('downloadWorkspaceBtn').addEventListener('click',()=>guarded('workspaceStatus',downloadWorkspace));$('loadWorkspaceBtn').addEventListener('click',()=>$('workspaceInput').click());$('workspaceInput').addEventListener('change',e=>e.target.files[0]&&guarded('workspaceStatus',()=>loadWorkspaceFile(e.target.files[0])));eventGuard('saveNamedWorkspaceBtn','workspaceStatus',saveNamedWorkspace);eventGuard('loadNamedWorkspaceBtn','workspaceStatus',loadNamedWorkspace);eventGuard('downloadReportBtn','workspaceStatus',downloadReport);eventGuard('downloadFourPeriodBtn','workspaceStatus',downloadFourPeriod);$('downloadManifestBtn').addEventListener('click',()=>guarded('workspaceStatus',downloadManifest));document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn)));
 }
-async function start(){wireEvents();renderPool();renderSeriesOptions();renderExclusions();renderNamedWorkspaces();criteriaModeChanged();try{await engine.boot();setEngineStatus('Reference Python engine ready · files remain local','ready');$('footerBuild').textContent='Reference engine: Python 3.13 via Pyodide 0.29.4';}catch(err){diagnostic.status='failed';diagnostic.errors.push({time:new Date().toISOString(),target:'engine',message:String(err?.message||err)});console.error(err);setEngineStatus(`Engine failed: ${err.message||err}`,'error');$('poolSummary').textContent='The browser Python engine did not start. Reload with network access to the pinned Pyodide/Plotly CDNs.';}}
+async function start(){wireEvents();renderPool();renderSeriesOptions();renderExclusions();renderNamedWorkspaces();criteriaModeChanged();try{const info=await engine.boot();setEngineStatus('Reference Python worker ready · files remain local','ready');$('footerBuild').textContent=`Reference engine: Python via Pyodide 0.29.4 Web Worker · ${Number(info?.manifestCount||0)} modules`;}catch(err){diagnostic.status='failed';diagnostic.errors.push({time:new Date().toISOString(),target:'engine',message:String(err?.message||err)});console.error(err);setEngineStatus(`Engine failed: ${err.message||err}`,'error');$('poolSummary').textContent='The browser Python worker did not start. Reload with network access to the pinned Pyodide/Plotly CDNs.';}}
 start();
