@@ -420,8 +420,29 @@ try{
   if(workspace.exclusions?.[0]?.start!=='2026-01-01T00:08')throw new Error(`Exclusion wall clock shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
   if(workspace.exclusions?.[0]?.end!=='2026-01-01T00:10')throw new Error(`Exclusion end shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
 
+  // A workspace must not advertise completion before its asynchronous mapping
+  // and graph restoration has actually finished.
+  await page.evaluate(()=>{
+    const original=window.ICMGraph.applyMapping;
+    window.__workspaceRestoreProbe={completed:false};
+    window.ICMGraph.applyMapping=async function(...args){
+      await new Promise(resolve=>setTimeout(resolve,300));
+      try{return await original.apply(this,args);}
+      finally{
+        window.__workspaceRestoreProbe.completed=true;
+        window.ICMGraph.applyMapping=original;
+      }
+    };
+  });
   await page.setInputFiles('#workspaceInput',workspacePath);
   await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('source fingerprint'),null,{timeout:60000});
+  const restoreReady=await page.evaluate(()=>({
+    mappingCompleted:Boolean(window.__workspaceRestoreProbe?.completed),
+    operationBusy:document.body.classList.contains('operation-busy'),
+    observedMapped:Boolean(state.mapping.observed),
+    plottedTraces:Array.isArray(document.querySelector('#timeChart')?.data)?document.querySelector('#timeChart').data.length:0,
+  }));
+  if(!restoreReady.mappingCompleted||restoreReady.operationBusy||!restoreReady.observedMapped||restoreReady.plottedTraces<1)throw new Error(`Workspace announced loaded before restoration completed: ${JSON.stringify(restoreReady)}`);
 
   // Workspace import intentionally invalidates calculated snapshots. Recalculate every
   // analysis used by the report rather than weakening stale-result export guards.
@@ -459,6 +480,11 @@ try{
   if(!surveyAfterExclusionRerender.batch||!surveyAfterExclusionRerender.balance||surveyAfterExclusionRerender.exclusions!==surveyBeforeExclusionRerender.exclusions)throw new Error(`DOM-only exclusion rerender invalidated unchanged survey results: ${JSON.stringify({before:surveyBeforeExclusionRerender,after:surveyAfterExclusionRerender})}`);
 
   await clickTab('workspace');
+  await page.waitForSelector('#reportPreflight',{timeout:10000});
+  const reportPreflight=(await page.locator('#reportPreflight').textContent())||'';
+  for(const expected of ['ComparisonFresh','Spill / EDMFresh','Professional surveyFresh','Complete surveyFresh','Survey associationLoaded']){
+    if(!reportPreflight.replace(/\\s+/g,'').includes(expected.replace(/\\s+/g,'')))throw new Error(`Report readiness is missing ${expected}: ${reportPreflight}`);
+  }
   const reportSpacing=await page.evaluate(()=>{const top=document.querySelector('#namedWorkspaceSelect')?.closest('.actions')?.getBoundingClientRect();const bottom=document.querySelector('.report-actions')?.getBoundingClientRect();return{gap:top&&bottom?bottom.top-top.bottom:null};});
   if(reportSpacing.gap!=null&&reportSpacing.gap<8)throw new Error('Report action controls are still crowded: '+JSON.stringify(reportSpacing));
   await captureEvidence('03-report-workspace');
