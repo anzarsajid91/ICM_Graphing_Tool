@@ -128,6 +128,10 @@
     setRelationships(records=[],source='fm_rg_assoc.xlsx'){
       this.relationships=[];
       this.associationSource=source||'fm_rg_assoc.xlsx';
+      for(const [id,asset] of [...this.assets.entries()]){
+        if(asset.metadata){delete asset.metadata.rainGauge;delete asset.metadata.diameterMm;}
+        if(!(asset.sourceIds||[]).length)this.assets.delete(id);
+      }
       for(const record of records||[]){
         const downstream=norm(record.monitor);
         if(!downstream)continue;
