@@ -429,7 +429,6 @@ def professional_flow_survey_result(
             "analysis_end": analysis_end,
             "exclusion_count": len(exclusions),
             "max_gap_seconds": float(max_gap_seconds),
-            "amber_tolerance_percent": float(amber_tolerance_percent),
         },
     }
     return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
@@ -822,6 +821,7 @@ def professional_survey_batch_result(
             "end": analysis_end,
             "exclusion_count": len(exclusions),
             "max_gap_seconds": float(max_gap_seconds),
+            "amber_tolerance_percent": float(amber_tolerance_percent),
         },
         "source_policy": {
             "association_workbook_authoritative": True,
