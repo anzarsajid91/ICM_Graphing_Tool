@@ -38,8 +38,13 @@ Presentation copyright: © 2026 Anzar Sajid.
 The intended end state is an ICM verification and hydraulic-data workbench:
 import once, classify series once, and reuse the same governed data/validity
 state across telemetry QA, rainfall, DWF, event response, calibration,
-spill/EDM and reporting workflows. Development follows controlled,
-regression-tested phases rather than a rewrite of the working browser product.
+spill/EDM and reporting workflows. The current architecture now enforces that
+direction with a canonical project/asset registry, an off-main-thread Pyodide
+analysis worker, and a single authoritative Python engineering API under
+`src/icm_workbench`. See [architecture v8](docs/architecture-v8.md).
+
+Development follows controlled, regression-tested phases rather than a rewrite
+of the working browser product.
 
 ## Historical desktop documentation
 
