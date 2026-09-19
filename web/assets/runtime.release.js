@@ -234,7 +234,25 @@ async function sha256Bytes(buffer){const digest=await crypto.subtle.digest('SHA-
 async function sha256(file){return sha256Bytes(await file.arrayBuffer());}
 function mappingObject(v){const[id,col]=parseSourceKey(v);const item=state.files.get(id);return item?{id,col,item}:null;}
 function currentModels(){return state.mapping.models.map(mappingObject).filter(Boolean);}
-function allSeries(){const out=[];for(const item of state.files.values()){if(item.status!=='ready')continue;for(const col of item.parsed.columns||[]){if(isAuxiliarySeries(item,col))continue;out.push({item,col,key:sourceKey(item.id,col),label:seriesLabel(item,col)});}}return out;}
+function allSeries(){
+  const registry=window.ICMProjectRegistry;
+  if(registry){
+    const rows=registry.listSeries().map(series=>{
+      const item=state.files.get(series.sourceId);
+      return item?{item,col:series.column,key:series.key,label:series.label,quantity:series.quantity,unit:series.unit,role:series.role,assetId:series.assetId}:null;
+    }).filter(Boolean);
+    if(rows.length)return rows;
+  }
+  const out=[];
+  for(const item of state.files.values()){
+    if(item.status!=='ready')continue;
+    for(const col of item.parsed.columns||[]){
+      if(isAuxiliarySeries(item,col))continue;
+      out.push({item,col,key:sourceKey(item.id,col),label:seriesLabel(item,col),quantity:seriesQuantity(item,col),unit:seriesUnit(item,col)});
+    }
+  }
+  return out;
+}
 function setOptions(select,all,{none=false,preserve=true}={}){const prev=preserve?select.value:'';select.innerHTML=(none?'<option value="">None</option>':'<option value="">Select…</option>')+all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');if([...select.options].some(o=>o.value===prev))select.value=prev;}
 
 async function ingestFiles(files){
@@ -256,6 +274,7 @@ async function ingestFiles(files){
       await operationPaint();
       item.parsed=await engine.call('parse_source',{path:item.virtualPath});
       item.status='ready';
+      window.ICMProjectRegistry?.registerSource(item);
     }
     catch(err){item.status='error';item.error=String(err?.message||err);diagnostic.errors.push({time:new Date().toISOString(),target:'source-pool',message:item.error,file:displayName});}
     finally{item.loadSeconds=(performance.now()-started)/1000;}
@@ -593,7 +612,7 @@ async function chooseFolder(){if('showDirectoryPicker'in window){try{const handl
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
-  eventGuard('chooseFolderBtn','poolSummary',chooseFolder);$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>guarded('poolSummary',()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>guarded('poolSummary',()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{state.files.clear();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';});
+  eventGuard('chooseFolderBtn','poolSummary',chooseFolder);$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>guarded('poolSummary',()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>guarded('poolSummary',()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);guarded('poolSummary',async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=`${files.length} dropped file${files.length===1?'':'s'} detected · preparing import…`;await ingestFiles(files);});});
   eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('modelSelect').addEventListener('change',()=>{renderModelColourControls();autoSuggestAdvanced(allSeries());});eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
   eventGuard('runCompareBtn','metricGrid',runCompare);$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);eventGuard('runDwfBtn','dwfSummary',runDwf);
@@ -601,5 +620,5 @@ function wireEvents(){
   $('addExclusionBtn').addEventListener('click',()=>addExclusionRow());eventGuard('runSpillsBtn','obsSpillSummary',runSpills);eventGuard('runStorageBtn','storageSummary',runStorage);
   $('downloadWorkspaceBtn').addEventListener('click',()=>guarded('workspaceStatus',downloadWorkspace));$('loadWorkspaceBtn').addEventListener('click',()=>$('workspaceInput').click());$('workspaceInput').addEventListener('change',e=>e.target.files[0]&&guarded('workspaceStatus',()=>loadWorkspaceFile(e.target.files[0])));eventGuard('saveNamedWorkspaceBtn','workspaceStatus',saveNamedWorkspace);eventGuard('loadNamedWorkspaceBtn','workspaceStatus',loadNamedWorkspace);eventGuard('downloadReportBtn','workspaceStatus',downloadReport);eventGuard('downloadFourPeriodBtn','workspaceStatus',downloadFourPeriod);$('downloadManifestBtn').addEventListener('click',()=>guarded('workspaceStatus',downloadManifest));document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn)));
 }
-async function start(){wireEvents();renderPool();renderSeriesOptions();renderExclusions();renderNamedWorkspaces();criteriaModeChanged();try{const info=await engine.boot();setEngineStatus('Reference Python worker ready · files remain local','ready');$('footerBuild').textContent=`Reference engine: Python via Pyodide 0.29.4 Web Worker · ${Number(info?.manifestCount||0)} modules`;}catch(err){diagnostic.status='failed';diagnostic.errors.push({time:new Date().toISOString(),target:'engine',message:String(err?.message||err)});console.error(err);setEngineStatus(`Engine failed: ${err.message||err}`,'error');$('poolSummary').textContent='The browser Python worker did not start. Reload with network access to the pinned Pyodide/Plotly CDNs.';}}
+async function start(){window.ICMProjectRegistry?.mount();wireEvents();renderPool();renderSeriesOptions();renderExclusions();renderNamedWorkspaces();criteriaModeChanged();try{const info=await engine.boot();setEngineStatus('Reference Python worker ready · files remain local','ready');$('footerBuild').textContent=`Reference engine: Python via Pyodide 0.29.4 Web Worker · ${Number(info?.manifestCount||0)} modules`;window.ICMProjectRegistry?.render();}catch(err){diagnostic.status='failed';diagnostic.errors.push({time:new Date().toISOString(),target:'engine',message:String(err?.message||err)});console.error(err);setEngineStatus(`Engine failed: ${err.message||err}`,'error');$('poolSummary').textContent='The browser Python worker did not start. Reload with network access to the pinned Pyodide/Plotly CDNs.';}}
 start();
