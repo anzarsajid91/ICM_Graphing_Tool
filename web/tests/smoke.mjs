@@ -54,6 +54,20 @@ function denseCsv(){
 function rainfallR(values){
   return Buffer.from(`*CSTART\n2601010000 2601010006 2\n*CEND\n${values.join(' ')}\n`,'utf8');
 }
+async function associationWorkbook(){
+  const bytes=await page.evaluate(()=>{
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet([
+      ['FDV_Name','RG','Pipe Diameter (mm)','Upstream Trace'],
+      ['FM03','RG02',600,'FM01, FM02'],
+      ['FM01','RG01',450,''],
+      ['FM02','RG01',450,''],
+    ]);
+    XLSX.utils.book_append_sheet(wb,ws,'Associations');
+    return Array.from(new Uint8Array(XLSX.write(wb,{type:'array',bookType:'xlsx'})));
+  });
+  return {name:'fm_rg_assoc.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(bytes)};
+}
 
 try{
   stage='open application';
@@ -223,6 +237,18 @@ try{
   const healthHead=await page.locator('#healthBody').evaluate(el=>el.closest('table')?.querySelector('thead')?.textContent||'');
   if(!healthHead.includes('Flatline')||!healthHead.includes('Out of range')||!healthHead.includes('Zero %'))throw new Error('Enhanced FDV flow-survey screening columns are missing');
 
+  stage='association workbook and simplified survey navigation';
+  const navLabels=await page.locator('nav.tabs .tab').allTextContents();
+  if(navLabels.join('|')!=='Data|Survey|Rainfall|Verification|Spills|Report')throw new Error('Unexpected simplified navigation: '+JSON.stringify(navLabels));
+  if(await page.locator('.tab[data-tab="storage"]').count()!==0)throw new Error('Storage should be embedded under Verification, not exposed as a top-level tab');
+  await page.setInputFiles('#assocFileInput',await associationWorkbook());
+  await page.waitForFunction(()=>document.querySelector('#surveyAssociationStatus')?.textContent.includes('fm_rg_assoc.xlsx'),null,{timeout:60000});
+  if(await page.locator('#surveyAssociationTable tbody tr').count()!==3)throw new Error('Association workbook did not produce three survey relationships');
+  const assocText=await page.locator('#surveyAssociationPanel').textContent();
+  if(!assocText.includes('authoritative')||!assocText.includes('FM03')||!assocText.includes('RG02'))throw new Error('Association precedence/context is not visible in Survey');
+  const assocLayout=await page.evaluate(()=>{const panel=document.querySelector('#surveyAssociationPanel').getBoundingClientRect();const wrap=document.querySelector('#surveyAssociationTable .survey-table-wrap').getBoundingClientRect();return{panelRight:panel.right,wrapRight:wrap.right};});
+  if(assocLayout.wrapRight>assocLayout.panelRight+1)throw new Error('Survey association table escapes its panel: '+JSON.stringify(assocLayout));
+
   stage='professional FDV and rainfall assessment';
   const surveyDepth=await optionValue('#surveyDepthSelect','observed.csv — depth');
   const surveyVelocity=await optionValue('#surveyVelocitySelect','observed.csv — velocity');
@@ -264,7 +290,8 @@ try{
   if(!spillDiag.observed.yearly?.length)throw new Error('Yearly spill summary missing from browser diagnostic');
 
   stage='storage and monthly volume';
-  await clickTab('storage');
+  await clickTab('compare');
+  await page.locator('#tab-storage').scrollIntoViewIfNeeded();
   const level=await optionValue('#storageLevelSelect','model.csv — depth');
   const flow=await optionValue('#storageFlowSelect','model.csv — flow');
   await page.selectOption('#storageLevelSelect',level);await page.selectOption('#storageFlowSelect',flow);
