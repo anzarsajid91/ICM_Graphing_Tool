@@ -1403,8 +1403,10 @@ def monitor_weekly_assessment(
                 residual_col = f"_{quantity}_residual"
                 use_residual = (
                     residual_col in g.columns
+                    and assessable_count > 0
                     and float(
-                        g[residual_col].notna().mean()
+                        g.loc[assessable, residual_col].notna().sum()
+                        / assessable_count
                     )
                     > 0.60
                 )
