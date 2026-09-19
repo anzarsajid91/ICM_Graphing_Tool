@@ -101,8 +101,9 @@ function ensureOperationOverlay(){
   root.hidden=true;
   root.setAttribute('role','status');
   root.setAttribute('aria-live','polite');
-  root.innerHTML='<div class="global-operation-card"><span class="global-operation-spinner" aria-hidden="true"></span><div class="global-operation-copy"><strong id="globalOperationTitle">Processing…</strong><span id="globalOperationDetail">Please wait while the current operation completes.</span><div class="global-operation-track"><span id="globalOperationBar"></span></div></div></div>';
+  root.innerHTML='<div class="global-operation-card"><span class="global-operation-spinner" aria-hidden="true"></span><div class="global-operation-copy"><strong id="globalOperationTitle">Processing…</strong><span id="globalOperationDetail">Please wait while the current operation completes.</span><div class="global-operation-track"><span id="globalOperationBar"></span></div></div><button type="button" class="btn quiet global-operation-cancel" id="globalOperationCancel">Cancel</button></div>';
   document.body.appendChild(root);
+  root.querySelector('#globalOperationCancel')?.addEventListener('click',()=>cancelCurrentOperation());
   return root;
 }
 function operationUpdate(title,progress=null,detail='Please wait before starting another operation.'){
@@ -219,6 +220,16 @@ class BrowserPythonEngine {
     return this._request('call',{name,args,module});
   }
   async clear(){if(this.ready)return this._request('clear');return true;}
+  async restart(items=[]){
+    this.terminate('Operation cancelled; analysis worker is restarting.');
+    const info=await this.boot();
+    for(const item of items){
+      if(!item?.file||item.status!=='ready')continue;
+      const bytes=new Uint8Array(await item.file.arrayBuffer());
+      await this.addFile(item,bytes);
+    }
+    return info;
+  }
   terminate(reason='Analysis worker restarted.'){
     if(this.worker)this.worker.terminate();
     this.worker=null;
@@ -229,6 +240,28 @@ class BrowserPythonEngine {
   }
 }
 const engine=new BrowserPythonEngine();
+let cancellingOperation=false;
+async function cancelCurrentOperation(){
+  if(cancellingOperation||!engine.worker)return;
+  cancellingOperation=true;
+  const button=document.getElementById('globalOperationCancel');
+  if(button)button.disabled=true;
+  operationUpdate('Cancelling operation…',null,'Restarting the isolated analysis worker and restoring parsed source files.');
+  try{
+    const readyItems=[...state.files.values()].filter(item=>item.status==='ready');
+    const info=await engine.restart(readyItems);
+    diagnostic.status='ready';
+    setEngineStatus('Reference Python worker ready · files remain local','ready');
+    if($('footerBuild'))$('footerBuild').textContent=`Reference engine: Python via Pyodide 0.29.4 Web Worker · ${Number(info?.manifestCount||0)} modules`;
+  }catch(err){
+    diagnostic.status='failed';
+    diagnostic.errors.push({time:new Date().toISOString(),target:'analysis-worker-restart',message:String(err?.message||err)});
+    setEngineStatus(`Engine restart failed: ${err?.message||err}`,'error');
+  }finally{
+    cancellingOperation=false;
+    if(button)button.disabled=false;
+  }
+}
 
 async function sha256Bytes(buffer){const digest=await crypto.subtle.digest('SHA-256',buffer);return[...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('');}
 async function sha256(file){return sha256Bytes(await file.arrayBuffer());}
