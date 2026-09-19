@@ -27,7 +27,7 @@ class FakeWorker {
       }
       if(message.type==='boot'){
         this.ready=true;
-        this._emit('message',{type:'result',id:message.id,ok:true,result:{ready:true,manifestCount:42,execution:'web-worker'}});
+        this._emit('message',{type:'result',id:message.id,ok:true,result:{ready:true,manifestCount:42,execution:'web-worker',buildToken:'test-build'}});
         return;
       }
       if(message.type==='call'){
@@ -45,7 +45,7 @@ class FakeWorker {
 const sandbox={
   window:{},
   console,
-  document:{getElementById:()=>null},
+  document:{getElementById:()=>null,querySelector:selector=>selector==='meta[name="icm-build-sha"]'?{content:'test-build'}:null},
   setTimeout,clearTimeout,
   requestAnimationFrame:fn=>setTimeout(fn,0),
   crypto:globalThis.crypto,
