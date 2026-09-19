@@ -84,6 +84,24 @@ def _normalise_frame(frame: pd.DataFrame, column: str) -> pd.DataFrame:
     )
 
 
+
+def _exclusion_mask(timestamps: pd.Series, exclusions: list[Any] | None) -> pd.Series:
+    ts = pd.to_datetime(timestamps, errors="coerce")
+    mask = pd.Series(False, index=timestamps.index, dtype=bool)
+    for exc in exclusions or []:
+        if isinstance(exc, dict):
+            start, end = exc.get("start"), exc.get("end")
+        else:
+            start, end = getattr(exc, "start", None), getattr(exc, "end", None)
+        if start is None or end is None:
+            continue
+        start_ts, end_ts = pd.Timestamp(start), pd.Timestamp(end)
+        if end_ts <= start_ts:
+            continue
+        mask |= (ts >= start_ts) & (ts < end_ts)
+    return mask
+
+
 def _median_step_minutes(timestamps: pd.Series) -> float:
     ts = pd.to_datetime(timestamps, errors="coerce").dropna().sort_values()
     delta = ts.diff().dt.total_seconds().div(60.0)
@@ -1164,6 +1182,9 @@ def monitor_weekly_assessment(
     flow_col: str | None = None,
     population_above_50k: bool = True,
     network_wapug_events: list[dict[str, Any]] | None = None,
+    analysis_start: Any = None,
+    analysis_end: Any = None,
+    exclusions: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Assess mapped FDV channels against mapped rainfall on a weekly basis."""
     if (
@@ -1177,6 +1198,8 @@ def monitor_weekly_assessment(
             "method": "monitor-weekly-v2",
         }
     rain = _normalise_frame(rain_frame, rain_col)
+    if not rain.empty and exclusions:
+        rain.loc[_exclusion_mask(rain["timestamp"], exclusions), rain_col] = np.nan
     if rain.empty:
         return {
             "weeks": [],
@@ -1214,6 +1237,11 @@ def monitor_weekly_assessment(
             "reason": "No valid hydraulic timestamps.",
             "method": "monitor-weekly-v2",
         }
+
+    h["_excluded"] = _exclusion_mask(h["timestamp"], exclusions)
+    if bool(h["_excluded"].any()):
+        for col in use_cols:
+            h.loc[h["_excluded"], col] = np.nan
 
     dt_minutes = _median_step_minutes(h["timestamp"])
     if not np.isfinite(dt_minutes) or dt_minutes <= 0:
@@ -1314,9 +1342,14 @@ def monitor_weekly_assessment(
             continue
         start = pd.Timestamp(g["timestamp"].min())
         end = pd.Timestamp(g["timestamp"].max())
+        if analysis_start is not None and end < pd.Timestamp(analysis_start):
+            continue
+        if analysis_end is not None and start > pd.Timestamp(analysis_end):
+            continue
+        assessable = ~g["_excluded"].astype(bool)
         rain_total = float(
             pd.to_numeric(
-                g["_rain_increment"], errors="coerce"
+                g.loc[assessable, "_rain_increment"], errors="coerce"
             )
             .fillna(0.0)
             .sum()
@@ -1337,9 +1370,11 @@ def monitor_weekly_assessment(
 
         for quantity, (col, active_eps) in channel_meta.items():
             raw = pd.to_numeric(g[col], errors="coerce")
+            raw_assessable = raw.where(assessable)
+            assessable_count = int(assessable.sum())
             coverage[quantity] = (
-                float(raw.notna().mean())
-                if len(raw)
+                float(raw_assessable.notna().sum() / assessable_count)
+                if assessable_count
                 else 0.0
             )
             tolerance = (
@@ -1352,7 +1387,7 @@ def monitor_weekly_assessment(
                 )
             )
             flatline[quantity] = _longest_flatline_minutes(
-                raw, g["timestamp"], tolerance
+                raw_assessable, g["timestamp"], tolerance
             )
             if quantity in {"depth", "velocity"}:
                 residual_col = f"_{quantity}_residual"
@@ -1380,23 +1415,23 @@ def monitor_weekly_assessment(
                 use_residual = False
                 methods[quantity] = "raw"
 
+            response_assessable = pd.to_numeric(response, errors="coerce").where(assessable)
+            rain_assessable = pd.to_numeric(
+                g["_rain_increment"], errors="coerce"
+            ).where(assessable)
             correlation[quantity] = _correlation_assessment(
-                pd.to_numeric(
-                    g["_rain_increment"], errors="coerce"
-                ),
-                response,
-                raw,
+                rain_assessable,
+                response_assessable,
+                raw_assessable,
                 dt_minutes,
                 rain_total,
                 active_eps,
             )
             linkage[quantity] = _event_linkage(
-                response,
-                raw,
+                response_assessable,
+                raw_assessable,
                 g["timestamp"],
-                pd.to_numeric(
-                    g["_rain_increment"], errors="coerce"
-                ),
+                rain_assessable,
                 dt_minutes,
                 quantity=quantity,
                 use_residual=use_residual,
@@ -1412,7 +1447,7 @@ def monitor_weekly_assessment(
                 >= LINK_MIN_FRACTION
             )
             scores[quantity] = _score_channel(
-                raw,
+                raw_assessable,
                 active_eps=active_eps,
                 flatline_minutes=flatline[quantity],
                 rain_total_mm=rain_total,
@@ -1506,6 +1541,8 @@ def monitor_weekly_assessment(
                 "dry_baseline_days_available": int(
                     len(dry_days)
                 ),
+                "excluded_samples": int(g["_excluded"].sum()),
+                "assessable_samples": int(assessable.sum()),
                 "diagnostics": {
                     "correlation": correlation,
                     "event_linkage": linkage,
@@ -1532,6 +1569,12 @@ def monitor_weekly_assessment(
         },
         "hydraulic_timestep_min": float(dt_minutes),
         "dry_baseline_days_available": int(len(dry_days)),
+        "analysis_controls": {
+            "start": analysis_start,
+            "end": analysis_end,
+            "exclusion_count": int(len(exclusions or [])),
+            "excluded_samples_removed_from_coverage_denominator": True,
+        },
         "method": (
             "weekly FDV QA + rainfall lag/correlation + "
             "dry-weather residuals + 18 h event linkage + evidence score/RAG"
