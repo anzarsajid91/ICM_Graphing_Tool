@@ -57,6 +57,29 @@
     }
   }
 
+  function installSharedAnalysisControls() {
+    const mapping = document.querySelector('.mapping-panel');
+    const start = document.getElementById('analysisStart');
+    const end = document.getElementById('analysisEnd');
+    if (!mapping || !start || !end || document.getElementById('sharedAnalysisPanel')) return;
+    const panel = document.createElement('section');
+    panel.id = 'sharedAnalysisPanel';
+    panel.className = 'panel shared-analysis-panel';
+    panel.innerHTML =
+      '<div class="panel-head"><div><h2>3. Analysis period</h2><p>One shared period for Survey, Verification and derived engineering calculations. Leave blank to use the full available source domain.</p></div></div>' +
+      '<div id="sharedAnalysisInputs" class="mapping-grid compact-wide"></div>' +
+      '<div id="sharedAnalysisActions" class="actions left"></div>';
+    mapping.insertAdjacentElement('afterend', panel);
+    const grid = document.getElementById('sharedAnalysisInputs');
+    grid.appendChild(start.closest('label'));
+    grid.appendChild(end.closest('label'));
+    const actions = document.getElementById('sharedAnalysisActions');
+    for (const id of ['useZoomPeriodBtn', 'clearPeriodBtn']) {
+      const button = document.getElementById(id);
+      if (button) actions.appendChild(button);
+    }
+  }
+
   function installSurveyPanels() {
     const panel = document.querySelector('#tab-data-health .panel');
     const head = panel && panel.querySelector('.panel-head');
@@ -626,6 +649,7 @@
   }
 
   simplifyNavigation();
+  installSharedAnalysisControls();
   installSurveyPanels();
   wireIngestion();
   wireInvalidation();
