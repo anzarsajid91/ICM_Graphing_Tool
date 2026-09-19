@@ -29,9 +29,9 @@ def _inject_v2_assets(build_token: str) -> None:
     )
     html = html.replace(
         '<script type="module" src="assets/runtime.js"></script>',
-        '<script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>\n  <script src="assets/workbench-survey.js"></script>',
+        '<script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>\n  <script src="assets/source-pool-invalidation-guard.js"></script>\n  <script src="assets/workbench-survey.js"></script>',
     )
-    required = ["domain-registry.js", "workbench-v2.css", "workbench-v2.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "xlsx@0.18.5"]
+    required = ["domain-registry.js", "workbench-v2.css", "workbench-v2.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "source-pool-invalidation-guard.js", "workbench-survey.js", "xlsx@0.18.5"]
     if not all(name in html for name in required):
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
 
@@ -47,6 +47,7 @@ def _inject_v2_assets(build_token: str) -> None:
         "assets/workbench-v2.js",
         "assets/workbench-v2-domfix.js",
         "assets/workbench-v3.js",
+        "assets/source-pool-invalidation-guard.js",
         "assets/workbench-survey.js",
     ]
     for asset in local_assets:

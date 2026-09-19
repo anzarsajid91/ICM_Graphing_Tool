@@ -51,10 +51,12 @@ jobs:
           node --check web/assets/workbench-v2.js
           node --check web/assets/workbench-v2-domfix.js
           node --check web/assets/workbench-v3.js
+          node --check web/assets/source-pool-invalidation-guard.js
           node --check web/assets/workbench-survey.js
           node --check web/tests/smoke.mjs
           node web/tests/runtime-unit.mjs
           node web/tests/domain-registry-unit.mjs
+          node web/tests/source-pool-invalidation-unit.mjs
           python -m py_compile web/python_bridge.py web/advanced_bridge.py src/icm_workbench/browser_api.py src/icm_workbench/advanced_api.py scripts/build_pages.py scripts/validate_representative_exports.py
       - name: Verify deterministic Pages package manifest and UX staging
         run: |
@@ -82,6 +84,7 @@ jobs:
               'assets/workbench-v2.js',
               'assets/workbench-v2-domfix.js',
               'assets/workbench-v3.js',
+              'assets/source-pool-invalidation-guard.js',
               'assets/workbench-survey.js',
           ]
           for asset in versioned:
@@ -89,6 +92,7 @@ jobs:
           assert 'pyodide/v0.29.4/full/pyodide.js' not in html
           assert Path('_site/assets/analysis-worker.js').exists()
           assert Path('_site/assets/domain-registry.js').exists()
+          assert Path('_site/assets/source-pool-invalidation-guard.js').exists()
           assert 'xlsx@0.18.5' in html
           assert 'type="module" src="assets/runtime.js"' not in html
           print(f'Pages manifest verified: {len(actual)} Python modules; current browser UX staged exactly.')
