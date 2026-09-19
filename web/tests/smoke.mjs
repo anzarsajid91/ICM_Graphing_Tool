@@ -487,6 +487,24 @@ try{
   }));
   if(!surveyAfterExclusionRerender.batch||!surveyAfterExclusionRerender.balance||surveyAfterExclusionRerender.exclusions!==surveyBeforeExclusionRerender.exclusions)throw new Error(`DOM-only exclusion rerender invalidated unchanged survey results: ${JSON.stringify({before:surveyBeforeExclusionRerender,after:surveyAfterExclusionRerender})}`);
 
+  // Regression guard: rendering the source table is presentation-only and must not
+  // invalidate source-dependent engineering results when state.files is unchanged.
+  const sourceResultBeforeDomRender=await page.evaluate(()=>({
+    professional:Boolean(window.__ICM_WORKBENCH__.lastProfessionalSurvey),
+    complete:Boolean(window.__ICM_WORKBENCH__.survey?.batch),
+    balance:Boolean(window.__ICM_WORKBENCH__.survey?.balance),
+    fileCount:state.files.size,
+  }));
+  await page.evaluate(()=>renderPool());
+  await page.waitForTimeout(0);
+  const sourceResultAfterDomRender=await page.evaluate(()=>({
+    professional:Boolean(window.__ICM_WORKBENCH__.lastProfessionalSurvey),
+    complete:Boolean(window.__ICM_WORKBENCH__.survey?.batch),
+    balance:Boolean(window.__ICM_WORKBENCH__.survey?.balance),
+    fileCount:state.files.size,
+  }));
+  if(!sourceResultAfterDomRender.professional||!sourceResultAfterDomRender.complete||!sourceResultAfterDomRender.balance||sourceResultAfterDomRender.fileCount!==sourceResultBeforeDomRender.fileCount)throw new Error(`DOM-only source-pool rerender invalidated unchanged results: ${JSON.stringify({before:sourceResultBeforeDomRender,after:sourceResultAfterDomRender})}`);
+
   await clickTab('workspace');
   await page.waitForSelector('#reportPreflight',{timeout:10000});
   const readinessExpected={
