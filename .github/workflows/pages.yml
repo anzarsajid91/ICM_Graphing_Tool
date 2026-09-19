@@ -44,13 +44,15 @@ jobs:
       - name: Validate release browser source
         run: |
           node --check web/assets/runtime.release.js
+          node --check web/assets/analysis-worker.js
+          node --check web/assets/domain-registry.js
           node --check web/assets/workbench-v2.js
           node --check web/assets/workbench-v2-domfix.js
           node --check web/assets/workbench-v3.js
           node --check web/assets/workbench-survey.js
           node --check web/tests/smoke.mjs
           node web/tests/runtime-unit.mjs
-          python -m py_compile web/python_bridge.py web/advanced_bridge.py scripts/build_pages.py scripts/validate_representative_exports.py
+          python -m py_compile web/python_bridge.py web/advanced_bridge.py src/icm_workbench/browser_api.py src/icm_workbench/advanced_api.py scripts/build_pages.py scripts/validate_representative_exports.py
       - name: Verify deterministic Pages package manifest and UX staging
         run: |
           python scripts/build_pages.py
@@ -65,7 +67,11 @@ jobs:
           release = Path('web/assets/runtime.release.js').read_bytes()
           assert staged == release
           html = Path('_site/index.html').read_text(encoding='utf-8')
+          assert '<script src="assets/domain-registry.js"></script>' in html
           assert '<script src="assets/runtime.js"></script>' in html
+          assert 'pyodide/v0.29.4/full/pyodide.js' not in html
+          assert Path('_site/assets/analysis-worker.js').exists()
+          assert Path('_site/assets/domain-registry.js').exists()
           assert '<script src="assets/workbench-v2.js"></script>' in html
           assert '<script src="assets/workbench-v2-domfix.js"></script>' in html
           assert '<script src="assets/workbench-v3.js"></script>' in html
