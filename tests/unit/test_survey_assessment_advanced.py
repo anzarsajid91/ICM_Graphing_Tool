@@ -233,3 +233,34 @@ def test_monitor_assessment_analysis_bounds_filter_output_weeks_not_antecedent_s
     assert result["analysis_controls"]["start"] == pd.Timestamp(
         "2026-01-12 00:00"
     )
+
+
+
+def test_rainfall_scoped_exclusion_does_not_reduce_hydraulic_coverage():
+    ts = pd.date_range("2026-01-05 00:00", periods=60, freq="2min")
+    hydraulic = pd.DataFrame(
+        {"timestamp": ts, "depth": np.full(len(ts), 0.30)}
+    )
+    rainfall = pd.DataFrame(
+        {"timestamp": ts, "rainfall": np.full(len(ts), 2.0)}
+    )
+    result = monitor_weekly_assessment(
+        hydraulic,
+        rainfall,
+        rain_col="rainfall",
+        rain_interval_min=2.0,
+        depth_col="depth",
+        exclusions=[],
+        rain_exclusions=[
+            {
+                "start": pd.Timestamp("2026-01-05 00:20"),
+                "end": pd.Timestamp("2026-01-05 00:40"),
+            }
+        ],
+    )
+    week = result["weeks"][0]
+    assert week["excluded_samples"] == 0
+    assert week["depth_coverage_percent"] == 100.0
+    assert result["analysis_controls"]["hydraulic_exclusion_count"] == 0
+    assert result["analysis_controls"]["rainfall_exclusion_count"] == 1
+    assert result["analysis_controls"]["scoped_exclusions"] is True
