@@ -559,6 +559,11 @@ try{
   stage='multi-file drag and drop regression';
   const beforeDrop=await page.locator('#poolBody tr').count();
   await page.evaluate(()=>{
+    window.__sourcePoolEventEvidence={count:0,details:[]};
+    window.addEventListener('icm:source-pool-changed',event=>{
+      window.__sourcePoolEventEvidence.count+=1;
+      window.__sourcePoolEventEvidence.details.push(event.detail||null);
+    });
     const textA='timestamp,depth\n2026-02-01T00:00:00,0.2\n2026-02-01T00:15:00,0.3\n';
     const textB='timestamp,depth\n2026-02-01T00:00:00,0.4\n2026-02-01T00:15:00,0.5\n';
     const a=new File([textA],'drag-a.csv',{type:'text/csv',lastModified:1770000000000});
@@ -575,6 +580,14 @@ try{
   await page.waitForFunction(()=>document.querySelector('#globalOperation')?.hidden===true&&!document.body.classList.contains('operation-busy'),null,{timeout:10000});
   const operationUi=await page.evaluate(()=>({exists:Boolean(document.querySelector('#globalOperation')),hidden:document.querySelector('#globalOperation')?.hidden,bodyBusy:document.body.classList.contains('operation-busy')}));
   if(!operationUi.exists||operationUi.hidden!==true||operationUi.bodyBusy)throw new Error('Global operation indicator did not return to an idle state: '+JSON.stringify(operationUi));
+  const sourceEventEvidence=await page.evaluate(()=>({
+    events:window.__sourcePoolEventEvidence,
+    professional:Boolean(window.__ICM_WORKBENCH__.lastProfessionalSurvey),
+    complete:Boolean(window.__ICM_WORKBENCH__.survey?.batch),
+    balance:Boolean(window.__ICM_WORKBENCH__.survey?.balance),
+  }));
+  if(sourceEventEvidence.events?.count!==1||sourceEventEvidence.events?.details?.[0]?.reason!=='ingest')throw new Error('Real multi-file ingestion must emit exactly one source-pool state event: '+JSON.stringify(sourceEventEvidence));
+  if(sourceEventEvidence.professional||sourceEventEvidence.complete||sourceEventEvidence.balance)throw new Error('Real source-pool change did not invalidate source-dependent survey results: '+JSON.stringify(sourceEventEvidence));
 
   stage='final browser diagnostics';
   const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__);
