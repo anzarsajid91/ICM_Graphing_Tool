@@ -194,7 +194,8 @@ def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshol
         start=python_bridge._model_clock_timestamp(start),
         end=python_bridge._model_clock_timestamp(end),
         max_gap_seconds=float(max_gap_seconds),
-        exclusions=exclusions,
+        exclusions=hydraulic_exclusions,
+        rain_exclusions=rainfall_exclusions,
     )
     monthly={}
     for event in physical.get("events",[]):
@@ -263,6 +264,8 @@ def professional_flow_survey_result(
     velocity_unit_override=None,
     flow_unit_override=None,
     exclusions_json="[]",
+    hydraulic_exclusions_json=None,
+    rainfall_exclusions_json=None,
     start=None,
     end=None,
     max_gap_seconds=900.0,
@@ -333,10 +336,20 @@ def professional_flow_survey_result(
     rain_meta = getattr(rain_parsed, "metadata", {}) or {}
     rain_interval = rain_meta.get("interval_min")
     rain_interval = float(rain_interval) if rain_interval else None
-    exclusions = python_bridge._exclusions(exclusions_json)
+    fallback_exclusions = python_bridge._exclusions(exclusions_json)
+    hydraulic_exclusions = (
+        python_bridge._exclusions(hydraulic_exclusions_json)
+        if hydraulic_exclusions_json is not None
+        else fallback_exclusions
+    )
+    rainfall_exclusions = (
+        python_bridge._exclusions(rainfall_exclusions_json)
+        if rainfall_exclusions_json is not None
+        else fallback_exclusions
+    )
     analysis_start = python_bridge._model_clock_timestamp(start)
     analysis_end = python_bridge._model_clock_timestamp(end)
-    for exc in exclusions:
+    for exc in rainfall_exclusions:
         stamp = pd.to_datetime(rain["timestamp"], errors="coerce")
         rain.loc[
             (stamp >= pd.Timestamp(exc.start)) & (stamp < pd.Timestamp(exc.end)),
@@ -365,7 +378,7 @@ def professional_flow_survey_result(
         frame[column] = (
             pd.to_numeric(frame[column], errors="coerce") * float(rain_factor)
         )
-        for exc in exclusions:
+        for exc in rainfall_exclusions:
             stamp = pd.to_datetime(frame["timestamp"], errors="coerce")
             frame.loc[
                 (stamp >= pd.Timestamp(exc.start)) & (stamp < pd.Timestamp(exc.end)),
@@ -427,7 +440,9 @@ def professional_flow_survey_result(
             ),
             "analysis_start": analysis_start,
             "analysis_end": analysis_end,
-            "exclusion_count": len(exclusions),
+            "hydraulic_exclusion_count": len(hydraulic_exclusions),
+            "rainfall_exclusion_count": len(rainfall_exclusions),
+            "scoped_exclusions": True,
             "max_gap_seconds": float(max_gap_seconds),
         },
     }
@@ -553,6 +568,8 @@ def professional_survey_batch_result(
     apply_fault_cutoff=False,
     rain_factor=1.0,
     exclusions_json="[]",
+    hydraulic_exclusions_json=None,
+    rainfall_exclusions_json=None,
     max_gap_seconds=900.0,
     start=None,
     end=None,
@@ -570,7 +587,17 @@ def professional_survey_batch_result(
     associations = json.loads(association_json) if isinstance(association_json, str) else list(association_json or [])
     monitor_sources = json.loads(monitor_sources_json) if isinstance(monitor_sources_json, str) else list(monitor_sources_json or [])
     rain_sources = json.loads(rain_sources_json) if isinstance(rain_sources_json, str) else list(rain_sources_json or [])
-    exclusions = python_bridge._exclusions(exclusions_json)
+    fallback_exclusions = python_bridge._exclusions(exclusions_json)
+    hydraulic_exclusions = (
+        python_bridge._exclusions(hydraulic_exclusions_json)
+        if hydraulic_exclusions_json is not None
+        else fallback_exclusions
+    )
+    rainfall_exclusions = (
+        python_bridge._exclusions(rainfall_exclusions_json)
+        if rainfall_exclusions_json is not None
+        else fallback_exclusions
+    )
     analysis_start = python_bridge._model_clock_timestamp(start)
     analysis_end = python_bridge._model_clock_timestamp(end)
 
@@ -585,7 +612,7 @@ def professional_survey_batch_result(
             continue
         try:
             frame, interval = _survey_rain_source(path, column, rain_factor)
-            for exc in exclusions:
+            for exc in rainfall_exclusions:
                 stamp = pd.to_datetime(frame["timestamp"], errors="coerce")
                 frame.loc[
                     (stamp >= pd.Timestamp(exc.start)) & (stamp < pd.Timestamp(exc.end)),
@@ -698,7 +725,8 @@ def professional_survey_batch_result(
             network_wapug_events=network.get("qualified_wapug_events") or None,
             analysis_start=analysis_start,
             analysis_end=analysis_end,
-            exclusions=exclusions,
+            exclusions=hydraulic_exclusions,
+            rain_exclusions=rainfall_exclusions,
         )
         if analysis_start or analysis_end:
             filtered = []
@@ -729,7 +757,8 @@ def professional_survey_batch_result(
             monitor_type=str(source.get("monitor_type") or "FM"),
             start=analysis_start,
             end=analysis_end,
-            exclusions=exclusions,
+            exclusions=hydraulic_exclusions,
+            rain_exclusions=rainfall_exclusions,
         )
 
         monitor_rows.append({
@@ -748,7 +777,7 @@ def professional_survey_batch_result(
         associations,
         start=analysis_start,
         end=analysis_end,
-        exclusions=exclusions,
+        exclusions=hydraulic_exclusions,
         max_gap_seconds=float(max_gap_seconds),
         amber_tolerance_percent=float(amber_tolerance_percent),
     ) if volume_flows else {
@@ -819,7 +848,9 @@ def professional_survey_batch_result(
         "analysis_controls": {
             "start": analysis_start,
             "end": analysis_end,
-            "exclusion_count": len(exclusions),
+            "hydraulic_exclusion_count": len(hydraulic_exclusions),
+            "rainfall_exclusion_count": len(rainfall_exclusions),
+            "scoped_exclusions": True,
             "max_gap_seconds": float(max_gap_seconds),
             "amber_tolerance_percent": float(amber_tolerance_percent),
         },
