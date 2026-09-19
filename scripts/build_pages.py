@@ -62,10 +62,12 @@ def build() -> None:
     (SITE / "build.json").write_text(
         json.dumps(
             {
+                "build_schema_version": 1,
                 "commit": os.environ.get("GITHUB_SHA", "local"),
                 "runtime": "release runtime + hardened ingestion + FDV multi-variable graph + collapsible survey engineering UX",
                 "python_module_count": len(manifest),
                 "ux_release": "v7-fdv-graph-survey-ux",
+                "live_verification_contract": 1,
             },
             indent=2,
         )
