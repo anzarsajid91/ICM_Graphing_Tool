@@ -50,12 +50,14 @@ jobs:
           for attempt in $(seq 1 36); do
             body="$(curl -fsSL --retry 2 --retry-delay 2 "${SITE_URL}build.json?verify=${TARGET_SHA}-${attempt}" 2>/dev/null || true)"
             live_sha="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("commit", ""))' 2>/dev/null || true)"
-            if [ "$live_sha" = "$TARGET_SHA" ]; then
-              echo "Live Pages commit verified: $live_sha"
+            live_contract="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("live_verification_contract", 0))' 2>/dev/null || true)"
+            execution_model="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("execution_model", ""))' 2>/dev/null || true)"
+            if [ "$live_sha" = "$TARGET_SHA" ] && [ "${live_contract:-0}" -ge 1 ]; then
+              echo "Live Pages commit verified: $live_sha · contract $live_contract · execution ${execution_model:-unspecified}"
               printf '%s\n' "$body" > /tmp/live-build.json
               exit 0
             fi
-            echo "Attempt $attempt/36: live commit is '${live_sha:-unavailable}'"
+            echo "Attempt $attempt/36: live commit '${live_sha:-unavailable}', contract '${live_contract:-0}', execution '${execution_model:-unspecified}'"
             sleep 10
           done
           echo "::error::Pages never exposed expected commit $TARGET_SHA"
