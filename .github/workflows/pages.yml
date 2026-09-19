@@ -118,6 +118,26 @@ jobs:
       - name: Exercise complete browser workflow
         run: |
           python -m http.server 8000 --directory _site >/tmp/icm-pages-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          READY=0
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8000/ >/dev/null 2>&1; then
+              READY=1
+              break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "Local Pages server exited before becoming ready."
+              cat /tmp/icm-pages-http.log
+              exit 1
+            fi
+            sleep 1
+          done
+          if [ "$READY" -ne 1 ]; then
+            echo "Local Pages server did not become ready within 30 seconds."
+            cat /tmp/icm-pages-http.log
+            exit 1
+          fi
           node web/tests/smoke.mjs
 
       - name: Retain browser failure evidence
