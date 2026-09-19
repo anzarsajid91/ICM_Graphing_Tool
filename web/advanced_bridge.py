@@ -429,6 +429,7 @@ def professional_flow_survey_result(
             "analysis_end": analysis_end,
             "exclusion_count": len(exclusions),
             "max_gap_seconds": float(max_gap_seconds),
+            "amber_tolerance_percent": float(amber_tolerance_percent),
         },
     }
     return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
@@ -556,6 +557,7 @@ def professional_survey_batch_result(
     max_gap_seconds=900.0,
     start=None,
     end=None,
+    amber_tolerance_percent=10.0,
 ):
     from icm_workbench.analysis.survey_assessment import (
         monitor_weekly_assessment,
@@ -749,12 +751,65 @@ def professional_survey_batch_result(
         end=analysis_end,
         exclusions=exclusions,
         max_gap_seconds=float(max_gap_seconds),
+        amber_tolerance_percent=float(amber_tolerance_percent),
     ) if volume_flows else {
         "rows": [],
         "summary": {"Green": 0, "Amber": 0, "Red": 0, "Grey": 0},
         "reason": "No mapped flow channels available for volume balance.",
         "method": "weekly-volume-balance-v2",
     }
+
+    weekly_lookup = {}
+    for monitor_result in monitor_rows:
+        monitor_name = str(monitor_result.get("monitor") or "")
+        for week in (monitor_result.get("weekly") or {}).get("weeks", []):
+            try:
+                week_key = pd.Timestamp(week.get("week_ending")).date().isoformat()
+            except Exception:
+                continue
+            weekly_lookup[(monitor_name, week_key)] = week
+
+    for row in volume.get("rows", []):
+        try:
+            week_key = pd.Timestamp(row.get("week_ending")).date().isoformat()
+        except Exception:
+            week_key = ""
+        involved = [
+            str(row.get("downstream_monitor") or ""),
+            *[str(x) for x in row.get("upstream_monitors", [])],
+        ]
+        qa = []
+        for name in involved:
+            week = weekly_lookup.get((name, week_key))
+            if not week:
+                continue
+            rag = str(week.get("rag") or "")
+            if rag in {"Red", "Amber"}:
+                qa.append(
+                    {
+                        "monitor": name,
+                        "rag": rag,
+                        "decision_path": week.get("decision_path"),
+                        "flow_score": week.get("flow_score"),
+                    }
+                )
+        row["qa_evidence"] = qa
+        if qa and row.get("rag") in {"Red", "Amber"}:
+            highest = "Red" if any(x["rag"] == "Red" for x in qa) else "Amber"
+            candidates = [x["monitor"] for x in qa if x["rag"] == highest]
+            row["likely_source"] = (
+                ", ".join(candidates)
+                + f" (independent weekly QA {highest}; investigate first)"
+            )
+            evidence = "; ".join(
+                f"{x['monitor']}: {x['rag']} — {x.get('decision_path') or 'weekly QA finding'}"
+                for x in qa
+            )
+            row["recommendation"] = (
+                f"Start with {', '.join(candidates)} because independent weekly QA also flags the monitor(s). "
+                f"QA evidence: {evidence}. "
+                + str(row.get("recommendation") or "")
+            )
 
     payload = {
         "association": associations,
