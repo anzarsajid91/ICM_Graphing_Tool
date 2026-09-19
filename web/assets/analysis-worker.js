@@ -5,7 +5,14 @@
  * icm_workbench package; web/python_bridge.py is now a compatibility shim.
  */
 const PYODIDE_INDEX='https://cdn.jsdelivr.net/pyodide/v0.29.4/full/';
-const SITE_ROOT=new URL('../',self.location.href);
+const WORKER_URL=new URL(self.location.href);
+const BUILD_TOKEN=WORKER_URL.searchParams.get('v')||'local';
+const SITE_ROOT=new URL('../',WORKER_URL);
+function releaseUrl(relative){
+  const url=new URL(relative,SITE_ROOT);
+  url.searchParams.set('v',BUILD_TOKEN);
+  return url;
+}
 const MODULES={
   python_bridge:'icm_workbench.browser_api',
   advanced_bridge:'icm_workbench.advanced_api',
@@ -41,7 +48,7 @@ async function boot(){
   progress('Starting Python worker',20,'Loading NumPy and pandas.');
   await pyodide.loadPackage(['numpy','pandas']);
 
-  const manifestUrl=new URL('python/package-manifest.json',SITE_ROOT);
+  const manifestUrl=releaseUrl('python/package-manifest.json');
   const manifestResponse=await fetch(manifestUrl,{cache:'no-cache'});
   if(!manifestResponse.ok)throw new Error(`Python package manifest unavailable (${manifestResponse.status}).`);
   const files=await manifestResponse.json();
@@ -54,7 +61,7 @@ async function boot(){
     if(!rel.startsWith('icm_workbench/')||!rel.endsWith('.py'))throw new Error(`Unsafe manifest entry: ${rel}`);
     const parent=`/workbench/${rel}`.split('/').slice(0,-1).join('/');
     pyodide.FS.mkdirTree(parent);
-    const code=await fetchText(new URL(`python/${rel}`,SITE_ROOT),`Reference engine module ${rel}`);
+    const code=await fetchText(releaseUrl(`python/${rel}`),`Reference engine module ${rel}`);
     pyodide.FS.writeFile(`/workbench/${rel}`,code,{encoding:'utf8'});
     if(i===0||i===files.length-1||i%8===0){
       progress('Starting Python worker',20+Math.round(55*(i+1)/files.length),`Loading engineering modules ${i+1}/${files.length}.`);
@@ -67,7 +74,7 @@ async function boot(){
   );
   ready=true;
   progress('Python worker ready',100,`${files.length} engineering modules loaded off the UI thread.`);
-  return {ready:true,manifestCount:files.length,execution:'web-worker'};
+  return {ready:true,manifestCount:files.length,execution:'web-worker',buildToken:BUILD_TOKEN};
 }
 
 async function addFile(path,bytes){
