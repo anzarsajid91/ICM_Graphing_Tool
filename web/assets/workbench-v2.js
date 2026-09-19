@@ -196,14 +196,15 @@
 
   function v2GraphShapes() {
     const shapes = [];
+    const xEnd=observedGraphSeries().length>=2?.90:1;
     for(const e of exclusionPayload(false)){if(e.enabled)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:'#b45309',opacity:.12,line:{width:0},layer:'below',label:{text:e.reason}});}
     const obs = nullableNumber($('graphObsThreshold')?.value ?? $('obsThreshold').value);
     const model = nullableNumber($('graphModelThreshold')?.value ?? $('modelThreshold').value);
     if ($('showGraphObsThreshold')?.checked !== false && obs !== null) {
-      shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:obs,y1:obs,line:{color:$('threshold1Color').value,width:2,dash:'dash'}});
+      shapes.push({type:'line',xref:'paper',x0:0,x1:xEnd,yref:'y',y0:obs,y1:obs,line:{color:$('threshold1Color').value,width:2,dash:'dash'}});
     }
     if ($('showGraphModelThreshold')?.checked !== false && model !== null) {
-      shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:model,y1:model,line:{color:$('threshold2Color').value,width:2,dash:'dash'}});
+      shapes.push({type:'line',xref:'paper',x0:0,x1:xEnd,yref:'y',y0:model,y1:model,line:{color:$('threshold2Color').value,width:2,dash:'dash'}});
     }
     if ($('showEventOverlay').checked) {
       for (const e of state.rainEvents) shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:$('rainEventColor').value,opacity:.08,line:{width:0},layer:'below'});
