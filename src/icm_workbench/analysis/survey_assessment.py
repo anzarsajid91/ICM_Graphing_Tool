@@ -1185,6 +1185,7 @@ def monitor_weekly_assessment(
     analysis_start: Any = None,
     analysis_end: Any = None,
     exclusions: list[Any] | None = None,
+    rain_exclusions: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Assess mapped FDV channels against mapped rainfall on a weekly basis."""
     if (
@@ -1197,9 +1198,18 @@ def monitor_weekly_assessment(
             "reason": "Hydraulic data unavailable.",
             "method": "monitor-weekly-v2",
         }
+    hydraulic_exclusions = list(exclusions or [])
+    rainfall_exclusions = (
+        hydraulic_exclusions
+        if rain_exclusions is None
+        else list(rain_exclusions or [])
+    )
     rain = _normalise_frame(rain_frame, rain_col)
-    if not rain.empty and exclusions:
-        rain.loc[_exclusion_mask(rain["timestamp"], exclusions), rain_col] = np.nan
+    if not rain.empty and rainfall_exclusions:
+        rain.loc[
+            _exclusion_mask(rain["timestamp"], rainfall_exclusions),
+            rain_col,
+        ] = np.nan
     if rain.empty:
         return {
             "weeks": [],
@@ -1238,7 +1248,7 @@ def monitor_weekly_assessment(
             "method": "monitor-weekly-v2",
         }
 
-    h["_excluded"] = _exclusion_mask(h["timestamp"], exclusions)
+    h["_excluded"] = _exclusion_mask(h["timestamp"], hydraulic_exclusions)
     if bool(h["_excluded"].any()):
         for col in use_cols:
             h.loc[h["_excluded"], col] = np.nan
@@ -1572,8 +1582,10 @@ def monitor_weekly_assessment(
         "analysis_controls": {
             "start": analysis_start,
             "end": analysis_end,
-            "exclusion_count": int(len(exclusions or [])),
+            "hydraulic_exclusion_count": int(len(hydraulic_exclusions)),
+            "rainfall_exclusion_count": int(len(rainfall_exclusions)),
             "excluded_samples_removed_from_coverage_denominator": True,
+            "scoped_exclusions": True,
         },
         "method": (
             "weekly FDV QA + rainfall lag/correlation + "
