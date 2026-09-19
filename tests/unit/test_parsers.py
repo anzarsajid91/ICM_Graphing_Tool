@@ -8,6 +8,30 @@ from icm_workbench.parsers.rainfall import parse_rainfall_r
 def test_csv_sentinel_is_missing_not_zero(tmp_path:Path):
     p=tmp_path/"depth.csv";p.write_text("timestamp,depth\n2026-01-01 00:00,1.2\n2026-01-01 00:02,9999\n",encoding="utf-8");parsed=parse_tabular_csv(p);assert pd.isna(parsed.frame.depth.iloc[1]);assert parsed.audit["column_audit"]["depth"]["sentinel_count"]==1
 
+def test_csv_year_first_timestamp_preserves_full_month(tmp_path:Path):
+    p=tmp_path/"dense.csv"
+    rows=["timestamp,level"]+[f"2026-01-{day:02d} 00:00,{day}" for day in range(1,32)]
+    p.write_text("\n".join(rows)+"\n",encoding="utf-8")
+    parsed=parse_tabular_csv(p)
+    assert len(parsed.frame)==31
+    assert parsed.frame.timestamp.min()==pd.Timestamp("2026-01-01 00:00")
+    assert parsed.frame.timestamp.max()==pd.Timestamp("2026-01-31 00:00")
+    assert parsed.audit["invalid_timestamps"]==0
+
+
+def test_csv_day_first_timestamp_still_uses_uk_convention(tmp_path:Path):
+    p=tmp_path/"uk.csv"
+    p.write_text("timestamp,depth\n02/01/2026 00:00,1.0\n13/01/2026 00:00,2.0\n",encoding="utf-8")
+    parsed=parse_tabular_csv(p)
+    assert parsed.frame.timestamp.tolist()==[pd.Timestamp("2026-01-02 00:00"),pd.Timestamp("2026-01-13 00:00")]
+
+
+def test_icm_hyd_year_first_timestamp_is_not_day_month_swapped(tmp_path:Path):
+    p=tmp_path/"Depth.csv"
+    p.write_text("!Version=1,Type=HYD\nUserSettings,U_LEVEL,m AD\nP_DATETIME,Value\n2026-02-01T00:00:00,1.2\n2026-02-13T00:00:00,1.3\n",encoding="utf-8")
+    parsed=parse_icm_hyd_csv(p)
+    assert parsed.frame.timestamp.tolist()==[pd.Timestamp("2026-02-01 00:00"),pd.Timestamp("2026-02-13 00:00")]
+
 def test_icm_hyd_metadata_distinguishes_overflow_level_from_flow(tmp_path:Path):
     p=tmp_path/"Overflow_Level.csv";p.write_text("!Version=1,Type=HYD\nUserSettings,U_LEVEL,m AD\nP_DATETIME,Value\n01/01/2026 00:00,1.2\n01/01/2026 00:02,1.3\n",encoding="utf-8");parsed=parse_icm_hyd_csv(p);assert parsed.metadata["quantity"]=="level"
 
