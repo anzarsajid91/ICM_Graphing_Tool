@@ -25,6 +25,49 @@ const nullableNumber=(v)=>v===''?null:Number(v);
 const sourceKey=(id,col)=>JSON.stringify([id,col]);
 const parseSourceKey=(v)=>{try{return JSON.parse(v)}catch{return['','']}};
 const seriesLabel=(item,col)=>`${item.displayName} — ${col}`;
+const baseFileName=(item)=>String(item?.displayName||item?.file?.name||'source').split(/[\\/]/).pop();
+function seriesMetadata(item,col){
+  const metadata=item?.parsed?.metadata||{};
+  return metadata.channels?.[col]||metadata.series_metadata?.[col]||{};
+}
+function seriesQuantity(item,col){
+  const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
+  return detail.quantity||metadata.quantity_by_column?.[col]||metadata.quantity||null;
+}
+function seriesUnit(item,col){
+  const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
+  return detail.canonical_unit||metadata.canonical_unit||detail.original_unit||metadata.original_unit||null;
+}
+function isAuxiliarySeries(item,col){
+  const token=String(col||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+  return ['second','seconds','elapsedsecond','elapsedseconds','simulationsecond','simulationseconds','timeindex','timestep','timesteps','row','rowid','index'].includes(token);
+}
+function hydraulicSeriesForItem(item){
+  if(!item||item.status!=='ready')return[];
+  const columns=(item.parsed?.columns||[]).filter(col=>!isAuxiliarySeries(item,col));
+  const order=['depth','flow','velocity'];
+  const byQuantity=new Map();
+  for(const col of columns){
+    const quantity=String(seriesQuantity(item,col)||'').toLowerCase();
+    if(order.includes(quantity)&&!byQuantity.has(quantity))byQuantity.set(quantity,col);
+  }
+  return order.filter(q=>byQuantity.has(q)).map(q=>({item,col:byQuantity.get(q),quantity:q,key:sourceKey(item.id,byQuantity.get(q))}));
+}
+function observedGraphSeries(){
+  const selected=mappingObject(state.mapping.observed);
+  if(!selected)return[];
+  if(String(selected.item?.parsed?.format||'')==='fdv_ascii'){
+    const hydraulic=hydraulicSeriesForItem(selected.item);
+    if(hydraulic.length>=2)return hydraulic;
+  }
+  return [{...selected,quantity:seriesQuantity(selected.item,selected.col),key:state.mapping.observed}];
+}
+function compactGraphRole(role,item,col){
+  const quantity=String(seriesQuantity(item,col)||'').toLowerCase();
+  const qLabel={depth:'Depth',flow:'Flow',velocity:'Velocity',level:'Level',rainfall:'Rainfall'}[quantity]||'';
+  const fdv=String(item?.parsed?.format||'')==='fdv_ascii'&&hydraulicSeriesForItem(item).length>=2;
+  return `${role}${fdv&&qLabel?' '+qLabel:''} (${baseFileName(item)})`;
+}
 const safeName=(name)=>String(name).replace(/[^a-zA-Z0-9._-]+/g,'_').slice(-120);
 const modelClock=(v)=>String(v||'').trim().replace(' ','T').slice(0,19);
 const toLocalInput=(v)=>modelClock(v);
@@ -131,7 +174,7 @@ class BrowserPythonEngine {
     await this.pyodide.runPythonAsync(`import sys\nsys.path.insert(0,'/workbench')\nimport python_bridge, advanced_bridge`);
     this.ready=true;diagnostic.status='ready';diagnostic.manifestCount=files.length;
   }
-  async addFile(item){if(!this.ready)throw new Error('Reference Python engine is not ready.');this.pyodide.FS.writeFile(item.virtualPath,new Uint8Array(await item.file.arrayBuffer()));}
+  async addFile(item,bytes=null){if(!this.ready)throw new Error('Reference Python engine is not ready.');const payload=bytes instanceof Uint8Array?bytes:new Uint8Array(await item.file.arrayBuffer());this.pyodide.FS.writeFile(item.virtualPath,payload);}
   async call(name,args={},module='python_bridge'){
     if(!this.ready)throw new Error('Reference Python engine is not ready.');
     if(!['python_bridge','advanced_bridge'].includes(module))throw new Error('Unsupported browser bridge.');
@@ -148,10 +191,11 @@ class BrowserPythonEngine {
 }
 const engine=new BrowserPythonEngine();
 
-async function sha256(file){const buf=await crypto.subtle.digest('SHA-256',await file.arrayBuffer());return[...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');}
+async function sha256Bytes(buffer){const digest=await crypto.subtle.digest('SHA-256',buffer);return[...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('');}
+async function sha256(file){return sha256Bytes(await file.arrayBuffer());}
 function mappingObject(v){const[id,col]=parseSourceKey(v);const item=state.files.get(id);return item?{id,col,item}:null;}
 function currentModels(){return state.mapping.models.map(mappingObject).filter(Boolean);}
-function allSeries(){const out=[];for(const item of state.files.values()){if(item.status!=='ready')continue;for(const col of item.parsed.columns||[])out.push({item,col,key:sourceKey(item.id,col),label:seriesLabel(item,col)});}return out;}
+function allSeries(){const out=[];for(const item of state.files.values()){if(item.status!=='ready')continue;for(const col of item.parsed.columns||[]){if(isAuxiliarySeries(item,col))continue;out.push({item,col,key:sourceKey(item.id,col),label:seriesLabel(item,col)});}}return out;}
 function setOptions(select,all,{none=false,preserve=true}={}){const prev=preserve?select.value:'';select.innerHTML=(none?'<option value="">None</option>':'<option value="">Select…</option>')+all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');if([...select.options].some(o=>o.value===prev))select.value=prev;}
 
 async function ingestFiles(files){
@@ -167,8 +211,9 @@ async function ingestFiles(files){
     const started=performance.now();
     const id=crypto.randomUUID(),item={id,file,displayName,virtualPath:`/data/${id}_${safeName(file.name)}`,status:'loading',parsed:null,hash:null,error:null,loadSeconds:null};state.files.set(id,item);renderPool();
     try{
-      item.hash=await sha256(file);
-      await engine.addFile(item);
+      const buffer=await file.arrayBuffer();
+      item.hash=await sha256Bytes(buffer);
+      await engine.addFile(item,new Uint8Array(buffer));
       await operationPaint();
       item.parsed=await engine.call('parse_source',{path:item.virtualPath});
       item.status='ready';
@@ -198,7 +243,7 @@ function renderModelColourControls(){const models=[...$('modelSelect').selectedO
 async function applyMapping(){return window.ICMGraph?.applyMapping();}
 async function seriesFor(key,maxPoints=25000){const x=mappingObject(key);if(!x)return null;return {...x,data:await engine.call('series_data',{path:x.item.virtualPath,column:x.col,max_points:maxPoints})};}
 function inEvent(ts){const t=modelClock(ts);return state.rainEvents.some(e=>t>=modelClock(e.start)&&t<=modelClock(e.end));}
-function graphShapes(){const shapes=[],a=nullableNumber($('obsThreshold').value),b=nullableNumber($('modelThreshold').value);if(a!==null)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:a,y1:a,line:{color:$('threshold1Color').value,width:2,dash:'dash'}});if(b!==null)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:b,y1:b,line:{color:$('threshold2Color').value,width:2,dash:'dot'}});if($('showEventOverlay').checked)for(const e of state.rainEvents)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:$('rainEventColor').value,opacity:.1,line:{width:0},layer:'below'});return shapes;}
+function graphShapes(){const shapes=[],a=nullableNumber($('obsThreshold').value),b=nullableNumber($('modelThreshold').value);if(a!==null)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:a,y1:a,line:{color:$('threshold1Color').value,width:2,dash:'dash'}});if(b!==null)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:b,y1:b,line:{color:$('threshold2Color').value,width:2,dash:'dash'}});if($('showEventOverlay').checked)for(const e of state.rainEvents)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:$('rainEventColor').value,opacity:.1,line:{width:0},layer:'below'});return shapes;}
 function graphAnnotations(){const out=[],a=nullableNumber($('obsThreshold').value),b=nullableNumber($('modelThreshold').value);if(a!==null)out.push({xref:'paper',x:1,yref:'y',y:a,text:$('threshold1Label').value,showarrow:false,xanchor:'right',yanchor:'bottom',font:{size:10,color:$('threshold1Color').value}});if(b!==null)out.push({xref:'paper',x:1,yref:'y',y:b,text:$('threshold2Label').value,showarrow:false,xanchor:'right',yanchor:'bottom',font:{size:10,color:$('threshold2Color').value}});if($('showEventOverlay').checked)for(const e of state.rainEvents)out.push({xref:'x',x:e.start,yref:'paper',y:1,text:`E${e.event}`,showarrow:false,yanchor:'bottom',font:{size:9,color:'#8a4b00'}});return out;}
 async function drawTimeChart(){return window.ICMGraph?.draw();}
 
@@ -357,8 +402,8 @@ function reportMappingTable(w){
 }
 function graphStatisticsHtml(rows){
   if(!rows||!rows.length)return '<p class="muted">No graph statistics available.</p>';
-  const value=(v,u)=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),3)+(u?' '+esc(u):'');
-  return '<div class="table-wrap"><table><thead><tr><th>Role / series</th><th>Quantity</th><th>Unit</th><th>Valid</th><th>Missing</th><th>Minimum</th><th>Mean</th><th>Median</th><th>Maximum</th><th>Integrated total</th><th>Status</th></tr></thead><tbody>'+rows.map(row=>{const s=row.statistics||{},factor=row.factor||1,scale=v=>v==null?v:Number(v)*factor,total=s.total==null?s.total:Number(s.total)*(s.quantity==='rainfall'?factor:1);return '<tr><td><strong>'+esc(row.role)+'</strong><br><span class="muted">'+esc(row.label||'')+'</span></td><td>'+esc(s.quantity||'—')+'</td><td>'+esc(s.unit||'unresolved')+'</td><td>'+(s.valid_count==null?'—':s.valid_count)+'</td><td>'+(s.missing_count==null?'—':s.missing_count)+'</td><td>'+value(scale(s.minimum),s.unit)+'</td><td>'+value(scale(s.time_weighted_mean==null?s.mean:s.time_weighted_mean),s.unit)+'</td><td>'+value(scale(s.median),s.unit)+'</td><td>'+value(scale(s.maximum),s.unit)+'</td><td>'+value(total,s.total_unit)+'</td><td>'+esc(s.status||'—')+'</td></tr>';}).join('')+'</tbody></table></div>';
+  const value=(v)=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),3);
+  return '<div class="table-wrap"><table class="graph-stats-compact"><thead><tr><th>Series</th><th>Unit</th><th>Minimum</th><th>Mean</th><th>Maximum</th></tr></thead><tbody>'+rows.map(row=>{const s=row.statistics||{},factor=row.factor||1,scale=v=>v==null?v:Number(v)*factor;return '<tr><td><strong>'+esc(row.compact_label||row.role||'Series')+'</strong></td><td>'+esc(s.unit||'—')+'</td><td>'+value(scale(s.minimum))+'</td><td>'+value(scale(s.time_weighted_mean==null?s.mean:s.time_weighted_mean))+'</td><td>'+value(scale(s.maximum))+'</td></tr>';}).join('')+'</tbody></table></div>';
 }
 function reportSettingsTable(w){
   const a=w.analysis||{};
@@ -412,35 +457,49 @@ async function downloadReport(){
   $('workspaceStatus').textContent='Professional HTML engineering report downloaded.';
 }
 async function reportTraces(period){
-  const obs=await seriesFor(state.mapping.observed,18000);
-  if(!obs)return{traces:[],hasRain:false,rainMax:1,hydraulicTitle:'Hydraulic value'};
+  const observedSources=observedGraphSeries();
+  if(!observedSources.length)return{traces:[],hasRain:false,rainMax:1,hydraulicTitle:'Hydraulic value',statistics:[],fdvMode:false,quantities:[]};
   const inside=s=>{const t=modelClock(s);return t>=period[0]&&t<period[1];};
-  const traces=[],stats=[],ox=[],oy=[];
-  obs.data.timestamp.forEach((t,i)=>{if(inside(t)){ox.push(t);oy.push(obs.data.value[i]);}});
-  traces.push({x:ox,y:oy,name:'Observed',mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2}});
-  const obsStats=await engine.call('series_data',{path:obs.item.virtualPath,column:obs.col,max_points:2,start:period[0],end:period[1],max_gap_seconds:Number($('gapInput').value||900)});stats.push({role:'Observed',label:seriesLabel(obs.item,obs.col),statistics:obsStats.statistics});
+  const traces=[],stats=[],quantities=[];
+  const fdvMode=observedSources.length>=2;
+  const observedColours={depth:$('obsColor').value,flow:'#008b95',velocity:'#ef7d00',level:$('obsColor').value};
+  const axisFor=q=>fdvMode?(q==='flow'?'y3':q==='velocity'?'y4':'y'):'y';
+  for(const source of observedSources){
+    const s=await seriesFor(source.key,30000),x=[],y=[];
+    if(!s)continue;
+    s.data.timestamp.forEach((t,j)=>{if(inside(t)){x.push(t);y.push(s.data.value[j]);}});
+    const quantity=String(seriesQuantity(s.item,s.col)||source.quantity||'').toLowerCase();
+    if(quantity&&!quantities.includes(quantity))quantities.push(quantity);
+    traces.push({x,y,name:fdvMode?`Observed ${quantity||s.col}`:'Observed',mode:'lines',connectgaps:false,yaxis:axisFor(quantity),line:{color:observedColours[quantity]||$('obsColor').value,width:1.8}});
+    const nativeStats=await engine.call('series_data',{path:s.item.virtualPath,column:s.col,max_points:2,start:period[0],end:period[1],max_gap_seconds:Number($('gapInput').value||900)});
+    stats.push({role:'Observed',compact_label:compactGraphRole('Observed',s.item,s.col),label:seriesLabel(s.item,s.col),statistics:nativeStats.statistics});
+  }
   let i=0;
   for(const key of state.mapping.models){
-    const m=await seriesFor(key,18000),x=[],y=[];
+    const m=await seriesFor(key,30000),x=[],y=[];
     if(!m)continue;
     m.data.timestamp.forEach((t,j)=>{if(inside(t)){x.push(t);y.push(m.data.value[j]);}});
-    traces.push({x:x,y:y,name:'Model '+(i+1),mode:'lines',connectgaps:false,line:{color:state.modelColours[key]||palette[i%palette.length],width:1.6}});
-    const modelStats=await engine.call('series_data',{path:m.item.virtualPath,column:m.col,max_points:2,start:period[0],end:period[1],max_gap_seconds:Number($('gapInput').value||900)});stats.push({role:'Model '+(i+1),label:seriesLabel(m.item,m.col),statistics:modelStats.statistics});
+    const quantity=String(seriesQuantity(m.item,m.col)||'').toLowerCase();
+    if(quantity&&!quantities.includes(quantity))quantities.push(quantity);
+    traces.push({x,y,name:'Model '+(i+1),mode:'lines',connectgaps:false,yaxis:axisFor(quantity),line:{color:state.modelColours[key]||palette[i%palette.length],width:1.6}});
+    const modelStats=await engine.call('series_data',{path:m.item.virtualPath,column:m.col,max_points:2,start:period[0],end:period[1],max_gap_seconds:Number($('gapInput').value||900)});
+    stats.push({role:'Model '+(i+1),compact_label:compactGraphRole('Model '+(i+1),m.item,m.col),label:seriesLabel(m.item,m.col),statistics:modelStats.statistics});
     i+=1;
   }
   let hasRain=false,rainMax=1;
   if(state.mapping.rain){
-    const r=await seriesFor(state.mapping.rain,18000),x=[],y=[],factor=Number($('rainFactor').value||1);
+    const r=await seriesFor(state.mapping.rain,30000),x=[],y=[],factor=Number($('rainFactor').value||1);
     if(r){
       r.data.timestamp.forEach((t,j)=>{if(inside(t)){x.push(t);y.push(r.data.value[j]==null?null:Number(r.data.value[j])*factor);}});
       const finite=y.filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
       rainMax=finite.length?Math.max(...finite)*1.12:1;
-      traces.push({x:x,y:y,name:'Rainfall',type:'bar',yaxis:'y2',opacity:.55,marker:{color:$('rainColor').value}});
-      const rainStats=await engine.call('series_data',{path:r.item.virtualPath,column:r.col,max_points:2,start:period[0],end:period[1],max_gap_seconds:Number($('gapInput').value||900)});stats.push({role:'Rainfall',label:seriesLabel(r.item,r.col),statistics:rainStats.statistics,factor:factor});
+      traces.push({x,y,name:'Rainfall',type:'bar',yaxis:'y2',opacity:.55,marker:{color:$('rainColor').value}});
+      const rainStats=await engine.call('series_data',{path:r.item.virtualPath,column:r.col,max_points:2,start:period[0],end:period[1],max_gap_seconds:Number($('gapInput').value||900)});
+      stats.push({role:'Rainfall',compact_label:compactGraphRole('Rainfall',r.item,r.col),label:seriesLabel(r.item,r.col),statistics:rainStats.statistics,factor});
       hasRain=true;
     }
   }
-  return{traces:traces,hasRain:hasRain,rainMax:rainMax>0?rainMax:1,hydraulicTitle:obs.col,statistics:stats};
+  return{traces,hasRain,rainMax:rainMax>0?rainMax:1,hydraulicTitle:fdvMode?'FDV hydraulic variables':(observedSources[0]?.col||'Hydraulic value'),statistics:stats,fdvMode,quantities};
 }
 async function downloadFourPeriod(){
   assertFreshResults();
@@ -469,13 +528,31 @@ async function downloadFourPeriod(){
 }
 function downloadManifest(){const w=workspaceObject(),rows=['role,file,column,sha256,size,format'],roles=[];if(w.mapping.observed)roles.push(['Observed',w.mapping.observed]);for(const x of w.mapping.models||[])roles.push(['Modelled/comparison',x]);if(w.mapping.rain)roles.push(['Rainfall',w.mapping.rain]);if(w.analysis.storage_level)roles.push(['Storage level',w.analysis.storage_level]);if(w.analysis.storage_flow)roles.push(['Overflow flow',w.analysis.storage_flow]);for(const[role,ref]of roles){const src=w.source_references.find(x=>x.sha256===ref.sha256)||{};rows.push([role,ref.display_name,ref.column,ref.sha256,src.size||'',src.format||''].map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(','));}downloadBlob('icm-workbench-provenance.csv',rows.join('\n'),'text/csv');}
 
-async function fileFromEntry(entry,path=''){if(entry.isFile)return new Promise(resolve=>entry.file(f=>{f._relativePath=path+f.name;resolve([f]);}));if(entry.isDirectory){const reader=entry.createReader(),all=[];while(true){const batch=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!batch.length)break;for(const child of batch)all.push(...await fileFromEntry(child,`${path}${entry.name}/`));}return all;}return[];}
+async function fileFromEntry(entry,path=''){if(entry.isFile)return new Promise((resolve,reject)=>entry.file(f=>{f._relativePath=path+f.name;resolve([f]);},reject));if(entry.isDirectory){const reader=entry.createReader(),all=[];while(true){const batch=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!batch.length)break;for(const child of batch)all.push(...await fileFromEntry(child,`${path}${entry.name}/`));}return all;}return[];}
+function snapshotDrop(dataTransfer){
+  const files=Array.from(dataTransfer?.files||[]);
+  const items=Array.from(dataTransfer?.items||[]).map(item=>({
+    entry:typeof item.webkitGetAsEntry==='function'?item.webkitGetAsEntry():null,
+    file:typeof item.getAsFile==='function'?item.getAsFile():null,
+  }));
+  return {files,items};
+}
+async function droppedFiles(snapshot){
+  const files=[...(snapshot?.files||[])];
+  for(const item of snapshot?.items||[]){
+    if(item.entry){
+      try{files.push(...await fileFromEntry(item.entry));}
+      catch(err){console.warn('Could not traverse dropped entry',err);}
+    }else if(item.file)files.push(item.file);
+  }
+  return [...new Map(files.filter(Boolean).map(f=>[`${f.webkitRelativePath||f._relativePath||f.name}|${f.size}|${f.lastModified}`,f])).values()];
+}
 async function chooseFolder(){if('showDirectoryPicker'in window){try{const handle=await window.showDirectoryPicker({mode:'read'}),files=[];async function walk(dir,prefix=''){for await(const[name,h]of dir.entries()){if(name.startsWith('.'))continue;if(h.kind==='file'){const f=await h.getFile();f._relativePath=prefix+name;files.push(f);}else await walk(h,`${prefix}${name}/`);}}await walk(handle);await ingestFiles(files);return;}catch(err){if(err.name==='AbortError')return;throw err;}}$('folderInput').click();}
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
   eventGuard('chooseFolderBtn','poolSummary',chooseFolder);$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>guarded('poolSummary',()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>guarded('poolSummary',()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{state.files.clear();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';});
-  const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>guarded('poolSummary',async()=>{const files=[];for(const item of e.dataTransfer.items||[]){const entry=item.webkitGetAsEntry?.();if(entry)files.push(...await fileFromEntry(entry));else{const f=item.getAsFile();if(f)files.push(f);}}files.push(...e.dataTransfer.files);const unique=[...new Map(files.filter(Boolean).map(f=>[`${f.webkitRelativePath||f._relativePath||f.name}|${f.size}|${f.lastModified}`,f])).values()];await ingestFiles(unique);}));
+  const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);guarded('poolSummary',async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=`${files.length} dropped file${files.length===1?'':'s'} detected · preparing import…`;await ingestFiles(files);});});
   eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('modelSelect').addEventListener('change',()=>{renderModelColourControls();autoSuggestAdvanced(allSeries());});eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
   eventGuard('runCompareBtn','metricGrid',runCompare);$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);eventGuard('runDwfBtn','dwfSummary',runDwf);
   $('rainCriteriaMode').addEventListener('change',criteriaModeChanged);eventGuard('runRainEventsBtn','rainEventSummary',runRainEvents);eventGuard('runHealthBtn','healthBody',runHealth);
