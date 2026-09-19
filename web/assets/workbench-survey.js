@@ -83,7 +83,7 @@
       '<button class="btn primary" id="runCompleteSurveyBtn" type="button">Run complete survey assessment</button></div>' +
       '<div class="survey-control-grid">' +
       '<label>Volume-balance Amber tolerance (%)<input id="surveyBalanceTolerance" type="number" min="0" max="50" step="1" value="10"></label>' +
-      '<div class="survey-control-note">Analysis start/end, exclusions and maximum gap use the same controls as the rest of the workbench. Antecedent source data remains available to Event Response diagnostics.</div></div>' +
+      '<div class="survey-control-note">Analysis start/end and maximum gap use the shared workbench controls. Exclusions remain scoped: Observed / EDM applies to survey hydraulics; Rainfall applies to .R data. Antecedent source data remains available to Event Response diagnostics.</div></div>' +
       '<div id="completeSurveyStatus" class="pool-summary">Load survey files and fm_rg_assoc.xlsx to begin.</div>' +
       '<div id="completeSurveySummary"></div><div id="completeSurveyMonitors"></div>' +
       '<h3>FSAT Event Response</h3><div id="surveyEventResponse"></div>';
@@ -351,7 +351,8 @@
     return {
       start: modelClock(document.getElementById('analysisStart') && document.getElementById('analysisStart').value) || null,
       end: modelClock(document.getElementById('analysisEnd') && document.getElementById('analysisEnd').value) || null,
-      exclusions_json: JSON.stringify(exclusionPayload()),
+      hydraulic_exclusions_json: JSON.stringify(exclusionPayload(true, 'observed')),
+      rainfall_exclusions_json: JSON.stringify(exclusionPayload(true, 'rainfall')),
       max_gap_seconds: Number(document.getElementById('gapInput') && document.getElementById('gapInput').value || 900),
       amber_tolerance_percent: Number(document.getElementById('surveyBalanceTolerance') && document.getElementById('surveyBalanceTolerance').value || 10),
     };
@@ -377,7 +378,7 @@
       const result = await engine.call('survey_volume_balance_result', {
         association_json: JSON.stringify(survey.association.records),
         monitor_sources_json: JSON.stringify(monitorSourceSpecs()),
-        exclusions_json: controls.exclusions_json,
+        exclusions_json: controls.hydraulic_exclusions_json,
         max_gap_seconds: controls.max_gap_seconds,
         start: controls.start,
         end: controls.end,
@@ -409,7 +410,9 @@
         population_above_50k: document.getElementById('surveyPopulation') ? document.getElementById('surveyPopulation').value === 'over50' : true,
         apply_fault_cutoff: Boolean(document.getElementById('surveyApplyFaultCutoff') && document.getElementById('surveyApplyFaultCutoff').checked),
         rain_factor: Number(document.getElementById('rainFactor') && document.getElementById('rainFactor').value || 1),
-        exclusions_json: controls.exclusions_json,
+        exclusions_json: controls.hydraulic_exclusions_json,
+        hydraulic_exclusions_json: controls.hydraulic_exclusions_json,
+        rainfall_exclusions_json: controls.rainfall_exclusions_json,
         max_gap_seconds: controls.max_gap_seconds,
         start: controls.start,
         end: controls.end,
