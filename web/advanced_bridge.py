@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import numpy as np
 import pandas as pd
 
@@ -453,6 +454,10 @@ def survey_association_result(headers_json="[]", rows_json="[]", inferred_json="
     return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
 
 
+def _survey_name_token(value):
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
+
 def _survey_channel(path, column, quantity, unit_override=None):
     if not path or not column:
         return None, None
@@ -586,7 +591,7 @@ def professional_survey_batch_result(
                     column,
                 ] = np.nan
             gauges[name] = (frame, column, interval)
-            rain_lookup[name] = (frame, column, interval)
+            rain_lookup[_survey_name_token(name)] = (frame, column, interval)
         except Exception as exc:
             rain_issues.append({"gauge": name, "reason": str(exc)})
 
@@ -667,7 +672,7 @@ def professional_survey_batch_result(
         )
 
         rg = str(assoc.get("rain_gauge") or "").strip()
-        rain_spec = rain_lookup.get(rg)
+        rain_spec = rain_lookup.get(_survey_name_token(rg))
         if not rain_spec:
             monitor_rows.append({
                 "monitor": monitor,
