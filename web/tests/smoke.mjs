@@ -285,6 +285,12 @@ try{
   await page.selectOption('#rainSelect',rain);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'));
+  if(await page.locator('#modelPickerTrigger').count()!==1)throw new Error('Model series must use a compact checkbox dropdown trigger');
+  await page.click('#modelPickerTrigger');
+  if(await page.locator('#modelPickerPopover input[type="search"]').count()!==1)throw new Error('Model dropdown search field missing');
+  if(await page.locator('#modelPickerPopover input[type="checkbox"]').count()<1)throw new Error('Model dropdown checkboxes missing');
+  await page.click('#modelPickerTrigger');
+  for(const id of ['#observedFlowColour','#observedDepthColour','#observedVelocityColour','#rainColor'])if(await page.locator(id).count()!==1)throw new Error('Per-series colour control missing: '+id);
   const modelColour=await page.inputValue('#modelColourControls .model-colour');
   const colourWidth=await page.locator('#modelColourControls .model-colour').evaluate(el=>el.getBoundingClientRect().width);
   if(modelColour.toLowerCase()!=='#5755d9')throw new Error(`First model default colour should be Precision Workbench purple-blue, got ${modelColour}`);
@@ -440,17 +446,32 @@ try{
   await precisionRoute('survey','flow-continuity');
   await captureEvidence('03-survey-flow-continuity');
 
-  stage='FDV automatic multi-variable graph';
+  stage='FDV stacked hydraulic graph';
   await precisionRoute('data','series-mapping');
   const fmDepth=await optionValue('#observedSelect','FM01.fdv — depth');
-  if(!fmDepth)throw new Error('FM01 FDV depth option missing');
+  const fmRain=await optionValue('#rainSelect','RG01.r — rainfall');
+  if(!fmDepth||!fmRain)throw new Error('FM01 FDV depth or RG01 rainfall option missing');
   await page.selectOption('#observedSelect',fmDepth);
   await page.selectOption('#modelSelect',[]);
+  await page.selectOption('#rainSelect',fmRain);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphMode==='fdv-multi-variable',null,{timeout:60000});
-  const fdvGraph=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{names:chart.data.map(t=>t.name),axes:chart.data.filter(t=>/^Observed /.test(t.name||'')).map(t=>t.yaxis||'y'),hasY3:Boolean(chart.layout.yaxis3),hasY4:Boolean(chart.layout.yaxis4),stats:[...document.querySelectorAll('#graphStatistics tbody tr')].map(r=>r.textContent)}}); 
-  if(!fdvGraph.names.some(x=>/Observed depth/i.test(x))||!fdvGraph.names.some(x=>/Observed flow/i.test(x))||!fdvGraph.names.some(x=>/Observed velocity/i.test(x))||!fdvGraph.hasY3||!fdvGraph.hasY4)throw new Error('FDV graph did not auto-expand depth/flow/velocity with independent scaling: '+JSON.stringify(fdvGraph));
-  if(fdvGraph.stats.length<3)throw new Error('FDV graph should expose compact statistics for all three hydraulic variables');
+  const fdvGraph=await page.evaluate(()=>{
+    const chart=document.querySelector('#timeChart');
+    const axes=Object.entries(chart.layout).filter(([k])=>/^yaxis\d*$/.test(k)).map(([key,a])=>({key,title:a.title?.text||a.title||'',domain:a.domain,overlaying:a.overlaying,range:a.range}));
+    return{
+      order:window.__ICM_WORKBENCH__.lastPanelOrder,
+      names:chart.data.map(t=>t.name),
+      axes,
+      stats:[...document.querySelectorAll('#graphStatistics tbody tr')].map(r=>r.textContent),
+      periodSummary:document.querySelector('#graphPeriodSummary')?.textContent||''
+    };
+  });
+  if(JSON.stringify(fdvGraph.order)!==JSON.stringify(['rainfall','flow','depth','velocity']))throw new Error('FDV panel order must be rainfall/flow/depth/velocity: '+JSON.stringify(fdvGraph));
+  if(fdvGraph.axes.some(x=>x.overlaying))throw new Error('FDV hydraulic channels must use separate stacked panels, not overlay axes: '+JSON.stringify(fdvGraph.axes));
+  for(const token of ['Rainfall','Flow','Depth','Velocity'])if(!fdvGraph.axes.some(x=>String(x.title).includes(token)))throw new Error('Missing FDV panel/unit axis '+token+': '+JSON.stringify(fdvGraph.axes));
+  if(fdvGraph.stats.length<4)throw new Error('FDV statistics must include rainfall plus all hydraulic variables');
+  if(!/Time range/i.test(fdvGraph.periodSummary)||!/Total rain/i.test(fdvGraph.periodSummary)||!/Volume/i.test(fdvGraph.periodSummary))throw new Error('FDV period summary must expose time range, rainfall total and flow volume: '+fdvGraph.periodSummary);
   // Restore the comparison mapping used by the remainder of the acceptance workflow.
   await page.selectOption('#observedSelect',obsDepth);
   await page.selectOption('#modelSelect',[modelDepth]);
@@ -632,10 +653,9 @@ try{
   if((fourReport.match(/Period statistics/g)||[]).length!==4)throw new Error('Four-period report must include statistics for every graph period');
   const fourLayout=await inspectReportHtml(fourReport,4);
   if(fourLayout.headers!==1||fourLayout.figures!==4||fourLayout.zero||fourLayout.overflow>2)throw new Error(`Four-period report visual containment failed: ${JSON.stringify(fourLayout)}`);
-  await precisionRoute('report','provenance');
-  const manifestDownload=await downloadFrom('#downloadManifestBtn');
-  const manifestCsv=await fs.readFile(await manifestDownload.path(),'utf8');
-  if(!manifestCsv.startsWith('workflow_role,asset_id,domain_role,file,column,quantity,unit,sha256,size,format'))throw new Error('Provenance manifest is missing canonical domain fields');
+  if(await page.locator('#downloadManifestBtn').count()!==0)throw new Error('Standalone provenance CSV export should not be user-facing.');
+  const reportNavText=(await page.locator('.pw-secondary-nav').textContent())||'';
+  if(/Provenance/i.test(reportNavText))throw new Error('Standalone provenance page should be removed from Report navigation.');
 
   stage='simulated-series auxiliary column filtering';
   await page.setInputFiles('#fileInput',{name:'simulated-export.csv',mimeType:'text/csv',buffer:Buffer.from('timestamp,Seconds,Dummy Nodes\n2026-02-01T00:00:00,0,1.0\n2026-02-01T00:01:00,60,1.1\n')});
