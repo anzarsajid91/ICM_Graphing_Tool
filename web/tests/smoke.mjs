@@ -47,11 +47,13 @@ async function captureEvidence(name){
 async function inspectReportHtml(html,minFigures=1){
   const p=await context.newPage();
   try{
+    await p.route('https://**/*',route=>route.abort());
     await p.setContent(html,{waitUntil:'domcontentloaded'});
     await p.waitForFunction(()=>[...document.images].every(x=>x.complete),null,{timeout:30000});
+    await p.waitForFunction(()=>[...document.querySelectorAll('.report-plot')].every(el=>el._fullLayout&&el.querySelector('.main-svg')),null,{timeout:60000});
     const result=await p.evaluate((minFigures)=>{
       const root=document.documentElement;
-      const figures=[...document.querySelectorAll('.figure img')];
+      const figures=[...document.querySelectorAll('.figure img,.figure .report-plot')];
       const zero=figures.filter(x=>x.getBoundingClientRect().width<=0||x.getBoundingClientRect().height<=0).length;
       return {
         overflow:root.scrollWidth-root.clientWidth,
@@ -247,7 +249,7 @@ try{
   });
   if(nonDepthThresholdPresentation.thresholdLegend.length||nonDepthThresholdPresentation.thresholdShapes.length)throw new Error('A level/non-depth graph must not display spill-threshold lines: '+JSON.stringify(nonDepthThresholdPresentation));
   const graphLayout=await page.evaluate(()=>({hyd:document.querySelector('#timeChart').layout.yaxis.domain,rain:document.querySelector('#timeChart').layout.yaxis2.domain,rainRange:document.querySelector('#timeChart').layout.yaxis2.range}));
-  if(graphLayout.hyd[1]>.71||graphLayout.rain[0]<.78)throw new Error(`Rainfall is not isolated above hydraulic graph: ${JSON.stringify(graphLayout)}`);
+  if(!(graphLayout.hyd[1]<graphLayout.rain[0]&&(graphLayout.rain[0]-graphLayout.hyd[1])>=.04))throw new Error(`Rainfall and hydraulic panels are not independently separated: ${JSON.stringify(graphLayout)}`);
   if(!(graphLayout.rainRange[0]>graphLayout.rainRange[1]))throw new Error(`Rainfall axis should be reversed top-down: ${JSON.stringify(graphLayout.rainRange)}`);
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphStatistics?.length===2&&document.querySelector('#timeChart')?.data?.some(t=>t.type==='table'),null,{timeout:60000});
   const graphStatsPresentation=await page.evaluate(()=>{
@@ -539,7 +541,7 @@ try{
   if(!fdvGraph.table||JSON.stringify(fdvGraph.table.header)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('FDV graph must contain the reference-style Plotly statistics band: '+JSON.stringify(fdvGraph.table));
   for(const row of ['Observed Flow','Observed Depth','Observed Velocity','Rainfall'])if(!fdvGraph.table.series.some(x=>x.includes(row)))throw new Error('FDV statistics row missing '+row+': '+JSON.stringify(fdvGraph.table.series));
   if(!fdvGraph.table.units.some(x=>/mm\/h/i.test(x)))throw new Error('Rainfall statistics must expose mm/h: '+JSON.stringify(fdvGraph.table.units));
-  if(fdvGraph.colours['Observed flow']?.toLowerCase()!=='#1f77b4'||fdvGraph.colours['Observed depth']?.toLowerCase()!=='#ff0000'||fdvGraph.colours['Observed velocity']?.toLowerCase()!=='#2ca02c'||fdvGraph.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('FDV default colours do not match the uploaded current-tool reference: '+JSON.stringify(fdvGraph.colours));
+  if(fdvGraph.colours['Observed flow']?.toLowerCase()!=='#ff0000'||fdvGraph.colours['Observed depth']?.toLowerCase()!=='#ff0000'||fdvGraph.colours['Observed velocity']?.toLowerCase()!=='#ff0000'||fdvGraph.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('FDV default colours do not match the observed-red reference convention: '+JSON.stringify(fdvGraph.colours));
   if(!fdvGraph.externalStatsHidden)throw new Error('FDV statistics must not be duplicated outside the Plotly figure.');
   await precisionRoute('data','time-series');
   await captureEvidence('01b-fdv-stacked-graph');
@@ -775,7 +777,7 @@ try{
   if(!near(rv.minimum,.42)||!near(rv.maximum,1.48)||!near(rv.mean,.8804642627,1e-8))throw new Error('Reference FM01 velocity statistics mismatch: '+JSON.stringify(rv));
   if(!near(rr.minimum,0)||!near(rr.maximum,66)||!near(rr.mean,.1264818213,1e-8)||!near(rr.total,85,1e-6))throw new Error('Reference RG01 rainfall statistics/total mismatch: '+JSON.stringify(rr));
   if(JSON.stringify(referenceEvidence.order)!==JSON.stringify(['rainfall','flow','depth','velocity']))throw new Error('Reference FDV panel order mismatch: '+JSON.stringify(referenceEvidence.order));
-  if(referenceEvidence.colours['Observed flow']?.toLowerCase()!=='#1f77b4'||referenceEvidence.colours['Observed depth']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed velocity']?.toLowerCase()!=='#2ca02c'||referenceEvidence.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('Reference FDV colours mismatch: '+JSON.stringify(referenceEvidence.colours));
+  if(referenceEvidence.colours['Observed flow']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed depth']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed velocity']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('Reference FDV colours mismatch: '+JSON.stringify(referenceEvidence.colours));
   if(JSON.stringify(referenceEvidence.tableHeader)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('Reference Plotly statistics header mismatch: '+JSON.stringify(referenceEvidence.tableHeader));
   if(!referenceEvidence.tableTotals.some(x=>/85(?:\.0+)? mm/.test(x)))throw new Error('Reference rainfall total 85 mm missing from Plotly statistics: '+JSON.stringify(referenceEvidence.tableTotals));
   if(referenceEvidence.pointCounts?.observed?.raw!==20161||referenceEvidence.pointCounts?.rainfall?.raw!==20161)throw new Error('Reference full-period source counts mismatch: '+JSON.stringify(referenceEvidence.pointCounts));
@@ -821,6 +823,38 @@ try{
   }));
   if(sourceEventEvidence.events?.count!==1||sourceEventEvidence.events?.details?.[0]?.reason!=='ingest')throw new Error('Real multi-file ingestion must emit exactly one source-pool state event: '+JSON.stringify(sourceEventEvidence));
   if(sourceEventEvidence.professional||sourceEventEvidence.complete||sourceEventEvidence.balance)throw new Error('Real source-pool change did not invalidate source-dependent survey results: '+JSON.stringify(sourceEventEvidence));
+
+  stage='supplied real FDV and rainfall graph/report regression';
+  await precisionRoute('data','sources');
+  await page.click('#clearPoolBtn');
+  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0,null,{timeout:30000});
+  const referenceRoot=path.join(root,'reference/current-tool/sample-data');
+  const realFdv=await fs.readFile(path.join(referenceRoot,'fdv/FM01.fdv'));
+  const realRain=await fs.readFile(path.join(referenceRoot,'rainfall/RG01.R'));
+  await page.setInputFiles('#fileInput',[
+    {name:'Reference-FM01.fdv',mimeType:'text/plain',buffer:realFdv},
+    {name:'Reference-RG01.R',mimeType:'text/plain',buffer:realRain},
+  ]);
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(r=>/Reference-(FM01|RG01)/.test(r.textContent)).filter(r=>r.textContent.includes('Ready')).length===2,null,{timeout:120000});
+  await precisionRoute('data','series-mapping');
+  await page.selectOption('#observedSelect',await optionValue('#observedSelect','Reference-FM01.fdv — depth'));
+  await page.selectOption('#modelSelect',[]);
+  await page.selectOption('#rainSelect',await optionValue('#rainSelect','Reference-RG01.R — rainfall'));
+  await page.fill('#rainFactor','1');
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphStatistics?.some(r=>r.label?.includes('Reference-RG01')&&r.statistics?.total===85),null,{timeout:120000});
+  const realEvidence=await page.evaluate(()=>({statistics:window.__ICM_WORKBENCH__.lastGraphStatistics,layout:document.querySelector('#timeChart').layout}));
+  const realFlow=realEvidence.statistics.find(r=>r.statistics.quantity==='flow').statistics;
+  if(Math.abs(realFlow.mean-.1289310550071921)>1e-10||Math.abs(realFlow.total-311912.16)>1e-5)throw new Error('Real FDV native statistics differ from independent reference arithmetic: '+JSON.stringify(realFlow));
+  if(!(realEvidence.layout.yaxis4.domain[1]<realEvidence.layout.yaxis.domain[0]&&realEvidence.layout.yaxis.domain[1]<realEvidence.layout.yaxis3.domain[0]&&realEvidence.layout.yaxis3.domain[1]<realEvidence.layout.yaxis2.domain[0]))throw new Error('Real FDV panels overlap');
+  await precisionRoute('data','time-series');
+  await captureEvidence('07-real-fdv-rainfall');
+  await precisionRoute('report','builder');
+  await page.fill('#reportYear','2026');
+  const realDownload=await downloadFrom('#downloadFourPeriodBtn');
+  const realReport=await fs.readFile(await realDownload.path(),'utf8');
+  const realLayout=await inspectReportHtml(realReport,4);
+  if(realLayout.figures!==4||realLayout.zero||realLayout.overflow>2)throw new Error('Real-data report layout failed: '+JSON.stringify(realLayout));
 
   stage='final browser diagnostics';
   const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__);
