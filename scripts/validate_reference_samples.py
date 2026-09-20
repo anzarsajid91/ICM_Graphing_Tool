@@ -22,12 +22,16 @@ def _finite_stats(series):
     }
 
 
-def _summary(path: Path):
+def _summary(path: Path, label: str | None = None):
     parsed = parse_file(path)
     frame = parsed.frame
     columns = [str(c) for c in frame.columns if str(c) != "timestamp"]
+    try:
+        display_path = str(path.relative_to(ROOT))
+    except ValueError:
+        display_path = label or path.name
     return {
-        "path": str(path.relative_to(ROOT)),
+        "path": display_path,
         "format": parsed.format_name,
         "rows": int(len(frame)),
         "start": None if frame.empty else str(frame["timestamp"].min()),
@@ -72,8 +76,7 @@ def main():
             extracted = Path(tmp) / info.filename
             if extracted.suffix.lower() in {".csv", ".hyd", ".fdv", ".r"}:
                 try:
-                    entry["parsed"] = _summary(extracted)
-                    entry["parsed"]["path"] = info.filename
+                    entry["parsed"] = _summary(extracted, info.filename)
                 except Exception as exc:
                     entry["parse_error"] = f"{type(exc).__name__}: {exc}"
             result["model_zip"]["entries"].append(entry)
