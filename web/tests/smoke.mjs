@@ -501,7 +501,7 @@ try{
       depthRef,
       thresholdShapes:thresholdShapes.map(s=>({yref:s.yref,y0:s.y0,y1:s.y1,dash:s.line?.dash})),
       thresholdTraces:thresholdTraces.map(t=>({name:t.name,yaxis:t.yaxis||'y',dash:t.line?.dash})),
-      xaxis:{anchor:chart.layout.xaxis?.anchor,position:chart.layout.xaxis?.position,side:chart.layout.xaxis?.side,title:chart.layout.xaxis?.title?.text||chart.layout.xaxis?.title||''},
+      xaxis:{anchor:chart.layout.xaxis?.anchor,position:chart.layout.xaxis?.position,side:chart.layout.xaxis?.side,title:chart.layout.xaxis?.title?.text||chart.layout.xaxis?.title||'',range:chart.layout.xaxis?.range},
       annotations:(chart.layout.annotations||[]).map(a=>String(a.text||'')),
       stats:[...document.querySelectorAll('#graphStatistics tbody tr')].map(r=>r.textContent),
       periodSummary:document.querySelector('#graphPeriodSummary')?.textContent||''
@@ -511,10 +511,12 @@ try{
   if(fdvGraph.axes.some(x=>x.overlaying))throw new Error('FDV hydraulic channels must use separate stacked panels, not overlay axes: '+JSON.stringify(fdvGraph.axes));
   for(const token of ['Rainfall','Flow','Depth','Velocity'])if(!fdvGraph.axes.some(x=>String(x.title).includes(token)))throw new Error('Missing FDV panel/unit axis '+token+': '+JSON.stringify(fdvGraph.axes));
   if(fdvGraph.xaxis.anchor!=='free'||Number(fdvGraph.xaxis.position)!==0||fdvGraph.xaxis.side!=='bottom')throw new Error('FDV time axis must be a single bottom shared axis: '+JSON.stringify(fdvGraph.xaxis));
+  if(!Array.isArray(fdvGraph.xaxis.range)||!String(fdvGraph.xaxis.range[0]||'').startsWith('2026-01-05')||!String(fdvGraph.xaxis.range[1]||'').startsWith('2026-01-05'))throw new Error('FDV default time range must come from the currently mapped 5 Jan support, not stale event overlays: '+JSON.stringify(fdvGraph.xaxis.range));
   for(const token of ['Rainfall','Flow','Depth','Velocity'])if(!fdvGraph.annotations.some(x=>x.includes(token)))throw new Error('FDV panel heading missing for '+token+': '+JSON.stringify(fdvGraph.annotations));
   if(!fdvGraph.depthRef||fdvGraph.thresholdShapes.some(x=>x.yref!==fdvGraph.depthRef))throw new Error('Every visible threshold line must belong to the Depth axis only: '+JSON.stringify(fdvGraph));
   if(fdvGraph.thresholdTraces.length!==1||fdvGraph.thresholdTraces[0].yaxis!==fdvGraph.depthRef)throw new Error('With no model selected, only the observed depth threshold may appear: '+JSON.stringify(fdvGraph.thresholdTraces));
   if(fdvGraph.stats.length<4)throw new Error('FDV statistics must include rainfall plus all hydraulic variables');
+  if(!fdvGraph.stats.some(x=>/Rainfall/i.test(x)&&/mm\/h/i.test(x)))throw new Error('Rainfall statistics must expose mm/h rather than an unresolved unit: '+JSON.stringify(fdvGraph.stats));
   if(!/Time range/i.test(fdvGraph.periodSummary)||!/Total rain/i.test(fdvGraph.periodSummary)||!/Volume/i.test(fdvGraph.periodSummary))throw new Error('FDV period summary must expose time range, rainfall total and flow volume: '+fdvGraph.periodSummary);
   await precisionRoute('data','time-series');
   const fdvGeometry=await page.evaluate(()=>{const chart=document.querySelector('#timeChart')?.getBoundingClientRect(),summary=document.querySelector('#graphPeriodSummary')?.getBoundingClientRect();return{chartBottom:chart?.bottom||0,summaryTop:summary?.top||0,summaryHeight:summary?.height||0};});
