@@ -427,7 +427,7 @@
       const plottedRange=plottedTimestampRange(observedEntries,modelEntries,rainEntry);
       const displayRange=range?.length===2?range:plottedRange;
       const traceType=data=>Number(data?.display_count||0)>8000?'scattergl':'scatter';
-      const colourFor=q=>q==='flow'?($('observedFlowColour')?.value||'#1f77b4'):q==='depth'?($('observedDepthColour')?.value||$('obsColor').value):q==='velocity'?($('observedVelocityColour')?.value||'#2ca02c'):$('obsColor').value;
+      const colourFor=q=>q==='flow'?($('observedFlowColour')?.value||$('obsColor').value):q==='depth'?($('observedDepthColour')?.value||$('obsColor').value):q==='velocity'?($('observedVelocityColour')?.value||$('obsColor').value):$('obsColor').value;
       const observedThreshold=nullableNumber($('graphObsThreshold')?.value ?? $('obsThreshold').value);
       const modelThreshold=nullableNumber($('graphModelThreshold')?.value ?? $('modelThreshold').value);
       const statsDomain=[0,.20],statsTop=.20,plotBottom=.285,axisPosition=.27;
