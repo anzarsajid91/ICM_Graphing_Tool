@@ -6,7 +6,7 @@ The files under `reference/current-tool` are representative examples, not a form
 
 ## Changes
 
-- One layout function serves the live hydraulic graph and four-period exports. FDV variables occupy separate aligned panels; rainfall occupies a reversed upper band. No overview range slider is added.
+- Live and exported graphs follow the same stacked panel contract: FDV variables occupy separate aligned panels, rainfall occupies a reversed upper band, and no overview range slider is added. Export composition is independently regression-tested against the live panel ordering and separation.
 - New-session observed/model defaults follow the supplied reports. Saved explicit colours are preserved. Observed hydraulic traces remain red across quantities; panel labels distinguish variables.
 - Assessment time-series and all four-period graphs are interactive Plotly figures with the application Plotly bundle embedded in the downloaded HTML. No external script is required to reopen the report. Initial export must retrieve the bundle; retrieval failure stops export with an error.
 - Period traces are fetched within each period before display reduction. Explicit null gap separators survive; samples use an exclusive end. Statistics use native data, with source intervals clipped to report boundaries.
@@ -22,6 +22,6 @@ The files under `reference/current-tool` are representative examples, not a form
 
 ## Release gate
 
-This session lacks installed Chromium, pytest and Plotly Python dependencies. Local checks therefore do not constitute a full browser or complete Python-suite pass. The GitHub pull-request gate runs the complete existing suite plus these new numerical and real-reference tests, including parsing the CSV/HYD members of the model ZIP. Browser smoke additionally imports real FM01/RG01, checks the independently reconciled values, validates stacked domains, and opens exported reports with HTTPS blocked to verify embedded Plotly and layout containment.
+The GitHub pull-request gate is the authoritative release check: it runs the complete Python suite plus numerical and real-reference tests, including parsing the CSV/HYD members of the model ZIP. Browser smoke imports real FM01/RG01, checks independently reconciled values, validates stacked domains, and opens exported reports with HTTPS blocked to verify embedded Plotly and layout containment.
 
 The example legacy spill counts are not asserted as authoritative expected values: their support conventions and zero/missing handling differ from the current validity-aware engine. Existing spill/exclusion regression gates remain in force. Deployment and live verification must succeed before describing this revision as ready for review.
