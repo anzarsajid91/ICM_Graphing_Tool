@@ -231,6 +231,8 @@ body.precision-workbench{
 .pw-route-verification-dwf #tab-compare>.panel>h3,
 .pw-route-verification-dwf #tab-compare>.panel>.table-wrap,
 .pw-route-verification-dwf #pwRatingPanel{display:none!important}
+.pw-route-verification-storage #tab-compare>.panel{display:none!important}
+.pw-route-verification-storage #tab-storage{display:block!important;visibility:visible!important}
 .pw-route-spills-thresholds #obsSpillSummary,
 .pw-route-spills-thresholds #modelSpillSummary,
 .pw-route-spills-thresholds #obsMonthly,
