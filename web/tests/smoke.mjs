@@ -729,6 +729,59 @@ try{
   const reportNavText=(await page.locator('.pw-secondary-nav').textContent())||'';
   if(/Provenance/i.test(reportNavText))throw new Error('Standalone provenance page should be removed from Report navigation.');
 
+  stage='uploaded current-tool FDV reference regression';
+  await precisionRoute('data','sources');
+  const referenceFdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv'));
+  const referenceRain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG01.R'));
+  const beforeReferenceFiles=await page.locator('#poolBody tr').count();
+  await page.setInputFiles('#fileInput',[
+    {name:'Reference_FM01.fdv',mimeType:'text/plain',buffer:referenceFdv},
+    {name:'Reference_RG01.R',mimeType:'text/plain',buffer:referenceRain},
+  ]);
+  await page.waitForFunction(expected=>document.querySelectorAll('#poolBody tr').length===expected,beforeReferenceFiles+2,{timeout:90000});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(r=>/Reference_(FM01|RG01)/.test(r.textContent)).every(r=>r.textContent.includes('Ready')),null,{timeout:90000});
+  await precisionRoute('data','series-mapping');
+  const referenceDepth=await optionValue('#observedSelect','Reference_FM01.fdv — depth');
+  const referenceRainKey=await optionValue('#rainSelect','Reference_RG01.R — rainfall');
+  if(!referenceDepth||!referenceRainKey)throw new Error('Uploaded current-tool FM01/RG01 reference series did not parse into mapping options');
+  await page.selectOption('#observedSelect',referenceDepth);
+  await page.selectOption('#modelSelect',[]);
+  await page.selectOption('#rainSelect',referenceRainKey);
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphMode==='fdv-multi-variable'&&window.__ICM_WORKBENCH__.lastGraphStatistics?.length===4,null,{timeout:90000});
+  await precisionRoute('data','time-series');
+  await page.fill('#graphObsThreshold','');
+  await page.waitForTimeout(500);
+  const referenceEvidence=await page.evaluate(()=>{
+    const stats=window.__ICM_WORKBENCH__.lastGraphStatistics||[];
+    const byQuantity=Object.fromEntries(stats.map(row=>[String(row.statistics?.quantity||'').toLowerCase(),row.statistics]));
+    const chart=document.querySelector('#timeChart'),table=chart.data.find(t=>t.type==='table');
+    return{
+      byQuantity,
+      pointCounts:window.__ICM_WORKBENCH__.lastGraphPointCounts,
+      order:window.__ICM_WORKBENCH__.lastPanelOrder,
+      colours:Object.fromEntries(chart.data.filter(t=>t.type!=='table'&&t.name).map(t=>[t.name,t.line?.color||null])),
+      tableHeader:(table?.header?.values||[]).map(v=>String(v).replace(/<[^>]+>/g,'')),
+      tableSeries:(table?.cells?.values?.[0]||[]).map(String),
+      tableTotals:(table?.cells?.values?.[5]||[]).map(String),
+      xRange:chart.layout.xaxis?.range,
+    };
+  });
+  const near=(actual,expected,tol=1e-6)=>Math.abs(Number(actual)-Number(expected))<=tol;
+  const rf=referenceEvidence.byQuantity.flow,rd=referenceEvidence.byQuantity.depth,rv=referenceEvidence.byQuantity.velocity,rr=referenceEvidence.byQuantity.rainfall;
+  if(!rf||!rd||!rv||!rr)throw new Error('Reference FM01/RG01 statistics quantities missing: '+JSON.stringify(referenceEvidence.byQuantity));
+  if(!near(rf.minimum,.039)||!near(rf.maximum,.769)||!near(rf.mean,.128931055,1e-8))throw new Error('Reference FM01 flow statistics mismatch: '+JSON.stringify(rf));
+  if(!near(rd.minimum,.113)||!near(rd.maximum,.47)||!near(rd.mean,.1882285105,1e-8))throw new Error('Reference FM01 depth statistics mismatch: '+JSON.stringify(rd));
+  if(!near(rv.minimum,.42)||!near(rv.maximum,1.48)||!near(rv.mean,.8804642627,1e-8))throw new Error('Reference FM01 velocity statistics mismatch: '+JSON.stringify(rv));
+  if(!near(rr.minimum,0)||!near(rr.maximum,66)||!near(rr.mean,.1264818213,1e-8)||!near(rr.total,85,1e-6))throw new Error('Reference RG01 rainfall statistics/total mismatch: '+JSON.stringify(rr));
+  if(JSON.stringify(referenceEvidence.order)!==JSON.stringify(['rainfall','flow','depth','velocity']))throw new Error('Reference FDV panel order mismatch: '+JSON.stringify(referenceEvidence.order));
+  if(referenceEvidence.colours['Observed flow']?.toLowerCase()!=='#1f77b4'||referenceEvidence.colours['Observed depth']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed velocity']?.toLowerCase()!=='#2ca02c'||referenceEvidence.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('Reference FDV colours mismatch: '+JSON.stringify(referenceEvidence.colours));
+  if(JSON.stringify(referenceEvidence.tableHeader)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('Reference Plotly statistics header mismatch: '+JSON.stringify(referenceEvidence.tableHeader));
+  if(!referenceEvidence.tableTotals.some(x=>/85(?:\.0+)? mm/.test(x)))throw new Error('Reference rainfall total 85 mm missing from Plotly statistics: '+JSON.stringify(referenceEvidence.tableTotals));
+  if(referenceEvidence.pointCounts?.observed?.raw!==20161||referenceEvidence.pointCounts?.rainfall?.raw!==20161)throw new Error('Reference full-period source counts mismatch: '+JSON.stringify(referenceEvidence.pointCounts));
+  if(!String(referenceEvidence.xRange?.[0]||'').startsWith('2026-02-01')||!String(referenceEvidence.xRange?.[1]||'').startsWith('2026-03-01'))throw new Error('Reference graph support mismatch: '+JSON.stringify(referenceEvidence.xRange));
+  await captureEvidence('01c-reference-fdv-graph');
+
   stage='simulated-series auxiliary column filtering';
   await page.setInputFiles('#fileInput',{name:'simulated-export.csv',mimeType:'text/csv',buffer:Buffer.from('timestamp,Seconds,Dummy Nodes\n2026-02-01T00:00:00,0,1.0\n2026-02-01T00:01:00,60,1.1\n')});
   await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(r=>r.textContent.includes('simulated-export.csv')&&r.textContent.includes('Ready')),null,{timeout:60000});
