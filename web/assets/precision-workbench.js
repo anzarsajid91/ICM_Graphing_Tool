@@ -61,6 +61,12 @@ const ROUTES={
 let current={workspace:'data',page:'sources'};
 let docked=[];
 let syncingLegacy=false;
+let focusPreference=null;
+const FOCUS_ROUTES=new Set(['data/time-series','verification/comparison','rainfall/events']);
+try{
+  const saved=sessionStorage.getItem('icm-pw-focus-canvas');
+  if(saved==='on'||saved==='off')focusPreference=saved==='on';
+}catch{}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function identifySubpanels(){
   qsa('#tab-compare .subpanel').forEach(panel=>{
@@ -85,7 +91,7 @@ function buildShell(){
   });
   const stage=document.createElement('div');stage.className='pw-stage';
   const context=document.createElement('section');context.className='pw-context';
-  context.innerHTML='<div class="pw-context-head"><div><div class="pw-breadcrumb"><span id="pwBreadcrumbWorkspace"></span><span>›</span><strong id="pwBreadcrumbPage"></strong></div><h2 class="pw-page-title" id="pwPageTitle"></h2><p class="pw-page-description" id="pwPageDescription"></p></div><div><button class="pw-rail-toggle" id="pwRailToggle" type="button">Menu</button> <button class="pw-inspector-toggle" id="pwInspectorToggle" type="button">Inspector</button></div></div><nav class="pw-secondary-nav" id="pwSecondaryNav" aria-label="Workspace pages"></nav><div class="pw-scopebar" id="pwScopebar" aria-label="Current analysis scope"></div>';
+  context.innerHTML='<div class="pw-context-head"><div><div class="pw-breadcrumb"><span id="pwBreadcrumbWorkspace"></span><span>›</span><strong id="pwBreadcrumbPage"></strong></div><h2 class="pw-page-title" id="pwPageTitle"></h2><p class="pw-page-description" id="pwPageDescription"></p></div><div class="pw-context-actions"><button class="pw-focus-toggle" id="pwFocusToggle" type="button" aria-pressed="false" hidden>Focus canvas</button><button class="pw-rail-toggle" id="pwRailToggle" type="button">Menu</button><button class="pw-inspector-toggle" id="pwInspectorToggle" type="button">Inspector</button></div></div><nav class="pw-secondary-nav" id="pwSecondaryNav" aria-label="Workspace pages"></nav><div class="pw-scopebar" id="pwScopebar" aria-label="Current analysis scope"></div>';
   const workarea=document.createElement('div');workarea.className='pw-workarea';
   const inspector=document.createElement('aside');inspector.className='pw-inspector';inspector.id='pwInspector';inspector.innerHTML='<div class="pw-inspector-head"><div><strong>Inspector</strong><span id="pwInspectorSubtitle">Context and settings</span></div><button class="pw-inspector-drawer-close" id="pwInspectorClose" type="button" aria-label="Close inspector">×</button></div><div class="pw-inspector-body" id="pwInspectorBody"></div>';
   const parent=topbar?.parentNode||document.body;
@@ -100,6 +106,12 @@ function buildShell(){
   $('pwRailToggle')?.addEventListener('click',()=>rail.classList.toggle('is-open'));
   $('pwInspectorToggle')?.addEventListener('click',()=>inspector.classList.add('is-open'));
   $('pwInspectorClose')?.addEventListener('click',()=>inspector.classList.remove('is-open'));
+  $('pwFocusToggle')?.addEventListener('click',()=>{
+    const next=!document.body.classList.contains('pw-focus-canvas');
+    focusPreference=next;
+    try{sessionStorage.setItem('icm-pw-focus-canvas',next?'on':'off');}catch{}
+    applyFocusCanvas(true);
+  });
   $('pwAssetSearch')?.addEventListener('input',renderAssets);
 }
 function createScenarioChecklist(){
@@ -199,9 +211,38 @@ function navigate(workspace,page,push=false){
   Object.entries(spec.pages).forEach(([key,entry])=>{const b=document.createElement('button');b.type='button';b.textContent=entry.label;b.setAttribute('aria-current',key===page?'page':'false');b.addEventListener('click',()=>navigate(workspace,key,true));sn.appendChild(b);});
   inspectorContext(p);refreshScope();renderAssets();
   qs('.pw-rail')?.classList.remove('is-open');qs('.pw-inspector')?.classList.remove('is-open');
+  applyFocusCanvas(false);
   if(push){const h='#/'+workspace+'/'+page;if(location.hash!==h)history.pushState(null,'',h);}
   document.title=p.title+' · ICM Precision Workbench';
-  window.dispatchEvent(new Event('resize'));
+  resizeVisuals();
+}
+function isFocusRoute(){
+  return FOCUS_ROUTES.has(current.workspace+'/'+current.page);
+}
+function resizeVisuals(){
+  requestAnimationFrame(()=>{
+    setTimeout(()=>{
+      qsa('.js-plotly-plot').forEach(chart=>{
+        try{window.Plotly?.Plots?.resize?.(chart);}catch{}
+      });
+      window.dispatchEvent(new Event('resize'));
+    },90);
+  });
+}
+function applyFocusCanvas(userInitiated=false){
+  const eligible=isFocusRoute();
+  const active=eligible&&(focusPreference===null?true:focusPreference);
+  document.body.classList.toggle('pw-focus-canvas',active);
+  const button=$('pwFocusToggle');
+  if(button){
+    button.hidden=!eligible;
+    button.setAttribute('aria-pressed',active?'true':'false');
+    button.textContent=active?'Standard layout':'Focus canvas';
+    button.title=active?'Restore the full navigation and docked inspector':'Maximise chart width; keep controls in an overlay inspector';
+  }
+  const inspector=$('pwInspector');
+  if(!active&&userInitiated)inspector?.classList.remove('is-open');
+  resizeVisuals();
 }
 function selectionLabel(id,fallback='—'){
   const el=$(id);if(!el)return fallback;
@@ -244,7 +285,7 @@ function wireContextUpdates(){
 function mount(){
   identifySubpanels();buildShell();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();
   const initial=parseHash()||{workspace:'data',page:'sources'};navigate(initial.workspace,initial.page,false);
-  window.__ICM_PRECISION_WORKBENCH__={version:1,navigate,route:()=>({...current}),routes:ROUTES};
+  window.__ICM_PRECISION_WORKBENCH__={version:2,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);}};
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
 })();
