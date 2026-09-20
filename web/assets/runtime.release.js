@@ -651,6 +651,7 @@ function graphStatisticsHtml(rows){
     return '<tr><td><strong>'+esc(label)+'</strong><br><small>'+esc(row.label||'')+'</small></td><td>'+esc(s.unit||'Unresolved')+'</td><td>'+value(scale(s.minimum))+'</td><td>'+value(scale(s.maximum))+'</td><td>'+value(scale(s.mean))+'</td><td>'+value(scale(s.time_weighted_mean))+'</td><td>'+value(scale(s.total))+(s.total!=null?' '+esc(s.total_unit||''):'')+'</td><td>'+value(Number(s.valid_support_seconds||0)/3600)+' h'+(s.coverage_fraction==null?'':' · '+fmt(s.coverage_fraction*100,1)+'%')+'</td><td>'+esc(s.status||'unavailable')+(s.unit?'':' · units unresolved')+'</td></tr>';
   }).join('')+'</tbody></table></div>';
 }
+let reportPlotlyBundle=null;
 function reportPlotFigure(id,traces,layout,statistics,caption=''){
   const payload=JSON.stringify({data:traces,layout:{...layout,autosize:true,width:undefined}}).replace(/</g,'\\u003c');
   const stats=statistics?.length?'<h3>Graph statistics</h3>'+graphStatisticsHtml(statistics):'';
