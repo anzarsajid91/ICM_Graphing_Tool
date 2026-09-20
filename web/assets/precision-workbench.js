@@ -201,7 +201,15 @@ function navigate(workspace,page,push=false){
   clearRouteClasses();document.body.classList.add(routeKey());
   qsa('.pw-route-visible').forEach(x=>x.classList.remove('pw-route-visible'));
   legacyTab(p.tab);
-  const root=p.root?.();if(root)root.classList.add('pw-route-visible');
+  const root=p.root?.();
+  if(root){
+    root.classList.add('pw-route-visible');
+    let ancestor=root.parentElement;
+    while(ancestor&&ancestor!==qs('main.shell')){
+      if(ancestor.classList.contains('tab-panel')||ancestor.classList.contains('embedded-workflow'))ancestor.classList.add('pw-route-visible');
+      ancestor=ancestor.parentElement;
+    }
+  }
   if(workspace==='report'&&page==='provenance'){
     const registry=$('domainRegistryPanel');if(registry){registry.open=true;registry.classList.add('pw-route-visible');}
   }
@@ -223,7 +231,12 @@ function resizeVisuals(){
   requestAnimationFrame(()=>{
     setTimeout(()=>{
       qsa('.js-plotly-plot').forEach(chart=>{
-        try{window.Plotly?.Plots?.resize?.(chart);}catch{}
+        const rect=chart.getBoundingClientRect();
+        if(!chart.isConnected||chart.offsetParent===null||rect.width<2||rect.height<2)return;
+        try{
+          const pending=window.Plotly?.Plots?.resize?.(chart);
+          if(pending&&typeof pending.catch==='function')pending.catch(()=>{});
+        }catch{}
       });
       window.dispatchEvent(new Event('resize'));
     },90);
