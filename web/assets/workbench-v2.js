@@ -258,6 +258,23 @@
     return peak > 0 ? peak * 1.12 : 1;
   }
 
+  function plottedTimestampRange(observedEntries,modelEntries,rainEntry){
+    let min=null,max=null;
+    const visit=data=>{
+      for(const value of data?.timestamp||[]){
+        if(value==null)continue;
+        const text=String(value);
+        if(!text||text==='null')continue;
+        if(min===null||text<min)min=text;
+        if(max===null||text>max)max=text;
+      }
+    };
+    observedEntries.forEach(x=>visit(x.source?.data));
+    modelEntries.forEach(x=>visit(x.source?.data));
+    if(rainEntry)visit(rainEntry.source?.data);
+    return min&&max&&min<max?[min,max]:null;
+  }
+
   function statisticValue(value, unit='') {
     if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
     return `${fmt(Number(value),3)}${unit ? ` ${unit}` : ''}`;
@@ -280,7 +297,7 @@
       '<div><span>Total rain depth</span><strong>'+esc(rainText)+'</strong></div>'+
       '<div><span>Flow volume</span><strong>'+esc(flowText)+'</strong></div>'+
       '</div><div class="table-wrap"><table class="data-table v2-stats-table compact"><thead><tr><th>Series</th><th>Unit</th><th>Minimum</th><th>Mean</th><th>Maximum</th><th>Total</th></tr></thead><tbody>'+
-      rows.map(row=>{const s=row.statistics||{},factor=row.factor||1,scale=v=>v==null?v:Number(v)*factor,total=scale(s.total);return '<tr><td><strong>'+esc(row.compact_label||row.role||'Series')+'</strong></td><td>'+esc(s.unit||'—')+'</td><td>'+statisticValue(scale(s.minimum))+'</td><td>'+statisticValue(scale(s.time_weighted_mean??s.mean))+'</td><td>'+statisticValue(scale(s.maximum))+'</td><td>'+(total==null?'—':statisticValue(total,s.total_unit||''))+'</td></tr>';}).join('')+
+      rows.map(row=>{const s=row.statistics||{},factor=row.factor||1,scale=v=>v==null?v:Number(v)*factor,total=scale(s.total),quantity=String(s.quantity||'').toLowerCase(),displayUnit=s.unit||(quantity==='rainfall'?'mm/h':quantity==='flow'?'m³/s':quantity==='depth'?'m':quantity==='velocity'?'m/s':'—');return '<tr><td><strong>'+esc(row.compact_label||row.role||'Series')+'</strong></td><td>'+esc(displayUnit)+'</td><td>'+statisticValue(scale(s.minimum))+'</td><td>'+statisticValue(scale(s.time_weighted_mean??s.mean))+'</td><td>'+statisticValue(scale(s.maximum))+'</td><td>'+(total==null?'—':statisticValue(total,s.total_unit||''))+'</td></tr>';}).join('')+
       '</tbody></table></div>';
     window.__ICM_WORKBENCH__.lastGraphStatistics=rows;
   }
@@ -345,8 +362,8 @@
         if(rainEntry)addStat('Rainfall',rainEntry.source,rainEntry.factor);
       }
 
-      const primary=observedEntries[0]?.source;
-      const displayRange=range?.length===2?range:(primary?.item?.parsed?.start&&primary?.item?.parsed?.end?[primary.item.parsed.start,primary.item.parsed.end]:null);
+      const plottedRange=plottedTimestampRange(observedEntries,modelEntries,rainEntry);
+      const displayRange=range?.length===2?range:plottedRange;
       const traceType=data=>Number(data?.display_count||0)>8000?'scattergl':'scatter';
       const colourFor=q=>q==='flow'?($('observedFlowColour')?.value||'#008b95'):q==='depth'?($('observedDepthColour')?.value||$('obsColor').value):q==='velocity'?($('observedVelocityColour')?.value||'#2e8b57'):$('obsColor').value;
       const observedThreshold=nullableNumber($('graphObsThreshold')?.value ?? $('obsThreshold').value);
@@ -370,14 +387,14 @@
           margin:{l:92,r:34,t:104,b:76},
           hovermode:'x unified',
           legend:{orientation:'h',y:1.09,x:0,xanchor:'left',yanchor:'bottom',font:{size:11},traceorder:'normal'},
-          xaxis:{title:{text:'Time',standoff:10},autorange:!range,showgrid:false,zeroline:false,anchor:'free',position:0,side:'bottom',rangeslider:{visible:false},automargin:true},
+          xaxis:{title:{text:'Time',standoff:10},autorange:!displayRange,showgrid:false,zeroline:false,anchor:'free',position:0,side:'bottom',rangeslider:{visible:false},automargin:true},
           annotations:panelAnnotations,
           uirevision:'icm-fdv-stacked-v2',
           bargap:0,
           paper_bgcolor:'#ffffff',
           plot_bgcolor:'#ffffff'
         };
-        if(range?.length===2){layout.xaxis.range=range;layout.xaxis.autorange=false;}
+        if(displayRange?.length===2){layout.xaxis.range=displayRange;layout.xaxis.autorange=false;}
         let top=1;
         panelOrder.forEach((panel,index)=>{
           const share=panel==='rainfall'?rainShare:hydraulicShare;
@@ -480,12 +497,12 @@
         layout={
           template:'plotly_white',height:690,margin:{l:72,r:68,t:112,b:58},hovermode:'x unified',
           legend:{orientation:'h',y:1.16,x:0,xanchor:'left',yanchor:'bottom',font:{size:11},traceorder:'normal',itemwidth:38},
-          xaxis:{title:'Time',autorange:!range,showgrid:false,rangeslider:{visible:false}},
+          xaxis:{title:'Time',autorange:!displayRange,showgrid:false,rangeslider:{visible:false}},
           yaxis:{title:obs?.source?.col||'Value',domain:hydraulicDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zerolinecolor:'#d9e2ea',automargin:true},
           shapes:v2GraphShapes(singleDepthGraph?'y':null,{showObserved:showObservedDepthThreshold,showModel:showModelDepthThreshold}),
           annotations:v2GraphAnnotations(),uirevision:'icm-main-v5',bargap:0
         };
-        if(range?.length===2){layout.xaxis.range=range;layout.xaxis.autorange=false;}
+        if(displayRange?.length===2){layout.xaxis.range=displayRange;layout.xaxis.autorange=false;}
         if(rainEntry)layout.yaxis2={title:'Rainfall',domain:[.79,1],anchor:'x',side:'right',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true};
         panelOrder=[...(rainEntry?['rainfall']:[]),'hydraulic'];
         window.__ICM_WORKBENCH__.lastPanelDomains=null;
