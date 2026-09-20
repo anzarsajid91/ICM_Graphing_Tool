@@ -22,7 +22,7 @@ try{
   // Refinement acceptance: shared legacy tabs must expose only the surface owned by the selected route.
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','flow-continuity',false));
   const continuityComposition=await page.evaluate(()=>{
-    const visible=el=>Boolean(el)&&getComputedStyle(el).display!=='none'&&!el.hidden;
+    const visible=el=>Boolean(el)&&!el.hidden&&el.getClientRects().length>0;
     return{
       balance:visible(document.querySelector('#surveyBalancePanel')),
       completeSurvey:visible(document.querySelector('#completeSurveyPanel')),
