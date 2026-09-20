@@ -599,8 +599,14 @@ function reportMappingTable(w){
 }
 function graphStatisticsHtml(rows){
   if(!rows||!rows.length)return '<p class="muted">No graph statistics available.</p>';
-  const value=(v)=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),3);
-  return '<div class="table-wrap"><table class="graph-stats-compact"><thead><tr><th>Series</th><th>Unit</th><th>Minimum</th><th>Mean</th><th>Maximum</th></tr></thead><tbody>'+rows.map(row=>{const s=row.statistics||{},factor=row.factor||1,scale=v=>v==null?v:Number(v)*factor;return '<tr><td><strong>'+esc(row.compact_label||row.role||'Series')+'</strong></td><td>'+esc(s.unit||'—')+'</td><td>'+value(scale(s.minimum))+'</td><td>'+value(scale(s.time_weighted_mean==null?s.mean:s.time_weighted_mean))+'</td><td>'+value(scale(s.maximum))+'</td></tr>';}).join('')+'</tbody></table></div>';
+  const value=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),3);
+  const rowValues=rows.map(row=>{
+    const s=row.statistics||{},factor=row.factor||1,scale=v=>v==null?v:Number(v)*factor,quantity=String(s.quantity||'').toLowerCase();
+    const unit=s.unit||(quantity==='rainfall'?'mm/h':quantity==='flow'?'m³/s':quantity==='depth'?'m':quantity==='velocity'?'m/s':'—');
+    const total=scale(s.total);
+    return [row.compact_label||row.role||'Series',unit,value(scale(s.minimum)),value(scale(s.maximum)),value(scale(s.time_weighted_mean??s.mean)),total==null?'—':value(total)+(s.total_unit?' '+s.total_unit:'')];
+  });
+  return '<div class="table-wrap"><table class="graph-stats-compact"><thead><tr><th>Series</th><th>Unit</th><th>Min</th><th>Max</th><th>Average</th><th>Total</th></tr></thead><tbody>'+rowValues.map(r=>'<tr>'+r.map((v,i)=>'<td'+(i===0?' class="left"':'')+'>'+esc(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
 }
 function reportSettingsTable(w){
   const a=w.analysis||{};
@@ -622,6 +628,38 @@ function reportYearlySpills(r){
   if(!rows.length)return '<p class="muted">No yearly spill rows.</p>';
   return '<div class="table-wrap"><table><thead><tr><th>Year</th><th>12/24 count</th><th>Duration h</th><th>Valid h</th><th>Unknown h</th><th>Excluded h</th><th>Status</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.year)+'</td><td>'+fmt(x.spill_count,0)+'</td><td>'+fmt(x.duration_hours,2)+'</td><td>'+fmt(x.valid_hours,2)+'</td><td>'+fmt(x.unknown_hours,2)+'</td><td>'+fmt(x.excluded_hours,2)+'</td><td>'+esc(x.count_status||'—')+'</td></tr>').join('')+'</tbody></table></div>';
 }
+const REPORT_MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function reportSpillCountMatrix(result){
+  if(!result)return '<p class="muted">Not calculated.</p>';
+  const counts=new Map((result.monthly_counts||[]).map(x=>[`${Number(x.year)}-${Number(x.month)}`,x.spill_count]));
+  const yearly=new Map((result.yearly_summary||[]).map(x=>[Number(x.year),x]));
+  const years=[...yearly.keys()].sort((a,b)=>a-b);
+  if(!years.length)return '<p class="muted">No assessed calendar years.</p>';
+  const rows=years.map(year=>{
+    const yr=yearly.get(year)||{},unavailable=yr.count_status==='unavailable';
+    const months=REPORT_MONTHS.map((_,i)=>unavailable?'—':fmt(counts.get(`${year}-${i+1}`)??0,0));
+    const total=yr.spill_count==null?'—':fmt(yr.spill_count,0);
+    return '<tr><th>'+year+'</th>'+months.map(v=>'<td>'+v+'</td>').join('')+'<td><strong>'+total+'</strong></td></tr>';
+  }).join('');
+  return '<div class="table-wrap"><table class="spill-matrix"><thead><tr><th>Year</th>'+REPORT_MONTHS.map(m=>'<th>'+m+'</th>').join('')+'<th>Total</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<p class="muted">Count status: '+esc(result.count_status||result.status||'unknown')+'. Counts use the configured 12/24 methodology and current exclusion/coverage domain.</p>';
+}
+function reportMonthlySpillComparison(observed,modelled){
+  if(!observed||!modelled)return '<p class="muted">Calculate both observed and modelled spills to compare monthly counts.</p>';
+  if(observed.count_status!=='definitive'||modelled.count_status!=='definitive'){
+    return '<div class="note"><strong>Monthly comparison withheld.</strong> One or both count domains are provisional because of excluded or unknown support. Resolve the support issue before interpreting count differences.</div>';
+  }
+  const om=new Map((observed.monthly_counts||[]).map(x=>[`${Number(x.year)}-${Number(x.month)}`,Number(x.spill_count||0)]));
+  const mm=new Map((modelled.monthly_counts||[]).map(x=>[`${Number(x.year)}-${Number(x.month)}`,Number(x.spill_count||0)]));
+  const years=[...new Set([...(observed.yearly_summary||[]).map(x=>Number(x.year)),...(modelled.yearly_summary||[]).map(x=>Number(x.year))])].sort((a,b)=>a-b);
+  const rows=[];
+  for(const year of years)for(let month=1;month<=12;month++){
+    const o=om.get(`${year}-${month}`)||0,m=mm.get(`${year}-${month}`)||0,d=m-o;
+    const assessment=d===0?'Matching':d<0?'Under-predicting':'Over-predicting';
+    rows.push('<tr><td>'+year+'</td><td>'+REPORT_MONTHS[month-1]+'</td><td>'+o+'</td><td>'+m+'</td><td>'+d+'</td><td>'+assessment+'</td></tr>');
+  }
+  return '<div class="table-wrap"><table><thead><tr><th>Year</th><th>Month</th><th>Observed spills</th><th>Modelled spills</th><th>Difference</th><th>Assessment</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>';
+}
 async function reportChart(id,width,height){try{return await Plotly.toImage($(id),{format:'svg',width:width,height:height});}catch{return'';}}
 function reportProjectRegistry(){
   const registry=window.ICMProjectRegistry?.snapshot();
@@ -640,7 +678,7 @@ function reportProjectRegistry(){
 async function downloadReport(){
   assertFreshResults();
   if(!state.mapping.observed)throw new Error('Apply a mapping before exporting the report.');
-  const images=await Promise.all([reportChart('timeChart',1400,650),reportChart('scatterChart',680,440),reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440)]);
+  const images=await Promise.all([reportChart('timeChart',1400,1005),reportChart('scatterChart',680,440),reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440)]);
   const timeImg=images[0],scatterImg=images[1],residImg=images[2],cumulativeImg=images[3],exceedanceImg=images[4];
   const w=state.spillSnapshot&&state.spillSnapshot.config||state.comparisonSnapshot&&state.comparisonSnapshot.config||workspaceObject();
   const scenarioRows=state.comparisons.map((x,i)=>x.result?'<tr><td>Model '+(i+1)+' · '+esc(x.model.item.displayName)+' · '+esc(x.model.col)+'</td><td>'+(x.result.metrics.pairs==null?'—':x.result.metrics.pairs)+'</td><td>'+fmt(x.result.metrics.rmse)+'</td><td>'+fmt(x.result.metrics.mae)+'</td><td>'+fmt(x.result.metrics.mean_bias)+'</td><td>'+fmt(x.result.metrics.r2_correlation)+'</td><td>'+fmt(x.result.metrics.nse)+'</td><td>'+esc(x.result.calculation_status||'—')+'</td><td>'+(x.result.coverage_fraction==null?'—':fmt(x.result.coverage_fraction*100,1)+'%')+'</td></tr>':'').join('');
@@ -648,7 +686,6 @@ async function downloadReport(){
   let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints.</div>';
   body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
   if(timeImg)body+='<figure class="figure"><img src="'+timeImg+'" alt="Hydraulic time-series graph"><figcaption>Observed, modelled and rainfall time-series for the current mapped assessment.</figcaption></figure>';
-  body+='<h3>Graph statistics</h3>'+graphStatisticsHtml(window.__ICM_WORKBENCH__.lastGraphStatistics||[]);
   body+='<h2>Scenario comparison</h2>'+scenarioTable;
   if(window.__ICM_WORKBENCH__.professionalSurveyReportHtml)body+=window.__ICM_WORKBENCH__.professionalSurveyReportHtml;
   const diag=[];
@@ -658,6 +695,9 @@ async function downloadReport(){
   if(exceedanceImg)diag.push('<figure class="figure"><img src="'+exceedanceImg+'" alt="Flow duration plot"><figcaption>Time-weighted exceedance diagnostic where available.</figcaption></figure>');
   if(diag.length)body+='<div class="report-grid">'+diag.join('')+'</div>';
   body+='<h2>Spill / EDM assessment</h2><div class="report-grid"><div class="card"><h3>Observed / EDM</h3>'+spillSummaryHtml(state.spills.observed)+reportYearlySpills(state.spills.observed)+'</div><div class="card"><h3>Modelled</h3>'+spillSummaryHtml(state.spills.model)+reportYearlySpills(state.spills.model)+'</div></div>';
+  body+='<h3>Observed spills by month</h3>'+reportSpillCountMatrix(state.spills.observed);
+  body+='<h3>Model spills by month</h3>'+reportSpillCountMatrix(state.spills.model);
+  body+='<h3>Observed vs modelled monthly spill comparison</h3>'+reportMonthlySpillComparison(state.spills.observed,state.spills.modelled||state.spills.model);
   body+='<h2>Exclusions</h2>'+reportExclusions(w);
   const notes=$('reviewNotes')&&$('reviewNotes').value||'';
   body+='<h2>Reviewer notes</h2><div class="card">'+(notes?'<p>'+esc(notes).replaceAll('\n','<br>')+'</p>':'<p class="muted">No reviewer notes recorded.</p>')+'</div>';
@@ -717,26 +757,29 @@ async function downloadFourPeriod(){
   assertFreshResults();
   const year=Number($('reportYear').value);
   if(!year)throw new Error('Enter the report year.');
-  const periods=[['Complete year',year+'-01-01T00:00:00',(year+1)+'-01-01T00:00:00'],['January – April',year+'-01-01T00:00:00',year+'-05-01T00:00:00'],['May – August',year+'-05-01T00:00:00',year+'-09-01T00:00:00'],['September – December',year+'-09-01T00:00:00',(year+1)+'-01-01T00:00:00']];
-  const images=[],holder=document.createElement('div');
-  holder.style='position:fixed;left:-10000px;top:0;width:1400px;height:760px';
-  document.body.appendChild(holder);
+  if(!window.ICMGraph?.draw)throw new Error('Authoritative graph renderer is unavailable.');
+  const periods=[
+    ['Complete year',year+'-01-01T00:00:00',(year+1)+'-01-01T00:00:00'],
+    ['January – April',year+'-01-01T00:00:00',year+'-05-01T00:00:00'],
+    ['May – August',year+'-05-01T00:00:00',year+'-09-01T00:00:00'],
+    ['September – December',year+'-09-01T00:00:00',(year+1)+'-01-01T00:00:00'],
+  ];
+  const chart=$('timeChart');
+  const originalRange=window.__ICM_WORKBENCH__.lastGraphRange;
+  const originalHeight=Number(chart?.layout?.height)||850;
+  const originalTitle=chart?.layout?.title?.text||null;
+  const images=[];
   try{
-    for(const p of periods){
-      const title=p[0],a=p[1],b=p[2],result=await reportTraces([a,b]);
-      const hydDomain=result.hasRain?[0,.70]:[0,1],extraAxes=result.fdvMode&&(result.quantities.includes('flow')||result.quantities.includes('velocity'));
-      const layout={template:'plotly_white',title:{text:year+' — '+title,x:.01,xanchor:'left',font:{size:20}},height:760,margin:{l:75,r:extraAxes?145:85,t:112,b:72},xaxis:{range:[a,b],domain:extraAxes?[0,.90]:[0,1],title:'Time',showgrid:false,automargin:true},yaxis:{title:result.fdvMode?'Depth (m)':(result.hydraulicTitle||'Hydraulic value'),domain:hydDomain,showgrid:true,gridcolor:'#e7edf2',automargin:true},legend:{orientation:'h',x:0,y:1.12,xanchor:'left',yanchor:'bottom',font:{size:11},traceorder:'normal'},bargap:0};
-      if(result.fdvMode&&result.quantities.includes('flow'))layout.yaxis3={title:'Flow (m³/s)',domain:hydDomain,overlaying:'y',side:'right',anchor:'x',showgrid:false,zeroline:false,automargin:true};
-      if(result.fdvMode&&result.quantities.includes('velocity'))layout.yaxis4={title:'Velocity (m/s)',domain:hydDomain,overlaying:'y',side:'right',anchor:'free',position:.985,showgrid:false,zeroline:false,automargin:true};
-      if(result.hasRain)layout.yaxis2={title:'Rainfall',domain:[.80,1],anchor:'x',side:'right',range:[result.rainMax,0],showgrid:false,zeroline:false,automargin:true};
-      await Plotly.newPlot(holder,result.traces,layout,{staticPlot:true,displaylogo:false,responsive:false});
-      images.push([title,a,b,await Plotly.toImage(holder,{format:'svg',width:1400,height:760}),result.statistics]);
-      Plotly.purge(holder);
+    for(const [label,a,b] of periods){
+      await window.ICMGraph.draw([a,b],{title:'Observed vs Simulated — '+label,height:1005});
+      images.push([label,a,b,await Plotly.toImage(chart,{format:'svg',width:1400,height:1005})]);
     }
-  }finally{Plotly.purge(holder);holder.remove();}
+  }finally{
+    await window.ICMGraph.draw(originalRange,{title:originalTitle||undefined,height:originalHeight});
+  }
   const w=workspaceObject();
-  let body='<div class="note"><strong>Four-period graph report.</strong> The complete year and three fixed four-month windows use the same mapped series, trace colours and source data. Graphs are rendered at report resolution with a compact legend and a separate rainfall band.</div><h2>Series key</h2>'+reportMappingTable(w);
-  body+=images.map(x=>'<section class="report-page"><h2>'+esc(x[0])+'</h2><p class="muted">'+esc(x[1].replace('T',' '))+' to '+esc(x[2].replace('T',' '))+' · end exclusive</p><figure class="figure"><img src="'+x[3]+'" alt="'+esc(x[0])+' time-series graph"><figcaption>Hydraulic traces use the lower panel. Rainfall, where mapped, uses a separate reversed upper band to preserve readability.</figcaption></figure><h3>Period statistics</h3>'+graphStatisticsHtml(x[4])+'</section>').join('');
+  let body='<div class="note"><strong>Four-period graph report.</strong> Complete year and fixed four-month windows use the same authoritative Plotly composition as the online graph: rainfall/hydraulic panels, colours, depth-only thresholds and integrated statistics.</div><h2>Series key</h2>'+reportMappingTable(w);
+  body+=images.map(x=>'<section class="report-page"><h2>'+esc(x[0])+'</h2><p class="muted">'+esc(x[1].replace('T',' '))+' to '+esc(x[2].replace('T',' '))+' · end boundary</p><figure class="figure"><img src="'+x[3]+'" alt="'+esc(x[0])+' time-series graph"><figcaption>Reference-aligned Plotly composition with integrated statistics; calculations remain native-resolution.</figcaption></figure></section>').join('');
   const html=reportShell('ICM Graphing Tool — '+year+' Four-Period Report','Annual hydraulic time-series review',body,true);
   downloadBlob('icm-'+year+'-four-period-report.html',html,'text/html');
   $('workspaceStatus').textContent='Professional four-period HTML report downloaded.';
