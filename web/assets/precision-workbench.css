@@ -168,6 +168,11 @@ body.precision-workbench{
 .pw-inspector-head span{display:block;color:var(--pw-muted);font-size:12px;line-height:18px;margin-top:2px}
 .pw-inspector-body{padding:14px;display:grid;gap:12px}
 .pw-inspector .appearance-panel{margin:0;border:0;padding:0}
+.pw-inspector .v2-graph-toolbar{grid-template-columns:minmax(0,1fr);width:100%;max-width:100%;min-width:0;margin:0}
+.pw-inspector .v2-graph-toolbar>*{min-width:0}
+.pw-inspector .v2-threshold-control{grid-template-columns:minmax(0,1fr) auto;min-width:0}
+.pw-inspector .v2-density{grid-column:auto;border-left:0;border-top:2px solid #b9d6ed;min-width:0;overflow-wrap:anywhere}
+.pw-inspector #sharedAnalysisPanel,.pw-inspector #sharedAnalysisPanel>*{max-width:100%;min-width:0}
 .pw-inspector .appearance-panel>summary{font-size:12px}
 .pw-inspector .mapping-grid{grid-template-columns:1fr}
 .pw-inspector .actions{flex-wrap:wrap}
