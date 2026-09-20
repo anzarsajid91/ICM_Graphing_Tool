@@ -29,14 +29,31 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SITE_URL: https://anzarsajid91.github.io/ICM_Graphing_Tool/
-      TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      WORKFLOW_TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || '' }}
       ICM_FAILURE_SCREENSHOT: /tmp/icm-live-pages-failure.png
 
     steps:
+      - name: Resolve deployed revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="$WORKFLOW_TARGET_SHA"
+          if [ -z "$target" ]; then
+            body="$(curl -fsSL --retry 3 --retry-delay 2 "${SITE_URL}build.json?resolve=${GITHUB_RUN_ID}")"
+            target="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("commit", ""))')"
+            if ! [[ "$target" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Live build metadata did not expose a valid deployed commit"
+              exit 1
+            fi
+            printf '%s\n' "$body" > /tmp/live-build.json
+          fi
+          echo "TARGET_SHA=$target" >> "$GITHUB_ENV"
+          echo "Resolved live verification target: $target"
+
       - name: Check out the deployed revision
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ env.TARGET_SHA }}
 
       - uses: actions/setup-node@v6
         with:
