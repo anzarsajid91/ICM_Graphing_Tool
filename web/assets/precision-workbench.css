@@ -103,6 +103,12 @@ body.precision-workbench{
 .precision-workbench .shell>.tab-panel,
 .precision-workbench #domainRegistryPanel{display:none!important}
 .precision-workbench .pw-route-visible{display:block!important}
+.precision-workbench .shell>.panel.pw-route-visible,
+.precision-workbench .shell>.tab-panel.pw-route-visible,
+.precision-workbench #domainRegistryPanel.pw-route-visible{display:block!important;visibility:visible!important}
+.precision-workbench .shell>#v2GraphToolbar,
+.precision-workbench .shell>#workflowGuide,
+.precision-workbench .shell>#sharedAnalysisPanel{display:none!important}
 .precision-workbench .tab-panel.pw-route-visible{visibility:visible!important}
 .precision-workbench .tab-panel.pw-route-visible>.panel{display:block!important}
 .precision-workbench .panel{
