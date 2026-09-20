@@ -269,7 +269,7 @@
           x:obs.data.timestamp,y:obs.data.value,
           name:fdvMode?`Observed ${quantity||obs.col}`:`Observed · ${obs.col}`,
           mode:'lines',connectgaps:false,
-          line:{color:quantityColours[quantity]||$('obsColor').value,width:fdvMode?1.45:1.7},
+          line:{color:fdvMode?(quantityColours[quantity]||$('obsColor').value):$('obsColor').value,width:fdvMode?1.45:1.7},
           yaxis:axisFor(quantity),
           hovertemplate:`%{x}<br>${esc(quantity||obs.col)} %{y:.4g}<extra></extra>`,
         });
