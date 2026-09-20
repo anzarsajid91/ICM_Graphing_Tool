@@ -231,7 +231,12 @@ try{
   await page.click('#pwInspectorClose');
   await page.waitForFunction(()=>!document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(false));
-  await page.fill('#graphObsThreshold','1.5');
+  const nonDepthThresholdControls=await page.evaluate(()=>({
+    observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
+    modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
+  }));
+  if(nonDepthThresholdControls.observedHidden!==true||nonDepthThresholdControls.modelHidden!==true)throw new Error('Threshold controls must be hidden when no depth series is mapped: '+JSON.stringify(nonDepthThresholdControls));
+  await page.evaluate(()=>{const input=document.querySelector('#graphObsThreshold');input.value='1.5';input.dispatchEvent(new Event('input',{bubbles:true}));});
   await page.waitForTimeout(450);
   const nonDepthThresholdPresentation=await page.evaluate(()=>{
     const chart=document.querySelector('#timeChart');
@@ -288,6 +293,11 @@ try{
   await page.selectOption('#rainSelect',rain);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'));
+  const depthThresholdControls=await page.evaluate(()=>({
+    observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
+    modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
+  }));
+  if(depthThresholdControls.observedHidden||depthThresholdControls.modelHidden)throw new Error('Observed and model depth-threshold controls should be available for a depth-vs-depth mapping: '+JSON.stringify(depthThresholdControls));
   if(await page.locator('#modelPickerTrigger').count()!==1)throw new Error('Model series must use a compact checkbox dropdown trigger');
   await page.click('#modelPickerTrigger');
   if(await page.locator('#modelPickerPopover input[type="search"]').count()!==1)throw new Error('Model dropdown search field missing');
@@ -471,6 +481,11 @@ try{
   await page.selectOption('#rainSelect',fmRain);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphMode==='fdv-multi-variable',null,{timeout:60000});
+  const fdvThresholdControls=await page.evaluate(()=>({
+    observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
+    modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
+  }));
+  if(fdvThresholdControls.observedHidden!==false||fdvThresholdControls.modelHidden!==true)throw new Error('Observed-only FDV graph must expose only the observed depth-threshold control: '+JSON.stringify(fdvThresholdControls));
   const fdvGraph=await page.evaluate(()=>{
     const chart=document.querySelector('#timeChart');
     const axes=Object.entries(chart.layout).filter(([k])=>/^yaxis\d*$/.test(k)).map(([key,a])=>({key,title:a.title?.text||a.title||'',domain:a.domain,overlaying:a.overlaying,range:a.range}));
