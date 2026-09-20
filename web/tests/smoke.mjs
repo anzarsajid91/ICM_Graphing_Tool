@@ -46,11 +46,37 @@ async function captureEvidence(name){
 }
 async function inspectReportHtml(html,minFigures=1){
   const p=await context.newPage();
+  const reportErrors=[],reportFailedRequests=[];
+  p.on('pageerror',e=>reportErrors.push(`pageerror: ${String(e)}`));
+  p.on('console',m=>{if(m.type()==='error')reportErrors.push(`console: ${m.text()}`);});
+  p.on('requestfailed',r=>reportFailedRequests.push(`${r.method()} ${r.url()} :: ${r.failure()?.errorText||'failed'}`));
   try{
+    const dir=process.env.ICM_EVIDENCE_DIR;
+    if(dir){
+      await fs.mkdir(dir,{recursive:true});
+      await fs.writeFile(path.join(dir,`report-${minFigures}-figures.html`),html,'utf8');
+    }
     await p.route('https://**/*',route=>route.abort());
     await p.setContent(html,{waitUntil:'domcontentloaded'});
     await p.waitForFunction(()=>[...document.images].every(x=>x.complete),null,{timeout:30000});
-    await p.waitForFunction(()=>[...document.querySelectorAll('.report-plot')].every(el=>el._fullLayout&&el.querySelector('.main-svg')),null,{timeout:60000});
+    try{
+      await p.waitForFunction(()=>[...document.querySelectorAll('.report-plot')].every(el=>el._fullLayout&&el.querySelector('.main-svg')),null,{timeout:60000});
+    }catch(error){
+      const plotState=await p.evaluate(()=>({
+        readyState:document.readyState,
+        plotlyType:typeof window.Plotly,
+        plots:[...document.querySelectorAll('.report-plot')].map(el=>({
+          id:el.id,
+          width:el.getBoundingClientRect().width,
+          height:el.getBoundingClientRect().height,
+          fullLayout:Boolean(el._fullLayout),
+          svg:Boolean(el.querySelector('.main-svg')),
+          text:el.textContent?.slice(0,240)||'',
+          payload:Boolean(document.getElementById(el.id+'-data')),
+        })),
+      }));
+      throw new Error(`Offline report Plotly render failed: ${JSON.stringify({plotState,reportErrors,reportFailedRequests,cause:String(error)})}`);
+    }
     const result=await p.evaluate((minFigures)=>{
       const root=document.documentElement;
       const figures=[...document.querySelectorAll('.figure img,.figure .report-plot')];
@@ -64,11 +90,7 @@ async function inspectReportHtml(html,minFigures=1){
         minFigures,
       };
     },minFigures);
-    const dir=process.env.ICM_EVIDENCE_DIR;
-    if(dir){
-      await fs.mkdir(dir,{recursive:true});
-      await p.screenshot({path:path.join(dir,`report-${minFigures}-figures.png`),fullPage:true});
-    }
+    if(dir)await p.screenshot({path:path.join(dir,`report-${minFigures}-figures.png`),fullPage:true});
     return result;
   }finally{await p.close();}
 }
