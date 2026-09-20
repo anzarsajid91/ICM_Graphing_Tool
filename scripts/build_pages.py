@@ -25,13 +25,13 @@ def _inject_v2_assets(build_token: str) -> None:
     html = index.read_text(encoding="utf-8")
     html = html.replace(
         '<link rel="stylesheet" href="assets/app.css" />',
-        '<link rel="stylesheet" href="assets/app.css" />\n  <link rel="stylesheet" href="assets/workbench-v2.css" />\n  <link rel="stylesheet" href="assets/workbench-survey.css" />',
+        '<link rel="stylesheet" href="assets/app.css" />\n  <link rel="stylesheet" href="assets/workbench-v2.css" />\n  <link rel="stylesheet" href="assets/workbench-survey.css" />\n  <link rel="stylesheet" href="assets/precision-workbench.css" />',
     )
     html = html.replace(
         '<script type="module" src="assets/runtime.js"></script>',
-        '<script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>\n  <script src="assets/workbench-survey.js"></script>',
+        '<script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>\n  <script src="assets/workbench-survey.js"></script>\n  <script src="assets/precision-workbench.js"></script>',
     )
-    required = ["domain-registry.js", "workbench-v2.css", "workbench-v2.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "xlsx@0.18.5"]
+    required = ["domain-registry.js", "workbench-v2.css", "workbench-v2.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "precision-workbench.css", "precision-workbench.js", "xlsx@0.18.5"]
     if not all(name in html for name in required):
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
 
@@ -42,12 +42,14 @@ def _inject_v2_assets(build_token: str) -> None:
         "assets/app.css",
         "assets/workbench-v2.css",
         "assets/workbench-survey.css",
+        "assets/precision-workbench.css",
         "assets/domain-registry.js",
         "assets/runtime.js",
         "assets/workbench-v2.js",
         "assets/workbench-v2-domfix.js",
         "assets/workbench-v3.js",
         "assets/workbench-survey.js",
+        "assets/precision-workbench.js",
     ]
     for asset in local_assets:
         html = html.replace(f'"{asset}"', f'"{asset}?v={build_token}"')

@@ -33,7 +33,7 @@ const recognised = (name) => { const n=String(name||'').toLowerCase(); return n.
 const esc = (s) => String(s ?? '').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]));
 const fmt = (v,digits=4) => (v===null||v===undefined||Number.isNaN(Number(v)))?'—':Number(v).toLocaleString(undefined,{maximumFractionDigits:digits});
 const mb = (n) => `${(Number(n||0)/1048576).toFixed(2)} MB`;
-const palette=['#2547b8','#ef7d00','#2e8b57','#7c4dff','#c43d6f','#008b95','#7a5c00','#5b6d7e'];
+const palette=['#5755d9','#ef7d00','#2e8b57','#7c4dff','#c43d6f','#008b95','#7a5c00','#5b6d7e'];
 const nullableNumber=(v)=>v===''?null:Number(v);
 const sourceKey=(id,col)=>JSON.stringify([id,col]);
 const parseSourceKey=(v)=>{try{return JSON.parse(v)}catch{return['','']}};
