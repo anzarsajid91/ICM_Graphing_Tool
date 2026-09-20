@@ -206,6 +206,19 @@ try{
 
   stage='graph threshold controls and rainfall top band';
   await precisionRoute('data','time-series');
+  const focusLayout=await page.evaluate(()=>({
+    focus:document.body.classList.contains('pw-focus-canvas'),
+    rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
+    work:document.querySelector('.pw-workarea')?.getBoundingClientRect().width||0,
+    inspectorPosition:getComputedStyle(document.querySelector('.pw-inspector')).position,
+    inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none'
+  }));
+  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||!focusLayout.inspectorToggleVisible)throw new Error('Focus canvas did not maximise the graph work area: '+JSON.stringify(focusLayout));
+  await page.waitForFunction(()=>document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
+  await page.click('#pwInspectorToggle');
+  await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
+  await page.click('#pwInspectorClose');
+  await page.waitForFunction(()=>!document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.fill('#graphObsThreshold','1.5');
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.layout?.shapes?.length>=1,null,{timeout:60000});
   const thresholdPresentation=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{legendNames:(chart.data||[]).map(t=>t.name),annotations:(chart.layout.annotations||[]).map(a=>a.text)}}); 
@@ -428,7 +441,6 @@ try{
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
   stage='spill exclusions in Asia/Kolkata and annual comparison';
   await precisionRoute('spills','thresholds');
-  await clickTab('spills');
   await page.fill('#obsThreshold','1.0');
   await page.fill('#modelThreshold','1.0');
   await page.click('#addExclusionBtn');
@@ -449,7 +461,6 @@ try{
 
   stage='storage and monthly volume';
   await precisionRoute('verification','storage');
-  await clickTab('compare');
   await page.locator('#tab-storage').scrollIntoViewIfNeeded();
   const level=await optionValue('#storageLevelSelect','model.csv — depth');
   const flow=await optionValue('#storageFlowSelect','model.csv — flow');
@@ -462,7 +473,6 @@ try{
 
   stage='workspace persistence and reports';
   await precisionRoute('report','workspace');
-  await clickTab('workspace');
   await page.fill('#workspaceName','Acceptance workspace');
   await page.click('#saveNamedWorkspaceBtn');
   await page.waitForFunction(()=>[...document.querySelectorAll('#namedWorkspaceSelect option')].some(o=>o.textContent==='Acceptance workspace'));
