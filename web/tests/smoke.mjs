@@ -172,7 +172,8 @@ try{
   if(await page.locator('#poolBody tr').nth(4).evaluate(el=>getComputedStyle(el).display)==='none')throw new Error('Expanded source pool did not reveal all rows');
   await page.click('#sourcePoolToggle');
 
-  stage='observed-only mapping without rainfall';\n  await precisionRoute('data','series-mapping');
+  stage='observed-only mapping without rainfall';
+  await precisionRoute('data','series-mapping');
   const denseObserved=await optionValue('#observedSelect','dense-observed.csv — level');
   const rain=await optionValue('#rainSelect','rainfall.csv — rainfall');
   if(!denseObserved||!rain)throw new Error('Expected dense observed and rainfall series options');
@@ -203,7 +204,8 @@ try{
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('0 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall mapped'));
   await page.waitForFunction(()=>Boolean(document.querySelector('#timeChart')?.layout?.yaxis2),null,{timeout:60000});
 
-  stage='graph threshold controls and rainfall top band';\n  await precisionRoute('data','time-series');
+  stage='graph threshold controls and rainfall top band';
+  await precisionRoute('data','time-series');
   await page.fill('#graphObsThreshold','1.5');
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.layout?.shapes?.length>=1,null,{timeout:60000});
   const thresholdPresentation=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{legendNames:(chart.data||[]).map(t=>t.name),annotations:(chart.layout.annotations||[]).map(a=>a.text)}}); 
@@ -245,7 +247,8 @@ try{
   if(await page.locator('#obsMonthly tbody tr').count()<1)throw new Error('Observed yearly spill table missing');
   if(!((await page.locator('#spillComparison').textContent())||'').includes('model result is optional'))throw new Error('Observed-only spill workflow should not require a model');
 
-  stage='map comparison scenario for calibration workflows';\n  await precisionRoute('data','series-mapping');
+  stage='map comparison scenario for calibration workflows';
+  await precisionRoute('data','series-mapping');
   const obsDepth=await optionValue('#observedSelect','observed.csv — depth');
   const obsFlow=await optionValue('#ratingObsFlow','observed.csv — flow');
   const modelDepth=await optionValue('#modelSelect','model.csv — depth');
@@ -275,7 +278,8 @@ try{
   if(!metricText.includes('Calculation status')||!metricText.includes('Valid support'))throw new Error('Comparison validity cards are missing');
   for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])await page.waitForSelector(`#${id} .main-svg`,{timeout:60000});
 
-  stage='depth-only agreement fit';\n  await precisionRoute('verification','rating');
+  stage='depth-only agreement fit';
+  await precisionRoute('verification','rating');
   const od=await optionValue('#ratingObsDepth','observed.csv — depth');
   const of=await optionValue('#ratingObsFlow','observed.csv — flow');
   const md=await optionValue('#ratingModelDepth','model.csv — depth');
@@ -292,7 +296,8 @@ try{
   await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Observed fit'),null,{timeout:60000});
   await page.waitForSelector('#ratingChart .main-svg',{timeout:60000});
 
-  stage='dry weather flow';\n  await precisionRoute('verification','dwf');
+  stage='dry weather flow';
+  await precisionRoute('verification','dwf');
   const dwf=await optionValue('#dwfFlowSelect','observed.csv — flow');
   await page.selectOption('#dwfFlowSelect',dwf);
   await page.click('#runDwfBtn');
@@ -331,7 +336,8 @@ try{
   const healthHead=await page.locator('#healthBody').evaluate(el=>el.closest('table')?.querySelector('thead')?.textContent||'');
   if(!healthHead.includes('Flatline')||!healthHead.includes('Out of range')||!healthHead.includes('Zero %'))throw new Error('Enhanced FDV flow-survey screening columns are missing');
 
-  stage='association workbook and simplified survey navigation';\n  await precisionRoute('survey','configuration');
+  stage='association workbook and simplified survey navigation';
+  await precisionRoute('survey','configuration');
   const navLabels=await page.locator('nav.tabs .tab').allTextContents();
   if(navLabels.join('|')!=='Data|Survey|Rainfall|Verification|Spills|Report')throw new Error('Unexpected simplified navigation: '+JSON.stringify(navLabels));
   if(await page.locator('.tab[data-tab="storage"]').count()!==0)throw new Error('Storage should be embedded under Verification, not exposed as a top-level tab');
@@ -349,7 +355,8 @@ try{
   const assocLayout=await page.evaluate(()=>{const panel=document.querySelector('#surveyAssociationPanel').getBoundingClientRect();const wrap=document.querySelector('#surveyAssociationTable .survey-table-wrap').getBoundingClientRect();return{panelRight:panel.right,wrapRight:wrap.right};});
   if(assocLayout.wrapRight>assocLayout.panelRight+1)throw new Error('Survey association table escapes its panel: '+JSON.stringify(assocLayout));
 
-  stage='professional FDV and rainfall assessment';\n  await precisionRoute('survey','rainfall-response');
+  stage='professional FDV and rainfall assessment';
+  await precisionRoute('survey','rainfall-response');
   const surveyDepth=await optionValue('#surveyDepthSelect','observed.csv — depth');
   const surveyVelocity=await optionValue('#surveyVelocitySelect','observed.csv — velocity');
   const surveyFlow=await optionValue('#surveyFlowSelect','observed.csv — flow');
@@ -371,7 +378,8 @@ try{
   if(await page.locator('#professionalWeeklyBody tr').count()<1)throw new Error('Professional weekly monitor table is empty');
   if(!((await page.locator('#professionalSurveyMethod').textContent())||'').includes('18 h'))throw new Error('Professional assessment methodology is not exposed in the UI');
 
-  stage='complete association-driven survey assessment';\n  await precisionRoute('survey','rainfall-response');
+  stage='complete association-driven survey assessment';
+  await precisionRoute('survey','rainfall-response');
   await page.setInputFiles('#fileInput',[
     {name:'FM01.fdv',mimeType:'text/plain',buffer:surveyFdv('FM01',0.10,0.20,0.40)},
     {name:'FM02.fdv',mimeType:'text/plain',buffer:surveyFdv('FM02',0.10,0.20,0.40)},
@@ -401,7 +409,8 @@ try{
   await precisionRoute('survey','flow-continuity');
   await captureEvidence('03-survey-flow-continuity');
 
-  stage='FDV automatic multi-variable graph';\n  await precisionRoute('data','series-mapping');
+  stage='FDV automatic multi-variable graph';
+  await precisionRoute('data','series-mapping');
   const fmDepth=await optionValue('#observedSelect','FM01.fdv — depth');
   if(!fmDepth)throw new Error('FM01 FDV depth option missing');
   await page.selectOption('#observedSelect',fmDepth);
@@ -417,7 +426,8 @@ try{
   await page.selectOption('#rainSelect',rain);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
-  stage='spill exclusions in Asia/Kolkata and annual comparison';\n  await precisionRoute('spills','thresholds');
+  stage='spill exclusions in Asia/Kolkata and annual comparison';
+  await precisionRoute('spills','thresholds');
   await clickTab('spills');
   await page.fill('#obsThreshold','1.0');
   await page.fill('#modelThreshold','1.0');
@@ -437,7 +447,8 @@ try{
   if(Math.abs(Number(spillDiag.observed.excluded_seconds)-120)>0.001)throw new Error(`Expected 120 seconds excluded in model clock, got ${JSON.stringify(spillDiag)}`);
   if(!spillDiag.observed.yearly?.length)throw new Error('Yearly spill summary missing from browser diagnostic');
 
-  stage='storage and monthly volume';\n  await precisionRoute('verification','storage');
+  stage='storage and monthly volume';
+  await precisionRoute('verification','storage');
   await clickTab('compare');
   await page.locator('#tab-storage').scrollIntoViewIfNeeded();
   const level=await optionValue('#storageLevelSelect','model.csv — depth');
@@ -449,7 +460,8 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.lastStorage),null,{timeout:60000});
   await page.waitForFunction(()=>document.querySelector('#storageSummary')?.textContent.trim().length>0&&document.querySelector('#monthlyVolume')?.textContent.trim().length>0,null,{timeout:60000});
 
-  stage='workspace persistence and reports';\n  await precisionRoute('report','workspace');
+  stage='workspace persistence and reports';
+  await precisionRoute('report','workspace');
   await clickTab('workspace');
   await page.fill('#workspaceName','Acceptance workspace');
   await page.click('#saveNamedWorkspaceBtn');
