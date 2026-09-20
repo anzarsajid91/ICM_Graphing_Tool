@@ -459,10 +459,20 @@ try{
   const fdvGraph=await page.evaluate(()=>{
     const chart=document.querySelector('#timeChart');
     const axes=Object.entries(chart.layout).filter(([k])=>/^yaxis\d*$/.test(k)).map(([key,a])=>({key,title:a.title?.text||a.title||'',domain:a.domain,overlaying:a.overlaying,range:a.range}));
+    const axisRef=key=>key==='yaxis'?'y':key.replace('yaxis','y');
+    const depthAxis=axes.find(x=>/Depth/i.test(String(x.title)));
+    const depthRef=depthAxis?axisRef(depthAxis.key):null;
+    const thresholdShapes=(chart.layout.shapes||[]).filter(s=>s.type==='line'&&s.yref!=='paper');
+    const thresholdTraces=(chart.data||[]).filter(t=>/threshold/i.test(String(t.name||'')));
     return{
       order:window.__ICM_WORKBENCH__.lastPanelOrder,
       names:chart.data.map(t=>t.name),
       axes,
+      depthRef,
+      thresholdShapes:thresholdShapes.map(s=>({yref:s.yref,y0:s.y0,y1:s.y1,dash:s.line?.dash})),
+      thresholdTraces:thresholdTraces.map(t=>({name:t.name,yaxis:t.yaxis||'y',dash:t.line?.dash})),
+      xaxis:{anchor:chart.layout.xaxis?.anchor,position:chart.layout.xaxis?.position,side:chart.layout.xaxis?.side,title:chart.layout.xaxis?.title?.text||chart.layout.xaxis?.title||''},
+      annotations:(chart.layout.annotations||[]).map(a=>String(a.text||'')),
       stats:[...document.querySelectorAll('#graphStatistics tbody tr')].map(r=>r.textContent),
       periodSummary:document.querySelector('#graphPeriodSummary')?.textContent||''
     };
@@ -470,11 +480,15 @@ try{
   if(JSON.stringify(fdvGraph.order)!==JSON.stringify(['rainfall','flow','depth','velocity']))throw new Error('FDV panel order must be rainfall/flow/depth/velocity: '+JSON.stringify(fdvGraph));
   if(fdvGraph.axes.some(x=>x.overlaying))throw new Error('FDV hydraulic channels must use separate stacked panels, not overlay axes: '+JSON.stringify(fdvGraph.axes));
   for(const token of ['Rainfall','Flow','Depth','Velocity'])if(!fdvGraph.axes.some(x=>String(x.title).includes(token)))throw new Error('Missing FDV panel/unit axis '+token+': '+JSON.stringify(fdvGraph.axes));
+  if(fdvGraph.xaxis.anchor!=='free'||Number(fdvGraph.xaxis.position)!==0||fdvGraph.xaxis.side!=='bottom')throw new Error('FDV time axis must be a single bottom shared axis: '+JSON.stringify(fdvGraph.xaxis));
+  for(const token of ['Rainfall','Flow','Depth','Velocity'])if(!fdvGraph.annotations.some(x=>x.includes(token)))throw new Error('FDV panel heading missing for '+token+': '+JSON.stringify(fdvGraph.annotations));
+  if(!fdvGraph.depthRef||fdvGraph.thresholdShapes.some(x=>x.yref!==fdvGraph.depthRef))throw new Error('Every visible threshold line must belong to the Depth axis only: '+JSON.stringify(fdvGraph));
+  if(fdvGraph.thresholdTraces.length!==1||fdvGraph.thresholdTraces[0].yaxis!==fdvGraph.depthRef)throw new Error('With no model selected, only the observed depth threshold may appear: '+JSON.stringify(fdvGraph.thresholdTraces));
   if(fdvGraph.stats.length<4)throw new Error('FDV statistics must include rainfall plus all hydraulic variables');
   if(!/Time range/i.test(fdvGraph.periodSummary)||!/Total rain/i.test(fdvGraph.periodSummary)||!/Volume/i.test(fdvGraph.periodSummary))throw new Error('FDV period summary must expose time range, rainfall total and flow volume: '+fdvGraph.periodSummary);
-  const fdvGeometry=await page.evaluate(()=>{const chart=document.querySelector('#timeChart')?.getBoundingClientRect(),summary=document.querySelector('#graphPeriodSummary')?.getBoundingClientRect();return{chartBottom:chart?.bottom||0,summaryTop:summary?.top||0,summaryHeight:summary?.height||0};});
-  if(!fdvGeometry.summaryHeight||fdvGeometry.summaryTop<fdvGeometry.chartBottom-1)throw new Error('FDV chart overlaps the engineering period summary: '+JSON.stringify(fdvGeometry));
   await precisionRoute('data','time-series');
+  const fdvGeometry=await page.evaluate(()=>{const chart=document.querySelector('#timeChart')?.getBoundingClientRect(),summary=document.querySelector('#graphPeriodSummary')?.getBoundingClientRect();return{chartBottom:chart?.bottom||0,summaryTop:summary?.top||0,summaryHeight:summary?.height||0};});
+  if(!fdvGeometry.summaryHeight||fdvGeometry.summaryTop<fdvGeometry.chartBottom+6)throw new Error('FDV chart must finish cleanly above the engineering period summary: '+JSON.stringify(fdvGeometry));
   await captureEvidence('01b-fdv-stacked-graph');
   await precisionRoute('data','series-mapping');
   // Restore the comparison mapping used by the remainder of the acceptance workflow.
