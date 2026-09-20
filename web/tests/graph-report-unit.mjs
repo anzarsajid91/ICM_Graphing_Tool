@@ -18,7 +18,7 @@ assert(stats.includes('RG &lt;script&gt;'));
 assert(stats.includes('0 mm'));
 assert(stats.includes('50%'));
 assert(stats.includes('raw statistics'));
-const figure=run(`reportPlotFigure('test',[{name:'</script><script>bad</script>',x:[null,'2026-01-01'],y:[null,1]}],hydraulicGraphLayout(),[],'A')`);
+const figure=run(`reportPlotFigure('test',[{name:'</script><script>bad</script>',x:[null,'2026-01-01'],y:[null,1]}],hydraulicGraphLayout(),[{role:'Observed',label:'Depth',statistics:{quantity:'depth',unit:'m',minimum:1,maximum:2,mean:1.5,valid_support_seconds:3600,status:'complete'}}],'A')`);
 assert(!figure.includes('<script>bad'));
 assert(figure.includes('\\u003c/script>'));
 assert(figure.includes('application/json'));
