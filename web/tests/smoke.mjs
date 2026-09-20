@@ -44,6 +44,39 @@ async function captureEvidence(name){
   await page.screenshot({path:path.join(dir,`${name}.png`),fullPage:false});
   await page.screenshot({path:path.join(dir,`${name}-full.png`),fullPage:true});
 }
+const performanceEvidence={schema_version:1,build:process.env.GITHUB_SHA||'local',mode:liveMode?'live':'local-artifact'};
+async function writePerformanceEvidence(){
+  const dir=process.env.ICM_EVIDENCE_DIR;
+  if(!dir)return;
+  await fs.mkdir(dir,{recursive:true});
+  await fs.writeFile(path.join(dir,'fastpath-performance.json'),JSON.stringify(performanceEvidence,null,2)+'\n','utf8');
+}
+async function measureColdReferenceImport(){
+  if(liveMode)return null;
+  const probe=await context.newPage();
+  const sourcePath=path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv');
+  const buffer=await fs.readFile(sourcePath);
+  const navigationStart=Date.now();
+  try{
+    await probe.goto(baseUrl+`?cold_import=${Date.now()}`,{waitUntil:'domcontentloaded'});
+    const domReadyMs=Date.now()-navigationStart;
+    const selectedAt=Date.now();
+    await probe.setInputFiles('#fileInput',{name:'Cold-FM01.fdv',mimeType:'text/plain',buffer});
+    const outcome=await Promise.race([
+      probe.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
+      probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM01.fdv')&&row.textContent.includes('Error')),null,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt})),
+    ]);
+    let engineReadyFromNavigationMs=null;
+    try{
+      await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+      engineReadyFromNavigationMs=Date.now()-navigationStart;
+    }catch{}
+    const rowText=await probe.locator('#poolBody tr').filter({hasText:'Cold-FM01.fdv'}).first().textContent().catch(()=>null);
+    return {dataset:'FM01.fdv',bytes:buffer.length,domReadyMs,selectionOutcome:outcome.kind,timeToOutcomeMs:outcome.ms,engineReadyFromNavigationMs,rowText};
+  }finally{
+    await probe.close();
+  }
+}
 async function inspectReportHtml(html,minFigures=1){
   const p=await context.newPage();
   const reportErrors=[],reportFailedRequests=[];
@@ -144,9 +177,14 @@ async function associationWorkbook(){
 }
 
 try{
+  stage='cold import baseline';
+  performanceEvidence.coldImport=await measureColdReferenceImport();
   stage='open application';
+  const applicationNavigationStart=Date.now();
   await page.goto(baseUrl+(liveMode?`?live_verify=${Date.now()}`:''),{waitUntil:'domcontentloaded'});
+  performanceEvidence.applicationDomReadyMs=Date.now()-applicationNavigationStart;
   await waitReady();
+  performanceEvidence.applicationEngineReadyMs=Date.now()-applicationNavigationStart;
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
   const primaryLabels=await page.locator('.pw-primary-nav button').allTextContents();
@@ -758,12 +796,14 @@ try{
   const referenceFdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv'));
   const referenceRain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG01.R'));
   const beforeReferenceFiles=await page.locator('#poolBody tr').count();
+  const warmReferenceSelectedAt=Date.now();
   await page.setInputFiles('#fileInput',[
     {name:'Reference_FM01.fdv',mimeType:'text/plain',buffer:referenceFdv},
     {name:'Reference_RG01.R',mimeType:'text/plain',buffer:referenceRain},
   ]);
   await page.waitForFunction(expected=>document.querySelectorAll('#poolBody tr').length===expected,beforeReferenceFiles+2,{timeout:90000});
   await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(r=>/Reference_(FM01|RG01)/.test(r.textContent)).every(r=>r.textContent.includes('Ready')),null,{timeout:90000});
+  performanceEvidence.warmReferencePair={datasets:['FM01.fdv','RG01.R'],bytes:referenceFdv.length+referenceRain.length,authoritativeReadyMs:Date.now()-warmReferenceSelectedAt};
   await precisionRoute('data','series-mapping');
   const referenceDepth=await optionValue('#observedSelect','Reference_FM01.fdv — depth');
   const referenceRainKey=await optionValue('#rainSelect','Reference_RG01.R — rainfall');
@@ -773,6 +813,7 @@ try{
   await page.selectOption('#rainSelect',referenceRainKey);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphMode==='fdv-multi-variable'&&window.__ICM_WORKBENCH__.lastGraphStatistics?.length===4,null,{timeout:90000});
+  performanceEvidence.warmReferencePair.firstMappedGraphMs=Date.now()-warmReferenceSelectedAt;
   await precisionRoute('data','time-series');
   await page.fill('#graphObsThreshold','');
   await page.waitForTimeout(500);
@@ -891,6 +932,8 @@ try{
   if(diag.errors?.length)throw new Error(`Workbench recorded operation errors: ${JSON.stringify(diag.errors)}`);
   if(failedRequests.filter(x=>!x.includes('favicon.ico')).length)throw new Error(`Failed browser requests: ${failedRequests.join(' | ')}`);
   await captureEvidence('06-final-state');
+  await writePerformanceEvidence();
+  console.log('PERFORMANCE_EVIDENCE '+JSON.stringify(performanceEvidence));
 
   console.log(`${liveMode?'Live Pages':'Local artifact'} browser acceptance passed at ${baseUrl}: hardened multi-file drag/drop, auxiliary column filtering, FDV depth/flow/velocity auto-graphing, dense adaptive zoom, no range slider, compact statistics/reports, unified spill dash style, survey schematic, collapsible workflows, survey assessment, spills, storage and workspace outputs.`);
 } catch(err) {
