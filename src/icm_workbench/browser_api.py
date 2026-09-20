@@ -141,7 +141,7 @@ def _display_indices(values, max_points):
     return idx
 
 
-def series_data(path, column=None, max_points=5000, start=None, end=None, max_gap_seconds=900.0):
+def series_data(path, column=None, max_points=5000, start=None, end=None, max_gap_seconds=900.0, end_exclusive=False):
     parsed=_load(path);x, col = _prepared_series(path, column)
     timestamps = x["timestamp"].to_numpy(dtype="datetime64[ns]")
     lo = 0
@@ -151,7 +151,7 @@ def series_data(path, column=None, max_points=5000, start=None, end=None, max_ga
     if start_ts is not None:
         lo = int(np.searchsorted(timestamps, np.datetime64(start_ts.to_datetime64()), side="left"))
     if end_ts is not None:
-        hi = int(np.searchsorted(timestamps, np.datetime64(end_ts.to_datetime64()), side="right"))
+        hi = int(np.searchsorted(timestamps, np.datetime64(end_ts.to_datetime64()), side="left" if end_exclusive else "right"))
     lo = max(0, min(lo, len(x)))
     hi = max(lo, min(hi, len(x)))
     view = x.iloc[lo:hi]
@@ -171,30 +171,7 @@ def series_data(path, column=None, max_points=5000, start=None, end=None, max_ga
             plot_t.append(None); plot_v.append(None)
         plot_t.append(pd.Timestamp(stamp).isoformat())
         plot_v.append(None if pd.isna(value) else float(value))
-    numeric=pd.to_numeric(view[col],errors="coerce")
-    finite=numeric[np.isfinite(numeric)]
-    channel=(getattr(parsed,"metadata",{}) or {}).get("channels",{}).get(str(col),{})
-    quantity=channel.get("quantity") or (getattr(parsed,"metadata",{}) or {}).get("quantity")
-    unit=channel.get("canonical_unit") or (getattr(parsed,"metadata",{}) or {}).get("canonical_unit")
-    statistics={
-        "quantity":quantity or str(col),"unit":unit,"valid_count":int(len(finite)),
-        "missing_count":int(numeric.isna().sum()),"minimum":float(finite.min()) if len(finite) else None,
-        "mean":float(finite.mean()) if len(finite) else None,"median":float(finite.median()) if len(finite) else None,
-        "maximum":float(finite.max()) if len(finite) else None,"total":None,"total_unit":None,
-        "valid_support_seconds":0.0,"status":"unavailable" if not len(finite) else "complete",
-    }
-    if len(view)>=2:
-        times=pd.to_datetime(view["timestamp"],errors="coerce").reset_index(drop=True);vals=numeric.reset_index(drop=True)
-        seconds=times.diff().dt.total_seconds();valid=(seconds>0)&(seconds<=float(max_gap_seconds))&vals.notna()&vals.shift(1).notna()
-        support=float(seconds[valid].sum());statistics["valid_support_seconds"]=support
-        if support>0:
-            integral=float((((vals+vals.shift(1))/2.0)*seconds).where(valid,0.0).sum())
-            statistics["time_weighted_mean"]=integral/support
-            if quantity=="flow" and unit=="m³/s":statistics.update(total=integral,total_unit="m³")
-    if quantity=="rainfall":
-        interval=(getattr(parsed,"metadata",{}) or {}).get("interval_min")
-        rain=rainfall_accumulation(view,str(col),semantics="intensity",declared_interval_minutes=float(interval) if interval else None,max_gap_seconds=float(max_gap_seconds))
-        statistics.update(total=rain.get("total_depth_mm"),total_unit="mm",valid_support_seconds=rain.get("valid_seconds",0.0),status=rain.get("status","unavailable"))
+    statistics = _graph_statistics(path, col, x, view, start_ts, end_ts, max_gap_seconds)
     payload = {
         "column": str(col),
         "timestamp": plot_t,
@@ -209,6 +186,72 @@ def series_data(path, column=None, max_points=5000, start=None, end=None, max_ga
         "statistics":_jsonable(statistics),
     }
     return json.dumps(payload, ensure_ascii=False)
+
+
+def _graph_statistics(path, col, source, view, start, end, max_gap_seconds):
+    """Raw native-sample summaries and clipped interval support, never display data.
+
+    Sample extrema/mean use the selected samples. Time-weighted mean and totals
+    use valid source intervals clipped to the requested bounds, including
+    interpolation at hydraulic boundaries. Rainfall uses left-held intensity.
+    Exclusions remain visible annotations; these are explicitly raw statistics.
+    """
+    contract = _series_contract(path, str(col))
+    quantity, unit = contract["quantity"], contract["canonical_unit"]
+    values = view[col].to_numpy(dtype=float)
+    finite = values[np.isfinite(values)]
+    result = dict(quantity=quantity or str(col), unit=unit,
+                  valid_count=int(len(finite)), missing_count=int((~np.isfinite(values)).sum()),
+                  minimum=float(finite.min()) if len(finite) else None,
+                  maximum=float(finite.max()) if len(finite) else None,
+                  mean=float(finite.mean()) if len(finite) else None,
+                  median=float(np.median(finite)) if len(finite) else None,
+                  time_weighted_mean=None, total=None, total_unit=None,
+                  valid_support_seconds=0.0, requested_seconds=0.0,
+                  coverage_fraction=None, status="unavailable", unit_status=contract["unit_status"],
+                  basis="raw source; exclusions are not applied")
+    if source.empty:
+        return result
+    t = source.timestamp.to_numpy(dtype="datetime64[ns]").astype(np.int64) / 1e9
+    v = source[col].to_numpy(dtype=float)
+    parsed = _load(path)\n    metadata = getattr(parsed, "metadata", {}) or {}
+    declared = float(metadata.get("interval_min") or 0) * 60
+    rainfall = quantity == "rainfall"
+    if rainfall and declared > 0:
+        right = np.r_[t[1:], t[-1] + declared]
+        left, first, last = t, v, v
+    else:
+        left, right, first, last = t[:-1], t[1:], v[:-1], v[1:]
+    a = float(start.value / 1e9) if start is not None else float(t[0])
+    b = float(end.value / 1e9) if end is not None else float(right[-1] if len(right) else t[-1])
+    requested = max(0.0, b - a)
+    duration = right - left
+    l, r = np.maximum(left, a), np.minimum(right, b)
+    valid = (r > l) & (duration > 0) & (duration <= float(max_gap_seconds)) & np.isfinite(first)
+    if not rainfall:
+        valid &= np.isfinite(last)
+    else:
+        valid &= first >= 0
+    seconds = (r - l)[valid]
+    support = float(seconds.sum())
+    coverage = support / requested if requested > 0 else None
+    result.update(valid_support_seconds=support, requested_seconds=requested,
+                  coverage_fraction=coverage,
+                  status="unavailable" if support <= 0 else "complete" if coverage is not None and coverage >= 1-1e-9 else "partial")
+    if support > 0:
+        if rainfall:
+            integral = float((first[valid] * seconds).sum())
+        else:
+            slope = (last[valid] - first[valid]) / duration[valid]
+            vl = first[valid] + slope * (l[valid] - left[valid])
+            vr = first[valid] + slope * (r[valid] - left[valid])
+            integral = float(((vl + vr) * .5 * seconds).sum())
+        result["time_weighted_mean"] = integral / support
+        if quantity == "flow" and unit == "m³/s":
+            result.update(total=integral, total_unit="m³")
+        elif rainfall and unit == "mm/h":
+            result.update(total=integral / 3600, total_unit="mm")
+    return result
 
 
 def _comparison_domain(observed, modelled, start=None, end=None):
@@ -362,9 +405,22 @@ def _series_contract(path, column, unit_override=None):
     quantity = details.get("quantity") or metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
     original_unit = details.get("original_unit", metadata.get("original_unit"))
     resolved_unit = details.get("canonical_unit", metadata.get("canonical_unit"))
-    status = details.get("unit_status") or ("resolved" if resolved_unit else "unresolved")
+    format_name = getattr(parsed, "format_name", None)
+    if (
+        not resolved_unit
+        and quantity == "rainfall"
+        and format_name == "rainfall_r_ascii"
+        and str(original_unit or "").strip().lower() in {"", "unknown"}
+    ):
+        # The .R parser establishes interval-average rainfall intensity semantics.
+        # Preserve that format contract without extending the assumption to generic CSV.
+        resolved_unit = "mm/h"
+        status = "resolved-by-format"
+        source = "rainfall R format"
+    else:
+        status = details.get("unit_status") or ("resolved" if resolved_unit else "unresolved")
+        source = "metadata" if resolved_unit else "unresolved"
     scale = 1.0
-    source = "metadata" if resolved_unit else "unresolved"
     if not resolved_unit and unit_override:
         resolved_unit, factor = canonical_unit(quantity, unit_override)
         if resolved_unit is None or factor is None:
