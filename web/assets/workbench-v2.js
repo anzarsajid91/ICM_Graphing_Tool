@@ -105,13 +105,13 @@
     toolbar.id = 'v2GraphToolbar';
     toolbar.className = 'v2-graph-toolbar';
     toolbar.innerHTML = `
-      <div class="v2-threshold-control">
+      <div class="v2-threshold-control" data-threshold-role="observed">
         <label>Observed / EDM depth threshold
           <input id="graphObsThreshold" type="number" step="any" placeholder="Not shown" />
         </label>
         <label class="v2-show-toggle"><input id="showGraphObsThreshold" type="checkbox" checked /> Show line</label>
       </div>
-      <div class="v2-threshold-control">
+      <div class="v2-threshold-control" data-threshold-role="model">
         <label>Model depth threshold
           <input id="graphModelThreshold" type="number" step="any" placeholder="Not shown" />
         </label>
@@ -134,6 +134,7 @@
       $('graphModelThreshold').value = $('modelThreshold').value;
     };
     syncFromSpill();
+    updateGraphThresholdControls();
 
     for (const [graphId, spillId] of [['graphObsThreshold','obsThreshold'],['graphModelThreshold','modelThreshold']]) {
       $(graphId).addEventListener('input', () => {
@@ -169,6 +170,20 @@
     if ($('mappingStatus')) $('mappingStatus').textContent = 'Select an observed series. Model comparison and rainfall are optional.';
   }
 
+  function mappedQuantity(key){
+    const source=mappingObject(key);
+    return source?String(seriesQuantity(source.item,source.col)||'').toLowerCase():'';
+  }
+
+  function updateGraphThresholdControls(){
+    const observedHasDepth=observedGraphSeries().some(source=>String(source.quantity||mappedQuantity(source.key)).toLowerCase()==='depth');
+    const modelHasDepth=(state.mapping.models||[]).some(key=>mappedQuantity(key)==='depth');
+    const observedControl=document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]');
+    const modelControl=document.querySelector('#v2GraphToolbar [data-threshold-role="model"]');
+    if(observedControl)observedControl.hidden=!observedHasDepth;
+    if(modelControl)modelControl.hidden=!modelHasDepth;
+  }
+
   async function v2ApplyMapping() {
     state.mapping.observed = $('observedSelect').value;
     state.mapping.models = [...$('modelSelect').selectedOptions].map(o => o.value);
@@ -179,6 +194,7 @@
     $('mappingStatus').textContent = `Observed: ${obs?seriesLabel(obs.item, obs.col):'not mapped'} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`;
     renderModelColourControls();
     renderExclusions();
+    updateGraphThresholdControls();
     const select=$('spillModelSelect');
     const previous=select.value;
     select.innerHTML='<option value="">No model selected</option>'+state.mapping.models.map(key=>{const m=mappingObject(key);return `<option value="${esc(key)}">${esc(seriesLabel(m.item,m.col))}</option>`;}).join('');
