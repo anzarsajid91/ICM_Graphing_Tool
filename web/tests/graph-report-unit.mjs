@@ -23,7 +23,13 @@ assert(!figure.includes('<script>bad'));
 assert(figure.includes('\\u003c/script>'));
 assert(figure.includes('application/json'));
 assert(figure.includes('Graph statistics'));
-console.log('Graph/report regressions passed: stacked domains, units, no slider, zero scale, support and safe interactive payload.');
+await run(`(async()=>{reportPlotlyBundle='var Plotly={};/*assert(figure.includes('Graph statistics'));
+console.log('Graph/report regressions passed: stacked domains, units, no slider, zero scale, support and safe interactive payload.');*/';window.embeddedReport=await interactiveReportHtml('<html><body>ORIGINAL</body></html>');})()`);
+assert(sandbox.window.embeddedReport.includes('/*assert(figure.includes('Graph statistics'));
+console.log('Graph/report regressions passed: stacked domains, units, no slider, zero scale, support and safe interactive payload.');*/'));
+assert.equal((sandbox.window.embeddedReport.match(/<\\/body>/g)||[]).length,1);
+assert(!sandbox.window.embeddedReport.includes('/*</body>*/'));
+console.log('Graph/report regressions passed: stacked domains, units, no slider, zero scale, support, safe payload and literal Plotly bundle embedding.');
 sandbox.document.getElementById=id=>({value:id==='gapInput'?'900':id==='rainFactor'?'1':'#ff0000'});
 await run(`(async()=>{
  state.files.set('test',{id:'test',displayName:'sample.csv',virtualPath:'/sample.csv',parsed:{metadata:{quantity:'depth',canonical_unit:'m'}}});
