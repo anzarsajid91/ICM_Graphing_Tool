@@ -385,7 +385,7 @@ async function drawTimeChart(){return window.ICMGraph?.draw();}
 function analysisBounds(){return {start:modelClock($('analysisStart').value)||null,end:modelClock($('analysisEnd').value)||null};}
 async function runCompare(){const obs=mappingObject(state.mapping.observed),models=currentModels();if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();state.comparisons=[];for(const m of models){try{state.comparisons.push({model:m,result:await engine.call('compare_series',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,max_gap_seconds:gap,offset_minutes:offset,...bounds,exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])})});}catch(err){state.comparisons.push({model:m,error:String(err?.message||err)});}}await renderComparisons();state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};}
 const metricCard=(k,v)=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`;
-async function renderComparisons(){const ok=state.comparisons.filter(x=>x.result),first=ok[0];if(!first){const issues=state.comparisons.map(x=>({name:`${x.model?.item?.displayName||'Model'} · ${x.model?.col||'series'}`,error:x.error||'Comparison returned no usable result.'}));$('metricGrid').innerHTML='<div class="pool-summary audit-bad"><strong>Comparison could not be calculated.</strong><br>'+issues.map(x=>esc(x.name)+': '+esc(x.error)).join('<br>')+'<br><small>Check quantity mapping, the shared analysis period, exclusions and the maximum interpolation gap. The error above is retained instead of hiding it behind a generic “no pairs” message.</small></div>';$('scenarioBody').innerHTML=issues.map(x=>'<tr><td>'+esc(x.name)+'</td><td colspan="8" class="audit-bad">'+esc(x.error)+'</td></tr>').join('');return;}const m=first.result.metrics||{},status=first.result.calculation_status||'unavailable',coverage=first.result.coverage_fraction;$('metricGrid').innerHTML=[['Calculation status',status],['Valid support',coverage===null||coverage===undefined?'—':fmt(Number(coverage)*100,2)+'%'],['Pairs',m.pairs],['RMSE',fmt(m.rmse)],['MAE',fmt(m.mae)],['Mean bias',fmt(m.mean_bias)],['R²',fmt(m.r2_correlation)],['NSE',fmt(m.nse)],['KGE 2009',fmt(m.kge_2009)],['Obs peak',fmt(m.obs_peak)],['Model peak',fmt(m.sim_peak)],['Peak lag min',fmt(m.peak_timing_minutes_model_minus_observed,2)]].map(([k,v])=>metricCard(k,v)).join('');diagnostic.lastComparisonValidity={status,coverage};let p=first.result.paired||[];const log=$('scatterScale').value==='log';if(log)p=p.filter(x=>Number(x.obs)>0&&Number(x.sim)>0);const vals=p.flatMap(x=>[Number(x.obs),Number(x.sim)]).filter(Number.isFinite),lo=Math.min(...vals),hi=Math.max(...vals),scatter=[{x:p.map(x=>x.obs),y:p.map(x=>x.sim),mode:'markers',name:'Paired',marker:{size:5,opacity:.5,color:'#0a66c2'}}];if(Number.isFinite(lo)&&Number.isFinite(hi))scatter.push({x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1',line:{dash:'dash',color:'#667085'}});await Plotly.react('scatterChart',scatter,{template:'plotly_white',title:`Observed vs modelled${log?' — log scale':''}`,xaxis:{title:'Observed',type:log?'log':'linear'},yaxis:{title:'Modelled',type:log?'log':'linear'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});await Plotly.react('residualChart',[{x:p.map(x=>x.timestamp),y:p.map(x=>x.residual),mode:'lines',name:'Model − observed',line:{color:'#a62929',width:1.4}}],{template:'plotly_white',title:'Residual through time',xaxis:{title:'Time'},yaxis:{title:'Residual'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});const obs=mappingObject(state.mapping.observed),d=await engine.call('diagnostic_result',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:first.model.item.virtualPath,model_col:first.model.col,max_gap_seconds:Number($('gapInput').value||900),offset_minutes:Number($('offsetInput').value||0),...analysisBounds(),exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(first.model.id,first.model.col))])}),cum=d.cumulative||[];await Plotly.react('cumulativeChart',[{x:cum.map(x=>x.timestamp),y:cum.map(x=>x.obs_cumulative_m3),name:'Observed cumulative',mode:'lines'},{x:cum.map(x=>x.timestamp),y:cum.map(x=>x.sim_cumulative_m3),name:'Model cumulative',mode:'lines'}],{template:'plotly_white',title:d.flow_diagnostics_available?'Cumulative volume':'Unavailable — flow inputs and unmasked support required',xaxis:{title:'Time'},yaxis:{title:/flow/i.test(obs.col)?'m³':'value × s'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});const oe=d.observed_exceedance||[],me=d.modelled_exceedance||[],okey=oe.length?Object.keys(oe[0]).find(k=>!['exceedance_fraction','weight'].includes(k)):null,mkey=me.length?Object.keys(me[0]).find(k=>!['exceedance_fraction','weight'].includes(k)):null;await Plotly.react('exceedanceChart',[{x:oe.map(x=>100*x.exceedance_fraction),y:oe.map(x=>x[okey]),name:'Observed',mode:'lines'},{x:me.map(x=>100*x.exceedance_fraction),y:me.map(x=>x[mkey]),name:'Modelled',mode:'lines'}],{template:'plotly_white',title:d.flow_diagnostics_available?'Flow duration — left-support time weighting':'Unavailable — flow inputs and unmasked support required',xaxis:{title:'Exceedance %'},yaxis:{title:'Value'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});$('scenarioBody').innerHTML=state.comparisons.map(x=>{const q=x.result?.metrics||{};return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${q.pairs??'—'}</td><td>${fmt(q.rmse)}</td><td>${fmt(q.mae)}</td><td>${fmt(q.mean_bias)}</td><td>${fmt(q.r2_correlation)}</td><td>${fmt(q.nse)}</td><td>${fmt(q.kge_2009)}</td><td>${fmt(q.peak_timing_minutes_model_minus_observed,2)}</td></tr>`;}).join('');}
+async function renderComparisons(){const ok=state.comparisons.filter(x=>x.result),first=ok[0];if(!first){const issues=state.comparisons.map(x=>({name:`${x.model?.item?.displayName||'Model'} · ${x.model?.col||'series'}`,error:x.error||'Comparison returned no usable result.'}));$('metricGrid').innerHTML='<div class="pool-summary audit-bad"><strong>Comparison could not be calculated.</strong><br>'+issues.map(x=>esc(x.name)+': '+esc(x.error)).join('<br>')+'<br><small>Check quantity mapping, the shared analysis period, exclusions and the maximum interpolation gap. The error above is retained instead of hiding it behind a generic “no pairs” message.</small></div>';$('scenarioBody').innerHTML=issues.map(x=>'<tr><td>'+esc(x.name)+'</td><td colspan="8" class="audit-bad">'+esc(x.error)+'</td></tr>').join('');return;}const m=first.result.metrics||{},status=first.result.calculation_status||'unavailable',coverage=first.result.coverage_fraction;$('metricGrid').innerHTML=[['Calculation status',status],['Valid support',coverage===null||coverage===undefined?'—':fmt(Number(coverage)*100,2)+'%'],['Pairs',m.pairs],['RMSE',fmt(m.rmse)],['MAE',fmt(m.mae)],['Mean bias',fmt(m.mean_bias)],['R²',fmt(m.r2_correlation)],['NSE',fmt(m.nse)],['KGE 2009',fmt(m.kge_2009)],['Obs peak',fmt(m.obs_peak)],['Model peak',fmt(m.sim_peak)],['Peak lag min',fmt(m.peak_timing_minutes_model_minus_observed,2)]].map(([k,v])=>metricCard(k,v)).join('');diagnostic.lastComparisonValidity={status,coverage};let p=first.result.paired||[];const log=$('scatterScale').value==='log';if(log)p=p.filter(x=>Number(x.obs)>0&&Number(x.sim)>0);const vals=p.flatMap(x=>[Number(x.obs),Number(x.sim)]).filter(Number.isFinite),lo=Math.min(...vals),hi=Math.max(...vals),scatter=[{x:p.map(x=>x.obs),y:p.map(x=>x.sim),mode:'markers',name:'Paired',marker:{size:5,opacity:.5,color:'#0a66c2'}}];if(Number.isFinite(lo)&&Number.isFinite(hi))scatter.push({x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1',line:{dash:'dash',color:'#667085'}});await Plotly.react('scatterChart',scatter,{template:'plotly_white',title:`Observed vs modelled${log?' — log scale':''}`,xaxis:{title:'Observed',type:log?'log':'linear'},yaxis:{title:'Modelled',type:log?'log':'linear'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});await Plotly.react('residualChart',[{x:p.map(x=>x.timestamp),y:p.map(x=>x.residual),mode:'lines',name:'Model − observed',line:{color:'#a62929',width:1.4}}],{template:'plotly_white',title:'Residual through time',xaxis:{title:'Time'},yaxis:{title:'Residual'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});const obs=mappingObject(state.mapping.observed),d=await engine.call('diagnostic_result',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:first.model.item.virtualPath,model_col:first.model.col,max_gap_seconds:Number($('gapInput').value||900),offset_minutes:Number($('offsetInput').value||0),...analysisBounds(),exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(first.model.id,first.model.col))])}),cum=d.cumulative||[];await Plotly.react('cumulativeChart',[{x:cum.map(x=>x.timestamp),y:cum.map(x=>x.obs_cumulative_m3),name:'Observed cumulative',mode:'lines',line:{color:$('obsColor').value}},{x:cum.map(x=>x.timestamp),y:cum.map(x=>x.sim_cumulative_m3),name:'Model cumulative',mode:'lines',line:{color:state.modelColours[sourceKey(first.model.id,first.model.col)]||palette[0]}}],{template:'plotly_white',title:d.flow_diagnostics_available?'Cumulative volume':'Unavailable — flow inputs and unmasked support required',xaxis:{title:'Time'},yaxis:{title:/flow/i.test(obs.col)?'m³':'value × s'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});const oe=d.observed_exceedance||[],me=d.modelled_exceedance||[],okey=oe.length?Object.keys(oe[0]).find(k=>!['exceedance_fraction','weight'].includes(k)):null,mkey=me.length?Object.keys(me[0]).find(k=>!['exceedance_fraction','weight'].includes(k)):null;await Plotly.react('exceedanceChart',[{x:oe.map(x=>100*x.exceedance_fraction),y:oe.map(x=>x[okey]),name:'Observed',mode:'lines',line:{color:$('obsColor').value}},{x:me.map(x=>100*x.exceedance_fraction),y:me.map(x=>x[mkey]),name:'Modelled',mode:'lines',line:{color:state.modelColours[sourceKey(first.model.id,first.model.col)]||palette[0]}}],{template:'plotly_white',title:d.flow_diagnostics_available?'Flow duration — left-support time weighting':'Unavailable — flow inputs and unmasked support required',xaxis:{title:'Exceedance %'},yaxis:{title:'Value'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});$('scenarioBody').innerHTML=state.comparisons.map(x=>{const q=x.result?.metrics||{};return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${q.pairs??'—'}</td><td>${fmt(q.rmse)}</td><td>${fmt(q.mae)}</td><td>${fmt(q.mean_bias)}</td><td>${fmt(q.r2_correlation)}</td><td>${fmt(q.nse)}</td><td>${fmt(q.kge_2009)}</td><td>${fmt(q.peak_timing_minutes_model_minus_observed,2)}</td></tr>`;}).join('');}
 function useGraphZoom(){const r=$('timeChart')?.layout?.xaxis?.range;if(r?.length===2){$('analysisStart').value=toLocalInput(r[0]);$('analysisEnd').value=toLocalInput(r[1]);}}
 
 async function runRating(){
@@ -584,30 +584,57 @@ function analysisSignature(){const w=workspaceObject();return JSON.stringify({ma
 function assertFreshResults(){const sig=analysisSignature();for(const [label,snapshot] of [['Spill',state.spillSnapshot],['Comparison',state.comparisonSnapshot]]){if(snapshot && snapshot.signature!==sig)throw new Error(`${label} results are stale. Recalculate after changing analytical inputs before exporting.`);}}
 
 function reportCss(landscape=false){
-  return ':root{--ink:#182433;--muted:#667788;--line:#d9e1e8;--soft:#f5f8fa;--accent:#315b9b}*{box-sizing:border-box}html{background:#eef2f5}body{margin:0;color:var(--ink);font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:1.45;background:#fff}.report{max-width:1180px;margin:0 auto;padding:30px 34px 42px}.report-header{border-bottom:3px solid var(--accent);padding-bottom:16px;margin-bottom:22px;display:flex;justify-content:space-between;gap:24px;align-items:flex-end}.report-header h1{font-size:26px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em}.report-header p{margin:0;color:var(--muted)}.report-meta{text-align:right;color:var(--muted);font-size:12px;white-space:nowrap}h2{font-size:18px;margin:26px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:14px;margin:18px 0 8px}.note{background:var(--soft);border-left:4px solid var(--accent);padding:10px 12px;margin:12px 0 18px}.report-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.card{min-width:0;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:#fff;break-inside:avoid}.card h3{margin:0 0 8px}.table-wrap{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:7px;margin:8px 0 14px}table{border-collapse:collapse;width:100%;min-width:620px}th,td{padding:7px 9px;border-bottom:1px solid #e8edf1;text-align:left;vertical-align:top;font-size:11.5px}th{background:var(--soft);color:#435466;text-transform:uppercase;letter-spacing:.025em;font-size:10.5px}tr:last-child td{border-bottom:0}.figure{margin:12px 0 20px;break-inside:avoid}.figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.figure figcaption{font-size:11.5px;color:var(--muted);margin-top:6px}.summary-box{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0}.summary-box>div{border:1px solid var(--line);border-radius:7px;padding:9px;background:var(--soft)}.summary-box strong{display:block;font-size:16px}.summary-box span{font-size:10.5px;color:var(--muted)}.swatch{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.14)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f9fb;border:1px solid var(--line);border-radius:6px;padding:10px;font:11px/1.45 Consolas,monospace}.hash{font-family:Consolas,monospace;font-size:10.5px;overflow-wrap:anywhere}.muted{color:var(--muted)}.report-page{break-after:page;page-break-after:always}.report-page:last-child{break-after:auto;page-break-after:auto}.report-footer{border-top:1px solid var(--line);margin-top:30px;padding-top:10px;color:var(--muted);font-size:11px;display:flex;justify-content:space-between;gap:12px}@media(max-width:760px){.report{padding:20px 16px}.report-header{display:block}.report-meta{text-align:left;margin-top:10px}.report-grid,.summary-box{grid-template-columns:1fr}table{min-width:560px}}@media print{html{background:#fff}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.report{max-width:none;padding:0}.card,.figure,.table-wrap{break-inside:avoid}}@page{size:'+(landscape?'A4 landscape':'A4 portrait')+';margin:12mm}';
+  return ':root{--ink:#182433;--muted:#667788;--line:#d9e1e8;--soft:#f5f8fa;--accent:#315b9b}*{box-sizing:border-box}html{background:#eef2f5}body{margin:0;color:var(--ink);font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:1.45;background:#fff}.report{max-width:1180px;margin:0 auto;padding:30px 34px 42px}.report-header{border-bottom:3px solid var(--accent);padding-bottom:16px;margin-bottom:22px;display:flex;justify-content:space-between;gap:24px;align-items:flex-end}.report-header h1{font-size:26px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em}.report-header p{margin:0;color:var(--muted)}.report-meta{text-align:right;color:var(--muted);font-size:12px;white-space:nowrap}h2{font-size:18px;margin:26px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:14px;margin:18px 0 8px}.note{background:var(--soft);border-left:4px solid var(--accent);padding:10px 12px;margin:12px 0 18px}.report-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.card{min-width:0;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:#fff;break-inside:avoid}.card h3{margin:0 0 8px}.table-wrap{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:7px;margin:8px 0 14px}table{border-collapse:collapse;width:100%;min-width:620px}th,td{padding:7px 9px;border-bottom:1px solid #e8edf1;text-align:left;vertical-align:top;font-size:11.5px}th{background:var(--soft);color:#435466;text-transform:uppercase;letter-spacing:.025em;font-size:10.5px}tr:last-child td{border-bottom:0}.figure{margin:12px 0 20px;break-inside:avoid}.report-plot{width:100%;min-width:0}.graph-stats-compact small{display:block;max-width:240px;overflow-wrap:anywhere}.graph-statistics-note{font-size:12px}.figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.figure figcaption{font-size:11.5px;color:var(--muted);margin-top:6px}.summary-box{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0}.summary-box>div{border:1px solid var(--line);border-radius:7px;padding:9px;background:var(--soft)}.summary-box strong{display:block;font-size:16px}.summary-box span{font-size:10.5px;color:var(--muted)}.swatch{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.14)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f9fb;border:1px solid var(--line);border-radius:6px;padding:10px;font:11px/1.45 Consolas,monospace}.hash{font-family:Consolas,monospace;font-size:10.5px;overflow-wrap:anywhere}.muted{color:var(--muted)}.report-page{break-after:page;page-break-after:always}.report-page:last-child{break-after:auto;page-break-after:auto}.report-footer{border-top:1px solid var(--line);margin-top:30px;padding-top:10px;color:var(--muted);font-size:11px;display:flex;justify-content:space-between;gap:12px}@media(max-width:760px){.report{padding:20px 16px}.report-header{display:block}.report-meta{text-align:left;margin-top:10px}.report-grid,.summary-box{grid-template-columns:1fr}table{min-width:560px}}@media print{html{background:#fff}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.report{max-width:none;padding:0}.card,.figure,.table-wrap{break-inside:avoid}}@page{size:'+(landscape?'A4 landscape':'A4 portrait')+';margin:12mm}';
 }
 function reportShell(title,subtitle,body,landscape=false){
   return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+reportCss(landscape)+'</style></head><body><main class="report"><header class="report-header"><div><h1>'+esc(title)+'</h1><p>'+esc(subtitle)+'</p></div><div class="report-meta">Generated '+esc(new Date().toLocaleString())+'<br>ICM Graphing Tool</div></header>'+body+'<footer class="report-footer"><span>Engineering review output · source data processed locally in the browser</span><span>© 2026 Anzar Sajid</span></footer></main></body></html>';
 }
 function reportMappingTable(w){
   const rows=[];
-  if(w.mapping&&w.mapping.observed)rows.push(['Observed',w.mapping.observed,$('obsColor').value]);
+  for(const source of observedGraphSeries()){const ref=workspaceSeries(source.key);if(ref)rows.push(['Observed',ref,reportObservedColour(source.quantity||seriesQuantity(source.item,source.col))]);}
   ((w.mapping&&w.mapping.models)||[]).forEach((x,i)=>rows.push(['Model '+(i+1),x,state.modelColours[state.mapping.models[i]]||palette[i%palette.length]]));
   if(w.mapping&&w.mapping.rain)rows.push(['Rainfall',w.mapping.rain,$('rainColor').value]);
   if(!rows.length)return '<p class="muted">No mapped series.</p>';
   return '<div class="table-wrap"><table><thead><tr><th>Role</th><th>Source</th><th>Column</th><th>Trace</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x[0])+'</td><td>'+esc(x[1].display_name||x[1].file_name||'—')+'</td><td>'+esc(x[1].column||'—')+'</td><td><span class="swatch" style="background:'+esc(x[2])+'"></span>'+esc(x[2])+'</td></tr>').join('')+'</tbody></table></div>';
 }
-function graphStatisticsHtml(rows){
-  if(!rows||!rows.length)return '<p class="muted">No graph statistics available.</p>';
-  const value=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),3);
-  const rowValues=rows.map(row=>{
-    const s=row.statistics||{},factor=row.factor||1,scale=v=>v==null?v:Number(v)*factor,quantity=String(s.quantity||'').toLowerCase();
-    const unit=s.unit||(quantity==='rainfall'?'mm/h':quantity==='flow'?'m³/s':quantity==='depth'?'m':quantity==='velocity'?'m/s':'—');
-    const total=scale(s.total);
-    return [row.compact_label||row.role||'Series',unit,value(scale(s.minimum)),value(scale(s.maximum)),value(scale(s.mean)),total==null?'—':value(total)+(s.total_unit?' '+s.total_unit:'')];
-  });
-  return '<div class="table-wrap"><table class="graph-stats-compact"><thead><tr><th>Series</th><th>Unit</th><th>Min</th><th>Max</th><th>Average</th><th>Total</th></tr></thead><tbody>'+rowValues.map(r=>'<tr>'+r.map((v,i)=>'<td'+(i===0?' class="left"':'')+'>'+esc(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
+function reportObservedColour(quantity){
+  const q=String(quantity||'').toLowerCase();
+  if(q==='flow')return $('observedFlowColour')?.value||$('obsColor').value;
+  if(q==='depth')return $('observedDepthColour')?.value||$('obsColor').value;
+  if(q==='velocity')return $('observedVelocityColour')?.value||$('obsColor').value;
+  return $('obsColor').value;
 }
+function hydraulicGraphLayout({fdvMode=false,quantities=[],statistics=[],hasRain=false,rainMax=1,range=null,title='',shapes=[],annotations=[]}
+
+
+function graphStatisticsHtml(rows){
+  if(!rows?.length)return '<p class="muted">No graph statistics available.</p>';
+  const value=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),4);
+  return '<p class="muted graph-statistics-note">Native source statistics for the displayed period. Average is the arithmetic sample mean; time-weighted mean and totals use valid interval support. Totals are partial where coverage is incomplete. Exclusions are shown on the graph but are not applied to these raw statistics.</p><div class="table-wrap"><table class="graph-stats-compact data-table"><thead><tr><th>Series</th><th>Unit</th><th>Minimum</th><th>Maximum</th><th>Average</th><th>Time-weighted mean</th><th>Total (valid support)</th><th>Valid support</th><th>Status</th></tr></thead><tbody>'+rows.map(row=>{
+    const s=row.statistics||{},factor=row.factor??1,scale=v=>v==null?v:Number(v)*factor;
+    const label=row.compact_label||row.role||'Series';
+    return '<tr><td><strong>'+esc(label)+'</strong><br><small>'+esc(row.label||'')+'</small></td><td>'+esc(s.unit||'Unresolved')+'</td><td>'+value(scale(s.minimum))+'</td><td>'+value(scale(s.maximum))+'</td><td>'+value(scale(s.mean))+'</td><td>'+value(scale(s.time_weighted_mean))+'</td><td>'+value(scale(s.total))+(s.total!=null?' '+esc(s.total_unit||''):'')+'</td><td>'+value(Number(s.valid_support_seconds||0)/3600)+' h'+(s.coverage_fraction==null?'':' · '+fmt(s.coverage_fraction*100,1)+'%')+'</td><td>'+esc(s.status||'unavailable')+(s.unit?'':' · units unresolved')+'</td></tr>';
+  }).join('')+'</tbody></table></div>';
+}
+function reportPlotFigure(id,traces,layout,statistics,caption=''){
+  const payload=JSON.stringify({data:traces,layout:{...layout,autosize:true,width:undefined}}).replace(/</g,'\\u003c');
+  const stats=statistics?.length?'<h3>Graph statistics</h3>'+graphStatisticsHtml(statistics):'';\n  return '<figure class="figure"><div class="report-plot" id="'+id+'" style="height:'+layout.height+'px"></div><script type="application/json" id="'+id+'-data">'+payload+'</script><figcaption>'+esc(caption)+'</figcaption></figure>'+stats;
+}
+async function interactiveReportHtml(html){
+  if(!reportPlotlyBundle){
+    const source=[...document.scripts].find(s=>/plotly-[\d.]+(?:\.min)?\.js/.test(s.src))?.src;
+    if(!source)throw new Error('The Plotly runtime source is unavailable; reload the application before exporting.');
+    const response=await fetch(source);
+    if(!response.ok)throw new Error('Could not embed Plotly in the report. Check the connection and retry export.');
+    const bundle=await response.text();
+    if(bundle.length<10000||!bundle.includes('Plotly'))throw new Error('Invalid Plotly runtime received; report export stopped.');
+    reportPlotlyBundle=bundle;
+  }
+  const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,scrollZoom:true}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
+  return html.replace('</body>','<script>'+reportPlotlyBundle.replace(/<\/script/gi,'<\\/script')+'</script><script>'+boot+'</script></body>');
+}
+
+
 function reportSettingsTable(w){
   const a=w.analysis||{};
   const rows=[['Time basis',w.time_basis||'model clock/unspecified'],['Analysis start',a.analysis_start||'Full available period'],['Analysis end',a.analysis_end||'Full available period'],['Maximum interpolation gap',(a.max_gap_seconds==null?'—':fmt(a.max_gap_seconds,0)+' s')],['Observed spill threshold',a.observed_threshold==null?'—':a.observed_threshold],['Model spill threshold',a.model_threshold==null?'—':a.model_threshold],['Model time offset',fmt(a.time_offset_minutes||0,1)+' min'],['Rainfall conversion factor',fmt(a.rain_factor==null?1:a.rain_factor,4)]];
@@ -677,15 +704,18 @@ function reportProjectRegistry(){
 }
 async function downloadReport(){
   assertFreshResults();
-  if(!state.mapping.observed)throw new Error('Apply a mapping before exporting the report.');
-  const images=await Promise.all([reportChart('timeChart',1400,1005),reportChart('scatterChart',680,440),reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440)]);
+  if(!state.mapping.observed&&!state.mapping.rain)throw new Error('Apply a mapping before exporting the report.');
+  await drawTimeChart();
+  const reportSignature=analysisSignature();
+  const timeFigure=reportPlotFigure('assessment-time-graph',$('timeChart').data,$('timeChart').layout,[],'Displayed source period; the integrated statistics band uses native source values.');
+  const images=await Promise.all([Promise.resolve(''),reportChart('scatterChart',680,440),reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440)]);
   const timeImg=images[0],scatterImg=images[1],residImg=images[2],cumulativeImg=images[3],exceedanceImg=images[4];
   const w=state.spillSnapshot&&state.spillSnapshot.config||state.comparisonSnapshot&&state.comparisonSnapshot.config||workspaceObject();
   const scenarioRows=state.comparisons.map((x,i)=>x.result?'<tr><td>Model '+(i+1)+' · '+esc(x.model.item.displayName)+' · '+esc(x.model.col)+'</td><td>'+(x.result.metrics.pairs==null?'—':x.result.metrics.pairs)+'</td><td>'+fmt(x.result.metrics.rmse)+'</td><td>'+fmt(x.result.metrics.mae)+'</td><td>'+fmt(x.result.metrics.mean_bias)+'</td><td>'+fmt(x.result.metrics.r2_correlation)+'</td><td>'+fmt(x.result.metrics.nse)+'</td><td>'+esc(x.result.calculation_status||'—')+'</td><td>'+(x.result.coverage_fraction==null?'—':fmt(x.result.coverage_fraction*100,1)+'%')+'</td></tr>':'').join('');
   const scenarioTable=scenarioRows?'<div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Pairs</th><th>RMSE</th><th>MAE</th><th>Bias</th><th>R²</th><th>NSE</th><th>Status</th><th>Valid support</th></tr></thead><tbody>'+scenarioRows+'</tbody></table></div>':'<p class="muted">No scenario comparison has been calculated.</p>';
   let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints.</div>';
   body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
-  if(timeImg)body+='<figure class="figure"><img src="'+timeImg+'" alt="Hydraulic time-series graph"><figcaption>Observed, modelled and rainfall time-series for the current mapped assessment.</figcaption></figure>';
+  body+=timeFigure;
   body+='<h2>Scenario comparison</h2>'+scenarioTable;
   if(window.__ICM_WORKBENCH__.professionalSurveyReportHtml)body+=window.__ICM_WORKBENCH__.professionalSurveyReportHtml;
   const diag=[];
@@ -704,85 +734,58 @@ async function downloadReport(){
   body+='<h2>Project data context</h2>'+reportProjectRegistry();
   body+='<h2>Source provenance</h2>'+reportSources(w);
   body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({spills:state.spillSnapshot,comparison:state.comparisonSnapshot,professional_flow_survey:window.__ICM_WORKBENCH__.lastProfessionalSurvey||null,project_registry:window.ICMProjectRegistry?.snapshot()||null,execution:diagnostic.execution||'unknown'},null,2))+'</pre></details>';
-  const html=reportShell('ICM Graphing Tool — Engineering Assessment','Professional hydraulic data review and model-verification output',body,false);
+  const html=await interactiveReportHtml(reportShell('ICM Calibration Workbench — Engineering Assessment','Professional hydraulic data review and model-verification output',body,false));
+  if(reportSignature!==analysisSignature())throw new Error('Inputs changed during report generation. Retry export.');
   downloadBlob('icm-workbench-report-'+new Date().toISOString().slice(0,10)+'.html',html,'text/html');
   $('workspaceStatus').textContent='Professional HTML engineering report downloaded.';
 }
 async function reportTraces(period){
-  const observedSources=observedGraphSeries();
-  if(!observedSources.length)return{traces:[],hasRain:false,rainMax:1,hydraulicTitle:'Hydraulic value',statistics:[],fdvMode:false,quantities:[]};
-  const inside=s=>{const t=modelClock(s);return t>=period[0]&&t<period[1];};
-  const traces=[],stats=[],quantities=[];
-  const fdvMode=observedSources.length>=2;
-  const observedColours={depth:$('obsColor').value,flow:'#1f77b4',velocity:'#2ca02c',level:$('obsColor').value};
+  const sources=observedGraphSeries(),fdvMode=sources.length>=2,traces=[],statistics=[],quantities=[];
   const axisFor=q=>fdvMode?(q==='flow'?'y3':q==='velocity'?'y4':'y'):'y';
-  for(const source of observedSources){
-    const s=await seriesFor(source.key,30000),x=[],y=[];
-    if(!s)continue;
-    s.data.timestamp.forEach((t,j)=>{if(inside(t)){x.push(t);y.push(s.data.value[j]);}});
-    const quantity=String(seriesQuantity(s.item,s.col)||source.quantity||'').toLowerCase();
+  const entries=[...sources.map(s=>({key:s.key,role:'Observed',observed:true})),
+    ...state.mapping.models.map((key,i)=>({key,role:'Model '+(i+1),colour:state.modelColours[key]||palette[i%palette.length]}))];
+  if(state.mapping.rain)entries.push({key:state.mapping.rain,role:'Rainfall',colour:$('rainColor').value});
+  let rainMax=1,hasRain=false;
+  for(const entry of entries){
+    const source=mappingObject(entry.key);if(!source)continue;
+    const d=await engine.call('series_data',{path:source.item.virtualPath,column:source.col,max_points:30000,
+      start:period[0],end:period[1],end_exclusive:true,max_gap_seconds:Number($('gapInput').value||900)});
+    const quantity=String(seriesQuantity(source.item,source.col)||'').toLowerCase();
     if(quantity&&!quantities.includes(quantity))quantities.push(quantity);
-    traces.push({x,y,name:fdvMode?`Observed ${quantity||s.col}`:'Observed',mode:'lines',connectgaps:false,yaxis:axisFor(quantity),line:{color:observedColours[quantity]||$('obsColor').value,width:1.8}});
-    const nativeStats=await engine.call('series_data',{path:s.item.virtualPath,column:s.col,max_points:2,start:period[0],end:period[1],max_gap_seconds:Number($('gapInput').value||900)});
-    stats.push({role:'Observed',compact_label:compactGraphRole('Observed',s.item,s.col),label:seriesLabel(s.item,s.col),statistics:nativeStats.statistics});
+    const rain=entry.role==='Rainfall',factor=rain?Number($('rainFactor').value||1):1;\n    const traceColour=entry.observed?reportObservedColour(quantity):entry.colour;
+    const values=d.value.map(v=>v==null?null:Number(v)*factor);
+    traces.push({x:d.timestamp,y:values,name:entry.role+' · '+source.col,meta:source.item.displayName,
+      type:rain?'bar':'scatter',mode:rain?undefined:'lines',connectgaps:false,
+      yaxis:rain?'y2':axisFor(quantity),line:rain?undefined:{color:traceColour,width:1.5},
+      marker:rain?{color:traceColour}:undefined,opacity:rain?.72:1});
+    statistics.push({role:entry.role,compact_label:compactGraphRole(entry.role,source.item,source.col),
+      label:seriesLabel(source.item,source.col),statistics:d.statistics,factor});
+    if(rain){hasRain=true;rainMax=values.reduce((m,v)=>v==null?m:Math.max(m,v*1.12),1);}
   }
-  let i=0;
-  for(const key of state.mapping.models){
-    const m=await seriesFor(key,30000),x=[],y=[];
-    if(!m)continue;
-    m.data.timestamp.forEach((t,j)=>{if(inside(t)){x.push(t);y.push(m.data.value[j]);}});
-    const quantity=String(seriesQuantity(m.item,m.col)||'').toLowerCase();
-    if(quantity&&!quantities.includes(quantity))quantities.push(quantity);
-    traces.push({x,y,name:'Model '+(i+1),mode:'lines',connectgaps:false,yaxis:axisFor(quantity),line:{color:state.modelColours[key]||palette[i%palette.length],width:1.6}});
-    const modelStats=await engine.call('series_data',{path:m.item.virtualPath,column:m.col,max_points:2,start:period[0],end:period[1],max_gap_seconds:Number($('gapInput').value||900)});
-    stats.push({role:'Model '+(i+1),compact_label:compactGraphRole('Model '+(i+1),m.item,m.col),label:seriesLabel(m.item,m.col),statistics:modelStats.statistics});
-    i+=1;
-  }
-  let hasRain=false,rainMax=1;
-  if(state.mapping.rain){
-    const r=await seriesFor(state.mapping.rain,30000),x=[],y=[],factor=Number($('rainFactor').value||1);
-    if(r){
-      r.data.timestamp.forEach((t,j)=>{if(inside(t)){x.push(t);y.push(r.data.value[j]==null?null:Number(r.data.value[j])*factor);}});
-      const finite=y.filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
-      rainMax=finite.length?Math.max(...finite)*1.12:1;
-      traces.push({x,y,name:'Rainfall',type:'bar',yaxis:'y2',opacity:.55,marker:{color:$('rainColor').value}});
-      const rainStats=await engine.call('series_data',{path:r.item.virtualPath,column:r.col,max_points:2,start:period[0],end:period[1],max_gap_seconds:Number($('gapInput').value||900)});
-      stats.push({role:'Rainfall',compact_label:compactGraphRole('Rainfall',r.item,r.col),label:seriesLabel(r.item,r.col),statistics:rainStats.statistics,factor});
-      hasRain=true;
-    }
-  }
-  return{traces,hasRain,rainMax:rainMax>0?rainMax:1,hydraulicTitle:fdvMode?'FDV hydraulic variables':(observedSources[0]?.col||'Hydraulic value'),statistics:stats,fdvMode,quantities};
+  return {traces,statistics,quantities,fdvMode,hasRain,rainMax};
 }
 async function downloadFourPeriod(){
   assertFreshResults();
+  if(!state.mapping.observed&&!state.mapping.rain)throw new Error('Apply a mapping before exporting.');
   const year=Number($('reportYear').value);
-  if(!year)throw new Error('Enter the report year.');
-  if(!window.ICMGraph?.draw)throw new Error('Authoritative graph renderer is unavailable.');
-  const periods=[
-    ['Complete year',year+'-01-01T00:00:00',(year+1)+'-01-01T00:00:00'],
-    ['January – April',year+'-01-01T00:00:00',year+'-05-01T00:00:00'],
-    ['May – August',year+'-05-01T00:00:00',year+'-09-01T00:00:00'],
-    ['September – December',year+'-09-01T00:00:00',(year+1)+'-01-01T00:00:00'],
-  ];
-  const chart=$('timeChart');
-  const originalRange=window.__ICM_WORKBENCH__.lastGraphRange;
-  const originalHeight=Number(chart?.layout?.height)||850;
-  const originalTitle=chart?.layout?.title?.text||null;
-  const images=[];
-  try{
-    for(const [label,a,b] of periods){
-      await window.ICMGraph.draw([a,b],{title:'Observed vs Simulated — '+label,height:1005});
-      images.push([label,a,b,await Plotly.toImage(chart,{format:'svg',width:1400,height:1005})]);
-    }
-  }finally{
-    await window.ICMGraph.draw(originalRange,{title:originalTitle||undefined,height:originalHeight});
+  if(!Number.isInteger(year)||year<1900||year>9998)throw new Error('Enter a valid report year.');
+  const periods=[['Complete year',year+'-01-01T00:00:00',(year+1)+'-01-01T00:00:00'],['January – April',year+'-01-01T00:00:00',year+'-05-01T00:00:00'],['May – August',year+'-05-01T00:00:00',year+'-09-01T00:00:00'],['September – December',year+'-09-01T00:00:00',(year+1)+'-01-01T00:00:00']];
+  await drawTimeChart();
+  const shapes=JSON.parse(JSON.stringify($('timeChart').layout?.shapes||[]));
+  const thresholdTraces=JSON.parse(JSON.stringify(($('timeChart').data||[]).filter(t=>t.line?.dash==='dash'&&t.x?.every(x=>x==null))));
+  const w=workspaceObject(),signature=analysisSignature();
+  let body='<div class="note">Interactive Plotly graphs with fixed period statistics from native source data. Zoom changes the view, not the statistics period. Display traces may be reduced; calculations use native data.</div><h2>Series key</h2>'+reportMappingTable(w);
+  for(let i=0;i<periods.length;i++){
+    const [title,a,b]=periods[i],result=await reportTraces([a,b]);
+    result.traces.push(...thresholdTraces);
+    const layout=hydraulicGraphLayout({...result,range:[a,b],title:year+' — '+title,shapes});
+    body+='<section class="report-page"><h2>'+esc(title)+'</h2><p class="muted">'+esc(a)+' to '+esc(b)+' · end exclusive</p><h3>Period statistics</h3>'+reportPlotFigure('period-graph-'+i,result.traces,layout,result.statistics,'Aligned hydraulic panels with a separate rainfall band above.')+'</section>';
   }
-  const w=workspaceObject();
-  let body='<div class="note"><strong>Four-period graph report.</strong> Complete year and fixed four-month windows use the same authoritative Plotly composition as the online graph: rainfall/hydraulic panels, colours, depth-only thresholds and integrated statistics.</div><h2>Series key</h2>'+reportMappingTable(w);
-  body+=images.map(x=>'<section class="report-page"><h2>'+esc(x[0])+'</h2><p class="muted">'+esc(x[1].replace('T',' '))+' to '+esc(x[2].replace('T',' '))+' · end boundary</p><figure class="figure"><img src="'+x[3]+'" alt="'+esc(x[0])+' time-series graph"><figcaption>Reference-aligned Plotly composition with integrated statistics; calculations remain native-resolution.</figcaption></figure></section>').join('');
-  const html=reportShell('ICM Graphing Tool — '+year+' Four-Period Report','Annual hydraulic time-series review',body,true);
+  body+='<h2>Analysis settings</h2>'+reportSettingsTable(w)+'<h2>Exclusions</h2>'+reportExclusions(w)+'<h2>Source provenance</h2>'+reportSources(w);
+  const html=await interactiveReportHtml(reportShell('ICM Calibration Workbench — '+year+' Four-Period Report','Annual hydraulic time-series review',body,true));
+  if(signature!==analysisSignature())throw new Error('Inputs changed during report generation. Retry export.');
   downloadBlob('icm-'+year+'-four-period-report.html',html,'text/html');
-  $('workspaceStatus').textContent='Professional four-period HTML report downloaded.';
+  $('workspaceStatus').textContent='Interactive four-period HTML report downloaded.';
 }
 function downloadManifest(){const w=workspaceObject(),rows=['workflow_role,asset_id,domain_role,file,column,quantity,unit,sha256,size,format'],roles=[];if(w.mapping.observed)roles.push(['Observed',w.mapping.observed]);for(const x of w.mapping.models||[])roles.push(['Modelled/comparison',x]);if(w.mapping.rain)roles.push(['Rainfall',w.mapping.rain]);if(w.analysis.storage_level)roles.push(['Storage level',w.analysis.storage_level]);if(w.analysis.storage_flow)roles.push(['Overflow flow',w.analysis.storage_flow]);for(const[role,ref]of roles){const src=w.source_references.find(x=>x.sha256===ref.sha256)||{};rows.push([role,ref.asset_id||'',ref.role||'',ref.display_name,ref.column,ref.quantity||'',ref.unit||'',ref.sha256,src.size||'',src.format||''].map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(','));}downloadBlob('icm-workbench-provenance.csv',rows.join('\n'),'text/csv');}
 
