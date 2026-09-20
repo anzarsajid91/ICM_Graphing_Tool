@@ -42,12 +42,14 @@ def _inject_v2_assets(build_token: str) -> None:
         "assets/app.css",
         "assets/workbench-v2.css",
         "assets/workbench-survey.css",
+        "assets/precision-workbench.css",
         "assets/domain-registry.js",
         "assets/runtime.js",
         "assets/workbench-v2.js",
         "assets/workbench-v2-domfix.js",
         "assets/workbench-v3.js",
         "assets/workbench-survey.js",
+        "assets/precision-workbench.js",
     ]
     for asset in local_assets:
         html = html.replace(f'"{asset}"', f'"{asset}?v={build_token}"')
