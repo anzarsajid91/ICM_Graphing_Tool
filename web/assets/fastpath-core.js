@@ -261,10 +261,23 @@
   }
   function parseCsv(name,text,options){
     const clean=String(text??'').replace(/^\uFEFF/,'');
-    const lines=clean.split(/\r?\n/),head=findCsvHeader(lines);
+    const lines=clean.split(/\r?\n/),low=clean.slice(0,24000).toLowerCase();
+    const hydSignature=low.includes('type=hyd')||low.includes('u_level')||low.includes('u_flow')||low.includes('u_velocity');
+    let head=null;
+    if(hydSignature){
+      for(let i=0;i<Math.min(lines.length,160)&&!head;i++){
+        for(const delimiter of [',','\t',';']){
+          const fields=parseCsvLine(lines[i],delimiter),timeIndex=timeColumnIndex(fields);
+          if(fields.length>=2&&timeIndex>=0&&normalise(fields[timeIndex])==='p_datetime'){
+            head={index:i,delimiter,fields,timeIndex};
+            break;
+          }
+        }
+      }
+    }
+    if(!head)head=findCsvHeader(lines);
     if(!head)throw new Error('Could not detect a supported timestamp column');
-    const low=clean.slice(0,24000).toLowerCase();
-    const isHyd=normalise(head.fields[head.timeIndex])==='p_datetime'&&(low.includes('type=hyd')||low.includes('u_level')||low.includes('u_flow')||low.includes('u_velocity'));
+    const isHyd=hydSignature&&normalise(head.fields[head.timeIndex])==='p_datetime';
     if(isHyd){
       const [quantity,unit]=hydQuantity(clean),epochs=[],timestamps=[],values=[];
       let invalid=0,duplicates=0,sentinelCount=0,nonNumeric=0;const seen=new Set();
