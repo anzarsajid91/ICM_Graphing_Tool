@@ -182,7 +182,7 @@ try{
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect','');
   await page.click('#applyMappingBtn');
-  await page.waitForSelector('#timeChart .main-svg',{timeout:60000});
+  await page.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000});
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('0 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall not mapped'));
   const fullDensity=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastGraphPointCounts?.observed);
   if(!fullDensity||fullDensity.raw!==40000||fullDensity.shown>15000||fullDensity.native!==false)throw new Error(`Full adaptive density incorrect: ${JSON.stringify(fullDensity)}`);
