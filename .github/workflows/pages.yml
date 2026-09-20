@@ -159,6 +159,7 @@ jobs:
           retention-days: 30
           path: |
             /tmp/icm-pr-evidence/
+            reference/current-tool/reports/screenshots/FDV_Sample_Plots.png
 
       - name: Retain browser failure evidence
         if: failure()
