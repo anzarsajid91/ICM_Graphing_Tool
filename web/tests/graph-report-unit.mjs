@@ -24,3 +24,18 @@ assert(figure.includes('\\u003c/script>'));
 assert(figure.includes('application/json'));
 assert(figure.includes('Graph statistics'));
 console.log('Graph/report regressions passed: stacked domains, units, no slider, zero scale, support and safe interactive payload.');
+sandbox.document.getElementById=id=>({value:id==='gapInput'?'900':id==='rainFactor'?'1':'#ff0000'});
+await run(`(async()=>{
+ state.files.set('test',{id:'test',displayName:'sample.csv',virtualPath:'/sample.csv',parsed:{metadata:{quantity:'depth',canonical_unit:'m'}}});
+ state.mapping={observed:sourceKey('test','depth'),models:[],rain:''};
+ window.requests=[];
+ engine.call=async(name,args)=>{window.requests.push({name,args});return {timestamp:['2026-01-01T00:00:00',null,'2026-01-01T01:00:00'],value:[1,null,2],statistics:{quantity:'depth',unit:'m'}};};
+ window.period=await reportTraces(['2026-01-01','2026-02-01']);
+})()`);
+assert.equal(sandbox.window.requests.length,1);
+assert.equal(sandbox.window.requests[0].args.start,'2026-01-01');
+assert.equal(sandbox.window.requests[0].args.end,'2026-02-01');
+assert.equal(sandbox.window.requests[0].args.end_exclusive,true);
+assert.equal(sandbox.window.period.traces[0].x[1],null);
+assert.equal(sandbox.window.period.traces[0].y[1],null);
+console.log('Report period retrieval retains gap separators and uses a single bounded native-statistics request.');
