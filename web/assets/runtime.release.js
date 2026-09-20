@@ -618,7 +618,8 @@ function graphStatisticsHtml(rows){
 }
 function reportPlotFigure(id,traces,layout,statistics,caption=''){
   const payload=JSON.stringify({data:traces,layout:{...layout,autosize:true,width:undefined}}).replace(/</g,'\\u003c');
-  const stats=statistics?.length?'<h3>Graph statistics</h3>'+graphStatisticsHtml(statistics):'';\n  return '<figure class="figure"><div class="report-plot" id="'+id+'" style="height:'+layout.height+'px"></div><script type="application/json" id="'+id+'-data">'+payload+'</script><figcaption>'+esc(caption)+'</figcaption></figure>'+stats;
+  const stats=statistics?.length?'<h3>Graph statistics</h3>'+graphStatisticsHtml(statistics):'';
+  return '<figure class="figure"><div class="report-plot" id="'+id+'" style="height:'+layout.height+'px"></div><script type="application/json" id="'+id+'-data">'+payload+'</script><figcaption>'+esc(caption)+'</figcaption></figure>'+stats;
 }
 async function interactiveReportHtml(html){
   if(!reportPlotlyBundle){
@@ -752,7 +753,8 @@ async function reportTraces(period){
       start:period[0],end:period[1],end_exclusive:true,max_gap_seconds:Number($('gapInput').value||900)});
     const quantity=String(seriesQuantity(source.item,source.col)||'').toLowerCase();
     if(quantity&&!quantities.includes(quantity))quantities.push(quantity);
-    const rain=entry.role==='Rainfall',factor=rain?Number($('rainFactor').value||1):1;\n    const traceColour=entry.observed?reportObservedColour(quantity):entry.colour;
+    const rain=entry.role==='Rainfall',factor=rain?Number($('rainFactor').value||1):1;
+    const traceColour=entry.observed?reportObservedColour(quantity):entry.colour;
     const values=d.value.map(v=>v==null?null:Number(v)*factor);
     traces.push({x:d.timestamp,y:values,name:entry.role+' · '+source.col,meta:source.item.displayName,
       type:rain?'bar':'scatter',mode:rain?undefined:'lines',connectgaps:false,
