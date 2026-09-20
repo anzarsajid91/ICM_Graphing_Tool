@@ -106,18 +106,18 @@
     toolbar.className = 'v2-graph-toolbar';
     toolbar.innerHTML = `
       <div class="v2-threshold-control">
-        <label>Observed / EDM spill threshold
+        <label>Observed / EDM depth threshold
           <input id="graphObsThreshold" type="number" step="any" placeholder="Not shown" />
         </label>
         <label class="v2-show-toggle"><input id="showGraphObsThreshold" type="checkbox" checked /> Show line</label>
       </div>
       <div class="v2-threshold-control">
-        <label>Model spill threshold
+        <label>Model depth threshold
           <input id="graphModelThreshold" type="number" step="any" placeholder="Not shown" />
         </label>
         <label class="v2-show-toggle"><input id="showGraphModelThreshold" type="checkbox" checked /> Show line</label>
       </div>
-      <div class="v2-density" id="graphDensity"><strong>Adaptive display</strong>Full view is reduced for speed; zoom progressively refines toward every source timestep.</div>`;
+      <div class="v2-density" id="graphDensity"><strong>Adaptive display</strong>Full view is reduced for speed; zoom progressively refines toward every source timestep. Thresholds are drawn on the Depth panel only.</div>`;
     panel.insertBefore(toolbar, details);
     const chart = document.getElementById('timeChart');
     if (chart && !document.getElementById('graphStatistics')) {
@@ -204,20 +204,24 @@
     return {...source, data};
   }
 
-  function v2GraphShapes(targetAxis='y') {
+  function v2GraphShapes(targetAxis=null, options={}) {
     const shapes = [];
-    const xEnd=observedGraphSeries().length>=2?.90:1;
-    for(const e of exclusionPayload(false)){if(e.enabled)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:'#b45309',opacity:.12,line:{width:0},layer:'below',label:{text:e.reason}});}
+    for(const e of exclusionPayload(false)){
+      if(e.enabled)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:'#b45309',opacity:.12,line:{width:0},layer:'below',label:{text:e.reason}});
+    }
     const obs = nullableNumber($('graphObsThreshold')?.value ?? $('obsThreshold').value);
     const model = nullableNumber($('graphModelThreshold')?.value ?? $('modelThreshold').value);
-    if ($('showGraphObsThreshold')?.checked !== false && obs !== null) {
-      shapes.push({type:'line',xref:'paper',x0:0,x1:xEnd,yref:targetAxis,y0:obs,y1:obs,line:{color:$('threshold1Color').value,width:2,dash:'dash'}});
+    const showObserved=Boolean(targetAxis)&&options.showObserved===true&&$('showGraphObsThreshold')?.checked!==false&&obs!==null;
+    const showModel=Boolean(targetAxis)&&options.showModel===true&&$('showGraphModelThreshold')?.checked!==false&&model!==null;
+    const coincident=showObserved&&showModel&&Math.abs(Number(obs)-Number(model))<=1e-12;
+    if(coincident){
+      shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:targetAxis,y0:obs,y1:obs,line:{color:$('threshold1Color').value,width:2,dash:'dash'},layer:'above'});
+    }else{
+      if(showObserved)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:targetAxis,y0:obs,y1:obs,line:{color:$('threshold1Color').value,width:2,dash:'dash'},layer:'above'});
+      if(showModel)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:targetAxis,y0:model,y1:model,line:{color:$('threshold2Color').value,width:2,dash:'dash'},layer:'above'});
     }
-    if ($('showGraphModelThreshold')?.checked !== false && model !== null) {
-      shapes.push({type:'line',xref:'paper',x0:0,x1:xEnd,yref:targetAxis,y0:model,y1:model,line:{color:$('threshold2Color').value,width:2,dash:'dash'}});
-    }
-    if ($('showEventOverlay').checked) {
-      for (const e of state.rainEvents) shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:$('rainEventColor').value,opacity:.08,line:{width:0},layer:'below'});
+    if($('showEventOverlay').checked){
+      for(const e of state.rainEvents)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:$('rainEventColor').value,opacity:.08,line:{width:0},layer:'below'});
     }
     return shapes;
   }
