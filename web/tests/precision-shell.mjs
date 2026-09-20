@@ -18,6 +18,11 @@ try{
   // Refinement acceptance: analytical routes must preserve labelled navigation by default.
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
   if(await page.locator('body').evaluate(el=>el.classList.contains('pw-focus-canvas')))throw new Error('Focus canvas must be explicitly opted into; fresh sessions must retain labelled navigation.');
+  const inspectorContainment=await page.evaluate(()=>{
+    const inspector=document.querySelector('#pwInspector'),toolbar=document.querySelector('#v2GraphToolbar');
+    return{inspectorClient:inspector?.clientWidth||0,inspectorScroll:inspector?.scrollWidth||0,toolbarClient:toolbar?.clientWidth||0,toolbarScroll:toolbar?.scrollWidth||0};
+  });
+  if(inspectorContainment.inspectorScroll>inspectorContainment.inspectorClient+1||inspectorContainment.toolbarScroll>inspectorContainment.toolbarClient+1)throw new Error('Docked time-series Inspector controls overflow horizontally: '+JSON.stringify(inspectorContainment));
 
   // Refinement acceptance: shared legacy tabs must expose only the surface owned by the selected route.
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','flow-continuity',false));
