@@ -52,7 +52,7 @@ try{
 
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('report','builder',false));
   const reportComposition=await page.evaluate(()=>{
-    const visible=el=>Boolean(el)&&getComputedStyle(el).display!=='none'&&!el.hidden;
+    const visible=el=>Boolean(el)&&!el.hidden&&el.getClientRects().length>0;
     return{
       builder:visible(document.querySelector('#pwReportBuilderSurface')),
       workspace:visible(document.querySelector('#pwWorkspaceSurface')),
