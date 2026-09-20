@@ -31,7 +31,6 @@ async function clickTab(name){
     storage:['verification','storage'],
     workspace:['report','builder']
   };
-  if(window){}
   const next=routes[name];
   if(next){await precisionRoute(next[0],next[1]);return;}
   await page.locator(`[data-tab="${name}"]`).evaluate(el=>el.click());
