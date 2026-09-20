@@ -210,6 +210,13 @@ try{
 
   stage='graph threshold controls and rainfall top band';
   await precisionRoute('data','time-series');
+  const standardLayout=await page.evaluate(()=>({
+    focus:document.body.classList.contains('pw-focus-canvas'),
+    rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
+    labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none')
+  }));
+  if(standardLayout.focus||standardLayout.rail<180||!standardLayout.labelled)throw new Error('Standard analytical layout must retain labelled navigation by default: '+JSON.stringify(standardLayout));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
   const focusLayout=await page.evaluate(()=>({
     focus:document.body.classList.contains('pw-focus-canvas'),
     rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
@@ -217,12 +224,13 @@ try{
     inspectorPosition:getComputedStyle(document.querySelector('.pw-inspector')).position,
     inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none'
   }));
-  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||!focusLayout.inspectorToggleVisible)throw new Error('Focus canvas did not maximise the graph work area: '+JSON.stringify(focusLayout));
+  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||!focusLayout.inspectorToggleVisible)throw new Error('Opt-in focus canvas did not maximise the graph work area: '+JSON.stringify(focusLayout));
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
   await page.click('#pwInspectorToggle');
   await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.click('#pwInspectorClose');
   await page.waitForFunction(()=>!document.querySelector('#pwInspector')?.classList.contains('is-open'));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(false));
   await page.fill('#graphObsThreshold','1.5');
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.layout?.shapes?.length>=1,null,{timeout:60000});
   const thresholdPresentation=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{legendNames:(chart.data||[]).map(t=>t.name),annotations:(chart.layout.annotations||[]).map(a=>a.text)}}); 
