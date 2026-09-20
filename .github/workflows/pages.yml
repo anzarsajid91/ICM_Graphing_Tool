@@ -47,6 +47,7 @@ jobs:
         run: |
           node --check web/assets/runtime.release.js
           node --check web/assets/analysis-worker.js
+          node --check web/assets/fastpath-core.js
           node --check web/assets/domain-registry.js
           node --check web/assets/workbench-v2.js
           node --check web/assets/workbench-v2-domfix.js
