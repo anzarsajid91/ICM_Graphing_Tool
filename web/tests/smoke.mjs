@@ -863,6 +863,9 @@ try{
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect',await optionValue('#rainSelect','Reference-RG01.R — rainfall'));
   await precisionRoute('data','time-series');
+  const rainfallAppearance=page.locator('#pwInspector details.appearance-panel');
+  if(!(await rainfallAppearance.evaluate(el=>el.open)))await rainfallAppearance.locator('summary').click();
+  await page.locator('#rainFactor').waitFor({state:'visible'});
   await page.fill('#rainFactor','1');
   await precisionRoute('data','series-mapping');
   await page.click('#applyMappingBtn');
