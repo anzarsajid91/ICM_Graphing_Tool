@@ -604,7 +604,7 @@ function graphStatisticsHtml(rows){
     const s=row.statistics||{},factor=row.factor||1,scale=v=>v==null?v:Number(v)*factor,quantity=String(s.quantity||'').toLowerCase();
     const unit=s.unit||(quantity==='rainfall'?'mm/h':quantity==='flow'?'m³/s':quantity==='depth'?'m':quantity==='velocity'?'m/s':'—');
     const total=scale(s.total);
-    return [row.compact_label||row.role||'Series',unit,value(scale(s.minimum)),value(scale(s.maximum)),value(scale(s.time_weighted_mean??s.mean)),total==null?'—':value(total)+(s.total_unit?' '+s.total_unit:'')];
+    return [row.compact_label||row.role||'Series',unit,value(scale(s.minimum)),value(scale(s.maximum)),value(scale(s.mean)),total==null?'—':value(total)+(s.total_unit?' '+s.total_unit:'')];
   });
   return '<div class="table-wrap"><table class="graph-stats-compact"><thead><tr><th>Series</th><th>Unit</th><th>Min</th><th>Max</th><th>Average</th><th>Total</th></tr></thead><tbody>'+rowValues.map(r=>'<tr>'+r.map((v,i)=>'<td'+(i===0?' class="left"':'')+'>'+esc(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
 }
