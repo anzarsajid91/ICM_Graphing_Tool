@@ -47,11 +47,13 @@ async function captureEvidence(name){
 async function inspectReportHtml(html,minFigures=1){
   const p=await context.newPage();
   try{
+    await p.route('https://**/*',route=>route.abort());
     await p.setContent(html,{waitUntil:'domcontentloaded'});
     await p.waitForFunction(()=>[...document.images].every(x=>x.complete),null,{timeout:30000});
+    await p.waitForFunction(()=>[...document.querySelectorAll('.report-plot')].every(el=>el._fullLayout&&el.querySelector('.main-svg')),null,{timeout:60000});
     const result=await p.evaluate((minFigures)=>{
       const root=document.documentElement;
-      const figures=[...document.querySelectorAll('.figure img')];
+      const figures=[...document.querySelectorAll('.figure img,.figure .report-plot')];
       const zero=figures.filter(x=>x.getBoundingClientRect().width<=0||x.getBoundingClientRect().height<=0).length;
       return {
         overflow:root.scrollWidth-root.clientWidth,
@@ -178,7 +180,7 @@ try{
   const denseObserved=await optionValue('#observedSelect','dense-observed.csv — level');
   const rain=await optionValue('#rainSelect','rainfall.csv — rainfall');
   if(!denseObserved||!rain)throw new Error('Expected dense observed and rainfall series options');
-  if((await page.inputValue('#obsColor')).toLowerCase()!=='#d32f2f')throw new Error('Observed default colour should be red');
+  if((await page.inputValue('#obsColor')).toLowerCase()!=='#ff0000')throw new Error('Observed default colour should be red');
   await page.selectOption('#observedSelect',denseObserved);
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect','');
@@ -189,7 +191,7 @@ try{
   if(!fullDensity||fullDensity.raw!==40000||fullDensity.shown>15000||fullDensity.native!==false)throw new Error(`Full adaptive density incorrect: ${JSON.stringify(fullDensity)}`);
   const observedOnlyLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return {traceCount:chart.data.length,hasRainTrace:chart.data.some(t=>t.yaxis==='y2'),hasY2:Boolean(chart.layout.yaxis2),hydDomain:chart.layout.yaxis.domain,observedColour:chart.data[0]?.line?.color};});
   if(observedOnlyLayout.traceCount!==1||observedOnlyLayout.hasRainTrace||observedOnlyLayout.hasY2||observedOnlyLayout.hydDomain[0]!==0||observedOnlyLayout.hydDomain[1]!==1)throw new Error(`Observed-only/no-rain graph layout incorrect: ${JSON.stringify(observedOnlyLayout)}`);
-  if(String(observedOnlyLayout.observedColour).toLowerCase()!=='#d32f2f')throw new Error('Observed plotted trace should be red, got '+JSON.stringify(observedOnlyLayout.observedColour));
+  if(String(observedOnlyLayout.observedColour).toLowerCase()!=='#ff0000')throw new Error('Observed plotted trace should be red, got '+JSON.stringify(observedOnlyLayout.observedColour));
 
   stage='same-series observed and comparison mapping without rainfall';
   await page.selectOption('#modelSelect',[denseObserved]);
@@ -198,8 +200,8 @@ try{
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.data?.length===2,null,{timeout:60000});
   const comparisonNoRainLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return {traceCount:chart.data.length,hasRainTrace:chart.data.some(t=>t.yaxis==='y2'),hasY2:Boolean(chart.layout.yaxis2),hydDomain:chart.layout.yaxis.domain,observedColour:chart.data[0]?.line?.color,modelColour:chart.data[1]?.line?.color};});
   if(comparisonNoRainLayout.traceCount!==2||comparisonNoRainLayout.hasRainTrace||comparisonNoRainLayout.hasY2||comparisonNoRainLayout.hydDomain[0]!==0||comparisonNoRainLayout.hydDomain[1]!==1)throw new Error(`Observed+comparison/no-rain graph layout incorrect: ${JSON.stringify(comparisonNoRainLayout)}`);
-  if(String(comparisonNoRainLayout.observedColour).toLowerCase()!=='#d32f2f')throw new Error('Observed comparison trace should remain red, got '+JSON.stringify(comparisonNoRainLayout.observedColour));
-  if(String(comparisonNoRainLayout.modelColour).toLowerCase()!=='#5755d9')throw new Error('First model plotted trace should use #5755d9, got '+JSON.stringify(comparisonNoRainLayout.modelColour));
+  if(String(comparisonNoRainLayout.observedColour).toLowerCase()!=='#ff0000')throw new Error('Observed comparison trace should remain red, got '+JSON.stringify(comparisonNoRainLayout.observedColour));
+  if(String(comparisonNoRainLayout.modelColour).toLowerCase()!=='#0008ff')throw new Error('First model plotted trace should use #0008ff, got '+JSON.stringify(comparisonNoRainLayout.modelColour));
 
   stage='observed-only mapping with rainfall';
   await page.selectOption('#modelSelect',[]);
@@ -233,7 +235,7 @@ try{
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(false));
   await page.fill('#graphObsThreshold','1.5');
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.layout?.shapes?.length>=1,null,{timeout:60000});
-  const thresholdPresentation=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{legendNames:(chart.data||[]).map(t=>t.name),annotations:(chart.layout.annotations||[]).map(a=>a.text)}}); 
+  const thresholdPresentation=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{legendNames:(chart.data||[]).map(t=>t.name),annotations:(chart.layout.annotations||[]).map(a=>a.text)}});
   if(!thresholdPresentation.legendNames.includes('Observed spill level'))throw new Error(`Observed spill threshold is not represented in the top legend: ${JSON.stringify(thresholdPresentation)}`);
   if(thresholdPresentation.annotations.includes('Observed spill level'))throw new Error('Observed spill threshold label should not be stamped on the threshold line');
   const thresholdDashes=await page.evaluate(()=>document.querySelector('#timeChart').data.filter(t=>/spill (level|threshold)/i.test(t.name||'')).map(t=>t.line?.dash));
@@ -245,8 +247,8 @@ try{
   const graphStatsLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart').getBoundingClientRect(),stats=document.querySelector('#graphStatistics').getBoundingClientRect();return{chartBottom:chart.bottom,statsTop:stats.top,overflow:document.querySelector('#graphStatistics').scrollWidth-document.querySelector('#graphStatistics').clientWidth};});
   if(graphStatsLayout.statsTop<graphStatsLayout.chartBottom-1)throw new Error(`Graph statistics overlap the chart: ${JSON.stringify(graphStatsLayout)}`);
   const graphStatsText=await page.locator('#graphStatistics').textContent();
-  if(!graphStatsText.includes('Minimum')||!graphStatsText.includes('Mean')||!graphStatsText.includes('Maximum')||!graphStatsText.includes('Unit'))throw new Error('Compact ICM-style graph statistics fields are missing');
-  if(graphStatsText.includes('Median')||graphStatsText.includes('Integrated total')||graphStatsText.includes('Missing')||graphStatsText.includes('Status'))throw new Error('Graph statistics were not decluttered: '+graphStatsText);
+  if(!graphStatsText.includes('Minimum')||!graphStatsText.includes('Average')||!graphStatsText.includes('Maximum')||!graphStatsText.includes('Unit'))throw new Error('Compact ICM-style graph statistics fields are missing');
+  if(!graphStatsText.includes('Total (valid support)')||!graphStatsText.includes('Status')||!graphStatsText.includes('Time-weighted mean'))throw new Error('Native graph statistics lack support or totals: '+graphStatsText);
   const noRangeSlider=await page.evaluate(()=>!document.querySelector('#timeChart')?.layout?.xaxis?.rangeslider?.visible);
   if(!noRangeSlider)throw new Error('Main graph overview/range slider should be removed');
   await captureEvidence('01-data-graph');
@@ -287,7 +289,7 @@ try{
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'));
   const modelColour=await page.inputValue('#modelColourControls .model-colour');
   const colourWidth=await page.locator('#modelColourControls .model-colour').evaluate(el=>el.getBoundingClientRect().width);
-  if(modelColour.toLowerCase()!=='#5755d9')throw new Error(`First model default colour should be Precision Workbench purple-blue, got ${modelColour}`);
+  if(modelColour.toLowerCase()!=='#0008ff')throw new Error(`First model default colour should be reference-report blue, got ${modelColour}`);
   if(colourWidth>90)throw new Error(`Model colour picker should be a compact swatch, width=${colourWidth}`);
   await clickTab('graph');
   await page.fill('#graphObsThreshold','1.0');
@@ -448,8 +450,9 @@ try{
   await page.selectOption('#modelSelect',[]);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphMode==='fdv-multi-variable',null,{timeout:60000});
-  const fdvGraph=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{names:chart.data.map(t=>t.name),axes:chart.data.filter(t=>/^Observed /.test(t.name||'')).map(t=>t.yaxis||'y'),hasY3:Boolean(chart.layout.yaxis3),hasY4:Boolean(chart.layout.yaxis4),stats:[...document.querySelectorAll('#graphStatistics tbody tr')].map(r=>r.textContent)}}); 
+  const fdvGraph=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{names:chart.data.map(t=>t.name),axes:chart.data.filter(t=>/^Observed /.test(t.name||'')).map(t=>t.yaxis||'y'),hasY3:Boolean(chart.layout.yaxis3),hasY4:Boolean(chart.layout.yaxis4),domains:[chart.layout.yaxis4?.domain,chart.layout.yaxis?.domain,chart.layout.yaxis3?.domain],stats:[...document.querySelectorAll('#graphStatistics tbody tr')].map(r=>r.textContent)}});
   if(!fdvGraph.names.some(x=>/Observed depth/i.test(x))||!fdvGraph.names.some(x=>/Observed flow/i.test(x))||!fdvGraph.names.some(x=>/Observed velocity/i.test(x))||!fdvGraph.hasY3||!fdvGraph.hasY4)throw new Error('FDV graph did not auto-expand depth/flow/velocity with independent scaling: '+JSON.stringify(fdvGraph));
+  if(!(fdvGraph.domains[0][1]<fdvGraph.domains[1][0]&&fdvGraph.domains[1][1]<fdvGraph.domains[2][0]))throw new Error('FDV panels overlap: '+JSON.stringify(fdvGraph.domains));
   if(fdvGraph.stats.length<3)throw new Error('FDV graph should expose compact statistics for all three hydraulic variables');
   // Restore the comparison mapping used by the remainder of the acceptance workflow.
   await page.selectOption('#observedSelect',obsDepth);
@@ -616,8 +619,8 @@ try{
   if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
   if(!report.includes('project_registry')||!report.includes('web-worker'))throw new Error('Report audit appendix is missing canonical project registry / worker execution provenance');
   if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Project data context')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
-  if(!report.includes('Graph statistics')||!report.includes('Minimum')||!report.includes('Mean')||!report.includes('Maximum'))throw new Error('Assessment report compact graph statistics missing');
-  if(report.includes('<th>Median</th>')||report.includes('<th>Integrated total</th>'))throw new Error('Assessment report graph statistics were not simplified');
+  if(!report.includes('Graph statistics')||!report.includes('Minimum')||!report.includes('Average')||!report.includes('Maximum'))throw new Error('Assessment report compact graph statistics missing');
+  if(!report.includes('Total (valid support)')||!report.includes('report-plot'))throw new Error('Assessment report lacks interactive graphs or totals');
   if(!report.includes('Professional flow-survey / rainfall assessment')||!report.includes('professional_flow_survey'))throw new Error('Professional flow-survey assessment missing from report/audit appendix');
   if(!report.includes('Complete flow-survey context')||!report.includes('Flow continuity / volume balance')||!report.includes('fm_rg_assoc.xlsx'))throw new Error('Association-driven complete survey context missing from exported report');
   if(!report.includes('report-grid')||!report.includes('table-wrap'))throw new Error('Professional report layout classes missing');
@@ -676,6 +679,38 @@ try{
   }));
   if(sourceEventEvidence.events?.count!==1||sourceEventEvidence.events?.details?.[0]?.reason!=='ingest')throw new Error('Real multi-file ingestion must emit exactly one source-pool state event: '+JSON.stringify(sourceEventEvidence));
   if(sourceEventEvidence.professional||sourceEventEvidence.complete||sourceEventEvidence.balance)throw new Error('Real source-pool change did not invalidate source-dependent survey results: '+JSON.stringify(sourceEventEvidence));
+
+  stage='supplied real FDV and rainfall graph/report regression';
+  await precisionRoute('data','sources');
+  await page.click('#clearPoolBtn');
+  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0,null,{timeout:30000});
+  const referenceRoot=path.join(root,'reference/current-tool/sample-data');
+  const realFdv=await fs.readFile(path.join(referenceRoot,'fdv/FM01.fdv'));
+  const realRain=await fs.readFile(path.join(referenceRoot,'rainfall/RG01.R'));
+  await page.setInputFiles('#fileInput',[
+    {name:'Reference-FM01.fdv',mimeType:'text/plain',buffer:realFdv},
+    {name:'Reference-RG01.R',mimeType:'text/plain',buffer:realRain},
+  ]);
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(r=>/Reference-(FM01|RG01)/.test(r.textContent)).filter(r=>r.textContent.includes('Ready')).length===2,null,{timeout:120000});
+  await precisionRoute('data','series-mapping');
+  await page.selectOption('#observedSelect',await optionValue('#observedSelect','Reference-FM01.fdv — depth'));
+  await page.selectOption('#modelSelect',[]);
+  await page.selectOption('#rainSelect',await optionValue('#rainSelect','Reference-RG01.R — rainfall'));
+  await page.fill('#rainFactor','1');
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphStatistics?.some(r=>r.label?.includes('Reference-RG01')&&r.statistics?.total===85),null,{timeout:120000});
+  const realEvidence=await page.evaluate(()=>({statistics:window.__ICM_WORKBENCH__.lastGraphStatistics,layout:document.querySelector('#timeChart').layout}));
+  const realFlow=realEvidence.statistics.find(r=>r.statistics.quantity==='flow').statistics;
+  if(Math.abs(realFlow.mean-.1289310550071921)>1e-10||Math.abs(realFlow.total-311912.16)>1e-5)throw new Error('Real FDV native statistics differ from independent reference arithmetic: '+JSON.stringify(realFlow));
+  if(!(realEvidence.layout.yaxis4.domain[1]<realEvidence.layout.yaxis.domain[0]&&realEvidence.layout.yaxis.domain[1]<realEvidence.layout.yaxis3.domain[0]&&realEvidence.layout.yaxis3.domain[1]<realEvidence.layout.yaxis2.domain[0]))throw new Error('Real FDV panels overlap');
+  await precisionRoute('data','time-series');
+  await captureEvidence('07-real-fdv-rainfall');
+  await precisionRoute('report','builder');
+  await page.fill('#reportYear','2026');
+  const realDownload=await downloadFrom('#downloadFourPeriodBtn');
+  const realReport=await fs.readFile(await realDownload.path(),'utf8');
+  const realLayout=await inspectReportHtml(realReport,4);
+  if(realLayout.figures!==4||realLayout.zero||realLayout.overflow>2)throw new Error('Real-data report layout failed: '+JSON.stringify(realLayout));
 
   stage='final browser diagnostics';
   const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__);

@@ -196,7 +196,7 @@
 
   function v2GraphShapes() {
     const shapes = [];
-    const xEnd=observedGraphSeries().length>=2?.90:1;
+    const xEnd=1;
     for(const e of exclusionPayload(false)){if(e.enabled)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:'#b45309',opacity:.12,line:{width:0},layer:'below',label:{text:e.reason}});}
     const obs = nullableNumber($('graphObsThreshold')?.value ?? $('obsThreshold').value);
     const model = nullableNumber($('graphModelThreshold')?.value ?? $('modelThreshold').value);
@@ -237,7 +237,7 @@
     const target = $('graphStatistics');
     if (!target) return;
     if (!rows.length) { target.innerHTML='<div class="v2-empty">No graph statistics available.</div>'; return; }
-    target.innerHTML=`<div class="table-wrap"><table class="data-table v2-stats-table compact"><thead><tr><th>Series</th><th>Unit</th><th>Minimum</th><th>Mean</th><th>Maximum</th></tr></thead><tbody>${rows.map(row=>{const s=row.statistics||{},factor=row.factor||1,scale=v=>v==null?v:Number(v)*factor;return `<tr><td><strong>${esc(row.compact_label||row.role||'Series')}</strong></td><td>${esc(s.unit||'—')}</td><td>${statisticValue(scale(s.minimum))}</td><td>${statisticValue(scale(s.time_weighted_mean??s.mean))}</td><td>${statisticValue(scale(s.maximum))}</td></tr>`;}).join('')}</tbody></table></div>`;
+    target.innerHTML=graphStatisticsHtml(rows);
     window.__ICM_WORKBENCH__.lastGraphStatistics=rows;
   }
 
@@ -252,7 +252,7 @@
     try {
       const observedSources=observedGraphSeries();
       const fdvMode=observedSources.length>=2;
-      const quantityColours={depth:$('obsColor').value,flow:'#008b95',velocity:'#ef7d00',level:$('obsColor').value};
+      const quantityColours={depth:$('obsColor').value,flow:$('obsColor').value,velocity:$('obsColor').value,level:$('obsColor').value};
       const axisFor=q=>fdvMode?(q==='flow'?'y3':q==='velocity'?'y4':'y'):'y';
       const traces=[];
       const quantities=new Set();
@@ -310,32 +310,8 @@
         traces.push({x:[null],y:[null],mode:'lines',name:$('threshold2Label').value||'Model spill threshold',hoverinfo:'skip',showlegend:true,line:{color:$('threshold2Color').value,width:2,dash:'dash'}});
       }
 
-      const extraHydraulicAxes=fdvMode&&(quantities.has('flow')||quantities.has('velocity'));
-      const xaxis = {title:'Time',autorange:!range,showgrid:false,domain:extraHydraulicAxes?[0,.90]:[0,1]};
-      if (range?.length === 2) {
-        xaxis.range = range;
-        xaxis.autorange = false;
-      }
-      const hydraulicDomain=hasRain?[0,.70]:[0,1];
-      const depthUnit=observedSources.map(s=>seriesUnit(s.item,s.col)).find((_,i)=>String(observedSources[i]?.quantity||seriesQuantity(observedSources[i]?.item,observedSources[i]?.col)||'').toLowerCase()==='depth')||'m';
-      const layout = {
-        template:'plotly_white',
-        height:690,
-        margin:{l:72,r:extraHydraulicAxes?138:68,t:112,b:58},
-        hovermode:'x unified',
-        legend:{orientation:'h',y:1.16,x:0,xanchor:'left',yanchor:'bottom',font:{size:11},traceorder:'normal',itemwidth:38},
-        xaxis,
-        yaxis:{title:fdvMode?`Depth (${depthUnit})`:(observedSources[0]?.col||'Value'),domain:hydraulicDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zerolinecolor:'#d9e2ea',automargin:true},
-        shapes:v2GraphShapes(),
-        annotations:v2GraphAnnotations(),
-        uirevision:'icm-main-v3',
-        bargap:0,
-      };
-      if(fdvMode&&quantities.has('flow'))layout.yaxis3={title:'Flow (m³/s)',domain:hydraulicDomain,overlaying:'y',side:'right',anchor:'x',showgrid:false,zeroline:false,automargin:true};
-      if(fdvMode&&quantities.has('velocity'))layout.yaxis4={title:'Velocity (m/s)',domain:hydraulicDomain,overlaying:'y',side:'right',anchor:'free',position:.985,showgrid:false,zeroline:false,automargin:true};
-      if (hasRain) {
-        layout.yaxis2 = {title:'Rainfall',domain:[.79,1],anchor:'x',side:'right',range:[rainfallMaximum(rainValues),0],showgrid:false,zeroline:false,automargin:true};
-      }
+      const layout=hydraulicGraphLayout({fdvMode,quantities:[...quantities],statistics:statisticRows,
+        hasRain,rainMax:rainfallMaximum(rainValues),range,shapes:v2GraphShapes(),annotations:v2GraphAnnotations()});
       await Plotly.react('timeChart', traces, layout, {responsive:true,displaylogo:false,scrollZoom:true});
       wireAdaptiveZoom();
       if (generation !== ui.graphGeneration) return;
