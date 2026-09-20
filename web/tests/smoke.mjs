@@ -493,7 +493,7 @@ try{
     const depthAxis=axes.find(x=>/Depth/i.test(String(x.title)));
     const depthRef=depthAxis?axisRef(depthAxis.key):null;
     const thresholdShapes=(chart.layout.shapes||[]).filter(s=>s.type==='line'&&s.yref!=='paper');
-    const thresholdTraces=(chart.data||[]).filter(t=>/threshold/i.test(String(t.name||'')));
+    const thresholdTraces=(chart.data||[]).filter(t=>/threshold|spill level/i.test(String(t.name||'')));
     return{
       order:window.__ICM_WORKBENCH__.lastPanelOrder,
       names:chart.data.map(t=>t.name),
