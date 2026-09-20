@@ -294,7 +294,7 @@
       unit,
       min:value(scale(s.minimum)),
       max:value(scale(s.maximum)),
-      average:value(scale(s.time_weighted_mean??s.mean)),
+      average:value(scale(s.mean)),
       total:totalText,
     };
   }
