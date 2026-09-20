@@ -178,7 +178,7 @@ try{
   const denseObserved=await optionValue('#observedSelect','dense-observed.csv — level');
   const rain=await optionValue('#rainSelect','rainfall.csv — rainfall');
   if(!denseObserved||!rain)throw new Error('Expected dense observed and rainfall series options');
-  if((await page.inputValue('#obsColor')).toLowerCase()!=='#d32f2f')throw new Error('Observed default colour should be red');
+  if((await page.inputValue('#obsColor')).toLowerCase()!=='#ff0000')throw new Error('Observed default colour should be reference red');
   await page.selectOption('#observedSelect',denseObserved);
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect','');
@@ -189,7 +189,7 @@ try{
   if(!fullDensity||fullDensity.raw!==40000||fullDensity.shown>15000||fullDensity.native!==false)throw new Error(`Full adaptive density incorrect: ${JSON.stringify(fullDensity)}`);
   const observedOnlyLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return {traceCount:chart.data.length,hasRainTrace:chart.data.some(t=>t.yaxis==='y2'),hasY2:Boolean(chart.layout.yaxis2),hydDomain:chart.layout.yaxis.domain,observedColour:chart.data[0]?.line?.color};});
   if(observedOnlyLayout.traceCount!==1||observedOnlyLayout.hasRainTrace||observedOnlyLayout.hasY2||observedOnlyLayout.hydDomain[0]!==0||observedOnlyLayout.hydDomain[1]!==1)throw new Error(`Observed-only/no-rain graph layout incorrect: ${JSON.stringify(observedOnlyLayout)}`);
-  if(String(observedOnlyLayout.observedColour).toLowerCase()!=='#d32f2f')throw new Error('Observed plotted trace should be red, got '+JSON.stringify(observedOnlyLayout.observedColour));
+  if(String(observedOnlyLayout.observedColour).toLowerCase()!=='#ff0000')throw new Error('Observed plotted trace should be red, got '+JSON.stringify(observedOnlyLayout.observedColour));
 
   stage='same-series observed and comparison mapping without rainfall';
   await page.selectOption('#modelSelect',[denseObserved]);
@@ -198,8 +198,8 @@ try{
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.data?.length===2,null,{timeout:60000});
   const comparisonNoRainLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return {traceCount:chart.data.length,hasRainTrace:chart.data.some(t=>t.yaxis==='y2'),hasY2:Boolean(chart.layout.yaxis2),hydDomain:chart.layout.yaxis.domain,observedColour:chart.data[0]?.line?.color,modelColour:chart.data[1]?.line?.color};});
   if(comparisonNoRainLayout.traceCount!==2||comparisonNoRainLayout.hasRainTrace||comparisonNoRainLayout.hasY2||comparisonNoRainLayout.hydDomain[0]!==0||comparisonNoRainLayout.hydDomain[1]!==1)throw new Error(`Observed+comparison/no-rain graph layout incorrect: ${JSON.stringify(comparisonNoRainLayout)}`);
-  if(String(comparisonNoRainLayout.observedColour).toLowerCase()!=='#d32f2f')throw new Error('Observed comparison trace should remain red, got '+JSON.stringify(comparisonNoRainLayout.observedColour));
-  if(String(comparisonNoRainLayout.modelColour).toLowerCase()!=='#5755d9')throw new Error('First model plotted trace should use #5755d9, got '+JSON.stringify(comparisonNoRainLayout.modelColour));
+  if(String(comparisonNoRainLayout.observedColour).toLowerCase()!=='#ff0000')throw new Error('Observed comparison trace should remain red, got '+JSON.stringify(comparisonNoRainLayout.observedColour));
+  if(String(comparisonNoRainLayout.modelColour).toLowerCase()!=='#0008ff')throw new Error('First model plotted trace should use #5755d9, got '+JSON.stringify(comparisonNoRainLayout.modelColour));
 
   stage='observed-only mapping with rainfall';
   await page.selectOption('#modelSelect',[]);
@@ -249,12 +249,19 @@ try{
   const graphLayout=await page.evaluate(()=>({hyd:document.querySelector('#timeChart').layout.yaxis.domain,rain:document.querySelector('#timeChart').layout.yaxis2.domain,rainRange:document.querySelector('#timeChart').layout.yaxis2.range}));
   if(graphLayout.hyd[1]>.71||graphLayout.rain[0]<.78)throw new Error(`Rainfall is not isolated above hydraulic graph: ${JSON.stringify(graphLayout)}`);
   if(!(graphLayout.rainRange[0]>graphLayout.rainRange[1]))throw new Error(`Rainfall axis should be reversed top-down: ${JSON.stringify(graphLayout.rainRange)}`);
-  await page.waitForFunction(()=>document.querySelectorAll('#graphStatistics tbody tr').length===2&&window.__ICM_WORKBENCH__.lastGraphStatistics?.length===2,null,{timeout:60000});
-  const graphStatsLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart').getBoundingClientRect(),stats=document.querySelector('#graphStatistics').getBoundingClientRect();return{chartBottom:chart.bottom,statsTop:stats.top,overflow:document.querySelector('#graphStatistics').scrollWidth-document.querySelector('#graphStatistics').clientWidth};});
-  if(graphStatsLayout.statsTop<graphStatsLayout.chartBottom-1)throw new Error(`Graph statistics overlap the chart: ${JSON.stringify(graphStatsLayout)}`);
-  const graphStatsText=await page.locator('#graphStatistics').textContent();
-  if(!graphStatsText.includes('Minimum')||!graphStatsText.includes('Mean')||!graphStatsText.includes('Maximum')||!graphStatsText.includes('Unit'))throw new Error('Compact ICM-style graph statistics fields are missing');
-  if(graphStatsText.includes('Median')||graphStatsText.includes('Integrated total')||graphStatsText.includes('Missing')||graphStatsText.includes('Status'))throw new Error('Graph statistics were not decluttered: '+graphStatsText);
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphStatistics?.length===2&&document.querySelector('#timeChart')?.data?.some(t=>t.type==='table'),null,{timeout:60000});
+  const graphStatsPresentation=await page.evaluate(()=>{
+    const chart=document.querySelector('#timeChart'),table=chart.data.find(t=>t.type==='table');
+    return{
+      externalHidden:document.querySelector('#graphStatistics')?.hidden===true,
+      header:(table?.header?.values||[]).map(x=>String(x).replace(/<[^>]+>/g,'')),
+      domain:table?.domain?.y,
+      rows:(table?.cells?.values?.[0]||[]).map(String),
+    };
+  });
+  if(!graphStatsPresentation.externalHidden)throw new Error('Graph statistics should be integrated into the Plotly figure rather than duplicated below it.');
+  if(JSON.stringify(graphStatsPresentation.header)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('Plotly statistics band does not match the reference contract: '+JSON.stringify(graphStatsPresentation));
+  if(!Array.isArray(graphStatsPresentation.domain)||graphStatsPresentation.domain[1]>.24)throw new Error('Statistics table must occupy a dedicated lower Plotly band: '+JSON.stringify(graphStatsPresentation.domain));
   const noRangeSlider=await page.evaluate(()=>!document.querySelector('#timeChart')?.layout?.xaxis?.rangeslider?.visible);
   if(!noRangeSlider)throw new Error('Main graph overview/range slider should be removed');
   await captureEvidence('01-data-graph');
@@ -306,7 +313,7 @@ try{
   for(const id of ['#observedFlowColour','#observedDepthColour','#observedVelocityColour','#rainColor'])if(await page.locator(id).count()!==1)throw new Error('Per-series colour control missing: '+id);
   const modelColour=await page.inputValue('#modelColourControls .model-colour');
   const colourWidth=await page.locator('#modelColourControls .model-colour').evaluate(el=>el.getBoundingClientRect().width);
-  if(modelColour.toLowerCase()!=='#5755d9')throw new Error(`First model default colour should be Precision Workbench purple-blue, got ${modelColour}`);
+  if(modelColour.toLowerCase()!=='#0008ff')throw new Error(`First model default colour should match the reference simulated blue, got ${modelColour}`);
   if(colourWidth>90)throw new Error(`Model colour picker should be a compact swatch, width=${colourWidth}`);
   await clickTab('graph');
   await page.fill('#graphObsThreshold','1.0');
@@ -516,24 +523,25 @@ try{
       thresholdTraces:thresholdTraces.map(t=>({name:t.name,yaxis:t.yaxis||'y',dash:t.line?.dash})),
       xaxis:{anchor:chart.layout.xaxis?.anchor,position:chart.layout.xaxis?.position,side:chart.layout.xaxis?.side,title:chart.layout.xaxis?.title?.text||chart.layout.xaxis?.title||'',range:chart.layout.xaxis?.range},
       annotations:(chart.layout.annotations||[]).map(a=>String(a.text||'')),
-      stats:[...document.querySelectorAll('#graphStatistics tbody tr')].map(r=>r.textContent),
-      periodSummary:document.querySelector('#graphPeriodSummary')?.textContent||''
+      table:(()=>{const t=chart.data.find(x=>x.type==='table');return t?{header:(t.header?.values||[]).map(v=>String(v).replace(/<[^>]+>/g,'')),series:(t.cells?.values?.[0]||[]).map(String),units:(t.cells?.values?.[1]||[]).map(String),totals:(t.cells?.values?.[5]||[]).map(String),domain:t.domain?.y}:null;})(),
+      colours:Object.fromEntries(chart.data.filter(t=>t.type!=='table'&&t.name).map(t=>[t.name,t.line?.color||t.marker?.color||null])),
+      externalStatsHidden:document.querySelector('#graphStatistics')?.hidden===true
     };
   });
   if(JSON.stringify(fdvGraph.order)!==JSON.stringify(['rainfall','flow','depth','velocity']))throw new Error('FDV panel order must be rainfall/flow/depth/velocity: '+JSON.stringify(fdvGraph));
   if(fdvGraph.axes.some(x=>x.overlaying))throw new Error('FDV hydraulic channels must use separate stacked panels, not overlay axes: '+JSON.stringify(fdvGraph.axes));
   for(const token of ['Rainfall','Flow','Depth','Velocity'])if(!fdvGraph.axes.some(x=>String(x.title).includes(token)))throw new Error('Missing FDV panel/unit axis '+token+': '+JSON.stringify(fdvGraph.axes));
-  if(fdvGraph.xaxis.anchor!=='free'||Number(fdvGraph.xaxis.position)!==0||fdvGraph.xaxis.side!=='bottom')throw new Error('FDV time axis must be a single bottom shared axis: '+JSON.stringify(fdvGraph.xaxis));
+  if(fdvGraph.xaxis.anchor!=='free'||!(Number(fdvGraph.xaxis.position)>.12&&Number(fdvGraph.xaxis.position)<.30)||fdvGraph.xaxis.side!=='bottom')throw new Error('FDV time axis must be shared at the bottom of the hydraulic panels, above the statistics band: '+JSON.stringify(fdvGraph.xaxis));
   if(!Array.isArray(fdvGraph.xaxis.range)||!String(fdvGraph.xaxis.range[0]||'').startsWith('2026-01-05')||!String(fdvGraph.xaxis.range[1]||'').startsWith('2026-01-05'))throw new Error('FDV default time range must come from the currently mapped 5 Jan support, not stale event overlays: '+JSON.stringify(fdvGraph.xaxis.range));
   for(const token of ['Rainfall','Flow','Depth','Velocity'])if(!fdvGraph.annotations.some(x=>x.includes(token)))throw new Error('FDV panel heading missing for '+token+': '+JSON.stringify(fdvGraph.annotations));
   if(!fdvGraph.depthRef||fdvGraph.thresholdShapes.some(x=>x.yref!==fdvGraph.depthRef))throw new Error('Every visible threshold line must belong to the Depth axis only: '+JSON.stringify(fdvGraph));
   if(fdvGraph.thresholdTraces.length!==1||fdvGraph.thresholdTraces[0].yaxis!==fdvGraph.depthRef)throw new Error('With no model selected, only the observed depth threshold may appear: '+JSON.stringify(fdvGraph.thresholdTraces));
-  if(fdvGraph.stats.length<4)throw new Error('FDV statistics must include rainfall plus all hydraulic variables');
-  if(!fdvGraph.stats.some(x=>/Rainfall/i.test(x)&&/mm\/h/i.test(x)))throw new Error('Rainfall statistics must expose mm/h rather than an unresolved unit: '+JSON.stringify(fdvGraph.stats));
-  if(!/Time range/i.test(fdvGraph.periodSummary)||!/Total rain/i.test(fdvGraph.periodSummary)||!/Volume/i.test(fdvGraph.periodSummary))throw new Error('FDV period summary must expose time range, rainfall total and flow volume: '+fdvGraph.periodSummary);
+  if(!fdvGraph.table||JSON.stringify(fdvGraph.table.header)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('FDV graph must contain the reference-style Plotly statistics band: '+JSON.stringify(fdvGraph.table));
+  for(const row of ['Observed Flow','Observed Depth','Observed Velocity','Rainfall'])if(!fdvGraph.table.series.some(x=>x.includes(row)))throw new Error('FDV statistics row missing '+row+': '+JSON.stringify(fdvGraph.table.series));
+  if(!fdvGraph.table.units.some(x=>/mm\/h/i.test(x)))throw new Error('Rainfall statistics must expose mm/h: '+JSON.stringify(fdvGraph.table.units));
+  if(fdvGraph.colours['Observed flow']?.toLowerCase()!=='#1f77b4'||fdvGraph.colours['Observed depth']?.toLowerCase()!=='#ff0000'||fdvGraph.colours['Observed velocity']?.toLowerCase()!=='#2ca02c'||fdvGraph.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('FDV default colours do not match the uploaded current-tool reference: '+JSON.stringify(fdvGraph.colours));
+  if(!fdvGraph.externalStatsHidden)throw new Error('FDV statistics must not be duplicated outside the Plotly figure.');
   await precisionRoute('data','time-series');
-  const fdvGeometry=await page.evaluate(()=>{const chart=document.querySelector('#timeChart')?.getBoundingClientRect(),summary=document.querySelector('#graphPeriodSummary')?.getBoundingClientRect();return{chartBottom:chart?.bottom||0,summaryTop:summary?.top||0,summaryHeight:summary?.height||0};});
-  if(!fdvGeometry.summaryHeight||fdvGeometry.summaryTop<fdvGeometry.chartBottom+6)throw new Error('FDV chart must finish cleanly above the engineering period summary: '+JSON.stringify(fdvGeometry));
   await captureEvidence('01b-fdv-stacked-graph');
   await precisionRoute('data','series-mapping');
   // Restore the comparison mapping used by the remainder of the acceptance workflow.
@@ -701,8 +709,8 @@ try{
   if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
   if(!report.includes('project_registry')||!report.includes('web-worker'))throw new Error('Report audit appendix is missing canonical project registry / worker execution provenance');
   if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Project data context')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
-  if(!report.includes('Graph statistics')||!report.includes('Minimum')||!report.includes('Mean')||!report.includes('Maximum'))throw new Error('Assessment report compact graph statistics missing');
-  if(report.includes('<th>Median</th>')||report.includes('<th>Integrated total</th>'))throw new Error('Assessment report graph statistics were not simplified');
+  if(report.includes('<h3>Graph statistics</h3>'))throw new Error('Assessment report should not duplicate graph statistics outside the reference-style figure.');
+  if(!report.includes('Observed spills by month')||!report.includes('Model spills by month')||!report.includes('Observed vs modelled monthly spill comparison'))throw new Error('Assessment report is missing the reference-style monthly spill tables.');
   if(!report.includes('Professional flow-survey / rainfall assessment')||!report.includes('professional_flow_survey'))throw new Error('Professional flow-survey assessment missing from report/audit appendix');
   if(!report.includes('Complete flow-survey context')||!report.includes('Flow continuity / volume balance')||!report.includes('fm_rg_assoc.xlsx'))throw new Error('Association-driven complete survey context missing from exported report');
   if(!report.includes('report-grid')||!report.includes('table-wrap'))throw new Error('Professional report layout classes missing');
@@ -714,7 +722,7 @@ try{
   if(!fourReport.includes('Four-Period Report')||!fourReport.includes('separate rainfall band'))throw new Error('Four-period report methodology/layout note missing');
   if((fourReport.match(/class="report-page"/g)||[]).length!==4)throw new Error('Four-period report should contain four print-safe period pages');
   if(!fourReport.includes('A4 landscape'))throw new Error('Four-period report should use landscape print layout');
-  if((fourReport.match(/Period statistics/g)||[]).length!==4)throw new Error('Four-period report must include statistics for every graph period');
+  if((fourReport.match(/Period statistics/g)||[]).length!==0)throw new Error('Four-period report should integrate statistics in each Plotly figure rather than duplicate separate tables');
   const fourLayout=await inspectReportHtml(fourReport,4);
   if(fourLayout.headers!==1||fourLayout.figures!==4||fourLayout.zero||fourLayout.overflow>2)throw new Error(`Four-period report visual containment failed: ${JSON.stringify(fourLayout)}`);
   if(await page.locator('#downloadManifestBtn').count()!==0)throw new Error('Standalone provenance CSV export should not be user-facing.');
