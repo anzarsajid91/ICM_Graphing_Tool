@@ -343,8 +343,8 @@ try{
   if(await page.locator('.tab[data-tab="storage"]').count()!==0)throw new Error('Storage should be embedded under Verification, not exposed as a top-level tab');
   const workflowGuide=await page.locator('#workflowGuide').textContent();
   if(!workflowGuide.includes('Workflow')||!workflowGuide.includes('Survey')||!workflowGuide.includes('FSAT Event Response')||!workflowGuide.includes('volume balance'))throw new Error('Contextual Survey workflow guide is incomplete: '+workflowGuide);
-  const activeTabStyle=await page.locator('nav.tabs .tab.active').evaluate(el=>({fontWeight:getComputedStyle(el).fontWeight,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
-  if(Number(activeTabStyle.fontWeight)<700||activeTabStyle.background==='rgba(0, 0, 0, 0)')throw new Error('Active workflow tab does not visually stand out: '+JSON.stringify(activeTabStyle));
+  const activeTabStyle=await page.locator('.pw-primary-nav button[aria-current="page"]').evaluate(el=>({fontWeight:getComputedStyle(el).fontWeight,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
+  if(Number(activeTabStyle.fontWeight)<600||activeTabStyle.background==='rgba(0, 0, 0, 0)')throw new Error('Active Precision workspace does not visually stand out: '+JSON.stringify(activeTabStyle));
   await page.setInputFiles('#assocFileInput',await associationWorkbook());
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.survey?.association?.records?.length===3&&document.querySelectorAll('#surveyAssociationTable tbody > tr').length===3,null,{timeout:60000});
   if(await page.locator('#surveyAssociationTable tbody > tr').count()!==3)throw new Error('Association workbook did not produce three survey relationships');
