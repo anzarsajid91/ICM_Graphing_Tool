@@ -71,6 +71,10 @@ details.subpanel[open]>summary{margin-bottom:12px}
 .v2-density{align-self:center;padding:7px 9px;border-left:2px solid #b9d6ed;color:#526a7e;font-size:11px;line-height:1.35}
 .v2-density strong{display:block;color:#294c69;font-size:11.5px}
 .v2-graph-statistics{margin-top:10px;border:1px solid var(--v2-border);border-radius:7px;background:#fbfcfd;padding:10px 12px;overflow:hidden}
+.v2-period-summary{display:grid;grid-template-columns:minmax(260px,2fr) minmax(150px,1fr) minmax(150px,1fr);gap:8px;margin-bottom:9px}
+.v2-period-summary>div{padding:8px 10px;border:1px solid #dce5ec;border-radius:6px;background:#fff;min-width:0}
+.v2-period-summary span{display:block;color:#66788a;font-size:10.5px;line-height:15px}
+.v2-period-summary strong{display:block;margin-top:2px;color:#29445d;font-size:12.5px;line-height:18px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .v2-stats-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;color:#29445d}
 .v2-stats-head strong{display:block;font-size:12.5px}.v2-stats-head span{display:block;color:#66788a;font-size:10.5px;margin-top:1px}
 .v2-stats-table{min-width:620px}.v2-stats-table td:first-child{min-width:210px}.v2-stats-table.compact th,.v2-stats-table.compact td{padding:7px 10px}.v2-stats-table.compact td:first-child{font-weight:650;color:#28465f}
@@ -105,6 +109,7 @@ footer{max-width:1600px;padding:0 26px}
   .chart{height:620px}
 }
 @media(max-width:700px){
+  .v2-period-summary{grid-template-columns:1fr}
   .global-operation-card{top:12px;right:12px;width:calc(100vw - 24px)}
   .shell{padding:10px}.panel{padding:13px}.v2-graph-toolbar{grid-template-columns:1fr}.v2-density{grid-column:auto}.chart{height:520px;min-height:440px}
   .summary-box{grid-template-columns:1fr 1fr}

@@ -4,7 +4,7 @@ const qs=(sel,root=document)=>root.querySelector(sel);
 const qsa=(sel,root=document)=>[...root.querySelectorAll(sel)];
 const ROUTES={
   data:{
-    label:'Data',
+    label:'Data & Time Series',
     icon:'data',
     pages:{
       sources:{label:'Sources',title:'Survey data sources',description:'Import, parse and audit survey, model and rainfall files in one local source pool.',root:()=>qs('.source-panel')},
@@ -13,7 +13,7 @@ const ROUTES={
     }
   },
   survey:{
-    label:'Survey',
+    label:'Flow Survey',
     icon:'survey',
     pages:{
       configuration:{label:'Configuration',title:'Survey association configuration',description:'Review authoritative fm_rg_assoc.xlsx relationships, conflicts and topology evidence.',tab:'data-health',root:()=>$('tab-data-health')},
@@ -31,7 +31,7 @@ const ROUTES={
     }
   },
   verification:{
-    label:'Verification',
+    label:'Assessment',
     icon:'verify',
     pages:{
       comparison:{label:'Comparison diagnostics',title:'Verification diagnostics',description:'Compare observed and modelled data using bounded interpolation and the canonical calibration metrics.',tab:'compare',root:()=>$('tab-compare')},
@@ -53,8 +53,7 @@ const ROUTES={
     icon:'report',
     pages:{
       workspace:{label:'Workspace save/restore',title:'Workspace save and restore',description:'Persist configuration and source fingerprints without embedding raw engineering files.',tab:'workspace',root:()=>$('tab-workspace')},
-      builder:{label:'Report builder',title:'Engineering report builder',description:'Review section readiness and export coherent engineering-report snapshots.',tab:'workspace',root:()=>$('tab-workspace')},
-      provenance:{label:'Provenance',title:'Provenance and calculation audit',description:'Inspect source lineage, project registry, method context and current calculation evidence.',tab:'workspace',root:()=>$('tab-workspace')}
+      builder:{label:'Report builder',title:'Engineering report builder',description:'Review section readiness and export coherent engineering-report snapshots.',tab:'workspace',root:()=>$('tab-workspace')}
     }
   }
 };
@@ -62,11 +61,13 @@ let current={workspace:'data',page:'sources'};
 let docked=[];
 let syncingLegacy=false;
 let focusPreference=null;
+let railCollapsed=false;
 const FOCUS_ROUTES=new Set(['data/time-series','verification/comparison','rainfall/events']);
 try{
   const saved=sessionStorage.getItem('icm-pw-focus-canvas');
   if(saved==='on'||saved==='off')focusPreference=saved==='on';
 }catch{}
+try{railCollapsed=sessionStorage.getItem('icm-pw-rail-collapsed')==='on';}catch{}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function navIcon(name){
   const paths={
@@ -156,7 +157,6 @@ function ensureReportSurfaces(){
   const panel=qs('#tab-workspace .panel');if(!panel||$('pwWorkspaceSurface'))return;
   const workspace=ensureSection('pwWorkspaceSurface','Workspace save / restore','Save local configuration and source fingerprints without embedding raw engineering files.');
   const builder=ensureSection('pwReportBuilderSurface','Report output','Check result readiness, select the report period where required, then export the engineering report.');
-  const provenance=ensureSection('pwProvenanceSurface','Provenance and calculation audit','Inspect lineage and export the current provenance manifest.');
   const workspaceName=$('workspaceName')?.closest('label'),named=$('namedWorkspaceSelect')?.closest('.actions');if(workspaceName)workspace.appendChild(workspaceName);if(named)workspace.appendChild(named);
   const wsActions=makeActionGroup();for(const id of ['downloadWorkspaceBtn','loadWorkspaceBtn']){const b=$(id);if(b){b.classList.remove('primary');b.textContent=id==='downloadWorkspaceBtn'?'Export workspace JSON':'Load workspace JSON';wsActions.appendChild(b);}}workspace.appendChild(wsActions);
   const wsStatus=$('workspaceStatus'),privacy=qs('#tab-workspace .privacy-note');if(wsStatus)workspace.appendChild(wsStatus);if(privacy)workspace.appendChild(privacy);
@@ -164,9 +164,7 @@ function ensureReportSurfaces(){
   const reportActions=makeActionGroup();for(const id of ['downloadReportBtn','downloadFourPeriodBtn']){const b=$(id);if(b){b.classList.toggle('primary',id==='downloadReportBtn');b.textContent=id==='downloadReportBtn'?'Export assessment report':'Export four-period report';reportActions.appendChild(b);}}builder.appendChild(reportActions);
   const mirror=document.createElement('div');mirror.id='pwReportStatusMirror';mirror.className='report-status pw-status-mirror';mirror.textContent=wsStatus?.textContent||'Report export ready when required analyses are current.';builder.appendChild(mirror);
   if(wsStatus)new MutationObserver(()=>{mirror.textContent=wsStatus.textContent;}).observe(wsStatus,{childList:true,subtree:true,characterData:true});
-  const manifest=$('downloadManifestBtn');if(manifest){manifest.classList.add('primary');manifest.textContent='Export provenance CSV';const a=makeActionGroup();a.appendChild(manifest);provenance.appendChild(a);}
-  const registry=$('domainRegistryPanel');if(registry){registry.open=true;registry.classList.add('pw-domain-provenance');provenance.appendChild(registry);}
-  panel.append(workspace,builder,provenance);
+  panel.append(workspace,builder);
 }
 function preparePageComposition(){
   ensureDataHealthSurface();ensureSpillSurfaces();ensureReportSurfaces();
@@ -182,7 +180,6 @@ function preparePageComposition(){
   own($('pwSpillResultsSurface'),['spills/results']);
   own($('pwWorkspaceSurface'),['report/workspace']);
   own($('pwReportBuilderSurface'),['report/builder']);
-  own($('pwProvenanceSurface'),['report/provenance']);
   for(const sel of ['#tab-data-health>.panel>.panel-head','#tab-data-health .tool-main-head','#tab-spills>.panel>.panel-head','#tab-workspace>.panel>.panel-head']){const el=qs(sel);if(el)el.classList.add('pw-legacy-framing');}
   for(const selector of ['#tab-spills .tool-main-section','#tab-workspace .tool-main-section']){const legacy=qs(selector);if(legacy)legacy.hidden=true;}
   const balanceBtn=$('runSurveyBalanceBtn');if(balanceBtn){balanceBtn.classList.add('primary');balanceBtn.textContent='Recalculate balance';}
@@ -199,7 +196,7 @@ function buildShell(){
   const review=footer?.previousElementSibling?.matches('section.panel')?footer.previousElementSibling:null;
   const app=document.createElement('div');app.className='pw-app';
   const rail=document.createElement('aside');rail.className='pw-rail';rail.setAttribute('aria-label','Primary workspaces');
-  rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><span class="pw-brand-icon">ICM</span><span>Precision Workbench</span></div><small>Browser-local hydraulic evidence and verification.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
+  rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><span class="pw-brand-icon">ICM</span><span class="pw-brand-title">ICM Graphing Tool</span></div><small>Browser-local hydraulic evidence and assessment.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
   const pnav=qs('.pw-primary-nav',rail);
   Object.entries(ROUTES).forEach(([key,w])=>{
     const b=document.createElement('button');b.type='button';b.dataset.workspace=key;b.innerHTML=navIcon(w.icon)+'<span class="pw-nav-label">'+esc(w.label)+'</span>';b.setAttribute('aria-label',w.label);b.addEventListener('click',()=>navigate(key,Object.keys(w.pages)[0],true));pnav.appendChild(b);
@@ -218,7 +215,17 @@ function buildShell(){
   if(review){review.classList.add('pw-review-notes');stage.appendChild(review);}
   if(footer)stage.appendChild(footer);
   const oldTabs=qs('.tabs');if(oldTabs){oldTabs.setAttribute('aria-hidden','true');oldTabs.inert=true;}
-  $('pwRailToggle')?.addEventListener('click',()=>rail.classList.toggle('is-open'));
+  const applyRailState=()=>{
+    document.body.classList.toggle('pw-rail-collapsed',railCollapsed);
+    const toggle=$('pwRailToggle');if(toggle){toggle.setAttribute('aria-pressed',railCollapsed?'true':'false');toggle.textContent=railCollapsed?'Expand navigation':'Collapse navigation';}
+  };
+  $('pwRailToggle')?.addEventListener('click',()=>{
+    if(matchMedia('(max-width:620px)').matches){rail.classList.toggle('is-open');return;}
+    railCollapsed=!railCollapsed;
+    try{sessionStorage.setItem('icm-pw-rail-collapsed',railCollapsed?'on':'off');}catch{}
+    applyRailState();resizeVisuals();
+  });
+  applyRailState();
   $('pwInspectorToggle')?.addEventListener('click',()=>inspector.classList.add('is-open'));
   $('pwInspectorClose')?.addEventListener('click',()=>inspector.classList.remove('is-open'));
   $('pwFocusToggle')?.addEventListener('click',()=>{
@@ -234,21 +241,33 @@ function createScenarioChecklist(){
   select.classList.add('pw-canonical-select');
   const oldSmall=select.nextElementSibling?.tagName==='SMALL'?select.nextElementSibling:null;
   if(oldSmall)oldSmall.hidden=true;
-  const wrap=document.createElement('div');wrap.id='pwScenarioPicker';wrap.className='pw-scenario-picker';wrap.innerHTML='<div class="pw-scenario-list" role="group" aria-label="Model scenarios"></div><div class="pw-scenario-count">No scenarios selected.</div>';
+  const wrap=document.createElement('div');wrap.id='pwScenarioPicker';wrap.className='pw-scenario-picker';
+  wrap.innerHTML='<button id="modelPickerTrigger" class="pw-model-picker-trigger" type="button" aria-haspopup="true" aria-expanded="false">No models</button><div id="modelPickerPopover" class="pw-model-picker-popover" hidden><input class="pw-model-search" type="search" placeholder="Search model series…" aria-label="Search model series"><div class="pw-model-picker-actions"><button type="button" data-action="all">Select all</button><button type="button" data-action="none">Deselect all</button></div><div class="pw-scenario-list" role="group" aria-label="Model scenarios"></div></div><div class="pw-scenario-count">No models selected.</div>';
   select.insertAdjacentElement('afterend',wrap);
+  const trigger=$('modelPickerTrigger'),popover=$('modelPickerPopover'),search=qs('input[type="search"]',popover),list=qs('.pw-scenario-list',popover),count=qs('.pw-scenario-count',wrap);
+  const updateCount=()=>{
+    const n=select.selectedOptions.length;
+    trigger.textContent=n===0?'No models':n===1?'1 model selected':n+' models selected';
+    count.textContent=n===0?'No comparison models selected.':n===1?'1 comparison model selected.':n+' comparison models selected.';
+  };
   const render=()=>{
-    const list=qs('.pw-scenario-list',wrap),selected=new Set([...select.selectedOptions].map(o=>o.value));
-    list.innerHTML=[...select.options].filter(o=>o.value).map(o=>'<label class="pw-scenario-option"><input type="checkbox" value="'+esc(o.value)+'" '+(selected.has(o.value)?'checked':'')+'><span>'+esc(o.textContent)+'</span></label>').join('')||'<span class="pw-shell-note">Import model series to choose scenarios.</span>';
+    const selected=new Set([...select.selectedOptions].map(o=>o.value)),term=(search.value||'').trim().toLowerCase();
+    const options=[...select.options].filter(o=>o.value&&(!term||o.textContent.toLowerCase().includes(term)));
+    list.innerHTML=options.map(o=>'<label class="pw-scenario-option"><input type="checkbox" value="'+esc(o.value)+'" '+(selected.has(o.value)?'checked':'')+'><span>'+esc(o.textContent)+'</span></label>').join('')||'<span class="pw-shell-note">No matching model series.</span>';
     qsa('input[type="checkbox"]',list).forEach(cb=>cb.addEventListener('change',()=>{
       [...select.options].forEach(o=>{if(o.value===cb.value)o.selected=cb.checked;});
-      select.dispatchEvent(new Event('change',{bubbles:true}));
-      updateCount();
-      refreshScope();
+      select.dispatchEvent(new Event('change',{bubbles:true}));updateCount();refreshScope();
     }));
     updateCount();
   };
-  const updateCount=()=>{const n=select.selectedOptions.length;qs('.pw-scenario-count',wrap).textContent=n? n+' scenario'+(n===1?'':'s')+' selected.':'No scenarios selected.';};
-  new MutationObserver(render).observe(select,{childList:true,subtree:true,attributes:true,attributeFilter:['selected']});
+  trigger.addEventListener('click',()=>{const next=popover.hidden;popover.hidden=!next;trigger.setAttribute('aria-expanded',next?'true':'false');if(next){render();search.focus();}});
+  search.addEventListener('input',render);
+  qsa('[data-action]',popover).forEach(btn=>btn.addEventListener('click',()=>{
+    const choose=btn.dataset.action==='all';[...select.options].forEach(o=>{if(o.value)o.selected=choose;});
+    select.dispatchEvent(new Event('change',{bubbles:true}));render();refreshScope();
+  }));
+  document.addEventListener('click',event=>{if(!wrap.contains(event.target)&&!popover.hidden){popover.hidden=true;trigger.setAttribute('aria-expanded','false');}});
+  new MutationObserver(render).observe(select,{childList:true,subtree:true});
   select.addEventListener('change',()=>{render();refreshScope();});
   render();
 }
@@ -330,7 +349,7 @@ function navigate(workspace,page,push=false){
   qs('.pw-rail')?.classList.remove('is-open');qs('.pw-inspector')?.classList.remove('is-open');
   applyFocusCanvas(false);
   if(push){const h='#/'+workspace+'/'+page;if(location.hash!==h)history.pushState(null,'',h);}
-  document.title=p.title+' · ICM Precision Workbench';
+  document.title=p.title+' · ICM Graphing Tool';
   resizeVisuals();
 }
 function isFocusRoute(){
@@ -407,7 +426,7 @@ function wireContextUpdates(){
 function mount(){
   identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();
   const initial=parseHash()||{workspace:'data',page:'sources'};navigate(initial.workspace,initial.page,false);
-  window.__ICM_PRECISION_WORKBENCH__={version:3,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);}};
+  window.__ICM_PRECISION_WORKBENCH__={version:4,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
 })();

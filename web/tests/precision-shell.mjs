@@ -13,11 +13,23 @@ try{
   await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:120000});
   const labels=(await page.locator('.pw-primary-nav button').allTextContents()).map(x=>x.replace(/^[^A-Za-z]+/,'').trim());
-  if(labels.join('|')!=='Data|Survey|Rainfall|Verification|Spills|Report')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
+  if(labels.join('|')!=='Data & Time Series|Flow Survey|Rainfall|Assessment|Spills|Report')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
+  const productTitle=((await page.locator('.pw-brand-title').textContent())||'').trim();
+  if(productTitle!=='ICM Graphing Tool')throw new Error('Product title must be ICM Graphing Tool, got '+JSON.stringify(productTitle));
+  if(await page.locator('#pwRailToggle').count()!==1)throw new Error('Navigation rail needs an explicit collapse/expand control.');
+  if(await page.locator('[data-pw-page="provenance"]').count()!==0)throw new Error('User-facing provenance route should be removed.');
 
   // Refinement acceptance: analytical routes must preserve labelled navigation by default.
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
   if(await page.locator('body').evaluate(el=>el.classList.contains('pw-focus-canvas')))throw new Error('Focus canvas must be explicitly opted into; fresh sessions must retain labelled navigation.');
+  const railExpanded=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
+  await page.click('#pwRailToggle');
+  const railCollapsed=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
+  if(!(railCollapsed<railExpanded))throw new Error('Rail collapse control did not reduce navigation width: '+JSON.stringify({railExpanded,railCollapsed}));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','data-health',false));
+  const railAfterRoute=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
+  if(Math.abs(railAfterRoute-railCollapsed)>2)throw new Error('Route change mutated the user-selected rail collapse state: '+JSON.stringify({railCollapsed,railAfterRoute}));
+  await page.click('#pwRailToggle');
   const inspectorContainment=await page.evaluate(()=>{
     const inspector=document.querySelector('#pwInspector'),toolbar=document.querySelector('#v2GraphToolbar');
     return{inspectorClient:inspector?.clientWidth||0,inspectorScroll:inspector?.scrollWidth||0,toolbarClient:toolbar?.clientWidth||0,toolbarScroll:toolbar?.scrollWidth||0};
