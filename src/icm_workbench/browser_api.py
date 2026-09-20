@@ -214,7 +214,8 @@ def _graph_statistics(path, col, source, view, start, end, max_gap_seconds):
         return result
     t = source.timestamp.to_numpy(dtype="datetime64[ns]").astype(np.int64) / 1e9
     v = source[col].to_numpy(dtype=float)
-    parsed = _load(path)\n    metadata = getattr(parsed, "metadata", {}) or {}
+    parsed = _load(path)
+    metadata = getattr(parsed, "metadata", {}) or {}
     declared = float(metadata.get("interval_min") or 0) * 60
     rainfall = quantity == "rainfall"
     if rainfall and declared > 0:
