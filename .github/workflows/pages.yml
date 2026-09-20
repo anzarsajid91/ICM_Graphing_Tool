@@ -52,6 +52,7 @@ jobs:
           node --check web/assets/workbench-v2-domfix.js
           node --check web/assets/workbench-v3.js
           node --check web/assets/workbench-survey.js
+          node --check web/assets/precision-workbench.js
           node --check web/tests/smoke.mjs
           node web/tests/runtime-unit.mjs
           node web/tests/domain-registry-unit.mjs
@@ -77,12 +78,14 @@ jobs:
               'assets/app.css',
               'assets/workbench-v2.css',
               'assets/workbench-survey.css',
+              'assets/precision-workbench.css',
               'assets/domain-registry.js',
               'assets/runtime.js',
               'assets/workbench-v2.js',
               'assets/workbench-v2-domfix.js',
               'assets/workbench-v3.js',
               'assets/workbench-survey.js',
+              'assets/precision-workbench.js',
           ]
           for asset in versioned:
               assert f'{asset}?v={token}' in html, asset
@@ -112,6 +115,8 @@ jobs:
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
       - name: Exercise complete browser workflow
+        env:
+          ICM_EVIDENCE_DIR: /tmp/icm-pr-evidence
         run: |
           python -m http.server 8000 --directory _site >/tmp/icm-pages-http.log 2>&1 &
           SERVER_PID=$!
@@ -135,6 +140,16 @@ jobs:
             exit 1
           fi
           node web/tests/smoke.mjs
+
+      - name: Retain browser review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: precision-workbench-evidence-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            /tmp/icm-pr-evidence/
 
       - name: Retain browser failure evidence
         if: failure()
