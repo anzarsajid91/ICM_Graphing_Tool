@@ -232,12 +232,15 @@ try{
   await page.waitForFunction(()=>!document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(false));
   await page.fill('#graphObsThreshold','1.5');
-  await page.waitForFunction(()=>document.querySelector('#timeChart')?.layout?.shapes?.length>=1,null,{timeout:60000});
-  const thresholdPresentation=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return{legendNames:(chart.data||[]).map(t=>t.name),annotations:(chart.layout.annotations||[]).map(a=>a.text)}}); 
-  if(!thresholdPresentation.legendNames.includes('Observed spill level'))throw new Error(`Observed spill threshold is not represented in the top legend: ${JSON.stringify(thresholdPresentation)}`);
-  if(thresholdPresentation.annotations.includes('Observed spill level'))throw new Error('Observed spill threshold label should not be stamped on the threshold line');
-  const thresholdDashes=await page.evaluate(()=>document.querySelector('#timeChart').data.filter(t=>/spill (level|threshold)/i.test(t.name||'')).map(t=>t.line?.dash));
-  if(thresholdDashes.length&&new Set(thresholdDashes).size!==1)throw new Error('Observed and model spill legend lines should use the same dashed style: '+JSON.stringify(thresholdDashes));
+  await page.waitForTimeout(450);
+  const nonDepthThresholdPresentation=await page.evaluate(()=>{
+    const chart=document.querySelector('#timeChart');
+    return{
+      thresholdLegend:(chart.data||[]).filter(t=>/threshold|spill level/i.test(String(t.name||''))).map(t=>t.name),
+      thresholdShapes:(chart.layout.shapes||[]).filter(s=>s.type==='line'&&s.yref!=='paper').map(s=>({yref:s.yref,y0:s.y0}))
+    };
+  });
+  if(nonDepthThresholdPresentation.thresholdLegend.length||nonDepthThresholdPresentation.thresholdShapes.length)throw new Error('A level/non-depth graph must not display spill-threshold lines: '+JSON.stringify(nonDepthThresholdPresentation));
   const graphLayout=await page.evaluate(()=>({hyd:document.querySelector('#timeChart').layout.yaxis.domain,rain:document.querySelector('#timeChart').layout.yaxis2.domain,rainRange:document.querySelector('#timeChart').layout.yaxis2.range}));
   if(graphLayout.hyd[1]>.71||graphLayout.rain[0]<.78)throw new Error(`Rainfall is not isolated above hydraulic graph: ${JSON.stringify(graphLayout)}`);
   if(!(graphLayout.rainRange[0]>graphLayout.rainRange[1]))throw new Error(`Rainfall axis should be reversed top-down: ${JSON.stringify(graphLayout.rainRange)}`);
@@ -298,7 +301,19 @@ try{
   await clickTab('graph');
   await page.fill('#graphObsThreshold','1.0');
   await page.fill('#graphModelThreshold','1.0');
-  await page.waitForFunction(()=>document.querySelector('#timeChart')?.layout?.shapes?.filter(x=>x.type==='line').length===2,null,{timeout:60000});
+  await page.waitForFunction(()=>{
+    const chart=document.querySelector('#timeChart');
+    const thresholdShapes=(chart?.layout?.shapes||[]).filter(x=>x.type==='line'&&x.yref!=='paper');
+    const thresholdTraces=(chart?.data||[]).filter(t=>/threshold/i.test(String(t.name||'')));
+    return thresholdShapes.length===1&&thresholdTraces.length===1&&/Observed \+ model depth threshold/i.test(thresholdTraces[0].name||'');
+  },null,{timeout:60000});
+  await page.fill('#graphModelThreshold','1.1');
+  await page.waitForFunction(()=>{
+    const chart=document.querySelector('#timeChart');
+    const thresholdShapes=(chart?.layout?.shapes||[]).filter(x=>x.type==='line'&&x.yref!=='paper');
+    const thresholdTraces=(chart?.data||[]).filter(t=>/threshold|spill level/i.test(String(t.name||'')));
+    return thresholdShapes.length===2&&thresholdTraces.length===2&&thresholdTraces.every(t=>t.line?.dash==='dash'&&(t.yaxis||'y')==='y');
+  },null,{timeout:60000});
 
   stage='calibration comparison and diagnostics';
   await clickTab('compare');
