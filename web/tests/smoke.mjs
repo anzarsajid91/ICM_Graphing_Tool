@@ -126,7 +126,7 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
   const primaryLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(primaryLabels.map(x=>x.trim()).join('|')!=='▦Data|◎Survey|≋Rainfall|△Verification|◫Spills|▤Report')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
+  if(primaryLabels.map(x=>x.trim()).join('|')!=='Data|Survey|Rainfall|Verification|Spills|Report')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
   for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080}]){
     await page.setViewportSize(size);
     await precisionRoute('data','sources');
