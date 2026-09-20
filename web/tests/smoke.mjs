@@ -126,7 +126,7 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
   const primaryLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(primaryLabels.map(x=>x.trim()).join('|')!=='Data|Survey|Rainfall|Verification|Spills|Report')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
+  if(primaryLabels.map(x=>x.trim()).join('|')!=='Data & Time Series|Flow Survey|Rainfall|Assessment|Spills|Report')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
   for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080}]){
     await page.setViewportSize(size);
     await precisionRoute('data','sources');
@@ -371,7 +371,7 @@ try{
   stage='association workbook and simplified survey navigation';
   await precisionRoute('survey','configuration');
   const navLabels=await page.locator('nav.tabs .tab').allTextContents();
-  if(navLabels.join('|')!=='Data|Survey|Rainfall|Verification|Spills|Report')throw new Error('Unexpected simplified navigation: '+JSON.stringify(navLabels));
+  if(navLabels.join('|')!=='Data & Time Series|Flow Survey|Rainfall|Assessment|Spills|Report')throw new Error('Unexpected simplified navigation: '+JSON.stringify(navLabels));
   if(await page.locator('.tab[data-tab="storage"]').count()!==0)throw new Error('Storage should be embedded under Verification, not exposed as a top-level tab');
   const workflowGuide=await page.locator('#workflowGuide').textContent();
   if(!workflowGuide.includes('Workflow')||!workflowGuide.includes('Survey')||!workflowGuide.includes('FSAT Event Response')||!workflowGuide.includes('volume balance'))throw new Error('Contextual Survey workflow guide is incomplete: '+workflowGuide);
