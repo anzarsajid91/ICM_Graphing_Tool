@@ -632,6 +632,7 @@ try{
   if((fourReport.match(/Period statistics/g)||[]).length!==4)throw new Error('Four-period report must include statistics for every graph period');
   const fourLayout=await inspectReportHtml(fourReport,4);
   if(fourLayout.headers!==1||fourLayout.figures!==4||fourLayout.zero||fourLayout.overflow>2)throw new Error(`Four-period report visual containment failed: ${JSON.stringify(fourLayout)}`);
+  await precisionRoute('report','provenance');
   const manifestDownload=await downloadFrom('#downloadManifestBtn');
   const manifestCsv=await fs.readFile(await manifestDownload.path(),'utf8');
   if(!manifestCsv.startsWith('workflow_role,asset_id,domain_role,file,column,quantity,unit,sha256,size,format'))throw new Error('Provenance manifest is missing canonical domain fields');
