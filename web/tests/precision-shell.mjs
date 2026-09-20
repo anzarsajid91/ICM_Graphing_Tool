@@ -39,6 +39,13 @@ try{
     rawInsideDetails:Boolean(document.querySelector('#pwDataHealthDetails #healthBody')),
   }));
   if(!healthComposition.summaryVisible||!healthComposition.rawInsideDetails)throw new Error('Data Health summary/detail composition is incomplete: '+JSON.stringify(healthComposition));
+  const typeScale=await page.evaluate(()=>({
+    title:Number.parseFloat(getComputedStyle(document.querySelector('.pw-page-title')).fontSize),
+    nav:Number.parseFloat(getComputedStyle(document.querySelector('.pw-primary-nav button')).fontSize),
+    tableHeading:Number.parseFloat(getComputedStyle(document.querySelector('#pwDataHealthSummary th')).fontSize),
+    scopeLabel:Number.parseFloat(getComputedStyle(document.querySelector('.pw-scope-item span')).fontSize),
+  }));
+  if(typeScale.title<24||typeScale.nav<15||typeScale.tableHeading<13||typeScale.scopeLabel<12)throw new Error('Precision typography scale is below the refinement minimums: '+JSON.stringify(typeScale));
 
   const inspectorText=(await page.locator('#pwInspectorBody').textContent())||'';
   if(inspectorText.includes('Live context'))throw new Error('Inspector must not present the hard-coded Live context result state.');
