@@ -82,6 +82,7 @@ body.precision-workbench{
 .pw-page-description{margin:4px 0 0;color:var(--pw-muted);max-width:900px;font-size:14px;line-height:21px}
 .pw-context-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .pw-rail-toggle,.pw-inspector-toggle,.pw-focus-toggle{display:none;border:1px solid var(--pw-border);background:#fff;border-radius:6px;padding:7px 10px;cursor:pointer;font-weight:650;color:var(--pw-text)}
+.pw-rail-toggle{display:inline-flex;align-items:center;gap:6px}
 .pw-focus-toggle:not([hidden]){display:inline-flex;align-items:center;gap:6px}
 .pw-focus-toggle[aria-pressed="true"]{background:#edf8f8;border-color:#a9d6d8;color:var(--pw-teal-strong)}
 .pw-secondary-nav{display:flex;gap:4px;overflow:auto;padding-bottom:1px}
@@ -187,11 +188,19 @@ body.precision-workbench{
 .pw-status.stale:before,.pw-status.partial:before{background:#d18a00}
 .pw-status.error:before,.pw-status.blocked:before{background:var(--pw-danger)}
 .pw-inspector-drawer-close{display:none}.pw-inspector[hidden]{display:none!important}
-.pw-scenario-picker{display:grid;gap:7px}
-.pw-scenario-list{display:grid;gap:5px;max-height:190px;overflow:auto;border:1px solid var(--pw-border);border-radius:6px;padding:6px;background:#fff}
-.pw-scenario-option{display:flex!important;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;font-weight:500!important}
+.pw-scenario-picker{display:grid;gap:6px;position:relative;min-width:0}
+.pw-model-picker-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;border:1px solid var(--pw-border-strong);background:#fff;border-radius:6px;padding:8px 10px;color:var(--pw-text);cursor:pointer;font-weight:550}
+.pw-model-picker-trigger:after{content:"▾";color:var(--pw-muted);font-size:11px}
+.pw-model-picker-trigger[aria-expanded="true"]:after{content:"▴"}
+.pw-model-picker-popover{position:absolute;top:calc(100% - 22px);left:0;right:0;z-index:75;min-width:min(520px,80vw);max-width:620px;padding:9px;background:#fff;border:1px solid var(--pw-border-strong);border-radius:7px;box-shadow:0 14px 34px rgba(18,39,54,.16)}
+.pw-model-search{width:100%;margin-bottom:7px}
+.pw-model-picker-actions{display:flex;gap:6px;margin-bottom:7px}
+.pw-model-picker-actions button{min-height:30px!important;padding:5px 8px;border:1px solid var(--pw-border);border-radius:5px;background:#f8fafb;color:var(--pw-text);cursor:pointer;font-size:12px}
+.pw-scenario-list{display:grid;gap:4px;max-height:230px;overflow:auto;border:1px solid var(--pw-border);border-radius:6px;padding:5px;background:#fff}
+.pw-scenario-option{display:flex!important;align-items:center;gap:8px;padding:6px;border-radius:5px;cursor:pointer;font-weight:500!important;min-width:0}
 .pw-scenario-option:hover{background:#f4f8f9}
 .pw-scenario-option input{min-height:auto!important}
+.pw-scenario-option span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pw-scenario-count{font-size:12px;line-height:18px;color:var(--pw-muted);font-weight:500}
 .precision-workbench #modelSelect.pw-canonical-select{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}
 [hidden]{display:none!important}
@@ -227,6 +236,19 @@ body.precision-workbench{
 .pw-review-notes{margin:0 var(--pw-gap) 20px}
 .precision-workbench footer{margin:0 var(--pw-gap) 18px;color:var(--pw-muted);border-top:1px solid var(--pw-border);padding-top:10px;font-size:12px;line-height:18px}
 .pw-shell-note{font-size:12px;color:var(--pw-muted);line-height:18px}
+
+@media(min-width:621px){
+  .precision-workbench.pw-rail-collapsed .pw-app{grid-template-columns:74px minmax(0,1fr)}
+  .precision-workbench.pw-rail-collapsed .pw-rail{padding-left:10px;padding-right:10px}
+  .precision-workbench.pw-rail-collapsed .pw-brand{padding-left:0;padding-right:0}
+  .precision-workbench.pw-rail-collapsed .pw-brand-mark{justify-content:center}
+  .precision-workbench.pw-rail-collapsed .pw-brand-title,
+  .precision-workbench.pw-rail-collapsed .pw-brand small,
+  .precision-workbench.pw-rail-collapsed .pw-primary-nav .pw-nav-label,
+  .precision-workbench.pw-rail-collapsed .pw-asset-browser{display:none}
+  .precision-workbench.pw-rail-collapsed .pw-primary-nav button{justify-content:center;padding:10px}
+  .precision-workbench.pw-rail-collapsed .pw-nav-icon{margin:auto}
+}
 
 @media(min-width:901px){
   .precision-workbench.pw-focus-canvas .pw-app{grid-template-columns:74px minmax(0,1fr)}

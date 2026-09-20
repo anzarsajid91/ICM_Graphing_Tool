@@ -115,13 +115,43 @@
   top:0;
   z-index:1;
 }
-.balance-table .recommendation-cell{
-  min-width:300px;
-  max-width:440px;
+.balance-table-wrap{overflow-x:hidden}
+.balance-table{
+  width:100%;
+  min-width:0;
+  table-layout:fixed;
 }
+.balance-table th,
+.balance-table td{
+  max-width:none;
+  padding:9px 8px;
+  font-size:12px;
+  line-height:1.35;
+}
+.balance-table th{white-space:normal!important;vertical-align:bottom}
+.balance-table th:nth-child(1){width:13%}
+.balance-table th:nth-child(2){width:12%}
+.balance-table th:nth-child(3){width:16%}
+.balance-table th:nth-child(4){width:10%}
+.balance-table th:nth-child(5){width:11%}
+.balance-table th:nth-child(6){width:17%}
+.balance-table th:nth-child(7){width:21%}
+.balance-table td span{display:block;color:#64798a;font-size:11px;margin-top:3px}
+.balance-table .balance-volumes span{margin-top:0}
+.balance-table .balance-volumes span+span{margin-top:4px}
+.balance-table .balance-volumes strong{font-size:11px;color:#415b6f}
+.balance-table .balance-status>strong{font-variant-numeric:tabular-nums}
+.balance-table .balance-rag .rag-pill{display:inline-flex;margin:0}
+.balance-table .recommendation-cell,
 .balance-table .likely-source{
-  min-width:180px;
-  max-width:280px;
+  min-width:0;
+  max-width:none;
+  overflow-wrap:anywhere;
+}
+@media(max-width:1180px){
+  .balance-table th,
+  .balance-table td{font-size:11.5px;padding:8px 6px}
+  .balance-table td span{font-size:10.5px}
 }
 .source-match,
 .rag-pill{

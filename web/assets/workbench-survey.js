@@ -106,21 +106,21 @@
     const nav = document.querySelector('nav.tabs');
     if (!nav) return;
     const labels = {
-      graph: 'Data',
-      'data-health': 'Survey',
+      graph: 'Data & Time Series',
+      'data-health': 'Flow Survey',
       'rain-events': 'Rainfall',
-      compare: 'Verification',
+      compare: 'Assessment',
       spills: 'Spills',
       workspace: 'Report',
     };
     const workflow = {
       graph: {
-        label: 'Data',
+        label: 'Data & Time Series',
         description: 'Map source channels and review observed, modelled and rainfall time series before moving into engineering diagnostics.',
         tools: ['Source mapping', 'Time-series graph', 'Threshold overlays', 'Graph statistics'],
       },
       'data-health': {
-        label: 'Survey',
+        label: 'Flow Survey',
         description: 'Assess flow-survey completeness, response and network context using the survey association workbook where supplied.',
         tools: ['fm_rg_assoc', 'Data health', 'FSAT Event Response', 'Flow continuity / volume balance'],
       },
@@ -130,7 +130,7 @@
         tools: ['Gauge assessment', 'WAPUG / manual events', 'Event bands', 'Hydraulic response'],
       },
       compare: {
-        label: 'Verification',
+        label: 'Assessment',
         description: 'Compare observed and modelled hydraulics over a controlled period and investigate where the model differs.',
         tools: ['Pairs & calibration metrics', 'Residuals', 'Cumulative / exceedance', 'Depth & rating diagnostics', 'Storage'],
       },
@@ -662,15 +662,24 @@
       '<div><strong>' + (rag.Red || 0) + '</strong><span>Red</span></div>' +
       '<div><strong>' + (rag.Grey || 0) + '</strong><span>Grey / incomplete</span></div></div>' +
       '<div class="privacy-note"><strong>Method:</strong> ' + esc(result.criteria && result.criteria.legacy_method || 'FSAT weekly volume parity') + '. Enhanced RAG uses actual-timestep valid support, global analysis bounds and exclusions.</div>';
-    const rows = (result.rows || []).map(row =>
-      '<tr><td>' + esc(row.week_ending || '—') + '</td><td><strong>' + esc(row.downstream_monitor) + '</strong></td><td>' + esc((row.upstream_monitors || []).join(', ')) + '</td>' +
-      '<td>' + (row.downstream_volume_m3 == null ? '—' : fmt(row.downstream_volume_m3, 1)) + '</td><td>' + (row.upstream_sum_m3 == null ? '—' : fmt(row.upstream_sum_m3, 1)) + '</td>' +
-      '<td>' + (row.balance_ratio == null ? '—' : fmt(row.balance_ratio, 3)) + '</td><td>' + esc(row.legacy_fsat_status || 'NA') + '</td>' +
-      '<td><span class="rag-pill ' + ragClass(row.rag) + '">' + esc(row.rag || 'Grey') + '</span></td>' +
-      '<td>' + (row.minimum_coverage_fraction == null ? '—' : fmt(row.minimum_coverage_fraction * 100, 1) + '%') + '</td>' +
-      '<td class="likely-source">' + esc(row.likely_source || '—') + '</td><td>' + esc((row.qa_evidence || []).map(x => x.monitor + ' ' + x.rag).join('; ') || '—') + '</td><td class="recommendation-cell">' + esc(row.recommendation || '—') + '</td></tr>'
-    ).join('');
-    table.innerHTML = '<div class="survey-table-wrap tall"><table class="data-table survey-table balance-table"><thead><tr><th>Week ending</th><th>Downstream</th><th>Upstream trace</th><th>Downstream vol. m³</th><th>Upstream sum m³</th><th>Balance ratio</th><th>Legacy FSAT</th><th>RAG</th><th>Min coverage</th><th>Likely source / first check</th><th>QA evidence</th><th>Recommendation</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    const rows = (result.rows || []).map(row => {
+      const downstream = row.downstream_monitor || '—';
+      const upstream = (row.upstream_monitors || []).join(', ') || '—';
+      const downstreamVolume = row.downstream_volume_m3 == null ? '—' : fmt(row.downstream_volume_m3, 1) + ' m³';
+      const upstreamVolume = row.upstream_sum_m3 == null ? '—' : fmt(row.upstream_sum_m3, 1) + ' m³';
+      const coverage = row.minimum_coverage_fraction == null ? '—' : fmt(row.minimum_coverage_fraction * 100, 1) + '%';
+      const qa = (row.qa_evidence || []).map(x => x.monitor + ' ' + x.rag).join('; ') || '—';
+      return '<tr>' +
+        '<td class="balance-week">' + esc(row.week_ending || '—') + '</td>' +
+        '<td class="balance-path"><strong>' + esc(downstream) + '</strong><span>Upstream: ' + esc(upstream) + '</span></td>' +
+        '<td class="balance-volumes"><span><strong>Downstream</strong> ' + esc(downstreamVolume) + '</span><span><strong>Upstream</strong> ' + esc(upstreamVolume) + '</span></td>' +
+        '<td class="balance-status"><strong>' + (row.balance_ratio == null ? '—' : fmt(row.balance_ratio, 3)) + '</strong><span>FSAT: ' + esc(row.legacy_fsat_status || 'NA') + '</span></td>' +
+        '<td class="balance-rag"><span class="rag-pill ' + ragClass(row.rag) + '">' + esc(row.rag || 'Grey') + '</span><span>' + esc(coverage) + ' support</span></td>' +
+        '<td class="likely-source"><strong>' + esc(row.likely_source || '—') + '</strong><span>QA: ' + esc(qa) + '</span></td>' +
+        '<td class="recommendation-cell">' + esc(row.recommendation || '—') + '</td>' +
+      '</tr>';
+    }).join('');
+    table.innerHTML = '<div class="survey-table-wrap tall balance-table-wrap"><table class="data-table survey-table balance-table"><thead><tr><th>Week ending</th><th>Network path</th><th>Volume evidence</th><th>Ratio / legacy</th><th>RAG / coverage</th><th>Likely source / first check</th><th>Recommendation</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
   function surveyReportHtml() {
@@ -895,7 +904,7 @@
         const extra = surveyReportHtml();
         if (!state.mapping.observed) {
           const body = '<div class="note">Survey-only report. No observed graph mapping was required for this export.</div>' + extra + reportSources(workspaceObject()) + reportExclusions(workspaceObject());
-          downloadBlob('icm-workbench-survey-report-' + new Date().toISOString().slice(0, 10) + '.html', reportShell('ICM Calibration Workbench — Flow Survey Assessment', 'Association-driven survey QA, Event Response and flow-continuity review', body, true), 'text/html');
+          downloadBlob('icm-workbench-survey-report-' + new Date().toISOString().slice(0, 10) + '.html', reportShell('ICM Graphing Tool — Flow Survey Assessment', 'Association-driven survey QA, Event Response and flow-continuity review', body, true), 'text/html');
           document.getElementById('workspaceStatus').textContent = 'Survey assessment HTML downloaded.';
           return;
         }
