@@ -55,6 +55,7 @@ jobs:
           node --check web/assets/precision-workbench.js
           node --check web/tests/smoke.mjs
           node --check web/tests/precision-shell.mjs
+          node web/tests/graph-report-unit.mjs
           node web/tests/runtime-unit.mjs
           node web/tests/domain-registry-unit.mjs
           python -m py_compile web/python_bridge.py web/advanced_bridge.py src/icm_workbench/browser_api.py src/icm_workbench/advanced_api.py scripts/build_pages.py scripts/validate_representative_exports.py
