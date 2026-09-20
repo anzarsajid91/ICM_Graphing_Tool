@@ -106,21 +106,21 @@
     const nav = document.querySelector('nav.tabs');
     if (!nav) return;
     const labels = {
-      graph: 'Data',
-      'data-health': 'Survey',
+      graph: 'Data & Time Series',
+      'data-health': 'Flow Survey',
       'rain-events': 'Rainfall',
-      compare: 'Verification',
+      compare: 'Assessment',
       spills: 'Spills',
       workspace: 'Report',
     };
     const workflow = {
       graph: {
-        label: 'Data',
+        label: 'Data & Time Series',
         description: 'Map source channels and review observed, modelled and rainfall time series before moving into engineering diagnostics.',
         tools: ['Source mapping', 'Time-series graph', 'Threshold overlays', 'Graph statistics'],
       },
       'data-health': {
-        label: 'Survey',
+        label: 'Flow Survey',
         description: 'Assess flow-survey completeness, response and network context using the survey association workbook where supplied.',
         tools: ['fm_rg_assoc', 'Data health', 'FSAT Event Response', 'Flow continuity / volume balance'],
       },
@@ -130,7 +130,7 @@
         tools: ['Gauge assessment', 'WAPUG / manual events', 'Event bands', 'Hydraulic response'],
       },
       compare: {
-        label: 'Verification',
+        label: 'Assessment',
         description: 'Compare observed and modelled hydraulics over a controlled period and investigate where the model differs.',
         tools: ['Pairs & calibration metrics', 'Residuals', 'Cumulative / exceedance', 'Depth & rating diagnostics', 'Storage'],
       },
