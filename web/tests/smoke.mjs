@@ -472,6 +472,8 @@ try{
   for(const token of ['Rainfall','Flow','Depth','Velocity'])if(!fdvGraph.axes.some(x=>String(x.title).includes(token)))throw new Error('Missing FDV panel/unit axis '+token+': '+JSON.stringify(fdvGraph.axes));
   if(fdvGraph.stats.length<4)throw new Error('FDV statistics must include rainfall plus all hydraulic variables');
   if(!/Time range/i.test(fdvGraph.periodSummary)||!/Total rain/i.test(fdvGraph.periodSummary)||!/Volume/i.test(fdvGraph.periodSummary))throw new Error('FDV period summary must expose time range, rainfall total and flow volume: '+fdvGraph.periodSummary);
+  const fdvGeometry=await page.evaluate(()=>{const chart=document.querySelector('#timeChart')?.getBoundingClientRect(),summary=document.querySelector('#graphPeriodSummary')?.getBoundingClientRect();return{chartBottom:chart?.bottom||0,summaryTop:summary?.top||0,summaryHeight:summary?.height||0};});
+  if(!fdvGeometry.summaryHeight||fdvGeometry.summaryTop<fdvGeometry.chartBottom-1)throw new Error('FDV chart overlaps the engineering period summary: '+JSON.stringify(fdvGeometry));
   await precisionRoute('data','time-series');
   await captureEvidence('01b-fdv-stacked-graph');
   await precisionRoute('data','series-mapping');
