@@ -138,9 +138,20 @@ function inspectorContext(page){
   const body=$('pwInspectorBody');if(!body)return;
   body.innerHTML='<div class="pw-context-card"><h4>Current context</h4><dl><dt>Workspace</dt><dd>'+esc(ROUTES[current.workspace].label)+'</dd><dt>Page</dt><dd>'+esc(page.label)+'</dd><dt>Processing</dt><dd>Local browser</dd><dt>Result state</dt><dd><span class="pw-status current">Live context</span></dd></dl></div>';
   const root=page.root?.();
-  if(current.workspace==='data'&&current.page==='time-series')dock(qs('.appearance-panel',root));
-  if(current.workspace==='verification'&&current.page==='comparison'){dock(qs(':scope>.panel>.mapping-grid',root));dock(qs(':scope>.panel>.actions',root));}
-  if(current.workspace==='survey'&&current.page==='rainfall-response')dock(qs('.survey-method',root));
+  if(current.workspace==='data'&&current.page==='time-series'){
+    dock($('v2GraphToolbar'));
+    dock($('sharedAnalysisPanel'));
+    dock(qs('.appearance-panel',root));
+  }
+  if(current.workspace==='verification'&&current.page==='comparison'){
+    dock($('sharedAnalysisPanel'));
+    dock(qs(':scope>.panel>.mapping-grid',root));
+    dock(qs(':scope>.panel>.actions',root));
+  }
+  if(current.workspace==='survey'&&current.page==='rainfall-response'){dock($('sharedAnalysisPanel'));dock(qs('.survey-method',root));}
+  if(current.workspace==='survey'&&current.page==='flow-continuity')dock($('sharedAnalysisPanel'));
+  if(current.workspace==='rainfall'&&current.page==='events')dock($('sharedAnalysisPanel'));
+  if(current.workspace==='verification'&&['rating','dwf','storage'].includes(current.page))dock($('sharedAnalysisPanel'));
   if(current.workspace==='spills'&&current.page==='thresholds')dock(qs(':scope>.panel>.mapping-grid.compact',root));
   const note=document.createElement('div');note.className='pw-shell-note';note.textContent='Engineering calculations continue to use the existing canonical browser/Python result paths; this inspector only reorganises presentation controls.';body.appendChild(note);
 }
