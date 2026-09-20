@@ -870,10 +870,11 @@ try{
   await precisionRoute('data','series-mapping');
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphStatistics?.some(r=>r.label?.includes('Reference-RG01')&&r.statistics?.total===85),null,{timeout:120000});
-  const realEvidence=await page.evaluate(()=>({statistics:window.__ICM_WORKBENCH__.lastGraphStatistics,layout:document.querySelector('#timeChart').layout}));
+  const realEvidence=await page.evaluate(()=>({statistics:window.__ICM_WORKBENCH__.lastGraphStatistics,layout:document.querySelector('#timeChart').layout,panelDomains:window.__ICM_WORKBENCH__.lastPanelDomains}));
   const realFlow=realEvidence.statistics.find(r=>r.statistics.quantity==='flow').statistics;
   if(Math.abs(realFlow.mean-.1289310550071921)>1e-10||Math.abs(realFlow.total-311912.16)>1e-5)throw new Error('Real FDV native statistics differ from independent reference arithmetic: '+JSON.stringify(realFlow));
-  if(!(realEvidence.layout.yaxis4.domain[1]<realEvidence.layout.yaxis.domain[0]&&realEvidence.layout.yaxis.domain[1]<realEvidence.layout.yaxis3.domain[0]&&realEvidence.layout.yaxis3.domain[1]<realEvidence.layout.yaxis2.domain[0]))throw new Error('Real FDV panels overlap');
+  const domains=realEvidence.panelDomains;
+  if(!(domains?.velocity?.[1]<domains?.depth?.[0]&&domains?.depth?.[1]<domains?.flow?.[0]&&domains?.flow?.[1]<domains?.rainfall?.[0]))throw new Error('Real FDV semantic panel domains overlap: '+JSON.stringify(domains));
   await precisionRoute('data','time-series');
   await captureEvidence('07-real-fdv-rainfall');
   await precisionRoute('report','builder');
