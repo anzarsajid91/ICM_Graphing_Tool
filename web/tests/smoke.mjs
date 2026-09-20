@@ -41,7 +41,8 @@ async function captureEvidence(name){
   const dir=process.env.ICM_EVIDENCE_DIR;
   if(!dir)return;
   await fs.mkdir(dir,{recursive:true});
-  await page.screenshot({path:path.join(dir,`${name}.png`),fullPage:true});
+  await page.screenshot({path:path.join(dir,`${name}.png`),fullPage:false});
+  await page.screenshot({path:path.join(dir,`${name}-full.png`),fullPage:true});
 }
 async function inspectReportHtml(html,minFigures=1){
   const p=await context.newPage();
@@ -422,6 +423,11 @@ try{
   const fm03Balance=(completeSurvey.volume_balance?.rows||[]).find(x=>x.downstream_monitor==='FM03');
   if(!fm03Balance||fm03Balance.rag!=='Green'||fm03Balance.legacy_fsat_status!=='OK')throw new Error('Expected FM03 downstream volume balance to reconcile Green/OK: '+JSON.stringify(fm03Balance));
   if(!((await page.locator('#surveyBalanceTable').textContent())||'').includes('Likely source / first check'))throw new Error('Volume-balance diagnostic recommendation column is missing');
+  // Capture Data Health again with representative FM/RG survey sources populated.
+  await precisionRoute('survey','data-health');
+  await page.click('#runHealthBtn');
+  await page.waitForFunction(()=>document.querySelectorAll('#healthBody tr').length>=10,null,{timeout:120000});
+  await captureEvidence('02-survey-data-health');
   await precisionRoute('survey','flow-continuity');
   await captureEvidence('03-survey-flow-continuity');
 
@@ -452,6 +458,9 @@ try{
   await page.fill('.ex-row [data-field="reason"]','Automated acceptance-test exclusion');
   await page.click('#runSpillsBtn');
   await page.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in'),null,{timeout:60000});
+  await page.waitForFunction(()=>!document.body.classList.contains('operation-busy'),null,{timeout:10000});
+  const exclusionLayout=await page.evaluate(()=>{const row=document.querySelector('.ex-row');const start=row?.querySelector('label:nth-of-type(2)')?.getBoundingClientRect();const reason=row?.querySelector('label:nth-of-type(5)')?.getBoundingClientRect();const check=row?.querySelector('input[type="checkbox"]')?.getBoundingClientRect();return{reasonBelow:Boolean(start&&reason&&reason.top>start.top+4),checkboxWidth:check?.width||0};});
+  if(!exclusionLayout.reasonBelow||exclusionLayout.checkboxWidth>22)throw new Error('Exclusion editor did not resolve to the intended two-row hierarchy: '+JSON.stringify(exclusionLayout));
   await captureEvidence('04-spill-thresholds-exclusions');
   await precisionRoute('spills','results');
   await page.waitForSelector('#obsMonthly .v2-yearly-title',{timeout:60000});
@@ -461,6 +470,7 @@ try{
   if(!spillDiag?.observed)throw new Error(`Observed spill diagnostic missing: ${JSON.stringify(spillDiag)}`);
   if(Math.abs(Number(spillDiag.observed.excluded_seconds)-120)>0.001)throw new Error(`Expected 120 seconds excluded in model clock, got ${JSON.stringify(spillDiag)}`);
   if(!spillDiag.observed.yearly?.length)throw new Error('Yearly spill summary missing from browser diagnostic');
+  console.log('NUMERICAL_PARITY '+JSON.stringify({rainfall_totals_mm:totals.map(x=>Number(x.total_mm)),fm03_balance_ratio:Number(fm03Balance.balance_ratio),fm03_rag:fm03Balance.rag,fm03_legacy:fm03Balance.legacy_fsat_status,excluded_seconds:Number(spillDiag.observed.excluded_seconds)}));
 
   stage='storage and monthly volume';
   await precisionRoute('verification','storage');
