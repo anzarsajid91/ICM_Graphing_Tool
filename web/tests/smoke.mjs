@@ -529,7 +529,7 @@ try{
   // File/exclusion changes correctly invalidate survey snapshots. Re-run both the
   // legacy single-monitor assessment and the association-driven complete survey
   // so report assertions exercise fresh, auditable results.
-  await clickTab('data-health');
+  await precisionRoute('survey','rainfall-response');
   await page.click('#runProfessionalSurveyBtn');
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.lastProfessionalSurvey),null,{timeout:120000});
   await page.click('#runCompleteSurveyBtn');
