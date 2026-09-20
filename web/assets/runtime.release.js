@@ -604,9 +604,44 @@ function reportObservedColour(quantity){
   if(q==='velocity')return $('observedVelocityColour')?.value||$('obsColor').value;
   return $('obsColor').value;
 }
-function hydraulicGraphLayout({fdvMode=false,quantities=[],statistics=[],hasRain=false,rainMax=1,range=null,title='',shapes=[],annotations=[]}
-
-
+function hydraulicGraphLayout({fdvMode=false,quantities=[],statistics=[],hasRain=false,rainMax=1,range=null,title='',shapes=[],annotations=[]}={}){
+  const unitFor=q=>statistics.find(r=>r.statistics?.quantity===q)?.statistics?.unit;
+  const axisTitle=q=>`${q.charAt(0).toUpperCase()+q.slice(1)} (${unitFor(q)||'unit unresolved'})`;
+  const panels=[];
+  if(hasRain)panels.push({axis:'yaxis2',title:axisTitle('rainfall'),rain:true});
+  if(fdvMode){
+    if(quantities.includes('flow'))panels.push({axis:'yaxis3',title:axisTitle('flow')});
+    if(quantities.includes('depth')||quantities.includes('level'))panels.push({axis:'yaxis',title:axisTitle(quantities.includes('depth')?'depth':'level')});
+    if(quantities.includes('velocity'))panels.push({axis:'yaxis4',title:axisTitle('velocity')});
+  }else if(statistics.some(r=>r.role!=='Rainfall')){
+    const s=statistics.find(r=>r.role!=='Rainfall')?.statistics||{};
+    panels.push({axis:'yaxis',title:`${s.quantity||'Hydraulic value'} (${s.unit||'unit unresolved'})`});
+  }
+  if(!panels.length)panels.push({axis:'yaxis',title:'Value'});
+  const gap=panels.length>2?.055:.09;
+  const weight=panels.reduce((sum,p)=>sum+(p.rain&&panels.length>1?(panels.length===2?.30:.65):1),0);
+  const available=1-gap*(panels.length-1);
+  const legendRows=Math.max(1,Math.ceil((statistics.length+2)/4));
+  const layout={template:'plotly_white',height:Math.max(610,panels.length*185+130),
+    margin:{l:86,r:34,t:(title?80:44)+legendRows*24,b:62},hovermode:'x unified',
+    font:{family:'Segoe UI, Arial, sans-serif',size:12,color:'#334155'},
+    legend:{orientation:'h',x:0,y:1.04,xanchor:'left',yanchor:'bottom',font:{size:12},traceorder:'normal'},
+    xaxis:{title:{text:'Time'},domain:[0,1],showgrid:false,automargin:true,rangeslider:{visible:false},autorange:!range},
+    shapes,annotations:[...annotations],bargap:0,uirevision:'icm-stacked-graph'};
+  if(title)layout.title={text:title,x:.01,xanchor:'left',y:.99,yanchor:'top',font:{size:19}};
+  if(range)layout.xaxis.range=range;
+  let top=1;
+  for(const panel of panels){
+    const height=available*(panel.rain&&panels.length>1?(panels.length===2?.30:.65):1)/weight;
+    layout[panel.axis]={title:{text:panel.title,standoff:12},domain:[Math.max(0,top-height),top],anchor:'x',
+      showgrid:true,gridcolor:'#e8eef3',zerolinecolor:'#d9e2ea',automargin:true};
+    if(panel.rain)Object.assign(layout[panel.axis],{range:[rainMax>0?rainMax:1,0],autorange:false});
+    top-=height+gap;
+  }
+  // Preserve a primary axis for Plotly when the only selected series is rainfall.
+  if(!layout.yaxis)layout.yaxis={visible:false,domain:[0,1]};
+  return layout;
+}
 function graphStatisticsHtml(rows){
   if(!rows?.length)return '<p class="muted">No graph statistics available.</p>';
   const value=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),4);
