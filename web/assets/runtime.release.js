@@ -668,7 +668,8 @@ async function interactiveReportHtml(html){
     reportPlotlyBundle=bundle;
   }
   const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,scrollZoom:true}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
-  return html.replace('</body>','<script>'+reportPlotlyBundle.replace(/<\/script/gi,'<\\/script')+'</script><script>'+boot+'</script></body>');
+  const embedded='<script>'+reportPlotlyBundle.replace(/<\/script/gi,'<\\/script')+'</script><script>'+boot+'</script></body>';
+  return html.replace('</body>',()=>embedded);
 }
 
 
