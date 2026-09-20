@@ -818,7 +818,7 @@ async function downloadFourPeriod(){
     const [title,a,b]=periods[i],result=await reportTraces([a,b]);
     result.traces.push(...thresholdTraces);
     const layout=hydraulicGraphLayout({...result,range:[a,b],title:year+' — '+title,shapes});
-    body+='<section class="report-page"><h2>'+esc(title)+'</h2><p class="muted">'+esc(a)+' to '+esc(b)+' · end exclusive</p><h3>Period statistics</h3>'+reportPlotFigure('period-graph-'+i,result.traces,layout,result.statistics,'Aligned hydraulic panels with a separate rainfall band above.')+'</section>';
+    body+='<section class="report-page"><h2>'+esc(title)+'</h2><p class="muted">'+esc(a)+' to '+esc(b)+' · end exclusive</p>'+reportPlotFigure('period-graph-'+i,result.traces,layout,result.statistics,'Aligned hydraulic panels with a separate rainfall band above.')+'</section>';
   }
   body+='<h2>Analysis settings</h2>'+reportSettingsTable(w)+'<h2>Exclusions</h2>'+reportExclusions(w)+'<h2>Source provenance</h2>'+reportSources(w);
   const html=await interactiveReportHtml(reportShell('ICM Calibration Workbench — '+year+' Four-Period Report','Annual hydraulic time-series review',body,true));
