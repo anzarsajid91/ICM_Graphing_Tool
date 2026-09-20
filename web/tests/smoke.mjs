@@ -469,6 +469,18 @@ try{
   await page.waitForFunction(()=>document.querySelectorAll('#healthBody tr').length>=10,null,{timeout:120000});
   await captureEvidence('02-survey-data-health');
   await precisionRoute('survey','flow-continuity');
+  const continuityLayout=await page.evaluate(()=>{
+    const wrap=document.querySelector('#surveyBalanceTable .balance-table-wrap');
+    const table=wrap?.querySelector('table');
+    return{
+      overflow:wrap?(wrap.scrollWidth-wrap.clientWidth):999,
+      wrapWidth:wrap?.clientWidth||0,
+      tableWidth:table?.getBoundingClientRect().width||0,
+      headings:[...(table?.querySelectorAll('th')||[])].map(x=>x.textContent.trim())
+    };
+  });
+  if(continuityLayout.overflow>2||Math.abs(continuityLayout.tableWidth-continuityLayout.wrapWidth)>2)throw new Error('Flow-continuity diagnostic table must fit its workspace without horizontal scrolling: '+JSON.stringify(continuityLayout));
+  if(!continuityLayout.headings.includes('Likely source / first check')||!continuityLayout.headings.includes('Recommendation'))throw new Error('Flow-continuity table must retain diagnosis and recommendation evidence: '+JSON.stringify(continuityLayout.headings));
   await captureEvidence('03-survey-flow-continuity');
 
   stage='FDV stacked hydraulic graph';
