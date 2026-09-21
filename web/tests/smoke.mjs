@@ -1,6 +1,11 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+
+const execFileAsync=promisify(execFile);
 
 const root=process.cwd();
 const baseUrl=(process.env.ICM_BASE_URL||'http://127.0.0.1:8000/').replace(/\/?$/,'/');
@@ -90,11 +95,11 @@ async function measureColdReferenceImport(){
     await probe.close();
   }
 }
-async function measureFreshFastPathImport({dataset,relativePath,inputName,mimeType='text/csv'}){
+async function measureFreshFastPathImport({dataset,relativePath,sourcePath,inputName,mimeType='text/csv',archiveMember=null}){
   if(liveMode)return null;
   const probe=await context.newPage();
-  const sourcePath=path.join(root,relativePath);
-  const buffer=await fs.readFile(sourcePath);
+  const resolvedPath=sourcePath||path.join(root,relativePath);
+  const buffer=await fs.readFile(resolvedPath);
   const navigationStart=Date.now();
   try{
     await probe.goto(baseUrl+'?fresh_fastpath='+encodeURIComponent(dataset)+'&t='+Date.now(),{waitUntil:'domcontentloaded'});
@@ -122,9 +127,28 @@ async function measureFreshFastPathImport({dataset,relativePath,inputName,mimeTy
       record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
       reconciliation:window.__ICM_WORKBENCH__?.fastpath?.last?.reconciliation||null
     }));
-    return {dataset,bytes:buffer.length,domReadyMs,selectionOutcome:outcome.kind,timeToOutcomeMs:outcome.ms,
+    return {dataset,archiveMember,bytes:buffer.length,domReadyMs,selectionOutcome:outcome.kind,timeToOutcomeMs:outcome.ms,
       engineReadyFromNavigationMs,selectionAtFromNavigationMs:selectedAt-navigationStart,previewEvidence,finalEvidence};
   }finally{await probe.close();}
+}
+async function extractFirstModelReference(){
+  const zipPath=path.join(root,'reference/current-tool/sample-data/other/StationA_Modelled Data.zip');
+  const targetDir=await fs.mkdtemp(path.join(os.tmpdir(),'icm-model-reference-'));
+  const script=[
+    'import pathlib,sys,zipfile',
+    'archive=pathlib.Path(sys.argv[1]); target_dir=pathlib.Path(sys.argv[2])',
+    'with zipfile.ZipFile(archive) as z:',
+    '    members=[m for m in z.infolist() if not m.is_dir() and m.filename.lower().endswith((".csv",".hyd")) and "__MACOSX" not in m.filename]',
+    '    if not members: raise SystemExit("No CSV/HYD model members found")',
+    '    member=members[0]',
+    '    suffix=pathlib.Path(member.filename).suffix.lower() or ".csv"',
+    '    target=target_dir/("StationA_Modelled_First"+suffix)',
+    '    target.write_bytes(z.read(member))',
+    '    print(target)',
+    '    print(member.filename,file=sys.stderr)',
+  ].join('\\n');
+  const {stdout,stderr}=await execFileAsync('python',['-c',script,zipPath,targetDir],{maxBuffer:1024*1024});
+  return {sourcePath:stdout.trim(),archiveMember:stderr.trim(),inputName:path.basename(stdout.trim())};
 }
 
 async function inspectReportHtml(html,minFigures=1){
@@ -237,9 +261,11 @@ try{
   }
   stage='fresh CSV FastPath benchmarks';
   performanceEvidence.freshCsvImports=[];
+  const modelReference=await extractFirstModelReference();
   for(const spec of [
     {dataset:'StationA_EDM.csv',relativePath:'reference/current-tool/sample-data/other/StationA_EDM.csv',inputName:'Cold-StationA_EDM.csv'},
     {dataset:'StationA_Rainfall.csv',relativePath:'reference/current-tool/sample-data/other/StationA_Rainfall.csv',inputName:'Cold-StationA_Rainfall.csv'},
+    {dataset:'StationA_Modelled Data.zip / first model member',sourcePath:modelReference.sourcePath,inputName:modelReference.inputName,archiveMember:modelReference.archiveMember},
   ]){
     const measured=await measureFreshFastPathImport(spec);
     performanceEvidence.freshCsvImports.push(measured);
