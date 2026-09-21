@@ -291,27 +291,28 @@ try{
 
   stage='graph threshold controls and rainfall top band';
   await precisionRoute('data','time-series');
-  const standardLayout=await page.evaluate(()=>({
-    focus:document.body.classList.contains('pw-focus-canvas'),
-    rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
-    labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none')
-  }));
-  if(standardLayout.focus||standardLayout.rail<180||!standardLayout.labelled)throw new Error('Standard analytical layout must retain labelled navigation by default: '+JSON.stringify(standardLayout));
-  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
   const focusLayout=await page.evaluate(()=>({
     focus:document.body.classList.contains('pw-focus-canvas'),
     rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
     work:document.querySelector('.pw-workarea')?.getBoundingClientRect().width||0,
     inspectorPosition:getComputedStyle(document.querySelector('.pw-inspector')).position,
-    inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none'
+    inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none',
+    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden
   }));
-  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||!focusLayout.inspectorToggleVisible)throw new Error('Opt-in focus canvas did not maximise the graph work area: '+JSON.stringify(focusLayout));
+  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||!focusLayout.inspectorToggleVisible||focusLayout.railToggleHidden!==true)throw new Error('Graph-heavy routes must default to a focused analytical canvas: '+JSON.stringify(focusLayout));
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
   await page.click('#pwInspectorToggle');
   await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.click('#pwInspectorClose');
   await page.waitForFunction(()=>!document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(false));
+  const standardLayout=await page.evaluate(()=>({
+    focus:document.body.classList.contains('pw-focus-canvas'),
+    rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
+    labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none'),
+    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden
+  }));
+  if(standardLayout.focus||standardLayout.rail<180||!standardLayout.labelled||standardLayout.railToggleHidden)throw new Error('Explicit standard layout must restore labelled navigation: '+JSON.stringify(standardLayout));
   const nonDepthThresholdControls=await page.evaluate(()=>({
     observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
     modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
@@ -865,8 +866,12 @@ try{
   if(referenceEvidence.pointCounts?.observed?.raw!==20161||referenceEvidence.pointCounts?.rainfall?.raw!==20161)throw new Error('Reference full-period source counts mismatch: '+JSON.stringify(referenceEvidence.pointCounts));
   if(!String(referenceEvidence.xRange?.[0]||'').startsWith('2026-02-01')||!String(referenceEvidence.xRange?.[1]||'').startsWith('2026-03-01'))throw new Error('Reference graph support mismatch: '+JSON.stringify(referenceEvidence.xRange));
   stage='authoritative FDV channel navigation';
-  const channelVisible=await page.locator('#v2ChannelNav').evaluate(el=>!el.hidden);
-  if(!channelVisible)throw new Error('FDV channel navigation should be visible after authoritative handoff');
+  const channelPresentation=await page.locator('#v2ChannelNav').evaluate(el=>({
+    visible:!el.hidden,
+    inStrip:Boolean(el.closest('#v2ChannelStrip')),
+    inInspector:Boolean(el.closest('#pwInspector'))
+  }));
+  if(!channelPresentation.visible||!channelPresentation.inStrip||channelPresentation.inInspector)throw new Error('FDV channel navigation should remain graph-adjacent after authoritative handoff: '+JSON.stringify(channelPresentation));
   await page.click('#v2ChannelNav [data-channel="flow"]');
   await page.waitForFunction(()=>JSON.stringify(window.__ICM_WORKBENCH__.lastPanelOrder)===JSON.stringify(['rainfall','flow']),null,{timeout:60000});
   const selectedChannelMode=await page.evaluate(()=>window.__ICM_WORKBENCH__.uiV2?.channelMode||null);
