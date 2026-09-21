@@ -515,7 +515,7 @@ async function ingestFiles(files){
 }
 function renderPool(){
   const items=[...state.files.values()],ready=items.filter(x=>x.status==='ready').length,preview=items.filter(x=>['preview-ready','validating','preview-only'].includes(x.status)&&x.preview&&x.preview.eligible).length;
-  $('poolSummary').textContent=items.length?items.length+' file(s) · '+ready+' authoritative-ready'+(preview?' · '+preview+' preview-ready':'')+'.':'No files loaded.';
+  $('poolSummary').textContent=items.length?items.length+' file(s) in the source pool · '+ready+' parsed successfully'+(preview?' · '+preview+' preview-ready/validating':'')+'.':'No files loaded.';
   $('poolBody').innerHTML=items.map(item=>{
     const p=item.parsed||item.preview||{},audit=p.audit||{};
     const sent=Number(audit.sentinel_count||0)+(audit.column_audit?Object.values(audit.column_audit).reduce((a,x)=>a+Number(x.sentinel_count||0),0):0);
