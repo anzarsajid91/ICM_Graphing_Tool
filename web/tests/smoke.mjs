@@ -153,6 +153,88 @@ async function extractFirstModelReference(){
   return {sourcePath:stdout.trim(),archiveMember:stderr.trim(),inputName:path.basename(stdout.trim())};
 }
 
+async function verifyClearDuringPendingImport(){
+  if(liveMode)return null;
+  const probe=await context.newPage(),probeErrors=[];
+  probe.on('pageerror',error=>probeErrors.push('pageerror: '+String(error)));
+  probe.on('console',message=>{if(message.type()==='error')probeErrors.push('console: '+message.text());});
+  try{
+    await probe.goto(baseUrl+'?pending_clear='+Date.now(),{waitUntil:'domcontentloaded'});
+    await probe.waitForFunction(()=>document.querySelector('#engineStatus')?.textContent.includes('Initialising advanced analysis'),null,{timeout:30000});
+    const payload=Buffer.from([
+      'timestamp,Depth (m)',
+      '2026-02-01T00:00:00,0.2',
+      '2026-02-01T00:01:00,0.3',
+      ''
+    ].join('\n'),'utf8');
+    await probe.setInputFiles('#fileInput',{name:'pending-clear.csv',mimeType:'text/csv',buffer:payload});
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('pending-clear.csv')&&row.textContent.includes('Preview ready')),null,{timeout:30000});
+    const before=await probe.evaluate(()=>({
+      rows:document.querySelectorAll('#poolBody tr').length,
+      engineStatus:document.querySelector('#engineStatus')?.textContent||null
+    }));
+    await probe.locator('#clearPoolBtn').evaluate(el=>el.click());
+    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0,null,{timeout:30000});
+    await probe.waitForFunction(()=>/ready/i.test(document.querySelector('#engineStatus')?.textContent||''),null,{timeout:30000});
+    await probe.waitForTimeout(1500);
+    const after=await probe.evaluate(()=>({
+      rows:document.querySelectorAll('#poolBody tr').length,
+      registrySources:window.ICMProjectRegistry?.snapshot()?.sources?.length??null,
+      observedOptions:[...document.querySelectorAll('#observedSelect option')].map(o=>o.textContent),
+      sourcePool:window.__ICM_WORKBENCH__?.sourcePool||null,
+      errors:window.__ICM_WORKBENCH__?.errors||[]
+    }));
+    if(after.rows!==0||after.registrySources!==0||after.observedOptions.some(x=>x.includes('pending-clear.csv'))){
+      throw new Error('Cleared pending import reappeared after authoritative engine readiness: '+JSON.stringify({before,after}));
+    }
+    const materialErrors=probeErrors.filter(x=>!x.includes('favicon.ico'));
+    if(materialErrors.length)throw new Error('Pending-clear probe console/page errors: '+materialErrors.join(' | '));
+    return {before,after};
+  }finally{await probe.close();}
+}
+
+async function verifyRestartDuringPendingImport(){
+  if(liveMode)return null;
+  const probe=await context.newPage(),probeErrors=[];
+  probe.on('pageerror',error=>probeErrors.push('pageerror: '+String(error)));
+  probe.on('console',message=>{if(message.type()==='error')probeErrors.push('console: '+message.text());});
+  try{
+    await probe.goto(baseUrl+'?pending_restart='+Date.now(),{waitUntil:'domcontentloaded'});
+    await probe.waitForFunction(()=>/ready/i.test(document.querySelector('#engineStatus')?.textContent||''),null,{timeout:30000});
+    const basePayload=Buffer.from([
+      'timestamp,Depth (m)',
+      '2026-02-01T00:00:00,0.2',
+      '2026-02-01T00:01:00,0.3',
+      ''
+    ].join('\n'),'utf8');
+    await probe.setInputFiles('#fileInput',{name:'restart-base.csv',mimeType:'text/csv',buffer:basePayload});
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('restart-base.csv')&&row.textContent.includes('Ready')),null,{timeout:30000});
+
+    const pendingPath=path.join(root,'reference/current-tool/sample-data/other/StationA_EDM.csv');
+    await probe.setInputFiles('#fileInput',pendingPath);
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('StationA_EDM.csv')&&row.textContent.includes('Preview ready')),null,{timeout:30000});
+    await probe.evaluate(async()=>{
+      if(typeof window.cancelCurrentOperation!=='function')throw new Error('cancelCurrentOperation is not available to the browser acceptance probe');
+      await window.cancelCurrentOperation();
+    });
+    await probe.waitForFunction(()=>/ready/i.test(document.querySelector('#engineStatus')?.textContent||''),null,{timeout:30000});
+    await probe.waitForFunction(()=>![...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('StationA_EDM.csv')),null,{timeout:30000});
+    await probe.waitForTimeout(1000);
+    const result=await probe.evaluate(()=>({
+      rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+      registrySources:(window.ICMProjectRegistry?.snapshot()?.sources||[]).map(x=>x.name),
+      sourcePool:window.__ICM_WORKBENCH__?.sourcePool||null,
+      errors:window.__ICM_WORKBENCH__?.errors||[]
+    }));
+    if(result.rows.length!==1||!result.rows[0].includes('restart-base.csv')||result.registrySources.length!==1||!result.registrySources[0].includes('restart-base.csv')){
+      throw new Error('Worker restart did not retain only authoritative-ready sources: '+JSON.stringify(result));
+    }
+    const materialErrors=probeErrors.filter(x=>!x.includes('favicon.ico'));
+    if(materialErrors.length)throw new Error('Pending-restart probe console/page errors: '+materialErrors.join(' | '));
+    return result;
+  }finally{await probe.close();}
+}
+
 async function verifyFastPathFailureFallsBack(){
   if(liveMode)return null;
   const probe=await context.newPage(),probeConsole=[],probePageErrors=[],probeFailedRequests=[];
@@ -335,6 +417,12 @@ try{
   stage='FastPath failure falls back to authoritative import';
   performanceEvidence.fastpathFailureFallback=await verifyFastPathFailureFallsBack();
   if(!liveMode&&!performanceEvidence.fastpathFailureFallback?.parsed)throw new Error('A FastPath worker failure must not prevent authoritative parsing: '+JSON.stringify(performanceEvidence.fastpathFailureFallback));
+  stage='clear during pending FastPath import';
+  performanceEvidence.pendingImportClear=await verifyClearDuringPendingImport();
+  await writePerformanceEvidence();
+  stage='analysis-worker restart during pending FastPath import';
+  performanceEvidence.pendingImportRestart=await verifyRestartDuringPendingImport();
+  await writePerformanceEvidence();
   stage='open application';
   const applicationNavigationStart=Date.now();
   await page.goto(baseUrl+(liveMode?`?live_verify=${Date.now()}`:''),{waitUntil:'domcontentloaded'});
@@ -1060,6 +1148,36 @@ try{
   }));
   if(sourceEventEvidence.events?.count!==1||sourceEventEvidence.events?.details?.[0]?.reason!=='ingest')throw new Error('Real multi-file ingestion must emit exactly one source-pool state event: '+JSON.stringify(sourceEventEvidence));
   if(sourceEventEvidence.professional||sourceEventEvidence.complete||sourceEventEvidence.balance)throw new Error('Real source-pool change did not invalidate source-dependent survey results: '+JSON.stringify(sourceEventEvidence));
+
+  stage='FastPath handoff preserves applied mapping';
+  await precisionRoute('data','series-mapping');
+  const mappingBeforeHandoff=await page.evaluate(()=>({
+    observed:document.querySelector('#observedSelect')?.value||'',
+    models:[...document.querySelectorAll('#modelSelect option:checked')].map(o=>o.value),
+    rain:document.querySelector('#rainSelect')?.value||'',
+    mode:window.__ICM_WORKBENCH__?.lastGraphMode||null
+  }));
+  const handoffPayload=Buffer.from([
+    'timestamp,Depth (m)',
+    '2026-02-01T00:00:00,0.21',
+    '2026-02-01T00:01:00,0.22',
+    ''
+  ].join('\n'),'utf8');
+  await page.setInputFiles('#fileInput',{name:'handoff-extra.csv',mimeType:'text/csv',buffer:handoffPayload});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('handoff-extra.csv')&&row.textContent.includes('Ready')),null,{timeout:60000});
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.lastGraphMode!=='fastpath-preview',null,{timeout:60000});
+  const mappingAfterHandoff=await page.evaluate(()=>({
+    observed:document.querySelector('#observedSelect')?.value||'',
+    models:[...document.querySelectorAll('#modelSelect option:checked')].map(o=>o.value),
+    rain:document.querySelector('#rainSelect')?.value||'',
+    mode:window.__ICM_WORKBENCH__?.lastGraphMode||null
+  }));
+  if(mappingAfterHandoff.observed!==mappingBeforeHandoff.observed||
+     JSON.stringify(mappingAfterHandoff.models)!==JSON.stringify(mappingBeforeHandoff.models)||
+     mappingAfterHandoff.rain!==mappingBeforeHandoff.rain){
+    throw new Error('FastPath authoritative handoff changed the applied mapping: '+JSON.stringify({before:mappingBeforeHandoff,after:mappingAfterHandoff}));
+  }
+  performanceEvidence.handoffMappingPreservation={before:mappingBeforeHandoff,after:mappingAfterHandoff};
 
   stage='supplied real FDV and rainfall graph/report regression';
   await precisionRoute('data','sources');
