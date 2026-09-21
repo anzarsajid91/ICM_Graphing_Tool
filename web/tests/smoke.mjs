@@ -58,21 +58,34 @@ async function measureColdReferenceImport(){
   const buffer=await fs.readFile(sourcePath);
   const navigationStart=Date.now();
   try{
-    await probe.goto(baseUrl+`?cold_import=${Date.now()}`,{waitUntil:'domcontentloaded'});
+    await probe.goto(baseUrl+'?cold_import='+Date.now(),{waitUntil:'domcontentloaded'});
     const domReadyMs=Date.now()-navigationStart;
     const selectedAt=Date.now();
     await probe.setInputFiles('#fileInput',{name:'Cold-FM01.fdv',mimeType:'text/plain',buffer});
     const outcome=await Promise.race([
       probe.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
-      probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM01.fdv')&&row.textContent.includes('Error')),null,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt})),
+      probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM01.fdv')&&row.textContent.includes('Error')),null,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt}))
     ]);
+    const previewEvidence=await probe.evaluate(()=>({
+      engineStatus:window.__ICM_WORKBENCH__?.status||null,
+      graphMode:window.__ICM_WORKBENCH__?.lastGraphMode||null,
+      preview:window.__ICM_WORKBENCH__?.fastpathPreview||null,
+      record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
+      row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('Cold-FM01.fdv'))?.textContent||null
+    }));
     let engineReadyFromNavigationMs=null;
     try{
       await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
       engineReadyFromNavigationMs=Date.now()-navigationStart;
     }catch{}
-    const rowText=await probe.locator('#poolBody tr').filter({hasText:'Cold-FM01.fdv'}).first().textContent().catch(()=>null);
-    return {dataset:'FM01.fdv',bytes:buffer.length,domReadyMs,selectionOutcome:outcome.kind,timeToOutcomeMs:outcome.ms,engineReadyFromNavigationMs,rowText};
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM01.fdv')&&row.textContent.includes('Ready')),null,{timeout:60000});
+    const finalEvidence=await probe.evaluate(()=>({
+      record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
+      reconciliation:window.__ICM_WORKBENCH__?.fastpath?.last?.reconciliation||null,
+      row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('Cold-FM01.fdv'))?.textContent||null
+    }));
+    return {dataset:'FM01.fdv',bytes:buffer.length,domReadyMs,selectionOutcome:outcome.kind,timeToOutcomeMs:outcome.ms,
+      engineReadyFromNavigationMs,selectionAtFromNavigationMs:selectedAt-navigationStart,previewEvidence,finalEvidence};
   }finally{
     await probe.close();
   }
@@ -179,6 +192,12 @@ async function associationWorkbook(){
 try{
   stage='cold import baseline';
   performanceEvidence.coldImport=await measureColdReferenceImport();
+  if(!liveMode){
+    const cold=performanceEvidence.coldImport,engineAfterSelection=Number(cold.engineReadyFromNavigationMs)-Number(cold.selectionAtFromNavigationMs);
+    if(cold.selectionOutcome!=='graph'||cold.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Cold FastPath preview did not render: '+JSON.stringify(cold));
+    if(cold.previewEvidence?.engineStatus==='ready'||!(cold.timeToOutcomeMs<engineAfterSelection))throw new Error('Cold FastPath preview did not render before authoritative engine readiness: '+JSON.stringify(cold));
+    if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM01 parsing: '+JSON.stringify(cold.finalEvidence));
+  }
   stage='open application';
   const applicationNavigationStart=Date.now();
   await page.goto(baseUrl+(liveMode?`?live_verify=${Date.now()}`:''),{waitUntil:'domcontentloaded'});
@@ -845,6 +864,14 @@ try{
   if(!referenceEvidence.tableTotals.some(x=>/85(?:\.0+)? mm/.test(x)))throw new Error('Reference rainfall total 85 mm missing from Plotly statistics: '+JSON.stringify(referenceEvidence.tableTotals));
   if(referenceEvidence.pointCounts?.observed?.raw!==20161||referenceEvidence.pointCounts?.rainfall?.raw!==20161)throw new Error('Reference full-period source counts mismatch: '+JSON.stringify(referenceEvidence.pointCounts));
   if(!String(referenceEvidence.xRange?.[0]||'').startsWith('2026-02-01')||!String(referenceEvidence.xRange?.[1]||'').startsWith('2026-03-01'))throw new Error('Reference graph support mismatch: '+JSON.stringify(referenceEvidence.xRange));
+  stage='authoritative FDV channel navigation';
+  const channelVisible=await page.locator('#v2ChannelNav').evaluate(el=>!el.hidden);
+  if(!channelVisible)throw new Error('FDV channel navigation should be visible after authoritative handoff');
+  await page.click('#v2ChannelNav [data-channel="flow"]');
+  await page.waitForFunction(()=>JSON.stringify(window.__ICM_WORKBENCH__.lastPanelOrder)===JSON.stringify(['rainfall','flow']),null,{timeout:60000});
+  if(window.__ICM_WORKBENCH__.uiV2?.channelMode!=='flow')throw new Error('Flow channel navigation did not retain its selected state');
+  await page.click('#v2ChannelNav [data-channel="combined"]');
+  await page.waitForFunction(()=>JSON.stringify(window.__ICM_WORKBENCH__.lastPanelOrder)===JSON.stringify(['rainfall','flow','depth','velocity']),null,{timeout:60000});
   await captureEvidence('01c-reference-fdv-graph');
 
   stage='simulated-series auxiliary column filtering';
