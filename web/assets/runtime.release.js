@@ -451,7 +451,7 @@ async function ingestFiles(files){
       item.hash=await hashPromise;
       if(item.preview&&item.preview.eligible){
         item.status='preview-ready';
-        if(!batchPreviewShown&&window.ICMFastPath&&window.ICMFastPath.renderPreview){
+        if(list.length===1&&!batchPreviewShown&&window.ICMFastPath&&window.ICMFastPath.renderPreview){
           batchPreviewShown=true;
           diagnostic.fastpathActiveSourceId=item.id;
           const painted=await window.ICMFastPath.renderPreview(item,null,list.length===1);
