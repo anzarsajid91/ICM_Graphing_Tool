@@ -146,7 +146,7 @@ async function extractFirstModelReference(){
     '    target.write_bytes(z.read(member))',
     '    print(target)',
     '    print(member.filename,file=sys.stderr)',
-  ].join('\\n');
+  ].join('\n');
   const {stdout,stderr}=await execFileAsync('python',['-c',script,zipPath,targetDir],{maxBuffer:1024*1024});
   return {sourcePath:stdout.trim(),archiveMember:stderr.trim(),inputName:path.basename(stdout.trim())};
 }
