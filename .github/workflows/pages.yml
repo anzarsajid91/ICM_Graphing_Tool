@@ -65,7 +65,8 @@ jobs:
           node --check web/tests/fastpath-reference.mjs
           node web/tests/fastpath-unit.mjs
           node web/tests/fastpath-reference.mjs
-          python -m py_compile web/python_bridge.py web/advanced_bridge.py src/icm_workbench/browser_api.py src/icm_workbench/advanced_api.py scripts/build_pages.py scripts/validate_representative_exports.py
+          node web/tests/fastpath-equivalence.mjs
+          python -m py_compile web/python_bridge.py web/advanced_bridge.py src/icm_workbench/browser_api.py src/icm_workbench/advanced_api.py scripts/build_pages.py scripts/validate_representative_exports.py scripts/fastpath_authoritative_contract.py
       - name: Verify deterministic Pages package manifest and UX staging
         run: |
           python scripts/build_pages.py
