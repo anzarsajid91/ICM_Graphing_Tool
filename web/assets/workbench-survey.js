@@ -734,6 +734,8 @@
     for(const panel of document.querySelectorAll('.tab-panel > .panel, .embedded-workflow > .panel')){
       const head=panel.querySelector(':scope > .panel-head');
       if(!head)continue;
+      // The primary graph is already the work surface; do not wrap it in another collapsible card.
+      if(panel.closest('#tab-graph'))continue;
       // Keep injected sub-tools independent rather than hiding them with the main workflow.
       const directSubpanels=[...panel.children].filter(x=>x.classList?.contains('subpanel')||x.classList?.contains('embedded-workflow'));
       if(directSubpanels.length){
