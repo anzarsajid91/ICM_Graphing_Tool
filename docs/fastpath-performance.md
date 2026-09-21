@@ -25,23 +25,23 @@ The measurements below come from the exact GitHub Pages release artifact in GitH
 
 Evidence source:
 
-- GitHub Pages Workbench run: `35625923843`
-- PR head measured: `7d4a94e93768defb199784e297c96e247983448e`
-- tested PR merge build: `562c1793901e9ddddba7aff63f03d4f9c1e3328d`
-- browser evidence artifact: `precision-workbench-evidence-562c1793901e9ddddba7aff63f03d4f9c1e3328d`
+- GitHub Pages Workbench run: `35632152589`
+- PR head measured: `b0fdceb474f0b1b322ee520914c4bf43af442af9`
+- tested PR merge build: `1cfcd65e4a245ae8ce9f89e2ac193328b8ac2a21`
+- browser evidence artifact: `precision-workbench-evidence-1cfcd65e4a245ae8ce9f89e2ac193328b8ac2a21`
 
-The subsequent pending-import lifecycle hardening changes only cancellation/state handoff and does not alter FastPath parsing, Python methods or native-resolution calculation data. A fresh exact-head browser run is required before PR handover.
+The pending-import lifecycle hardening is included in this measured head. It changes cancellation/state handoff only and does not alter FastPath parsing, Python methods or native-resolution calculation data.
 
 ## Reference-file timing matrix
 
 | Reference source | Bytes | Rows | First preview graph T4−T0 | Preview statistics T5−T0 | Authoritative ready T6−T0 | Preview/Python reconciliation |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| `FM01.fdv` | 311,029 | 20,161 | 614 ms | 1,480 ms | 6,386 ms | matched |
-| `StationA_EDM.csv` | 3,156,775 | 105,216 | 913 ms | 1,726 ms | 17,808 ms | matched |
-| `StationA_Rainfall.csv` | 7,089,179 | 349,387 | 1,316 ms | 1,710 ms | 38,919 ms | matched |
-| `StationA_Modelled Data.csv` (first member extracted from supplied ZIP) | 62,884,882 | 1,143,361 | 5,248 ms | 5,593 ms | 127,003 ms | matched |
+| `FM01.fdv` | 311,029 | 20,161 | 664 ms | 1,510 ms | 6,713 ms | matched |
+| `StationA_EDM.csv` | 3,156,775 | 105,216 | 817 ms | 1,690 ms | 17,958 ms | matched |
+| `StationA_Rainfall.csv` | 7,089,179 | 349,387 | 1,463 ms | 1,875 ms | 39,332 ms | matched |
+| `StationA_Modelled Data.csv` (first member extracted from supplied ZIP) | 62,884,882 | 1,143,361 | 5,446 ms | 5,829 ms | 128,095 ms | matched |
 
-The selection-to-first-graph browser outcomes, including page/DOM interaction overhead, were 1.661 s, 2.337 s, 2.816 s and 5.680 s respectively. In all four cold/fresh cases the useful FastPath graph appeared before authoritative readiness.
+The selection-to-first-graph browser outcomes, including page/DOM interaction overhead, were 1.694 s, 2.553 s, 2.935 s and 5.932 s respectively. In all four cold/fresh cases the useful FastPath graph appeared before authoritative readiness.
 
 For the supplied model archive, the acceptance test extracts the first CSV member and uploads that CSV because ZIP ingestion is not a product feature in this PR. The FastPath preview hides the auxiliary `Seconds` column and reconciles the exposed engineering-series contract with Python.
 
@@ -62,10 +62,10 @@ The browser acceptance deliberately replaces the FastPath worker with a throwing
 
 Lifecycle acceptance also covers:
 
-- clearing a source while its cold FastPath import is still pending;
-- cancelling/restarting the isolated Python worker while a source is validating;
+- clearing a source while its cold FastPath import is still pending — final state: 0 source rows, 0 registry sources, no recorded errors;
+- cancelling/restarting the isolated Python worker while a source is validating — only the already-ready base source remains, with no recorded errors;
 - retaining only authoritative-ready sources across that restart;
-- preserving and redrawing an existing applied authoritative mapping when a newly imported FastPath preview validates.
+- preserving and redrawing an existing applied authoritative mapping when a newly imported FastPath preview validates — observed/rain mapping and `fdv-multi-variable` graph mode are unchanged across handoff.
 
 ## Baseline limitation
 
