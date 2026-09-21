@@ -97,6 +97,14 @@ try{
   const rhythmFailures=Object.entries(rhythm).filter(([,v])=>Number.isFinite(v)&&v!==0&&Math.round(v)%4!==0);
   if(rhythmFailures.length)throw new Error('PR25 spacing rhythm must resolve to 8px base / 4px micro-spacing on structural surfaces: '+JSON.stringify({rhythm,rhythmFailures}));
 
+  const precisionCss=await (await fetch(new URL('assets/precision-workbench.css',baseUrl))).text();
+  const stylesheetRhythmFailures=[];
+  for(const match of precisionCss.matchAll(/(?:^|[;{])\s*(gap|padding(?:-(?:top|right|bottom|left))?|margin(?:-(?:top|right|bottom|left))?)\s*:\s*([^;}]+)/gm)){
+    const bad=[...match[2].matchAll(/(\d+(?:\.\d+)?)px/g)].map(x=>Number(x[1])).filter(n=>n!==0&&n%4!==0);
+    if(bad.length)stylesheetRhythmFailures.push({property:match[1],value:match[2].trim(),bad});
+  }
+  if(stylesheetRhythmFailures.length)throw new Error('Precision stylesheet contains spacing outside the 8px base / 4px micro rhythm: '+JSON.stringify(stylesheetRhythmFailures));
+
   const primaryRoutes=[
     ['survey','data-health','runHealthBtn'],
     ['survey','flow-continuity','runSurveyBalanceBtn'],
