@@ -371,16 +371,21 @@ function resizeVisuals(){
   });
 }
 function applyFocusCanvas(userInitiated=false){
-  const eligible=isFocusRoute();
-  const active=eligible&&focusPreference===true;
+  const eligible=isFocusRoute(),desktop=matchMedia('(min-width:901px)').matches;
+  // Graph-heavy routes default to focus mode unless the user explicitly opts out.
+  // This makes the analytical canvas primary while retaining every setting in the
+  // overlay inspector and a one-click path back to the standard layout.
+  const active=eligible&&desktop&&focusPreference!==false;
   document.body.classList.toggle('pw-focus-canvas',active);
   const button=$('pwFocusToggle');
   if(button){
-    button.hidden=!eligible;
+    button.hidden=!eligible||!desktop;
     button.setAttribute('aria-pressed',active?'true':'false');
     button.textContent=active?'Standard layout':'Focus canvas';
     button.title=active?'Restore the full navigation and docked inspector':'Maximise chart width; keep controls in an overlay inspector';
   }
+  const railToggle=$('pwRailToggle');
+  if(railToggle)railToggle.hidden=active;
   const inspector=$('pwInspector');
   if(!active&&userInitiated)inspector?.classList.remove('is-open');
   resizeVisuals();
@@ -422,11 +427,13 @@ function wireContextUpdates(){
   ['observedSelect','rainSelect','analysisStart','analysisEnd','workspaceName'].forEach(id=>$(id)?.addEventListener('change',refreshScope));
   window.addEventListener('icm:source-pool-changed',()=>{renderAssets();setTimeout(()=>{createScenarioChecklist();refreshScope();},0);});
   window.addEventListener('hashchange',()=>{const r=parseHash();if(r)navigate(r.workspace,r.page,false);});
+  const focusMedia=matchMedia('(min-width:901px)');
+  focusMedia.addEventListener?.('change',()=>applyFocusCanvas(false));
 }
 function mount(){
   identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();
   const initial=parseHash()||{workspace:'data',page:'sources'};navigate(initial.workspace,initial.page,false);
-  window.__ICM_PRECISION_WORKBENCH__={version:4,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
+  window.__ICM_PRECISION_WORKBENCH__={version:5,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
 })();
