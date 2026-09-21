@@ -454,7 +454,7 @@ async function ingestFiles(files){
         if(!batchPreviewShown&&window.ICMFastPath&&window.ICMFastPath.renderPreview){
           batchPreviewShown=true;
           diagnostic.fastpathActiveSourceId=item.id;
-          const painted=await window.ICMFastPath.renderPreview(item,null,true);
+          const painted=await window.ICMFastPath.renderPreview(item,null,list.length===1);
           item.fastpathTiming.t4=painted&&painted.graphPaintAt||performance.now();
           item.fastpathTiming.t5=painted&&painted.statsPaintAt||item.fastpathTiming.t4;
         }
