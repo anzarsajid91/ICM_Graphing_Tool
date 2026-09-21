@@ -44,7 +44,7 @@ async function captureEvidence(name){
   await page.screenshot({path:path.join(dir,`${name}.png`),fullPage:false});
   await page.screenshot({path:path.join(dir,`${name}-full.png`),fullPage:true});
 }
-const performanceEvidence={schema_version:1,build:process.env.GITHUB_SHA||'local',mode:liveMode?'live':'local-artifact'};
+const performanceEvidence={schema_version:2,build:process.env.GITHUB_SHA||'local',mode:liveMode?'live':'local-artifact'};
 async function writePerformanceEvidence(){
   const dir=process.env.ICM_EVIDENCE_DIR;
   if(!dir)return;
@@ -90,6 +90,43 @@ async function measureColdReferenceImport(){
     await probe.close();
   }
 }
+async function measureFreshFastPathImport({dataset,relativePath,inputName,mimeType='text/csv'}){
+  if(liveMode)return null;
+  const probe=await context.newPage();
+  const sourcePath=path.join(root,relativePath);
+  const buffer=await fs.readFile(sourcePath);
+  const navigationStart=Date.now();
+  try{
+    await probe.goto(baseUrl+'?fresh_fastpath='+encodeURIComponent(dataset)+'&t='+Date.now(),{waitUntil:'domcontentloaded'});
+    const domReadyMs=Date.now()-navigationStart;
+    const selectedAt=Date.now();
+    await probe.setInputFiles('#fileInput',{name:inputName,mimeType,buffer});
+    const outcome=await Promise.race([
+      probe.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
+      probe.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Error')),inputName,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt}))
+    ]);
+    const previewEvidence=await probe.evaluate(name=>({
+      engineStatus:window.__ICM_WORKBENCH__?.status||null,
+      graphMode:window.__ICM_WORKBENCH__?.lastGraphMode||null,
+      preview:window.__ICM_WORKBENCH__?.fastpathPreview||null,
+      record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
+      row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes(name))?.textContent||null
+    }),inputName);
+    let engineReadyFromNavigationMs=null;
+    try{
+      await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+      engineReadyFromNavigationMs=Date.now()-navigationStart;
+    }catch{}
+    await probe.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),inputName,{timeout:120000});
+    const finalEvidence=await probe.evaluate(()=>({
+      record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
+      reconciliation:window.__ICM_WORKBENCH__?.fastpath?.last?.reconciliation||null
+    }));
+    return {dataset,bytes:buffer.length,domReadyMs,selectionOutcome:outcome.kind,timeToOutcomeMs:outcome.ms,
+      engineReadyFromNavigationMs,selectionAtFromNavigationMs:selectedAt-navigationStart,previewEvidence,finalEvidence};
+  }finally{await probe.close();}
+}
+
 async function inspectReportHtml(html,minFigures=1){
   const p=await context.newPage();
   const reportErrors=[],reportFailedRequests=[];
@@ -197,6 +234,19 @@ try{
     if(cold.selectionOutcome!=='graph'||cold.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Cold FastPath preview did not render: '+JSON.stringify(cold));
     if(cold.previewEvidence?.engineStatus==='ready'||!(cold.timeToOutcomeMs<engineAfterSelection))throw new Error('Cold FastPath preview did not render before authoritative engine readiness: '+JSON.stringify(cold));
     if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM01 parsing: '+JSON.stringify(cold.finalEvidence));
+  }
+  stage='fresh CSV FastPath benchmarks';
+  performanceEvidence.freshCsvImports=[];
+  for(const spec of [
+    {dataset:'StationA_EDM.csv',relativePath:'reference/current-tool/sample-data/other/StationA_EDM.csv',inputName:'Cold-StationA_EDM.csv'},
+    {dataset:'StationA_Rainfall.csv',relativePath:'reference/current-tool/sample-data/other/StationA_Rainfall.csv',inputName:'Cold-StationA_Rainfall.csv'},
+  ]){
+    const measured=await measureFreshFastPathImport(spec);
+    performanceEvidence.freshCsvImports.push(measured);
+    const engineAfterSelection=Number(measured.engineReadyFromNavigationMs)-Number(measured.selectionAtFromNavigationMs);
+    if(measured.selectionOutcome!=='graph'||measured.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Fresh CSV FastPath preview did not render: '+JSON.stringify(measured));
+    if(measured.previewEvidence?.engineStatus==='ready'||!(measured.timeToOutcomeMs<engineAfterSelection))throw new Error('Fresh CSV preview did not render before authoritative engine readiness: '+JSON.stringify(measured));
+    if(measured.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Fresh CSV FastPath preview did not reconcile exactly: '+JSON.stringify(measured));
   }
   stage='open application';
   const applicationNavigationStart=Date.now();
