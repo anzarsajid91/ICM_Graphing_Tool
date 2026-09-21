@@ -315,6 +315,19 @@ class BrowserPythonEngine {
 const engine=new BrowserPythonEngine();
 const fastpathEngine=new BrowserFastPathEngine();
 let engineBootPromise=null;
+let sourceImportEpoch=0;
+const TRANSIENT_SOURCE_STATUSES=new Set(['reading','preview-ready','waiting-engine','validating']);
+function invalidatePendingSourceImports(){
+  sourceImportEpoch+=1;
+  fastpathEngine.terminate();
+  diagnostic.fastpathActiveSourceId=null;
+  window.ICMFastPath?.clear?.();
+  let dropped=0;
+  for(const [id,item] of state.files){
+    if(TRANSIENT_SOURCE_STATUSES.has(item.status)){state.files.delete(id);dropped+=1;}
+  }
+  return dropped;
+}
 async function bootAuthoritativeEngine(){
   try{
     const info=await engine.boot();
@@ -337,19 +350,29 @@ function ensureEngineBoot(){
 }
 let cancellingOperation=false;
 async function cancelCurrentOperation(){
-  if(cancellingOperation||!engine.worker)return;
+  if(cancellingOperation)return;
   cancellingOperation=true;
   operationDepth+=1;
   const button=document.getElementById('globalOperationCancel');
   if(button)button.disabled=true;
-  operationUpdate('Cancelling operation…',null,'Restarting the isolated analysis worker and restoring parsed source files.');
+  operationUpdate('Cancelling operation…',null,'Restarting the isolated analysis worker and restoring authoritative-ready source files.');
+  const droppedPending=invalidatePendingSourceImports();
   try{
     const readyItems=[...state.files.values()].filter(item=>item.status==='ready');
-    const info=await engine.restart(readyItems);
+    const restartPromise=engine.restart(readyItems);
+    engineBootPromise=restartPromise;
+    const info=await restartPromise;
     diagnostic.status='ready';
+    diagnostic.engineReadyAt=performance.now();
     setEngineStatus('Reference Python worker ready · files remain local','ready');
-    if($('footerBuild'))$('footerBuild').textContent=`Reference engine: Python via Pyodide 0.29.4 Web Worker · ${Number(info?.manifestCount||0)} modules`;
+    if($('footerBuild'))$('footerBuild').textContent=`Reference engine: Python via Pyodide 0.29.4 Web Worker · ${Number(info?.manifestCount||0)} modules · FastPath preview worker`;
+    if(droppedPending){
+      renderPool();
+      renderSeriesOptions();
+      notifySourcePoolChanged('cancel-pending-import');
+    }
   }catch(err){
+    engineBootPromise=null;
     diagnostic.status='failed';
     diagnostic.errors.push({time:new Date().toISOString(),target:'analysis-worker-restart',message:String(err?.message||err)});
     setEngineStatus(`Engine restart failed: ${err?.message||err}`,'error');
@@ -420,6 +443,15 @@ async function handoffFastPath(item){
   const active=window.ICMFastPath&&window.ICMFastPath.active?window.ICMFastPath.active():null;
   if(!active||active.sourceId!==item.id||item.status!=='ready')return;
   if(window.ICMFastPath&&window.ICMFastPath.markValidated)window.ICMFastPath.markValidated(item,item.fastpathReconciliation);
+
+  // FastPath is a display accelerator. If an engineering mapping is already
+  // applied, validating a newly imported preview must not replace that context.
+  const preserveAppliedMapping=Boolean(state.mapping.observed||state.mapping.rain||(state.mapping.models||[]).length);
+  if(preserveAppliedMapping){
+    if(window.ICMFastPath&&window.ICMFastPath.clear)window.ICMFastPath.clear();
+    return;
+  }
+
   const candidates=allSeries().filter(s=>s.item.id===item.id);
   const preferred=candidates.find(s=>String(s.quantity||'').toLowerCase()===active.mode)||
     candidates.find(s=>['depth','level','flow'].includes(String(s.quantity||'').toLowerCase()))||candidates[0];
@@ -443,29 +475,38 @@ async function importGuard(fn){
 async function ingestFiles(files){
   const list=[...files].filter(f=>f&&recognised(f.name));
   if(!list.length){$('poolSummary').textContent='No recognised CSV / FDV / R files found.';return;}
+  const importEpoch=sourceImportEpoch;
+  const importIsCurrent=()=>importEpoch===sourceImportEpoch;
+  const itemIsCurrent=item=>importIsCurrent()&&state.files.get(item.id)===item;
   let sourcePoolChanged=false,batchPreviewShown=false;
   const pending=[];
   $('poolSummary').textContent='Reading '+list.length+' source file'+(list.length===1?'':'s')+'…';
   for(let index=0;index<list.length;index+=1){
+    if(!importIsCurrent())return;
     const file=list[index],displayName=file.webkitRelativePath||file._relativePath||file.name;
     if([...state.files.values()].some(x=>x.displayName===displayName&&x.file.size===file.size&&x.file.lastModified===file.lastModified))continue;
     await operationPaint();
+    if(!importIsCurrent())return;
     const id=crypto.randomUUID(),item={
       id:id,file:file,displayName:displayName,virtualPath:'/data/'+id+'_'+safeName(file.name),status:'reading',parsed:null,preview:null,
       hash:null,error:null,loadSeconds:null,fastpathTiming:{t0:performance.now()}
     };
     state.files.set(id,item);sourcePoolChanged=true;renderPool();
     try{
-      const buffer=await file.arrayBuffer();item.fastpathTiming.t1=performance.now();item._buffer=buffer;
+      const buffer=await file.arrayBuffer();
+      if(!itemIsCurrent(item))return;
+      item.fastpathTiming.t1=performance.now();item._buffer=buffer;
       const hashPromise=sha256Bytes(buffer);
       const lower=file.name.toLowerCase(),previewEligible=lower.endsWith('.fdv')||lower.endsWith('.fdv.txt')||lower.endsWith('.csv')||lower.endsWith('.hyd');
       if(previewEligible){
         try{
           const fastResult=await fastpathEngine.parse(item,buffer,15000);
+          if(!itemIsCurrent(item))return;
           item.fastpathTiming.t2=performance.now();
           item.preview=fastResult&&fastResult.parsed||null;
           item.fastpathTiming.t3=performance.now();
         }catch(previewError){
+          if(!itemIsCurrent(item))return;
           // FastPath is an optional display accelerator. A preview-worker failure
           // must never block the authoritative Python import of an otherwise
           // valid engineering source.
@@ -478,6 +519,7 @@ async function ingestFiles(files){
         }
       }
       item.hash=await hashPromise;
+      if(!itemIsCurrent(item))return;
       if(item.preview&&item.preview.eligible){
         item.status='preview-ready';
         if(list.length===1&&!batchPreviewShown&&window.ICMFastPath&&window.ICMFastPath.renderPreview){
@@ -493,17 +535,23 @@ async function ingestFiles(files){
       }
       pending.push(item);recordFastPath(item);renderPool();
     }catch(err){
+      if(!itemIsCurrent(item))return;
       item.status='error';item.error=String(err&&err.message||err);
       diagnostic.errors.push({time:new Date().toISOString(),target:'source-fastpath',message:item.error,file:displayName});
       renderPool();
     }
   }
 
+  if(!importIsCurrent())return;
   if(!pending.length){if(sourcePoolChanged)notifySourcePoolChanged('ingest');return;}
   $('poolSummary').textContent=pending.filter(x=>x.preview&&x.preview.eligible).length+' preview-ready · initialising advanced analysis…';
   let engineInfo=null;
-  try{engineInfo=await ensureEngineBoot();}
+  try{
+    engineInfo=await ensureEngineBoot();
+    if(!importIsCurrent())return;
+  }
   catch(err){
+    if(!importIsCurrent())return;
     for(const item of pending){
       if(item.status==='error')continue;
       if(item.preview&&item.preview.eligible){item.status='preview-only';item.error='Advanced analysis unavailable; preview remains display-only.';}
@@ -514,14 +562,20 @@ async function ingestFiles(files){
   }
 
   for(let index=0;index<pending.length;index+=1){
-    const item=pending[index];if(item.status==='error')continue;
+    const item=pending[index];
+    if(!itemIsCurrent(item))continue;
+    if(item.status==='error')continue;
     item.status='validating';renderPool();await operationPaint();
+    if(!itemIsCurrent(item))continue;
     const started=performance.now();
     try{
       const bytes=new Uint8Array(item._buffer);
       await engine.addFile(item,bytes);
+      if(!itemIsCurrent(item))continue;
       item._buffer=null;
-      item.parsed=await engine.call('parse_source',{path:item.virtualPath});
+      const parsed=await engine.call('parse_source',{path:item.virtualPath});
+      if(!itemIsCurrent(item))continue;
+      item.parsed=parsed;
       item.fastpathTiming.t6=performance.now();
       item.status='ready';
       item.fastpathReconciliation=reconcileFastPath(item);
@@ -530,13 +584,18 @@ async function ingestFiles(files){
       }
       window.ICMProjectRegistry?.registerSource(item);
     }catch(err){
-      item.status='error';item.error=String(err&&err.message||err);
-      diagnostic.errors.push({time:new Date().toISOString(),target:'source-pool',message:item.error,file:item.displayName});
+      if(itemIsCurrent(item)){
+        item.status='error';item.error=String(err&&err.message||err);
+        diagnostic.errors.push({time:new Date().toISOString(),target:'source-pool',message:item.error,file:item.displayName});
+      }
     }finally{
-      item.loadSeconds=(performance.now()-started)/1000;
-      recordFastPath(item);renderPool();renderSeriesOptions();
+      if(itemIsCurrent(item)){
+        item.loadSeconds=(performance.now()-started)/1000;
+        recordFastPath(item);renderPool();renderSeriesOptions();
+      }
     }
   }
+  if(!importIsCurrent())return;
   // Publish the completed source-pool transaction before any slower graph handoff.
   // This keeps the externally observable pool lifecycle atomic: once a source is
   // rendered as Ready, listeners have already received the matching ingest event.
@@ -1069,7 +1128,7 @@ async function chooseFolder(){if('showDirectoryPicker'in window){try{const handl
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
-  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
+  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);void importGuard(async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=files.length+' dropped file'+(files.length===1?'':'s')+' detected · preparing import…';await ingestFiles(files);});});
   eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('modelSelect').addEventListener('change',()=>{renderModelColourControls();autoSuggestAdvanced(allSeries());});eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
   eventGuard('runCompareBtn','metricGrid',runCompare);$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);eventGuard('runDwfBtn','dwfSummary',runDwf);
