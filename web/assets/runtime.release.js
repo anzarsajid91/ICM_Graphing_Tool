@@ -368,40 +368,164 @@ function allSeries(){
 }
 function setOptions(select,all,{none=false,preserve=true}={}){const prev=preserve?select.value:'';select.innerHTML=(none?'<option value="">None</option>':'<option value="">Select…</option>')+all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');if([...select.options].some(o=>o.value===prev))select.value=prev;}
 
+function reconcileFastPath(item){
+  const preview=item&&item.preview,parsed=item&&item.parsed;
+  if(!preview||!preview.eligible||!parsed)return {status:'not-applicable',mismatches:[]};
+  const mismatches=[];
+  const same=(label,a,b)=>{if(String(a??'')!==String(b??''))mismatches.push({field:label,preview:a??null,authoritative:b??null});};
+  same('format',preview.format,parsed.format);
+  same('rows',Number(preview.rows),Number(parsed.rows));
+  same('start',modelClock(preview.start),modelClock(parsed.start));
+  same('end',modelClock(preview.end),modelClock(parsed.end));
+  same('columns',JSON.stringify(preview.columns||[]),JSON.stringify(parsed.columns||[]));
+  for(const s of preview.series||[]){
+    if(!(parsed.columns||[]).includes(s.column)){mismatches.push({field:'series:'+s.column,preview:'present',authoritative:'missing'});continue;}
+    same('quantity:'+s.column,s.quantity||null,seriesQuantity(item,s.column)||null);
+    same('unit:'+s.column,s.canonical_unit||null,seriesUnit(item,s.column)||null);
+  }
+  return {status:mismatches.length?'mismatch':'matched',mismatches:mismatches};
+}
+function recordFastPath(item){
+  diagnostic.fastpath=diagnostic.fastpath||{records:[]};
+  const timing=item.fastpathTiming||{},record={
+    id:item.id,name:item.displayName,size:item.file&&item.file.size||0,eligible:Boolean(item.preview&&item.preview.eligible),
+    format:item.preview&&item.preview.format||null,status:item.status,reconciliation:item.fastpathReconciliation||null,
+    t0:timing.t0??null,t1:timing.t1??null,t2:timing.t2??null,t3:timing.t3??null,t4:timing.t4??null,t5:timing.t5??null,t6:timing.t6??null,
+    time_to_preview_graph_ms:timing.t4!=null&&timing.t0!=null?timing.t4-timing.t0:null,
+    time_to_preview_statistics_ms:timing.t5!=null&&timing.t0!=null?timing.t5-timing.t0:null,
+    time_to_authoritative_ready_ms:timing.t6!=null&&timing.t0!=null?timing.t6-timing.t0:null
+  };
+  const index=diagnostic.fastpath.records.findIndex(x=>x.id===item.id);
+  if(index>=0)diagnostic.fastpath.records[index]=record;else diagnostic.fastpath.records.push(record);
+  diagnostic.fastpath.last=record;
+}
+async function handoffFastPath(item){
+  const active=window.ICMFastPath&&window.ICMFastPath.active?window.ICMFastPath.active():null;
+  if(!active||active.sourceId!==item.id||item.status!=='ready')return;
+  if(window.ICMFastPath&&window.ICMFastPath.markValidated)window.ICMFastPath.markValidated(item,item.fastpathReconciliation);
+  const candidates=allSeries().filter(s=>s.item.id===item.id);
+  const preferred=candidates.find(s=>String(s.quantity||'').toLowerCase()===active.mode)||
+    candidates.find(s=>['depth','level','flow'].includes(String(s.quantity||'').toLowerCase()))||candidates[0];
+  if(!preferred)return;
+  if(String(preferred.quantity||'').toLowerCase()==='rainfall'){
+    $('observedSelect').value='';
+    $('rainSelect').value=preferred.key;
+  }else{
+    $('observedSelect').value=preferred.key;
+  }
+  [...$('modelSelect').options].forEach(o=>o.selected=false);
+  if(window.ICMGraph&&window.ICMGraph.applyMapping)await window.ICMGraph.applyMapping();
+  if(window.ICMFastPath&&window.ICMFastPath.markValidated)window.ICMFastPath.markValidated(item,item.fastpathReconciliation);
+}
+async function importGuard(fn){
+  try{return await fn();}
+  catch(err){showError('poolSummary',err&&err.message||err);return null;}
+}
+
 async function ingestFiles(files){
   const list=[...files].filter(f=>f&&recognised(f.name));
   if(!list.length){$('poolSummary').textContent='No recognised CSV / FDV / R files found.';return;}
-  let sourcePoolChanged=false;
-  operationUpdate(`Loading ${list.length} source file${list.length===1?'':'s'}`,0,'Preparing local files for parsing.');
+  let sourcePoolChanged=false,batchPreviewShown=false;
+  const pending=[];
+  $('poolSummary').textContent='Reading '+list.length+' source file'+(list.length===1?'':'s')+'…';
   for(let index=0;index<list.length;index+=1){
-    const file=list[index];
-    const displayName=file.webkitRelativePath||file._relativePath||file.name;
+    const file=list[index],displayName=file.webkitRelativePath||file._relativePath||file.name;
     if([...state.files.values()].some(x=>x.displayName===displayName&&x.file.size===file.size&&x.file.lastModified===file.lastModified))continue;
-    operationUpdate(`Parsing file ${index+1} of ${list.length}`,Math.round(100*index/list.length),displayName);
     await operationPaint();
-    const started=performance.now();
-    const id=crypto.randomUUID(),item={id,file,displayName,virtualPath:`/data/${id}_${safeName(file.name)}`,status:'loading',parsed:null,hash:null,error:null,loadSeconds:null};state.files.set(id,item);sourcePoolChanged=true;renderPool();
+    const id=crypto.randomUUID(),item={
+      id:id,file:file,displayName:displayName,virtualPath:'/data/'+id+'_'+safeName(file.name),status:'reading',parsed:null,preview:null,
+      hash:null,error:null,loadSeconds:null,fastpathTiming:{t0:performance.now()}
+    };
+    state.files.set(id,item);sourcePoolChanged=true;renderPool();
     try{
-      const buffer=await file.arrayBuffer();
-      item.hash=await sha256Bytes(buffer);
-      await engine.addFile(item,new Uint8Array(buffer));
-      await operationPaint();
-      item.parsed=await engine.call('parse_source',{path:item.virtualPath});
-      item.status='ready';
-      window.ICMProjectRegistry?.registerSource(item);
+      const buffer=await file.arrayBuffer();item.fastpathTiming.t1=performance.now();item._buffer=buffer;
+      const hashPromise=sha256Bytes(buffer);
+      const lower=file.name.toLowerCase(),previewEligible=lower.endsWith('.fdv')||lower.endsWith('.fdv.txt')||lower.endsWith('.csv')||lower.endsWith('.hyd');
+      if(previewEligible){
+        const fastResult=await fastpathEngine.parse(item,buffer,15000);
+        item.fastpathTiming.t2=performance.now();
+        item.preview=fastResult&&fastResult.parsed||null;
+        item.fastpathTiming.t3=performance.now();
+      }
+      item.hash=await hashPromise;
+      if(item.preview&&item.preview.eligible){
+        item.status='preview-ready';
+        if(!batchPreviewShown&&window.ICMFastPath&&window.ICMFastPath.renderPreview){
+          batchPreviewShown=true;
+          diagnostic.fastpathActiveSourceId=item.id;
+          const painted=await window.ICMFastPath.renderPreview(item,null,true);
+          item.fastpathTiming.t4=painted&&painted.graphPaintAt||performance.now();
+          item.fastpathTiming.t5=painted&&painted.statsPaintAt||item.fastpathTiming.t4;
+        }
+      }else{
+        item.status='waiting-engine';
+        if(item.preview&&item.preview.error)item.previewWarning=item.preview.error;
+      }
+      pending.push(item);recordFastPath(item);renderPool();
+    }catch(err){
+      item.status='error';item.error=String(err&&err.message||err);
+      diagnostic.errors.push({time:new Date().toISOString(),target:'source-fastpath',message:item.error,file:displayName});
+      renderPool();
     }
-    catch(err){item.status='error';item.error=String(err?.message||err);diagnostic.errors.push({time:new Date().toISOString(),target:'source-pool',message:item.error,file:displayName});}
-    finally{item.loadSeconds=(performance.now()-started)/1000;}
-    renderPool();renderSeriesOptions();
-    operationUpdate(`Parsed ${index+1} of ${list.length}`,Math.round(100*(index+1)/list.length),displayName);
-    await operationPaint();
   }
-  operationUpdate('Source loading complete',100,`${list.length} selected file${list.length===1?'':'s'} processed.`);
+
+  if(!pending.length){if(sourcePoolChanged)notifySourcePoolChanged('ingest');return;}
+  $('poolSummary').textContent=pending.filter(x=>x.preview&&x.preview.eligible).length+' preview-ready · initialising advanced analysis…';
+  let engineInfo=null;
+  try{engineInfo=await ensureEngineBoot();}
+  catch(err){
+    for(const item of pending){
+      if(item.status==='error')continue;
+      if(item.preview&&item.preview.eligible){item.status='preview-only';item.error='Advanced analysis unavailable; preview remains display-only.';}
+      else{item.status='error';item.error='Advanced analysis unavailable and this format has no FastPath preview.';}
+      recordFastPath(item);
+    }
+    renderPool();if(sourcePoolChanged)notifySourcePoolChanged('ingest');return;
+  }
+
+  for(let index=0;index<pending.length;index+=1){
+    const item=pending[index];if(item.status==='error')continue;
+    item.status='validating';renderPool();await operationPaint();
+    const started=performance.now();
+    try{
+      const bytes=new Uint8Array(item._buffer);
+      await engine.addFile(item,bytes);
+      item._buffer=null;
+      item.parsed=await engine.call('parse_source',{path:item.virtualPath});
+      item.fastpathTiming.t6=performance.now();
+      item.status='ready';
+      item.fastpathReconciliation=reconcileFastPath(item);
+      if(item.fastpathReconciliation.status==='mismatch'){
+        diagnostic.errors.push({time:new Date().toISOString(),target:'fastpath-reconciliation',message:'FastPath preview differed from authoritative parse.',file:item.displayName,detail:item.fastpathReconciliation});
+      }
+      window.ICMProjectRegistry?.registerSource(item);
+    }catch(err){
+      item.status='error';item.error=String(err&&err.message||err);
+      diagnostic.errors.push({time:new Date().toISOString(),target:'source-pool',message:item.error,file:item.displayName});
+    }finally{
+      item.loadSeconds=(performance.now()-started)/1000;
+      recordFastPath(item);renderPool();renderSeriesOptions();
+    }
+  }
+  const active=state.files.get(diagnostic.fastpathActiveSourceId);
+  if(active&&active.status==='ready')await handoffFastPath(active);
+  if(engineInfo&&$('poolSummary'))renderPool();
   if(sourcePoolChanged)notifySourcePoolChanged('ingest');
 }
 function renderPool(){
-  const items=[...state.files.values()];$('poolSummary').textContent=items.length?`${items.length} file(s) in the source pool · ${items.filter(x=>x.status==='ready').length} parsed successfully.`:'No files loaded.';
-  $('poolBody').innerHTML=items.map(item=>{const p=item.parsed||{},audit=p.audit||{};const sent=Number(audit.sentinel_count||0)+(audit.column_audit?Object.values(audit.column_audit).reduce((a,x)=>a+Number(x.sentinel_count||0),0):0);const malformed=Number(audit.malformed_rows||0)+Number(audit.invalid_timestamps||0);const period=p.start?`${esc(modelClock(p.start))} → ${esc(modelClock(p.end))}`:'—';const auditText=item.status==='ready'?`${sent} sentinel; ${malformed} malformed/invalid`:item.error||'Parsing…';return `<tr><td><div class="file-name">${esc(item.displayName)}</div><small>${mb(item.file.size)} · SHA ${item.hash?item.hash.slice(0,10):'…'}</small></td><td>${esc(p.format||'—')}</td><td>${p.rows??'—'}</td><td>${period}</td><td class="${(sent||malformed)?'audit-warn':'audit-good'}">${esc(auditText)}</td><td>${item.status==='ready'?`Ready${Number.isFinite(item.loadSeconds)?` · ${fmt(item.loadSeconds,1)} s`:''}`:item.status==='error'?'<span class="audit-bad">Error</span>':'Loading…'}</td></tr>`;}).join('');
+  const items=[...state.files.values()],ready=items.filter(x=>x.status==='ready').length,preview=items.filter(x=>['preview-ready','validating','preview-only'].includes(x.status)&&x.preview&&x.preview.eligible).length;
+  $('poolSummary').textContent=items.length?items.length+' file(s) · '+ready+' authoritative-ready'+(preview?' · '+preview+' preview-ready':'')+'.':'No files loaded.';
+  $('poolBody').innerHTML=items.map(item=>{
+    const p=item.parsed||item.preview||{},audit=p.audit||{};
+    const sent=Number(audit.sentinel_count||0)+(audit.column_audit?Object.values(audit.column_audit).reduce((a,x)=>a+Number(x.sentinel_count||0),0):0);
+    const malformed=Number(audit.malformed_rows||0)+Number(audit.invalid_timestamps||0);
+    const period=p.start?esc(modelClock(p.start))+' → '+esc(modelClock(p.end)):'—';
+    const statusLabel={reading:'Reading…','waiting-engine':'Waiting for advanced engine…','preview-ready':'Preview ready · validating…',validating:'Preview ready · validating…',ready:'Ready',error:'Error','preview-only':'Preview only · advanced unavailable'}[item.status]||item.status;
+    const auditText=item.status==='error'?(item.error||'Failed'):(item.preview&&item.preview.eligible&&item.status!=='ready'?'FastPath structural preview':sent+' sentinel; '+malformed+' malformed/invalid');
+    const reconcile=item.fastpathReconciliation&&item.fastpathReconciliation.status==='mismatch'?' · preview mismatch ⚠':item.fastpathReconciliation&&item.fastpathReconciliation.status==='matched'?' · preview validated':'';
+    const status=item.status==='error'?'<span class="audit-bad">Error</span>':esc(statusLabel+reconcile)+(item.status==='ready'&&Number.isFinite(item.loadSeconds)?' · '+fmt(item.loadSeconds,1)+' s':'');
+    return '<tr><td><div class="file-name">'+esc(item.displayName)+'</div><small>'+mb(item.file.size)+' · SHA '+(item.hash?item.hash.slice(0,10):'…')+'</small></td><td>'+esc(p.format||'—')+'</td><td>'+(p.rows??'—')+'</td><td>'+period+'</td><td class="'+((sent||malformed||(item.fastpathReconciliation&&item.fastpathReconciliation.status==='mismatch'))?'audit-warn':'audit-good')+'">'+esc(auditText)+'</td><td>'+status+'</td></tr>';
+  }).join('');
 }
 function renderSeriesOptions(){
   const all=allSeries(),obs=$('observedSelect'),mod=$('modelSelect'),rain=$('rainSelect'),prevMods=[...mod.selectedOptions].map(o=>o.value);setOptions(obs,all);mod.innerHTML=all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');[...mod.options].forEach(o=>o.selected=prevMods.includes(o.value));setOptions(rain,all,{none:true});
