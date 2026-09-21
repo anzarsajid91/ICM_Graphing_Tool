@@ -197,7 +197,7 @@ async function verifyFastPathFailureFallsBack(){
     return await probe.evaluate(()=>({
       row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('fastpath-fallback.csv'))?.textContent||null,
       errors:window.__ICM_WORKBENCH__?.errors||[],
-      parsed:[...document.querySelectorAll('#observedSelect option')].some(option=>option.textContent.includes('fastpath-fallback.csv — depth'))
+      parsed:[...document.querySelectorAll('#observedSelect option')].some(option=>option.textContent.trim()==='fastpath-fallback.csv — Depth (m)')
     }));
   }finally{await probe.close();}
 }
