@@ -121,8 +121,8 @@ Expose reproducible diagnostic records for browser tests and PR evidence. Benchm
 ## Precision Workbench refinements
 
 - Graph remains the primary canvas.
-- Navigation is collapsible but labelled navigation is the default on desktop; focus mode must not unexpectedly hide orientation.
-- Inspector remains collapsible/contextual and becomes a drawer at constrained widths.
+- Navigation is collapsible. On graph-heavy analytical routes, desktop defaults to Focus Canvas so the time-series surface remains dominant; the compact rail preserves workspace orientation and a one-click Standard layout restores fully labelled navigation.
+- Inspector remains collapsible/contextual; Focus Canvas uses an explicit overlay inspector, and constrained widths use the same drawer pattern.
 - Add efficient FDV channel/view switching where useful without reconfiguring the source.
 - Do not reintroduce Plotly range sliders.
 - Preserve observed red, first simulation purplish blue, established rainfall treatment.
