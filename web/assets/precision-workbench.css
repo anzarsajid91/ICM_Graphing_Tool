@@ -270,7 +270,7 @@ body.precision-workbench{
   .precision-workbench.pw-focus-canvas .pw-inspector.is-open{transform:translateX(0)}
   .precision-workbench.pw-focus-canvas .pw-inspector-toggle,
   .precision-workbench.pw-focus-canvas .pw-inspector-drawer-close{display:inline-flex}
-  .precision-workbench.pw-focus-canvas .pw-context{padding-top:12px;padding-bottom:10px}
+  .precision-workbench.pw-focus-canvas .pw-context{padding-top:12px;padding-bottom:8px}
   .precision-workbench.pw-focus-canvas .pw-page-description{max-width:1100px}
   .precision-workbench.pw-focus-canvas #tab-graph>.panel{padding:16px}
   .precision-workbench.pw-focus-canvas #timeChart{width:100%!important}
@@ -327,7 +327,7 @@ body.precision-workbench{
 .fastpath-preview-copy span{font-size:12px;line-height:18px;color:var(--pw-muted)}
 .fastpath-channel-nav{display:flex;gap:4px;flex-wrap:wrap}
 .fastpath-channel-nav button{
-  min-height:30px;padding:5px 9px;border:1px solid var(--pw-border);border-radius:4px;background:#fff;
+  min-height:32px;padding:4px 8px;border:1px solid var(--pw-border);border-radius:4px;background:#fff;
   color:var(--pw-muted);font-size:12px;line-height:18px;font-weight:600;cursor:pointer
 }
 .fastpath-channel-nav button:hover{color:var(--pw-text);background:#f4f7f8}
@@ -343,9 +343,9 @@ body.precision-workbench{
 /* Primary time-series surface: avoid card-within-card framing around the graph. */
 .pw-route-data-time-series #tab-graph .tool-main-section{margin:0;padding:0;border:0;background:transparent}
 .pw-route-data-time-series #tab-graph .tool-main-head{display:none!important}
-.pw-route-data-time-series #tab-graph>.panel{padding:14px}
+.pw-route-data-time-series #tab-graph>.panel{padding:16px}
 .v2-channel-strip{
-  display:flex;align-items:center;justify-content:flex-start;gap:10px;flex-wrap:wrap;
+  display:flex;align-items:center;justify-content:flex-start;gap:8px;flex-wrap:wrap;
   margin:0 0 8px;padding:0;min-height:32px
 }
 .v2-channel-label{
@@ -357,7 +357,7 @@ body.precision-workbench{
 .pw-route-report-builder #pwReportBuilderSurface{gap:16px}
 @media(min-width:901px){
   .precision-workbench.pw-focus-canvas .pw-context-actions{gap:8px}
-  .precision-workbench.pw-focus-canvas #tab-graph>.panel{padding:14px}
+  .precision-workbench.pw-focus-canvas #tab-graph>.panel{padding:16px}
 }
 
 
