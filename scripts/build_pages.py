@@ -29,9 +29,9 @@ def _inject_v2_assets(build_token: str) -> None:
     )
     html = html.replace(
         '<script type="module" src="assets/runtime.js"></script>',
-        '<script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>\n  <script src="assets/workbench-survey.js"></script>\n  <script src="assets/precision-workbench.js"></script>',
+        '<script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/fastpath-preview.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>\n  <script src="assets/workbench-survey.js"></script>\n  <script src="assets/precision-workbench.js"></script>',
     )
-    required = ["domain-registry.js", "workbench-v2.css", "workbench-v2.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "precision-workbench.css", "precision-workbench.js", "xlsx@0.18.5"]
+    required = ["domain-registry.js", "workbench-v2.css", "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "precision-workbench.css", "precision-workbench.js", "xlsx@0.18.5"]
     if not all(name in html for name in required):
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
 
@@ -89,9 +89,9 @@ def build() -> None:
                 "commit": os.environ.get("GITHUB_SHA", "local"),
                 "runtime": "worker-isolated Python kernel + canonical project registry + current engineering UX",
                 "python_module_count": len(manifest),
-                "ux_release": "v8-kernel-worker-domain",
-                "architecture_version": 8,
-                "execution_model": "pyodide-web-worker",
+                "ux_release": "v9-fastpath-preview",
+                "architecture_version": 9,
+                "execution_model": "fastpath-preview-worker + authoritative-pyodide-worker",
                 "engineering_api": "icm_workbench.browser_api+advanced_api",
                 "domain_registry": "icm-project-registry-v1",
                 "asset_version": build_token,
