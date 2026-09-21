@@ -18,22 +18,31 @@
     }
     return bar;
   }
+  function isAuxiliarySeries(series){
+    const token=String(series&&series.column||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+    return ['second','seconds','elapsedsecond','elapsedseconds','simulationsecond','simulationseconds','timeindex','timestep','timesteps','row','rowid','index'].includes(token);
+  }
+  function visibleSeries(item){
+    const rows=item&&item.preview&&item.preview.series||[];
+    const filtered=rows.filter(function(s){return !isAuxiliarySeries(s);});
+    return filtered.length?filtered:rows;
+  }
   function quantities(item){
     const found=[];
-    for(const s of item&&item.preview&&item.preview.series||[]){
+    for(const s of visibleSeries(item)){
       const q=String(s.quantity||'').toLowerCase();
       if(['flow','depth','velocity','rainfall','level'].includes(q)&&!found.includes(q))found.push(q);
     }
     return found;
   }
   function availableModes(item){
-    const q=quantities(item),modes=[];
+    const q=quantities(item),modes=[],rows=visibleSeries(item);
     for(const name of ['flow','depth','velocity','rainfall','level'])if(q.includes(name))modes.push(name);
-    if((item&&item.preview&&item.preview.series||[]).length>1)modes.push('combined');
+    if(rows.length>1)modes.push('combined');
     return modes.length?modes:['combined'];
   }
   function selectedSeries(item,mode){
-    const rows=item&&item.preview&&item.preview.series||[];
+    const rows=visibleSeries(item);
     if(mode==='combined')return rows.slice(0,6);
     const selected=rows.filter(function(s){return String(s.quantity||'').toLowerCase()===mode;});
     return (selected.length?selected:rows).slice(0,6);
@@ -42,13 +51,13 @@
     const bar=ensureBar();if(!bar)return;
     const modes=availableModes(item);
     if(!modes.includes(previewState.mode))previewState.mode=modes.includes('combined')?'combined':modes[0];
-    const total=item.preview&&item.preview.series?item.preview.series.length:0,extra=Math.max(0,total-6);
+    const all=item.preview&&item.preview.series||[],visible=visibleSeries(item),hiddenAux=Math.max(0,all.length-visible.length),total=visible.length,extra=Math.max(0,total-6);
     bar.hidden=false;
     const buttons=modes.map(function(mode){
       const label=mode.charAt(0).toUpperCase()+mode.slice(1);
       return '<button type="button" data-fastpath-mode="'+esc(mode)+'" class="'+(mode===previewState.mode?'active':'')+'">'+esc(label)+'</button>';
     }).join('');
-    bar.innerHTML='<div class="fastpath-preview-copy"><strong>Fast preview</strong><span>Display-only · advanced engineering validation continues in the background'+(extra?' · first 6 of '+total+' series shown':'')+'</span></div>'+
+    bar.innerHTML='<div class="fastpath-preview-copy"><strong>Fast preview</strong><span>Display-only · advanced engineering validation continues in the background'+(hiddenAux?' · '+hiddenAux+' auxiliary channel'+(hiddenAux===1?'':'s')+' hidden':'')+(extra?' · first 6 of '+total+' engineering series shown':'')+'</span></div>'+
       '<div class="fastpath-channel-nav">'+buttons+'</div>'+
       '<span class="fastpath-preview-status" id="fastpathPreviewStatus">Validating…</span>';
     bar.querySelectorAll('[data-fastpath-mode]').forEach(function(button){
