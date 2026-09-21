@@ -443,10 +443,22 @@ async function ingestFiles(files){
       const hashPromise=sha256Bytes(buffer);
       const lower=file.name.toLowerCase(),previewEligible=lower.endsWith('.fdv')||lower.endsWith('.fdv.txt')||lower.endsWith('.csv')||lower.endsWith('.hyd');
       if(previewEligible){
-        const fastResult=await fastpathEngine.parse(item,buffer,15000);
-        item.fastpathTiming.t2=performance.now();
-        item.preview=fastResult&&fastResult.parsed||null;
-        item.fastpathTiming.t3=performance.now();
+        try{
+          const fastResult=await fastpathEngine.parse(item,buffer,15000);
+          item.fastpathTiming.t2=performance.now();
+          item.preview=fastResult&&fastResult.parsed||null;
+          item.fastpathTiming.t3=performance.now();
+        }catch(previewError){
+          // FastPath is an optional display accelerator. A preview-worker failure
+          // must never block the authoritative Python import of an otherwise
+          // valid engineering source.
+          item.fastpathTiming.t2=performance.now();
+          item.fastpathTiming.t3=item.fastpathTiming.t2;
+          item.preview=null;
+          item.previewWarning='Fast preview unavailable; continuing with authoritative analysis.';
+          diagnostic.fastpathWarnings=diagnostic.fastpathWarnings||[];
+          diagnostic.fastpathWarnings.push({time:new Date().toISOString(),file:displayName,message:String(previewError&&previewError.message||previewError)});
+        }
       }
       item.hash=await hashPromise;
       if(item.preview&&item.preview.eligible){
