@@ -1048,7 +1048,7 @@ try{
   // Open the inspector before interacting with them so acceptance follows the
   // shipped user path rather than trying to click an off-canvas detail panel.
   const inspector=page.locator('#pwInspector');
-  if(!(await inspector.evaluate(el=>el.classList.contains('is-open'))){
+  if(!(await inspector.evaluate(el=>el.classList.contains('is-open')))){
     await page.click('#pwInspectorToggle');
     await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
   }
