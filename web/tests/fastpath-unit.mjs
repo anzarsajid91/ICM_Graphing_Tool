@@ -45,6 +45,14 @@ const badUnit=core.parseText('bad.fdv',fdv.replace('L/S,MM,M/S','CFS,MM,M/S'));
 assert.equal(badUnit.eligible,false);
 assert.match(String(badUnit.error||''),/unit/i);
 
+const truncated=core.parseText('truncated.fdv',fdv.replace('200 300 0.6\n','200 300\n'));
+assert.equal(truncated.eligible,false);
+assert.match(String(truncated.error||''),/field-count|truncated/i);
+
+const incompleteHeader=core.parseText('incomplete.fdv',fdv.replace('*CEND\n',''));
+assert.equal(incompleteHeader.eligible,false);
+assert.match(String(incompleteHeader.error||''),/incomplete/i);
+
 const iso=core.parseText('observed.csv','timestamp,Flow (L/s),Depth (mm)\n2026-02-01T00:00:00,100,200\n2026-02-01T00:01:00,200,300\n');
 assert.equal(iso.eligible,true);
 assert.equal(iso.format,'tabular_csv');
