@@ -315,3 +315,26 @@ body.precision-workbench{
   .pw-app{display:block}.pw-workarea{display:block;padding:0}
   .precision-workbench .shell>.pw-route-visible{display:block!important}
 }
+
+
+/* FastPath preview: intentionally compact and subordinate to the graph itself. */
+.fastpath-preview-bar{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;padding:8px 10px;
+  border:1px solid var(--pw-border);border-radius:7px;background:var(--pw-surface-soft);min-height:42px
+}
+.fastpath-preview-copy{display:flex;align-items:baseline;gap:7px;min-width:240px;flex:1 1 320px}
+.fastpath-preview-copy strong{font-size:13px;line-height:18px;color:var(--pw-text)}
+.fastpath-preview-copy span{font-size:12px;line-height:18px;color:var(--pw-muted)}
+.fastpath-channel-nav{display:flex;gap:4px;flex-wrap:wrap}
+.fastpath-channel-nav button{
+  min-height:30px;padding:5px 9px;border:1px solid var(--pw-border);border-radius:5px;background:#fff;
+  color:var(--pw-muted);font-size:12px;line-height:18px;font-weight:600;cursor:pointer
+}
+.fastpath-channel-nav button:hover{color:var(--pw-text);background:#f4f7f8}
+.fastpath-channel-nav button.active{color:var(--pw-teal-strong);border-color:#a9d6d8;background:#edf8f8}
+.fastpath-preview-status{font-size:11px;line-height:18px;font-weight:650;color:var(--pw-muted);white-space:nowrap}
+.fastpath-preview-status.warning{color:#9a5d00}
+@media(max-width:760px){
+  .fastpath-preview-bar{align-items:flex-start}
+  .fastpath-preview-copy{flex-basis:100%}
+}
