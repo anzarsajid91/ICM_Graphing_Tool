@@ -47,7 +47,7 @@ body.precision-workbench{
 .pw-primary-nav{display:grid;gap:5px}
 .pw-primary-nav button{
   border:0;background:transparent;color:#d4e0e7;text-align:left;border-radius:6px;
-  min-height:42px;padding:8px 10px;display:flex;align-items:center;gap:9px;cursor:pointer;font-size:14px;line-height:20px;font-weight:560
+  min-height:42px;padding:8px 10px;display:flex;align-items:center;gap:9px;cursor:pointer;font-size:15px;line-height:20px;font-weight:560
 }
 .pw-primary-nav button:hover{background:rgba(255,255,255,.07)}
 .pw-primary-nav button[aria-current="page"]{background:#164965;color:#fff;box-shadow:inset 3px 0 0 var(--pw-teal);font-weight:650}
