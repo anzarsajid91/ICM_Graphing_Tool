@@ -80,7 +80,7 @@ async function measureColdReferenceImport(){
     }));
     let engineReadyFromNavigationMs=null;
     try{
-      await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:timeoutMs});
+      await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
       engineReadyFromNavigationMs=Date.now()-navigationStart;
     }catch{}
     await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM01.fdv')&&row.textContent.includes('Ready')),null,{timeout:60000});
@@ -121,7 +121,7 @@ async function measureFreshFastPathImport({dataset,relativePath,sourcePath,input
     }),inputName);
     let engineReadyFromNavigationMs=null;
     try{
-      await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+      await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:timeoutMs});
       engineReadyFromNavigationMs=Date.now()-navigationStart;
     }catch{}
     await probe.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),inputName,{timeout:timeoutMs});
