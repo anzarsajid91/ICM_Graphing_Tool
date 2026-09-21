@@ -869,7 +869,8 @@ try{
   if(!channelVisible)throw new Error('FDV channel navigation should be visible after authoritative handoff');
   await page.click('#v2ChannelNav [data-channel="flow"]');
   await page.waitForFunction(()=>JSON.stringify(window.__ICM_WORKBENCH__.lastPanelOrder)===JSON.stringify(['rainfall','flow']),null,{timeout:60000});
-  if(window.__ICM_WORKBENCH__.uiV2?.channelMode!=='flow')throw new Error('Flow channel navigation did not retain its selected state');
+  const selectedChannelMode=await page.evaluate(()=>window.__ICM_WORKBENCH__.uiV2?.channelMode||null);
+  if(selectedChannelMode!=='flow')throw new Error('Flow channel navigation did not retain its selected state: '+JSON.stringify(selectedChannelMode));
   await page.click('#v2ChannelNav [data-channel="combined"]');
   await page.waitForFunction(()=>JSON.stringify(window.__ICM_WORKBENCH__.lastPanelOrder)===JSON.stringify(['rainfall','flow','depth','velocity']),null,{timeout:60000});
   await captureEvidence('01c-reference-fdv-graph');
