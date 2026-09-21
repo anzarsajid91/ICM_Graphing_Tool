@@ -164,6 +164,45 @@ async function guarded(target,fn){
   }
 }
 
+class BrowserFastPathEngine {
+  constructor(){this.worker=null;this.sequence=0;this.pending=new Map();}
+  _spawn(){
+    if(this.worker)return;
+    if(typeof Worker!=='function')throw new Error('Web Workers are not available in this browser.');
+    this.worker=new Worker('assets/fastpath-worker.js?v='+encodeURIComponent(buildToken));
+    this.worker.addEventListener('message',event=>{
+      const message=event.data||{},entry=this.pending.get(message.id);
+      if(!entry)return;
+      this.pending.delete(message.id);
+      if(message.ok)entry.resolve(message.result);
+      else entry.reject(new Error(message.error||'FastPath preview worker failed.'));
+    });
+    this.worker.addEventListener('error',event=>{
+      const error=new Error(event&&event.message||'FastPath preview worker failed.');
+      for(const [,entry] of this.pending)entry.reject(error);
+      this.pending.clear();this.worker=null;
+    });
+  }
+  _request(type,payload={},transfer=[]){
+    this._spawn();
+    const id='fastpath-'+(++this.sequence);
+    return new Promise((resolve,reject)=>{
+      this.pending.set(id,{resolve,reject});
+      try{this.worker.postMessage({id:id,type:type,...payload},transfer);}
+      catch(error){this.pending.delete(id);reject(error);}
+    });
+  }
+  async parse(item,buffer,maxPoints=15000){
+    const copy=buffer.slice(0);
+    return this._request('parse',{name:item.file.name,bytes:copy,maxPoints:maxPoints},[copy]);
+  }
+  terminate(){
+    if(this.worker)this.worker.terminate();
+    this.worker=null;
+    for(const [,entry] of this.pending)entry.reject(new Error('FastPath worker restarted.'));
+    this.pending.clear();
+  }
+}
 class BrowserPythonEngine {
   constructor(){
     this.worker=null;
@@ -257,6 +296,28 @@ class BrowserPythonEngine {
   }
 }
 const engine=new BrowserPythonEngine();
+const fastpathEngine=new BrowserFastPathEngine();
+let engineBootPromise=null;
+async function bootAuthoritativeEngine(){
+  try{
+    const info=await engine.boot();
+    diagnostic.engineReadyAt=performance.now();
+    setEngineStatus('Advanced analysis ready · authoritative Python engine','ready');
+    if($('footerBuild'))$('footerBuild').textContent='Reference engine: Python via Pyodide 0.29.4 Web Worker · '+Number(info&&info.manifestCount||0)+' modules · FastPath preview worker';
+    window.ICMProjectRegistry?.render();
+    return info;
+  }catch(err){
+    diagnostic.status='failed';
+    diagnostic.errors.push({time:new Date().toISOString(),target:'engine',message:String(err&&err.message||err)});
+    console.error(err);
+    setEngineStatus('Advanced analysis unavailable: '+String(err&&err.message||err),'error');
+    throw err;
+  }
+}
+function ensureEngineBoot(){
+  if(!engineBootPromise)engineBootPromise=bootAuthoritativeEngine();
+  return engineBootPromise;
+}
 let cancellingOperation=false;
 async function cancelCurrentOperation(){
   if(cancellingOperation||!engine.worker)return;
