@@ -46,6 +46,7 @@ def _inject_v2_assets(build_token: str) -> None:
         "assets/domain-registry.js",
         "assets/runtime.js",
         "assets/workbench-v2.js",
+        "assets/fastpath-preview.js",
         "assets/workbench-v2-domfix.js",
         "assets/workbench-v3.js",
         "assets/workbench-survey.js",
