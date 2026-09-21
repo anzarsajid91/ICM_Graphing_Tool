@@ -66,6 +66,11 @@ await vm.runInContext(`(async()=>{
   engine.worker.failNext=true;
   try{await engine.call('series_data',{start:'failed'});}catch(err){window.expectedFailure=String(err.message||err);}
   window.recovered=await engine.call('series_data',{start:'recovered'});
+  const stalledFastPath=new BrowserFastPathEngine(10);
+  try{await stalledFastPath.parse({file:{name:'stalled.csv'}},new ArrayBuffer(8));}
+  catch(err){window.fastPathTimeout=String(err.message||err);}
+  try{await stalledFastPath.parse({file:{name:'stalled-again.csv'}},new ArrayBuffer(8));}
+  catch(err){window.fastPathDisabled=String(err.message||err);}
   state.exclusions=[
     {id:'observed',start:'2026-01-01T00:00',end:'2026-01-01T01:00',reason:'EDM',scope:'observed'},
     {id:'model',start:'2026-01-01T00:00',end:'2026-01-01T01:00',reason:'model',scope:'model'},
@@ -85,6 +90,8 @@ assert.equal(sandbox.window.queueResults[0].start,'00:00');
 assert.equal(sandbox.window.queueResults[1].start,'10:00');
 assert.match(sandbox.window.expectedFailure,/expected/);
 assert.equal(sandbox.window.recovered.start,'recovered');
+assert.match(sandbox.window.fastPathTimeout,/timed out/i);
+assert.match(sandbox.window.fastPathDisabled,/timed out/i);
 assert.equal(sandbox.window.observedMasks.length,1);
 assert.equal(sandbox.window.observedMasks[0].id,'observed');
 assert.equal(sandbox.window.modelMasks[0].id,'model');
@@ -92,4 +99,4 @@ assert.equal(sandbox.window.audit.length,3);
 assert.equal(sandbox.window.migratedWorkspace.schema_version,3);
 assert.deepEqual(Object.keys(sandbox.window.recoveredNamedStore),[]);
 assert.equal(sandbox.window.quarantinedKeys.length,1);
-console.log('Runtime regressions passed: worker RPC isolation/recovery, scoped masks, workspace migration and corrupt local-state recovery.');
+console.log('Runtime regressions passed: worker RPC isolation/recovery, bounded FastPath failure fallback, scoped masks, workspace migration and corrupt local-state recovery.');
