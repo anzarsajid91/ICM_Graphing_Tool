@@ -157,7 +157,11 @@ async function verifyFastPathFailureFallsBack(){
   if(liveMode)return null;
   const probe=await context.newPage();
   try{
-    await probe.route('**/assets/fastpath-worker.js*',route=>route.abort());
+    await probe.route('**/assets/fastpath-worker.js*',route=>route.fulfill({
+      status:200,
+      contentType:'text/javascript',
+      body:'throw new Error("forced FastPath worker failure");'
+    }));
     await probe.goto(baseUrl+'?fastpath_failure_fallback='+Date.now(),{waitUntil:'domcontentloaded'});
     // DOMContentLoaded can precede runtime.start(), so do not inject the file until
     // wireEvents() + the initial source-pool render have completed.
