@@ -29,6 +29,12 @@ try{
     railToggleHidden:document.querySelector('#pwRailToggle')?.hidden===true
   }));
   if(!defaultFocus.focus||defaultFocus.rail>90||!defaultFocus.inspectorToggleVisible||!defaultFocus.railToggleHidden)throw new Error('Graph route must default to the focused analytical canvas: '+JSON.stringify(defaultFocus));
+  const graphDominance=await page.evaluate(()=>({
+    viewport:document.documentElement.clientWidth,
+    panel:document.querySelector('#tab-graph>.panel')?.getBoundingClientRect().width||0,
+    chart:document.querySelector('#timeChart')?.getBoundingClientRect().width||0
+  }));
+  if(graphDominance.panel/graphDominance.viewport<0.82||graphDominance.chart/graphDominance.viewport<0.78)throw new Error('Focused graph workspace is not sufficiently dominant: '+JSON.stringify(graphDominance));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(false));
   await page.waitForFunction(()=>!document.body.classList.contains('pw-focus-canvas'));
   const railExpanded=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
