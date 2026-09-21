@@ -183,6 +183,8 @@ function preparePageComposition(){
   for(const sel of ['#tab-data-health>.panel>.panel-head','#tab-data-health .tool-main-head','#tab-spills>.panel>.panel-head','#tab-workspace>.panel>.panel-head']){const el=qs(sel);if(el)el.classList.add('pw-legacy-framing');}
   for(const selector of ['#tab-spills .tool-main-section','#tab-workspace .tool-main-section']){const legacy=qs(selector);if(legacy)legacy.hidden=true;}
   const balanceBtn=$('runSurveyBalanceBtn');if(balanceBtn){balanceBtn.classList.add('primary');balanceBtn.textContent='Recalculate balance';}
+  const ratingBtn=$('runRatingBtn');if(ratingBtn)ratingBtn.classList.add('primary');
+  const dwfBtn=$('runDwfBtn');if(dwfBtn)dwfBtn.classList.add('primary');
 }
 function applyPageComposition(){
   preparePageComposition();
