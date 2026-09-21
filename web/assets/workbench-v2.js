@@ -106,12 +106,6 @@
     toolbar.id = 'v2GraphToolbar';
     toolbar.className = 'v2-graph-toolbar';
     toolbar.innerHTML = `
-      <div class="v2-channel-nav fastpath-channel-nav" id="v2ChannelNav" hidden>
-        <button type="button" data-channel="flow">Flow</button>
-        <button type="button" data-channel="depth">Depth</button>
-        <button type="button" data-channel="velocity">Velocity</button>
-        <button type="button" data-channel="combined" class="active">Combined</button>
-      </div>
       <div class="v2-threshold-control" data-threshold-role="observed">
         <label>Observed / EDM depth threshold
           <input id="graphObsThreshold" type="number" step="any" placeholder="Not shown" />
@@ -127,6 +121,14 @@
       <div class="v2-density" id="graphDensity"><strong>Adaptive display</strong>Full view is reduced for speed; zoom progressively refines toward every source timestep. Thresholds are drawn on the Depth panel only.</div>`;
     panel.insertBefore(toolbar, details);
     const chart = document.getElementById('timeChart');
+    if (chart && !document.getElementById('v2ChannelStrip')) {
+      const strip=document.createElement('div');
+      strip.id='v2ChannelStrip';
+      strip.className='v2-channel-strip';
+      strip.hidden=true;
+      strip.innerHTML='<span class="v2-channel-label">Hydraulic view</span><div class="v2-channel-nav fastpath-channel-nav" id="v2ChannelNav" hidden><button type="button" data-channel="flow">Flow</button><button type="button" data-channel="depth">Depth</button><button type="button" data-channel="velocity">Velocity</button><button type="button" data-channel="combined" class="active">Combined</button></div>';
+      chart.insertAdjacentElement('beforebegin',strip);
+    }
     if (chart && !document.getElementById('graphStatistics')) {
       const stats = document.createElement('section');
       stats.id = 'graphStatistics';
@@ -187,11 +189,12 @@
   }
 
   function updateChannelControls(){
-    const nav=document.getElementById('v2ChannelNav'),selected=mappingObject(state.mapping.observed);
+    const nav=document.getElementById('v2ChannelNav'),strip=document.getElementById('v2ChannelStrip'),selected=mappingObject(state.mapping.observed);
     if(!nav)return;
     const quantities=selected?hydraulicSeriesForItem(selected.item).map(x=>String(x.quantity||'').toLowerCase()):[];
     const available=quantities.length>=2;
     nav.hidden=!available;
+    if(strip)strip.hidden=!available;
     if(!available){ui.channelMode='combined';return;}
     if(ui.channelMode!=='combined'&&!quantities.includes(ui.channelMode))ui.channelMode='combined';
     nav.querySelectorAll('[data-channel]').forEach(button=>{
