@@ -170,7 +170,7 @@ async function verifyFastPathFailureFallsBack(){
     // has executed. engineStatus is changed only after wireEvents() attaches the
     // import handlers, making this a deterministic readiness boundary.
     await probe.waitForFunction(()=>document.querySelector('#engineStatus')?.textContent.includes('Initialising advanced analysis'),null,{timeout:30000});
-    const payload=Buffer.from('timestamp,Depth (m)\\n2026-02-01T00:00:00,0.2\\n2026-02-01T00:01:00,0.3\\n','utf8');
+    const payload=Buffer.from(['timestamp,Depth (m)','2026-02-01T00:00:00,0.2','2026-02-01T00:01:00,0.3',''].join('\n'),'utf8');
     await probe.setInputFiles('#fileInput',{name:'fastpath-fallback.csv',mimeType:'text/csv',buffer:payload});
     try{
       await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('fastpath-fallback.csv')&&row.textContent.includes('Ready')),null,{timeout:120000});
@@ -304,6 +304,7 @@ async function associationWorkbook(){
 try{
   stage='cold import baseline';
   performanceEvidence.coldImport=await measureColdReferenceImport();
+  await writePerformanceEvidence();
   if(!liveMode){
     const cold=performanceEvidence.coldImport,engineAfterSelection=Number(cold.engineReadyFromNavigationMs)-Number(cold.selectionAtFromNavigationMs);
     if(cold.selectionOutcome!=='graph'||cold.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Cold FastPath preview did not render: '+JSON.stringify(cold));
@@ -320,6 +321,7 @@ try{
   ]){
     const measured=await measureFreshFastPathImport(spec);
     performanceEvidence.freshCsvImports.push(measured);
+    await writePerformanceEvidence();
     const engineAfterSelection=Number(measured.engineReadyFromNavigationMs)-Number(measured.selectionAtFromNavigationMs);
     if(measured.selectionOutcome!=='graph'||measured.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Fresh CSV FastPath preview did not render: '+JSON.stringify(measured));
     if(measured.previewEvidence?.engineStatus==='ready'||!(measured.timeToOutcomeMs<engineAfterSelection))throw new Error('Fresh CSV preview did not render before authoritative engine readiness: '+JSON.stringify(measured));
@@ -1112,11 +1114,14 @@ try{
   if(diag.errors?.length)throw new Error(`Workbench recorded operation errors: ${JSON.stringify(diag.errors)}`);
   if(failedRequests.filter(x=>!x.includes('favicon.ico')).length)throw new Error(`Failed browser requests: ${failedRequests.join(' | ')}`);
   await captureEvidence('06-final-state');
+  performanceEvidence.acceptance={status:'passed'};
   await writePerformanceEvidence();
   console.log('PERFORMANCE_EVIDENCE '+JSON.stringify(performanceEvidence));
 
   console.log(`${liveMode?'Live Pages':'Local artifact'} browser acceptance passed at ${baseUrl}: hardened multi-file drag/drop, auxiliary column filtering, FDV depth/flow/velocity auto-graphing, dense adaptive zoom, no range slider, compact statistics/reports, unified spill dash style, survey schematic, collapsible workflows, survey assessment, spills, storage and workspace outputs.`);
 } catch(err) {
+  performanceEvidence.acceptance={status:'failed',stage,error:String(err)};
+  await writePerformanceEvidence().catch(error=>console.error('Could not persist performance evidence:',error));
   const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');
   const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);
   console.error(`ACCEPTANCE FAILURE at stage: ${stage}`);
