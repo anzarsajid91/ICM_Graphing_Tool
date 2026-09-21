@@ -48,6 +48,8 @@ jobs:
           node --check web/assets/runtime.release.js
           node --check web/assets/analysis-worker.js
           node --check web/assets/fastpath-core.js
+          node --check web/assets/fastpath-worker.js
+          node --check web/assets/fastpath-preview.js
           node --check web/assets/domain-registry.js
           node --check web/assets/workbench-v2.js
           node --check web/assets/workbench-v2-domfix.js
@@ -89,6 +91,7 @@ jobs:
               'assets/domain-registry.js',
               'assets/runtime.js',
               'assets/workbench-v2.js',
+              'assets/fastpath-preview.js',
               'assets/workbench-v2-domfix.js',
               'assets/workbench-v3.js',
               'assets/workbench-survey.js',
@@ -98,6 +101,9 @@ jobs:
               assert f'{asset}?v={token}' in html, asset
           assert 'pyodide/v0.29.4/full/pyodide.js' not in html
           assert Path('_site/assets/analysis-worker.js').exists()
+          assert Path('_site/assets/fastpath-core.js').exists()
+          assert Path('_site/assets/fastpath-worker.js').exists()
+          assert Path('_site/assets/fastpath-preview.js').exists()
           assert Path('_site/assets/domain-registry.js').exists()
           assert 'xlsx@0.18.5' in html
           assert 'type="module" src="assets/runtime.js"' not in html
