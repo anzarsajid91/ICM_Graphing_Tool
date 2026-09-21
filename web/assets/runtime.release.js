@@ -446,8 +446,17 @@ async function handoffFastPath(item){
 
   // FastPath is a display accelerator. If an engineering mapping is already
   // applied, validating a newly imported preview must not replace that context.
-  const preserveAppliedMapping=Boolean(state.mapping.observed||state.mapping.rain||(state.mapping.models||[]).length);
+  const appliedMapping={
+    observed:state.mapping.observed||'',
+    models:[...(state.mapping.models||[])],
+    rain:state.mapping.rain||''
+  };
+  const preserveAppliedMapping=Boolean(appliedMapping.observed||appliedMapping.rain||appliedMapping.models.length);
   if(preserveAppliedMapping){
+    if([...$('observedSelect').options].some(o=>o.value===appliedMapping.observed))$('observedSelect').value=appliedMapping.observed;
+    [...$('modelSelect').options].forEach(o=>o.selected=appliedMapping.models.includes(o.value));
+    if([...$('rainSelect').options].some(o=>o.value===appliedMapping.rain))$('rainSelect').value=appliedMapping.rain;
+    if(window.ICMGraph&&window.ICMGraph.applyMapping)await window.ICMGraph.applyMapping();
     if(window.ICMFastPath&&window.ICMFastPath.clear)window.ICMFastPath.clear();
     return;
   }
