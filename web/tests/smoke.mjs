@@ -153,6 +153,23 @@ async function extractFirstModelReference(){
   return {sourcePath:stdout.trim(),archiveMember:stderr.trim(),inputName:path.basename(stdout.trim())};
 }
 
+async function verifyFastPathFailureFallsBack(){
+  if(liveMode)return null;
+  const probe=await context.newPage();
+  try{
+    await probe.route('**/assets/fastpath-worker.js*',route=>route.abort());
+    await probe.goto(baseUrl+'?fastpath_failure_fallback='+Date.now(),{waitUntil:'domcontentloaded'});
+    const payload=Buffer.from('timestamp,Depth (m)\\n2026-02-01T00:00:00,0.2\\n2026-02-01T00:01:00,0.3\\n','utf8');
+    await probe.setInputFiles('#fileInput',{name:'fastpath-fallback.csv',mimeType:'text/csv',buffer:payload});
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('fastpath-fallback.csv')&&row.textContent.includes('Ready')),null,{timeout:120000});
+    return await probe.evaluate(()=>({
+      row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('fastpath-fallback.csv'))?.textContent||null,
+      errors:window.__ICM_WORKBENCH__?.errors||[],
+      parsed:[...document.querySelectorAll('#observedSelect option')].some(option=>option.textContent.includes('fastpath-fallback.csv — depth'))
+    }));
+  }finally{await probe.close();}
+}
+
 async function inspectReportHtml(html,minFigures=1){
   const p=await context.newPage();
   const reportErrors=[],reportFailedRequests=[];
@@ -281,6 +298,9 @@ try{
       if(!previewColumns.length)throw new Error('Model FastPath preview did not expose an engineering series: '+JSON.stringify(measured));
     }
   }
+  stage='FastPath failure falls back to authoritative import';
+  performanceEvidence.fastpathFailureFallback=await verifyFastPathFailureFallsBack();
+  if(!liveMode&&!performanceEvidence.fastpathFailureFallback?.parsed)throw new Error('A FastPath worker failure must not prevent authoritative parsing: '+JSON.stringify(performanceEvidence.fastpathFailureFallback));
   stage='open application';
   const applicationNavigationStart=Date.now();
   await page.goto(baseUrl+(liveMode?`?live_verify=${Date.now()}`:''),{waitUntil:'domcontentloaded'});
