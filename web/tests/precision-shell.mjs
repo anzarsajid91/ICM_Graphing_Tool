@@ -74,11 +74,64 @@ try{
   if(!healthComposition.summaryVisible||!healthComposition.rawInsideDetails)throw new Error('Data Health summary/detail composition is incomplete: '+JSON.stringify(healthComposition));
   const typeScale=await page.evaluate(()=>({
     title:Number.parseFloat(getComputedStyle(document.querySelector('.pw-page-title')).fontSize),
+    section:Number.parseFloat(getComputedStyle(document.querySelector('.panel-head h2')).fontSize),
+    subsection:Number.parseFloat(getComputedStyle(document.querySelector('h3')).fontSize),
     nav:Number.parseFloat(getComputedStyle(document.querySelector('.pw-primary-nav button')).fontSize),
+    secondary:Number.parseFloat(getComputedStyle(document.querySelector('.pw-secondary-nav button')).fontSize),
     tableHeading:Number.parseFloat(getComputedStyle(document.querySelector('#pwDataHealthSummary th')).fontSize),
     scopeLabel:Number.parseFloat(getComputedStyle(document.querySelector('.pw-scope-item span')).fontSize),
   }));
-  if(typeScale.title<24||typeScale.nav<15||typeScale.tableHeading<13||typeScale.scopeLabel<12)throw new Error('Precision typography scale is below the refinement minimums: '+JSON.stringify(typeScale));
+  if(typeScale.title<24||typeScale.section<20||typeScale.subsection<16||typeScale.nav<15||typeScale.secondary>13||typeScale.nav<=typeScale.secondary||typeScale.tableHeading<13||typeScale.scopeLabel<12)throw new Error('Precision typography hierarchy is below the strict PR25 minimums: '+JSON.stringify(typeScale));
+
+  const rhythm=await page.evaluate(()=>{
+    const values={};
+    const take=(name,el,props)=>{const s=getComputedStyle(el);for(const prop of props)values[name+'.'+prop]=Number.parseFloat(s[prop]);};
+    take('workarea',document.querySelector('.pw-workarea'),['gap','paddingTop','paddingBottom']);
+    take('context',document.querySelector('.pw-context'),['gap','paddingTop','paddingBottom']);
+    take('primaryNav',document.querySelector('.pw-primary-nav'),['gap']);
+    take('panel',document.querySelector('.panel'),['paddingTop','paddingRight','paddingBottom','paddingLeft']);
+    take('button',document.querySelector('.btn'),['paddingTop','paddingRight','paddingBottom','paddingLeft']);
+    take('scope',document.querySelector('.pw-scopebar'),['gap','paddingTop','paddingRight','paddingBottom','paddingLeft']);
+    return values;
+  });
+  const rhythmFailures=Object.entries(rhythm).filter(([,v])=>Number.isFinite(v)&&v!==0&&Math.round(v)%4!==0);
+  if(rhythmFailures.length)throw new Error('PR25 spacing rhythm must resolve to 8px base / 4px micro-spacing on structural surfaces: '+JSON.stringify({rhythm,rhythmFailures}));
+
+  const primaryRoutes=[
+    ['survey','data-health','runHealthBtn'],
+    ['survey','flow-continuity','runSurveyBalanceBtn'],
+    ['rainfall','events','runRainEventsBtn'],
+    ['verification','comparison','runCompareBtn'],
+    ['verification','rating','runRatingBtn'],
+    ['verification','dwf','runDwfBtn'],
+    ['verification','storage','runStorageBtn'],
+    ['spills','thresholds','runSpillsBtn'],
+    ['report','builder','downloadReportBtn'],
+  ];
+  for(const [workspace,route,expected] of primaryRoutes){
+    await page.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,route]);
+    await page.waitForTimeout(20);
+    const visiblePrimary=await page.locator('.btn.primary').evaluateAll(nodes=>nodes.filter(el=>!el.hidden&&el.getClientRects().length>0&&getComputedStyle(el).display!=='none').map(el=>el.id).filter(Boolean));
+    if(visiblePrimary.length!==1||visiblePrimary[0]!==expected)throw new Error('Route must expose exactly one obvious primary action: '+JSON.stringify({workspace,route,expected,visiblePrimary}));
+  }
+
+  const quietSurfaces=await page.evaluate(()=>{
+    const inspect=(workspace,route,selector)=>{
+      window.__ICM_PRECISION_WORKBENCH__.navigate(workspace,route,false);
+      const el=document.querySelector(selector);const s=el?getComputedStyle(el):null;
+      return {workspace,route,selector,exists:Boolean(el),shadow:s?.boxShadow||'',overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
+    };
+    return [
+      inspect('data','time-series','#tab-graph>.panel'),
+      inspect('rainfall','events','#tab-rain-events>.panel'),
+      inspect('verification','comparison','#tab-compare>.panel'),
+      inspect('verification','storage','#tab-storage>.panel'),
+      inspect('spills','results','#tab-spills>.panel'),
+      inspect('report','builder','#tab-workspace>.panel'),
+    ];
+  });
+  const noisySurface=quietSurfaces.find(x=>!x.exists||x.overflow>1||(x.shadow&&x.shadow!=='none'));
+  if(noisySurface)throw new Error('Major route surface violates quiet-surface containment: '+JSON.stringify({noisySurface,quietSurfaces}));
 
   const inspectorText=(await page.locator('#pwInspectorBody').textContent())||'';
   if(inspectorText.includes('Live context'))throw new Error('Inspector must not present the hard-coded Live context result state.');
