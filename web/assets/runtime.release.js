@@ -414,8 +414,9 @@ async function handoffFastPath(item){
     $('observedSelect').value=preferred.key;
   }
   [...$('modelSelect').options].forEach(o=>o.selected=false);
+  if(window.ICMGraph&&window.ICMGraph.setChannel)window.ICMGraph.setChannel(active.mode,false);
   if(window.ICMGraph&&window.ICMGraph.applyMapping)await window.ICMGraph.applyMapping();
-  if(window.ICMFastPath&&window.ICMFastPath.markValidated)window.ICMFastPath.markValidated(item,item.fastpathReconciliation);
+  if(window.ICMFastPath&&window.ICMFastPath.clear)window.ICMFastPath.clear();
 }
 async function importGuard(fn){
   try{return await fn();}
