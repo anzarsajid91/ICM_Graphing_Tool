@@ -155,7 +155,10 @@ async function extractFirstModelReference(){
 
 async function verifyFastPathFailureFallsBack(){
   if(liveMode)return null;
-  const probe=await context.newPage();
+  const probe=await context.newPage(),probeConsole=[],probePageErrors=[],probeFailedRequests=[];
+  probe.on('console',message=>{if(message.type()==='error')probeConsole.push(message.text());});
+  probe.on('pageerror',error=>probePageErrors.push(String(error)));
+  probe.on('requestfailed',request=>probeFailedRequests.push(request.url()+' :: '+(request.failure()?.errorText||'failed')));
   try{
     await probe.route('**/assets/fastpath-worker.js*',route=>route.fulfill({
       status:200,
@@ -169,7 +172,28 @@ async function verifyFastPathFailureFallsBack(){
     await probe.waitForFunction(()=>document.querySelector('#engineStatus')?.textContent.includes('Initialising advanced analysis'),null,{timeout:30000});
     const payload=Buffer.from('timestamp,Depth (m)\\n2026-02-01T00:00:00,0.2\\n2026-02-01T00:01:00,0.3\\n','utf8');
     await probe.setInputFiles('#fileInput',{name:'fastpath-fallback.csv',mimeType:'text/csv',buffer:payload});
-    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('fastpath-fallback.csv')&&row.textContent.includes('Ready')),null,{timeout:120000});
+    try{
+      await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('fastpath-fallback.csv')&&row.textContent.includes('Ready')),null,{timeout:120000});
+    }catch(error){
+      const state=await probe.evaluate(()=>({
+        readyState:document.readyState,
+        engineStatus:document.querySelector('#engineStatus')?.textContent||null,
+        poolSummary:document.querySelector('#poolSummary')?.textContent||null,
+        rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+        selectedFiles:[...document.querySelector('#fileInput')?.files||[]].map(file=>({name:file.name,size:file.size})),
+        diagnostic:window.__ICM_WORKBENCH__?{
+          status:window.__ICM_WORKBENCH__.status,
+          errors:window.__ICM_WORKBENCH__.errors,
+          fastpathWarnings:window.__ICM_WORKBENCH__.fastpathWarnings,
+          fastpath:window.__ICM_WORKBENCH__.fastpath,
+          worker:window.__ICM_WORKBENCH__.worker,
+          engineReadyAt:window.__ICM_WORKBENCH__.engineReadyAt,
+          sourcePool:window.__ICM_WORKBENCH__.sourcePool,
+          stateSummary:window.__ICM_WORKBENCH__.stateSummary?.()
+        }:null
+      }));
+      throw new Error('FastPath fallback probe timed out: '+JSON.stringify({state,probeConsole,probePageErrors,probeFailedRequests,cause:String(error)}));
+    }
     return await probe.evaluate(()=>({
       row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('fastpath-fallback.csv'))?.textContent||null,
       errors:window.__ICM_WORKBENCH__?.errors||[],
