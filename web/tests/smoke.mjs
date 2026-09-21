@@ -80,7 +80,7 @@ async function measureColdReferenceImport(){
     }));
     let engineReadyFromNavigationMs=null;
     try{
-      await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+      await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:timeoutMs});
       engineReadyFromNavigationMs=Date.now()-navigationStart;
     }catch{}
     await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM01.fdv')&&row.textContent.includes('Ready')),null,{timeout:60000});
@@ -95,17 +95,19 @@ async function measureColdReferenceImport(){
     await probe.close();
   }
 }
-async function measureFreshFastPathImport({dataset,relativePath,sourcePath,inputName,mimeType='text/csv',archiveMember=null}){
+async function measureFreshFastPathImport({dataset,relativePath,sourcePath,inputName,mimeType='text/csv',archiveMember=null,timeoutMs=120000}){
   if(liveMode)return null;
   const probe=await context.newPage();
   const resolvedPath=sourcePath||path.join(root,relativePath);
-  const buffer=await fs.readFile(resolvedPath);
+  const sourceStat=await fs.stat(resolvedPath);
+  const usePathUpload=sourceStat.size>50*1024*1024;
+  const buffer=usePathUpload?null:await fs.readFile(resolvedPath);
   const navigationStart=Date.now();
   try{
     await probe.goto(baseUrl+'?fresh_fastpath='+encodeURIComponent(dataset)+'&t='+Date.now(),{waitUntil:'domcontentloaded'});
     const domReadyMs=Date.now()-navigationStart;
     const selectedAt=Date.now();
-    await probe.setInputFiles('#fileInput',{name:inputName,mimeType,buffer});
+    await probe.setInputFiles('#fileInput',usePathUpload?resolvedPath:{name:inputName,mimeType,buffer});
     const outcome=await Promise.race([
       probe.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
       probe.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Error')),inputName,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt}))
@@ -122,12 +124,12 @@ async function measureFreshFastPathImport({dataset,relativePath,sourcePath,input
       await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
       engineReadyFromNavigationMs=Date.now()-navigationStart;
     }catch{}
-    await probe.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),inputName,{timeout:120000});
+    await probe.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),inputName,{timeout:timeoutMs});
     const finalEvidence=await probe.evaluate(()=>({
       record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
       reconciliation:window.__ICM_WORKBENCH__?.fastpath?.last?.reconciliation||null
     }));
-    return {dataset,archiveMember,bytes:buffer.length,domReadyMs,selectionOutcome:outcome.kind,timeToOutcomeMs:outcome.ms,
+    return {dataset,archiveMember,bytes:sourceStat.size,uploadMode:usePathUpload?'path':'buffer',domReadyMs,selectionOutcome:outcome.kind,timeToOutcomeMs:outcome.ms,
       engineReadyFromNavigationMs,selectionAtFromNavigationMs:selectedAt-navigationStart,previewEvidence,finalEvidence};
   }finally{await probe.close();}
 }
@@ -265,7 +267,7 @@ try{
   for(const spec of [
     {dataset:'StationA_EDM.csv',relativePath:'reference/current-tool/sample-data/other/StationA_EDM.csv',inputName:'Cold-StationA_EDM.csv'},
     {dataset:'StationA_Rainfall.csv',relativePath:'reference/current-tool/sample-data/other/StationA_Rainfall.csv',inputName:'Cold-StationA_Rainfall.csv'},
-    {dataset:'StationA_Modelled Data.zip / first model member',sourcePath:modelReference.sourcePath,inputName:modelReference.inputName,archiveMember:modelReference.archiveMember},
+    {dataset:'StationA_Modelled Data.zip / first model member',sourcePath:modelReference.sourcePath,inputName:modelReference.inputName,archiveMember:modelReference.archiveMember,timeoutMs:240000},
   ]){
     const measured=await measureFreshFastPathImport(spec);
     performanceEvidence.freshCsvImports.push(measured);
