@@ -165,9 +165,19 @@ async function guarded(target,fn){
 }
 
 class BrowserFastPathEngine {
-  constructor(){this.worker=null;this.sequence=0;this.pending=new Map();}
+  constructor(requestTimeoutMs=60000){
+    this.worker=null;this.sequence=0;this.pending=new Map();this.requestTimeoutMs=requestTimeoutMs;this.disabledError=null;
+  }
+  _disable(error){
+    const failure=error instanceof Error?error:new Error(String(error||'FastPath preview worker failed.'));
+    const worker=this.worker;this.worker=null;this.disabledError=failure;
+    try{if(worker)worker.terminate();}catch{}
+    const entries=[...this.pending.values()];this.pending.clear();
+    for(const entry of entries)entry.reject(failure);
+  }
   _spawn(){
     if(this.worker)return;
+    if(this.disabledError)throw this.disabledError;
     if(typeof Worker!=='function')throw new Error('Web Workers are not available in this browser.');
     this.worker=new Worker('assets/fastpath-worker.js?v='+encodeURIComponent(buildToken));
     this.worker.addEventListener('message',event=>{
@@ -178,18 +188,25 @@ class BrowserFastPathEngine {
       else entry.reject(new Error(message.error||'FastPath preview worker failed.'));
     });
     this.worker.addEventListener('error',event=>{
-      const error=new Error(event&&event.message||'FastPath preview worker failed.');
-      for(const [,entry] of this.pending)entry.reject(error);
-      this.pending.clear();this.worker=null;
+      this._disable(new Error(event&&event.message||'FastPath preview worker failed.'));
     });
   }
   _request(type,payload={},transfer=[]){
     this._spawn();
     const id='fastpath-'+(++this.sequence);
     return new Promise((resolve,reject)=>{
-      this.pending.set(id,{resolve,reject});
+      let timer=null,settled=false;
+      const finish=(fn,value)=>{
+        if(settled)return;
+        settled=true;if(timer!==null)clearTimeout(timer);fn(value);
+      };
+      this.pending.set(id,{resolve:value=>finish(resolve,value),reject:error=>finish(reject,error)});
+      timer=setTimeout(()=>{
+        if(!this.pending.has(id))return;
+        this._disable(new Error('FastPath preview worker timed out; continuing without preview.'));
+      },this.requestTimeoutMs);
       try{this.worker.postMessage({id:id,type:type,...payload},transfer);}
-      catch(error){this.pending.delete(id);reject(error);}
+      catch(error){this.pending.delete(id);finish(reject,error);}
     });
   }
   async parse(item,buffer,maxPoints=15000){
@@ -198,7 +215,7 @@ class BrowserFastPathEngine {
   }
   terminate(){
     if(this.worker)this.worker.terminate();
-    this.worker=null;
+    this.worker=null;this.disabledError=null;
     for(const [,entry] of this.pending)entry.reject(new Error('FastPath worker restarted.'));
     this.pending.clear();
   }
