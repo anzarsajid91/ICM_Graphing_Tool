@@ -159,6 +159,9 @@ async function verifyFastPathFailureFallsBack(){
   try{
     await probe.route('**/assets/fastpath-worker.js*',route=>route.abort());
     await probe.goto(baseUrl+'?fastpath_failure_fallback='+Date.now(),{waitUntil:'domcontentloaded'});
+    // DOMContentLoaded can precede runtime.start(), so do not inject the file until
+    // wireEvents() + the initial source-pool render have completed.
+    await probe.waitForFunction(()=>document.querySelector('#poolSummary')?.textContent.includes('No files loaded.'),null,{timeout:30000});
     const payload=Buffer.from('timestamp,Depth (m)\\n2026-02-01T00:00:00,0.2\\n2026-02-01T00:01:00,0.3\\n','utf8');
     await probe.setInputFiles('#fileInput',{name:'fastpath-fallback.csv',mimeType:'text/csv',buffer:payload});
     await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('fastpath-fallback.csv')&&row.textContent.includes('Ready')),null,{timeout:120000});
