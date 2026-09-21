@@ -45,7 +45,7 @@ async function chooseFirstSeriesAndGraph(page){
   if(observed)await page.selectOption('#observedSelect',observed);
   else if(rain)await page.selectOption('#rainSelect',rain);
   else throw new Error('No graphable authoritative series became available.');
-  await page.click('#applyMappingBtn');
+  await page.locator('#applyMappingBtn').evaluate(el=>el.click());
   await page.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000});
 }
 
