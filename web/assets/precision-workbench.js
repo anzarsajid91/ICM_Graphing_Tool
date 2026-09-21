@@ -333,12 +333,20 @@ function navigate(workspace,page,push=false){
   clearRouteClasses();document.body.classList.add(routeKey());
   qsa('.pw-route-visible').forEach(x=>x.classList.remove('pw-route-visible'));
   legacyTab(p.tab);
+  // Route ownership is semantic, not only visual. Explicitly hide every
+  // legacy tab panel before exposing the selected Precision route so an
+  // old active-tab class can never leak another task's primary action.
+  qsa('main.shell>.tab-panel').forEach(x=>{x.hidden=true;});
   const root=p.root?.();
   if(root){
     root.classList.add('pw-route-visible');
+    if(root.classList.contains('tab-panel'))root.hidden=false;
     let ancestor=root.parentElement;
     while(ancestor&&ancestor!==qs('main.shell')){
-      if(ancestor.classList.contains('tab-panel')||ancestor.classList.contains('embedded-workflow'))ancestor.classList.add('pw-route-visible');
+      if(ancestor.classList.contains('tab-panel')||ancestor.classList.contains('embedded-workflow')){
+        ancestor.classList.add('pw-route-visible');
+        if(ancestor.classList.contains('tab-panel'))ancestor.hidden=false;
+      }
       ancestor=ancestor.parentElement;
     }
   }
