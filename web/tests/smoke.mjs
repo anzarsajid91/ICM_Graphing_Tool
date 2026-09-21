@@ -652,6 +652,8 @@ try{
   const metricText=await page.locator('#metricGrid').textContent();
   if(!metricText.includes('Calculation status')||!metricText.includes('Valid support'))throw new Error('Comparison validity cards are missing');
   for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])await page.waitForSelector(`#${id} .main-svg`,{timeout:60000});
+  await precisionRoute('verification','comparison');
+  await captureEvidence('08-verification-comparison');
 
   stage='depth-only agreement fit';
   await precisionRoute('verification','rating');
@@ -677,6 +679,7 @@ try{
   await page.selectOption('#dwfFlowSelect',dwf);
   await page.click('#runDwfBtn');
   await page.waitForSelector('#dwfSummary .summary-box',{timeout:60000});
+  await captureEvidence('09-verification-dwf');
 
   stage='rainfall event workflow and cumulative multi-R plot';
   await clickTab('rain-events');
@@ -702,6 +705,8 @@ try{
   await page.click('#runRainEventsBtn');
   await page.waitForFunction(()=>document.querySelector('#rainEventSummary')?.textContent.includes('qualifying events'),null,{timeout:60000});
   if(await page.locator('#rainEventBody tr').count()<1)throw new Error('Manual rainfall criteria should identify the demo event');
+  await precisionRoute('rainfall','events');
+  await captureEvidence('10-rainfall-events');
 
   stage='data health';
   await clickTab('data-health');
@@ -896,6 +901,7 @@ try{
   await page.click('#runStorageBtn');
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.lastStorage),null,{timeout:60000});
   await page.waitForFunction(()=>document.querySelector('#storageSummary')?.textContent.trim().length>0&&document.querySelector('#monthlyVolume')?.textContent.trim().length>0,null,{timeout:60000});
+  await captureEvidence('11-verification-storage');
 
   stage='workspace persistence and reports';
   await precisionRoute('report','workspace');
