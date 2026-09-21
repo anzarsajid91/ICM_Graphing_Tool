@@ -508,10 +508,13 @@ async function ingestFiles(files){
       recordFastPath(item);renderPool();renderSeriesOptions();
     }
   }
+  // Publish the completed source-pool transaction before any slower graph handoff.
+  // This keeps the externally observable pool lifecycle atomic: once a source is
+  // rendered as Ready, listeners have already received the matching ingest event.
+  if(sourcePoolChanged)notifySourcePoolChanged('ingest');
   const active=state.files.get(diagnostic.fastpathActiveSourceId);
   if(active&&active.status==='ready')await handoffFastPath(active);
   if(engineInfo&&$('poolSummary'))renderPool();
-  if(sourcePoolChanged)notifySourcePoolChanged('ingest');
 }
 function renderPool(){
   const items=[...state.files.values()],ready=items.filter(x=>x.status==='ready').length,preview=items.filter(x=>['preview-ready','validating','preview-only'].includes(x.status)&&x.preview&&x.preview.eligible).length;
