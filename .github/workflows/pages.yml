@@ -58,6 +58,7 @@ jobs:
           node --check web/assets/precision-workbench.js
           node --check web/tests/smoke.mjs
           node --check web/tests/precision-shell.mjs
+          node --check web/tests/baseline-comparison.mjs
           node web/tests/graph-report-unit.mjs
           node web/tests/runtime-unit.mjs
           node web/tests/domain-registry-unit.mjs
@@ -182,6 +183,76 @@ jobs:
           path: |
             /tmp/icm-workbench-failure.png
             /tmp/icm-pages-http.log
+
+
+  baseline-performance:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 30
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          path: current
+      - name: Checkout pre-FastPath main baseline
+        uses: actions/checkout@v6
+        with:
+          ref: cb66e762b23c5cd59cf61b42a6c4b52655307cfc
+          path: baseline
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Build current and baseline release artifacts
+        run: |
+          cd current
+          python scripts/build_pages.py
+          cd ../baseline
+          GITHUB_SHA=cb66e762b23c5cd59cf61b42a6c4b52655307cfc python scripts/build_pages.py
+      - name: Install Chromium comparison runner
+        working-directory: current
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Measure pre-FastPath versus PR25 in one runner
+        working-directory: current
+        env:
+          ICM_BASELINE_URL: http://127.0.0.1:8001/
+          ICM_CURRENT_URL: http://127.0.0.1:8000/
+          ICM_BASELINE_SHA: cb66e762b23c5cd59cf61b42a6c4b52655307cfc
+          ICM_BASELINE_EVIDENCE_DIR: /tmp/icm-baseline-evidence
+        run: |
+          python -m http.server 8000 --directory _site >/tmp/icm-current-http.log 2>&1 &
+          CURRENT_PID=$!
+          python -m http.server 8001 --directory ../baseline/_site >/tmp/icm-baseline-http.log 2>&1 &
+          BASELINE_PID=$!
+          trap 'kill "$CURRENT_PID" "$BASELINE_PID" 2>/dev/null || true' EXIT
+          for port in 8000 8001; do
+            READY=0
+            for attempt in {1..30}; do
+              if curl --fail --silent --show-error "http://127.0.0.1:$port/" >/dev/null 2>&1; then READY=1; break; fi
+              sleep 1
+            done
+            if [ "$READY" -ne 1 ]; then
+              echo "Comparison server on $port failed to start."
+              cat /tmp/icm-current-http.log /tmp/icm-baseline-http.log
+              exit 1
+            fi
+          done
+          node web/tests/baseline-comparison.mjs
+      - name: Retain formal baseline comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fastpath-baseline-comparison-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            /tmp/icm-baseline-evidence/
+            /tmp/icm-current-http.log
+            /tmp/icm-baseline-http.log
 
   browser-firefox-shell:
     runs-on: ubuntu-latest
