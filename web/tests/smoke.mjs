@@ -163,9 +163,10 @@ async function verifyFastPathFailureFallsBack(){
       body:'throw new Error("forced FastPath worker failure");'
     }));
     await probe.goto(baseUrl+'?fastpath_failure_fallback='+Date.now(),{waitUntil:'domcontentloaded'});
-    // DOMContentLoaded can precede runtime.start(), so do not inject the file until
-    // wireEvents() + the initial source-pool render have completed.
-    await probe.waitForFunction(()=>document.querySelector('#poolSummary')?.textContent.includes('No files loaded.'),null,{timeout:30000});
+    // "No files loaded." exists in static HTML, so it cannot prove runtime.start()
+    // has executed. engineStatus is changed only after wireEvents() attaches the
+    // import handlers, making this a deterministic readiness boundary.
+    await probe.waitForFunction(()=>document.querySelector('#engineStatus')?.textContent.includes('Initialising advanced analysis'),null,{timeout:30000});
     const payload=Buffer.from('timestamp,Depth (m)\\n2026-02-01T00:00:00,0.2\\n2026-02-01T00:01:00,0.3\\n','utf8');
     await probe.setInputFiles('#fileInput',{name:'fastpath-fallback.csv',mimeType:'text/csv',buffer:payload});
     await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('fastpath-fallback.csv')&&row.textContent.includes('Ready')),null,{timeout:120000});
