@@ -382,3 +382,8 @@ body.precision-workbench{
 .pw-route-report-builder #tab-workspace > .panel{
   box-shadow:none;
 }
+
+.pw-route-verification-rating #tab-compare > .panel > .panel-head,
+.pw-route-verification-dwf #tab-compare > .panel > .panel-head{
+  display:none!important;
+}
