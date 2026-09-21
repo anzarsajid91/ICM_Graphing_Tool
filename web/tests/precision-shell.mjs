@@ -19,10 +19,20 @@ try{
   if(await page.locator('#pwRailToggle').count()!==1)throw new Error('Navigation rail needs an explicit collapse/expand control.');
   if(await page.locator('[data-pw-page="provenance"]').count()!==0)throw new Error('User-facing provenance route should be removed.');
 
-  // Refinement acceptance: analytical routes must preserve labelled navigation by default.
+  // Refinement acceptance: graph-heavy analytical routes lead with the focused canvas,
+  // while the standard labelled navigation remains available as an explicit fallback.
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
-  if(await page.locator('body').evaluate(el=>el.classList.contains('pw-focus-canvas')))throw new Error('Focus canvas must be explicitly opted into; fresh sessions must retain labelled navigation.');
+  const defaultFocus=await page.evaluate(()=>({
+    focus:document.body.classList.contains('pw-focus-canvas'),
+    rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
+    inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none',
+    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden===true
+  }));
+  if(!defaultFocus.focus||defaultFocus.rail>90||!defaultFocus.inspectorToggleVisible||!defaultFocus.railToggleHidden)throw new Error('Graph route must default to the focused analytical canvas: '+JSON.stringify(defaultFocus));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(false));
+  await page.waitForFunction(()=>!document.body.classList.contains('pw-focus-canvas'));
   const railExpanded=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
+  if(railExpanded<180)throw new Error('Standard layout did not restore labelled navigation width: '+railExpanded);
   await page.click('#pwRailToggle');
   const railCollapsed=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
   if(!(railCollapsed<railExpanded))throw new Error('Rail collapse control did not reduce navigation width: '+JSON.stringify({railExpanded,railCollapsed}));
