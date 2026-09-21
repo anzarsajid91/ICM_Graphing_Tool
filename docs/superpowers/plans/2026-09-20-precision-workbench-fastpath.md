@@ -22,6 +22,12 @@
 - GitHub Pages remains the host; no backend.
 - Stop at a reviewable PR; do not merge.
 
+## Completion reconciliation — 2026-09-21
+
+The implementation/evidence record is reconciled against PR #25 rather than earlier chat status. All merge-relevant product, reference-data, browser, report, performance and regression outcomes below are implemented and evidenced. Two historical sequencing artifacts were not retained: a pre-FastPath authoritative-only timing capture and the original deliberately-RED test run. They are left unchecked rather than reconstructed or claimed after the fact. `docs/fastpath-performance.md` records the timing limitation explicitly and makes no historical speed-up claim.
+
+Evidence used for this reconciliation includes the fully green hardened browser run `35632152589` on head `b0fdceb474f0b1b322ee520914c4bf43af442af9` / tested merge build `1cfcd65e4a245ae8ce9f89e2ac193328b8ac2a21`, plus green Ubuntu/Windows Workbench CI, Chromium complete workflow and Firefox shell. Final PR-description/Ready-for-Review administration is intentionally performed only after the final documentation head reruns cleanly.
+
 ## Review Focus
 
 1. Ambiguous CSV timestamps/units: FastPath must decline or mark unresolved rather than guess.
@@ -41,11 +47,11 @@
 
 **Produces:** Browser timing evidence for current authoritative-only import using checked-in reference files, retained as CI artifact/log output.
 
-- [ ] Add a browser helper that records file size, known row count after authoritative parse, selection time, authoritative-ready time and first graph paint time for the existing path without changing runtime behavior.
-- [ ] Exercise FM01 FDV and Station A observed CSV (plus the largest practical checked-in FDV/CSV if different).
-- [ ] Emit JSON under the existing evidence directory and upload it with browser evidence.
-- [ ] Run PR CI and record measured baseline values in `docs/fastpath-performance.md`.
-- [ ] Commit: `perf: capture baseline import-to-graph timings`.
+- [x] Add a browser helper that records file size, known row count after authoritative parse, selection time, authoritative-ready time and first graph paint time for the existing path without changing runtime behavior.
+- [x] Exercise FM01 FDV and Station A observed CSV (plus the largest practical checked-in FDV/CSV if different).
+- [x] Emit JSON under the existing evidence directory and upload it with browser evidence.
+- [ ] Run PR CI and record measured baseline values in `docs/fastpath-performance.md`. — Pre-FastPath timing artifact was not retained; current T0–T6 measurements and this limitation are documented without inventing a baseline.
+- [x] Commit: `perf: capture baseline import-to-graph timings`.
 
 ### Task 1: Lock FastPath contract with failing tests
 
@@ -56,10 +62,10 @@
 
 **Produces:** RED tests for parser eligibility, canonical preview schema, FDV canonical conversion, CSV timestamp/unit conservatism, descriptive statistics and mismatch behavior.
 
-- [ ] Add unit cases for valid FDV; incomplete FDV; unsupported FDV unit; ISO CSV; UK day-first CSV; quoted CSV; unresolved unit; duplicate timestamps; sentinel/missing values; malformed timestamp; ICM P_DATETIME.
-- [ ] Add reference tests against checked-in FM01 and Station A EDM/rainfall samples.
-- [ ] Run CI and confirm failure is specifically missing FastPath implementation.
-- [ ] Commit: `test: lock fastpath parsing and preview contract`.
+- [x] Add unit cases for valid FDV; incomplete FDV; unsupported FDV unit; ISO CSV; UK day-first CSV; quoted CSV; unresolved unit; duplicate timestamps; sentinel/missing values; malformed timestamp; ICM P_DATETIME.
+- [x] Add reference tests against checked-in FM01 and Station A EDM/rainfall samples.
+- [ ] Run CI and confirm failure is specifically missing FastPath implementation. — Historical RED-run evidence was not retained; final contract tests are present and green.
+- [x] Commit: `test: lock fastpath parsing and preview contract`.
 
 ### Task 2: Implement conservative FastPath parser core
 
@@ -71,14 +77,14 @@
 
 **Produces:** `ICMFastPathCore.parse(name,text,options)` and deterministic preview contract.
 
-- [ ] Implement shared normalisation, sentinel handling and supported unit vocabulary matching `parsers/common.py`.
-- [ ] Implement strict FDV FIELD/UNITS/IDENTIFIER/CONSTANTS/CSTART/CEND parsing with explicit interval and field-count validation.
-- [ ] Implement conservative delimiter/CSV row parsing, timestamp-column detection, ISO/year-first and UK day-first timestamps, plus ICM P_DATETIME section recognition.
-- [ ] Compute only valid/missing counts and min/mean/max.
-- [ ] Keep unresolved units unresolved and omit all dimensional totals.
-- [ ] Stage/version the new asset in Pages.
-- [ ] Run node contract/reference tests and syntax/build checks.
-- [ ] Commit: `perf: add conservative fdv csv fastpath parser`.
+- [x] Implement shared normalisation, sentinel handling and supported unit vocabulary matching `parsers/common.py`.
+- [x] Implement strict FDV FIELD/UNITS/IDENTIFIER/CONSTANTS/CSTART/CEND parsing with explicit interval and field-count validation.
+- [x] Implement conservative delimiter/CSV row parsing, timestamp-column detection, ISO/year-first and UK day-first timestamps, plus ICM P_DATETIME section recognition.
+- [x] Compute only valid/missing counts and min/mean/max.
+- [x] Keep unresolved units unresolved and omit all dimensional totals.
+- [x] Stage/version the new asset in Pages.
+- [x] Run node contract/reference tests and syntax/build checks.
+- [x] Commit: `perf: add conservative fdv csv fastpath parser`.
 
 ### Task 3: Execute FastPath off-main-thread and progressively import
 
@@ -91,14 +97,14 @@
 
 **Produces:** file selection -> FastPath worker preview while `analysis-worker.js` boots concurrently.
 
-- [ ] Add a small worker controller with request IDs, failures and termination.
-- [ ] Start the authoritative Python worker asynchronously at application startup but do not await it before FastPath parsing.
-- [ ] On import record T0/T1/T2/T3 and set explicit states: reading -> preview-ready/preview-unavailable -> validating -> ready/error.
-- [ ] Reuse the already-read buffer/text where safe; transfer a copy to the Python worker only when it becomes ready.
-- [ ] Keep unsupported FastPath sources on the existing authoritative path.
-- [ ] Ensure cancellation/restart restores only authoritative-ready sources.
-- [ ] Verify UI remains responsive and multiple files progress independently.
-- [ ] Commit: `perf: decouple source preview from python readiness`.
+- [x] Add a small worker controller with request IDs, failures and termination.
+- [x] Start the authoritative Python worker asynchronously at application startup but do not await it before FastPath parsing.
+- [x] On import record T0/T1/T2/T3 and set explicit states: reading -> preview-ready/preview-unavailable -> validating -> ready/error.
+- [x] Reuse the already-read buffer/text where safe; transfer a copy to the Python worker only when it becomes ready.
+- [x] Keep unsupported FastPath sources on the existing authoritative path.
+- [x] Ensure cancellation/restart restores only authoritative-ready sources.
+- [x] Verify UI remains responsive and multiple files progress independently.
+- [x] Commit: `perf: decouple source preview from python readiness`.
 
 ### Task 4: Render first useful graph and basic statistics from preview
 
@@ -112,14 +118,14 @@
 
 **Produces:** immediate graph-first preview, FDV channel controls, safe statistics, non-blocking engine readiness status.
 
-- [ ] Auto-render eligible FDV as stacked Flow/Depth/Velocity (and rainfall only when present/linked) using existing graph colour/layout conventions.
-- [ ] For eligible CSV render recognised series; unresolved units are visibly marked.
-- [ ] Add compact Flow/Depth/Velocity/Rainfall/Combined channel navigation when applicable.
-- [ ] Use `Plotly.react`; keep no range slider.
-- [ ] Record T4 after Plotly render and T5 after statistics are visible.
-- [ ] Never display flow volume/rain total from preview-only data.
-- [ ] Replace preview with authoritative graph without losing selected context when Python validation completes.
-- [ ] Commit: `ui: add graph-first fastpath preview and metrics`.
+- [x] Auto-render eligible FDV as stacked Flow/Depth/Velocity (and rainfall only when present/linked) using existing graph colour/layout conventions.
+- [x] For eligible CSV render recognised series; unresolved units are visibly marked.
+- [x] Add compact Flow/Depth/Velocity/Rainfall/Combined channel navigation when applicable.
+- [x] Use `Plotly.react`; keep no range slider.
+- [x] Record T4 after Plotly render and T5 after statistics are visible.
+- [x] Never display flow volume/rain total from preview-only data.
+- [x] Replace preview with authoritative graph without losing selected context when Python validation completes.
+- [x] Commit: `ui: add graph-first fastpath preview and metrics`.
 
 ### Task 5: Reconcile FastPath with authoritative parser and protect engineering state
 
@@ -132,12 +138,12 @@
 
 **Produces:** T6 timing, equivalence evidence, explicit disagreement diagnostics.
 
-- [ ] Compare format, rows, period, channels, quantity and canonical unit after `parse_source`.
-- [ ] Mark preview as validated when equivalent; retain diagnostic warning when different.
-- [ ] Ensure registry/workspace/analysis only consume authoritative `item.parsed`.
-- [ ] Add Python/Node reference equivalence validation for checked-in FDV/CSV.
-- [ ] Prove specialist actions remain unavailable until authoritative-ready.
-- [ ] Commit: `test: reconcile fastpath with authoritative source parsing`.
+- [x] Compare format, rows, period, channels, quantity and canonical unit after `parse_source`.
+- [x] Mark preview as validated when equivalent; retain diagnostic warning when different.
+- [x] Ensure registry/workspace/analysis only consume authoritative `item.parsed`.
+- [x] Add Python/Node reference equivalence validation for checked-in FDV/CSV.
+- [x] Prove specialist actions remain unavailable until authoritative-ready.
+- [x] Commit: `test: reconcile fastpath with authoritative source parsing`.
 
 ### Task 6: Precision Workbench hierarchy and continuity polish
 
@@ -149,14 +155,14 @@
 
 **Produces:** graph-dominant desktop shell with clearer typography and predictable navigation/inspector behavior.
 
-- [ ] Make labelled navigation the default; focus-canvas is explicit rather than silently hiding orientation.
-- [ ] Ensure collapsing rail materially expands graph canvas.
-- [ ] Keep inspector contextual/collapsible and drawer-based at constrained widths.
-- [ ] Raise undersized scope/metadata/control text where needed while retaining engineering density.
-- [ ] Audit primary/secondary button hierarchy and graph workspace spacing.
-- [ ] Preserve route/context state through Data Health, Survey, Rainfall, Verification, DWF, Spills and Reports.
-- [ ] Verify tables remain contained and spill/report tables do not overflow.
-- [ ] Commit: `ui: refine precision workbench hierarchy and graph focus`.
+- [x] Make labelled navigation the default; focus-canvas is explicit rather than silently hiding orientation.
+- [x] Ensure collapsing rail materially expands graph canvas.
+- [x] Keep inspector contextual/collapsible and drawer-based at constrained widths.
+- [x] Raise undersized scope/metadata/control text where needed while retaining engineering density.
+- [x] Audit primary/secondary button hierarchy and graph workspace spacing.
+- [x] Preserve route/context state through Data Health, Survey, Rainfall, Verification, DWF, Spills and Reports.
+- [x] Verify tables remain contained and spill/report tables do not overflow.
+- [x] Commit: `ui: refine precision workbench hierarchy and graph focus`.
 
 ### Task 7: Reference regression, reports and performance validation
 
@@ -167,21 +173,21 @@
 
 **Produces:** measured before/after matrix and reference-data regression evidence.
 
-- [ ] Re-run identical FDV/CSV timing matrix and record T0-T6 values.
-- [ ] Verify FM01/RG01 known reference values and Station A parser counts/periods through authoritative paths.
-- [ ] Exercise multi-file and mixed supported import.
-- [ ] Exercise rainfall R, Data Health/survey, observed/model comparison, spills/exclusions, workspace/report export.
-- [ ] Inspect generated report in browser test for legend/rainfall/statistics/table containment.
-- [ ] Confirm no unexpected numerical change; explain any difference before continuing.
-- [ ] Commit: `perf: document reference fastpath benchmarks and regressions`.
+- [x] Re-run identical FDV/CSV timing matrix and record T0-T6 values.
+- [x] Verify FM01/RG01 known reference values and Station A parser counts/periods through authoritative paths.
+- [x] Exercise multi-file and mixed supported import.
+- [x] Exercise rainfall R, Data Health/survey, observed/model comparison, spills/exclusions, workspace/report export.
+- [x] Inspect generated report in browser test for legend/rainfall/statistics/table containment.
+- [x] Confirm no unexpected numerical change; explain any difference before continuing.
+- [x] Commit: `perf: document reference fastpath benchmarks and regressions`.
 
 ### Task 8: Final gates and PR handover
 
 **Files:** no product changes unless a failing gate produces a tested repair.
 
-- [ ] Run/fetch fresh full PR checks: Python regression, JS unit/syntax, Pages build, Chromium full workflow, Firefox shell.
-- [ ] Inspect browser evidence artifacts and console results.
-- [ ] Compare final branch against baseline and ensure no unplanned engineering-method changes.
-- [ ] Update PR description with measured performance, exact reference files, test counts, browser flows, report evidence, commit range and genuine limitations.
-- [ ] Mark the PR ready only when all required gates are green.
-- [ ] Do not merge.
+- [x] Run/fetch fresh full PR checks: Python regression, JS unit/syntax, Pages build, Chromium full workflow, Firefox shell.
+- [x] Inspect browser evidence artifacts and console results.
+- [x] Compare final branch against baseline and ensure no unplanned engineering-method changes.
+- [ ] Update PR description with measured performance, exact reference files, test counts, browser flows, report evidence, commit range and genuine limitations. — Final administrative handover after exact-head checks.
+- [ ] Mark the PR ready only when all required gates are green. — Performed only after the final documentation head is green.
+- [x] Do not merge.
