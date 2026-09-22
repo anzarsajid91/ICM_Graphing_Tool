@@ -572,8 +572,9 @@
         const showObserved=singleDepth&&$('showGraphObsThreshold')?.checked!==false&&observedThreshold!==null;
         const showModel=hasDepthModel&&$('showGraphModelThreshold')?.checked!==false&&modelThreshold!==null;
         const coincident=showObserved&&showModel&&Math.abs(Number(observedThreshold)-Number(modelThreshold))<=1e-12;
+        const thresholdQuantityLabel=quantity==='level'?'level':'depth';
         layout.shapes=v2GraphShapes(singleDepth?'y':null,{showObserved,showModel,plotBottom});
-        if(coincident)traces.push({x:[null],y:[null],mode:'lines',name:'Observed + model depth threshold',hoverinfo:'skip',showlegend:true,yaxis:'y',line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
+        if(coincident)traces.push({x:[null],y:[null],mode:'lines',name:`Observed + model ${thresholdQuantityLabel} threshold`,hoverinfo:'skip',showlegend:true,yaxis:'y',line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
         else{
           if(showObserved)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold1Label').value||'Observed / EDM depth / level threshold',hoverinfo:'skip',showlegend:true,yaxis:'y',line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
           if(showModel)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold2Label').value||'Model depth / level threshold',hoverinfo:'skip',showlegend:true,yaxis:'y',line:{color:$('threshold2Color').value,width:2.5,dash:'dash'}});
