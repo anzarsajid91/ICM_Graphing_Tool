@@ -19,6 +19,7 @@
     graphRefreshing: false,
     graphTimer: null,
     graphGeneration: 0,
+    channelMode: 'combined',
   };
   window.__ICM_WORKBENCH__.uiV2 = ui;
 
@@ -120,6 +121,14 @@
       <div class="v2-density" id="graphDensity"><strong>Adaptive display</strong>Full view is reduced for speed; zoom progressively refines toward every source timestep. Thresholds are drawn on the Depth panel only.</div>`;
     panel.insertBefore(toolbar, details);
     const chart = document.getElementById('timeChart');
+    if (chart && !document.getElementById('v2ChannelStrip')) {
+      const strip=document.createElement('div');
+      strip.id='v2ChannelStrip';
+      strip.className='v2-channel-strip';
+      strip.hidden=true;
+      strip.innerHTML='<span class="v2-channel-label">Hydraulic view</span><div class="v2-channel-nav fastpath-channel-nav" id="v2ChannelNav" hidden><button type="button" data-channel="flow">Flow</button><button type="button" data-channel="depth">Depth</button><button type="button" data-channel="velocity">Velocity</button><button type="button" data-channel="combined" class="active">Combined</button></div>';
+      chart.insertAdjacentElement('beforebegin',strip);
+    }
     if (chart && !document.getElementById('graphStatistics')) {
       const stats = document.createElement('section');
       stats.id = 'graphStatistics';
@@ -135,6 +144,10 @@
     };
     syncFromSpill();
     updateGraphThresholdControls();
+    updateChannelControls();
+    document.querySelectorAll('#v2ChannelNav [data-channel]').forEach(button=>button.addEventListener('click',()=>{
+      setChannelMode(button.dataset.channel,true);
+    }));
 
     for (const [graphId, spillId] of [['graphObsThreshold','obsThreshold'],['graphModelThreshold','modelThreshold']]) {
       $(graphId).addEventListener('input', () => {
@@ -175,6 +188,31 @@
     return source?String(seriesQuantity(source.item,source.col)||'').toLowerCase():'';
   }
 
+  function updateChannelControls(){
+    const nav=document.getElementById('v2ChannelNav'),strip=document.getElementById('v2ChannelStrip'),selected=mappingObject(state.mapping.observed);
+    if(!nav)return;
+    const quantities=selected?hydraulicSeriesForItem(selected.item).map(x=>String(x.quantity||'').toLowerCase()):[];
+    const available=quantities.length>=2;
+    nav.hidden=!available;
+    if(strip)strip.hidden=!available;
+    if(!available){ui.channelMode='combined';return;}
+    if(ui.channelMode!=='combined'&&!quantities.includes(ui.channelMode))ui.channelMode='combined';
+    nav.querySelectorAll('[data-channel]').forEach(button=>{
+      const mode=button.dataset.channel;
+      button.hidden=mode!=='combined'&&!quantities.includes(mode);
+      button.classList.toggle('active',mode===ui.channelMode);
+      button.setAttribute('aria-pressed',String(mode===ui.channelMode));
+    });
+  }
+
+  function setChannelMode(mode,redraw=true){
+    const next=['flow','depth','velocity','combined'].includes(String(mode))?String(mode):'combined';
+    ui.channelMode=next;
+    updateChannelControls();
+    ui.graphRange=null;
+    if(redraw&&state.mapping.observed)void v2DrawGraph(null);
+  }
+
   function updateGraphThresholdControls(){
     const observedHasDepth=observedGraphSeries().some(source=>String(source.quantity||mappedQuantity(source.key)).toLowerCase()==='depth');
     const modelHasDepth=(state.mapping.models||[]).some(key=>mappedQuantity(key)==='depth');
@@ -195,6 +233,7 @@
     renderModelColourControls();
     renderExclusions();
     updateGraphThresholdControls();
+    updateChannelControls();
     const select=$('spillModelSelect');
     const previous=select.value;
     select.innerHTML='<option value="">No model selected</option>'+state.mapping.models.map(key=>{const m=mappingObject(key);return `<option value="${esc(key)}">${esc(seriesLabel(m.item,m.col))}</option>`;}).join('');
@@ -365,8 +404,10 @@
     ui.graphRefreshing=true;
     const pointCounts={};
     try{
-      const observedSources=observedGraphSeries();
-      const fdvMode=observedSources.length>=2;
+      let observedSources=observedGraphSeries();
+      const sourceFdvMode=observedSources.length>=2;
+      if(ui.channelMode!=='combined')observedSources=observedSources.filter(source=>String(source.quantity||mappedQuantity(source.key)).toLowerCase()===ui.channelMode);
+      const fdvMode=sourceFdvMode&&ui.channelMode==='combined';
       const selectedObserved=mappingObject(state.mapping.observed);
       const selectedQuantity=String(selectedObserved?seriesQuantity(selectedObserved.item,selectedObserved.col):'').toLowerCase();
       const observedEntries=[],modelEntries=[];
@@ -667,7 +708,7 @@
     }
   }
 
-  window.ICMGraph = {draw: v2DrawGraph, applyMapping: v2ApplyMapping};
+  window.ICMGraph = {draw: v2DrawGraph, applyMapping: v2ApplyMapping, setChannel: setChannelMode, channel:()=>ui.channelMode};
   const exActions=$('addExclusionBtn').parentElement;
   const rangeButton=document.createElement('button');rangeButton.className='btn quiet';rangeButton.textContent='Exclude visible period';rangeButton.onclick=()=>{const range=ui.graphRange;if(!range)return;addExclusionRow({start:modelClock(range[0]),end:modelClock(range[1])});};exActions.appendChild(rangeButton);
   const undoButton=document.createElement('button');undoButton.className='btn quiet';undoButton.textContent='Undo removal';undoButton.onclick=()=>{const row=state.deletedExclusions?.pop();if(row){state.exclusions.push(row);renderExclusions();void drawTimeChart();}};exActions.appendChild(undoButton);

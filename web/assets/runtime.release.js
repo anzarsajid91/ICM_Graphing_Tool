@@ -164,6 +164,62 @@ async function guarded(target,fn){
   }
 }
 
+class BrowserFastPathEngine {
+  constructor(requestTimeoutMs=60000){
+    this.worker=null;this.sequence=0;this.pending=new Map();this.requestTimeoutMs=requestTimeoutMs;this.disabledError=null;
+  }
+  _disable(error){
+    const failure=error instanceof Error?error:new Error(String(error||'FastPath preview worker failed.'));
+    const worker=this.worker;this.worker=null;this.disabledError=failure;
+    try{if(worker)worker.terminate();}catch{}
+    const entries=[...this.pending.values()];this.pending.clear();
+    for(const entry of entries)entry.reject(failure);
+  }
+  _spawn(){
+    if(this.worker)return;
+    if(this.disabledError)throw this.disabledError;
+    if(typeof Worker!=='function')throw new Error('Web Workers are not available in this browser.');
+    this.worker=new Worker('assets/fastpath-worker.js?v='+encodeURIComponent(buildToken));
+    this.worker.addEventListener('message',event=>{
+      const message=event.data||{},entry=this.pending.get(message.id);
+      if(!entry)return;
+      this.pending.delete(message.id);
+      if(message.ok)entry.resolve(message.result);
+      else entry.reject(new Error(message.error||'FastPath preview worker failed.'));
+    });
+    this.worker.addEventListener('error',event=>{
+      this._disable(new Error(event&&event.message||'FastPath preview worker failed.'));
+    });
+  }
+  _request(type,payload={},transfer=[]){
+    this._spawn();
+    const id='fastpath-'+(++this.sequence);
+    return new Promise((resolve,reject)=>{
+      let timer=null,settled=false;
+      const finish=(fn,value)=>{
+        if(settled)return;
+        settled=true;if(timer!==null)clearTimeout(timer);fn(value);
+      };
+      this.pending.set(id,{resolve:value=>finish(resolve,value),reject:error=>finish(reject,error)});
+      timer=setTimeout(()=>{
+        if(!this.pending.has(id))return;
+        this._disable(new Error('FastPath preview worker timed out; continuing without preview.'));
+      },this.requestTimeoutMs);
+      try{this.worker.postMessage({id:id,type:type,...payload},transfer);}
+      catch(error){this.pending.delete(id);finish(reject,error);}
+    });
+  }
+  async parse(item,buffer,maxPoints=15000){
+    const copy=buffer.slice(0);
+    return this._request('parse',{name:item.file.name,bytes:copy,maxPoints:maxPoints},[copy]);
+  }
+  terminate(){
+    if(this.worker)this.worker.terminate();
+    this.worker=null;this.disabledError=null;
+    for(const [,entry] of this.pending)entry.reject(new Error('FastPath worker restarted.'));
+    this.pending.clear();
+  }
+}
 class BrowserPythonEngine {
   constructor(){
     this.worker=null;
@@ -257,21 +313,66 @@ class BrowserPythonEngine {
   }
 }
 const engine=new BrowserPythonEngine();
+const fastpathEngine=new BrowserFastPathEngine();
+let engineBootPromise=null;
+let sourceImportEpoch=0;
+const TRANSIENT_SOURCE_STATUSES=new Set(['reading','preview-ready','waiting-engine','validating']);
+function invalidatePendingSourceImports(){
+  sourceImportEpoch+=1;
+  fastpathEngine.terminate();
+  diagnostic.fastpathActiveSourceId=null;
+  window.ICMFastPath?.clear?.();
+  let dropped=0;
+  for(const [id,item] of state.files){
+    if(TRANSIENT_SOURCE_STATUSES.has(item.status)){state.files.delete(id);dropped+=1;}
+  }
+  return dropped;
+}
+async function bootAuthoritativeEngine(){
+  try{
+    const info=await engine.boot();
+    diagnostic.engineReadyAt=performance.now();
+    setEngineStatus('Advanced analysis ready · authoritative Python engine','ready');
+    if($('footerBuild'))$('footerBuild').textContent='Reference engine: Python via Pyodide 0.29.4 Web Worker · '+Number(info&&info.manifestCount||0)+' modules · FastPath preview worker';
+    window.ICMProjectRegistry?.render();
+    return info;
+  }catch(err){
+    diagnostic.status='failed';
+    diagnostic.errors.push({time:new Date().toISOString(),target:'engine',message:String(err&&err.message||err)});
+    console.error(err);
+    setEngineStatus('Advanced analysis unavailable: '+String(err&&err.message||err),'error');
+    throw err;
+  }
+}
+function ensureEngineBoot(){
+  if(!engineBootPromise)engineBootPromise=bootAuthoritativeEngine();
+  return engineBootPromise;
+}
 let cancellingOperation=false;
 async function cancelCurrentOperation(){
-  if(cancellingOperation||!engine.worker)return;
+  if(cancellingOperation)return;
   cancellingOperation=true;
   operationDepth+=1;
   const button=document.getElementById('globalOperationCancel');
   if(button)button.disabled=true;
-  operationUpdate('Cancelling operation…',null,'Restarting the isolated analysis worker and restoring parsed source files.');
+  operationUpdate('Cancelling operation…',null,'Restarting the isolated analysis worker and restoring authoritative-ready source files.');
+  const droppedPending=invalidatePendingSourceImports();
   try{
     const readyItems=[...state.files.values()].filter(item=>item.status==='ready');
-    const info=await engine.restart(readyItems);
+    const restartPromise=engine.restart(readyItems);
+    engineBootPromise=restartPromise;
+    const info=await restartPromise;
     diagnostic.status='ready';
+    diagnostic.engineReadyAt=performance.now();
     setEngineStatus('Reference Python worker ready · files remain local','ready');
-    if($('footerBuild'))$('footerBuild').textContent=`Reference engine: Python via Pyodide 0.29.4 Web Worker · ${Number(info?.manifestCount||0)} modules`;
+    if($('footerBuild'))$('footerBuild').textContent=`Reference engine: Python via Pyodide 0.29.4 Web Worker · ${Number(info?.manifestCount||0)} modules · FastPath preview worker`;
+    if(droppedPending){
+      renderPool();
+      renderSeriesOptions();
+      notifySourcePoolChanged('cancel-pending-import');
+    }
   }catch(err){
+    engineBootPromise=null;
     diagnostic.status='failed';
     diagnostic.errors.push({time:new Date().toISOString(),target:'analysis-worker-restart',message:String(err?.message||err)});
     setEngineStatus(`Engine restart failed: ${err?.message||err}`,'error');
@@ -307,40 +408,225 @@ function allSeries(){
 }
 function setOptions(select,all,{none=false,preserve=true}={}){const prev=preserve?select.value:'';select.innerHTML=(none?'<option value="">None</option>':'<option value="">Select…</option>')+all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');if([...select.options].some(o=>o.value===prev))select.value=prev;}
 
+function reconcileFastPath(item){
+  const preview=item&&item.preview,parsed=item&&item.parsed;
+  if(!preview||!preview.eligible||!parsed)return {status:'not-applicable',mismatches:[]};
+  const mismatches=[];
+  const same=(label,a,b)=>{if(String(a??'')!==String(b??''))mismatches.push({field:label,preview:a??null,authoritative:b??null});};
+  same('format',preview.format,parsed.format);
+  same('rows',Number(preview.rows),Number(parsed.rows));
+  same('start',modelClock(preview.start),modelClock(parsed.start));
+  same('end',modelClock(preview.end),modelClock(parsed.end));
+  same('columns',JSON.stringify(preview.columns||[]),JSON.stringify(parsed.columns||[]));
+  for(const s of preview.series||[]){
+    if(!(parsed.columns||[]).includes(s.column)){mismatches.push({field:'series:'+s.column,preview:'present',authoritative:'missing'});continue;}
+    same('quantity:'+s.column,s.quantity||null,seriesQuantity(item,s.column)||null);
+    same('unit:'+s.column,s.canonical_unit||null,seriesUnit(item,s.column)||null);
+  }
+  return {status:mismatches.length?'mismatch':'matched',mismatches:mismatches};
+}
+function recordFastPath(item){
+  diagnostic.fastpath=diagnostic.fastpath||{records:[]};
+  const timing=item.fastpathTiming||{},record={
+    id:item.id,name:item.displayName,size:item.file&&item.file.size||0,eligible:Boolean(item.preview&&item.preview.eligible),
+    format:item.preview&&item.preview.format||null,status:item.status,reconciliation:item.fastpathReconciliation||null,
+    t0:timing.t0??null,t1:timing.t1??null,t2:timing.t2??null,t3:timing.t3??null,t4:timing.t4??null,t5:timing.t5??null,t6:timing.t6??null,
+    time_to_preview_graph_ms:timing.t4!=null&&timing.t0!=null?timing.t4-timing.t0:null,
+    time_to_preview_statistics_ms:timing.t5!=null&&timing.t0!=null?timing.t5-timing.t0:null,
+    time_to_authoritative_ready_ms:timing.t6!=null&&timing.t0!=null?timing.t6-timing.t0:null
+  };
+  const index=diagnostic.fastpath.records.findIndex(x=>x.id===item.id);
+  if(index>=0)diagnostic.fastpath.records[index]=record;else diagnostic.fastpath.records.push(record);
+  diagnostic.fastpath.last=record;
+}
+async function handoffFastPath(item){
+  const active=window.ICMFastPath&&window.ICMFastPath.active?window.ICMFastPath.active():null;
+  if(!active||active.sourceId!==item.id||item.status!=='ready')return;
+  if(window.ICMFastPath&&window.ICMFastPath.markValidated)window.ICMFastPath.markValidated(item,item.fastpathReconciliation);
+
+  // FastPath is a display accelerator. If an engineering mapping is already
+  // applied, validating a newly imported preview must not replace that context.
+  const appliedMapping={
+    observed:state.mapping.observed||'',
+    models:[...(state.mapping.models||[])],
+    rain:state.mapping.rain||''
+  };
+  const preserveAppliedMapping=Boolean(appliedMapping.observed||appliedMapping.rain||appliedMapping.models.length);
+  if(preserveAppliedMapping){
+    if([...$('observedSelect').options].some(o=>o.value===appliedMapping.observed))$('observedSelect').value=appliedMapping.observed;
+    [...$('modelSelect').options].forEach(o=>o.selected=appliedMapping.models.includes(o.value));
+    if([...$('rainSelect').options].some(o=>o.value===appliedMapping.rain))$('rainSelect').value=appliedMapping.rain;
+    if(window.ICMGraph&&window.ICMGraph.applyMapping)await window.ICMGraph.applyMapping();
+    if(window.ICMFastPath&&window.ICMFastPath.clear)window.ICMFastPath.clear();
+    return;
+  }
+
+  const candidates=allSeries().filter(s=>s.item.id===item.id);
+  const preferred=candidates.find(s=>String(s.quantity||'').toLowerCase()===active.mode)||
+    candidates.find(s=>['depth','level','flow'].includes(String(s.quantity||'').toLowerCase()))||candidates[0];
+  if(!preferred)return;
+  if(String(preferred.quantity||'').toLowerCase()==='rainfall'){
+    $('observedSelect').value='';
+    $('rainSelect').value=preferred.key;
+  }else{
+    $('observedSelect').value=preferred.key;
+  }
+  [...$('modelSelect').options].forEach(o=>o.selected=false);
+  if(window.ICMGraph&&window.ICMGraph.setChannel)window.ICMGraph.setChannel(active.mode,false);
+  if(window.ICMGraph&&window.ICMGraph.applyMapping)await window.ICMGraph.applyMapping();
+  if(window.ICMFastPath&&window.ICMFastPath.clear)window.ICMFastPath.clear();
+}
+async function importGuard(fn){
+  try{return await fn();}
+  catch(err){showError('poolSummary',err&&err.message||err);return null;}
+}
+
 async function ingestFiles(files){
   const list=[...files].filter(f=>f&&recognised(f.name));
   if(!list.length){$('poolSummary').textContent='No recognised CSV / FDV / R files found.';return;}
-  let sourcePoolChanged=false;
-  operationUpdate(`Loading ${list.length} source file${list.length===1?'':'s'}`,0,'Preparing local files for parsing.');
+  const importEpoch=sourceImportEpoch;
+  const importIsCurrent=()=>importEpoch===sourceImportEpoch;
+  const itemIsCurrent=item=>importIsCurrent()&&state.files.get(item.id)===item;
+  let sourcePoolChanged=false,batchPreviewShown=false;
+  const pending=[];
+  $('poolSummary').textContent='Reading '+list.length+' source file'+(list.length===1?'':'s')+'…';
   for(let index=0;index<list.length;index+=1){
-    const file=list[index];
-    const displayName=file.webkitRelativePath||file._relativePath||file.name;
+    if(!importIsCurrent())return;
+    const file=list[index],displayName=file.webkitRelativePath||file._relativePath||file.name;
     if([...state.files.values()].some(x=>x.displayName===displayName&&x.file.size===file.size&&x.file.lastModified===file.lastModified))continue;
-    operationUpdate(`Parsing file ${index+1} of ${list.length}`,Math.round(100*index/list.length),displayName);
     await operationPaint();
-    const started=performance.now();
-    const id=crypto.randomUUID(),item={id,file,displayName,virtualPath:`/data/${id}_${safeName(file.name)}`,status:'loading',parsed:null,hash:null,error:null,loadSeconds:null};state.files.set(id,item);sourcePoolChanged=true;renderPool();
+    if(!importIsCurrent())return;
+    const id=crypto.randomUUID(),item={
+      id:id,file:file,displayName:displayName,virtualPath:'/data/'+id+'_'+safeName(file.name),status:'reading',parsed:null,preview:null,
+      hash:null,error:null,loadSeconds:null,fastpathTiming:{t0:performance.now()}
+    };
+    state.files.set(id,item);sourcePoolChanged=true;renderPool();
     try{
       const buffer=await file.arrayBuffer();
-      item.hash=await sha256Bytes(buffer);
-      await engine.addFile(item,new Uint8Array(buffer));
-      await operationPaint();
-      item.parsed=await engine.call('parse_source',{path:item.virtualPath});
-      item.status='ready';
-      window.ICMProjectRegistry?.registerSource(item);
+      if(!itemIsCurrent(item))return;
+      item.fastpathTiming.t1=performance.now();item._buffer=buffer;
+      const hashPromise=sha256Bytes(buffer);
+      const lower=file.name.toLowerCase(),previewEligible=lower.endsWith('.fdv')||lower.endsWith('.fdv.txt')||lower.endsWith('.csv')||lower.endsWith('.hyd');
+      if(previewEligible){
+        try{
+          const fastResult=await fastpathEngine.parse(item,buffer,15000);
+          if(!itemIsCurrent(item))return;
+          item.fastpathTiming.t2=performance.now();
+          item.preview=fastResult&&fastResult.parsed||null;
+          item.fastpathTiming.t3=performance.now();
+        }catch(previewError){
+          if(!itemIsCurrent(item))return;
+          // FastPath is an optional display accelerator. A preview-worker failure
+          // must never block the authoritative Python import of an otherwise
+          // valid engineering source.
+          item.fastpathTiming.t2=performance.now();
+          item.fastpathTiming.t3=item.fastpathTiming.t2;
+          item.preview=null;
+          item.previewWarning='Fast preview unavailable; continuing with authoritative analysis.';
+          diagnostic.fastpathWarnings=diagnostic.fastpathWarnings||[];
+          diagnostic.fastpathWarnings.push({time:new Date().toISOString(),file:displayName,message:String(previewError&&previewError.message||previewError)});
+        }
+      }
+      item.hash=await hashPromise;
+      if(!itemIsCurrent(item))return;
+      if(item.preview&&item.preview.eligible){
+        item.status='preview-ready';
+        if(list.length===1&&!batchPreviewShown&&window.ICMFastPath&&window.ICMFastPath.renderPreview){
+          batchPreviewShown=true;
+          diagnostic.fastpathActiveSourceId=item.id;
+          const painted=await window.ICMFastPath.renderPreview(item,null,list.length===1);
+          item.fastpathTiming.t4=painted&&painted.graphPaintAt||performance.now();
+          item.fastpathTiming.t5=painted&&painted.statsPaintAt||item.fastpathTiming.t4;
+        }
+      }else{
+        item.status='waiting-engine';
+        if(item.preview&&item.preview.error)item.previewWarning=item.preview.error;
+      }
+      pending.push(item);recordFastPath(item);renderPool();
+    }catch(err){
+      if(!itemIsCurrent(item))return;
+      item.status='error';item.error=String(err&&err.message||err);
+      diagnostic.errors.push({time:new Date().toISOString(),target:'source-fastpath',message:item.error,file:displayName});
+      renderPool();
     }
-    catch(err){item.status='error';item.error=String(err?.message||err);diagnostic.errors.push({time:new Date().toISOString(),target:'source-pool',message:item.error,file:displayName});}
-    finally{item.loadSeconds=(performance.now()-started)/1000;}
-    renderPool();renderSeriesOptions();
-    operationUpdate(`Parsed ${index+1} of ${list.length}`,Math.round(100*(index+1)/list.length),displayName);
-    await operationPaint();
   }
-  operationUpdate('Source loading complete',100,`${list.length} selected file${list.length===1?'':'s'} processed.`);
+
+  if(!importIsCurrent())return;
+  if(!pending.length){if(sourcePoolChanged)notifySourcePoolChanged('ingest');return;}
+  $('poolSummary').textContent=pending.filter(x=>x.preview&&x.preview.eligible).length+' preview-ready · initialising advanced analysis…';
+  let engineInfo=null;
+  try{
+    engineInfo=await ensureEngineBoot();
+    if(!importIsCurrent())return;
+  }
+  catch(err){
+    if(!importIsCurrent())return;
+    for(const item of pending){
+      if(item.status==='error')continue;
+      if(item.preview&&item.preview.eligible){item.status='preview-only';item.error='Advanced analysis unavailable; preview remains display-only.';}
+      else{item.status='error';item.error='Advanced analysis unavailable and this format has no FastPath preview.';}
+      recordFastPath(item);
+    }
+    renderPool();if(sourcePoolChanged)notifySourcePoolChanged('ingest');return;
+  }
+
+  for(let index=0;index<pending.length;index+=1){
+    const item=pending[index];
+    if(!itemIsCurrent(item))continue;
+    if(item.status==='error')continue;
+    item.status='validating';renderPool();await operationPaint();
+    if(!itemIsCurrent(item))continue;
+    const started=performance.now();
+    try{
+      const bytes=new Uint8Array(item._buffer);
+      await engine.addFile(item,bytes);
+      if(!itemIsCurrent(item))continue;
+      item._buffer=null;
+      const parsed=await engine.call('parse_source',{path:item.virtualPath});
+      if(!itemIsCurrent(item))continue;
+      item.parsed=parsed;
+      item.fastpathTiming.t6=performance.now();
+      item.status='ready';
+      item.fastpathReconciliation=reconcileFastPath(item);
+      if(item.fastpathReconciliation.status==='mismatch'){
+        diagnostic.errors.push({time:new Date().toISOString(),target:'fastpath-reconciliation',message:'FastPath preview differed from authoritative parse.',file:item.displayName,detail:item.fastpathReconciliation});
+      }
+      window.ICMProjectRegistry?.registerSource(item);
+    }catch(err){
+      if(itemIsCurrent(item)){
+        item.status='error';item.error=String(err&&err.message||err);
+        diagnostic.errors.push({time:new Date().toISOString(),target:'source-pool',message:item.error,file:item.displayName});
+      }
+    }finally{
+      if(itemIsCurrent(item)){
+        item.loadSeconds=(performance.now()-started)/1000;
+        recordFastPath(item);renderPool();renderSeriesOptions();
+      }
+    }
+  }
+  if(!importIsCurrent())return;
+  // Publish the completed source-pool transaction before any slower graph handoff.
+  // This keeps the externally observable pool lifecycle atomic: once a source is
+  // rendered as Ready, listeners have already received the matching ingest event.
   if(sourcePoolChanged)notifySourcePoolChanged('ingest');
+  const active=state.files.get(diagnostic.fastpathActiveSourceId);
+  if(active&&active.status==='ready')await handoffFastPath(active);
+  if(engineInfo&&$('poolSummary'))renderPool();
 }
 function renderPool(){
-  const items=[...state.files.values()];$('poolSummary').textContent=items.length?`${items.length} file(s) in the source pool · ${items.filter(x=>x.status==='ready').length} parsed successfully.`:'No files loaded.';
-  $('poolBody').innerHTML=items.map(item=>{const p=item.parsed||{},audit=p.audit||{};const sent=Number(audit.sentinel_count||0)+(audit.column_audit?Object.values(audit.column_audit).reduce((a,x)=>a+Number(x.sentinel_count||0),0):0);const malformed=Number(audit.malformed_rows||0)+Number(audit.invalid_timestamps||0);const period=p.start?`${esc(modelClock(p.start))} → ${esc(modelClock(p.end))}`:'—';const auditText=item.status==='ready'?`${sent} sentinel; ${malformed} malformed/invalid`:item.error||'Parsing…';return `<tr><td><div class="file-name">${esc(item.displayName)}</div><small>${mb(item.file.size)} · SHA ${item.hash?item.hash.slice(0,10):'…'}</small></td><td>${esc(p.format||'—')}</td><td>${p.rows??'—'}</td><td>${period}</td><td class="${(sent||malformed)?'audit-warn':'audit-good'}">${esc(auditText)}</td><td>${item.status==='ready'?`Ready${Number.isFinite(item.loadSeconds)?` · ${fmt(item.loadSeconds,1)} s`:''}`:item.status==='error'?'<span class="audit-bad">Error</span>':'Loading…'}</td></tr>`;}).join('');
+  const items=[...state.files.values()],ready=items.filter(x=>x.status==='ready').length,preview=items.filter(x=>['preview-ready','validating','preview-only'].includes(x.status)&&x.preview&&x.preview.eligible).length;
+  $('poolSummary').textContent=items.length?items.length+' file(s) in the source pool · '+ready+' parsed successfully'+(preview?' · '+preview+' preview-ready/validating':'')+'.':'No files loaded.';
+  $('poolBody').innerHTML=items.map(item=>{
+    const p=item.parsed||item.preview||{},audit=p.audit||{};
+    const sent=Number(audit.sentinel_count||0)+(audit.column_audit?Object.values(audit.column_audit).reduce((a,x)=>a+Number(x.sentinel_count||0),0):0);
+    const malformed=Number(audit.malformed_rows||0)+Number(audit.invalid_timestamps||0);
+    const period=p.start?esc(modelClock(p.start))+' → '+esc(modelClock(p.end)):'—';
+    const statusLabel={reading:'Reading…','waiting-engine':'Waiting for advanced engine…','preview-ready':'Preview ready · validating…',validating:'Preview ready · validating…',ready:'Ready',error:'Error','preview-only':'Preview only · advanced unavailable'}[item.status]||item.status;
+    const auditText=item.status==='error'?(item.error||'Failed'):(item.preview&&item.preview.eligible&&item.status!=='ready'?'FastPath structural preview':sent+' sentinel; '+malformed+' malformed/invalid');
+    const reconcile=item.fastpathReconciliation&&item.fastpathReconciliation.status==='mismatch'?' · preview mismatch ⚠':item.fastpathReconciliation&&item.fastpathReconciliation.status==='matched'?' · preview validated':'';
+    const status=item.status==='error'?'<span class="audit-bad">Error</span>':esc(statusLabel+reconcile)+(item.status==='ready'&&Number.isFinite(item.loadSeconds)?' · '+fmt(item.loadSeconds,1)+' s':'');
+    return '<tr><td><div class="file-name">'+esc(item.displayName)+'</div><small>'+mb(item.file.size)+' · SHA '+(item.hash?item.hash.slice(0,10):'…')+'</small></td><td>'+esc(p.format||'—')+'</td><td>'+(p.rows??'—')+'</td><td>'+period+'</td><td class="'+((sent||malformed||(item.fastpathReconciliation&&item.fastpathReconciliation.status==='mismatch'))?'audit-warn':'audit-good')+'">'+esc(auditText)+'</td><td>'+status+'</td></tr>';
+  }).join('');
 }
 function renderSeriesOptions(){
   const all=allSeries(),obs=$('observedSelect'),mod=$('modelSelect'),rain=$('rainSelect'),prevMods=[...mod.selectedOptions].map(o=>o.value);setOptions(obs,all);mod.innerHTML=all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');[...mod.options].forEach(o=>o.selected=prevMods.includes(o.value));setOptions(rain,all,{none:true});
@@ -851,13 +1137,13 @@ async function chooseFolder(){if('showDirectoryPicker'in window){try{const handl
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
-  eventGuard('chooseFolderBtn','poolSummary',chooseFolder);$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>guarded('poolSummary',()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>guarded('poolSummary',()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
-  const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);guarded('poolSummary',async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=`${files.length} dropped file${files.length===1?'':'s'} detected · preparing import…`;await ingestFiles(files);});});
+  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
+  const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);void importGuard(async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=files.length+' dropped file'+(files.length===1?'':'s')+' detected · preparing import…';await ingestFiles(files);});});
   eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('modelSelect').addEventListener('change',()=>{renderModelColourControls();autoSuggestAdvanced(allSeries());});eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
   eventGuard('runCompareBtn','metricGrid',runCompare);$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);eventGuard('runDwfBtn','dwfSummary',runDwf);
   $('rainCriteriaMode').addEventListener('change',criteriaModeChanged);eventGuard('runRainEventsBtn','rainEventSummary',runRainEvents);eventGuard('runHealthBtn','healthBody',runHealth);
   $('addExclusionBtn').addEventListener('click',()=>addExclusionRow());eventGuard('runSpillsBtn','obsSpillSummary',runSpills);eventGuard('runStorageBtn','storageSummary',runStorage);
   $('downloadWorkspaceBtn').addEventListener('click',()=>guarded('workspaceStatus',downloadWorkspace));$('loadWorkspaceBtn').addEventListener('click',()=>$('workspaceInput').click());$('workspaceInput').addEventListener('change',e=>e.target.files[0]&&guarded('workspaceStatus',()=>loadWorkspaceFile(e.target.files[0])));eventGuard('saveNamedWorkspaceBtn','workspaceStatus',saveNamedWorkspace);eventGuard('loadNamedWorkspaceBtn','workspaceStatus',loadNamedWorkspace);eventGuard('downloadReportBtn','workspaceStatus',downloadReport);eventGuard('downloadFourPeriodBtn','workspaceStatus',downloadFourPeriod);$('downloadManifestBtn')?.addEventListener('click',()=>guarded('workspaceStatus',downloadManifest));document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn)));
 }
-async function start(){window.ICMProjectRegistry?.mount();wireEvents();renderPool();renderSeriesOptions();renderExclusions();renderNamedWorkspaces();criteriaModeChanged();try{const info=await engine.boot();setEngineStatus('Reference Python worker ready · files remain local','ready');$('footerBuild').textContent=`Reference engine: Python via Pyodide 0.29.4 Web Worker · ${Number(info?.manifestCount||0)} modules`;window.ICMProjectRegistry?.render();}catch(err){diagnostic.status='failed';diagnostic.errors.push({time:new Date().toISOString(),target:'engine',message:String(err?.message||err)});console.error(err);setEngineStatus(`Engine failed: ${err.message||err}`,'error');$('poolSummary').textContent='The browser Python worker did not start. Reload with network access to the pinned Pyodide/Plotly CDNs.';}}
+async function start(){window.ICMProjectRegistry?.mount();wireEvents();renderPool();renderSeriesOptions();renderExclusions();renderNamedWorkspaces();criteriaModeChanged();setEngineStatus('Initialising advanced analysis…','booting');void ensureEngineBoot().catch(()=>{});}
 start();
