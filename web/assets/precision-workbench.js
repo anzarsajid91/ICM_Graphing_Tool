@@ -173,6 +173,7 @@ function preparePageComposition(){
   own(qs('.survey-professional'),['survey/rainfall-response','rainfall/gauges']);
   own($('completeSurveyPanel'),['survey/rainfall-response']);
   own($('surveyBalancePanel'),['survey/flow-continuity']);
+  own(qs('#tab-compare > .panel'),['verification/comparison','verification/rating','verification/dwf']);
   own(qs('#tab-compare .tool-main-section'),['verification/comparison']);
   own($('pwRatingPanel'),['verification/rating']);
   own($('pwDwfPanel'),['verification/dwf']);
