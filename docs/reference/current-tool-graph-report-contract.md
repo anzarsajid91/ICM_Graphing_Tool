@@ -81,10 +81,12 @@ For the browser workbench, equivalent visual hierarchy may be adapted for WebGL/
 
 ## 3. Threshold ownership
 
-Thresholds belong to **Depth only**.
+Thresholds belong to the **vertical hydraulic level / depth axis only**.
 
 - A threshold must not appear on Flow or Velocity.
-- Model threshold controls must not imply an active model threshold if no model Depth series is mapped.
+- ICM HYD / P_DATETIME exports may classify the vertical series as `level` while FDV sources classify the corresponding hydraulic quantity as `depth`; both are eligible for threshold overlays when plotted on the vertical hydraulic axis.
+- Model threshold controls must not imply an active model threshold if no model Level/Depth series is mapped.
+- The Spills threshold values are the canonical analytical values; graph controls are editing aliases and must not diverge from spill calculations or restored workspaces.
 - If observed and model thresholds coincide, one visible line is preferable to two coincident lines, with a combined legend label.
 - Threshold lines are dashed and identified in the legend.
 
