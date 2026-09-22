@@ -50,3 +50,12 @@ assert.equal(sandbox.window.requests[0].args.end_exclusive,true);
 assert.equal(sandbox.window.period.traces[0].x[1],null);
 assert.equal(sandbox.window.period.traces[0].y[1],null);
 console.log('Report period retrieval retains gap separators and uses a single bounded native-statistics request.');
+
+const scatterPop=run(`scatterPopulation({paired:[{obs:-1,sim:1},{obs:0,sim:2},{obs:2,sim:4},{obs:3,sim:7}],metrics:{pairs:4},positive_metrics:{pairs:2,regression_slope:3,regression_intercept:-2},positive_removed_count:2},true)`);
+assert.equal(scatterPop.pairs.length,2);
+assert.equal(scatterPop.removed_count,2);
+assert.equal(scatterPop.metrics.pairs,2);
+const fit=run(`regressionLinePoints({regression_slope:2,regression_intercept:1},[{obs:1,sim:3},{obs:4,sim:9}],false)`);
+assert.deepEqual(Array.from(fit.x),[1,4]);
+assert.deepEqual(Array.from(fit.y),[3,9]);
+console.log('Scatter regressions passed: log population is positive-only and fitted line consumes authoritative coefficients.');
