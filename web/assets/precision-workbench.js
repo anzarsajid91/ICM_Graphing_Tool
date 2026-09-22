@@ -176,6 +176,7 @@ function preparePageComposition(){
   own(qs('#tab-compare .tool-main-section'),['verification/comparison']);
   own($('pwRatingPanel'),['verification/rating']);
   own($('pwDwfPanel'),['verification/dwf']);
+  own($('tab-storage'),['verification/storage']);
   own($('pwSpillThresholdSurface'),['spills/thresholds']);
   own($('pwSpillResultsSurface'),['spills/results']);
   own($('pwWorkspaceSurface'),['report/workspace']);

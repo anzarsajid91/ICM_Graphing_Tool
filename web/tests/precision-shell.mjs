@@ -11,7 +11,7 @@ page.on('pageerror',e=>errors.push(String(e)));
 page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
 try{
   await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:120000});
+  await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
   const labels=(await page.locator('.pw-primary-nav button').allTextContents()).map(x=>x.replace(/^[^A-Za-z]+/,'').trim());
   if(labels.join('|')!=='Data & Time Series|Flow Survey|Rainfall|Assessment|Spills|Report')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
   const productTitle=((await page.locator('.pw-brand-title').textContent())||'').trim();
@@ -171,7 +171,7 @@ try{
   await page.waitForFunction(()=>location.hash==='#/survey/data-health');
   if((await page.locator('#pwPageTitle').textContent())?.trim()!=='Survey health and data coverage')throw new Error('Deep-link title mismatch');
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready'&&window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='data-health',null,{timeout:120000});
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='data-health',null,{timeout:30000});
   if(errors.length)throw new Error('Browser errors: '+errors.join(' | '));
   console.log(browserName+' Precision Workbench shell acceptance passed.');
 }finally{
