@@ -601,6 +601,20 @@ try{
   stage='observed-only yearly spill calculation';
   await precisionRoute('spills','thresholds');
   if(await page.inputValue('#obsThreshold')!=='1.5')throw new Error('Graph observed threshold was not synchronised to spill calculation');
+  // Exercise the reverse direction from the user's reported workflow: edit the
+  // canonical spill threshold, return to Time Series, refresh, and require the
+  // same line/value to be visible on the vertical hydraulic axis.
+  await page.fill('#obsThreshold','1.55');
+  await page.waitForFunction(()=>document.querySelector('#graphObsThreshold')?.value==='1.55');
+  await precisionRoute('data','time-series');
+  await page.click('#refreshGraphBtn');
+  await page.waitForFunction(()=>{
+    const chart=document.querySelector('#timeChart');
+    const lines=(chart?.layout?.shapes||[]).filter(s=>s.type==='line'&&s.yref!=='paper');
+    return lines.length===1&&lines[0].yref==='y'&&Number(lines[0].y0)===1.55;
+  },null,{timeout:60000});
+  await precisionRoute('spills','thresholds');
+  if(await page.inputValue('#obsThreshold')!=='1.55')throw new Error('Spill threshold changed while returning from the graph.');
   await page.click('#runSpillsBtn');
   await page.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in'),null,{timeout:60000});
   await precisionRoute('spills','results');
