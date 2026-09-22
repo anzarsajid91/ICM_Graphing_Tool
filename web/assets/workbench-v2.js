@@ -107,18 +107,18 @@
     toolbar.className = 'v2-graph-toolbar';
     toolbar.innerHTML = `
       <div class="v2-threshold-control" data-threshold-role="observed">
-        <label>Observed / EDM depth threshold
+        <label>Observed / EDM depth / level threshold
           <input id="graphObsThreshold" type="number" step="any" placeholder="Not shown" />
         </label>
         <label class="v2-show-toggle"><input id="showGraphObsThreshold" type="checkbox" checked /> Show line</label>
       </div>
       <div class="v2-threshold-control" data-threshold-role="model">
-        <label>Model depth threshold
+        <label>Model depth / level threshold
           <input id="graphModelThreshold" type="number" step="any" placeholder="Not shown" />
         </label>
         <label class="v2-show-toggle"><input id="showGraphModelThreshold" type="checkbox" checked /> Show line</label>
       </div>
-      <div class="v2-density" id="graphDensity"><strong>Adaptive display</strong>Full view is reduced for speed; zoom progressively refines toward every source timestep. Thresholds are drawn on the Depth panel only.</div>`;
+      <div class="v2-density" id="graphDensity"><strong>Adaptive display</strong>Full view is reduced for speed; zoom progressively refines toward every source timestep. Thresholds are drawn on the Depth / Level panel only.</div>`;
     panel.insertBefore(toolbar, details);
     const chart = document.getElementById('timeChart');
     if (chart && !document.getElementById('v2ChannelStrip')) {
@@ -156,6 +156,7 @@
       });
       $(spillId).addEventListener('input', () => {
         $(graphId).value = $(spillId).value;
+        scheduleGraphRedraw(80);
       });
     }
     for (const id of ['showGraphObsThreshold','showGraphModelThreshold']) {
@@ -187,6 +188,9 @@
     const source=mappingObject(key);
     return source?String(seriesQuantity(source.item,source.col)||'').toLowerCase():'';
   }
+  function isThresholdQuantity(value){
+    return ['depth','level'].includes(String(value||'').toLowerCase());
+  }
 
   function updateChannelControls(){
     const nav=document.getElementById('v2ChannelNav'),strip=document.getElementById('v2ChannelStrip'),selected=mappingObject(state.mapping.observed);
@@ -214,8 +218,8 @@
   }
 
   function updateGraphThresholdControls(){
-    const observedHasDepth=observedGraphSeries().some(source=>String(source.quantity||mappedQuantity(source.key)).toLowerCase()==='depth');
-    const modelHasDepth=(state.mapping.models||[]).some(key=>mappedQuantity(key)==='depth');
+    const observedHasDepth=observedGraphSeries().some(source=>isThresholdQuantity(source.quantity||mappedQuantity(source.key)));
+    const modelHasDepth=(state.mapping.models||[]).some(key=>isThresholdQuantity(mappedQuantity(key)));
     const observedControl=document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]');
     const modelControl=document.querySelector('#v2GraphToolbar [data-threshold-role="model"]');
     if(observedControl)observedControl.hidden=!observedHasDepth;
@@ -232,6 +236,8 @@
     $('mappingStatus').textContent = `Observed: ${obs?seriesLabel(obs.item, obs.col):'not mapped'} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`;
     renderModelColourControls();
     renderExclusions();
+    if($('graphObsThreshold'))$('graphObsThreshold').value=$('obsThreshold').value;
+    if($('graphModelThreshold'))$('graphModelThreshold').value=$('modelThreshold').value;
     updateGraphThresholdControls();
     updateChannelControls();
     const select=$('spillModelSelect');
@@ -265,8 +271,11 @@
     for(const e of exclusionPayload(false)){
       if(e.enabled)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:overlayBottom,y1:1,fillcolor:'#b45309',opacity:.12,line:{width:0},layer:'below',label:{text:e.reason}});
     }
-    const obs = nullableNumber($('graphObsThreshold')?.value ?? $('obsThreshold').value);
-    const model = nullableNumber($('graphModelThreshold')?.value ?? $('modelThreshold').value);
+    // Spill thresholds are the canonical analytical values. The graph toolbar is
+    // an editing alias only, so workspace restores/programmatic changes cannot
+    // leave the plotted threshold state out of sync with spill calculations.
+    const obs = nullableNumber($('obsThreshold').value);
+    const model = nullableNumber($('modelThreshold').value);
     const showObserved=Boolean(targetAxis)&&options.showObserved===true&&$('showGraphObsThreshold')?.checked!==false&&obs!==null;
     const showModel=Boolean(targetAxis)&&options.showModel===true&&$('showGraphModelThreshold')?.checked!==false&&model!==null;
     const coincident=showObserved&&showModel&&Math.abs(Number(obs)-Number(model))<=1e-12;
@@ -469,8 +478,8 @@
       const displayRange=range?.length===2?range:plottedRange;
       const traceType=data=>Number(data?.display_count||0)>8000?'scattergl':'scatter';
       const colourFor=q=>q==='flow'?($('observedFlowColour')?.value||$('obsColor').value):q==='depth'?($('observedDepthColour')?.value||$('obsColor').value):q==='velocity'?($('observedVelocityColour')?.value||$('obsColor').value):$('obsColor').value;
-      const observedThreshold=nullableNumber($('graphObsThreshold')?.value ?? $('obsThreshold').value);
-      const modelThreshold=nullableNumber($('graphModelThreshold')?.value ?? $('modelThreshold').value);
+      const observedThreshold=nullableNumber($('obsThreshold').value);
+      const modelThreshold=nullableNumber($('modelThreshold').value);
       const statsDomain=[0,.20],statsTop=.20,plotBottom=.285,axisPosition=.27;
       const rainBottom=.865,hydraulicTop=rainEntry?.805:1;
       let traces=[],layout,panelOrder=[];
@@ -533,8 +542,8 @@
         layout.shapes=[...panelDecorations,...v2GraphShapes(thresholdAxis,{showObserved,showModel,plotBottom})];
         if(coincident)traces.push({x:[null],y:[null],mode:'lines',name:'Observed + model depth threshold',hoverinfo:'skip',showlegend:true,yaxis:thresholdAxis,line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
         else{
-          if(showObserved)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold1Label').value||'Observed / EDM depth threshold',hoverinfo:'skip',showlegend:true,yaxis:thresholdAxis,line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
-          if(showModel)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold2Label').value||'Model depth threshold',hoverinfo:'skip',showlegend:true,yaxis:thresholdAxis,line:{color:$('threshold2Color').value,width:2.5,dash:'dash'}});
+          if(showObserved)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold1Label').value||'Observed / EDM depth / level threshold',hoverinfo:'skip',showlegend:true,yaxis:thresholdAxis,line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
+          if(showModel)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold2Label').value||'Model depth / level threshold',hoverinfo:'skip',showlegend:true,yaxis:thresholdAxis,line:{color:$('threshold2Color').value,width:2.5,dash:'dash'}});
         }
         traces.push(graphStatisticsTrace(statisticRows,statsDomain));
         window.__ICM_WORKBENCH__.lastPanelDomains=panelDomains;
@@ -556,15 +565,18 @@
           layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
           traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
         }
-        const singleDepth=quantity==='depth',hasDepthModel=singleDepth&&modelEntries.some(x=>x.quantity==='depth');
+        // ICM HYD exports commonly describe the vertical hydraulic series as
+        // "level" rather than "depth". Both belong to the same threshold-bearing
+        // hydraulic axis; flow and velocity remain ineligible.
+        const singleDepth=isThresholdQuantity(quantity),hasDepthModel=singleDepth&&modelEntries.some(x=>isThresholdQuantity(x.quantity));
         const showObserved=singleDepth&&$('showGraphObsThreshold')?.checked!==false&&observedThreshold!==null;
         const showModel=hasDepthModel&&$('showGraphModelThreshold')?.checked!==false&&modelThreshold!==null;
         const coincident=showObserved&&showModel&&Math.abs(Number(observedThreshold)-Number(modelThreshold))<=1e-12;
         layout.shapes=v2GraphShapes(singleDepth?'y':null,{showObserved,showModel,plotBottom});
         if(coincident)traces.push({x:[null],y:[null],mode:'lines',name:'Observed + model depth threshold',hoverinfo:'skip',showlegend:true,yaxis:'y',line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
         else{
-          if(showObserved)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold1Label').value||'Observed / EDM depth threshold',hoverinfo:'skip',showlegend:true,yaxis:'y',line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
-          if(showModel)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold2Label').value||'Model depth threshold',hoverinfo:'skip',showlegend:true,yaxis:'y',line:{color:$('threshold2Color').value,width:2.5,dash:'dash'}});
+          if(showObserved)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold1Label').value||'Observed / EDM depth / level threshold',hoverinfo:'skip',showlegend:true,yaxis:'y',line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
+          if(showModel)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold2Label').value||'Model depth / level threshold',hoverinfo:'skip',showlegend:true,yaxis:'y',line:{color:$('threshold2Color').value,width:2.5,dash:'dash'}});
         }
         traces.push(graphStatisticsTrace(statisticRows,statsDomain));
         window.__ICM_WORKBENCH__.lastPanelDomains=null;
