@@ -872,6 +872,18 @@ function migrateBrowserWorkspace(input){
   if(!w.analysis||typeof w.analysis!=='object')w.analysis={};
   if(!w.appearance||typeof w.appearance!=='object')w.appearance={};
   if(!w.rain_events||typeof w.rain_events!=='object')w.rain_events={criteria_mode:'manual',events:[],manual:{}};
+  const routeAliases={
+    'verification/comparison':['graphs','comparison'],'verification/rating':['graphs','rating'],'verification/dwf':['graphs','dwf'],'verification/storage':['spills','storage'],
+    'spills/thresholds':['spills','assessment'],'spills/results':['spills','assessment'],
+    'survey/configuration':['survey','fdv-check'],'survey/data-health':['survey','fdv-check'],'survey/rainfall-response':['survey','rainfall-check'],'survey/flow-continuity':['survey','volume-balance'],
+    'rainfall/gauges':['survey','rainfall-check'],'rainfall/events':['survey','rainfall-check'],
+    'report/builder':['reports','report-generation'],'report/workspace':['reports','workspace']
+  };
+  const nav=w.navigation&&typeof w.navigation==='object'?w.navigation:null;
+  if(nav?.workspace&&nav?.page){
+    const migrated=routeAliases[nav.workspace+'/'+nav.page]||[nav.workspace,nav.page];
+    w.navigation={workspace:migrated[0],page:migrated[1]};
+  }
   w.schema_version=3;
   return w;
 }
@@ -896,7 +908,7 @@ function workspaceSeries(key){
   const domain=window.ICMProjectRegistry?.getSeries(key);
   return {sha256:x.item.hash,display_name:x.item.displayName,file_name:x.item.file.name,column:x.col,asset_id:domain?.assetId||null,role:domain?.role||null,quantity:domain?.quantity||seriesQuantity(x.item,x.col)||null,unit:domain?.unit||seriesUnit(x.item,x.col)||null};
 }
-function workspaceObject(){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:'model clock/unspecified',saved_at:new Date().toISOString(),source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#1f77b4',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#2ca02c'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:state.rainEvents,manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
+function workspaceObject(){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:'model clock/unspecified',saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#1f77b4',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#2ca02c'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:state.rainEvents,manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
 function downloadBlob(name,content,type='application/octet-stream'){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 function downloadWorkspace(){downloadBlob(`icm-workbench-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(workspaceObject(),null,2),'application/json');$('workspaceStatus').textContent='Workspace downloaded. Raw files were not embedded.';}
 function findSeriesFromWorkspace(ref){if(!ref)return'';const item=[...state.files.values()].find(x=>x.hash===ref.sha256);return item&&item.parsed?.columns.includes(ref.column)?sourceKey(item.id,ref.column):'';}
@@ -955,8 +967,11 @@ async function applyWorkspace(w){
   $('graphObsThreshold').value=$('obsThreshold').value;
   $('graphModelThreshold').value=$('modelThreshold').value;
   await drawTimeChart();
-  diagnostic.workspaceRestore={expected,matched,completedAt:new Date().toISOString()};
-  return {expected,matched};
+  if(w.navigation?.workspace&&w.navigation?.page&&window.__ICM_PRECISION_WORKBENCH__?.navigate){
+    window.__ICM_PRECISION_WORKBENCH__.navigate(w.navigation.workspace,w.navigation.page,false);
+  }
+  diagnostic.workspaceRestore={expected,matched,navigation:w.navigation||null,completedAt:new Date().toISOString()};
+  return {expected,matched,navigation:w.navigation||null};
 }
 async function loadWorkspaceFile(file){await applyWorkspace(JSON.parse(await file.text()));}
 function saveNamedWorkspace(){const name=$('workspaceName').value.trim();if(!name)throw new Error('Enter a workspace name.');const all=readNamedWorkspaces();all[name]=workspaceObject();localStorage.setItem('icm-workbench-named',JSON.stringify(all));renderNamedWorkspaces();$('workspaceStatus').textContent=`Saved named browser workspace: ${name}.`;}

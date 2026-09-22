@@ -79,7 +79,7 @@ await vm.runInContext(`(async()=>{
   window.observedMasks=exclusionPayload(true,'observed');
   window.modelMasks=exclusionPayload(true,'model');
   window.audit=exclusionPayload();
-  window.migratedWorkspace=migrateBrowserWorkspace({schema_version:1,mappings:{},source_references:{}});
+  window.migratedWorkspace=migrateBrowserWorkspace({schema_version:1,mappings:{},source_references:{},navigation:{workspace:'verification',page:'storage'}});
   localStorage.setItem('icm-workbench-named','{bad json');
   window.recoveredNamedStore=readNamedWorkspaces();
   window.quarantinedKeys=[...store.keys()].filter(k=>k.startsWith('icm-workbench-named-corrupt-'));
@@ -97,6 +97,8 @@ assert.equal(sandbox.window.observedMasks[0].id,'observed');
 assert.equal(sandbox.window.modelMasks[0].id,'model');
 assert.equal(sandbox.window.audit.length,3);
 assert.equal(sandbox.window.migratedWorkspace.schema_version,3);
+assert.equal(sandbox.window.migratedWorkspace.navigation.workspace,'spills');
+assert.equal(sandbox.window.migratedWorkspace.navigation.page,'storage');
 assert.deepEqual(Object.keys(sandbox.window.recoveredNamedStore),[]);
 assert.equal(sandbox.window.quarantinedKeys.length,1);
 console.log('Runtime regressions passed: worker RPC isolation/recovery, bounded FastPath failure fallback, scoped masks, workspace migration and corrupt local-state recovery.');
