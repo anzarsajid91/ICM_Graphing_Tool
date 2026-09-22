@@ -21,20 +21,35 @@ page.on('console',m=>{if(m.type()==='error')consoleErrors.push(`console: ${m.tex
 page.on('requestfailed',r=>failedRequests.push(`${r.method()} ${r.url()} :: ${r.failure()?.errorText||'failed'}`));
 
 async function optionValue(selector,needle){return page.locator(`${selector} option`).evaluateAll((opts,n)=>opts.find(x=>x.textContent.includes(n))?.value||'',needle);}
+const routeAliases={
+  'verification/comparison':['graphs','comparison'],
+  'verification/rating':['graphs','rating'],
+  'verification/dwf':['graphs','dwf'],
+  'verification/storage':['spills','storage'],
+  'rainfall/events':['survey','rainfall-check'],
+  'survey/data-health':['survey','fdv-check'],
+  'survey/rainfall-response':['survey','rainfall-check'],
+  'survey/flow-continuity':['survey','volume-balance'],
+  'spills/thresholds':['spills','assessment'],
+  'spills/results':['spills','assessment'],
+  'report/builder':['reports','report-generation'],
+  'report/workspace':['reports','workspace'],
+};
 async function precisionRoute(workspace,subpage){
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+  const expected=routeAliases[workspace+'/'+subpage]||[workspace,subpage];
   await page.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,subpage]);
-  await page.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},[workspace,subpage]);
+  await page.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},expected);
 }
 async function clickTab(name){
   const routes={
     graph:['data','time-series'],
-    compare:['verification','comparison'],
-    'rain-events':['rainfall','events'],
-    'data-health':['survey','data-health'],
-    spills:['spills','results'],
-    storage:['verification','storage'],
-    workspace:['report','builder']
+    compare:['graphs','comparison'],
+    'rain-events':['survey','rainfall-check'],
+    'data-health':['survey','fdv-check'],
+    spills:['spills','assessment'],
+    storage:['spills','storage'],
+    workspace:['reports','report-generation']
   };
   const next=routes[name];
   if(next){await precisionRoute(next[0],next[1]);return;}
@@ -672,11 +687,24 @@ try{
   await page.waitForFunction(()=>document.querySelectorAll('#scenarioBody tr').length===1&&document.querySelectorAll('#metricGrid .metric').length>=10,null,{timeout:60000});
   const comparisonValidity=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastComparisonValidity);
   if(!comparisonValidity||comparisonValidity.status!=='partial'||!(Number(comparisonValidity.coverage)>0&&Number(comparisonValidity.coverage)<1))throw new Error(`Comparison validity contract should expose the demo telemetry gap as partial support: ${JSON.stringify(comparisonValidity)}`);
-  const metricText=await page.locator('#metricGrid').textContent();
-  if(!metricText.includes('Calculation status')||!metricText.includes('Valid support'))throw new Error('Comparison validity cards are missing');
+  let metricText=await page.locator('#metricGrid').textContent();
+  if(!metricText.includes('Calculation status')||!metricText.includes('Valid support')||!metricText.includes('Pearson r')||!metricText.includes('Regression R²')||!metricText.includes('Slope')||!metricText.includes('Intercept'))throw new Error('Comparison validity/regression cards are missing: '+metricText);
   for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])await page.waitForSelector(`#${id} .main-svg`,{timeout:60000});
-  await precisionRoute('verification','comparison');
-  await captureEvidence('08-verification-comparison');
+  const linearScatter=await page.evaluate(()=>{
+    const chart=document.querySelector('#scatterChart'),markers=(chart?.data||[]).filter(t=>t.mode==='markers'),fits=(chart?.data||[]).filter(t=>/ fit$/.test(String(t.name||''))),agreement=(chart?.data||[]).filter(t=>String(t.name||'')==='1:1 agreement');
+    return {xType:chart?.layout?.xaxis?.type,yType:chart?.layout?.yaxis?.type,xTitle:chart?.layout?.xaxis?.title?.text,yTitle:chart?.layout?.yaxis?.title?.text,markers:markers.length,fits:fits.length,agreement:agreement.length,hover:markers[0]?.hovertemplate||''};
+  });
+  if(linearScatter.xType!=='linear'||linearScatter.yType!=='linear'||linearScatter.markers<1||linearScatter.fits<1||linearScatter.agreement!==1||!linearScatter.hover.includes('Observed:')||!/Observed .+\(/.test(linearScatter.xTitle||'')||!/Modelled .+\(/.test(linearScatter.yTitle||''))throw new Error('Linear scatter acceptance failed: '+JSON.stringify(linearScatter));
+  await page.selectOption('#scatterScale','log');
+  await page.waitForFunction(()=>document.querySelector('#scatterChart')?.layout?.xaxis?.type==='log'&&document.querySelector('#scatterChart')?.layout?.yaxis?.type==='log',null,{timeout:10000});
+  metricText=await page.locator('#metricGrid').textContent();
+  if(!metricText.includes('Positive pairs')||!metricText.includes('Removed ≤0 pairs'))throw new Error('Log scatter sample accounting is missing: '+metricText);
+  const logScatter=await page.evaluate(()=>{const chart=document.querySelector('#scatterChart'),points=(chart?.data||[]).filter(t=>t.mode==='markers').flatMap(t=>(t.x||[]).map((x,i)=>[Number(x),Number(t.y?.[i])]).filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1])));return {points,xType:chart?.layout?.xaxis?.type,yType:chart?.layout?.yaxis?.type};});
+  if(logScatter.points.some(([x,y])=>x<=0||y<=0))throw new Error('Log scatter contains a nonpositive plotted pair: '+JSON.stringify(logScatter));
+  await page.selectOption('#scatterScale','linear');
+  await page.waitForFunction(()=>document.querySelector('#scatterChart')?.layout?.xaxis?.type==='linear');
+  await precisionRoute('graphs','comparison');
+  await captureEvidence('08-graphs-comparison');
 
   stage='depth-only agreement fit';
   await precisionRoute('verification','rating');
