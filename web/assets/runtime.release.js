@@ -1131,20 +1131,44 @@ function reportProjectRegistry(){
   }).join('');
   return '<div class="note"><strong>Canonical project context.</strong> Files are classified once into assets, engineering series and workbook relationships; the same registry is reused across workflows.</div><div class="table-wrap"><table><thead><tr><th>Asset</th><th>Role</th><th>Source</th><th>Quantities</th><th>Relationships</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
+function reportAnalysisPeriod(){
+  const explicit=analysisBounds(),refs=[
+    ...observedGraphSeries().map(x=>mappingObject(x.key)),
+    ...state.mapping.models.map(mappingObject),
+    mappingObject(state.mapping.rain),
+  ].filter(Boolean);
+  const starts=refs.map(x=>modelClock(x.item?.parsed?.start)).filter(Boolean).map(x=>new Date(x).getTime()).filter(Number.isFinite);
+  const ends=refs.map(x=>modelClock(x.item?.parsed?.end)).filter(Boolean).map(x=>new Date(x).getTime()).filter(Number.isFinite);
+  const start=explicit.start||(starts.length?new Date(Math.min(...starts)).toISOString():null);
+  const end=explicit.end||(ends.length?new Date(Math.max(...ends)).toISOString():null);
+  return [start,end];
+}
 async function downloadReport(){
   assertFreshResults();
   if(!state.mapping.observed&&!state.mapping.rain)throw new Error('Apply a mapping before exporting the report.');
   await drawTimeChart();
-  const reportSignature=analysisSignature();
-  const timeFigure=reportPlotFigure('assessment-time-graph',$('timeChart').data,$('timeChart').layout,[],'Displayed source period; the integrated statistics band uses native source values.');
-  const images=await Promise.all([Promise.resolve(''),reportChart('scatterChart',680,440),reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440)]);
-  const timeImg=images[0],scatterImg=images[1],residImg=images[2],cumulativeImg=images[3],exceedanceImg=images[4];
+  const reportSignature=analysisSignature(),period=reportAnalysisPeriod();
+  const reportSeries=await reportTraces(period);
+  const currentLayout=$('timeChart').layout||{};
+  const shapes=JSON.parse(JSON.stringify(currentLayout.shapes||[]));
+  const annotations=JSON.parse(JSON.stringify(currentLayout.annotations||[]));
+  const fullLayout=hydraulicGraphLayout({...reportSeries,range:period[0]&&period[1]?period:null,title:'Full analysis period',shapes,annotations});
+  const timeFigure=reportPlotFigure('assessment-time-graph',reportSeries.traces,fullLayout,reportSeries.statistics,'Declared report analysis period; zoom state is not used as an analytical input.');
+  const images=await Promise.all([reportChart('scatterChart',760,500),reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440)]);
+  const scatterImg=images[0],residImg=images[1],cumulativeImg=images[2],exceedanceImg=images[3];
   const w=state.spillSnapshot&&state.spillSnapshot.config||state.comparisonSnapshot&&state.comparisonSnapshot.config||workspaceObject();
-  const scenarioRows=state.comparisons.map((x,i)=>x.result?'<tr><td>Model '+(i+1)+' · '+esc(x.model.item.displayName)+' · '+esc(x.model.col)+'</td><td>'+(x.result.metrics.pairs==null?'—':x.result.metrics.pairs)+'</td><td>'+fmt(x.result.metrics.rmse)+'</td><td>'+fmt(x.result.metrics.mae)+'</td><td>'+fmt(x.result.metrics.mean_bias)+'</td><td>'+fmt(x.result.metrics.r2_correlation)+'</td><td>'+fmt(x.result.metrics.nse)+'</td><td>'+esc(x.result.calculation_status||'—')+'</td><td>'+(x.result.coverage_fraction==null?'—':fmt(x.result.coverage_fraction*100,1)+'%')+'</td></tr>':'').join('');
-  const scenarioTable=scenarioRows?'<div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Pairs</th><th>RMSE</th><th>MAE</th><th>Bias</th><th>R²</th><th>NSE</th><th>Status</th><th>Valid support</th></tr></thead><tbody>'+scenarioRows+'</tbody></table></div>':'<p class="muted">No scenario comparison has been calculated.</p>';
+  const log=$('scatterScale').value==='log';
+  const scenarioRows=state.comparisons.map((x,i)=>{
+    if(!x.result)return '';
+    const population=scatterPopulation(x.result,log),q=population.metrics||{},unit=comparisonUnit(x.result);
+    const uv=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),4)+(unit?' '+esc(unit):'');
+    return '<tr><td>Model '+(i+1)+' · '+esc(x.model.item.displayName)+' · '+esc(x.model.col)+'</td><td>'+(q.pairs??population.pairs.length)+'</td><td>'+fmt(q.correlation)+'</td><td>'+fmt(q.regression_r2)+'</td><td>'+fmt(q.regression_slope)+'</td><td>'+uv(q.regression_intercept)+'</td><td>'+uv(q.rmse)+'</td><td>'+uv(q.mae)+'</td><td>'+uv(q.mean_bias)+'</td><td>'+fmt(q.nse)+'</td><td>'+fmt(q.kge_2009)+'</td><td>'+(log?population.removed_count:'—')+'</td><td>'+esc(x.result.calculation_status||'—')+'</td><td>'+(x.result.coverage_fraction==null?'—':fmt(x.result.coverage_fraction*100,1)+'%')+'</td></tr>';
+  }).join('');
+  const populationLabel=log?'Positive observed/modelled pairs only (log₁₀ view; nonpositive values are filtered from this view, not altered).':'All finite authoritative paired values (linear view).';
+  const scenarioTable=scenarioRows?'<p class="muted">'+esc(populationLabel)+' Metrics are sample-weighted; bias is modelled minus observed. Regression is raw-scale M = intercept + slope × O.</p><div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Pairs</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Log filtered</th><th>Status</th><th>Valid support</th></tr></thead><tbody>'+scenarioRows+'</tbody></table></div>':'<p class="muted">No scenario comparison has been calculated.</p>';
   let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints.</div>';
   body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
-  body+='<h2>Full time-period graph</h2>'+timeFigure;
+  body+='<h2>Full analysis-period graph</h2>'+timeFigure;
   body+='<h2>Spill / EDM assessment</h2><div class="report-grid"><div class="card"><h3>Observed / EDM</h3>'+spillSummaryHtml(state.spills.observed)+reportYearlySpills(state.spills.observed)+'</div><div class="card"><h3>Modelled</h3>'+spillSummaryHtml(state.spills.model)+reportYearlySpills(state.spills.model)+'</div></div>';
   body+='<h3>Observed spills by month</h3>'+reportSpillCountMatrix(state.spills.observed);
   body+='<h3>Model spills by month</h3>'+reportSpillCountMatrix(state.spills.model);
@@ -1152,8 +1176,8 @@ async function downloadReport(){
   body+='<h2>Scenario comparison</h2>'+scenarioTable;
   if(window.__ICM_WORKBENCH__.professionalSurveyReportHtml)body+=window.__ICM_WORKBENCH__.professionalSurveyReportHtml;
   const diag=[];
-  if(scatterImg)diag.push('<figure class="figure"><img src="'+scatterImg+'" alt="Observed versus modelled scatter plot"><figcaption>Observed versus modelled paired values.</figcaption></figure>');
-  if(residImg)diag.push('<figure class="figure"><img src="'+residImg+'" alt="Residual plot"><figcaption>Model minus observed residual through time.</figcaption></figure>');
+  if(scatterImg)diag.push('<figure class="figure"><img src="'+scatterImg+'" alt="Observed versus modelled scatter plot"><figcaption>'+esc(log?'Observed versus modelled log₁₀ scatter; positive pairs only.':'Observed versus modelled linear scatter.')+'</figcaption></figure>');
+  if(residImg)diag.push('<figure class="figure"><img src="'+residImg+'" alt="Residual plot"><figcaption>Model minus observed residual through time using all valid pairs.</figcaption></figure>');
   if(cumulativeImg)diag.push('<figure class="figure"><img src="'+cumulativeImg+'" alt="Cumulative flow volume plot"><figcaption>Cumulative-volume diagnostic where dimensional flow support is available.</figcaption></figure>');
   if(exceedanceImg)diag.push('<figure class="figure"><img src="'+exceedanceImg+'" alt="Flow duration plot"><figcaption>Time-weighted exceedance diagnostic where available.</figcaption></figure>');
   if(diag.length)body+='<div class="report-grid">'+diag.join('')+'</div>';
@@ -1168,6 +1192,7 @@ async function downloadReport(){
   downloadBlob('icm-workbench-report-'+new Date().toISOString().slice(0,10)+'.html',html,'text/html');
   $('workspaceStatus').textContent='Professional HTML engineering report downloaded.';
 }
+
 async function reportTraces(period){
   const sources=observedGraphSeries(),fdvMode=sources.length>=2,traces=[],statistics=[],quantities=[];
   const axisFor=q=>fdvMode?(q==='flow'?'y3':q==='velocity'?'y4':'y'):'y';
