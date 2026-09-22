@@ -328,11 +328,22 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
     for exc in exclusions:
         paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
     metrics = calibration_metrics(paired)
+    positive_mask = (
+        pd.to_numeric(paired["obs"], errors="coerce").gt(0)
+        & pd.to_numeric(paired["sim"], errors="coerce").gt(0)
+    ) if not paired.empty else pd.Series(dtype=bool)
+    positive_paired = paired.loc[positive_mask].copy() if not paired.empty else paired.copy()
+    positive_metrics = calibration_metrics(positive_paired)
+    positive_removed_count = max(0, int(metrics.get("pairs") or 0) - int(positive_metrics.get("pairs") or 0))
+    obs_contract = _series_contract(obs_path, obs_col)
+    model_contract = _series_contract(model_path, model_col)
     p = residual_series(paired) if not paired.empty else paired.copy()
     if not p.empty:
         p["residual"] = p["residual_model_minus_observed"]
     payload = {
         "metrics": metrics,
+        "positive_metrics": positive_metrics,
+        "positive_removed_count": positive_removed_count,
         "paired": _records(p),
         "calculation_status":coverage.get("status","unavailable"),
         "coverage_fraction":coverage.get("coverage_fraction"),
@@ -340,14 +351,28 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
         "validity_model":"validity-v1",
         "observed_quantity": oq,
         "modelled_quantity": mq,
+        "observed_unit": obs_contract.get("canonical_unit"),
+        "modelled_unit": model_contract.get("canonical_unit"),
+        "pairing_method": "observed timestamps with exact or bounded linear model interpolation; no extrapolation across disallowed gaps",
+        "metric_weighting": "sample-weighted paired values",
     }
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
 
 
 def _quantity(path, column):
-    metadata = getattr(_load(path), "metadata", {})
-    return metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
+    metadata = getattr(_load(path), "metadata", {}) or {}
+    details = {}
+    if isinstance(metadata.get("series_metadata"), dict):
+        details = metadata["series_metadata"].get(column) or {}
+    if not details and isinstance(metadata.get("channels"), dict):
+        details = metadata["channels"].get(column) or {}
+    return (
+        details.get("quantity")
+        or metadata.get("quantity_by_column", {}).get(column)
+        or _column_quantity_hint(column)
+        or metadata.get("quantity")
+    )
 
 
 def _column_quantity_hint(column):
@@ -403,7 +428,12 @@ def _series_contract(path, column, unit_override=None):
         details = dict(metadata["series_metadata"].get(column) or {})
     if not details and isinstance(metadata.get("channels"), dict):
         details = dict(metadata["channels"].get(column) or {})
-    quantity = details.get("quantity") or metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
+    quantity = (
+        details.get("quantity")
+        or metadata.get("quantity_by_column", {}).get(column)
+        or _column_quantity_hint(column)
+        or metadata.get("quantity")
+    )
     original_unit = details.get("original_unit", metadata.get("original_unit"))
     resolved_unit = details.get("canonical_unit", metadata.get("canonical_unit"))
     format_name = getattr(parsed, "format_name", None)

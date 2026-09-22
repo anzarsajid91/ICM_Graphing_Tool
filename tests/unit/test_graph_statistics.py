@@ -63,6 +63,10 @@ class GraphStatisticsTests(unittest.TestCase):
         self.assertIsNone(r['statistics']['total'])
         self.assertEqual(r['statistics']['mean'],1)
 
+    def test_level_column_retains_level_quantity_contract(self):
+        r=self.load('timestamp,level', ['2026-01-01T00:00:00,1','2026-01-01T00:01:00,2'])
+        self.assertEqual(r['statistics']['quantity'],'level')
+
     def test_empty_requested_window_is_unavailable(self):
         r=self.load('timestamp,level (m)', ['2026-01-01T00:00:00,1','2026-01-01T00:01:00,1'],start='2027-01-01',end='2027-02-01')
         self.assertEqual(r['statistics']['status'],'unavailable')
