@@ -48,8 +48,8 @@ async function waitRuntimeWired(page,kind){
 async function chooseFirstSeriesAndGraph(page){
   const observed=await page.locator('#observedSelect option').evaluateAll(opts=>opts.find(o=>o.value)?.value||'');
   const rain=await page.locator('#rainSelect option').evaluateAll(opts=>opts.find(o=>o.value)?.value||'');
-  if(observed)await page.selectOption('#observedSelect',observed);
-  else if(rain)await page.selectOption('#rainSelect',rain);
+  if(observed)await page.locator('#observedSelect').evaluate((select,value)=>{select.value=value;select.dispatchEvent(new Event('change',{bubbles:true}));},observed);
+  else if(rain)await page.locator('#rainSelect').evaluate((select,value)=>{select.value=value;select.dispatchEvent(new Event('change',{bubbles:true}));},rain);
   else throw new Error('No graphable authoritative series became available.');
   await page.locator('#applyMappingBtn').evaluate(el=>el.click());
   await page.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000});
