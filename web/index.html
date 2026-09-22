@@ -54,12 +54,12 @@
         <details class="subpanel appearance-panel"><summary><strong>Appearance &amp; overlays</strong></summary>
           <div class="appearance-group">
             <h3>Series colours</h3>
-            <p class="appearance-hint">Observed is red by default; the first model scenario uses cobalt blue. Each additional model receives a distinct trace colour.</p>
+            <p class="appearance-hint">Observed is red by default; the first model scenario uses a restrained purplish blue. Each additional model receives a distinct trace colour.</p>
             <div class="appearance-colours">
-              <label>Observed / single series<input id="obsColor" type="color" value="#ff0000" /></label>
-              <label>Observed flow<input id="observedFlowColour" type="color" value="#ff0000" /></label>
-              <label>Observed depth<input id="observedDepthColour" type="color" value="#ff0000" /></label>
-              <label>Observed velocity<input id="observedVelocityColour" type="color" value="#ff0000" /></label>
+              <label>Observed / single series<input id="obsColor" type="color" value="#d32f2f" /></label>
+              <label>Observed flow<input id="observedFlowColour" type="color" value="#d32f2f" /></label>
+              <label>Observed depth<input id="observedDepthColour" type="color" value="#d32f2f" /></label>
+              <label>Observed velocity<input id="observedVelocityColour" type="color" value="#d32f2f" /></label>
               <label>Rainfall<input id="rainColor" type="color" value="#4A90E2" /></label>
             </div>
             <div id="modelColourControls" class="colour-grid"></div>
@@ -95,7 +95,7 @@
           <label>Scatter scale<select id="scatterScale"><option value="linear">Linear</option><option value="log">Log (positive pairs only)</option></select></label>
         </div>
         <div class="actions left"><button class="btn" id="useZoomPeriodBtn">Use graph zoom as period</button><button class="btn" id="clearPeriodBtn">Clear period</button></div>
-        <div class="metric-grid" id="metricGrid"></div>
+        <div class="metric-grid" id="metricGrid"></div><div id="comparisonMethodNote" class="pool-summary"></div>
         <div class="two-col"><div id="scatterChart" class="chart small"></div><div id="residualChart" class="chart small"></div></div>
         <div class="two-col"><div id="cumulativeChart" class="chart small"></div><div id="exceedanceChart" class="chart small"></div></div>
         <h3>Scenario table</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Scenario</th><th>Pairs</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Log filtered</th><th>Valid support</th></tr></thead><tbody id="scenarioBody"></tbody></table></div>

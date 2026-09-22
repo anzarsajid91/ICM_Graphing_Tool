@@ -296,6 +296,48 @@ def _comparison_coverage(observed, obs_col, modelled, model_col, domain_start, d
     }
 
 
+def _comparison_metric_reasons(paired, metrics):
+    """Explain undefined verification statistics without manufacturing finite scores."""
+    finite = paired.copy() if paired is not None else pd.DataFrame(columns=["obs", "sim"])
+    if not finite.empty:
+        finite = finite[
+            np.isfinite(pd.to_numeric(finite["obs"], errors="coerce"))
+            & np.isfinite(pd.to_numeric(finite["sim"], errors="coerce"))
+        ]
+    n = int(len(finite))
+    reasons = {}
+    if n == 0:
+        reason = "no finite paired observed/modelled values"
+        for key in ("rmse","mae","mean_bias","correlation","r2_correlation","regression_slope","regression_intercept","regression_r2","nse","kge_2009"):
+            if metrics.get(key) is None:
+                reasons[key] = reason
+        return reasons
+    o = pd.to_numeric(finite["obs"], errors="coerce").to_numpy(float)
+    s = pd.to_numeric(finite["sim"], errors="coerce").to_numpy(float)
+    obs_variable = n >= 2 and float(np.std(o)) > 0
+    sim_variable = n >= 2 and float(np.std(s)) > 0
+    if metrics.get("regression_slope") is None or metrics.get("regression_intercept") is None:
+        reason = "requires at least two pairs and non-constant observed values"
+        reasons["regression_slope"] = reason
+        reasons["regression_intercept"] = reason
+    if metrics.get("regression_r2") is None:
+        reasons["regression_r2"] = "requires at least two pairs and non-constant observed values" if not obs_variable else "undefined because modelled values have zero variance"
+    if metrics.get("correlation") is None or metrics.get("r2_correlation") is None:
+        reason = "requires at least two pairs with non-zero variance in both observed and modelled values"
+        reasons["correlation"] = reason
+        reasons["r2_correlation"] = reason
+    if metrics.get("nse") is None:
+        reasons["nse"] = "undefined because observed values have zero variance"
+    if metrics.get("kge_2009") is None:
+        if not (obs_variable and sim_variable):
+            reasons["kge_2009"] = "requires non-zero variance in both observed and modelled values"
+        elif float(np.mean(o)) == 0:
+            reasons["kge_2009"] = "undefined because the observed mean is zero"
+        else:
+            reasons["kge_2009"] = "undefined for this paired sample"
+    return reasons
+
+
 def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
     oq, mq = _comparison_quantity(obs_path, obs_col), _comparison_quantity(model_path, model_col)
     if not oq or not mq:
@@ -328,12 +370,14 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
     for exc in exclusions:
         paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
     metrics = calibration_metrics(paired)
+    metrics["unavailable_reasons"] = _comparison_metric_reasons(paired, metrics)
     positive_mask = (
         pd.to_numeric(paired["obs"], errors="coerce").gt(0)
         & pd.to_numeric(paired["sim"], errors="coerce").gt(0)
     ) if not paired.empty else pd.Series(dtype=bool)
     positive_paired = paired.loc[positive_mask].copy() if not paired.empty else paired.copy()
     positive_metrics = calibration_metrics(positive_paired)
+    positive_metrics["unavailable_reasons"] = _comparison_metric_reasons(positive_paired, positive_metrics)
     positive_removed_count = max(0, int(metrics.get("pairs") or 0) - int(positive_metrics.get("pairs") or 0))
     obs_contract = _series_contract(obs_path, obs_col)
     model_contract = _series_contract(model_path, model_col)
