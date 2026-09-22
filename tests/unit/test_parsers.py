@@ -54,3 +54,11 @@ def test_r_parser_preserves_header_contract_and_exponents(tmp_path:Path):
     assert parsed.frame.rainfall.tolist()==pytest.approx([10.0,2.5])
     assert parsed.metadata["canonical_unit"]=="mm/h"
     assert parsed.metadata["interval_min"]==2
+
+
+def test_infer_quantity_does_not_confuse_level_with_velocity():
+    from icm_workbench.parsers.common import infer_quantity
+    assert infer_quantity("level") == "level"
+    assert infer_quantity("Water Level (m AOD)") == "level"
+    assert infer_quantity("vel (m/s)") == "velocity"
+    assert infer_quantity("velocity_m_s") == "velocity"

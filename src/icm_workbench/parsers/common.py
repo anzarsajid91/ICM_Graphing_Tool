@@ -32,8 +32,11 @@ def detect_time_column(df):
 
 def infer_quantity(text):
     n=normalise(text)
+    tokens={token for token in n.split("_") if token}
     if "rain" in n:return "rainfall"
-    if "velocity" in n or "vel" in n:return "velocity"
+    # "level" contains the substring "vel"; velocity shorthand must therefore be
+    # a complete token (e.g. "vel_m_s"), never an arbitrary substring match.
+    if "velocity" in n or "vel" in tokens:return "velocity"
     if any(t in n for t in ["flow_m3_s","flow","discharge"]) and "overflow" not in n:return "flow"
     if any(t in n for t in ["level","stage","maod","mald","water_level"]):return "level"
     if "depth" in n:return "depth"
