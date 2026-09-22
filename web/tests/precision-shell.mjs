@@ -120,13 +120,20 @@ try{
     await page.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,route]);
     await page.waitForTimeout(20);
     const visiblePrimary=await page.locator('.btn.primary').evaluateAll(nodes=>nodes.filter(el=>!el.hidden&&el.getClientRects().length>0&&getComputedStyle(el).display!=='none').map(el=>el.id).filter(Boolean));
-    if(visiblePrimary.length!==1||visiblePrimary[0]!==expected)throw new Error('Route must expose exactly one obvious primary action: '+JSON.stringify({workspace,route,expected,visiblePrimary}));
+    if(visiblePrimary.length!==1||visiblePrimary[0]!==expected){
+      const routeState=await page.evaluate(expectedId=>{
+        const describe=el=>el?{id:el.id,classes:el.className,hidden:el.hidden,display:getComputedStyle(el).display,visibility:getComputedStyle(el).visibility,rects:el.getClientRects().length}:null;
+        const target=document.getElementById(expectedId);
+        return {body:document.body.className,target:describe(target),ancestors:target?[...function*(){let el=target.parentElement;while(el){yield describe(el);el=el.parentElement;}}()]:[]};
+      },expected);
+      throw new Error('Route must expose exactly one obvious primary action: '+JSON.stringify({workspace,route,expected,visiblePrimary,routeState}));
+    }
   }
 
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('verification','storage',false));
   const verificationContainment=await page.evaluate(()=>{
-    const state=id=>{const el=document.getElementById(id);const css=el?getComputedStyle(el):null;return {id,hidden:el?.hidden??null,display:css?.display??null,visibility:css?.visibility??null,rects:el?.getClientRects().length??0};};
-    return {comparison:state('tab-compare'),storage:state('tab-storage')};
+    const state=(id,selector)=>{const root=document.getElementById(id);const el=selector?root?.querySelector(selector):root;const css=el?getComputedStyle(el):null;return {id,selector:selector||null,hidden:el?.hidden??null,display:css?.display??null,visibility:css?.visibility??null,rects:el?.getClientRects().length??0};};
+    return {comparison:state('tab-compare',':scope > .panel'),storage:state('tab-storage')};
   });
   if(verificationContainment.comparison.rects!==0||verificationContainment.comparison.display!=='none'||verificationContainment.storage.rects===0){
     throw new Error('Storage route must contain the legacy comparison surface: '+JSON.stringify(verificationContainment));
@@ -171,7 +178,8 @@ try{
     const layout=await page.evaluate(()=>({
       overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
       sourceVisible:getComputedStyle(document.querySelector('.source-panel')).display!=='none',
-      railVisible:getComputedStyle(document.querySelector('.pw-rail')).display!=='none'
+      railVisible:getComputedStyle(document.querySelector('.pw-rail')).display!=='none',
+      overflowElements:[...document.querySelectorAll('body *')].map(el=>{const r=el.getBoundingClientRect();return {tag:el.tagName,id:el.id,classes:el.className,right:Math.round(r.right),width:Math.round(r.width),scrollWidth:el.scrollWidth};}).filter(x=>x.right>document.documentElement.clientWidth+1).sort((a,b)=>b.right-a.right).slice(0,8)
     }));
     if(layout.overflow>1||!layout.sourceVisible||!layout.railVisible)throw new Error('Responsive shell failure '+size.width+'x'+size.height+': '+JSON.stringify(layout));
   }

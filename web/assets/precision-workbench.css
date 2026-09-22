@@ -70,7 +70,8 @@ body.precision-workbench{
 }
 .precision-workbench .topbar h1{font-size:18px;margin:0;color:var(--pw-text);font-weight:700}
 .precision-workbench .topbar p{margin:4px 0 0;color:var(--pw-muted);font-size:12px}
-.precision-workbench .engine-status{font-size:12px;white-space:nowrap}
+.precision-workbench .engine-status{font-size:12px;white-space:normal;min-width:0;max-width:55%;justify-content:flex-end;text-align:right}
+.precision-workbench .engine-status>span:last-child{min-width:0;overflow-wrap:anywhere}
 .pw-context{
   background:var(--pw-surface);border-bottom:1px solid var(--pw-border);
   padding:16px var(--pw-gap) 8px;display:grid;gap:8px
@@ -388,10 +389,13 @@ body.precision-workbench{
   display:none!important;
 }
 
-/* The legacy tab controller retains its own active state.  Route classes are
-   the Precision shell's source of truth, so prevent that legacy state from
-   exposing comparison controls while the separate storage route is active. */
-.pw-route-verification-storage #tab-compare{
+/* Storage is intentionally embedded in the legacy verification tab. Keep the
+   host visible, but contain its sibling comparison panel on the storage route. */
+.pw-route-verification-storage #tab-compare > .panel{
   display:none!important;
   visibility:hidden!important;
+}
+.pw-route-verification-storage #tab-storage{
+  display:block!important;
+  visibility:visible!important;
 }
