@@ -387,3 +387,11 @@ body.precision-workbench{
 .pw-route-verification-dwf #tab-compare > .panel > .panel-head{
   display:none!important;
 }
+
+/* The legacy tab controller retains its own active state.  Route classes are
+   the Precision shell's source of truth, so prevent that legacy state from
+   exposing comparison controls while the separate storage route is active. */
+.pw-route-verification-storage #tab-compare{
+  display:none!important;
+  visibility:hidden!important;
+}

@@ -123,6 +123,15 @@ try{
     if(visiblePrimary.length!==1||visiblePrimary[0]!==expected)throw new Error('Route must expose exactly one obvious primary action: '+JSON.stringify({workspace,route,expected,visiblePrimary}));
   }
 
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('verification','storage',false));
+  const verificationContainment=await page.evaluate(()=>{
+    const state=id=>{const el=document.getElementById(id);const css=el?getComputedStyle(el):null;return {id,hidden:el?.hidden??null,display:css?.display??null,visibility:css?.visibility??null,rects:el?.getClientRects().length??0};};
+    return {comparison:state('tab-compare'),storage:state('tab-storage')};
+  });
+  if(verificationContainment.comparison.rects!==0||verificationContainment.comparison.display!=='none'||verificationContainment.storage.rects===0){
+    throw new Error('Storage route must contain the legacy comparison surface: '+JSON.stringify(verificationContainment));
+  }
+
   const quietSurfaces=await page.evaluate(()=>{
     const inspect=(workspace,route,selector)=>{
       window.__ICM_PRECISION_WORKBENCH__.navigate(workspace,route,false);
