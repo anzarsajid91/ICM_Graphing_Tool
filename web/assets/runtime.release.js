@@ -534,7 +534,9 @@ async function ingestFiles(files){
         if(list.length===1&&!batchPreviewShown&&window.ICMFastPath&&window.ICMFastPath.renderPreview){
           batchPreviewShown=true;
           diagnostic.fastpathActiveSourceId=item.id;
-          const painted=await window.ICMFastPath.renderPreview(item,null,list.length===1);
+          // Prepare the first useful graph immediately, but keep route selection under
+          // user control. FastPath is a display accelerator, not a navigation action.
+          const painted=await window.ICMFastPath.renderPreview(item,null,false);
           item.fastpathTiming.t4=painted&&painted.graphPaintAt||performance.now();
           item.fastpathTiming.t5=painted&&painted.statsPaintAt||item.fastpathTiming.t4;
         }
@@ -961,7 +963,15 @@ async function interactiveReportHtml(html){
 
 function reportSettingsTable(w){
   const a=w.analysis||{};
-  const rows=[['Time basis',w.time_basis||'model clock/unspecified'],['Analysis start',a.analysis_start||'Full available period'],['Analysis end',a.analysis_end||'Full available period'],['Maximum interpolation gap',(a.max_gap_seconds==null?'—':fmt(a.max_gap_seconds,0)+' s')],['Observed spill threshold',a.observed_threshold==null?'—':a.observed_threshold],['Model spill threshold',a.model_threshold==null?'—':a.model_threshold],['Model time offset',fmt(a.time_offset_minutes||0,1)+' min'],['Rainfall conversion factor',fmt(a.rain_factor==null?1:a.rain_factor,4)]];
+  const thresholdValue=(value,ref)=>{
+    if(value==null)return '—';
+    const unit=ref?.unit?String(ref.unit):'';
+    const quantity=ref?.quantity?String(ref.quantity):'';
+    return String(value)+(unit?' '+unit:'')+(quantity?' · '+quantity:'');
+  };
+  const observedRef=w.mapping?.observed||null;
+  const modelRef=w.active_spill_model||w.mapping?.models?.[0]||null;
+  const rows=[['Time basis',w.time_basis||'model clock/unspecified'],['Analysis start',a.analysis_start||'Full available period'],['Analysis end',a.analysis_end||'Full available period'],['Maximum interpolation gap',(a.max_gap_seconds==null?'—':fmt(a.max_gap_seconds,0)+' s')],['Observed / EDM hydraulic threshold',thresholdValue(a.observed_threshold,observedRef)],['Model hydraulic threshold',thresholdValue(a.model_threshold,modelRef)],['Model time offset',fmt(a.time_offset_minutes||0,1)+' min'],['Rainfall conversion factor',fmt(a.rain_factor==null?1:a.rain_factor,4)]];
   return '<div class="table-wrap"><table><tbody>'+rows.map(x=>'<tr><th>'+esc(x[0])+'</th><td>'+esc(x[1])+'</td></tr>').join('')+'</tbody></table></div>';
 }
 function reportExclusions(w){
@@ -1039,7 +1049,11 @@ async function downloadReport(){
   const scenarioTable=scenarioRows?'<div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Pairs</th><th>RMSE</th><th>MAE</th><th>Bias</th><th>R²</th><th>NSE</th><th>Status</th><th>Valid support</th></tr></thead><tbody>'+scenarioRows+'</tbody></table></div>':'<p class="muted">No scenario comparison has been calculated.</p>';
   let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints.</div>';
   body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
-  body+=timeFigure;
+  body+='<h2>Full time-period graph</h2>'+timeFigure;
+  body+='<h2>Spill / EDM assessment</h2><div class="report-grid"><div class="card"><h3>Observed / EDM</h3>'+spillSummaryHtml(state.spills.observed)+reportYearlySpills(state.spills.observed)+'</div><div class="card"><h3>Modelled</h3>'+spillSummaryHtml(state.spills.model)+reportYearlySpills(state.spills.model)+'</div></div>';
+  body+='<h3>Observed spills by month</h3>'+reportSpillCountMatrix(state.spills.observed);
+  body+='<h3>Model spills by month</h3>'+reportSpillCountMatrix(state.spills.model);
+  body+='<h3>Observed vs modelled monthly spill comparison</h3>'+reportMonthlySpillComparison(state.spills.observed,state.spills.modelled||state.spills.model);
   body+='<h2>Scenario comparison</h2>'+scenarioTable;
   if(window.__ICM_WORKBENCH__.professionalSurveyReportHtml)body+=window.__ICM_WORKBENCH__.professionalSurveyReportHtml;
   const diag=[];
@@ -1048,10 +1062,6 @@ async function downloadReport(){
   if(cumulativeImg)diag.push('<figure class="figure"><img src="'+cumulativeImg+'" alt="Cumulative flow volume plot"><figcaption>Cumulative-volume diagnostic where dimensional flow support is available.</figcaption></figure>');
   if(exceedanceImg)diag.push('<figure class="figure"><img src="'+exceedanceImg+'" alt="Flow duration plot"><figcaption>Time-weighted exceedance diagnostic where available.</figcaption></figure>');
   if(diag.length)body+='<div class="report-grid">'+diag.join('')+'</div>';
-  body+='<h2>Spill / EDM assessment</h2><div class="report-grid"><div class="card"><h3>Observed / EDM</h3>'+spillSummaryHtml(state.spills.observed)+reportYearlySpills(state.spills.observed)+'</div><div class="card"><h3>Modelled</h3>'+spillSummaryHtml(state.spills.model)+reportYearlySpills(state.spills.model)+'</div></div>';
-  body+='<h3>Observed spills by month</h3>'+reportSpillCountMatrix(state.spills.observed);
-  body+='<h3>Model spills by month</h3>'+reportSpillCountMatrix(state.spills.model);
-  body+='<h3>Observed vs modelled monthly spill comparison</h3>'+reportMonthlySpillComparison(state.spills.observed,state.spills.modelled||state.spills.model);
   body+='<h2>Exclusions</h2>'+reportExclusions(w);
   const notes=$('reviewNotes')&&$('reviewNotes').value||'';
   body+='<h2>Reviewer notes</h2><div class="card">'+(notes?'<p>'+esc(notes).replaceAll('\n','<br>')+'</p>':'<p class="muted">No reviewer notes recorded.</p>')+'</div>';
