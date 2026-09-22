@@ -33,7 +33,7 @@ const recognised = (name) => { const n=String(name||'').toLowerCase(); return n.
 const esc = (s) => String(s ?? '').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]));
 const fmt = (v,digits=4) => (v===null||v===undefined||Number.isNaN(Number(v)))?'—':Number(v).toLocaleString(undefined,{maximumFractionDigits:digits});
 const mb = (n) => `${(Number(n||0)/1048576).toFixed(2)} MB`;
-const palette=['#0008ff','#ef7d00','#2e8b57','#7c4dff','#c43d6f','#008b95','#7a5c00','#5b6d7e'];
+const palette=['#5755d9','#ef7d00','#2e8b57','#7c4dff','#c43d6f','#008b95','#7a5c00','#5b6d7e'];
 const nullableNumber=(v)=>v===''?null:Number(v);
 const sourceKey=(id,col)=>JSON.stringify([id,col]);
 const parseSourceKey=(v)=>{try{return JSON.parse(v)}catch{return['','']}};
@@ -674,7 +674,12 @@ async function drawTimeChart(){return window.ICMGraph?.draw();}
 
 function analysisBounds(){return {start:modelClock($('analysisStart').value)||null,end:modelClock($('analysisEnd').value)||null};}
 async function runCompare(){const obs=mappingObject(state.mapping.observed),models=currentModels();if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();state.comparisons=[];for(const m of models){try{state.comparisons.push({model:m,result:await engine.call('compare_series',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,max_gap_seconds:gap,offset_minutes:offset,...bounds,exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])})});}catch(err){state.comparisons.push({model:m,error:String(err?.message||err)});}}await renderComparisons();state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};}
-const metricCard=(k,v)=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`;
+const metricCard=(k,v,reason='')=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${reason?`<small>${esc(reason)}</small>`:''}</div>`;
+function metricPresentation(metrics,key,unit=''){
+  const value=metrics?.[key],reason=metrics?.unavailable_reasons?.[key]||'';
+  if(value===null||value===undefined||!Number.isFinite(Number(value)))return {text:'Not available',reason};
+  return {text:fmt(Number(value),4)+(unit?' '+unit:''),reason:''};
+}
 function scatterPopulation(result,log=false){
   const raw=(result?.paired||[]).filter(x=>Number.isFinite(Number(x.obs))&&Number.isFinite(Number(x.sim)));
   const pairs=log?raw.filter(x=>Number(x.obs)>0&&Number(x.sim)>0):raw;
@@ -707,22 +712,24 @@ async function renderComparisons(){
   }
   const log=$('scatterScale').value==='log',firstPopulation=scatterPopulation(first.result,log),m=firstPopulation.metrics||{};
   const status=first.result.calculation_status||'unavailable',coverage=first.result.coverage_fraction,unit=comparisonUnit(first.result);
-  const u=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),4)+(unit?' '+unit:'');
+  const metric=(label,key,withUnit=false)=>{const p=metricPresentation(m,key,withUnit?unit:'');return metricCard(label,p.text,p.reason);};
   $('metricGrid').innerHTML=[
-    ['Calculation status',status],
-    ['Valid support',coverage===null||coverage===undefined?'—':fmt(Number(coverage)*100,2)+'%'],
-    [log?'Positive pairs':'Pairs',m.pairs??firstPopulation.pairs.length],
-    ...(log?[['Removed ≤0 pairs',firstPopulation.removed_count]]:[]),
-    ['Pearson r',fmt(m.correlation)],
-    ['Regression R²',fmt(m.regression_r2)],
-    ['Slope',fmt(m.regression_slope)],
-    ['Intercept',u(m.regression_intercept)],
-    ['RMSE',u(m.rmse)],
-    ['MAE',u(m.mae)],
-    ['Mean bias (M − O)',u(m.mean_bias)],
-    ['NSE',fmt(m.nse)],
-    ['KGE 2009',fmt(m.kge_2009)],
-  ].map(([k,v])=>metricCard(k,v)).join('');
+    metricCard('Calculation status',status),
+    metricCard('Valid support',coverage===null||coverage===undefined?'Not available':fmt(Number(coverage)*100,2)+'%',coverage===null||coverage===undefined?'paired temporal support is unavailable':''),
+    metricCard(log?'Positive pairs':'Pairs',m.pairs??firstPopulation.pairs.length),
+    ...(log?[metricCard('Removed ≤0 pairs',firstPopulation.removed_count)]:[]),
+    metric('Pearson r','correlation'),
+    metric('Regression R²','regression_r2'),
+    metric('Slope','regression_slope'),
+    metric('Intercept','regression_intercept',true),
+    metric('RMSE','rmse',true),
+    metric('MAE','mae',true),
+    metric('Mean bias (M − O)','mean_bias',true),
+    metric('NSE','nse'),
+    metric('KGE 2009','kge_2009'),
+  ].join('');
+  const methodNote=$('comparisonMethodNote');
+  if(methodNote)methodNote.innerHTML='<strong>Pairing and statistics.</strong> '+esc(first.result.pairing_method||'Canonical paired support')+'. Each model scenario uses its own valid paired support unless a common-support option is explicitly selected. '+esc(first.result.metric_weighting||'Sample-weighted metrics')+'. Plot zoom is display-only and does not change the analysis period.';
   diagnostic.lastComparisonValidity={status,coverage,population:log?'positive-only':'all valid pairs'};
 
   const scatter=[],allValues=[];
@@ -764,8 +771,9 @@ async function renderComparisons(){
 
   $('scenarioBody').innerHTML=state.comparisons.map(x=>{
     if(!x.result)return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td colspan="12" class="audit-bad">${esc(x.error||'Unavailable')}</td></tr>`;
-    const pop=scatterPopulation(x.result,log),q=pop.metrics||{},uq=comparisonUnit(x.result),uv=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),4)+(uq?' '+uq:'');
-    return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${q.pairs??pop.pairs.length}</td><td>${fmt(q.correlation)}</td><td>${fmt(q.regression_r2)}</td><td>${fmt(q.regression_slope)}</td><td>${uv(q.regression_intercept)}</td><td>${uv(q.rmse)}</td><td>${uv(q.mae)}</td><td>${uv(q.mean_bias)}</td><td>${fmt(q.nse)}</td><td>${fmt(q.kge_2009)}</td><td>${log?pop.removed_count:'—'}</td><td>${x.result.coverage_fraction==null?'—':fmt(Number(x.result.coverage_fraction)*100,1)+'%'}</td></tr>`;
+    const pop=scatterPopulation(x.result,log),q=pop.metrics||{},uq=comparisonUnit(x.result);
+    const cell=(key,withUnit=false)=>{const p=metricPresentation(q,key,withUnit?uq:'');return `<span${p.reason?` title="${esc(p.reason)}"`:''}>${esc(p.text)}</span>`;};
+    return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${q.pairs??pop.pairs.length}</td><td>${cell('correlation')}</td><td>${cell('regression_r2')}</td><td>${cell('regression_slope')}</td><td>${cell('regression_intercept',true)}</td><td>${cell('rmse',true)}</td><td>${cell('mae',true)}</td><td>${cell('mean_bias',true)}</td><td>${cell('nse')}</td><td>${cell('kge_2009')}</td><td>${log?pop.removed_count:'—'}</td><td>${x.result.coverage_fraction==null?'Not available':fmt(Number(x.result.coverage_fraction)*100,1)+'%'}</td></tr>`;
   }).join('');
 }
 
@@ -1168,7 +1176,8 @@ async function downloadReport(){
   const shapes=JSON.parse(JSON.stringify(currentLayout.shapes||[]));
   const annotations=JSON.parse(JSON.stringify(currentLayout.annotations||[]));
   const fullLayout=hydraulicGraphLayout({...reportSeries,range:period[0]&&period[1]?period:null,title:'Full analysis period',shapes,annotations});
-  const timeFigure=reportPlotFigure('assessment-time-graph',reportSeries.traces,fullLayout,reportSeries.statistics,'Declared report analysis period; zoom state is not used as an analytical input.');
+  const thresholdLegendTraces=JSON.parse(JSON.stringify(($('timeChart')?.data||[]).filter(t=>/threshold/i.test(String(t.name||''))&&(t.x||[]).every(x=>x==null))));
+  const timeFigure=reportPlotFigure('assessment-time-graph',[...reportSeries.traces,...thresholdLegendTraces],fullLayout,reportSeries.statistics,'Declared report analysis period; zoom state is not used as an analytical input.');
   const images=await Promise.all([reportChart('scatterChart',760,500),reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440)]);
   const scatterImg=images[0],residImg=images[1],cumulativeImg=images[2],exceedanceImg=images[3];
   const w=state.spillSnapshot&&state.spillSnapshot.config||state.comparisonSnapshot&&state.comparisonSnapshot.config||workspaceObject();
