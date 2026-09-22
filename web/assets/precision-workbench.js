@@ -191,7 +191,14 @@ function preparePageComposition(){
 function applyPageComposition(){
   preparePageComposition();
   const key=current.workspace+'/'+current.page;
-  ownedSurfaces.forEach(node=>{node.hidden=!String(node.dataset.pwOwned||'').split(' ').includes(key);});
+  ownedSurfaces.forEach(node=>{
+    const hidden=!String(node.dataset.pwOwned||'').split(' ').includes(key);
+    node.hidden=hidden;
+    // The legacy stylesheet contains display rules for active tab content.
+    // Enforce route ownership inline as well so nested/embedded workflows have
+    // identical containment in Chromium and Firefox.
+    node.style.display=hidden?'none':'';
+  });
 }
 function buildShell(){
   if(qs('.pw-app'))return;
