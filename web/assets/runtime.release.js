@@ -675,7 +675,100 @@ async function drawTimeChart(){return window.ICMGraph?.draw();}
 function analysisBounds(){return {start:modelClock($('analysisStart').value)||null,end:modelClock($('analysisEnd').value)||null};}
 async function runCompare(){const obs=mappingObject(state.mapping.observed),models=currentModels();if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();state.comparisons=[];for(const m of models){try{state.comparisons.push({model:m,result:await engine.call('compare_series',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,max_gap_seconds:gap,offset_minutes:offset,...bounds,exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])})});}catch(err){state.comparisons.push({model:m,error:String(err?.message||err)});}}await renderComparisons();state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};}
 const metricCard=(k,v)=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`;
-async function renderComparisons(){const ok=state.comparisons.filter(x=>x.result),first=ok[0];if(!first){const issues=state.comparisons.map(x=>({name:`${x.model?.item?.displayName||'Model'} · ${x.model?.col||'series'}`,error:x.error||'Comparison returned no usable result.'}));$('metricGrid').innerHTML='<div class="pool-summary audit-bad"><strong>Comparison could not be calculated.</strong><br>'+issues.map(x=>esc(x.name)+': '+esc(x.error)).join('<br>')+'<br><small>Check quantity mapping, the shared analysis period, exclusions and the maximum interpolation gap. The error above is retained instead of hiding it behind a generic “no pairs” message.</small></div>';$('scenarioBody').innerHTML=issues.map(x=>'<tr><td>'+esc(x.name)+'</td><td colspan="8" class="audit-bad">'+esc(x.error)+'</td></tr>').join('');return;}const m=first.result.metrics||{},status=first.result.calculation_status||'unavailable',coverage=first.result.coverage_fraction;$('metricGrid').innerHTML=[['Calculation status',status],['Valid support',coverage===null||coverage===undefined?'—':fmt(Number(coverage)*100,2)+'%'],['Pairs',m.pairs],['RMSE',fmt(m.rmse)],['MAE',fmt(m.mae)],['Mean bias',fmt(m.mean_bias)],['R²',fmt(m.r2_correlation)],['NSE',fmt(m.nse)],['KGE 2009',fmt(m.kge_2009)],['Obs peak',fmt(m.obs_peak)],['Model peak',fmt(m.sim_peak)],['Peak lag min',fmt(m.peak_timing_minutes_model_minus_observed,2)]].map(([k,v])=>metricCard(k,v)).join('');diagnostic.lastComparisonValidity={status,coverage};let p=first.result.paired||[];const log=$('scatterScale').value==='log';if(log)p=p.filter(x=>Number(x.obs)>0&&Number(x.sim)>0);const vals=p.flatMap(x=>[Number(x.obs),Number(x.sim)]).filter(Number.isFinite),lo=Math.min(...vals),hi=Math.max(...vals),scatter=[{x:p.map(x=>x.obs),y:p.map(x=>x.sim),mode:'markers',name:'Paired',marker:{size:5,opacity:.5,color:'#0a66c2'}}];if(Number.isFinite(lo)&&Number.isFinite(hi))scatter.push({x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1',line:{dash:'dash',color:'#667085'}});await Plotly.react('scatterChart',scatter,{template:'plotly_white',title:`Observed vs modelled${log?' — log scale':''}`,xaxis:{title:'Observed',type:log?'log':'linear'},yaxis:{title:'Modelled',type:log?'log':'linear'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});await Plotly.react('residualChart',[{x:p.map(x=>x.timestamp),y:p.map(x=>x.residual),mode:'lines',name:'Model − observed',line:{color:'#a62929',width:1.4}}],{template:'plotly_white',title:'Residual through time',xaxis:{title:'Time'},yaxis:{title:'Residual'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});const obs=mappingObject(state.mapping.observed),d=await engine.call('diagnostic_result',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:first.model.item.virtualPath,model_col:first.model.col,max_gap_seconds:Number($('gapInput').value||900),offset_minutes:Number($('offsetInput').value||0),...analysisBounds(),exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(first.model.id,first.model.col))])}),cum=d.cumulative||[];await Plotly.react('cumulativeChart',[{x:cum.map(x=>x.timestamp),y:cum.map(x=>x.obs_cumulative_m3),name:'Observed cumulative',mode:'lines',line:{color:$('obsColor').value}},{x:cum.map(x=>x.timestamp),y:cum.map(x=>x.sim_cumulative_m3),name:'Model cumulative',mode:'lines',line:{color:state.modelColours[sourceKey(first.model.id,first.model.col)]||palette[0]}}],{template:'plotly_white',title:d.flow_diagnostics_available?'Cumulative volume':'Unavailable — flow inputs and unmasked support required',xaxis:{title:'Time'},yaxis:{title:/flow/i.test(obs.col)?'m³':'value × s'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});const oe=d.observed_exceedance||[],me=d.modelled_exceedance||[],okey=oe.length?Object.keys(oe[0]).find(k=>!['exceedance_fraction','weight'].includes(k)):null,mkey=me.length?Object.keys(me[0]).find(k=>!['exceedance_fraction','weight'].includes(k)):null;await Plotly.react('exceedanceChart',[{x:oe.map(x=>100*x.exceedance_fraction),y:oe.map(x=>x[okey]),name:'Observed',mode:'lines',line:{color:$('obsColor').value}},{x:me.map(x=>100*x.exceedance_fraction),y:me.map(x=>x[mkey]),name:'Modelled',mode:'lines',line:{color:state.modelColours[sourceKey(first.model.id,first.model.col)]||palette[0]}}],{template:'plotly_white',title:d.flow_diagnostics_available?'Flow duration — left-support time weighting':'Unavailable — flow inputs and unmasked support required',xaxis:{title:'Exceedance %'},yaxis:{title:'Value'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});$('scenarioBody').innerHTML=state.comparisons.map(x=>{const q=x.result?.metrics||{};return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${q.pairs??'—'}</td><td>${fmt(q.rmse)}</td><td>${fmt(q.mae)}</td><td>${fmt(q.mean_bias)}</td><td>${fmt(q.r2_correlation)}</td><td>${fmt(q.nse)}</td><td>${fmt(q.kge_2009)}</td><td>${fmt(q.peak_timing_minutes_model_minus_observed,2)}</td></tr>`;}).join('');}
+function scatterPopulation(result,log=false){
+  const raw=(result?.paired||[]).filter(x=>Number.isFinite(Number(x.obs))&&Number.isFinite(Number(x.sim)));
+  const pairs=log?raw.filter(x=>Number(x.obs)>0&&Number(x.sim)>0):raw;
+  return {
+    pairs,
+    metrics:(log?result?.positive_metrics:result?.metrics)||{},
+    removed_count:log?Number(result?.positive_removed_count||Math.max(0,raw.length-pairs.length)):0,
+  };
+}
+function regressionLinePoints(metrics,pairs,log=false){
+  const slope=Number(metrics?.regression_slope),intercept=Number(metrics?.regression_intercept);
+  if(!Number.isFinite(slope)||!Number.isFinite(intercept)||pairs.length<2)return null;
+  const xs=pairs.map(x=>Number(x.obs)).filter(x=>Number.isFinite(x)&&(log?x>0:true));
+  if(xs.length<2)return null;
+  const lo=Math.min(...xs),hi=Math.max(...xs);
+  if(!(hi>lo))return null;
+  const candidates=[[lo,intercept+slope*lo],[hi,intercept+slope*hi]].filter(([,y])=>Number.isFinite(y)&&(!log||y>0));
+  return candidates.length===2?{x:candidates.map(x=>x[0]),y:candidates.map(x=>x[1])}:null;
+}
+function comparisonUnit(result){return result?.observed_unit||result?.modelled_unit||'';}
+function comparisonQuantity(result){return result?.observed_quantity||result?.modelled_quantity||'value';}
+async function renderComparisons(){
+  const ok=state.comparisons.filter(x=>x.result),first=ok[0];
+  if(!first){
+    const issues=state.comparisons.map(x=>({name:`${x.model?.item?.displayName||'Model'} · ${x.model?.col||'series'}`,error:x.error||'Comparison returned no usable result.'}));
+    $('metricGrid').innerHTML='<div class="pool-summary audit-bad"><strong>Comparison could not be calculated.</strong><br>'+issues.map(x=>esc(x.name)+': '+esc(x.error)).join('<br>')+'<br><small>Check quantity mapping, the shared analysis period, exclusions and the maximum interpolation gap. The error above is retained instead of hiding it behind a generic “no pairs” message.</small></div>';
+    $('scenarioBody').innerHTML=issues.map(x=>'<tr><td>'+esc(x.name)+'</td><td colspan="12" class="audit-bad">'+esc(x.error)+'</td></tr>').join('');
+    for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])Plotly.purge(id);
+    return;
+  }
+  const log=$('scatterScale').value==='log',firstPopulation=scatterPopulation(first.result,log),m=firstPopulation.metrics||{};
+  const status=first.result.calculation_status||'unavailable',coverage=first.result.coverage_fraction,unit=comparisonUnit(first.result);
+  const u=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),4)+(unit?' '+unit:'');
+  $('metricGrid').innerHTML=[
+    ['Calculation status',status],
+    ['Valid support',coverage===null||coverage===undefined?'—':fmt(Number(coverage)*100,2)+'%'],
+    [log?'Positive pairs':'Pairs',m.pairs??firstPopulation.pairs.length],
+    ...(log?[['Removed ≤0 pairs',firstPopulation.removed_count]]:[]),
+    ['Pearson r',fmt(m.correlation)],
+    ['Regression R²',fmt(m.regression_r2)],
+    ['Slope',fmt(m.regression_slope)],
+    ['Intercept',u(m.regression_intercept)],
+    ['RMSE',u(m.rmse)],
+    ['MAE',u(m.mae)],
+    ['Mean bias (M − O)',u(m.mean_bias)],
+    ['NSE',fmt(m.nse)],
+    ['KGE 2009',fmt(m.kge_2009)],
+  ].map(([k,v])=>metricCard(k,v)).join('');
+  diagnostic.lastComparisonValidity={status,coverage,population:log?'positive-only':'all valid pairs'};
+
+  const scatter=[],allValues=[];
+  ok.forEach((entry,i)=>{
+    const population=scatterPopulation(entry.result,log),pairs=population.pairs,metrics=population.metrics||{};
+    const key=sourceKey(entry.model.item.id,entry.model.col),colour=state.modelColours[key]||palette[i%palette.length];
+    const scenario=`${entry.model.item.displayName} · ${entry.model.col}`;
+    allValues.push(...pairs.flatMap(x=>[Number(x.obs),Number(x.sim)]));
+    scatter.push({
+      x:pairs.map(x=>x.obs),y:pairs.map(x=>x.sim),mode:'markers',name:scenario,
+      marker:{size:6,opacity:.48,color:colour},
+      customdata:pairs.map(x=>[x.timestamp,x.obs,x.sim]),
+      hovertemplate:'<b>'+esc(scenario)+'</b><br>%{customdata[0]}<br>Observed: %{customdata[1]:.5g}<br>Modelled: %{customdata[2]:.5g}<extra></extra>'
+    });
+    const fit=regressionLinePoints(metrics,pairs,log);
+    if(fit)scatter.push({x:fit.x,y:fit.y,mode:'lines',name:`${scenario} fit`,line:{color:colour,width:2},hoverinfo:'skip'});
+  });
+  const finite=allValues.filter(Number.isFinite).filter(x=>!log||x>0),lo=Math.min(...finite),hi=Math.max(...finite);
+  if(Number.isFinite(lo)&&Number.isFinite(hi)&&hi>lo)scatter.push({x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1 agreement',line:{dash:'dash',color:'#667085',width:1.6},hoverinfo:'skip'});
+  const quantity=comparisonQuantity(first.result),unitSuffix=unit?` (${unit})`:'',bounds=analysisBounds();
+  const period=bounds.start||bounds.end?` · ${bounds.start||'data start'} → ${bounds.end||'data end'}`:' · full common support';
+  const axisRange=Number.isFinite(lo)&&Number.isFinite(hi)&&hi>lo?(log?[Math.log10(lo),Math.log10(hi)]:[lo,hi]):undefined;
+  await Plotly.react('scatterChart',scatter,{
+    template:'plotly_white',
+    title:`Observed vs modelled ${quantity}${log?' · log₁₀ positive pairs':' · linear'}${period}`,
+    legend:{orientation:'h',y:1.16,x:0},
+    xaxis:{title:`Observed ${quantity}${unitSuffix}`,type:log?'log':'linear',range:axisRange},
+    yaxis:{title:`Modelled ${quantity}${unitSuffix}`,type:log?'log':'linear',range:axisRange,scaleanchor:'x',scaleratio:1},
+    margin:{l:68,r:28,t:84,b:64},
+    annotations:log&&firstPopulation.removed_count?[{xref:'paper',yref:'paper',x:1,y:-.17,xanchor:'right',showarrow:false,text:`${firstPopulation.removed_count} nonpositive pair(s) removed from log view`,font:{size:11,color:'#667085'}}]:[]
+  },{responsive:true,displaylogo:false});
+
+  const rawFirst=scatterPopulation(first.result,false).pairs;
+  await Plotly.react('residualChart',[{x:rawFirst.map(x=>x.timestamp),y:rawFirst.map(x=>x.residual),mode:'lines',name:'Model − observed',line:{color:'#a62929',width:1.4}}],{template:'plotly_white',title:'Residual through time · all valid pairs',xaxis:{title:'Time'},yaxis:{title:`Residual${unitSuffix}`},margin:{l:60,r:20,t:50,b:50}},{responsive:true,displaylogo:false});
+  const obs=mappingObject(state.mapping.observed),d=await engine.call('diagnostic_result',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:first.model.item.virtualPath,model_col:first.model.col,max_gap_seconds:Number($('gapInput').value||900),offset_minutes:Number($('offsetInput').value||0),...analysisBounds(),exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(first.model.id,first.model.col))])}),cum=d.cumulative||[];
+  await Plotly.react('cumulativeChart',[{x:cum.map(x=>x.timestamp),y:cum.map(x=>x.obs_cumulative_m3),name:'Observed cumulative',mode:'lines',line:{color:$('obsColor').value}},{x:cum.map(x=>x.timestamp),y:cum.map(x=>x.sim_cumulative_m3),name:'Model cumulative',mode:'lines',line:{color:state.modelColours[sourceKey(first.model.id,first.model.col)]||palette[0]}}],{template:'plotly_white',title:d.flow_diagnostics_available?'Cumulative volume':'Unavailable — flow inputs and unmasked support required',xaxis:{title:'Time'},yaxis:{title:/flow/i.test(obs.col)?'m³':'value × s'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});
+  const oe=d.observed_exceedance||[],me=d.modelled_exceedance||[],okey=oe.length?Object.keys(oe[0]).find(k=>!['exceedance_fraction','weight'].includes(k)):null,mkey=me.length?Object.keys(me[0]).find(k=>!['exceedance_fraction','weight'].includes(k)):null;
+  await Plotly.react('exceedanceChart',[{x:oe.map(x=>100*x.exceedance_fraction),y:oe.map(x=>x[okey]),name:'Observed',mode:'lines',line:{color:$('obsColor').value}},{x:me.map(x=>100*x.exceedance_fraction),y:me.map(x=>x[mkey]),name:'Modelled',mode:'lines',line:{color:state.modelColours[sourceKey(first.model.id,first.model.col)]||palette[0]}}],{template:'plotly_white',title:d.flow_diagnostics_available?'Flow duration — left-support time weighting':'Unavailable — flow inputs and unmasked support required',xaxis:{title:'Exceedance %'},yaxis:{title:'Value'},margin:{l:55,r:20,t:45,b:50}},{responsive:true,displaylogo:false});
+
+  $('scenarioBody').innerHTML=state.comparisons.map(x=>{
+    if(!x.result)return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td colspan="12" class="audit-bad">${esc(x.error||'Unavailable')}</td></tr>`;
+    const pop=scatterPopulation(x.result,log),q=pop.metrics||{},uq=comparisonUnit(x.result),uv=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),4)+(uq?' '+uq:'');
+    return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${q.pairs??pop.pairs.length}</td><td>${fmt(q.correlation)}</td><td>${fmt(q.regression_r2)}</td><td>${fmt(q.regression_slope)}</td><td>${uv(q.regression_intercept)}</td><td>${uv(q.rmse)}</td><td>${uv(q.mae)}</td><td>${uv(q.mean_bias)}</td><td>${fmt(q.nse)}</td><td>${fmt(q.kge_2009)}</td><td>${log?pop.removed_count:'—'}</td><td>${x.result.coverage_fraction==null?'—':fmt(Number(x.result.coverage_fraction)*100,1)+'%'}</td></tr>`;
+  }).join('');
+}
+
 function useGraphZoom(){const r=$('timeChart')?.layout?.xaxis?.range;if(r?.length===2){$('analysisStart').value=toLocalInput(r[0]);$('analysisEnd').value=toLocalInput(r[1]);}}
 
 async function runRating(){
@@ -1152,7 +1245,7 @@ function wireEvents(){
   $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);void importGuard(async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=files.length+' dropped file'+(files.length===1?'':'s')+' detected · preparing import…';await ingestFiles(files);});});
   eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('modelSelect').addEventListener('change',()=>{renderModelColourControls();autoSuggestAdvanced(allSeries());});eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
-  eventGuard('runCompareBtn','metricGrid',runCompare);$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);eventGuard('runDwfBtn','dwfSummary',runDwf);
+  eventGuard('runCompareBtn','metricGrid',runCompare);$('scatterScale').addEventListener('change',()=>{if(state.comparisons.length)void guarded('metricGrid',renderComparisons);});$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);eventGuard('runDwfBtn','dwfSummary',runDwf);
   $('rainCriteriaMode').addEventListener('change',criteriaModeChanged);eventGuard('runRainEventsBtn','rainEventSummary',runRainEvents);eventGuard('runHealthBtn','healthBody',runHealth);
   $('addExclusionBtn').addEventListener('click',()=>addExclusionRow());eventGuard('runSpillsBtn','obsSpillSummary',runSpills);eventGuard('runStorageBtn','storageSummary',runStorage);
   $('downloadWorkspaceBtn').addEventListener('click',()=>guarded('workspaceStatus',downloadWorkspace));$('loadWorkspaceBtn').addEventListener('click',()=>$('workspaceInput').click());$('workspaceInput').addEventListener('change',e=>e.target.files[0]&&guarded('workspaceStatus',()=>loadWorkspaceFile(e.target.files[0])));eventGuard('saveNamedWorkspaceBtn','workspaceStatus',saveNamedWorkspace);eventGuard('loadNamedWorkspaceBtn','workspaceStatus',loadNamedWorkspace);eventGuard('downloadReportBtn','workspaceStatus',downloadReport);eventGuard('downloadFourPeriodBtn','workspaceStatus',downloadFourPeriod);$('downloadManifestBtn')?.addEventListener('click',()=>guarded('workspaceStatus',downloadManifest));document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn)));
