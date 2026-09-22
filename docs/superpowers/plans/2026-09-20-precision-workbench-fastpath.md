@@ -22,11 +22,11 @@
 - GitHub Pages remains the host; no backend.
 - Stop at a reviewable PR; do not merge.
 
-## Completion reconciliation — 2026-09-21
+## Completion reconciliation — 2026-09-22
 
-The implementation/evidence record is reconciled against PR #25 rather than earlier chat status. All merge-relevant product, reference-data, browser, report, performance and regression outcomes below are implemented and evidenced. Two historical sequencing artifacts were not retained: a pre-FastPath authoritative-only timing capture and the original deliberately-RED test run. They are left unchecked rather than reconstructed or claimed after the fact. `docs/fastpath-performance.md` records the timing limitation explicitly and makes no historical speed-up claim.
+The implementation/evidence record is reconciled against PR #25 rather than earlier chat status. All merge-relevant product, reference-data, browser, report, performance and regression outcomes below are implemented and evidenced. The original deliberately-RED test run was not retained and remains unchecked rather than reconstructed. A reproducible formal comparison against the fixed pre-FastPath `main` baseline is now retained and documented in `docs/fastpath-performance.md`.
 
-Evidence used for this reconciliation includes the fully green hardened browser run `35632152589` on head `b0fdceb474f0b1b322ee520914c4bf43af442af9` / tested merge build `1cfcd65e4a245ae8ce9f89e2ac193328b8ac2a21`, plus green Ubuntu/Windows Workbench CI, Chromium complete workflow and Firefox shell. Final PR-description/Ready-for-Review administration is intentionally performed only after the final documentation head reruns cleanly.
+Evidence used for this reconciliation includes the fully green hardened browser run `35699755269` on product head `84309aafc1f3b296559ce6fd6e5c2c3ec17ac198` / tested merge build `64345aa1ab4d7af04300351f05da17021d1d8695`, plus green Ubuntu/Windows Workbench CI, Chromium complete workflow, Firefox shell and the same-run formal baseline comparison. Final PR-description/Ready-for-Review administration follows the documentation-only exact-head rerun.
 
 ## Review Focus
 
@@ -50,7 +50,7 @@ Evidence used for this reconciliation includes the fully green hardened browser 
 - [x] Add a browser helper that records file size, known row count after authoritative parse, selection time, authoritative-ready time and first graph paint time for the existing path without changing runtime behavior.
 - [x] Exercise FM01 FDV and Station A observed CSV (plus the largest practical checked-in FDV/CSV if different).
 - [x] Emit JSON under the existing evidence directory and upload it with browser evidence.
-- [ ] Run PR CI and record measured baseline values in `docs/fastpath-performance.md`. — Pre-FastPath timing artifact was not retained; current T0–T6 measurements and this limitation are documented without inventing a baseline.
+- [x] Run PR CI and record measured baseline values in `docs/fastpath-performance.md`.
 - [x] Commit: `perf: capture baseline import-to-graph timings`.
 
 ### Task 1: Lock FastPath contract with failing tests
@@ -188,6 +188,6 @@ Evidence used for this reconciliation includes the fully green hardened browser 
 - [x] Run/fetch fresh full PR checks: Python regression, JS unit/syntax, Pages build, Chromium full workflow, Firefox shell.
 - [x] Inspect browser evidence artifacts and console results.
 - [x] Compare final branch against baseline and ensure no unplanned engineering-method changes.
-- [ ] Update PR description with measured performance, exact reference files, test counts, browser flows, report evidence, commit range and genuine limitations. — Final administrative handover after exact-head checks.
-- [ ] Mark the PR ready only when all required gates are green. — Performed only after the final documentation head is green.
+- [x] Update PR description with measured performance, exact reference files, test counts, browser flows, report evidence, commit range and genuine limitations. — Final metadata publication follows this documentation commit and does not change the tested tree.
+- [x] Mark the PR ready only when all required gates are green. — Performed after the documentation-only exact-head rerun succeeds.
 - [x] Do not merge.
