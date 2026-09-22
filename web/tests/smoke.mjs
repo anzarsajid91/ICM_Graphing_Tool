@@ -74,6 +74,7 @@ async function measureColdReferenceImport(){
     const previewEvidence=await probe.evaluate(()=>({
       engineStatus:window.__ICM_WORKBENCH__?.status||null,
       graphMode:window.__ICM_WORKBENCH__?.lastGraphMode||null,
+      route:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,
       preview:window.__ICM_WORKBENCH__?.fastpathPreview||null,
       record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
       row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('Cold-FM01.fdv'))?.textContent||null
@@ -115,6 +116,7 @@ async function measureFreshFastPathImport({dataset,relativePath,sourcePath,input
     const previewEvidence=await probe.evaluate(name=>({
       engineStatus:window.__ICM_WORKBENCH__?.status||null,
       graphMode:window.__ICM_WORKBENCH__?.lastGraphMode||null,
+      route:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,
       preview:window.__ICM_WORKBENCH__?.fastpathPreview||null,
       record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
       row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes(name))?.textContent||null
@@ -390,6 +392,7 @@ try{
   if(!liveMode){
     const cold=performanceEvidence.coldImport,engineAfterSelection=Number(cold.engineReadyFromNavigationMs)-Number(cold.selectionAtFromNavigationMs);
     if(cold.selectionOutcome!=='graph'||cold.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Cold FastPath preview did not render: '+JSON.stringify(cold));
+    if(cold.previewEvidence?.route?.workspace!=='data'||cold.previewEvidence?.route?.page!=='sources')throw new Error('Cold FastPath preview must not take navigation away from Data / Sources: '+JSON.stringify(cold.previewEvidence?.route));
     if(cold.previewEvidence?.engineStatus==='ready'||!(cold.timeToOutcomeMs<engineAfterSelection))throw new Error('Cold FastPath preview did not render before authoritative engine readiness: '+JSON.stringify(cold));
     if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM01 parsing: '+JSON.stringify(cold.finalEvidence));
   }
@@ -406,6 +409,7 @@ try{
     await writePerformanceEvidence();
     const engineAfterSelection=Number(measured.engineReadyFromNavigationMs)-Number(measured.selectionAtFromNavigationMs);
     if(measured.selectionOutcome!=='graph'||measured.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Fresh CSV FastPath preview did not render: '+JSON.stringify(measured));
+    if(measured.previewEvidence?.route?.workspace!=='data'||measured.previewEvidence?.route?.page!=='sources')throw new Error('Fresh FastPath preview must prepare the graph without changing the user-selected Data / Sources page: '+JSON.stringify(measured.previewEvidence?.route));
     if(measured.previewEvidence?.engineStatus==='ready'||!(measured.timeToOutcomeMs<engineAfterSelection))throw new Error('Fresh CSV preview did not render before authoritative engine readiness: '+JSON.stringify(measured));
     if(measured.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Fresh CSV FastPath preview did not reconcile exactly: '+JSON.stringify(measured));
     if(measured.archiveMember){
@@ -542,21 +546,26 @@ try{
   // assertions and screenshots so review evidence represents the shipped experience.
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
   await page.waitForFunction(()=>document.body.classList.contains('pw-focus-canvas')&&document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
-  const nonDepthThresholdControls=await page.evaluate(()=>({
+  const levelThresholdControls=await page.evaluate(()=>({
     observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
     modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
   }));
-  if(nonDepthThresholdControls.observedHidden!==true||nonDepthThresholdControls.modelHidden!==true)throw new Error('Threshold controls must be hidden when no depth series is mapped: '+JSON.stringify(nonDepthThresholdControls));
+  if(levelThresholdControls.observedHidden!==false||levelThresholdControls.modelHidden!==true)throw new Error('Observed level data must expose the observed threshold control while keeping the unmapped model threshold hidden: '+JSON.stringify(levelThresholdControls));
   await page.evaluate(()=>{const input=document.querySelector('#graphObsThreshold');input.value='1.5';input.dispatchEvent(new Event('input',{bubbles:true}));});
-  await page.waitForTimeout(450);
-  const nonDepthThresholdPresentation=await page.evaluate(()=>{
+  await page.waitForFunction(()=>{
+    const chart=document.querySelector('#timeChart');
+    const thresholdLegend=(chart?.data||[]).filter(t=>/threshold|spill level/i.test(String(t.name||'')));
+    const thresholdShapes=(chart?.layout?.shapes||[]).filter(s=>s.type==='line'&&s.yref!=='paper');
+    return thresholdLegend.length===1&&thresholdShapes.length===1&&thresholdShapes[0].yref==='y'&&Number(thresholdShapes[0].y0)===1.5;
+  },null,{timeout:60000});
+  const levelThresholdPresentation=await page.evaluate(()=>{
     const chart=document.querySelector('#timeChart');
     return{
       thresholdLegend:(chart.data||[]).filter(t=>/threshold|spill level/i.test(String(t.name||''))).map(t=>t.name),
-      thresholdShapes:(chart.layout.shapes||[]).filter(s=>s.type==='line'&&s.yref!=='paper').map(s=>({yref:s.yref,y0:s.y0}))
+      thresholdShapes:(chart.layout.shapes||[]).filter(s=>s.type==='line'&&s.yref!=='paper').map(s=>({yref:s.yref,y0:s.y0,dash:s.line?.dash}))
     };
   });
-  if(nonDepthThresholdPresentation.thresholdLegend.length||nonDepthThresholdPresentation.thresholdShapes.length)throw new Error('A level/non-depth graph must not display spill-threshold lines: '+JSON.stringify(nonDepthThresholdPresentation));
+  if(levelThresholdPresentation.thresholdLegend.length!==1||levelThresholdPresentation.thresholdShapes.length!==1||levelThresholdPresentation.thresholdShapes[0].dash!=='dash')throw new Error('Observed level threshold must be visible as one dashed line on the hydraulic level axis: '+JSON.stringify(levelThresholdPresentation));
   const graphLayout=await page.evaluate(()=>({hyd:document.querySelector('#timeChart').layout.yaxis.domain,rain:document.querySelector('#timeChart').layout.yaxis2.domain,rainRange:document.querySelector('#timeChart').layout.yaxis2.range}));
   if(!(graphLayout.hyd[1]<graphLayout.rain[0]&&(graphLayout.rain[0]-graphLayout.hyd[1])>=.04))throw new Error(`Rainfall and hydraulic panels are not independently separated: ${JSON.stringify(graphLayout)}`);
   if(!(graphLayout.rainRange[0]>graphLayout.rainRange[1]))throw new Error(`Rainfall axis should be reversed top-down: ${JSON.stringify(graphLayout.rainRange)}`);
@@ -1025,7 +1034,10 @@ try{
   if(!report.includes('© 2026 Anzar Sajid'))throw new Error('Report copyright missing');
   if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
   if(!report.includes('project_registry')||!report.includes('web-worker'))throw new Error('Report audit appendix is missing canonical project registry / worker execution provenance');
-  if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Project data context')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
+  if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Full time-period graph')||!report.includes('Project data context')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
+  const reportGraphIndex=report.indexOf('Full time-period graph'),reportSpillIndex=report.indexOf('Spill / EDM assessment'),reportScenarioIndex=report.indexOf('Scenario comparison');
+  if(!(reportGraphIndex>=0&&reportSpillIndex>reportGraphIndex&&reportScenarioIndex>reportSpillIndex))throw new Error('Assessment report must follow the supplied Station A review order: full-period graph, spill/EDM tables, then scenario diagnostics.');
+  if(!report.includes('Observed / EDM hydraulic threshold')||!report.includes('Model hydraulic threshold'))throw new Error('Assessment report settings must identify the observed and model hydraulic threshold values explicitly.');
   if(report.includes('<h3>Graph statistics</h3>'))throw new Error('Assessment report should not duplicate graph statistics outside the reference-style figure.');
   if(!report.includes('Observed spills by month')||!report.includes('Model spills by month')||!report.includes('Observed vs modelled monthly spill comparison'))throw new Error('Assessment report is missing the reference-style monthly spill tables.');
   if(!report.includes('Professional flow-survey / rainfall assessment')||!report.includes('professional_flow_survey'))throw new Error('Professional flow-survey assessment missing from report/audit appendix');
