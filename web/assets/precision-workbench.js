@@ -173,9 +173,11 @@ function preparePageComposition(){
   own(qs('.survey-professional'),['survey/rainfall-response','rainfall/gauges']);
   own($('completeSurveyPanel'),['survey/rainfall-response']);
   own($('surveyBalancePanel'),['survey/flow-continuity']);
+  own(qs('#tab-compare > .panel'),['verification/comparison','verification/rating','verification/dwf']);
   own(qs('#tab-compare .tool-main-section'),['verification/comparison']);
   own($('pwRatingPanel'),['verification/rating']);
   own($('pwDwfPanel'),['verification/dwf']);
+  own($('tab-storage'),['verification/storage']);
   own($('pwSpillThresholdSurface'),['spills/thresholds']);
   own($('pwSpillResultsSurface'),['spills/results']);
   own($('pwWorkspaceSurface'),['report/workspace']);
@@ -183,11 +185,20 @@ function preparePageComposition(){
   for(const sel of ['#tab-data-health>.panel>.panel-head','#tab-data-health .tool-main-head','#tab-spills>.panel>.panel-head','#tab-workspace>.panel>.panel-head']){const el=qs(sel);if(el)el.classList.add('pw-legacy-framing');}
   for(const selector of ['#tab-spills .tool-main-section','#tab-workspace .tool-main-section']){const legacy=qs(selector);if(legacy)legacy.hidden=true;}
   const balanceBtn=$('runSurveyBalanceBtn');if(balanceBtn){balanceBtn.classList.add('primary');balanceBtn.textContent='Recalculate balance';}
+  const ratingBtn=$('runRatingBtn');if(ratingBtn)ratingBtn.classList.add('primary');
+  const dwfBtn=$('runDwfBtn');if(dwfBtn)dwfBtn.classList.add('primary');
 }
 function applyPageComposition(){
   preparePageComposition();
   const key=current.workspace+'/'+current.page;
-  ownedSurfaces.forEach(node=>{node.hidden=!String(node.dataset.pwOwned||'').split(' ').includes(key);});
+  ownedSurfaces.forEach(node=>{
+    const hidden=!String(node.dataset.pwOwned||'').split(' ').includes(key);
+    node.hidden=hidden;
+    // The legacy stylesheet contains display rules for active tab content.
+    // Enforce route ownership inline as well so nested/embedded workflows have
+    // identical containment in Chromium and Firefox.
+    node.style.display=hidden?'none':'';
+  });
 }
 function buildShell(){
   if(qs('.pw-app'))return;
@@ -331,12 +342,20 @@ function navigate(workspace,page,push=false){
   clearRouteClasses();document.body.classList.add(routeKey());
   qsa('.pw-route-visible').forEach(x=>x.classList.remove('pw-route-visible'));
   legacyTab(p.tab);
+  // Route ownership is semantic, not only visual. Explicitly hide every
+  // legacy tab panel before exposing the selected Precision route so an
+  // old active-tab class can never leak another task's primary action.
+  qsa('main.shell>.tab-panel').forEach(x=>{x.hidden=true;});
   const root=p.root?.();
   if(root){
     root.classList.add('pw-route-visible');
+    if(root.classList.contains('tab-panel'))root.hidden=false;
     let ancestor=root.parentElement;
     while(ancestor&&ancestor!==qs('main.shell')){
-      if(ancestor.classList.contains('tab-panel')||ancestor.classList.contains('embedded-workflow'))ancestor.classList.add('pw-route-visible');
+      if(ancestor.classList.contains('tab-panel')||ancestor.classList.contains('embedded-workflow')){
+        ancestor.classList.add('pw-route-visible');
+        if(ancestor.classList.contains('tab-panel'))ancestor.hidden=false;
+      }
       ancestor=ancestor.parentElement;
     }
   }
@@ -371,16 +390,21 @@ function resizeVisuals(){
   });
 }
 function applyFocusCanvas(userInitiated=false){
-  const eligible=isFocusRoute();
-  const active=eligible&&focusPreference===true;
+  const eligible=isFocusRoute(),desktop=matchMedia('(min-width:901px)').matches;
+  // Graph-heavy routes default to focus mode unless the user explicitly opts out.
+  // This makes the analytical canvas primary while retaining every setting in the
+  // overlay inspector and a one-click path back to the standard layout.
+  const active=eligible&&desktop&&focusPreference!==false;
   document.body.classList.toggle('pw-focus-canvas',active);
   const button=$('pwFocusToggle');
   if(button){
-    button.hidden=!eligible;
+    button.hidden=!eligible||!desktop;
     button.setAttribute('aria-pressed',active?'true':'false');
     button.textContent=active?'Standard layout':'Focus canvas';
     button.title=active?'Restore the full navigation and docked inspector':'Maximise chart width; keep controls in an overlay inspector';
   }
+  const railToggle=$('pwRailToggle');
+  if(railToggle)railToggle.hidden=active;
   const inspector=$('pwInspector');
   if(!active&&userInitiated)inspector?.classList.remove('is-open');
   resizeVisuals();
@@ -422,11 +446,13 @@ function wireContextUpdates(){
   ['observedSelect','rainSelect','analysisStart','analysisEnd','workspaceName'].forEach(id=>$(id)?.addEventListener('change',refreshScope));
   window.addEventListener('icm:source-pool-changed',()=>{renderAssets();setTimeout(()=>{createScenarioChecklist();refreshScope();},0);});
   window.addEventListener('hashchange',()=>{const r=parseHash();if(r)navigate(r.workspace,r.page,false);});
+  const focusMedia=matchMedia('(min-width:901px)');
+  focusMedia.addEventListener?.('change',()=>applyFocusCanvas(false));
 }
 function mount(){
   identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();
   const initial=parseHash()||{workspace:'data',page:'sources'};navigate(initial.workspace,initial.page,false);
-  window.__ICM_PRECISION_WORKBENCH__={version:4,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
+  window.__ICM_PRECISION_WORKBENCH__={version:5,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
 })();

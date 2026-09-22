@@ -1,6 +1,11 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+
+const execFileAsync=promisify(execFile);
 
 const root=process.cwd();
 const baseUrl=(process.env.ICM_BASE_URL||'http://127.0.0.1:8000/').replace(/\/?$/,'/');
@@ -44,6 +49,241 @@ async function captureEvidence(name){
   await page.screenshot({path:path.join(dir,`${name}.png`),fullPage:false});
   await page.screenshot({path:path.join(dir,`${name}-full.png`),fullPage:true});
 }
+const performanceEvidence={schema_version:2,build:process.env.GITHUB_SHA||'local',mode:liveMode?'live':'local-artifact'};
+async function writePerformanceEvidence(){
+  const dir=process.env.ICM_EVIDENCE_DIR;
+  if(!dir)return;
+  await fs.mkdir(dir,{recursive:true});
+  await fs.writeFile(path.join(dir,'fastpath-performance.json'),JSON.stringify(performanceEvidence,null,2)+'\n','utf8');
+}
+async function measureColdReferenceImport(){
+  if(liveMode)return null;
+  const probe=await context.newPage();
+  const sourcePath=path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv');
+  const buffer=await fs.readFile(sourcePath);
+  const navigationStart=Date.now();
+  try{
+    await probe.goto(baseUrl+'?cold_import='+Date.now(),{waitUntil:'domcontentloaded'});
+    const domReadyMs=Date.now()-navigationStart;
+    const selectedAt=Date.now();
+    await probe.setInputFiles('#fileInput',{name:'Cold-FM01.fdv',mimeType:'text/plain',buffer});
+    const outcome=await Promise.race([
+      probe.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
+      probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM01.fdv')&&row.textContent.includes('Error')),null,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt}))
+    ]);
+    const previewEvidence=await probe.evaluate(()=>({
+      engineStatus:window.__ICM_WORKBENCH__?.status||null,
+      graphMode:window.__ICM_WORKBENCH__?.lastGraphMode||null,
+      preview:window.__ICM_WORKBENCH__?.fastpathPreview||null,
+      record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
+      row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('Cold-FM01.fdv'))?.textContent||null
+    }));
+    let engineReadyFromNavigationMs=null;
+    try{
+      await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+      engineReadyFromNavigationMs=Date.now()-navigationStart;
+    }catch{}
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM01.fdv')&&row.textContent.includes('Ready')),null,{timeout:60000});
+    const finalEvidence=await probe.evaluate(()=>({
+      record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
+      reconciliation:window.__ICM_WORKBENCH__?.fastpath?.last?.reconciliation||null,
+      row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('Cold-FM01.fdv'))?.textContent||null
+    }));
+    return {dataset:'FM01.fdv',bytes:buffer.length,domReadyMs,selectionOutcome:outcome.kind,timeToOutcomeMs:outcome.ms,
+      engineReadyFromNavigationMs,selectionAtFromNavigationMs:selectedAt-navigationStart,previewEvidence,finalEvidence};
+  }finally{
+    await probe.close();
+  }
+}
+async function measureFreshFastPathImport({dataset,relativePath,sourcePath,inputName,mimeType='text/csv',archiveMember=null,timeoutMs=120000}){
+  if(liveMode)return null;
+  const probe=await context.newPage();
+  const resolvedPath=sourcePath||path.join(root,relativePath);
+  const sourceStat=await fs.stat(resolvedPath);
+  const usePathUpload=sourceStat.size>50*1024*1024;
+  const buffer=usePathUpload?null:await fs.readFile(resolvedPath);
+  const navigationStart=Date.now();
+  try{
+    await probe.goto(baseUrl+'?fresh_fastpath='+encodeURIComponent(dataset)+'&t='+Date.now(),{waitUntil:'domcontentloaded'});
+    const domReadyMs=Date.now()-navigationStart;
+    const selectedAt=Date.now();
+    await probe.setInputFiles('#fileInput',usePathUpload?resolvedPath:{name:inputName,mimeType,buffer});
+    const outcome=await Promise.race([
+      probe.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
+      probe.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Error')),inputName,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt}))
+    ]);
+    const previewEvidence=await probe.evaluate(name=>({
+      engineStatus:window.__ICM_WORKBENCH__?.status||null,
+      graphMode:window.__ICM_WORKBENCH__?.lastGraphMode||null,
+      preview:window.__ICM_WORKBENCH__?.fastpathPreview||null,
+      record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
+      row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes(name))?.textContent||null
+    }),inputName);
+    let engineReadyFromNavigationMs=null;
+    try{
+      await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:timeoutMs});
+      engineReadyFromNavigationMs=Date.now()-navigationStart;
+    }catch{}
+    await probe.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),inputName,{timeout:timeoutMs});
+    const finalEvidence=await probe.evaluate(()=>({
+      record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
+      reconciliation:window.__ICM_WORKBENCH__?.fastpath?.last?.reconciliation||null
+    }));
+    return {dataset,archiveMember,bytes:sourceStat.size,uploadMode:usePathUpload?'path':'buffer',domReadyMs,selectionOutcome:outcome.kind,timeToOutcomeMs:outcome.ms,
+      engineReadyFromNavigationMs,selectionAtFromNavigationMs:selectedAt-navigationStart,previewEvidence,finalEvidence};
+  }finally{await probe.close();}
+}
+async function extractFirstModelReference(){
+  const zipPath=path.join(root,'reference/current-tool/sample-data/other/StationA_Modelled Data.zip');
+  const targetDir=await fs.mkdtemp(path.join(os.tmpdir(),'icm-model-reference-'));
+  const script=[
+    'import pathlib,sys,zipfile',
+    'archive=pathlib.Path(sys.argv[1]); target_dir=pathlib.Path(sys.argv[2])',
+    'with zipfile.ZipFile(archive) as z:',
+    '    members=[m for m in z.infolist() if not m.is_dir() and m.filename.lower().endswith((".csv",".hyd")) and "__MACOSX" not in m.filename]',
+    '    if not members: raise SystemExit("No CSV/HYD model members found")',
+    '    member=members[0]',
+    '    suffix=pathlib.Path(member.filename).suffix.lower() or ".csv"',
+    '    target=target_dir/("StationA_Modelled_First"+suffix)',
+    '    target.write_bytes(z.read(member))',
+    '    print(target)',
+    '    print(member.filename,file=sys.stderr)',
+  ].join('\n');
+  const {stdout,stderr}=await execFileAsync('python',['-c',script,zipPath,targetDir],{maxBuffer:1024*1024});
+  return {sourcePath:stdout.trim(),archiveMember:stderr.trim(),inputName:path.basename(stdout.trim())};
+}
+
+async function verifyClearDuringPendingImport(){
+  if(liveMode)return null;
+  const probe=await context.newPage(),probeErrors=[];
+  probe.on('pageerror',error=>probeErrors.push('pageerror: '+String(error)));
+  probe.on('console',message=>{if(message.type()==='error')probeErrors.push('console: '+message.text());});
+  try{
+    await probe.goto(baseUrl+'?pending_clear='+Date.now(),{waitUntil:'domcontentloaded'});
+    await probe.waitForFunction(()=>document.querySelector('#engineStatus')?.textContent.includes('Initialising advanced analysis'),null,{timeout:30000});
+    const payload=Buffer.from([
+      'timestamp,Depth (m)',
+      '2026-02-01T00:00:00,0.2',
+      '2026-02-01T00:01:00,0.3',
+      ''
+    ].join('\n'),'utf8');
+    await probe.setInputFiles('#fileInput',{name:'pending-clear.csv',mimeType:'text/csv',buffer:payload});
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('pending-clear.csv')&&row.textContent.includes('Preview ready')),null,{timeout:30000});
+    const before=await probe.evaluate(()=>({
+      rows:document.querySelectorAll('#poolBody tr').length,
+      engineStatus:document.querySelector('#engineStatus')?.textContent||null
+    }));
+    await probe.locator('#clearPoolBtn').evaluate(el=>el.click());
+    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0,null,{timeout:30000});
+    await probe.waitForFunction(()=>/ready/i.test(document.querySelector('#engineStatus')?.textContent||''),null,{timeout:30000});
+    await probe.waitForTimeout(1500);
+    const after=await probe.evaluate(()=>({
+      rows:document.querySelectorAll('#poolBody tr').length,
+      registrySources:window.ICMProjectRegistry?.snapshot()?.sources?.length??null,
+      observedOptions:[...document.querySelectorAll('#observedSelect option')].map(o=>o.textContent),
+      sourcePool:window.__ICM_WORKBENCH__?.sourcePool||null,
+      errors:window.__ICM_WORKBENCH__?.errors||[]
+    }));
+    if(after.rows!==0||after.registrySources!==0||after.observedOptions.some(x=>x.includes('pending-clear.csv'))){
+      throw new Error('Cleared pending import reappeared after authoritative engine readiness: '+JSON.stringify({before,after}));
+    }
+    const materialErrors=probeErrors.filter(x=>!x.includes('favicon.ico'));
+    if(materialErrors.length)throw new Error('Pending-clear probe console/page errors: '+materialErrors.join(' | '));
+    return {before,after};
+  }finally{await probe.close();}
+}
+
+async function verifyRestartDuringPendingImport(){
+  if(liveMode)return null;
+  const probe=await context.newPage(),probeErrors=[];
+  probe.on('pageerror',error=>probeErrors.push('pageerror: '+String(error)));
+  probe.on('console',message=>{if(message.type()==='error')probeErrors.push('console: '+message.text());});
+  try{
+    await probe.goto(baseUrl+'?pending_restart='+Date.now(),{waitUntil:'domcontentloaded'});
+    await probe.waitForFunction(()=>/ready/i.test(document.querySelector('#engineStatus')?.textContent||''),null,{timeout:30000});
+    const basePayload=Buffer.from([
+      'timestamp,Depth (m)',
+      '2026-02-01T00:00:00,0.2',
+      '2026-02-01T00:01:00,0.3',
+      ''
+    ].join('\n'),'utf8');
+    await probe.setInputFiles('#fileInput',{name:'restart-base.csv',mimeType:'text/csv',buffer:basePayload});
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('restart-base.csv')&&row.textContent.includes('Ready')),null,{timeout:30000});
+
+    const pendingPath=path.join(root,'reference/current-tool/sample-data/other/StationA_EDM.csv');
+    await probe.setInputFiles('#fileInput',pendingPath);
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('StationA_EDM.csv')&&row.textContent.includes('Preview ready')),null,{timeout:30000});
+    await probe.evaluate(async()=>{
+      if(typeof window.cancelCurrentOperation!=='function')throw new Error('cancelCurrentOperation is not available to the browser acceptance probe');
+      await window.cancelCurrentOperation();
+    });
+    await probe.waitForFunction(()=>/ready/i.test(document.querySelector('#engineStatus')?.textContent||''),null,{timeout:30000});
+    await probe.waitForFunction(()=>![...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('StationA_EDM.csv')),null,{timeout:30000});
+    await probe.waitForTimeout(1000);
+    const result=await probe.evaluate(()=>({
+      rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+      registrySources:(window.ICMProjectRegistry?.snapshot()?.sources||[]).map(x=>x.name),
+      sourcePool:window.__ICM_WORKBENCH__?.sourcePool||null,
+      errors:window.__ICM_WORKBENCH__?.errors||[]
+    }));
+    if(result.rows.length!==1||!result.rows[0].includes('restart-base.csv')||result.registrySources.length!==1||!result.registrySources[0].includes('restart-base.csv')){
+      throw new Error('Worker restart did not retain only authoritative-ready sources: '+JSON.stringify(result));
+    }
+    const materialErrors=probeErrors.filter(x=>!x.includes('favicon.ico'));
+    if(materialErrors.length)throw new Error('Pending-restart probe console/page errors: '+materialErrors.join(' | '));
+    return result;
+  }finally{await probe.close();}
+}
+
+async function verifyFastPathFailureFallsBack(){
+  if(liveMode)return null;
+  const probe=await context.newPage(),probeConsole=[],probePageErrors=[],probeFailedRequests=[];
+  probe.on('console',message=>{if(message.type()==='error')probeConsole.push(message.text());});
+  probe.on('pageerror',error=>probePageErrors.push(String(error)));
+  probe.on('requestfailed',request=>probeFailedRequests.push(request.url()+' :: '+(request.failure()?.errorText||'failed')));
+  try{
+    await probe.route('**/assets/fastpath-worker.js*',route=>route.fulfill({
+      status:200,
+      contentType:'text/javascript',
+      body:'throw new Error("forced FastPath worker failure");'
+    }));
+    await probe.goto(baseUrl+'?fastpath_failure_fallback='+Date.now(),{waitUntil:'domcontentloaded'});
+    // "No files loaded." exists in static HTML, so it cannot prove runtime.start()
+    // has executed. engineStatus is changed only after wireEvents() attaches the
+    // import handlers, making this a deterministic readiness boundary.
+    await probe.waitForFunction(()=>document.querySelector('#engineStatus')?.textContent.includes('Initialising advanced analysis'),null,{timeout:30000});
+    const payload=Buffer.from(['timestamp,Depth (m)','2026-02-01T00:00:00,0.2','2026-02-01T00:01:00,0.3',''].join('\n'),'utf8');
+    await probe.setInputFiles('#fileInput',{name:'fastpath-fallback.csv',mimeType:'text/csv',buffer:payload});
+    try{
+      await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('fastpath-fallback.csv')&&row.textContent.includes('Ready')),null,{timeout:120000});
+    }catch(error){
+      const state=await probe.evaluate(()=>({
+        readyState:document.readyState,
+        engineStatus:document.querySelector('#engineStatus')?.textContent||null,
+        poolSummary:document.querySelector('#poolSummary')?.textContent||null,
+        rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+        selectedFiles:[...document.querySelector('#fileInput')?.files||[]].map(file=>({name:file.name,size:file.size})),
+        diagnostic:window.__ICM_WORKBENCH__?{
+          status:window.__ICM_WORKBENCH__.status,
+          errors:window.__ICM_WORKBENCH__.errors,
+          fastpathWarnings:window.__ICM_WORKBENCH__.fastpathWarnings,
+          fastpath:window.__ICM_WORKBENCH__.fastpath,
+          worker:window.__ICM_WORKBENCH__.worker,
+          engineReadyAt:window.__ICM_WORKBENCH__.engineReadyAt,
+          sourcePool:window.__ICM_WORKBENCH__.sourcePool,
+          stateSummary:window.__ICM_WORKBENCH__.stateSummary?.()
+        }:null
+      }));
+      throw new Error('FastPath fallback probe timed out: '+JSON.stringify({state,probeConsole,probePageErrors,probeFailedRequests,cause:String(error)}));
+    }
+    return await probe.evaluate(()=>({
+      row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('fastpath-fallback.csv'))?.textContent||null,
+      errors:window.__ICM_WORKBENCH__?.errors||[],
+      parsed:[...document.querySelectorAll('#observedSelect option')].some(option=>option.textContent.trim()==='fastpath-fallback.csv — Depth (m)')
+    }));
+  }finally{await probe.close();}
+}
+
 async function inspectReportHtml(html,minFigures=1){
   const p=await context.newPage();
   const reportErrors=[],reportFailedRequests=[];
@@ -144,9 +384,51 @@ async function associationWorkbook(){
 }
 
 try{
+  stage='cold import baseline';
+  performanceEvidence.coldImport=await measureColdReferenceImport();
+  await writePerformanceEvidence();
+  if(!liveMode){
+    const cold=performanceEvidence.coldImport,engineAfterSelection=Number(cold.engineReadyFromNavigationMs)-Number(cold.selectionAtFromNavigationMs);
+    if(cold.selectionOutcome!=='graph'||cold.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Cold FastPath preview did not render: '+JSON.stringify(cold));
+    if(cold.previewEvidence?.engineStatus==='ready'||!(cold.timeToOutcomeMs<engineAfterSelection))throw new Error('Cold FastPath preview did not render before authoritative engine readiness: '+JSON.stringify(cold));
+    if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM01 parsing: '+JSON.stringify(cold.finalEvidence));
+  }
+  stage='fresh CSV FastPath benchmarks';
+  performanceEvidence.freshCsvImports=[];
+  const modelReference=await extractFirstModelReference();
+  for(const spec of [
+    {dataset:'StationA_EDM.csv',relativePath:'reference/current-tool/sample-data/other/StationA_EDM.csv',inputName:'Cold-StationA_EDM.csv'},
+    {dataset:'StationA_Rainfall.csv',relativePath:'reference/current-tool/sample-data/other/StationA_Rainfall.csv',inputName:'Cold-StationA_Rainfall.csv'},
+    {dataset:'StationA_Modelled Data.zip / first model member',sourcePath:modelReference.sourcePath,inputName:modelReference.inputName,archiveMember:modelReference.archiveMember,timeoutMs:240000},
+  ]){
+    const measured=await measureFreshFastPathImport(spec);
+    performanceEvidence.freshCsvImports.push(measured);
+    await writePerformanceEvidence();
+    const engineAfterSelection=Number(measured.engineReadyFromNavigationMs)-Number(measured.selectionAtFromNavigationMs);
+    if(measured.selectionOutcome!=='graph'||measured.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Fresh CSV FastPath preview did not render: '+JSON.stringify(measured));
+    if(measured.previewEvidence?.engineStatus==='ready'||!(measured.timeToOutcomeMs<engineAfterSelection))throw new Error('Fresh CSV preview did not render before authoritative engine readiness: '+JSON.stringify(measured));
+    if(measured.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Fresh CSV FastPath preview did not reconcile exactly: '+JSON.stringify(measured));
+    if(measured.archiveMember){
+      const previewColumns=(measured.previewEvidence?.preview?.series||[]).map(x=>String(x.column||''));
+      if(previewColumns.some(x=>/^seconds?$/i.test(x)))throw new Error('Model FastPath preview must hide auxiliary Seconds from the engineering graph: '+JSON.stringify(measured));
+      if(!previewColumns.length)throw new Error('Model FastPath preview did not expose an engineering series: '+JSON.stringify(measured));
+    }
+  }
+  stage='FastPath failure falls back to authoritative import';
+  performanceEvidence.fastpathFailureFallback=await verifyFastPathFailureFallsBack();
+  if(!liveMode&&!performanceEvidence.fastpathFailureFallback?.parsed)throw new Error('A FastPath worker failure must not prevent authoritative parsing: '+JSON.stringify(performanceEvidence.fastpathFailureFallback));
+  stage='clear during pending FastPath import';
+  performanceEvidence.pendingImportClear=await verifyClearDuringPendingImport();
+  await writePerformanceEvidence();
+  stage='analysis-worker restart during pending FastPath import';
+  performanceEvidence.pendingImportRestart=await verifyRestartDuringPendingImport();
+  await writePerformanceEvidence();
   stage='open application';
+  const applicationNavigationStart=Date.now();
   await page.goto(baseUrl+(liveMode?`?live_verify=${Date.now()}`:''),{waitUntil:'domcontentloaded'});
+  performanceEvidence.applicationDomReadyMs=Date.now()-applicationNavigationStart;
   await waitReady();
+  performanceEvidence.applicationEngineReadyMs=Date.now()-applicationNavigationStart;
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
   const primaryLabels=await page.locator('.pw-primary-nav button').allTextContents();
@@ -234,27 +516,32 @@ try{
 
   stage='graph threshold controls and rainfall top band';
   await precisionRoute('data','time-series');
-  const standardLayout=await page.evaluate(()=>({
-    focus:document.body.classList.contains('pw-focus-canvas'),
-    rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
-    labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none')
-  }));
-  if(standardLayout.focus||standardLayout.rail<180||!standardLayout.labelled)throw new Error('Standard analytical layout must retain labelled navigation by default: '+JSON.stringify(standardLayout));
-  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
   const focusLayout=await page.evaluate(()=>({
     focus:document.body.classList.contains('pw-focus-canvas'),
     rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
     work:document.querySelector('.pw-workarea')?.getBoundingClientRect().width||0,
     inspectorPosition:getComputedStyle(document.querySelector('.pw-inspector')).position,
-    inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none'
+    inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none',
+    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden
   }));
-  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||!focusLayout.inspectorToggleVisible)throw new Error('Opt-in focus canvas did not maximise the graph work area: '+JSON.stringify(focusLayout));
+  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||!focusLayout.inspectorToggleVisible||focusLayout.railToggleHidden!==true)throw new Error('Graph-heavy routes must default to a focused analytical canvas: '+JSON.stringify(focusLayout));
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
   await page.click('#pwInspectorToggle');
   await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.click('#pwInspectorClose');
   await page.waitForFunction(()=>!document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(false));
+  const standardLayout=await page.evaluate(()=>({
+    focus:document.body.classList.contains('pw-focus-canvas'),
+    rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
+    labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none'),
+    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden
+  }));
+  if(standardLayout.focus||standardLayout.rail<180||!standardLayout.labelled||standardLayout.railToggleHidden)throw new Error('Explicit standard layout must restore labelled navigation: '+JSON.stringify(standardLayout));
+  // Return to the intended graph-first default before the remaining analytical
+  // assertions and screenshots so review evidence represents the shipped experience.
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
+  await page.waitForFunction(()=>document.body.classList.contains('pw-focus-canvas')&&document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
   const nonDepthThresholdControls=await page.evaluate(()=>({
     observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
     modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
@@ -365,6 +652,8 @@ try{
   const metricText=await page.locator('#metricGrid').textContent();
   if(!metricText.includes('Calculation status')||!metricText.includes('Valid support'))throw new Error('Comparison validity cards are missing');
   for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])await page.waitForSelector(`#${id} .main-svg`,{timeout:60000});
+  await precisionRoute('verification','comparison');
+  await captureEvidence('08-verification-comparison');
 
   stage='depth-only agreement fit';
   await precisionRoute('verification','rating');
@@ -390,6 +679,7 @@ try{
   await page.selectOption('#dwfFlowSelect',dwf);
   await page.click('#runDwfBtn');
   await page.waitForSelector('#dwfSummary .summary-box',{timeout:60000});
+  await captureEvidence('09-verification-dwf');
 
   stage='rainfall event workflow and cumulative multi-R plot';
   await clickTab('rain-events');
@@ -415,6 +705,8 @@ try{
   await page.click('#runRainEventsBtn');
   await page.waitForFunction(()=>document.querySelector('#rainEventSummary')?.textContent.includes('qualifying events'),null,{timeout:60000});
   if(await page.locator('#rainEventBody tr').count()<1)throw new Error('Manual rainfall criteria should identify the demo event');
+  await precisionRoute('rainfall','events');
+  await captureEvidence('10-rainfall-events');
 
   stage='data health';
   await clickTab('data-health');
@@ -609,6 +901,7 @@ try{
   await page.click('#runStorageBtn');
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.lastStorage),null,{timeout:60000});
   await page.waitForFunction(()=>document.querySelector('#storageSummary')?.textContent.trim().length>0&&document.querySelector('#monthlyVolume')?.textContent.trim().length>0,null,{timeout:60000});
+  await captureEvidence('11-verification-storage');
 
   stage='workspace persistence and reports';
   await precisionRoute('report','workspace');
@@ -758,12 +1051,14 @@ try{
   const referenceFdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv'));
   const referenceRain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG01.R'));
   const beforeReferenceFiles=await page.locator('#poolBody tr').count();
+  const warmReferenceSelectedAt=Date.now();
   await page.setInputFiles('#fileInput',[
     {name:'Reference_FM01.fdv',mimeType:'text/plain',buffer:referenceFdv},
     {name:'Reference_RG01.R',mimeType:'text/plain',buffer:referenceRain},
   ]);
   await page.waitForFunction(expected=>document.querySelectorAll('#poolBody tr').length===expected,beforeReferenceFiles+2,{timeout:90000});
   await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(r=>/Reference_(FM01|RG01)/.test(r.textContent)).every(r=>r.textContent.includes('Ready')),null,{timeout:90000});
+  performanceEvidence.warmReferencePair={datasets:['FM01.fdv','RG01.R'],bytes:referenceFdv.length+referenceRain.length,authoritativeReadyMs:Date.now()-warmReferenceSelectedAt};
   await precisionRoute('data','series-mapping');
   const referenceDepth=await optionValue('#observedSelect','Reference_FM01.fdv — depth');
   const referenceRainKey=await optionValue('#rainSelect','Reference_RG01.R — rainfall');
@@ -773,6 +1068,7 @@ try{
   await page.selectOption('#rainSelect',referenceRainKey);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphMode==='fdv-multi-variable'&&window.__ICM_WORKBENCH__.lastGraphStatistics?.length===4,null,{timeout:90000});
+  performanceEvidence.warmReferencePair.firstMappedGraphMs=Date.now()-warmReferenceSelectedAt;
   await precisionRoute('data','time-series');
   await page.fill('#graphObsThreshold','');
   await page.waitForTimeout(500);
@@ -804,6 +1100,19 @@ try{
   if(!referenceEvidence.tableTotals.some(x=>/85(?:\.0+)? mm/.test(x)))throw new Error('Reference rainfall total 85 mm missing from Plotly statistics: '+JSON.stringify(referenceEvidence.tableTotals));
   if(referenceEvidence.pointCounts?.observed?.raw!==20161||referenceEvidence.pointCounts?.rainfall?.raw!==20161)throw new Error('Reference full-period source counts mismatch: '+JSON.stringify(referenceEvidence.pointCounts));
   if(!String(referenceEvidence.xRange?.[0]||'').startsWith('2026-02-01')||!String(referenceEvidence.xRange?.[1]||'').startsWith('2026-03-01'))throw new Error('Reference graph support mismatch: '+JSON.stringify(referenceEvidence.xRange));
+  stage='authoritative FDV channel navigation';
+  const channelPresentation=await page.locator('#v2ChannelNav').evaluate(el=>({
+    visible:!el.hidden,
+    inStrip:Boolean(el.closest('#v2ChannelStrip')),
+    inInspector:Boolean(el.closest('#pwInspector'))
+  }));
+  if(!channelPresentation.visible||!channelPresentation.inStrip||channelPresentation.inInspector)throw new Error('FDV channel navigation should remain graph-adjacent after authoritative handoff: '+JSON.stringify(channelPresentation));
+  await page.click('#v2ChannelNav [data-channel="flow"]');
+  await page.waitForFunction(()=>JSON.stringify(window.__ICM_WORKBENCH__.lastPanelOrder)===JSON.stringify(['rainfall','flow']),null,{timeout:60000});
+  const selectedChannelMode=await page.evaluate(()=>window.__ICM_WORKBENCH__.uiV2?.channelMode||null);
+  if(selectedChannelMode!=='flow')throw new Error('Flow channel navigation did not retain its selected state: '+JSON.stringify(selectedChannelMode));
+  await page.click('#v2ChannelNav [data-channel="combined"]');
+  await page.waitForFunction(()=>JSON.stringify(window.__ICM_WORKBENCH__.lastPanelOrder)===JSON.stringify(['rainfall','flow','depth','velocity']),null,{timeout:60000});
   await captureEvidence('01c-reference-fdv-graph');
 
   stage='simulated-series auxiliary column filtering';
@@ -846,6 +1155,36 @@ try{
   if(sourceEventEvidence.events?.count!==1||sourceEventEvidence.events?.details?.[0]?.reason!=='ingest')throw new Error('Real multi-file ingestion must emit exactly one source-pool state event: '+JSON.stringify(sourceEventEvidence));
   if(sourceEventEvidence.professional||sourceEventEvidence.complete||sourceEventEvidence.balance)throw new Error('Real source-pool change did not invalidate source-dependent survey results: '+JSON.stringify(sourceEventEvidence));
 
+  stage='FastPath handoff preserves applied mapping';
+  await precisionRoute('data','series-mapping');
+  const mappingBeforeHandoff=await page.evaluate(()=>({
+    observed:document.querySelector('#observedSelect')?.value||'',
+    models:[...document.querySelectorAll('#modelSelect option:checked')].map(o=>o.value),
+    rain:document.querySelector('#rainSelect')?.value||'',
+    mode:window.__ICM_WORKBENCH__?.lastGraphMode||null
+  }));
+  const handoffPayload=Buffer.from([
+    'timestamp,Depth (m)',
+    '2026-02-01T00:00:00,0.21',
+    '2026-02-01T00:01:00,0.22',
+    ''
+  ].join('\n'),'utf8');
+  await page.setInputFiles('#fileInput',{name:'handoff-extra.csv',mimeType:'text/csv',buffer:handoffPayload});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('handoff-extra.csv')&&row.textContent.includes('Ready')),null,{timeout:60000});
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.lastGraphMode!=='fastpath-preview',null,{timeout:60000});
+  const mappingAfterHandoff=await page.evaluate(()=>({
+    observed:document.querySelector('#observedSelect')?.value||'',
+    models:[...document.querySelectorAll('#modelSelect option:checked')].map(o=>o.value),
+    rain:document.querySelector('#rainSelect')?.value||'',
+    mode:window.__ICM_WORKBENCH__?.lastGraphMode||null
+  }));
+  if(mappingAfterHandoff.observed!==mappingBeforeHandoff.observed||
+     JSON.stringify(mappingAfterHandoff.models)!==JSON.stringify(mappingBeforeHandoff.models)||
+     mappingAfterHandoff.rain!==mappingBeforeHandoff.rain){
+    throw new Error('FastPath authoritative handoff changed the applied mapping: '+JSON.stringify({before:mappingBeforeHandoff,after:mappingAfterHandoff}));
+  }
+  performanceEvidence.handoffMappingPreservation={before:mappingBeforeHandoff,after:mappingAfterHandoff};
+
   stage='supplied real FDV and rainfall graph/report regression';
   await precisionRoute('data','sources');
   await page.click('#clearPoolBtn');
@@ -863,6 +1202,14 @@ try{
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect',await optionValue('#rainSelect','Reference-RG01.R — rainfall'));
   await precisionRoute('data','time-series');
+  // Appearance controls live in the contextual inspector on graph-first routes.
+  // Open the inspector before interacting with them so acceptance follows the
+  // shipped user path rather than trying to click an off-canvas detail panel.
+  const inspector=page.locator('#pwInspector');
+  if(!(await inspector.evaluate(el=>el.classList.contains('is-open')))){
+    await page.click('#pwInspectorToggle');
+    await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
+  }
   const rainfallAppearance=page.locator('#pwInspector details.appearance-panel');
   if(!(await rainfallAppearance.evaluate(el=>el.open)))await rainfallAppearance.locator('summary').click();
   await page.locator('#rainFactor').waitFor({state:'visible'});
@@ -891,9 +1238,14 @@ try{
   if(diag.errors?.length)throw new Error(`Workbench recorded operation errors: ${JSON.stringify(diag.errors)}`);
   if(failedRequests.filter(x=>!x.includes('favicon.ico')).length)throw new Error(`Failed browser requests: ${failedRequests.join(' | ')}`);
   await captureEvidence('06-final-state');
+  performanceEvidence.acceptance={status:'passed'};
+  await writePerformanceEvidence();
+  console.log('PERFORMANCE_EVIDENCE '+JSON.stringify(performanceEvidence));
 
   console.log(`${liveMode?'Live Pages':'Local artifact'} browser acceptance passed at ${baseUrl}: hardened multi-file drag/drop, auxiliary column filtering, FDV depth/flow/velocity auto-graphing, dense adaptive zoom, no range slider, compact statistics/reports, unified spill dash style, survey schematic, collapsible workflows, survey assessment, spills, storage and workspace outputs.`);
 } catch(err) {
+  performanceEvidence.acceptance={status:'failed',stage,error:String(err)};
+  await writePerformanceEvidence().catch(error=>console.error('Could not persist performance evidence:',error));
   const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');
   const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);
   console.error(`ACCEPTANCE FAILURE at stage: ${stage}`);
