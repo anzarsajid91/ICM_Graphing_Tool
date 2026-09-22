@@ -18,7 +18,7 @@
   function quantityFor(parsed,column){
     const metadata=parsed?.metadata||{};
     const detail=metadata.channels?.[column]||metadata.series_metadata?.[column]||{};
-    const direct=detail.quantity||metadata.quantity_by_column?.[column]||metadata.quantity;
+    const direct=detail.quantity||metadata.quantity_by_column?.[column];
     if(direct)return String(direct).toLowerCase();
     const t=token(column);
     if(t.includes('rain'))return 'rainfall';
@@ -26,7 +26,7 @@
     if(t.includes('flow')||t==='q'||t.includes('discharge'))return 'flow';
     if(t.includes('depth'))return 'depth';
     if(t.includes('level')||t.includes('stage'))return 'level';
-    return null;
+    return metadata.quantity?String(metadata.quantity).toLowerCase():null;
   }
   function unitFor(parsed,column){
     const metadata=parsed?.metadata||{};

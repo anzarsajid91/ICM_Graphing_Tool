@@ -1,3 +1,4 @@
+import pytest
 import pandas as pd
 from icm_workbench.analysis.alignment import pair_series
 from icm_workbench.analysis.metrics import calibration_metrics
@@ -7,3 +8,15 @@ def test_alignment_does_not_bridge_long_gap():
 
 def test_constant_observation_has_undefined_nse_not_perfect_score():
     paired=pd.DataFrame({"timestamp":pd.date_range("2026-01-01",periods=3,freq="min"),"obs":[1,1,1],"sim":[1,1,1]});result=calibration_metrics(paired);assert result["nse"] is None;assert result["correlation"] is None
+
+
+def test_calibration_metrics_reports_explicit_linear_regression():
+    import pandas as pd
+    from icm_workbench.analysis.metrics import calibration_metrics
+    paired=pd.DataFrame({"obs":[1.0,2.0,3.0,4.0],"sim":[3.0,5.0,7.0,9.0]})
+    m=calibration_metrics(paired)
+    assert m["regression_slope"] == pytest.approx(2.0)
+    assert m["regression_intercept"] == pytest.approx(1.0)
+    assert m["regression_r2"] == pytest.approx(1.0)
+    assert m["correlation"] == pytest.approx(1.0)
+    assert m["r2_correlation"] == pytest.approx(1.0)

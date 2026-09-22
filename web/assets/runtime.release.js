@@ -45,7 +45,9 @@ function seriesMetadata(item,col){
 }
 function seriesQuantity(item,col){
   const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
-  return detail.quantity||metadata.quantity_by_column?.[col]||metadata.quantity||null;
+  const token=String(col||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'');
+  const hinted=token.includes('rain')?'rainfall':(token.includes('velocity')||token==='vel')?'velocity':(token.includes('flow')||token==='q'||token.includes('discharge'))?'flow':token.includes('depth')?'depth':(token.includes('level')||token.includes('stage'))?'level':null;
+  return detail.quantity||metadata.quantity_by_column?.[col]||hinted||metadata.quantity||null;
 }
 function seriesUnit(item,col){
   const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
