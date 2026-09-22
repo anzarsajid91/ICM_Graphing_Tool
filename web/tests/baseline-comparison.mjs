@@ -30,13 +30,19 @@ async function extractModel(){
   return {sourcePath:stdout.trim().split(/\r?\n/).at(-1),archiveMember:stderr.trim().split(/\r?\n/).at(-1)};
 }
 
-async function waitRuntimeWired(page){
+async function waitRuntimeWired(page,kind){
   await page.waitForSelector('#fileInput',{state:'attached',timeout:30000});
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__),null,{timeout:30000});
-  // Both baseline and PR25 wire import handlers synchronously before the
-  // authoritative worker boot is awaited. A small equal settling interval
-  // avoids racing script evaluation while keeping the comparison symmetric.
-  await page.waitForTimeout(100);
+  // The pre-FastPath baseline wires the input before Pyodide is ready but its
+  // import path rejects files selected during worker startup. Wait for that
+  // historical path to become genuinely usable rather than timing an import
+  // that can only end in Error. PR25 deliberately remains cold here: its
+  // acceptance contract is useful preview before authoritative readiness.
+  if(kind==='baseline'){
+    await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:180000});
+  }else{
+    await page.waitForTimeout(100);
+  }
 }
 
 async function chooseFirstSeriesAndGraph(page){
@@ -56,7 +62,7 @@ async function measure(url,kind,spec){
   page.on('console',m=>{if(m.type()==='error'&&!m.text().includes('favicon.ico'))errors.push('console: '+m.text());});
   try{
     await page.goto(url+'?benchmark='+encodeURIComponent(spec.dataset)+'&t='+Date.now(),{waitUntil:'domcontentloaded'});
-    await waitRuntimeWired(page);
+    await waitRuntimeWired(page,kind);
     const selectedAt=Date.now();
     await page.setInputFiles('#fileInput',spec.sourcePath);
     let firstGraphMs=null;
