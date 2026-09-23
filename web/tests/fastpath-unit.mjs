@@ -62,6 +62,13 @@ assert.equal(iso.series[0].canonical_unit,'m³/s');
 assert.deepEqual(Array.from(iso.series[0].values),[0.1,0.2]);
 assert.equal(iso.series[1].canonical_unit,'m');
 
+const level=core.parseText('level.csv','timestamp,level\n2026-02-01T00:00:00,0.2\n2026-02-01T00:01:00,0.3\n');
+assert.equal(level.series[0].quantity,'level');
+assert.notEqual(level.series[0].quantity,'velocity');
+const waterLevel=core.parseText('stage.csv','timestamp,Water Level (m)\n2026-02-01T00:00:00,0.2\n2026-02-01T00:01:00,0.3\n');
+assert.equal(waterLevel.series[0].quantity,'level');
+assert.equal(waterLevel.series[0].canonical_unit,'m');
+
 const uk=core.parseText('depth.csv','timestamp,Depth (m)\n01/02/2026 00:00:00,0.2\n01/02/2026 00:01:00,0.3\n');
 assert.equal(uk.start,'2026-02-01T00:00:00');
 assert.equal(uk.end,'2026-02-01T00:01:00');
