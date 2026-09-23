@@ -910,8 +910,8 @@
       event.stopImmediatePropagation();
       guarded('workspaceStatus', async () => {
         const extra = surveyReportHtml();
-        if (!state.mapping.observed) {
-          const body = '<div class="note">Survey-only report. No observed graph mapping was required for this export.</div>' + extra + reportSources(workspaceObject()) + reportExclusions(workspaceObject());
+        if (!state.mapping.observed && !state.mapping.rain) {
+          const body = '<div class="note">Survey-only report. No hydraulic or rainfall graph mapping was available for the full engineering report.</div>' + extra + reportSources(workspaceObject()) + reportExclusions(workspaceObject());
           downloadBlob('icm-workbench-survey-report-' + new Date().toISOString().slice(0, 10) + '.html', reportShell('ICM Graphing Tool — Flow Survey Assessment', 'Association-driven survey QA, Event Response and flow-continuity review', body, true), 'text/html');
           document.getElementById('workspaceStatus').textContent = 'Survey assessment HTML downloaded.';
           return;
