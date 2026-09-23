@@ -748,6 +748,30 @@ try{
     return thresholdShapes.length===2&&thresholdTraces.length===2&&thresholdTraces.every(t=>t.line?.dash==='dash'&&(t.yaxis||'y')==='y');
   },null,{timeout:60000});
 
+  stage='hydraulic threshold flow ineligibility';
+  await precisionRoute('data','series-mapping');
+  const observedFlowMapping=await optionValue('#observedSelect','observed.csv — flow');
+  if(!observedFlowMapping)throw new Error('Observed flow mapping unavailable for threshold ineligibility regression.');
+  await page.selectOption('#observedSelect',observedFlowMapping);
+  await page.selectOption('#modelSelect',[]);
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden===true);
+  if(await page.inputValue('#obsThreshold')!=='')throw new Error('Depth threshold was not cleared when the mapping became Flow.');
+  await precisionRoute('spills','assessment');
+  await page.fill('#obsThreshold','1');
+  await page.click('#runSpillsBtn');
+  await page.waitForFunction(()=>/Depth or Level|Flow and Velocity/.test(document.querySelector('#spillRunStatus')?.textContent||''),null,{timeout:10000});
+  if(!/Depth or Level|Flow and Velocity/.test((await page.locator('#spillRunStatus').textContent())||''))throw new Error('Flow-only spill calculation did not reject a hydraulic-level threshold explicitly.');
+  await precisionRoute('data','series-mapping');
+  await page.selectOption('#observedSelect',obsDepth);
+  await page.selectOption('#modelSelect',[modelDepth]);
+  await page.selectOption('#rainSelect',rain);
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'));
+  await precisionRoute('data','time-series');
+  await page.fill('#graphObsThreshold','1.0');
+  await page.fill('#graphModelThreshold','1.1');
+
   stage='calibration comparison and diagnostics';
   await clickTab('compare');
   await page.click('#runCompareBtn');
