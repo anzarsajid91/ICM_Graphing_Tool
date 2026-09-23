@@ -227,9 +227,18 @@
   }
 
   async function v2ApplyMapping() {
+    const previousMapping=JSON.stringify(state.mapping);
     state.mapping.observed = $('observedSelect').value;
     state.mapping.models = [...$('modelSelect').selectedOptions].map(o => o.value);
     state.mapping.rain = $('rainSelect').value;
+    const mappingChanged=previousMapping!==JSON.stringify(state.mapping);
+    if(mappingChanged&&state.rating){
+      state.rating=null;
+      diagnostic.lastRating=null;
+      Plotly.purge('ratingChart');
+      const summary=$('ratingSummary');
+      if(summary)summary.innerHTML='<div class="pool-summary">Rating inputs changed. Recalculate the fitted relationship before interpreting or exporting it.</div>';
+    }
     const obs = mappingObject(state.mapping.observed);
     const models = currentModels();
     if (!obs && !state.mapping.rain) throw new Error('Select an observed or rainfall series.');
