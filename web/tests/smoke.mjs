@@ -386,11 +386,21 @@ async function verifyStationAThresholdChain(){
     await probe.waitForFunction(()=>['StationA_EDM.csv','StationA_Rainfall.csv'].every(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready'))),null,{timeout:240000});
     await nav('data','series-mapping');
     const selected=await probe.evaluate(()=>{
-      const obs=[...document.querySelectorAll('#observedSelect option')].find(o=>/StationA_EDM\.csv/i.test(o.textContent)&&/(depth|level)/i.test(o.textContent));
-      const rain=[...document.querySelectorAll('#rainSelect option')].find(o=>/StationA_Rainfall\.csv/i.test(o.textContent)&&/rain/i.test(o.textContent));
-      return {observed:obs?.value||'',observedLabel:obs?.textContent||'',rain:rain?.value||'',rainLabel:rain?.textContent||''};
+      const obs=[...document.querySelectorAll('#observedSelect option')].find(o=>{
+        if(!/StationA_EDM\.csv/i.test(o.textContent)||!o.value)return false;
+        const mapped=mappingObject(o.value);
+        return mapped&&['depth','level'].includes(String(seriesQuantity(mapped.item,mapped.col)||'').toLowerCase());
+      });
+      const rain=[...document.querySelectorAll('#rainSelect option')].find(o=>{
+        if(!/StationA_Rainfall\.csv/i.test(o.textContent)||!o.value)return false;
+        const mapped=mappingObject(o.value);
+        return mapped&&String(seriesQuantity(mapped.item,mapped.col)||'').toLowerCase()==='rainfall';
+      });
+      const mapped=obs?.value?mappingObject(obs.value):null;
+      return {observed:obs?.value||'',observedLabel:obs?.textContent||'',observedQuantity:mapped?seriesQuantity(mapped.item,mapped.col):null,observedUnit:mapped?seriesUnit(mapped.item,mapped.col):null,observedReference:mapped?seriesReference(mapped.item,mapped.col):null,rain:rain?.value||'',rainLabel:rain?.textContent||''};
     });
-    if(!selected.observed||!selected.rain)throw new Error('Station A reference files did not expose a Depth/Level and rainfall mapping: '+JSON.stringify(selected));
+    if(!selected.observed||!selected.rain)throw new Error('Station A reference files did not expose an authoritative Level and rainfall mapping: '+JSON.stringify(selected));
+    if(String(selected.observedQuantity).toLowerCase()!=='level'||selected.observedUnit!=='m'||selected.observedReference!=='AD')throw new Error('Station A HYD reference metadata must preserve Level · m · AD: '+JSON.stringify(selected));
     await probe.selectOption('#observedSelect',selected.observed);
     await probe.selectOption('#modelSelect',[]);
     await probe.selectOption('#rainSelect',selected.rain);
@@ -409,7 +419,7 @@ async function verifyStationAThresholdChain(){
       return (chart?.layout?.shapes||[]).some(s=>s.type==='line'&&s.yref!=='paper'&&Math.abs(Number(s.y0)-value)<1e-9);
     },threshold,{timeout:120000});
     const graphContext=(await probe.locator('#graphObsThresholdContext').textContent())||'';
-    if(!new RegExp(support.quantity,'i').test(graphContext))throw new Error('Station A graph threshold context does not identify the mapped hydraulic quantity: '+graphContext);
+    if(!new RegExp(support.quantity,'i').test(graphContext)||!/\bm\b/i.test(graphContext)||!/\bAD\b/i.test(graphContext))throw new Error('Station A graph threshold context must identify Level, unit and absolute datum: '+graphContext);
     await nav('spills','assessment');
     const controlValue=Number(await probe.inputValue('#obsThreshold'));
     if(Math.abs(controlValue-threshold)>1e-9)throw new Error('Station A threshold changed between Time Series and Spills: '+JSON.stringify({threshold,controlValue}));
@@ -438,7 +448,7 @@ async function verifyStationAThresholdChain(){
       await probe.screenshot({path:path.join(dir,'station-a-threshold-chain.png'),fullPage:true});
     }
     if(probeErrors.length)throw new Error('Station A probe browser errors: '+probeErrors.join(' | '));
-    return {observed:selected.observedLabel,rain:selected.rainLabel,quantity:support.quantity,unit:support.unit,threshold,controlValue,calcValue,reportValue:Number(reportThreshold.y0)};
+    return {observed:selected.observedLabel,rain:selected.rainLabel,quantity:support.quantity,unit:support.unit,reference:selected.observedReference,threshold,controlValue,calcValue,reportValue:Number(reportThreshold.y0)};
   }finally{
     await probe.close();
   }
