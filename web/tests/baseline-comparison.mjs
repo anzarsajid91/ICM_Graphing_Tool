@@ -84,8 +84,16 @@ async function measure(url,kind,spec){
       reconciliation:window.__ICM_WORKBENCH__?.fastpath?.last?.reconciliation?.status||null,
       recordedFastPath:window.__ICM_WORKBENCH__?.fastpath?.last||null
     }),spec.inputName);
+    let navigationMs=null;
+    if(kind==='current'&&await page.evaluate(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate))){
+      const navStart=performance.now();
+      await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
+      await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='time-series');
+      navigationMs=performance.now()-navStart;
+    }
+    const usedJsHeapMb=await page.evaluate(()=>performance.memory?.usedJSHeapSize?performance.memory.usedJSHeapSize/1048576:null);
     if(errors.length)throw new Error(errors.join(' | '));
-    return {firstGraphMs,authoritativeReadyMs,state};
+    return {firstGraphMs,authoritativeReadyMs,navigationMs,usedJsHeapMb,state};
   }finally{await page.close();}
 }
 
@@ -97,15 +105,51 @@ const datasets=[
   {dataset:'StationA_Modelled Data.csv',inputName:path.basename(model.sourcePath),sourcePath:model.sourcePath,archiveMember:model.archiveMember,timeoutMs:360000},
 ];
 
-const output={schema_version:1,baseline_sha:baselineSha,current_sha:currentSha,environment:'same GitHub Actions job / Playwright Chromium / local release artifacts',datasets:[]};
+const SAMPLE_SIZE=3;
+const median=values=>{
+  const xs=values.filter(Number.isFinite).slice().sort((a,b)=>a-b);
+  if(!xs.length)return null;
+  const mid=Math.floor(xs.length/2);
+  return xs.length%2?xs[mid]:(xs[mid-1]+xs[mid])/2;
+};
+const range=values=>{
+  const xs=values.filter(Number.isFinite);
+  return xs.length?[Math.min(...xs),Math.max(...xs)]:null;
+};
+const summarise=samples=>({
+  sample_size:samples.length,
+  firstGraphMs:median(samples.map(x=>x.firstGraphMs)),
+  firstGraphRangeMs:range(samples.map(x=>x.firstGraphMs)),
+  authoritativeReadyMs:median(samples.map(x=>x.authoritativeReadyMs)),
+  authoritativeReadyRangeMs:range(samples.map(x=>x.authoritativeReadyMs)),
+  navigationMs:median(samples.map(x=>x.navigationMs)),
+  navigationRangeMs:range(samples.map(x=>x.navigationMs)),
+  usedJsHeapMb:median(samples.map(x=>x.usedJsHeapMb)),
+  usedJsHeapRangeMb:range(samples.map(x=>x.usedJsHeapMb)),
+  samples,
+  state:samples.at(-1)?.state||null,
+});
+const output={
+  schema_version:2,baseline_sha:baselineSha,current_sha:currentSha,
+  environment:'same GitHub Actions job / Playwright Chromium / local release artifacts',
+  sample_size:SAMPLE_SIZE,
+  sampling:'run 1 is cold browser cache for this dataset; runs 2-3 are warm browser-cache repetitions using fresh pages',
+  statistic:'median with observed min/max range',
+  datasets:[]
+};
 try{
   await fs.mkdir(evidenceDir,{recursive:true});
   for(const spec of datasets){
     const stat=await fs.stat(spec.sourcePath);
-    const baseline=await measure(baselineUrl,'baseline',spec);
-    const current=await measure(currentUrl,'current',spec);
+    const baselineSamples=[],currentSamples=[];
+    for(let run=1;run<=SAMPLE_SIZE;run+=1){
+      baselineSamples.push(await measure(baselineUrl,'baseline',spec));
+      currentSamples.push(await measure(currentUrl,'current',spec));
+    }
+    const baseline=summarise(baselineSamples),current=summarise(currentSamples);
     if(current.firstGraphMs==null)throw new Error('Current FastPath produced no first graph for '+spec.dataset);
-    if(!(current.firstGraphMs<current.authoritativeReadyMs))throw new Error('Current preview did not beat authoritative readiness for '+spec.dataset);
+    if(!(current.firstGraphMs<current.authoritativeReadyMs))throw new Error('Current median preview did not beat median authoritative readiness for '+spec.dataset);
+    if(current.navigationMs!=null&&current.navigationMs>1000)throw new Error('Median Precision navigation exceeded the 1000 ms interaction budget for '+spec.dataset+': '+current.navigationMs);
     const result={
       dataset:spec.dataset,
       archive_member:spec.archiveMember||null,
@@ -120,11 +164,10 @@ try{
     };
     output.datasets.push(result);
     await fs.writeFile(path.join(evidenceDir,'baseline-fastpath-comparison.json'),JSON.stringify(output,null,2)+'\n','utf8');
-    // For tiny files a warm authoritative parser can legitimately be faster
-    // than a cold preview. The practical-file gate protects the stated UX goal
-    // without manufacturing a universal speed-up claim.
+    // Preserve the practical-file gate against the pre-FastPath baseline. Tiny
+    // files can legitimately finish a warm authoritative parse before a preview.
     if(stat.size>=1_000_000&&!result.faster_than_baseline_first_graph){
-      throw new Error('Current first graph did not beat baseline first graph for practical file '+spec.dataset);
+      throw new Error('Current median first graph did not beat baseline median first graph for practical file '+spec.dataset);
     }
   }
   console.log('BASELINE_FASTPATH_COMPARISON '+JSON.stringify(output));
