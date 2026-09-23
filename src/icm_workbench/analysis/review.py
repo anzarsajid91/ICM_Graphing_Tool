@@ -6,15 +6,79 @@ import pandas as pd
 from icm_workbench.analysis.rainfall import daily_rainfall_support
 
 
-def rating_curve_fit(depth, flow):
-    """Fit Q=a*H**b using positive finite depth/flow pairs in log10 space."""
-    d=pd.to_numeric(depth,errors="coerce"); q=pd.to_numeric(flow,errors="coerce")
-    mask=d.notna()&q.notna()&(d>0)&(q>0); d=d[mask].astype(float); q=q[mask].astype(float)
-    if len(d)<5:return {"ok":False,"n":int(len(d)),"message":"At least 5 positive depth-flow pairs are required."}
-    x=np.log10(d.to_numpy()); y=np.log10(q.to_numpy()); b,loga=np.polyfit(x,y,1); pred=loga+b*x
-    ss_res=float(np.sum((y-pred)**2)); ss_tot=float(np.sum((y-y.mean())**2)); r2=float(1-ss_res/ss_tot) if ss_tot>0 else np.nan
-    return {"ok":True,"n":int(len(d)),"a":float(10**loga),"b":float(b),"r2":r2,"depth_min":float(d.min()),"depth_max":float(d.max())}
+def rating_curve_fit(depth, flow, diameter_m=None):
+    """Fit a data-derived Q=a*H**b relationship on positive finite pairs.
 
+    When a reliable pipe diameter is supplied, retain the same data-fitted
+    physical Q-H curve but also expose the dimensionless H/D form and the
+    free-surface/surcharged sample split. Diameter alone is deliberately not used
+    to manufacture a theoretical capacity curve because slope/roughness are not
+    available from fm_rg_assoc.
+    """
+    d = pd.to_numeric(depth, errors="coerce")
+    q = pd.to_numeric(flow, errors="coerce")
+    mask = d.notna() & q.notna() & (d > 0) & (q > 0)
+    d = d[mask].astype(float)
+    q = q[mask].astype(float)
+    base = {
+        "method": "log10-least-squares-power-law",
+        "equation_form": "Q = a H^b",
+        "rating_mode": "data-fitted-generic",
+        "depth_unit": "m",
+        "flow_unit": "m³/s",
+        "source_resolution": "authoritative paired source data; display downsampling not used",
+    }
+    if len(d) < 5:
+        return {
+            **base,
+            "ok": False,
+            "n": int(len(d)),
+            "message": "At least 5 positive valid depth-flow pairs are required.",
+        }
+    x = np.log10(d.to_numpy())
+    y = np.log10(q.to_numpy())
+    b, loga = np.polyfit(x, y, 1)
+    pred = loga + b * x
+    ss_res = float(np.sum((y - pred) ** 2))
+    ss_tot = float(np.sum((y - y.mean()) ** 2))
+    r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else np.nan
+    a = float(10 ** loga)
+    result = {
+        **base,
+        "ok": True,
+        "n": int(len(d)),
+        "a": a,
+        "b": float(b),
+        "r2": r2,
+        "depth_min": float(d.min()),
+        "depth_max": float(d.max()),
+        "flow_min": float(q.min()),
+        "flow_max": float(q.max()),
+    }
+    try:
+        diameter = float(diameter_m) if diameter_m is not None else None
+    except (TypeError, ValueError):
+        diameter = None
+    if diameter is not None and np.isfinite(diameter) and diameter > 0:
+        hd = d / diameter
+        result.update(
+            {
+                "rating_mode": "diameter-informed-data-fit",
+                "diameter_m": float(diameter),
+                "diameter_mm": float(diameter * 1000.0),
+                "normalised_equation_form": "Q = k (H/D)^b",
+                "k_at_h_over_d_1": float(a * diameter ** float(b)),
+                "h_over_d_min": float(hd.min()),
+                "h_over_d_max": float(hd.max()),
+                "free_surface_pairs": int((d < diameter).sum()),
+                "surcharged_pairs": int((d >= diameter).sum()),
+                "diameter_method_note": (
+                    "Diameter contextualises the empirical fit through H/D and the "
+                    "crown-depth split; it is not a theoretical Manning capacity curve."
+                ),
+            }
+        )
+    return result
 
 def _longest_flatline_minutes(values, timestamps, tolerance):
     vals=pd.to_numeric(values,errors="coerce").to_numpy(dtype=float)
