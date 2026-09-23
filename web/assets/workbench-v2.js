@@ -732,7 +732,7 @@
   }
 
   function scheduleGraphRedraw(delay=120) {
-    if ((!state.mapping.observed && !state.mapping.rain) || !$('timeChart')) return;
+    if ((!state.mapping.observed && !(state.mapping.models||[]).length && !state.mapping.rain) || !$('timeChart')) return;
     clearTimeout(ui.graphTimer);
     ui.graphTimer = setTimeout(() => void v2DrawGraph(ui.graphRange), delay);
   }
@@ -752,7 +752,9 @@
   function annualComparison() {
     const observed = state.spills.observed;
     const model = state.spills.model;
-    if (!observed || !model) return '<div class="v2-empty">A model result is optional. Select and calculate a model only when an observed/model comparison is required.</div>';
+    if (observed && !model) return '<div class="v2-empty">A model result is optional. Select and calculate a model only when an observed/model comparison is required.</div>';
+    if (!observed && model) return '<div class="v2-empty">Model-only spill assessment is shown. Add and calculate an observed Depth / Level series when an observed/model comparison is required.</div>';
+    if (!observed && !model) return '<div class="v2-empty">No spill result has been calculated.</div>';
     const om = new Map(annualRows(observed).map(x=>[Number(x.year),x]));
     const mm = new Map(annualRows(model).map(x=>[Number(x.year),x]));
     const years = [...new Set([...om.keys(),...mm.keys()])].sort((a,b)=>a-b);
