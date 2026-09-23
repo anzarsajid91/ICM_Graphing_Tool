@@ -39,6 +39,11 @@
     button.disabled = true;
     button.classList.add('is-busy');
     button.textContent = runningText;
+    // Clear any stale completed spill status before yielding a paint. This makes
+    // the visible state truthful during the async hand-off and prevents a user
+    // (or acceptance runner) from mistaking the previous result for completion
+    // of the newly requested calculation.
+    if (target === 'spillRunStatus') setOperationStatus(runningText, 'running');
     operationBegin(target);
     operationUpdate(operationLabel(target), null, runningText);
     await nextPaint();
