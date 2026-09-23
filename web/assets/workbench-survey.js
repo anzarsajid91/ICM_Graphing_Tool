@@ -489,18 +489,30 @@
     renderSurveySchematic(survey.balance);
   }
 
-  function currentControls() {
-    return {
+  function currentControls(strict=true) {
+    const controls={
       start: modelClock(document.getElementById('analysisStart') && document.getElementById('analysisStart').value) || null,
       end: modelClock(document.getElementById('analysisEnd') && document.getElementById('analysisEnd').value) || null,
-      hydraulic_exclusions_json: JSON.stringify(exclusionPayload(true, 'observed')),
-      rainfall_exclusions_json: JSON.stringify(exclusionPayload(true, 'rainfall')),
+      hydraulic_exclusions_json: JSON.stringify(exclusionPayload(strict, 'observed')),
+      rainfall_exclusions_json: JSON.stringify(exclusionPayload(strict, 'rainfall')),
       max_gap_seconds: Number(document.getElementById('gapInput') && document.getElementById('gapInput').value || 900),
       amber_tolerance_percent: Number(document.getElementById('surveyBalanceTolerance') && document.getElementById('surveyBalanceTolerance').value || 10),
     };
+    // Dependency/readiness checks must remain computable while the user is
+    // editing an exclusion row. Preserve the raw edit state in the signature so
+    // a partial row still makes prior results stale, while actual calculations
+    // retain strict exclusion validation.
+    if(!strict)controls.exclusion_edit_state=(state.exclusions||[]).map(item=>({
+      enabled:item.enabled!==false,
+      start:modelClock(item.start)||'',
+      end:modelClock(item.end)||'',
+      scope:item.scope||'both',
+      reason:String(item.reason||''),
+    }));
+    return controls;
   }
   function surveyDependencySignature(kind='complete') {
-    const controls=currentControls();
+    const controls=currentControls(false);
     const association=(survey.association?.records||[]).map(row=>({
       monitor:row.monitor||null,rain_gauge:row.rain_gauge||null,diameter_mm:row.diameter_mm??null,upstream:row.upstream||[]
     }));
