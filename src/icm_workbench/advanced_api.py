@@ -90,11 +90,19 @@ def rating_sources_result(
             np.isfinite(pd.to_numeric(paired["obs"], errors="coerce"))
             & np.isfinite(pd.to_numeric(paired["sim"], errors="coerce"))
         ].copy() if not paired.empty else paired.copy()
+        effective_diameter = (
+            diameter_m if depth_contract.get("quantity") == "depth" else None
+        )
         result = rating_curve_fit(
             finite["obs"] if not finite.empty else pd.Series(dtype=float),
             finite["sim"] if not finite.empty else pd.Series(dtype=float),
-            diameter_m=diameter_m,
+            diameter_m=effective_diameter,
         )
+        if diameter_m is not None and effective_diameter is None:
+            result["diameter_not_applied_reason"] = (
+                "Diameter normalisation requires hydraulic depth; absolute level/stage "
+                "cannot be converted to H/D without a defensible invert/reference."
+            )
         result["points"] = python_bridge._records(
             finite.rename(columns={"obs": "depth", "sim": "flow"})
         )
@@ -147,15 +155,34 @@ def rating_sources_result(
         "observed": observed,
         "modelled": modelled,
         "diameter_context": {
-            "status": "applied" if diameter_m is not None else "generic-fallback",
+            "status": (
+                "applied"
+                if observed.get("rating_mode") == "diameter-informed-data-fit"
+                else "generic-fallback"
+            ),
             "monitor": monitor or None,
-            "diameter_mm": float(diameter_m * 1000.0) if diameter_m is not None else None,
-            "diameter_m": float(diameter_m) if diameter_m is not None else None,
-            "source": diameter_source or None,
+            "diameter_mm": (
+                float(diameter_m * 1000.0)
+                if observed.get("rating_mode") == "diameter-informed-data-fit"
+                else None
+            ),
+            "diameter_m": (
+                float(diameter_m)
+                if observed.get("rating_mode") == "diameter-informed-data-fit"
+                else None
+            ),
+            "source": (
+                diameter_source
+                if observed.get("rating_mode") == "diameter-informed-data-fit"
+                else None
+            ),
             "method": (
                 "fm_rg_assoc diameter used only for H/D and crown-depth context"
-                if diameter_m is not None
-                else "generic empirical Q-H fit; no reliable association diameter supplied"
+                if observed.get("rating_mode") == "diameter-informed-data-fit"
+                else (
+                    observed.get("diameter_not_applied_reason")
+                    or "generic empirical Q-H fit; no reliable association diameter supplied"
+                )
             ),
         },
         "methodology": (
