@@ -1449,7 +1449,10 @@ try{
     scatter:document.querySelector('#reportScatterScale')?.value,
     scenarios:[...document.querySelector('#reportScenarioSelect')?.selectedOptions||[]].map(o=>o.textContent.trim()),
   }));
-  if(reportOptionsUi.sections.some(x=>x.checked!==true)||reportOptionsUi.scatter!=='current'||reportOptionsUi.scenarios.length<1)throw new Error('Report Generation options did not initialise from the current mapped state: '+JSON.stringify(reportOptionsUi));
+  if(reportOptionsUi.sections.some(x=>x.checked!==true)||reportOptionsUi.scatter!=='current'||reportOptionsUi.scenarios.length<2)throw new Error('Report Generation options did not initialise with both mapped model scenarios: '+JSON.stringify(reportOptionsUi));
+  const reportScenarioChoices=await page.locator('#reportScenarioSelect option').evaluateAll(options=>options.map(o=>({value:o.value,label:o.textContent.trim()})));
+  if(reportScenarioChoices.length<2)throw new Error('Report scenario selector did not expose both mapped model scenarios: '+JSON.stringify(reportScenarioChoices));
+  await page.selectOption('#reportScenarioSelect',[reportScenarioChoices[0].value]);
   await page.selectOption('#reportScatterScale','log');
     const reportSpacing=await page.evaluate(()=>{const top=document.querySelector('#namedWorkspaceSelect')?.closest('.actions')?.getBoundingClientRect();const bottom=document.querySelector('.report-actions')?.getBoundingClientRect();return{gap:top&&bottom?bottom.top-top.bottom:null};});
   if(reportSpacing.gap!=null&&reportSpacing.gap<8)throw new Error('Report action controls are still crowded: '+JSON.stringify(reportSpacing));
@@ -1465,6 +1468,13 @@ try{
   if(populatedReportTraces.length<3)throw new Error('Assessment report full-period graph contains empty mapped traces: '+JSON.stringify((reportPlot.data||[]).map(t=>({name:t.name,points:(t.x||[]).filter(Boolean).length}))));
   const reportRange=reportPlot.layout?.xaxis?.range||[];
   if(!String(reportRange[0]||'').startsWith('2026-01-01T00:00')||!String(reportRange[1]||'').startsWith('2026-01-01T00:14'))throw new Error('Assessment report analytical period shifted from model clock: '+JSON.stringify(reportRange));
+  const reportScatterMarker='<script type="application/json" id="assessment-scatter-report-data">';
+  const reportScatterStart=report.indexOf(reportScatterMarker),reportScatterEnd=reportScatterStart>=0?report.indexOf('</script>',reportScatterStart+reportScatterMarker.length):-1;
+  if(reportScatterStart<0||reportScatterEnd<0)throw new Error('Selected report scatter payload missing.');
+  const reportScatter=JSON.parse(report.slice(reportScatterStart+reportScatterMarker.length,reportScatterEnd));
+  const selectedScatterMarkers=(reportScatter.data||[]).filter(t=>t.mode==='markers');
+  if(selectedScatterMarkers.length!==1||!String(selectedScatterMarkers[0].name||'').includes(reportScenarioChoices[0].label.split(' — ')[0]))throw new Error('Report did not honor the selected single-scenario subset: '+JSON.stringify({choices:reportScenarioChoices,markers:selectedScatterMarkers.map(t=>t.name)}));
+  if(reportScatter.layout?.xaxis?.type!=='log'||reportScatter.layout?.yaxis?.type!=='log')throw new Error('Report-selected log scatter was not rendered on logarithmic axes.');
   if(!report.includes('© 2026 Anzar Sajid'))throw new Error('Report copyright missing');
   if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
   if(!report.includes('project_registry')||!report.includes('web-worker'))throw new Error('Report audit appendix is missing canonical project registry / worker execution provenance');
