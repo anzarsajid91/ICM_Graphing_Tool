@@ -164,14 +164,29 @@ function ensureSpillSurfaces(){
   panel.append(threshold,result);
 }
 function makeActionGroup(className='pw-surface-actions'){const x=document.createElement('div');x.className=className;return x;}
+function refreshReportScenarioOptions(){
+  const select=$('reportScenarioSelect'),models=$('modelSelect');if(!select||!models)return;
+  const previous=new Set([...select.selectedOptions].map(o=>o.value));
+  const mapped=[...models.selectedOptions].filter(o=>o.value);
+  const shouldSelectAll=select.options.length===0||previous.size===0;
+  select.innerHTML=mapped.map(o=>'<option value="'+esc(o.value)+'" '+((shouldSelectAll||previous.has(o.value))?'selected':'')+'>'+esc(o.textContent)+'</option>').join('');
+}
 function ensureReportSurfaces(){
   const panel=qs('#tab-workspace .panel');if(!panel||$('pwWorkspaceSurface'))return;
-  const builder=ensureSection('pwReportBuilderSurface','Report Generation','Check result readiness, select the report period where required, then export the engineering report.');
+  const builder=ensureSection('pwReportBuilderSurface','Report Generation','Check result readiness, choose the report sections/scenarios and report view, then export the engineering report.');
   const workspace=ensureSection('pwWorkspaceSurface','Workspace save / restore','Save local configuration and source fingerprints without embedding raw engineering files.');
   const workspaceName=$('workspaceName')?.closest('label'),named=$('namedWorkspaceSelect')?.closest('.actions');if(workspaceName)workspace.appendChild(workspaceName);if(named)workspace.appendChild(named);
   const wsActions=makeActionGroup();for(const id of ['downloadWorkspaceBtn','loadWorkspaceBtn']){const b=$(id);if(b){b.classList.remove('primary');b.textContent=id==='downloadWorkspaceBtn'?'Export workspace JSON':'Load workspace JSON';wsActions.appendChild(b);}}workspace.appendChild(wsActions);
   const wsStatus=$('workspaceStatus'),privacy=qs('#tab-workspace .privacy-note');if(wsStatus)workspace.appendChild(wsStatus);if(privacy)workspace.appendChild(privacy);
   const year=$('reportYear')?.closest('label');if(year)builder.appendChild(year);const ready=$('reportPreflight');if(ready)builder.appendChild(ready);
+  const options=document.createElement('section');options.id='pwReportOptions';options.className='subpanel pw-report-options';
+  options.innerHTML='<div class="subhead"><div><h3>Report options</h3><p>Select the authoritative sections and model scenarios to include. These settings are saved with the workspace.</p></div></div>'+
+    '<div class="mapping-grid compact-wide">'+
+      '<label><span>Sections</span><span class="pw-check-stack"><span><input id="reportIncludeTimeSeries" type="checkbox" checked> Full-period time series</span><span><input id="reportIncludeSpillsStorage" type="checkbox" checked> Spills & storage</span><span><input id="reportIncludeComparison" type="checkbox" checked> Comparison diagnostics</span><span><input id="reportIncludeSurvey" type="checkbox" checked> Flow-survey evidence</span></span></label>'+
+      '<label>Scatter view<select id="reportScatterScale"><option value="current">Current Graphs view</option><option value="linear">Linear</option><option value="log">Log₁₀ (positive pairs only)</option></select><small>Report statistics follow the eligible pair population for this selected view.</small></label>'+
+      '<label>Comparison scenarios<select id="reportScenarioSelect" multiple size="4"></select><small>Only currently mapped model scenarios are available.</small></label>'+
+    '</div>';
+  builder.appendChild(options);refreshReportScenarioOptions();
   const reportActions=makeActionGroup();for(const id of ['downloadReportBtn','downloadFourPeriodBtn']){const b=$(id);if(b){b.classList.toggle('primary',id==='downloadReportBtn');b.textContent=id==='downloadReportBtn'?'Export assessment report':'Export four-period report';reportActions.appendChild(b);}}builder.appendChild(reportActions);
   const mirror=document.createElement('div');mirror.id='pwReportStatusMirror';mirror.className='report-status pw-status-mirror';mirror.textContent=wsStatus?.textContent||'Report export ready when required analyses are current.';builder.appendChild(mirror);
   if(wsStatus)new MutationObserver(()=>{mirror.textContent=wsStatus.textContent;}).observe(wsStatus,{childList:true,subtree:true,characterData:true});
@@ -466,7 +481,8 @@ function renderAssets(){
 }
 function wireContextUpdates(){
   ['observedSelect','rainSelect','analysisStart','analysisEnd','workspaceName'].forEach(id=>$(id)?.addEventListener('change',refreshScope));
-  window.addEventListener('icm:source-pool-changed',()=>{renderAssets();setTimeout(()=>{createScenarioChecklist();refreshScope();},0);});
+  $('modelSelect')?.addEventListener('change',()=>{refreshReportScenarioOptions();refreshScope();});
+  window.addEventListener('icm:source-pool-changed',()=>{renderAssets();setTimeout(()=>{createScenarioChecklist();refreshReportScenarioOptions();refreshScope();},0);});
   const syncLocationRoute=()=>{const r=parseHash();if(r&&(r.workspace!==current.workspace||r.page!==current.page))navigate(r.workspace,r.page,false);};
   window.addEventListener('hashchange',syncLocationRoute);
   // pushState-backed route changes are restored by browser Back/Forward through
