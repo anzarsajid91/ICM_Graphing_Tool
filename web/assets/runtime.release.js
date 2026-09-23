@@ -1005,6 +1005,10 @@ function downloadWorkspace(){downloadBlob(`icm-workbench-${new Date().toISOStrin
 function findSeriesFromWorkspace(ref){if(!ref)return'';const item=[...state.files.values()].find(x=>x.hash===ref.sha256);return item&&item.parsed?.columns.includes(ref.column)?sourceKey(item.id,ref.column):'';}
 async function applyWorkspace(w){
   w=migrateBrowserWorkspace(w);
+  state.rating=null;
+  diagnostic.lastRating=null;
+  Plotly.purge('ratingChart');
+  if($('ratingSummary'))$('ratingSummary').innerHTML='<div class="pool-summary">Workspace restored. Recalculate the fitted relationship for the restored inputs.</div>';
   renderSeriesOptions();
   state.mapping.observed=findSeriesFromWorkspace(w.mapping?.observed);
   state.mapping.models=(w.mapping?.models||[]).map(findSeriesFromWorkspace).filter(Boolean);
