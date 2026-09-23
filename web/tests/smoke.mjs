@@ -686,6 +686,34 @@ try{
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('0 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall mapped'));
   await page.waitForFunction(()=>Boolean(document.querySelector('#timeChart')?.layout?.yaxis2),null,{timeout:60000});
 
+  stage='rainfall-only mapping';
+  await page.selectOption('#observedSelect','');
+  await page.selectOption('#modelSelect',[]);
+  await page.selectOption('#rainSelect',rain);
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('Observed: not mapped')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall mapped'),null,{timeout:60000});
+  await precisionRoute('data','time-series');
+  const rainfallOnly=await page.evaluate(()=>{
+    const chart=document.querySelector('#timeChart'),lines=(chart?.data||[]).filter(t=>t.type!=='table');
+    return{
+      lineNames:lines.map(t=>t.name),
+      axes:lines.map(t=>t.yaxis||'y'),
+      yTitle:chart?.layout?.yaxis?.title?.text||'',
+      y2:Boolean(chart?.layout?.yaxis2),
+      panelOrder:window.__ICM_WORKBENCH__.lastPanelOrder,
+      observedThresholdHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
+      modelThresholdHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden,
+    };
+  });
+  if(JSON.stringify(rainfallOnly.lineNames)!==JSON.stringify(['Rainfall'])||JSON.stringify(rainfallOnly.axes)!==JSON.stringify(['y'])||!/Rainfall/i.test(rainfallOnly.yTitle)||rainfallOnly.y2||JSON.stringify(rainfallOnly.panelOrder)!==JSON.stringify(['rainfall'])||rainfallOnly.observedThresholdHidden!==true||rainfallOnly.modelThresholdHidden!==true)throw new Error('Rainfall-only mapping must render a full rainfall panel with no hydraulic thresholds: '+JSON.stringify(rainfallOnly));
+
+  await precisionRoute('data','series-mapping');
+  await page.selectOption('#observedSelect',denseObserved);
+  await page.selectOption('#modelSelect',[]);
+  await page.selectOption('#rainSelect',rain);
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>Boolean(document.querySelector('#timeChart')?.layout?.yaxis2),null,{timeout:60000});
+
   stage='graph threshold controls and rainfall top band';
   await precisionRoute('data','time-series');
   const focusLayout=await page.evaluate(()=>({
