@@ -756,8 +756,8 @@ async function renderComparisons(){
     template:'plotly_white',
     title:`Observed vs modelled ${quantity}${log?' · log₁₀ positive pairs':' · linear'}${period}`,
     legend:{orientation:'h',y:1.16,x:0},
-    xaxis:{title:`Observed ${quantity}${axisUnitSuffix}`,type:log?'log':'linear',range:axisRange},
-    yaxis:{title:`Modelled ${quantity}${axisUnitSuffix}`,type:log?'log':'linear',range:axisRange,scaleanchor:'x',scaleratio:1},
+    xaxis:{title:{text:`Observed ${quantity}${axisUnitSuffix}`},type:log?'log':'linear',range:axisRange},
+    yaxis:{title:{text:`Modelled ${quantity}${axisUnitSuffix}`},type:log?'log':'linear',range:axisRange,scaleanchor:'x',scaleratio:1},
     margin:{l:68,r:28,t:84,b:64},
     annotations:log&&firstPopulation.removed_count?[{xref:'paper',yref:'paper',x:1,y:-.17,xanchor:'right',showarrow:false,text:`${firstPopulation.removed_count} nonpositive pair(s) removed from log view`,font:{size:11,color:'#667085'}}]:[]
   },{responsive:true,displaylogo:false});
