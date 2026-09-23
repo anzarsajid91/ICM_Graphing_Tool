@@ -332,6 +332,12 @@ function inspectorContext(page){
   const root=page.root?.();
   if(current.workspace==='data'&&current.page==='time-series'){dock($('v2GraphToolbar'));dock($('sharedAnalysisPanel'));dock(qs('.appearance-panel',root));}
   if(current.workspace==='graphs'&&current.page==='comparison'){dock($('sharedAnalysisPanel'));dock(qs('.mapping-grid',root));dock(qs('.actions',root));}
+  if(current.workspace==='survey'&&current.page==='fdv-check'){
+    // Data Health calculations depend on the canonical maximum interpolation
+    // gap. Keep one source of truth, but surface that existing control
+    // contextually instead of forcing the user back into Series Mapping.
+    dock($('gapInput')?.closest('label'));
+  }
   if(current.workspace==='survey'&&current.page==='rainfall-check'){dock($('sharedAnalysisPanel'));dock(qs('.survey-method',root));}
   if(current.workspace==='survey'&&current.page==='volume-balance')dock($('sharedAnalysisPanel'));
   if(current.workspace==='graphs'&&['rating','dwf'].includes(current.page))dock($('sharedAnalysisPanel'));
