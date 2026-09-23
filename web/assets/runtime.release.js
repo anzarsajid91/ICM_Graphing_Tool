@@ -1393,55 +1393,72 @@ function reportAnalysisPeriod(){
 async function downloadReport(){
   assertFreshResults();
   if(!state.mapping.observed&&!state.mapping.rain)throw new Error('Apply a mapping before exporting the report.');
+  const options=reportOptions();
   await drawTimeChart();
   const reportSignature=analysisSignature(),period=reportAnalysisPeriod();
-  const reportSeries=await reportTraces(period);
-  const currentLayout=$('timeChart').layout||{};
-  const shapes=JSON.parse(JSON.stringify(currentLayout.shapes||[]));
-  const annotations=JSON.parse(JSON.stringify(currentLayout.annotations||[]));
-  const fullLayout=hydraulicGraphLayout({...reportSeries,range:period[0]&&period[1]?period:null,title:'Full analysis period',shapes,annotations});
-  const thresholdLegendTraces=JSON.parse(JSON.stringify(($('timeChart')?.data||[]).filter(t=>/threshold/i.test(String(t.name||''))&&(t.x||[]).every(x=>x==null))));
-  const timeFigure=reportPlotFigure('assessment-time-graph',[...reportSeries.traces,...thresholdLegendTraces],fullLayout,reportSeries.statistics,'Declared report analysis period; zoom state is not used as an analytical input.');
-  const images=await Promise.all([reportChart('scatterChart',760,500),reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440),reportChart('ratingChart',760,500)]);
-  const scatterImg=images[0],residImg=images[1],cumulativeImg=images[2],exceedanceImg=images[3],ratingImg=images[4];
-  const w=state.spillSnapshot&&state.spillSnapshot.config||state.comparisonSnapshot&&state.comparisonSnapshot.config||workspaceObject();
-  const log=$('scatterScale').value==='log';
-  const scenarioRows=state.comparisons.map((x,i)=>{
-    if(!x.result)return '';
+  let timeFigure='';
+  if(options.include_time_series){
+    const reportSeries=await reportTraces(period);
+    const currentLayout=$('timeChart').layout||{};
+    const shapes=JSON.parse(JSON.stringify(currentLayout.shapes||[]));
+    const annotations=JSON.parse(JSON.stringify(currentLayout.annotations||[]));
+    const fullLayout=hydraulicGraphLayout({...reportSeries,range:period[0]&&period[1]?period:null,title:'Full analysis period',shapes,annotations});
+    const thresholdLegendTraces=JSON.parse(JSON.stringify(($('timeChart')?.data||[]).filter(t=>/threshold/i.test(String(t.name||''))&&(t.x||[]).every(x=>x==null))));
+    timeFigure=reportPlotFigure('assessment-time-graph',[...reportSeries.traces,...thresholdLegendTraces],fullLayout,reportSeries.statistics,'Declared report analysis period; zoom state is not used as an analytical input.');
+  }
+
+  const w=workspaceObject();
+  const selectedComparisons=selectedReportComparisons();
+  const log=options.scatter_scale==='current'?$('scatterScale').value==='log':options.scatter_scale==='log';
+  const scenarioRows=selectedComparisons.map((x,i)=>{
     const population=scatterPopulation(x.result,log),q=population.metrics||{},unit=comparisonUnit(x.result);
     const uv=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),4)+(unit?' '+esc(unit):'');
     return '<tr><td>Model '+(i+1)+' · '+esc(x.model.item.displayName)+' · '+esc(x.model.col)+'</td><td>'+(q.pairs??population.pairs.length)+'</td><td>'+fmt(q.correlation)+'</td><td>'+fmt(q.regression_r2)+'</td><td>'+fmt(q.regression_slope)+'</td><td>'+uv(q.regression_intercept)+'</td><td>'+uv(q.rmse)+'</td><td>'+uv(q.mae)+'</td><td>'+uv(q.mean_bias)+'</td><td>'+fmt(q.nse)+'</td><td>'+fmt(q.kge_2009)+'</td><td>'+(log?population.removed_count:'—')+'</td><td>'+esc(x.result.calculation_status||'—')+'</td><td>'+(x.result.coverage_fraction==null?'—':fmt(x.result.coverage_fraction*100,1)+'%')+'</td></tr>';
   }).join('');
   const populationLabel=log?'Positive observed/modelled pairs only (log₁₀ view; nonpositive values are filtered from this view, not altered).':'All finite authoritative paired values (linear view).';
-  const scenarioTable=scenarioRows?'<p class="muted">'+esc(populationLabel)+' Metrics are sample-weighted; bias is modelled minus observed. Regression is raw-scale M = intercept + slope × O.</p><div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Pairs</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Log filtered</th><th>Status</th><th>Valid support</th></tr></thead><tbody>'+scenarioRows+'</tbody></table></div>':'<p class="muted">No scenario comparison has been calculated.</p>';
-  let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints.</div>';
+  const scenarioTable=scenarioRows?'<p class="muted">'+esc(populationLabel)+' Metrics are sample-weighted; bias is modelled minus observed. Regression is raw-scale M = intercept + slope × O.</p><div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Pairs</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Log filtered</th><th>Status</th><th>Valid support</th></tr></thead><tbody>'+scenarioRows+'</tbody></table></div>':'<p class="muted">No selected scenario comparison has a current result.</p>';
+
+  let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints. Report section/scenario choices are explicit and stored in the workspace.</div>';
   body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
-  body+='<h2>Full time-period graph</h2>'+timeFigure;
-  body+='<h2>Spill / EDM assessment</h2><div class="report-grid"><div class="card"><h3>Observed / EDM</h3>'+spillSummaryHtml(state.spills.observed)+reportYearlySpills(state.spills.observed)+'</div><div class="card"><h3>Modelled</h3>'+spillSummaryHtml(state.spills.model)+reportYearlySpills(state.spills.model)+'</div></div>';
-  body+='<h3>Observed spills by month</h3>'+reportSpillCountMatrix(state.spills.observed);
-  body+='<h3>Model spills by month</h3>'+reportSpillCountMatrix(state.spills.model);
-  body+='<h3>Observed vs modelled monthly spill comparison</h3>'+reportMonthlySpillComparison(state.spills.observed,state.spills.modelled||state.spills.model);
-  body+='<h2>Scenario comparison</h2>'+scenarioTable;
-  if(window.__ICM_WORKBENCH__.professionalSurveyReportHtml)body+=window.__ICM_WORKBENCH__.professionalSurveyReportHtml;
-  const diag=[];
-  if(scatterImg)diag.push('<figure class="figure"><img src="'+scatterImg+'" alt="Observed versus modelled scatter plot"><figcaption>'+esc(log?'Observed versus modelled log₁₀ scatter; positive pairs only.':'Observed versus modelled linear scatter.')+'</figcaption></figure>');
-  if(residImg)diag.push('<figure class="figure"><img src="'+residImg+'" alt="Residual plot"><figcaption>Model minus observed residual through time using all valid pairs.</figcaption></figure>');
-  if(cumulativeImg)diag.push('<figure class="figure"><img src="'+cumulativeImg+'" alt="Cumulative flow volume plot"><figcaption>Cumulative-volume diagnostic where dimensional flow support is available.</figcaption></figure>');
-  if(exceedanceImg)diag.push('<figure class="figure"><img src="'+exceedanceImg+'" alt="Flow duration plot"><figcaption>Time-weighted exceedance diagnostic where available.</figcaption></figure>');
-  if(ratingImg&&state.rating){
-    const rc=state.rating.context||{},rr=state.rating.result?.observed||state.rating.result?.metrics||{};
-    const ratingCaption=state.rating.kind==='flow-depth'
-      ?((rr.rating_mode==='diameter-informed-data-fit'?'Diameter-informed empirical Q–H rating curve':'Generic data-fitted Q–H rating curve')+(rc.diameter_mm?' · D = '+fmt(rc.diameter_mm,1)+' mm':'')+(rc.source?.file?' · '+rc.source.file:''))
-      :'Observed versus modelled depth / level fitted relationship using authoritative Python regression coefficients.';
-    diag.push('<figure class="figure"><img src="'+ratingImg+'" alt="Rating or fitted relationship plot"><figcaption>'+esc(ratingCaption)+'</figcaption></figure>');
+
+  if(options.include_time_series)body+='<h2>Full time-period graph</h2>'+timeFigure;
+
+  if(options.include_spills_storage){
+    body+='<h2>Spill / EDM assessment</h2><div class="report-grid"><div class="card"><h3>Observed / EDM</h3>'+spillSummaryHtml(state.spills.observed)+reportYearlySpills(state.spills.observed)+'</div><div class="card"><h3>Modelled</h3>'+spillSummaryHtml(state.spills.model)+reportYearlySpills(state.spills.model)+'</div></div>';
+    body+='<h3>Observed spills by month</h3>'+reportSpillCountMatrix(state.spills.observed);
+    body+='<h3>Model spills by month</h3>'+reportSpillCountMatrix(state.spills.model);
+    body+='<h3>Observed vs modelled monthly spill comparison</h3>'+reportMonthlySpillComparison(state.spills.observed,state.spills.modelled||state.spills.model);
+    body+='<h2>Storage Assessment</h2>'+reportStorageHtml();
   }
-  if(diag.length)body+='<div class="report-grid">'+diag.join('')+'</div>';
+
+  if(options.include_comparison){
+    body+='<h2>Scenario comparison</h2>'+scenarioTable;
+    body+=reportComparisonScatterFigure(selectedComparisons,log);
+    const allCurrent=state.comparisons.filter(x=>x.result);
+    const allSelected=selectedComparisons.length===allCurrent.length;
+    const images=allSelected?await Promise.all([reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440),reportChart('ratingChart',760,500)]):['','','',await reportChart('ratingChart',760,500)];
+    const [residImg,cumulativeImg,exceedanceImg,ratingImg]=images,diag=[];
+    if(residImg)diag.push('<figure class="figure"><img src="'+residImg+'" alt="Residual plot"><figcaption>Model minus observed residual through time using all valid pairs.</figcaption></figure>');
+    if(cumulativeImg)diag.push('<figure class="figure"><img src="'+cumulativeImg+'" alt="Cumulative flow volume plot"><figcaption>Cumulative-volume diagnostic where dimensional flow support is available.</figcaption></figure>');
+    if(exceedanceImg)diag.push('<figure class="figure"><img src="'+exceedanceImg+'" alt="Flow duration plot"><figcaption>Time-weighted exceedance diagnostic where available.</figcaption></figure>');
+    if(ratingImg&&state.rating){
+      const rc=state.rating.context||{},rr=state.rating.result?.observed||state.rating.result?.metrics||{};
+      const ratingCaption=state.rating.kind==='flow-depth'
+        ?((rr.rating_mode==='diameter-informed-data-fit'?'Diameter-informed empirical Q–H rating curve':'Generic data-fitted Q–H rating curve')+(rc.diameter_mm?' · D = '+fmt(rc.diameter_mm,1)+' mm':'')+(rc.source?.file?' · '+rc.source.file:''))
+        :'Observed versus modelled depth / level fitted relationship using authoritative Python regression coefficients.';
+      diag.push('<figure class="figure"><img src="'+ratingImg+'" alt="Rating or fitted relationship plot"><figcaption>'+esc(ratingCaption)+'</figcaption></figure>');
+    }
+    if(!allSelected)body+='<p class="muted">Residual/cumulative/exceedance screenshots are omitted because the report contains a selected scenario subset; this avoids mixing a different on-screen scenario population into the exported snapshot.</p>';
+    if(diag.length)body+='<div class="report-grid">'+diag.join('')+'</div>';
+  }
+
+  if(options.include_survey&&window.__ICM_WORKBENCH__.professionalSurveyReportHtml)body+=window.__ICM_WORKBENCH__.professionalSurveyReportHtml;
   body+='<h2>Exclusions</h2>'+reportExclusions(w);
   const notes=$('reviewNotes')&&$('reviewNotes').value||'';
   body+='<h2>Reviewer notes</h2><div class="card">'+(notes?'<p>'+esc(notes).replaceAll('\n','<br>')+'</p>':'<p class="muted">No reviewer notes recorded.</p>')+'</div>';
   body+='<h2>Project data context</h2>'+reportProjectRegistry();
   body+='<h2>Source provenance</h2>'+reportSources(w);
-  body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({spills:state.spillSnapshot,comparison:state.comparisonSnapshot,professional_flow_survey:window.__ICM_WORKBENCH__.lastProfessionalSurvey||null,rating_diagnostic:state.rating||null,project_registry:window.ICMProjectRegistry?.snapshot()||null,execution:diagnostic.execution||'unknown'},null,2))+'</pre></details>';
+  body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({report_options:options,spills:state.spillSnapshot,storage:state.storage,comparison:state.comparisonSnapshot,professional_flow_survey:window.__ICM_WORKBENCH__.lastProfessionalSurvey||null,rating_diagnostic:state.rating||null,project_registry:window.ICMProjectRegistry?.snapshot()||null,execution:diagnostic.execution||'unknown'},null,2))+'</pre></details>';
   const html=await interactiveReportHtml(reportShell('ICM Calibration Workbench — Engineering Assessment','Professional hydraulic data review and model-verification output',body,false));
   if(reportSignature!==analysisSignature())throw new Error('Inputs changed during report generation. Retry export.');
   downloadBlob('icm-workbench-report-'+new Date().toISOString().slice(0,10)+'.html',html,'text/html');
