@@ -1202,8 +1202,10 @@ try{
   const readinessExpected={
     comparison:'Fresh',
     spill:'Fresh',
+    storage:'Fresh',
     'professional-survey':'Fresh',
     'complete-survey':'Fresh',
+    'volume-balance':'Fresh',
     rating:'Fresh',
     'survey-association':'Loaded',
   };
@@ -1213,7 +1215,14 @@ try{
     const value=(await item.locator('.report-readiness-state').textContent())||'';
     if(value.trim()!==expected)throw new Error(`Report readiness for ${key} expected ${expected}, got ${value}`);
   }
-  const reportSpacing=await page.evaluate(()=>{const top=document.querySelector('#namedWorkspaceSelect')?.closest('.actions')?.getBoundingClientRect();const bottom=document.querySelector('.report-actions')?.getBoundingClientRect();return{gap:top&&bottom?bottom.top-top.bottom:null};});
+  const reportOptionsUi=await page.evaluate(()=>({
+    sections:['reportIncludeTimeSeries','reportIncludeSpillsStorage','reportIncludeComparison','reportIncludeSurvey'].map(id=>({id,checked:document.getElementById(id)?.checked})),
+    scatter:document.querySelector('#reportScatterScale')?.value,
+    scenarios:[...document.querySelector('#reportScenarioSelect')?.selectedOptions||[]].map(o=>o.textContent.trim()),
+  }));
+  if(reportOptionsUi.sections.some(x=>x.checked!==true)||reportOptionsUi.scatter!=='current'||reportOptionsUi.scenarios.length<1)throw new Error('Report Generation options did not initialise from the current mapped state: '+JSON.stringify(reportOptionsUi));
+  await page.selectOption('#reportScatterScale','log');
+    const reportSpacing=await page.evaluate(()=>{const top=document.querySelector('#namedWorkspaceSelect')?.closest('.actions')?.getBoundingClientRect();const bottom=document.querySelector('.report-actions')?.getBoundingClientRect();return{gap:top&&bottom?bottom.top-top.bottom:null};});
   if(reportSpacing.gap!=null&&reportSpacing.gap<8)throw new Error('Report action controls are still crowded: '+JSON.stringify(reportSpacing));
   await captureEvidence('05-report-workspace');
   const reportDownload=await downloadFrom('#downloadReportBtn');
@@ -1239,6 +1248,8 @@ try{
   if(!report.includes('Professional flow-survey / rainfall assessment')||!report.includes('professional_flow_survey'))throw new Error('Professional flow-survey assessment missing from report/audit appendix');
   if(!report.includes('Complete flow-survey context')||!report.includes('Flow continuity / volume balance')||!report.includes('fm_rg_assoc.xlsx'))throw new Error('Association-driven complete survey context missing from exported report');
   if(!report.includes('Diameter-informed empirical Q–H rating curve')||!report.includes('rating_diagnostic')||!report.includes('600 mm'))throw new Error('Fresh diameter-informed rating chart/provenance missing from exported report');
+  if(!report.includes('Observed vs modelled log₁₀ scatter')||!report.includes('Positive observed/modelled pairs only'))throw new Error('Report-selected log scatter and its positive-only population note are missing.');
+  if(!report.includes('Storage Assessment'))throw new Error('Selected Storage Assessment section is missing from the report.');
   if(report.includes('Cumulative-volume diagnostic where dimensional flow support is available.')||report.includes('Time-weighted exceedance diagnostic where available.'))throw new Error('Unavailable flow-only diagnostics must not be exported as blank report figures');
 
   if(!report.includes('report-grid')||!report.includes('table-wrap'))throw new Error('Professional report layout classes missing');
