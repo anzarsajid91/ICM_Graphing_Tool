@@ -191,6 +191,7 @@ function preparePageComposition(){
   own(completeSurvey,['survey/rainfall-check']);
   own($('surveyBalancePanel'),['survey/volume-balance']);
   own(qs('#tab-compare > .panel'),['graphs/comparison','graphs/rating','graphs/dwf']);
+  own(qs('#tab-compare > .panel > .panel-head'),['graphs/comparison']);
   own(qs('#tab-compare .tool-main-section'),['graphs/comparison']);
   own($('pwRatingPanel'),['graphs/rating']);
   own($('pwDwfPanel'),['graphs/dwf']);
