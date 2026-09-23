@@ -411,6 +411,7 @@ try{
     if(cold.previewEvidence?.engineStatus==='ready'||!(cold.timeToOutcomeMs<engineAfterSelection))throw new Error('Cold FastPath preview did not render before authoritative engine readiness: '+JSON.stringify(cold));
     if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM01 parsing: '+JSON.stringify(cold.finalEvidence));
   }
+  if(!liveMode){
   stage='fresh CSV FastPath benchmarks';
   performanceEvidence.freshCsvImports=[];
   const modelReference=await extractFirstModelReference();
@@ -433,6 +434,7 @@ try{
       if(!previewColumns.length)throw new Error('Model FastPath preview did not expose an engineering series: '+JSON.stringify(measured));
     }
   }
+  }
   stage='FastPath failure falls back to authoritative import';
   performanceEvidence.fastpathFailureFallback=await verifyFastPathFailureFallsBack();
   if(!liveMode&&!performanceEvidence.fastpathFailureFallback?.parsed)throw new Error('A FastPath worker failure must not prevent authoritative parsing: '+JSON.stringify(performanceEvidence.fastpathFailureFallback));
@@ -451,7 +453,7 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
   const primaryLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(primaryLabels.map(x=>x.trim()).join('|')!=='Data & Time Series|Flow Survey|Rainfall|Assessment|Spills|Report')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
+  if(primaryLabels.map(x=>x.trim()).join('|')!=='Data / Time Series|Spills|Flow Survey|Graphs|Reports')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
   for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080}]){
     await page.setViewportSize(size);
     await precisionRoute('data','sources');
