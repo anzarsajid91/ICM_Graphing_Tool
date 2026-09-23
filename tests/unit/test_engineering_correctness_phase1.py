@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import json
+
 import pandas as pd
 import pytest
 
@@ -18,6 +20,7 @@ from icm_workbench.analysis import (
 )
 from icm_workbench.parsers.csv import parse_tabular_csv
 from icm_workbench.services.workspace import SCHEMA_VERSION, migrate_workspace_dict, workspace_from_dict
+from icm_workbench.advanced_api import dwf_scaled
 
 
 def test_generic_csv_lps_is_converted_once_to_canonical_flow(tmp_path: Path):
@@ -146,6 +149,58 @@ def test_missing_rainfall_day_is_unknown_not_dry():
     by_day={pd.Timestamp(x["day"]).date():x for x in result["candidate_days"]}
     assert by_day[pd.Timestamp("2026-01-02").date()]["status"]=="unknown"
     assert "incomplete" in by_day[pd.Timestamp("2026-01-02").date()]["reason"].lower()
+
+
+def test_dwf_scaled_applies_shared_period_units_and_role_exclusions(tmp_path: Path):
+    flow=tmp_path/"flow.csv"
+    rain=tmp_path/"rain.csv"
+    times=pd.date_range("2026-01-01 00:00",periods=4*24+1,freq="1h")
+    pd.DataFrame({"timestamp":times,"Flow [L/s]":[100.0]*len(times)}).to_csv(flow,index=False)
+    pd.DataFrame({"timestamp":times,"Rainfall [mm/hr]":[0.0]*len(times)}).to_csv(rain,index=False)
+
+    flow_exclusions=[{
+        "enabled":True,
+        "start":"2026-01-02T06:00:00",
+        "end":"2026-01-02T08:00:00",
+        "reason":"flow QA",
+        "scope":"observed",
+    }]
+    rain_exclusions=[{
+        "enabled":True,
+        "start":"2026-01-03T00:00:00",
+        "end":"2026-01-04T00:00:00",
+        "reason":"rain gauge outage",
+        "scope":"rainfall",
+    }]
+    result=json.loads(dwf_scaled(
+        str(flow),"Flow [L/s]",
+        str(rain),"Rainfall [mm/hr]",
+        start="2026-01-02T00:00:00",
+        end="2026-01-04T00:00:00",
+        flow_exclusions_json=json.dumps(flow_exclusions),
+        rainfall_exclusions_json=json.dumps(rain_exclusions),
+        min_dry_days=1,
+    ))
+    assert result["flow_unit"]=="m³/s"
+    assert result["flow_contract"]["canonical_unit"]=="m³/s"
+    assert result["analysis_start"]=="2026-01-02T00:00:00"
+    assert result["analysis_end"]=="2026-01-04T00:00:00"
+    assert result["excluded_flow_rows"]==2
+    assert result["excluded_rainfall_rows"]==24
+    by_day={pd.Timestamp(x["day"]).date():x for x in result["candidate_days"]}
+    assert set(by_day)=={pd.Timestamp("2026-01-02").date(),pd.Timestamp("2026-01-03").date(),pd.Timestamp("2026-01-04").date()}
+    assert by_day[pd.Timestamp("2026-01-03").date()]["status"]=="unknown"
+    assert result["average_dwf"]==pytest.approx(0.1)
+
+
+def test_dwf_scaled_withholds_unresolved_flow_units_without_override(tmp_path: Path):
+    flow=tmp_path/"flow.csv"
+    rain=tmp_path/"rain.csv"
+    times=pd.date_range("2026-01-01",periods=25,freq="1h")
+    pd.DataFrame({"timestamp":times,"flow":[1.0]*len(times)}).to_csv(flow,index=False)
+    pd.DataFrame({"timestamp":times,"Rainfall [mm/hr]":[0.0]*len(times)}).to_csv(rain,index=False)
+    with pytest.raises(ValueError,match="resolve .* to m³/s"):
+        dwf_scaled(str(flow),"flow",str(rain),"Rainfall [mm/hr]",min_dry_days=1)
 
 
 def test_storage_screening_withholds_partial_flow_volume():
