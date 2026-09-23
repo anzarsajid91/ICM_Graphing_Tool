@@ -1,7 +1,7 @@
 const $ = (id) => document.getElementById(id);
 const state = {
   files: new Map(), mapping: { observed: '', models: [], rain: '' }, comparisons: [],
-  spills: {}, exclusions: [], exclusionHistory: [], rainEvents: [], modelColours: {}, storage: null,
+  spills: {}, exclusions: [], exclusionHistory: [], rainEvents: [], modelColours: {}, storage: null, rating: null,
 };
 const diagnostic = {
   status: 'booting', errors: [],
@@ -779,55 +779,129 @@ async function renderComparisons(){
 
 function useGraphZoom(){const r=$('timeChart')?.layout?.xaxis?.range;if(r?.length===2){$('analysisStart').value=toLocalInput(r[0]);$('analysisEnd').value=toLocalInput(r[1]);}}
 
+function ratingAssetIdentity(selection){
+  if(!selection)return null;
+  const snapshot=window.ICMProjectRegistry?.snapshot?.();
+  const source=(snapshot?.sources||[]).find(x=>x.id===selection.item.id);
+  return source?.assetId||selection.item?.parsed?.metadata?.monitor||null;
+}
+function ratingDiameterContext(depthSelection,flowSelection){
+  const normalise=value=>String(value||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'');
+  const depthAsset=ratingAssetIdentity(depthSelection),flowAsset=ratingAssetIdentity(flowSelection);
+  if(depthAsset&&flowAsset&&normalise(depthAsset)!==normalise(flowAsset)){
+    return {status:'asset-mismatch',monitor:depthAsset,reason:'Selected observed depth/level and flow resolve to different monitored assets.'};
+  }
+  const monitor=depthAsset||flowAsset||null;
+  if(String(seriesQuantity(depthSelection?.item,depthSelection?.col)||'').toLowerCase()!=='depth'){
+    return {status:'generic',monitor,reason:'Absolute level/stage cannot be normalised by pipe diameter without a defensible invert/reference; using a generic data-fitted relationship.'};
+  }
+  const survey=window.__ICM_WORKBENCH__?.survey,association=survey?.association;
+  if(!association||!monitor)return {status:'generic',monitor,reason:'No monitor-specific fm_rg_assoc diameter is available; using a generic data-fitted relationship.'};
+  const matches=(association.records||[]).filter(x=>normalise(x.monitor)===normalise(monitor));
+  const blocking=(association.issues||[]).filter(x=>String(x.severity).toLowerCase()==='error'&&normalise(x.monitor)===normalise(monitor));
+  if(blocking.length||matches.length!==1){
+    return {status:'ambiguous',monitor,reason:'The fm_rg_assoc association for this monitor is ambiguous; diameter is not applied.',issues:blocking};
+  }
+  const record=matches[0],diameter=Number(record.diameter_mm);
+  if(!Number.isFinite(diameter)||diameter<=0){
+    return {status:'generic',monitor,reason:'The matched fm_rg_assoc row has no valid positive diameter; using a generic data-fitted relationship.'};
+  }
+  return {
+    status:'diameter-informed',monitor,diameter_mm:diameter,
+    source:{
+      file:survey.associationSource?.name||record.source||'fm_rg_assoc.xlsx',
+      sheet:survey.associationSource?.sheet||association.sheet_name||null,
+      sha256:survey.associationSource?.sha256||null,
+      row:record.row||null,
+      source_unit:record.diameter_source_unit||'mm',
+    },
+    reason:'Monitor-specific fm_rg_assoc diameter applied to H/D and crown-depth context.'
+  };
+}
+function ratingExclusions(role,selections){
+  const rows=[];
+  for(const selection of selections.filter(Boolean)){
+    rows.push(...exclusionPayload(true,role,sourceKey(selection.item.id,selection.col)));
+  }
+  return [...new Map(rows.map(x=>[JSON.stringify(x),x])).values()];
+}
 async function runRating(){
   const od=mappingObject($('ratingObsDepth').value),of=mappingObject($('ratingObsFlow').value),md=mappingObject($('ratingModelDepth').value),mf=mappingObject($('ratingModelFlow').value);
-  if(!od)throw new Error('Select observed depth.');
+  if(!od)throw new Error('Select observed depth or level.');
   const gap=Number($('gapInput').value||900);
 
-  // Depth-only mode is deliberately supported because calibration review often
-  // needs an observed-depth vs model-depth fitted relationship before flow is mapped.
+  // Depth/level agreement uses the canonical Python comparison regression. Do
+  // not create a second JavaScript regression implementation.
   if(md && (!of || !mf)){
     const depth=await engine.call('compare_series',{
       obs_path:od.item.virtualPath,obs_col:od.col,
       model_path:md.item.virtualPath,model_col:md.col,
       max_gap_seconds:gap,...analysisBounds(),
       exclusions_json:JSON.stringify([
-        ...exclusionPayload(true,'observed',sourceKey(od.item.id,od.col)),
-        ...exclusionPayload(true,'model',sourceKey(md.item.id,md.col)),
+        ...ratingExclusions('observed',[od]),
+        ...ratingExclusions('model',[md]),
       ]),
     });
     const points=(depth.paired||[]).map(x=>({x:Number(x.obs),y:Number(x.sim)})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
-    if(points.length<2)throw new Error('Depth comparison has fewer than 2 bounded valid pairs in the selected analysis period.');
-    const n=points.length,meanX=points.reduce((s,p)=>s+p.x,0)/n,meanY=points.reduce((s,p)=>s+p.y,0)/n;
-    const sxx=points.reduce((s,p)=>s+(p.x-meanX)**2,0),sxy=points.reduce((s,p)=>s+(p.x-meanX)*(p.y-meanY),0);
-    const slope=sxx>0?sxy/sxx:0,intercept=meanY-slope*meanX;
+    if(points.length<2)throw new Error('Depth/level comparison has fewer than 2 bounded valid pairs in the selected analysis period.');
+    const metrics=depth.metrics||{},slope=Number(metrics.regression_slope),intercept=Number(metrics.regression_intercept);
     const xs=points.map(p=>p.x),ys=points.map(p=>p.y),lo=Math.min(...xs,...ys),hi=Math.max(...xs,...ys);
-    const metrics=depth.metrics||{};
-    $('ratingSummary').innerHTML=`<div class="summary-box"><div><strong>${fmt(n,0)}</strong><span>Depth pairs</span></div><div><strong>${fmt(metrics.rmse,4)}</strong><span>Depth RMSE</span></div><div><strong>${fmt(metrics.mean_bias,4)}</strong><span>Mean error (model − observed)</span></div><div><strong>${fmt(metrics.r2_correlation,4)}</strong><span>R²</span></div><div><strong>Hsim = ${fmt(intercept,4)} + ${fmt(slope,4)} Hobs</strong><span>Least-squares depth fit</span></div></div><div class="pool-summary">Depth-only agreement fit. Add observed and model flow selections to switch to the hydraulic Q = aHᵇ flow–depth rating diagnostic.</div>`;
+    const fitAvailable=Number.isFinite(slope)&&Number.isFinite(intercept);
+    const unit=depth.observed_unit||seriesUnit(od.item,od.col)||'';
+    $('ratingSummary').innerHTML=`<div class="summary-box"><div><strong>${fmt(points.length,0)}</strong><span>Valid paired points</span></div><div><strong>${fmt(metrics.rmse,4)}${unit?' '+esc(unit):''}</strong><span>RMSE</span></div><div><strong>${fmt(metrics.mean_bias,4)}${unit?' '+esc(unit):''}</strong><span>Mean error (model − observed)</span></div><div><strong>${fmt(metrics.regression_r2,4)}</strong><span>Regression R²</span></div><div><strong>${fitAvailable?'Hmodel = '+fmt(intercept,4)+' + '+fmt(slope,4)+' Hobs':'Unavailable'}</strong><span>Authoritative Python least-squares fit</span></div></div><div class="pool-summary">Depth/level agreement fit from canonical bounded pairs. Add observed and model flow selections to switch to the empirical Q–H rating diagnostic.</div>`;
     const traces=[
-      {x:xs,y:ys,mode:'markers',name:'Paired depth',marker:{size:5,opacity:.38,color:$('obsColor').value}},
+      {x:xs,y:ys,mode:'markers',name:'Paired depth / level',marker:{size:5,opacity:.38,color:$('obsColor').value},
+       customdata:(depth.paired||[]).map(x=>x.timestamp),hovertemplate:'Observed %{x:.4g}<br>Modelled %{y:.4g}<extra></extra>'},
       {x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1',line:{dash:'dash',color:'#667085'}},
-      {x:[lo,hi],y:[intercept+slope*lo,intercept+slope*hi],mode:'lines',name:'Fitted depth relation',line:{color:state.modelColours[sourceKey(md.item.id,md.col)]||palette[0],width:2}},
     ];
-    await Plotly.react('ratingChart',traces,{template:'plotly_white',title:'Observed depth vs modelled depth',legend:{orientation:'h',y:1.12,x:0},xaxis:{title:'Observed depth'},yaxis:{title:'Modelled depth'},margin:{l:60,r:24,t:72,b:56}},{responsive:true,displaylogo:false});
+    if(fitAvailable)traces.push({x:[lo,hi],y:[intercept+slope*lo,intercept+slope*hi],mode:'lines',name:'Python fitted relationship',line:{width:2,color:state.modelColours[state.mapping.models[0]]||palette[0]}});
+    state.rating={kind:'depth-agreement',result:depth,context:null};
+    await Plotly.react('ratingChart',traces,{template:'plotly_white',title:'Observed vs modelled depth / level agreement',xaxis:{title:'Observed'+(unit?' ('+unit+')':'')},yaxis:{title:'Modelled'+(unit?' ('+unit+')':'')},margin:{l:65,r:24,t:48,b:58},legend:{orientation:'h',y:1.13}},{responsive:true,displaylogo:false});
     return;
   }
 
-  if(!of)throw new Error('For a flow–depth rating curve, select observed flow. Alternatively select observed depth + model depth for depth-only agreement fitting.');
-  const args={obs_depth_path:od.item.virtualPath,obs_depth_col:od.col,obs_flow_path:of.item.virtualPath,obs_flow_col:of.col,max_gap_seconds:gap};
+  if(!of)throw new Error('Select observed flow for a Q–H rating diagnostic.');
+  const diameterContext=ratingDiameterContext(od,of);
+  if(diameterContext.status==='asset-mismatch')throw new Error(diameterContext.reason);
+  const bounds=analysisBounds();
+  const args={
+    obs_depth_path:od.item.virtualPath,obs_depth_col:od.col,
+    obs_flow_path:of.item.virtualPath,obs_flow_col:of.col,
+    max_gap_seconds:gap,start:bounds.start,end:bounds.end,
+    obs_exclusions_json:JSON.stringify(ratingExclusions('observed',[od,of])),
+    model_exclusions_json:JSON.stringify(ratingExclusions('model',[md,mf])),
+    diameter_mm:diameterContext.status==='diameter-informed'?diameterContext.diameter_mm:null,
+    diameter_source:diameterContext.source||null,
+    monitor:diameterContext.monitor||null,
+  };
   if(md&&mf)Object.assign(args,{model_depth_path:md.item.virtualPath,model_depth_col:md.col,model_flow_path:mf.item.virtualPath,model_flow_col:mf.col});
-  const r=await engine.call('rating_sources_result',args,'advanced_bridge'),o=r.observed||{},m=r.modelled||null;
-  $('ratingSummary').innerHTML=`<div class="summary-box"><div><strong>${o.ok?`Q=${fmt(o.a,4)}H^${fmt(o.b,4)}`:'Unavailable'}</strong><span>Observed fit</span></div><div><strong>${o.ok?fmt(o.r2,4):'—'}</strong><span>Observed R²</span></div><div><strong>${m?.ok?`Q=${fmt(m.a,4)}H^${fmt(m.b,4)}`:'Unavailable'}</strong><span>Model fit</span></div><div><strong>${m?.ok?fmt(m.r2,4):'—'}</strong><span>Model R²</span></div></div>`;
-  const traces=[];
-  for(const[label,fit,color]of[['Observed',o,$('obsColor').value],['Modelled',m,md?(state.modelColours[sourceKey(md.item.id,md.col)]||palette[0]):palette[0]]]){
+  const r=await engine.call('rating_sources_result',args,'advanced_bridge');
+  const o=r.observed||{},m=r.modelled||null;
+  const mode=o.rating_mode==='diameter-informed-data-fit'?'Diameter-informed data fit':'Data-fitted / Generic Rating Curve';
+  const provenance=diameterContext.status==='diameter-informed'
+    ?`D = ${fmt(diameterContext.diameter_mm,1)} mm · ${esc(diameterContext.source?.file||'fm_rg_assoc.xlsx')}${diameterContext.source?.sheet?' · '+esc(diameterContext.source.sheet):''}`
+    :esc(diameterContext.reason||'No reliable diameter association available.');
+  const observedEquation=o.ok?`Q = ${fmt(o.a,5)} H^${fmt(o.b,4)}`:'Unavailable';
+  const normalised=o.ok&&o.rating_mode==='diameter-informed-data-fit'?`Q = ${fmt(o.k_at_h_over_d_1,5)} (H/D)^${fmt(o.b,4)}`:'—';
+  $('ratingSummary').innerHTML=`<div class="summary-box"><div><strong>${esc(mode)}</strong><span>Rating method</span></div><div><strong>${observedEquation}</strong><span>Observed empirical fit · m³/s, m</span></div><div><strong>${fmt(o.r2,4)}</strong><span>Observed log-space R²</span></div><div><strong>${o.n??0}</strong><span>Positive valid fit pairs</span></div><div><strong>${normalised}</strong><span>${o.rating_mode==='diameter-informed-data-fit'?'Diameter-normalised form':'H/D not available'}</span></div><div><strong>${o.rating_mode==='diameter-informed-data-fit'?(o.free_surface_pairs+' / '+o.surcharged_pairs):'—'}</strong><span>Below crown / at-or-above crown pairs</span></div><div><strong>${m?.ok?`Q = ${fmt(m.a,5)} H^${fmt(m.b,4)}`:'Unavailable'}</strong><span>Model empirical fit</span></div><div><strong>${m?.ok?fmt(m.r2,4):'—'}</strong><span>Model log-space R²</span></div></div><div class="pool-summary"><strong>Association:</strong> ${provenance}<br><strong>Method:</strong> Positive finite canonical depth/flow pairs at source resolution; bounded interpolation; exclusions and selected analysis period applied before fitting. Diameter provides H/D/crown context only and does not imply a theoretical Manning capacity.</div>`;
+  const traces=[],shapes=[],annotations=[];
+  for(const [label,fit,color] of [['Observed',o,$('obsColor').value],['Modelled',m,state.modelColours[state.mapping.models[0]]||palette[0]]]){
     if(!fit?.ok)continue;
     const pts=fit.points||[];
-    traces.push({x:pts.map(x=>x.depth),y:pts.map(x=>x.flow),mode:'markers',name:label,marker:{size:5,opacity:.35,color}});
-    const x=Array.from({length:80},(_,i)=>fit.depth_min+(fit.depth_max-fit.depth_min)*i/79);
-    traces.push({x,y:x.map(h=>fit.a*h**fit.b),mode:'lines',name:`${label} fit`,line:{color,width:2}});
+    traces.push({x:pts.map(x=>x.depth),y:pts.map(x=>x.flow),mode:'markers',name:label+' valid pairs',marker:{size:5,opacity:.35,color},
+      customdata:pts.map(x=>x.timestamp),hovertemplate:'Depth %{x:.4g} m<br>Flow %{y:.4g} m³/s<br>%{customdata}<extra>'+label+'</extra>'});
+    const xmin=fit.depth_min,xmax=fit.depth_max,x=Array.from({length:80},(_,i)=>xmin+(xmax-xmin)*i/79);
+    traces.push({x,y:x.map(h=>fit.a*h**fit.b),mode:'lines',name:label+' empirical fit',line:{color,width:2}});
   }
-  await Plotly.react('ratingChart',traces,{template:'plotly_white',title:'Flow–depth rating',legend:{orientation:'h',y:1.12,x:0},xaxis:{title:'Depth'},yaxis:{title:'Flow'},margin:{l:60,r:24,t:72,b:56}},{responsive:true,displaylogo:false});
+  if(o.rating_mode==='diameter-informed-data-fit'&&Number.isFinite(Number(o.diameter_m))){
+    shapes.push({type:'line',xref:'x',yref:'paper',x0:o.diameter_m,x1:o.diameter_m,y0:0,y1:1,line:{dash:'dot',width:1.5,color:'#667085'}});
+    annotations.push({xref:'x',yref:'paper',x:o.diameter_m,y:1,text:`Pipe crown D = ${fmt(o.diameter_mm,1)} mm`,showarrow:false,yanchor:'bottom',font:{size:10,color:'#475467'}});
+  }
+  state.rating={kind:'flow-depth',result:r,context:diameterContext,config:{observedDepth:workspaceSeries($('ratingObsDepth').value),observedFlow:workspaceSeries($('ratingObsFlow').value),modelDepth:workspaceSeries($('ratingModelDepth').value),modelFlow:workspaceSeries($('ratingModelFlow').value)}};
+  diagnostic.lastRating={mode:o.rating_mode||'data-fitted-generic',monitor:diameterContext.monitor||null,diameter_mm:diameterContext.diameter_mm||null,pairs:o.n||0};
+  await Plotly.react('ratingChart',traces,{template:'plotly_white',title:'Flow–depth rating relationship',xaxis:{title:'Depth / hydraulic head (m)'},yaxis:{title:'Flow (m³/s)'},margin:{l:68,r:24,t:52,b:60},legend:{orientation:'h',y:1.15},shapes,annotations},{responsive:true,displaylogo:false});
 }
+
 async function runDwf(){const flow=mappingObject($('dwfFlowSelect').value),rain=mappingObject(state.mapping.rain);if(!flow)throw new Error('Select observed flow.');const r=await engine.call('dwf_scaled',{flow_path:flow.item.virtualPath,flow_col:flow.col,rain_path:rain?.item.virtualPath||null,rain_col:rain?.col||'rainfall',rain_factor:Number($('rainFactor').value||1),dry_day_mm:Number($('dwfDryDay').value||1),baseline_days:Number($('dwfBaselineDays').value||28),min_dry_days:5,adp_hours:Number($('dwfAdpHours').value||6)},'advanced_bridge');$('dwfSummary').innerHTML=`<div class="summary-box"><div><strong>${esc(r.available)}</strong><span>availability/confidence</span></div><div><strong>${fmt(r.average_dwf,5)}</strong><span>average DWF</span></div><div><strong>${r.dry_days_used??'—'}</strong><span>dry days used</span></div><div><strong>${fmt(r.dry_day_threshold_mm,2)} mm</strong><span>dry-day threshold</span></div><div><strong>${r.baseline_days??'—'}</strong><span>baseline days</span></div><div><strong>${fmt(r.adp_hours,1)} hr</strong><span>ADP window</span></div></div>${r.reason?`<div class="pool-summary">${esc(r.reason)}</div>`:''}`;}
 
 function exclusionPayload(strict=true,role=null,key=null){
@@ -1291,7 +1365,7 @@ async function chooseFolder(){if('showDirectoryPicker'in window){try{const handl
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
-  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
+  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.rating=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);void importGuard(async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=files.length+' dropped file'+(files.length===1?'':'s')+' detected · preparing import…';await ingestFiles(files);});});
   eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('modelSelect').addEventListener('change',()=>{renderModelColourControls();autoSuggestAdvanced(allSeries());});eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
   eventGuard('runCompareBtn','metricGrid',runCompare);$('scatterScale').addEventListener('change',()=>{if(state.comparisons.length)void guarded('metricGrid',renderComparisons);});$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);eventGuard('runDwfBtn','dwfSummary',runDwf);
