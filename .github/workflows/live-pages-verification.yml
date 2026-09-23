@@ -87,6 +87,9 @@ jobs:
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
 
+      - name: Prepare live smoke harness
+        run: python3 scripts/prepare_live_smoke.py web/tests/smoke.mjs
+
       - name: Exercise the deployed application
         env:
           ICM_BASE_URL: ${{ env.SITE_URL }}
