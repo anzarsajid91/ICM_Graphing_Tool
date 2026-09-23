@@ -54,53 +54,50 @@ def _float_or_none(value: Any) -> float | None:
 
 
 def _diameter_value_mm(value: Any, header: Any) -> tuple[float | None, str | None, bool]:
-    \"\"\"Resolve supported association diameter units to canonical millimetres.
+    """Resolve supported association diameter units to canonical millimetres.
 
     The established fm_rg_assoc convention is millimetres when the column header
     does not explicitly state a unit. Unit detection therefore requires a
-    delimited/suffixed unit token; letters inside the word diameter must never
-    be mistaken for the unit meter.
-    \"\"\"
+    delimited/suffixed unit token; letters inside the word "diameter" must never
+    be mistaken for the unit "meter".
+    """
     number = _float_or_none(value)
     if number is None:
         return None, None, True
 
-    raw_header = str(header or \"\").strip()
+    raw_header = str(header or "").strip()
     token = _header_token(raw_header)
-    lower = raw_header.lower().replace(\"³\", \"3\")
+    lower = raw_header.lower().replace("³", "3")
     explicit = re.search(
-        r\"(?:[\\s_\\[(])\"
-        r\"(mm|millimet(?:re|er)s?|cm|centimet(?:re|er)s?|m|met(?:re|er)s?|\"
-        r\"in|inch(?:es)?|ft|feet|foot)\"
-        r\"\\s*[\\])]?\\s*$\",
+        r"(?:^|[\s_\[(])"
+        r"(mm|millimet(?:re|er)s?|cm|centimet(?:re|er)s?|m|met(?:re|er)s?|"
+        r"in|inch(?:es)?|ft|feet|foot)"
+        r"\s*[\])]?[\s]*$",
         lower,
     )
     unit = explicit.group(1) if explicit else None
 
-    # Preserve compact legacy aliases while keeping the bare header Diameter
-    # on the historical mm convention.
+    # Preserve compact aliases where the unit is genuinely encoded in the
+    # canonicalised header. Bare Diameter/PipeDiameter remains the historical
+    # millimetre convention and is labelled as an assumption for provenance.
     if unit is None:
-        if token in {\"diameterm\", \"pipediameterm\", \"pipeidm\"}:
-            unit = \"m\"
-        elif token in {\"diametercm\", \"pipediametercm\", \"pipeidcm\"}:
-            unit = \"cm\"
-        elif token in {
-            \"diametermm\", \"pipediametermm\", \"pipeidmm\",
-            \"diameter\", \"pipediameter\", \"pipediam\",
-        }:
-            unit = \"mm\"
+        if token in {"diameterm", "pipediameterm", "pipeidm"}:
+            unit = "m"
+        elif token in {"diametercm", "pipediametercm", "pipeidcm"}:
+            unit = "cm"
+        elif token in {"diametermm", "pipediametermm", "pipeidmm"}:
+            unit = "mm"
 
-    if unit in {\"in\", \"inch\", \"inches\", \"ft\", \"feet\", \"foot\"}:
+    if unit in {"in", "inch", "inches", "ft", "feet", "foot"}:
         return None, raw_header or None, False
-    if unit in {\"cm\", \"centimetre\", \"centimetres\", \"centimeter\", \"centimeters\"}:
-        return float(number) * 10.0, \"cm\", True
-    if unit in {\"m\", \"metre\", \"metres\", \"meter\", \"meters\"}:
-        return float(number) * 1000.0, \"m\", True
-    if unit in {\"mm\", \"millimetre\", \"millimetres\", \"millimeter\", \"millimeters\"}:
-        return float(number), \"mm\", True
+    if unit in {"cm", "centimetre", "centimetres", "centimeter", "centimeters"}:
+        return float(number) * 10.0, "cm", True
+    if unit in {"m", "metre", "metres", "meter", "meters"}:
+        return float(number) * 1000.0, "m", True
+    if unit in {"mm", "millimetre", "millimetres", "millimeter", "millimeters"}:
+        return float(number), "mm", True
 
-    # Unknown/unqualified association headers retain the established mm contract.
-    return float(number), \"mm (assumed by fm_rg_assoc contract)\", True
+    return float(number), "mm (assumed by fm_rg_assoc contract)", True
 
 def _split_upstream(value: Any) -> list[str]:
     text = _clean_text(value)
