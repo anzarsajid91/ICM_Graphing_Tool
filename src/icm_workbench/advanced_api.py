@@ -14,22 +14,163 @@ from icm_workbench.analysis import (
 )
 
 
-def rating_sources_result(obs_depth_path,obs_depth_col,obs_flow_path,obs_flow_col,model_depth_path=None,model_depth_col=None,model_flow_path=None,model_flow_col=None,max_gap_seconds=900.0):
-    def fit(depth_path,depth_col,flow_path,flow_col):
-        depth=python_bridge._load(depth_path).frame; flow=python_bridge._load(flow_path).frame
-        paired=pair_series(depth,flow,depth_col,flow_col,max_gap_seconds=float(max_gap_seconds))
-        if paired.empty:return {"ok":False,"n":0,"message":"No bounded depth/flow pairs available."}
-        result=rating_curve_fit(paired["obs"],paired["sim"]); result["points"]=python_bridge._records(paired.rename(columns={"obs":"depth","sim":"flow"}))
-        return result
-    observed=fit(obs_depth_path,obs_depth_col,obs_flow_path,obs_flow_col)
-    modelled=None
-    if model_depth_path and model_flow_path and model_depth_col and model_flow_col:modelled=fit(model_depth_path,model_depth_col,model_flow_path,model_flow_col)
-    payload={"observed":observed,"modelled":modelled}
-    if observed.get("ok") and modelled and modelled.get("ok"):
-        payload["coefficient_difference_percent"]=100.0*(modelled["a"]-observed["a"])/observed["a"] if observed["a"] else None
-        payload["exponent_difference"]=modelled["b"]-observed["b"]
-    return json.dumps(python_bridge._jsonable(payload),ensure_ascii=False)
+def rating_sources_result(
+    obs_depth_path,
+    obs_depth_col,
+    obs_flow_path,
+    obs_flow_col,
+    model_depth_path=None,
+    model_depth_col=None,
+    model_flow_path=None,
+    model_flow_col=None,
+    max_gap_seconds=900.0,
+    start=None,
+    end=None,
+    obs_exclusions_json="[]",
+    model_exclusions_json="[]",
+    obs_depth_unit=None,
+    obs_flow_unit=None,
+    model_depth_unit=None,
+    model_flow_unit=None,
+    diameter_mm=None,
+    diameter_source=None,
+    monitor=None,
+):
+    """Return canonical full-resolution empirical Q-H rating diagnostics.
 
+    Pairing is performed from authoritative source frames using bounded
+    interpolation. Dimensional channels must resolve to metres and m³/s.
+    Exclusions are applied before fitting. Optional fm_rg_assoc diameter adds H/D
+    context but does not create a theoretical capacity curve.
+    """
+
+    def fit(
+        depth_path,
+        depth_col,
+        flow_path,
+        flow_col,
+        *,
+        depth_unit=None,
+        flow_unit=None,
+        exclusions_json="[]",
+        diameter_m=None,
+    ):
+        depth, depth_contract = python_bridge._scaled_dimensional_frame(
+            depth_path,
+            depth_col,
+            unit_override=depth_unit,
+            allowed_quantities=("depth", "level"),
+            required_canonical_unit="m",
+        )
+        flow, flow_contract = python_bridge._scaled_dimensional_frame(
+            flow_path,
+            flow_col,
+            unit_override=flow_unit,
+            allowed_quantities=("flow",),
+            required_canonical_unit="m³/s",
+        )
+        paired = pair_series(
+            depth,
+            flow,
+            depth_col,
+            flow_col,
+            max_gap_seconds=float(max_gap_seconds),
+            start=start,
+            end=end,
+        )
+        exclusions = python_bridge._exclusions(exclusions_json)
+        if not paired.empty and exclusions:
+            for exc in exclusions:
+                paired.loc[
+                    (paired["timestamp"] >= exc.start)
+                    & (paired["timestamp"] < exc.end),
+                    ["obs", "sim"],
+                ] = np.nan
+        finite = paired[
+            np.isfinite(pd.to_numeric(paired["obs"], errors="coerce"))
+            & np.isfinite(pd.to_numeric(paired["sim"], errors="coerce"))
+        ].copy() if not paired.empty else paired.copy()
+        result = rating_curve_fit(
+            finite["obs"] if not finite.empty else pd.Series(dtype=float),
+            finite["sim"] if not finite.empty else pd.Series(dtype=float),
+            diameter_m=diameter_m,
+        )
+        result["points"] = python_bridge._records(
+            finite.rename(columns={"obs": "depth", "sim": "flow"})
+        )
+        result["paired_count"] = int(len(finite))
+        result["excluded_period_count"] = int(len(exclusions))
+        result["contracts"] = {
+            "depth": depth_contract,
+            "flow": flow_contract,
+        }
+        result["pairing_method"] = (
+            "depth timestamps with exact or bounded linear flow interpolation; "
+            "no extrapolation across disallowed gaps"
+        )
+        result["analysis_period"] = {"start": start, "end": end}
+        result["calculation_status"] = "complete" if result.get("ok") else "unavailable"
+        return result
+
+    diameter_m = None
+    if diameter_mm not in (None, ""):
+        try:
+            candidate = float(diameter_mm)
+            if np.isfinite(candidate) and candidate > 0:
+                diameter_m = candidate / 1000.0
+        except (TypeError, ValueError):
+            diameter_m = None
+
+    observed = fit(
+        obs_depth_path,
+        obs_depth_col,
+        obs_flow_path,
+        obs_flow_col,
+        depth_unit=obs_depth_unit,
+        flow_unit=obs_flow_unit,
+        exclusions_json=obs_exclusions_json,
+        diameter_m=diameter_m,
+    )
+    modelled = None
+    if model_depth_path and model_flow_path and model_depth_col and model_flow_col:
+        modelled = fit(
+            model_depth_path,
+            model_depth_col,
+            model_flow_path,
+            model_flow_col,
+            depth_unit=model_depth_unit,
+            flow_unit=model_flow_unit,
+            exclusions_json=model_exclusions_json,
+            diameter_m=diameter_m,
+        )
+    payload = {
+        "observed": observed,
+        "modelled": modelled,
+        "diameter_context": {
+            "status": "applied" if diameter_m is not None else "generic-fallback",
+            "monitor": monitor or None,
+            "diameter_mm": float(diameter_m * 1000.0) if diameter_m is not None else None,
+            "diameter_m": float(diameter_m) if diameter_m is not None else None,
+            "source": diameter_source or None,
+            "method": (
+                "fm_rg_assoc diameter used only for H/D and crown-depth context"
+                if diameter_m is not None
+                else "generic empirical Q-H fit; no reliable association diameter supplied"
+            ),
+        },
+        "methodology": (
+            "positive finite canonical depth-flow pairs from authoritative source-resolution "
+            "data; bounded interpolation; exclusions applied before fit; log10 least-squares power law"
+        ),
+    }
+    if observed.get("ok") and modelled and modelled.get("ok"):
+        payload["coefficient_difference_percent"] = (
+            100.0 * (modelled["a"] - observed["a"]) / observed["a"]
+            if observed["a"]
+            else None
+        )
+        payload["exponent_difference"] = modelled["b"] - observed["b"]
+    return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
 
 def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.0,minimum_intensity_duration_min=6.0,minimum_depth_mm=5.0,minimum_event_duration_min=60.0,dry_gap_min=15.0,exclusions_json="[]"):
     parsed=python_bridge._load(path)
