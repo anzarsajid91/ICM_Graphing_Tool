@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from icm_workbench import advanced_api
+from icm_workbench import advanced_api, browser_api
 from icm_workbench.analysis.review import rating_curve_fit
 from icm_workbench.analysis.survey_context import normalise_association_table
 
@@ -115,3 +115,47 @@ def test_rating_sources_uses_canonical_pairs_exclusions_and_diameter(monkeypatch
     assert result["diameter_context"]["monitor"] == "FM01"
     assert result["diameter_context"]["source"]["file"] == "fm_rg_assoc.xlsx"
     assert "display downsampling not used" in result["observed"]["source_resolution"]
+
+
+def test_compare_series_applies_explicit_unit_overrides_before_pairing(monkeypatch):
+    timestamps = pd.date_range("2026-01-01", periods=6, freq="5min")
+    observed = SimpleNamespace(
+        frame=pd.DataFrame({"timestamp": timestamps, "depth": [100, 150, 200, 250, 300, 350]}),
+        metadata={
+            "quantity_by_column": {"depth": "depth"},
+            "series_metadata": {"depth": {"quantity": "depth", "unit_status": "unresolved"}},
+        },
+        format_name="tabular_csv",
+    )
+    modelled = SimpleNamespace(
+        frame=pd.DataFrame({"timestamp": timestamps, "depth": [0.10, 0.15, 0.20, 0.25, 0.30, 0.35]}),
+        metadata={
+            "quantity_by_column": {"depth": "depth"},
+            "series_metadata": {"depth": {"quantity": "depth", "unit_status": "unresolved"}},
+        },
+        format_name="tabular_csv",
+    )
+
+    monkeypatch.setattr(
+        browser_api,
+        "_load",
+        lambda path: observed if path == "observed" else modelled,
+    )
+
+    result = json.loads(
+        browser_api.compare_series(
+            "observed",
+            "depth",
+            "modelled",
+            "depth",
+            obs_unit="mm",
+            model_unit="m",
+        )
+    )
+
+    assert result["observed_unit"] == "m"
+    assert result["modelled_unit"] == "m"
+    assert result["metrics"]["pairs"] == 6
+    assert abs(result["metrics"]["rmse"]) < 1e-12
+    assert abs(result["metrics"]["mean_bias"]) < 1e-12
+    assert [row["obs"] for row in result["paired"]] == [0.10, 0.15, 0.20, 0.25, 0.30, 0.35]
