@@ -1242,7 +1242,22 @@ function reportMonthlySpillComparison(observed,modelled){
   }
   return '<div class="table-wrap"><table><thead><tr><th>Year</th><th>Month</th><th>Observed spills</th><th>Modelled spills</th><th>Difference</th><th>Assessment</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>';
 }
-async function reportChart(id,width,height){try{return await Plotly.toImage($(id),{format:'svg',width:width,height:height});}catch{return'';}}
+function chartHasReportData(id){
+  const chart=$(id);
+  return (chart?.data||[]).some(trace=>{
+    if(trace?.type==='table')return false;
+    const x=Array.isArray(trace?.x)?trace.x:[],y=Array.isArray(trace?.y)?trace.y:[];
+    const count=Math.min(x.length,y.length);
+    for(let i=0;i<count;i++){
+      if(x[i]!=null&&y[i]!=null&&Number.isFinite(Number(y[i])))return true;
+    }
+    return false;
+  });
+}
+async function reportChart(id,width,height){
+  if(!chartHasReportData(id))return'';
+  try{return await Plotly.toImage($(id),{format:'svg',width:width,height:height});}catch{return'';}
+}
 function reportProjectRegistry(){
   const registry=window.ICMProjectRegistry?.snapshot();
   if(!registry||!registry.assets?.length)return '<p class="muted">No classified project assets available.</p>';
