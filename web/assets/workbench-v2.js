@@ -798,6 +798,7 @@
       await nextPaint();
       state.spills.model = await engine.call('spill_result',{path:model.item.virtualPath,column:model.col,threshold:modelThreshold,exclusions_json:exclusionsFor('model',sourceKey(model.item.id,model.col)),max_gap_seconds:gap,...bounds});
     }
+    if(signature!==analysisSignature()){state.spills={};throw new Error('Spill inputs changed while calculation was running. The late result was discarded.');}
     state.spillSnapshot={config,signature,results:JSON.parse(JSON.stringify(state.spills))};
     renderSpillsV2();
     const elapsed = (performance.now()-started)/1000;
