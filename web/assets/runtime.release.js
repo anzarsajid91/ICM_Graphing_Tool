@@ -1175,16 +1175,18 @@ function analysisSignature(){
   };
   return JSON.stringify({mapping:w.mapping,analysis:w.analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual,time_basis:w.time_basis,project_context:projectContext});
 }
-function assertFreshResults(){
+function assertFreshResults(options=null){
   const sig=analysisSignature();
-  for(const [label,snapshot] of [['Spill',state.spillSnapshot],['Comparison',state.comparisonSnapshot]]){
-    if(snapshot&&snapshot.signature!==sig)throw new Error(`${label} results are stale. Recalculate after changing analytical inputs before exporting.`);
-  }
-  if(state.storage&&state.storageSignature&&state.storageSignature!==sig)throw new Error('Storage results are stale. Recalculate after changing analytical inputs before exporting.');
-  if(state.rating?.signature&&state.rating.signature!==ratingInputSignature())throw new Error('Rating results are stale. Recalculate the fitted relationship after changing mappings, exclusions or analysis inputs before exporting.');
-  if(diagnostic.lastProfessionalSurvey&&diagnostic.professionalSurveyFresh&&!diagnostic.professionalSurveyFresh())throw new Error('Professional flow-survey results are stale. Re-run before exporting.');
-  if(diagnostic.survey?.batch&&diagnostic.surveyFresh&&!diagnostic.surveyFresh('complete'))throw new Error('Complete flow-survey results are stale. Re-run before exporting.');
-  if(diagnostic.survey?.balance&&diagnostic.surveyFresh&&!diagnostic.surveyFresh('balance'))throw new Error('Volume-balance results are stale. Recalculate before exporting.');
+  const includeSpills=options?options.include_spills_storage!==false:true;
+  const includeComparison=options?options.include_comparison!==false:true;
+  const includeSurvey=options?options.include_survey!==false:true;
+  if(includeSpills&&state.spillSnapshot&&state.spillSnapshot.signature!==sig)throw new Error('Spill results are stale. Recalculate after changing analytical inputs before exporting.');
+  if(includeComparison&&state.comparisonSnapshot&&state.comparisonSnapshot.signature!==sig)throw new Error('Comparison results are stale. Recalculate after changing analytical inputs before exporting.');
+  if(includeSpills&&state.storage&&state.storageSignature&&state.storageSignature!==sig)throw new Error('Storage results are stale. Recalculate after changing analytical inputs before exporting.');
+  if(includeComparison&&state.rating?.signature&&state.rating.signature!==ratingInputSignature())throw new Error('Rating results are stale. Recalculate the fitted relationship after changing mappings, exclusions or analysis inputs before exporting.');
+  if(includeSurvey&&diagnostic.lastProfessionalSurvey&&diagnostic.professionalSurveyFresh&&!diagnostic.professionalSurveyFresh())throw new Error('Professional flow-survey results are stale. Re-run before exporting.');
+  if(includeSurvey&&diagnostic.survey?.batch&&diagnostic.surveyFresh&&!diagnostic.surveyFresh('complete'))throw new Error('Complete flow-survey results are stale. Re-run before exporting.');
+  if(includeSurvey&&diagnostic.survey?.balance&&diagnostic.surveyFresh&&!diagnostic.surveyFresh('balance'))throw new Error('Volume-balance results are stale. Recalculate before exporting.');
 }
 
 function reportCss(landscape=false){
@@ -1436,9 +1438,9 @@ function reportAnalysisPeriod(){
   return [start,end];
 }
 async function downloadReport(){
-  assertFreshResults();
-  if(!state.mapping.observed&&!state.mapping.rain)throw new Error('Apply a mapping before exporting the report.');
   const options=reportOptions();
+  assertFreshResults(options);
+  if(!state.mapping.observed&&!state.mapping.rain)throw new Error('Apply a mapping before exporting the report.');
   await drawTimeChart();
   const reportSignature=analysisSignature(),period=reportAnalysisPeriod();
   let timeFigure='';
@@ -1537,7 +1539,7 @@ async function reportTraces(period){
   return {traces,statistics,quantities,fdvMode,hasRain,rainMax};
 }
 async function downloadFourPeriod(){
-  assertFreshResults();
+  assertFreshResults({include_spills_storage:false,include_comparison:false,include_survey:false});
   if(!state.mapping.observed&&!state.mapping.rain)throw new Error('Apply a mapping before exporting.');
   const year=Number($('reportYear').value);
   if(!Number.isInteger(year)||year<1900||year>9998)throw new Error('Enter a valid report year.');
