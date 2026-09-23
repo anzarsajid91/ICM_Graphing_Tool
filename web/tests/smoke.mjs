@@ -1147,6 +1147,13 @@ try{
   await captureEvidence('05-report-workspace');
   const reportDownload=await downloadFrom('#downloadReportBtn');
   const report=await fs.readFile(await reportDownload.path(),'utf8');
+  const reportPlotMatch=report.match(/<script type="application\\/json" id="assessment-time-graph-data">([\\s\\S]*?)<\\/script>/);
+  if(!reportPlotMatch)throw new Error('Assessment report full-period Plotly payload missing');
+  const reportPlot=JSON.parse(reportPlotMatch[1]);
+  const populatedReportTraces=(reportPlot.data||[]).filter(t=>/^(Observed|Model|Rainfall)/.test(String(t.name||''))&&Array.isArray(t.x)&&t.x.filter(Boolean).length>0);
+  if(populatedReportTraces.length<3)throw new Error('Assessment report full-period graph contains empty mapped traces: '+JSON.stringify((reportPlot.data||[]).map(t=>({name:t.name,points:(t.x||[]).filter(Boolean).length}))));
+  const reportRange=reportPlot.layout?.xaxis?.range||[];
+  if(!String(reportRange[0]||'').startsWith('2026-01-01T00:00')||!String(reportRange[1]||'').startsWith('2026-01-01T00:14'))throw new Error('Assessment report analytical period shifted from model clock: '+JSON.stringify(reportRange));
   if(!report.includes('© 2026 Anzar Sajid'))throw new Error('Report copyright missing');
   if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
   if(!report.includes('project_registry')||!report.includes('web-worker'))throw new Error('Report audit appendix is missing canonical project registry / worker execution provenance');
