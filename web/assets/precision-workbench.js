@@ -216,7 +216,8 @@ function applyPageComposition(){
     // The legacy stylesheet contains display rules for active tab content.
     // Enforce route ownership inline as well so nested/embedded workflows have
     // identical containment in Chromium and Firefox.
-    node.style.display=hidden?'none':'';
+    if(hidden)node.style.setProperty('display','none','important');
+    else node.style.removeProperty('display');
   });
 }
 function buildShell(){
@@ -366,16 +367,16 @@ function navigate(workspace,page,push=false){
   // Route ownership is semantic, not only visual. Explicitly hide every
   // legacy tab panel before exposing the selected Precision route so an
   // old active-tab class can never leak another task's primary action.
-  qsa('main.shell>.tab-panel').forEach(x=>{x.hidden=true;});
+  qsa('main.shell>.tab-panel').forEach(x=>{x.hidden=true;x.style.setProperty('display','none','important');});
   const root=p.root?.();
   if(root){
     root.classList.add('pw-route-visible');
-    if(root.classList.contains('tab-panel'))root.hidden=false;
+    if(root.classList.contains('tab-panel')){root.hidden=false;root.style.removeProperty('display');}
     let ancestor=root.parentElement;
     while(ancestor&&ancestor!==qs('main.shell')){
       if(ancestor.classList.contains('tab-panel')||ancestor.classList.contains('embedded-workflow')){
         ancestor.classList.add('pw-route-visible');
-        if(ancestor.classList.contains('tab-panel'))ancestor.hidden=false;
+        if(ancestor.classList.contains('tab-panel')){ancestor.hidden=false;ancestor.style.removeProperty('display');}
       }
       ancestor=ancestor.parentElement;
     }
