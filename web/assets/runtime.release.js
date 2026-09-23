@@ -1360,8 +1360,13 @@ function reportObservedColour(quantity){
   return $('obsColor').value;
 }
 function hydraulicGraphLayout({fdvMode=false,quantities=[],statistics=[],hasRain=false,rainMax=1,range=null,title='',shapes=[],annotations=[]}={}){
-  const unitFor=q=>statistics.find(r=>r.statistics?.quantity===q)?.statistics?.unit;
-  const axisTitle=q=>`${q.charAt(0).toUpperCase()+q.slice(1)} (${unitFor(q)||'unit unresolved'})`;
+  const statisticFor=q=>statistics.find(r=>r.statistics?.quantity===q);
+  const unitFor=q=>statisticFor(q)?.statistics?.unit;
+  const referenceFor=q=>statisticFor(q)?.reference||statisticFor(q)?.statistics?.vertical_reference||null;
+  const axisTitle=q=>{
+    const label=q.charAt(0).toUpperCase()+q.slice(1),unit=unitFor(q)||'unit unresolved',reference=q==='level'?referenceFor(q):null;
+    return `${label} (${unit})${reference?' · '+reference:''}`;
+  };
   const panels=[];
   if(hasRain)panels.push({axis:'yaxis2',title:axisTitle('rainfall'),rain:true});
   if(fdvMode){
@@ -1680,7 +1685,7 @@ async function reportTraces(period){
       yaxis:rain?'y2':axisFor(quantity),line:rain?undefined:{color:traceColour,width:1.5},
       marker:rain?{color:traceColour}:undefined,opacity:rain?.72:1});
     statistics.push({role:entry.role,compact_label:compactGraphRole(entry.role,source.item,source.col),
-      label:seriesLabel(source.item,source.col),statistics:d.statistics,factor});
+      label:seriesLabel(source.item,source.col),statistics:d.statistics,factor,reference:seriesReference(source.item,source.col)||null});
     if(rain){hasRain=true;rainMax=values.reduce((m,v)=>v==null?m:Math.max(m,v*1.12),1);}
   }
   return {traces,statistics,quantities,fdvMode,hasRain,rainMax};
