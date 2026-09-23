@@ -925,6 +925,37 @@ try{
   await precisionRoute('graphs','comparison');
   await captureEvidence('08-graphs-comparison');
 
+  stage='multiple model scenarios and long legend containment';
+  const longScenarioName='model-scenario-B-long-name-for-legend-containment-and-report-selection.csv';
+  const modelVariantBytes=await fs.readFile(modelPath);
+  await page.setInputFiles('#fileInput',{name:longScenarioName,mimeType:'text/csv',buffer:modelVariantBytes});
+  await page.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),longScenarioName,{timeout:60000});
+  await precisionRoute('data','series-mapping');
+  const variantDepth=await optionValue('#modelSelect',longScenarioName+' — depth');
+  if(!variantDepth)throw new Error('Second long-named model scenario did not expose a depth series.');
+  await page.selectOption('#observedSelect',obsDepth);
+  await page.selectOption('#modelSelect',[modelDepth,variantDepth]);
+  await page.selectOption('#rainSelect',rain);
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('2 comparison scenario'),null,{timeout:60000});
+  await precisionRoute('graphs','comparison');
+  await page.click('#runCompareBtn');
+  await page.waitForFunction(()=>document.querySelectorAll('#scenarioBody tr').length===2,null,{timeout:60000});
+  const multiScenario=await page.evaluate(()=>{
+    const chart=document.querySelector('#scatterChart'),markers=(chart?.data||[]).filter(t=>t.mode==='markers');
+    const panel=document.querySelector('#tab-compare>.panel')?.getBoundingClientRect();
+    const legend=chart?.querySelector('.legend')?.getBoundingClientRect();
+    return{
+      markers:markers.map(t=>({name:t.name,colour:t.marker?.color,points:(t.x||[]).length})),
+      rows:[...document.querySelectorAll('#scenarioBody tr')].map(row=>row.textContent),
+      documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+      legendWithinPanel:!legend||!panel||(legend.right<=panel.right+2&&legend.left>=panel.left-2),
+    };
+  });
+  if(multiScenario.markers.length!==2||multiScenario.markers.some(x=>x.points<2)||new Set(multiScenario.markers.map(x=>x.colour)).size!==2)throw new Error('Multi-scenario scatter must render two independently styled authoritative pair clouds: '+JSON.stringify(multiScenario));
+  if(!multiScenario.rows.some(x=>x.includes(longScenarioName))||multiScenario.documentOverflow>2||!multiScenario.legendWithinPanel)throw new Error('Long multi-scenario legend/table containment failed: '+JSON.stringify(multiScenario));
+  await captureEvidence('08b-graphs-multiple-scenarios');
+
   stage='depth-only agreement fit';
   await precisionRoute('verification','rating');
   const od=await optionValue('#ratingObsDepth','observed.csv — depth');
