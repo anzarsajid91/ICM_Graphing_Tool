@@ -19,6 +19,7 @@
     graphRefreshing: false,
     graphTimer: null,
     graphGeneration: 0,
+    suppressRelayout: false,
     channelMode: 'combined',
     thresholdContexts: {observed:null, model:null},
   };
@@ -694,7 +695,12 @@
 
       const chartNode=$('timeChart');
       if(chartNode){chartNode.style.height=layout.height+'px';chartNode.style.minHeight=layout.height+'px';}
-      await Plotly.react('timeChart',traces,layout,{responsive:true,displaylogo:false,scrollZoom:true});
+      ui.suppressRelayout=true;
+      try{
+        await Plotly.react('timeChart',traces,layout,{responsive:true,displaylogo:false,scrollZoom:true});
+      }finally{
+        ui.suppressRelayout=false;
+      }
       wireAdaptiveZoom();
       if(generation!==ui.graphGeneration)return;
       ui.graphRange=range;
@@ -727,6 +733,10 @@
     if (!chart || chart.__v2AdaptiveZoom) return;
     chart.__v2AdaptiveZoom = true;
     chart.on('plotly_relayout', event => {
+      // Plotly.react can emit relayout events while the workbench is replacing
+      // display traces. Those are implementation-side redraws, not a user's
+      // analytical viewport change, and must not overwrite a pending zoom.
+      if(ui.suppressRelayout)return;
       const range = relayoutRange(event);
       if (range === undefined) return;
       ui.graphRange = range;
