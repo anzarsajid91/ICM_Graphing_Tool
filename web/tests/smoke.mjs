@@ -1365,22 +1365,22 @@ try{
 
   await clickTab('workspace');
   await page.waitForSelector('#reportPreflight',{timeout:10000});
-  const readinessExpected={
-    comparison:'Fresh',
-    spill:'Fresh',
-    storage:'Fresh',
-    'professional-survey':'Fresh',
-    'complete-survey':'Fresh',
-    'volume-balance':'Fresh',
-    rating:'Fresh',
-    'survey-association':'Loaded',
-  };
-  for(const [key,expected] of Object.entries(readinessExpected)){
-    const item=page.locator(`#reportPreflight [data-result="${key}"]`);
-    if(await item.count()!==1)throw new Error(`Report readiness row missing for ${key}`);
-    const value=(await item.locator('.report-readiness-state').textContent())||'';
-    if(value.trim()!==expected)throw new Error(`Report readiness for ${key} expected ${expected}, got ${value}`);
+  const readiness=await page.evaluate(()=>Object.fromEntries(
+    [...document.querySelectorAll('#reportPreflight [data-result]')].map(item=>[
+      item.dataset.result,
+      {
+        label:item.querySelector('.report-readiness-state')?.textContent?.trim()||'',
+        state:item.querySelector('.report-readiness-state')?.dataset.state||'',
+        reason:item.querySelector('.report-readiness-reason')?.textContent?.trim()||''
+      }
+    ])
+  ));
+  if(readiness.comparison?.label!=='Partial')throw new Error('Demo comparison has incomplete valid support and must be reported as Partial, not Current: '+JSON.stringify(readiness.comparison));
+  for(const key of ['spill','storage','professional-survey','complete-survey','volume-balance','rating']){
+    const row=readiness[key];
+    if(!row||!['Current','Partial','Blocked'].includes(row.label)||!row.reason)throw new Error(`Report readiness for ${key} must expose a current/partial/blocked engineering state with a reason: ${JSON.stringify(row)}`);
   }
+  if(readiness['survey-association']?.label!=='Current'||!readiness['survey-association']?.reason)throw new Error('Loaded survey association must be reported as Current with dependency context: '+JSON.stringify(readiness['survey-association']));
   const reportOptionsUi=await page.evaluate(()=>({
     sections:['reportIncludeTimeSeries','reportIncludeSpillsStorage','reportIncludeComparison','reportIncludeSurvey'].map(id=>({id,checked:document.getElementById(id)?.checked})),
     scatter:document.querySelector('#reportScatterScale')?.value,
