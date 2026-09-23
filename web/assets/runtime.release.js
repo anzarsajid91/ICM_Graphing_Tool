@@ -1016,7 +1016,8 @@ function workspaceSeries(key){
 }
 function reportOptions(){
   const checked=id=>$(id)?Boolean($(id).checked):true;
-  const selectedScenarios=$('reportScenarioSelect')?[...$('reportScenarioSelect').selectedOptions].map(o=>o.value):[];
+  const selectedScenarioKeys=$('reportScenarioSelect')?[...$('reportScenarioSelect').selectedOptions].map(o=>o.value):[];
+  const selectedScenarios=selectedScenarioKeys.map(workspaceSeries).filter(Boolean);
   return {
     include_time_series:checked('reportIncludeTimeSeries'),
     include_spills_storage:checked('reportIncludeSpillsStorage'),
@@ -1099,7 +1100,8 @@ async function applyWorkspace(w){
   if($('reportIncludeSurvey')&&ro.include_survey!==undefined)$('reportIncludeSurvey').checked=Boolean(ro.include_survey);
   if($('reportScatterScale')&&ro.scatter_scale)$('reportScatterScale').value=ro.scatter_scale;
   if($('reportScenarioSelect')&&Array.isArray(ro.scenarios)&&ro.scenarios.length){
-    [...$('reportScenarioSelect').options].forEach(o=>o.selected=ro.scenarios.includes(o.value));
+    const restoredScenarioKeys=ro.scenarios.map(findSeriesFromWorkspace).filter(Boolean);
+    [...$('reportScenarioSelect').options].forEach(o=>o.selected=restoredScenarioKeys.includes(o.value));
   }
   state.rainEvents=w.rain_events?.events||[];
   const expected=(w.source_references||[]).length;
@@ -1215,6 +1217,51 @@ function reportPlotFigure(id,traces,layout,statistics,caption=''){
     ?'<div class="report-figure-metrics"><div class="report-figure-metrics-title">Graph metrics</div>'+graphStatisticsHtml(statistics)+'</div>'
     :'';
   return '<figure class="figure"><div class="report-plot" id="'+id+'" style="height:'+layout.height+'px"></div><script type="application/json" id="'+id+'-data">'+payload+'</script>'+stats+'<figcaption>'+esc(caption)+'</figcaption></figure>';
+}
+function selectedReportComparisons(){
+  const selected=$('reportScenarioSelect')?new Set([...$('reportScenarioSelect').selectedOptions].map(o=>o.value)):new Set();
+  return state.comparisons.filter(entry=>{
+    if(!entry.result)return false;
+    const key=sourceKey(entry.model.item.id,entry.model.col);
+    return selected.size===0||selected.has(key);
+  });
+}
+function reportComparisonScatterFigure(entries,log=false){
+  if(!entries?.length)return '<p class="muted">No selected comparison scenario has a current authoritative result.</p>';
+  const traces=[],values=[];
+  entries.forEach((entry,i)=>{
+    const population=scatterPopulation(entry.result,log),pairs=population.pairs,metrics=population.metrics||{};
+    const key=sourceKey(entry.model.item.id,entry.model.col),colour=state.modelColours[key]||palette[i%palette.length];
+    const scenario=entry.model.item.displayName+' · '+entry.model.col;
+    values.push(...pairs.flatMap(x=>[Number(x.obs),Number(x.sim)]));
+    traces.push({x:pairs.map(x=>x.obs),y:pairs.map(x=>x.sim),mode:'markers',name:scenario,marker:{size:6,opacity:.5,color:colour},
+      customdata:pairs.map(x=>[x.timestamp,x.obs,x.sim]),
+      hovertemplate:'<b>'+esc(scenario)+'</b><br>%{customdata[0]}<br>Observed: %{customdata[1]:.5g}<br>Modelled: %{customdata[2]:.5g}<extra></extra>'});
+    const fit=regressionLinePoints(metrics,pairs,log);
+    if(fit)traces.push({x:fit.x,y:fit.y,mode:'lines',name:scenario+' fit',line:{color:colour,width:2,dash:'dash'},hoverinfo:'skip'});
+  });
+  const finite=values.filter(v=>Number.isFinite(v)&&(!log||v>0));
+  if(finite.length){
+    const lo=Math.min(...finite),hi=Math.max(...finite);
+    if(hi>lo)traces.push({x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1 agreement',line:{color:'#64748b',width:1.5,dash:'dot'},hoverinfo:'skip'});
+  }
+  const first=entries[0].result,quantity=comparisonQuantity(first),unit=comparisonUnit(first);
+  const axisLabel=(role)=>role+' '+quantity+(unit?' ('+unit+')':'');
+  const layout={template:'plotly_white',height:520,margin:{l:78,r:28,t:72,b:68},
+    title:{text:'Observed vs modelled '+(log?'log₁₀':'linear')+' scatter',x:.01,xanchor:'left'},
+    legend:{orientation:'h',x:0,y:1.04,xanchor:'left',yanchor:'bottom'},showlegend:true,
+    xaxis:{title:{text:axisLabel('Observed')},type:log?'log':'linear',automargin:true},
+    yaxis:{title:{text:axisLabel('Modelled')},type:log?'log':'linear',automargin:true,scaleanchor:'x',scaleratio:1},
+  };
+  const caption=log?'Observed versus modelled log₁₀ scatter; only strictly positive authoritative pairs are shown.':'Observed versus modelled linear scatter using authoritative paired values.';
+  return reportPlotFigure('assessment-scatter-report',traces,layout,[],caption);
+}
+function reportStorageHtml(){
+  const r=state.storage;
+  if(!r)return '<p class="muted">Storage Assessment not calculated.</p>';
+  const screening=(r.screening||[]).map(x=>'<tr><td>'+esc(x.year)+'</td><td>'+(x.required_storage_m3==null?'Withheld':fmt(x.required_storage_m3,2))+'</td><td>'+esc(x.physical_blocks)+'</td><td>'+(x.max_block_volume_m3==null?'Withheld':fmt(x.max_block_volume_m3,2))+'</td><td>'+esc(x.status||'unknown')+'</td><td>'+esc(x.reason||'')+'</td></tr>').join('');
+  return '<div class="note">Idealised storage screening is diagnostic evidence, not hydraulic design sizing. Volumes use actual valid support and declared units.</div>'+
+    (screening?'<div class="table-wrap"><table><thead><tr><th>Year</th><th>Required storage m³</th><th>Counting blocks</th><th>Maximum block m³</th><th>Status</th><th>Reason</th></tr></thead><tbody>'+screening+'</tbody></table></div>':'<p class="muted">No storage-screening rows were produced.</p>');
 }
 async function interactiveReportHtml(html){
   if(!reportPlotlyBundle){
