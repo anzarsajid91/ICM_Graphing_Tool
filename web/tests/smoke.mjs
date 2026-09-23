@@ -787,11 +787,13 @@ try{
   const healthHead=await page.locator('#healthBody').evaluate(el=>el.closest('table')?.querySelector('thead')?.textContent||'');
   if(!healthHead.includes('Flatline')||!healthHead.includes('Out of range')||!healthHead.includes('Zero %'))throw new Error('Enhanced FDV flow-survey screening columns are missing');
 
-  stage='association workbook and simplified survey navigation';
-  await precisionRoute('survey','configuration');
-  const navLabels=await page.locator('nav.tabs .tab').allTextContents();
-  if(navLabels.join('|')!=='Data & Time Series|Flow Survey|Rainfall|Assessment|Spills|Report')throw new Error('Unexpected simplified navigation: '+JSON.stringify(navLabels));
-  if(await page.locator('.tab[data-tab="storage"]').count()!==0)throw new Error('Storage should be embedded under Verification, not exposed as a top-level tab');
+  stage='association workbook and canonical survey navigation';
+  await precisionRoute('survey','fdv-check');
+  const navLabels=await page.locator('.pw-primary-nav button').allTextContents();
+  if(navLabels.map(x=>x.trim()).join('|')!=='Data / Time Series|Spills|Flow Survey|Graphs|Reports')throw new Error('Unexpected Precision navigation: '+JSON.stringify(navLabels));
+  if(navLabels.some(x=>/storage/i.test(x)))throw new Error('Storage must remain a Spills subtab, not a primary workspace: '+JSON.stringify(navLabels));
+  const flowSurveySubtabs=await page.locator('.pw-secondary-nav button').allTextContents();
+  if(flowSurveySubtabs.map(x=>x.trim()).join('|')!=='FDV Check|Rainfall Check|Volume Balance')throw new Error('Unexpected Flow Survey subtab sequence: '+JSON.stringify(flowSurveySubtabs));
   const workflowGuide=await page.locator('#workflowGuide').textContent();
   if(!workflowGuide.includes('Workflow')||!workflowGuide.includes('Survey')||!workflowGuide.includes('FSAT Event Response')||!workflowGuide.includes('volume balance'))throw new Error('Contextual Survey workflow guide is incomplete: '+workflowGuide);
   const activeTabStyle=await page.locator('.pw-primary-nav button[aria-current="page"]').evaluate(el=>({fontWeight:getComputedStyle(el).fontWeight,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
