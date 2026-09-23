@@ -400,7 +400,7 @@ function navigate(workspace,page,push=false){
   qsa('.pw-primary-nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.workspace===workspace?'page':'false'));
   $('pwBreadcrumbWorkspace').textContent=spec.label;$('pwBreadcrumbPage').textContent=p.label;$('pwPageTitle').textContent=p.title;$('pwPageDescription').textContent=p.description;
   const sn=$('pwSecondaryNav');sn.innerHTML='';
-  Object.entries(spec.pages).forEach(([key,entry])=>{const b=document.createElement('button');b.type='button';b.textContent=entry.label;b.setAttribute('aria-current',key===page?'page':'false');b.addEventListener('click',()=>navigate(workspace,key,true));sn.appendChild(b);});
+  Object.entries(spec.pages).forEach(([key,entry])=>{const b=document.createElement('button');b.type='button';b.dataset.page=key;b.textContent=entry.label;b.setAttribute('aria-current',key===page?'page':'false');b.addEventListener('click',()=>navigate(workspace,key,true));sn.appendChild(b);});
   inspectorContext(p);refreshScope();renderAssets();
   qs('.pw-rail')?.classList.remove('is-open');qs('.pw-inspector')?.classList.remove('is-open');
   applyFocusCanvas(false);
@@ -501,8 +501,11 @@ function wireContextUpdates(){
     else if(event.key==='ArrowRight')index=(index+1)%buttons.length;
     else index=(index-1+buttons.length)%buttons.length;
     event.preventDefault();
-    buttons[index].focus();
+    const targetPage=buttons[index].dataset.page;
     buttons[index].click();
+    // navigate() rebuilds the secondary navigation, so restore focus to the
+    // corresponding newly-created button after the route transition.
+    requestAnimationFrame(()=>qs('#pwSecondaryNav button[data-page="'+CSS.escape(targetPage)+'"]')?.focus());
   });
   const focusMedia=matchMedia('(min-width:901px)');
   focusMedia.addEventListener?.('change',()=>applyFocusCanvas(false));
