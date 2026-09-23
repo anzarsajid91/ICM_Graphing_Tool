@@ -22,6 +22,12 @@ def test_association_diameter_units_are_canonicalised_to_mm():
     assert metres["records"][0]["diameter_source_unit"] == "m"
     assert centimetres["records"][0]["diameter_mm"] == 450.0
     assert centimetres["records"][0]["diameter_source_unit"] == "cm"
+    bare = normalise_association_table(
+        ["FM", "RG", "Diameter", "Upstream"],
+        [["FM01", "RG01", "600", ""]],
+    )
+    assert bare["records"][0]["diameter_mm"] == 600.0
+    assert bare["records"][0]["diameter_source_unit"] == "mm (assumed by fm_rg_assoc contract)"
 
 
 def test_association_unsupported_or_ambiguous_diameter_is_not_silently_applied():
