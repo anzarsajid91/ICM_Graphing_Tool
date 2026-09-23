@@ -1178,7 +1178,10 @@ try{
     {name:'RG01.r',mimeType:'text/plain',buffer:surveyRainfallR()},
     {name:'RG02.r',mimeType:'text/plain',buffer:surveyRainfallR()},
   ]);
-  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===12,null,{timeout:90000});
+  await page.waitForFunction(()=>{
+    const rows=[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent||'');
+    return ['FM01.fdv','FM02.fdv','FM03.fdv','RG01.r','RG02.r'].every(name=>rows.some(text=>text.includes(name)&&text.includes('Ready')));
+  },null,{timeout:90000});
   await page.waitForFunction(()=>document.querySelector('#surveyAssociationSummary')?.textContent.includes('3/3'),null,{timeout:60000});
   await page.selectOption('#surveyPopulation','under50');
   await page.click('#runCompleteSurveyBtn');
