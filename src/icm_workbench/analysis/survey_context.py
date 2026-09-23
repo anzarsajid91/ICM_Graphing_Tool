@@ -65,7 +65,11 @@ def _diameter_value_mm(value: Any, header: Any) -> tuple[float | None, str | Non
         return None, None, True
     raw_header = str(header or "")
     token = _header_token(raw_header)
-    if any(x in token for x in ("inch", "inches", "feet", "foot")) or token.endswith("ft"):
+    if (
+        any(x in token for x in ("inch", "inches", "feet", "foot"))
+        or token.endswith("ft")
+        or (token.endswith("in") and "diameter" in token)
+    ):
         return None, raw_header or None, False
     if "centimet" in token or token.endswith("cm"):
         return float(number) * 10.0, "cm", True
