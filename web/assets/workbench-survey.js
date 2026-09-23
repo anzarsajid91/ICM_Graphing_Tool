@@ -330,9 +330,10 @@
       sha256: await sha256(file),
       sheet: table.sheetName,
     };
-    survey.batch = null;
-    survey.balance = null;
-    survey.generation += 1;
+    // Preserve previously calculated survey evidence when association topology
+    // changes. The dependency signature makes it stale immediately; retaining
+    // the result lets the user review what changed and restoring an identical
+    // authoritative workbook can restore dependency equivalence.
     renderAssociation();
     invalidateSurveyResults('Association workbook changed.');
   }
