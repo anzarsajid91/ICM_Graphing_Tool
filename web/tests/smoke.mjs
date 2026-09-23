@@ -1181,6 +1181,7 @@ try{
   const workspacePath=await workspaceDownload.path();
   const workspace=JSON.parse(await fs.readFile(workspacePath,'utf8'));
   if(workspace.schema_version!==3||workspace.time_basis!=='model clock/unspecified')throw new Error(`Unexpected workspace schema/time basis: ${JSON.stringify(workspace)}`);
+  if(workspace.report_options?.scatter_scale!=='current'||workspace.report_options?.include_time_series!==true||workspace.report_options?.include_spills_storage!==true||workspace.report_options?.include_comparison!==true||workspace.report_options?.include_survey!==true||!workspace.report_options?.scenarios?.length)throw new Error('Workspace did not persist report section/scatter/scenario options: '+JSON.stringify(workspace.report_options));
   if(workspace.exclusions?.[0]?.start!=='2026-01-01T00:08')throw new Error(`Exclusion wall clock shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
   if(workspace.exclusions?.[0]?.end!=='2026-01-01T00:10')throw new Error(`Exclusion end shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
   const savedRatingUnits={
@@ -1212,8 +1213,17 @@ try{
       }
     };
   });
+  await page.selectOption('#reportScatterScale','log');
+  await page.uncheck('#reportIncludeSurvey');
+  await page.selectOption('#reportScenarioSelect',[]);
   await page.setInputFiles('#workspaceInput',workspacePath);
   await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('Workspace loaded.'),null,{timeout:60000});
+  const restoredReportOptions=await page.evaluate(()=>({
+    scatter:document.querySelector('#reportScatterScale')?.value,
+    includeSurvey:document.querySelector('#reportIncludeSurvey')?.checked,
+    scenarios:[...document.querySelector('#reportScenarioSelect')?.selectedOptions||[]].length,
+  }));
+  if(restoredReportOptions.scatter!=='current'||restoredReportOptions.includeSurvey!==true||restoredReportOptions.scenarios<1)throw new Error('Workspace did not restore report choices after mapping relink: '+JSON.stringify(restoredReportOptions));
   await page.waitForFunction(()=>!document.body.classList.contains('operation-busy'),null,{timeout:10000});
   const restoreReady=await page.evaluate(()=>({
     mappingCompleted:Boolean(window.__workspaceRestoreProbe?.completed),
