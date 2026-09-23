@@ -467,7 +467,27 @@ function renderAssets(){
 function wireContextUpdates(){
   ['observedSelect','rainSelect','analysisStart','analysisEnd','workspaceName'].forEach(id=>$(id)?.addEventListener('change',refreshScope));
   window.addEventListener('icm:source-pool-changed',()=>{renderAssets();setTimeout(()=>{createScenarioChecklist();refreshScope();},0);});
-  window.addEventListener('hashchange',()=>{const r=parseHash();if(r)navigate(r.workspace,r.page,false);});
+  const syncLocationRoute=()=>{const r=parseHash();if(r&&(r.workspace!==current.workspace||r.page!==current.page))navigate(r.workspace,r.page,false);};
+  window.addEventListener('hashchange',syncLocationRoute);
+  // pushState-backed route changes are restored by browser Back/Forward through
+  // popstate. Keep this explicit instead of relying on browser-specific fragment
+  // event ordering.
+  window.addEventListener('popstate',syncLocationRoute);
+  const secondary=$('pwSecondaryNav');
+  secondary?.addEventListener('keydown',event=>{
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+    const buttons=qsa('button',secondary).filter(button=>!button.disabled&&!button.hidden);
+    if(!buttons.length)return;
+    const active=document.activeElement?.closest?.('#pwSecondaryNav button');
+    let index=Math.max(0,buttons.indexOf(active));
+    if(event.key==='Home')index=0;
+    else if(event.key==='End')index=buttons.length-1;
+    else if(event.key==='ArrowRight')index=(index+1)%buttons.length;
+    else index=(index-1+buttons.length)%buttons.length;
+    event.preventDefault();
+    buttons[index].focus();
+    buttons[index].click();
+  });
   const focusMedia=matchMedia('(min-width:901px)');
   focusMedia.addEventListener?.('change',()=>applyFocusCanvas(false));
 }
