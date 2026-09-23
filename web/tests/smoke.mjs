@@ -366,6 +366,84 @@ async function inspectReportHtml(html,minFigures=1){
     return {...result,print};
   }finally{await p.close();}
 }
+async function verifyStationAThresholdChain(){
+  const probe=await context.newPage();
+  const probeErrors=[];
+  probe.on('pageerror',e=>probeErrors.push('pageerror: '+String(e)));
+  probe.on('console',m=>{if(m.type()==='error'&&!m.text().includes('favicon.ico'))probeErrors.push('console: '+m.text());});
+  const nav=async(workspace,subpage)=>{
+    await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+    await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,subpage]);
+    await probe.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},[workspace,subpage]);
+  };
+  try{
+    await probe.goto(baseUrl+'?station_a_threshold='+Date.now(),{waitUntil:'domcontentloaded'});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+    await probe.setInputFiles('#fileInput',[
+      path.join(root,'reference/current-tool/sample-data/other/StationA_EDM.csv'),
+      path.join(root,'reference/current-tool/sample-data/other/StationA_Rainfall.csv'),
+    ]);
+    await probe.waitForFunction(()=>['StationA_EDM.csv','StationA_Rainfall.csv'].every(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready'))),null,{timeout:240000});
+    await nav('data','series-mapping');
+    const selected=await probe.evaluate(()=>{
+      const obs=[...document.querySelectorAll('#observedSelect option')].find(o=>/StationA_EDM\.csv/i.test(o.textContent)&&/(depth|level)/i.test(o.textContent));
+      const rain=[...document.querySelectorAll('#rainSelect option')].find(o=>/StationA_Rainfall\.csv/i.test(o.textContent)&&/rain/i.test(o.textContent));
+      return {observed:obs?.value||'',observedLabel:obs?.textContent||'',rain:rain?.value||'',rainLabel:rain?.textContent||''};
+    });
+    if(!selected.observed||!selected.rain)throw new Error('Station A reference files did not expose a Depth/Level and rainfall mapping: '+JSON.stringify(selected));
+    await probe.selectOption('#observedSelect',selected.observed);
+    await probe.selectOption('#modelSelect',[]);
+    await probe.selectOption('#rainSelect',selected.rain);
+    await probe.click('#applyMappingBtn');
+    await probe.waitForFunction(()=>document.querySelector('#timeChart')?.data?.length>0&&window.__ICM_WORKBENCH__?.lastGraphStatistics?.length>0,null,{timeout:120000});
+    await nav('data','time-series');
+    const support=await probe.evaluate(()=>{
+      const row=(window.__ICM_WORKBENCH__.lastGraphStatistics||[]).find(x=>['depth','level'].includes(String(x.statistics?.quantity||'').toLowerCase()));
+      return row?{quantity:row.statistics.quantity,unit:row.statistics.unit,min:Number(row.statistics.minimum),max:Number(row.statistics.maximum)}:null;
+    });
+    if(!support||!Number.isFinite(support.min)||!Number.isFinite(support.max)||support.max<support.min)throw new Error('Station A hydraulic support unavailable: '+JSON.stringify(support));
+    const threshold=Number((support.min+(support.max-support.min)*0.6).toPrecision(10));
+    await probe.fill('#graphObsThreshold',String(threshold));
+    await probe.waitForFunction(value=>{
+      const chart=document.querySelector('#timeChart');
+      return (chart?.layout?.shapes||[]).some(s=>s.type==='line'&&s.yref!=='paper'&&Math.abs(Number(s.y0)-value)<1e-9);
+    },threshold,{timeout:120000});
+    const graphContext=(await probe.locator('#graphObsThresholdContext').textContent())||'';
+    if(!new RegExp(support.quantity,'i').test(graphContext))throw new Error('Station A graph threshold context does not identify the mapped hydraulic quantity: '+graphContext);
+    await nav('spills','assessment');
+    const controlValue=Number(await probe.inputValue('#obsThreshold'));
+    if(Math.abs(controlValue-threshold)>1e-9)throw new Error('Station A threshold changed between Time Series and Spills: '+JSON.stringify({threshold,controlValue}));
+    await probe.click('#runSpillsBtn');
+    await probe.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in'),null,{timeout:120000});
+    const calcValue=await probe.evaluate(()=>Number(state.spillSnapshot?.config?.analysis?.observed_threshold));
+    if(Math.abs(calcValue-threshold)>1e-9)throw new Error('Station A spill snapshot did not consume the graph threshold: '+JSON.stringify({threshold,calcValue}));
+    await nav('reports','report-generation');
+    await probe.uncheck('#reportIncludeComparison');
+    await probe.uncheck('#reportIncludeSurvey');
+    const pending=probe.waitForEvent('download');
+    await probe.click('#downloadReportBtn');
+    const download=await pending;
+    const html=await fs.readFile(await download.path(),'utf8');
+    const marker='<script type="application/json" id="assessment-time-graph-data">';
+    const start=html.indexOf(marker),end=start>=0?html.indexOf('</script>',start+marker.length):-1;
+    if(start<0||end<0)throw new Error('Station A report time-series payload missing.');
+    const plot=JSON.parse(html.slice(start+marker.length,end));
+    const reportThreshold=(plot.layout?.shapes||[]).find(s=>s.type==='line'&&s.yref!=='paper');
+    if(!reportThreshold||Math.abs(Number(reportThreshold.y0)-threshold)>1e-9)throw new Error('Station A report threshold line differs from the configured/calculated threshold: '+JSON.stringify({threshold,reportThreshold}));
+    if(!html.includes('Observed / EDM hydraulic threshold')||!html.includes(String(threshold)))throw new Error('Station A report settings do not record the configured hydraulic threshold.');
+    const dir=process.env.ICM_EVIDENCE_DIR;
+    if(dir){
+      await fs.mkdir(dir,{recursive:true});
+      await fs.writeFile(path.join(dir,'station-a-threshold-chain-report.html'),html,'utf8');
+      await probe.screenshot({path:path.join(dir,'station-a-threshold-chain.png'),fullPage:true});
+    }
+    if(probeErrors.length)throw new Error('Station A probe browser errors: '+probeErrors.join(' | '));
+    return {observed:selected.observedLabel,rain:selected.rainLabel,quantity:support.quantity,unit:support.unit,threshold,controlValue,calcValue,reportValue:Number(reportThreshold.y0)};
+  }finally{
+    await probe.close();
+  }
+}
+
 async function waitReady(){
   try{await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready'&&document.querySelector('#engineStatus')?.textContent.includes('ready'),null,{timeout:120000});}
   catch(err){const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);throw new Error(`Engine readiness failed. status=${status}; diagnostic=${JSON.stringify(diag)}; original=${err}`);}
@@ -468,7 +546,11 @@ try{
     }
   }
   }
-  stage='FastPath failure falls back to authoritative import';
+  stage='Station A threshold control-to-report chain';
+  performanceEvidence.stationAThresholdChain=await verifyStationAThresholdChain();
+  await writePerformanceEvidence();
+
+    stage='FastPath failure falls back to authoritative import';
   performanceEvidence.fastpathFailureFallback=await verifyFastPathFailureFallsBack();
   if(!liveMode&&!performanceEvidence.fastpathFailureFallback?.parsed)throw new Error('A FastPath worker failure must not prevent authoritative parsing: '+JSON.stringify(performanceEvidence.fastpathFailureFallback));
   stage='clear during pending FastPath import';
