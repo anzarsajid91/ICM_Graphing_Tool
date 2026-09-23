@@ -1445,7 +1445,7 @@ function reportAnalysisPeriod(){
 async function downloadReport(){
   const options=reportOptions();
   assertFreshResults(options);
-  if(!state.mapping.observed&&!state.mapping.rain)throw new Error('Apply a mapping before exporting the report.');
+  if(!state.mapping.observed&&!(state.mapping.models||[]).length&&!state.mapping.rain)throw new Error('Apply at least one observed, modelled or rainfall mapping before exporting the report.');
   await drawTimeChart();
   const reportSignature=analysisSignature(),period=reportAnalysisPeriod();
   let timeFigure='';
@@ -1545,7 +1545,7 @@ async function reportTraces(period){
 }
 async function downloadFourPeriod(){
   assertFreshResults({include_spills_storage:false,include_comparison:false,include_survey:false});
-  if(!state.mapping.observed&&!state.mapping.rain)throw new Error('Apply a mapping before exporting.');
+  if(!state.mapping.observed&&!(state.mapping.models||[]).length&&!state.mapping.rain)throw new Error('Apply at least one observed, modelled or rainfall mapping before exporting.');
   const year=Number($('reportYear').value);
   if(!Number.isInteger(year)||year<1900||year>9998)throw new Error('Enter a valid report year.');
   const periods=[['Complete year',year+'-01-01T00:00:00',(year+1)+'-01-01T00:00:00'],['January – April',year+'-01-01T00:00:00',year+'-05-01T00:00:00'],['May – August',year+'-05-01T00:00:00',year+'-09-01T00:00:00'],['September – December',year+'-09-01T00:00:00',(year+1)+'-01-01T00:00:00']];
