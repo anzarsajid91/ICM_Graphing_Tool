@@ -779,6 +779,15 @@ async function renderComparisons(){
 
 function useGraphZoom(){const r=$('timeChart')?.layout?.xaxis?.range;if(r?.length===2){$('analysisStart').value=toLocalInput(r[0]);$('analysisEnd').value=toLocalInput(r[1]);}}
 
+function ratingInputSignature(){
+  return JSON.stringify({
+    analysis:analysisSignature(),
+    observedDepth:$('ratingObsDepth')?.value||'',
+    observedFlow:$('ratingObsFlow')?.value||'',
+    modelDepth:$('ratingModelDepth')?.value||'',
+    modelFlow:$('ratingModelFlow')?.value||'',
+  });
+}
 function ratingAssetIdentity(selection){
   if(!selection)return null;
   const snapshot=window.ICMProjectRegistry?.snapshot?.();
@@ -855,7 +864,7 @@ async function runRating(){
       {x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1',line:{dash:'dash',color:'#667085'}},
     ];
     if(fitAvailable)traces.push({x:[lo,hi],y:[intercept+slope*lo,intercept+slope*hi],mode:'lines',name:'Python fitted relationship',line:{width:2,color:state.modelColours[state.mapping.models[0]]||palette[0]}});
-    state.rating={kind:'depth-agreement',result:depth,context:null};
+    state.rating={kind:'depth-agreement',result:depth,context:null,signature:ratingInputSignature()};
     await Plotly.react('ratingChart',traces,{template:'plotly_white',title:'Observed vs modelled depth / level agreement',xaxis:{title:'Observed'+(unit?' ('+unit+')':'')},yaxis:{title:'Modelled'+(unit?' ('+unit+')':'')},margin:{l:65,r:24,t:48,b:58},legend:{orientation:'h',y:1.13}},{responsive:true,displaylogo:false});
     return;
   }
@@ -897,7 +906,7 @@ async function runRating(){
     shapes.push({type:'line',xref:'x',yref:'paper',x0:o.diameter_m,x1:o.diameter_m,y0:0,y1:1,line:{dash:'dot',width:1.5,color:'#667085'}});
     annotations.push({xref:'x',yref:'paper',x:o.diameter_m,y:1,text:`Pipe crown D = ${fmt(o.diameter_mm,1)} mm`,showarrow:false,yanchor:'bottom',font:{size:10,color:'#475467'}});
   }
-  state.rating={kind:'flow-depth',result:r,context:diameterContext,config:{observedDepth:workspaceSeries($('ratingObsDepth').value),observedFlow:workspaceSeries($('ratingObsFlow').value),modelDepth:workspaceSeries($('ratingModelDepth').value),modelFlow:workspaceSeries($('ratingModelFlow').value)}};
+  state.rating={kind:'flow-depth',result:r,context:diameterContext,signature:ratingInputSignature(),config:{observedDepth:workspaceSeries($('ratingObsDepth').value),observedFlow:workspaceSeries($('ratingObsFlow').value),modelDepth:workspaceSeries($('ratingModelDepth').value),modelFlow:workspaceSeries($('ratingModelFlow').value)}};
   diagnostic.lastRating={mode:o.rating_mode||'data-fitted-generic',monitor:diameterContext.monitor||null,diameter_mm:diameterContext.diameter_mm||null,pairs:o.n||0};
   await Plotly.react('ratingChart',traces,{template:'plotly_white',title:'Flow–depth rating relationship',xaxis:{title:'Depth / hydraulic head (m)'},yaxis:{title:'Flow (m³/s)'},margin:{l:68,r:24,t:52,b:60},legend:{orientation:'h',y:1.15},shapes,annotations},{responsive:true,displaylogo:false});
 }
@@ -1061,7 +1070,7 @@ function renderNamedWorkspaces(){const all=readNamedWorkspaces(),s=$('namedWorks
 async function loadNamedWorkspace(){const name=$('namedWorkspaceSelect').value,all=readNamedWorkspaces();if(!name||!all[name])throw new Error('Select a saved browser workspace.');await applyWorkspace(all[name]);}
 
 function analysisSignature(){const w=workspaceObject();return JSON.stringify({mapping:w.mapping,analysis:w.analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual});}
-function assertFreshResults(){const sig=analysisSignature();for(const [label,snapshot] of [['Spill',state.spillSnapshot],['Comparison',state.comparisonSnapshot]]){if(snapshot && snapshot.signature!==sig)throw new Error(`${label} results are stale. Recalculate after changing analytical inputs before exporting.`);}}
+function assertFreshResults(){const sig=analysisSignature();for(const [label,snapshot] of [['Spill',state.spillSnapshot],['Comparison',state.comparisonSnapshot]]){if(snapshot && snapshot.signature!==sig)throw new Error(`${label} results are stale. Recalculate after changing analytical inputs before exporting.`);}if(state.rating?.signature&&state.rating.signature!==ratingInputSignature())throw new Error('Rating results are stale. Recalculate the fitted relationship after changing mappings, exclusions or analysis inputs before exporting.');}
 
 function reportCss(landscape=false){
   return ':root{--ink:#182433;--muted:#667788;--line:#d9e1e8;--soft:#f5f8fa;--accent:#315b9b}*{box-sizing:border-box}html{background:#eef2f5}body{margin:0;color:var(--ink);font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:1.45;background:#fff}.report{max-width:1180px;margin:0 auto;padding:30px 34px 42px}.report-header{border-bottom:3px solid var(--accent);padding-bottom:16px;margin-bottom:22px;display:flex;justify-content:space-between;gap:24px;align-items:flex-end}.report-header h1{font-size:26px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em}.report-header p{margin:0;color:var(--muted)}.report-meta{text-align:right;color:var(--muted);font-size:12px;white-space:nowrap}h2{font-size:18px;margin:26px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:14px;margin:18px 0 8px}.note{background:var(--soft);border-left:4px solid var(--accent);padding:10px 12px;margin:12px 0 18px}.report-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.card{min-width:0;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:#fff;break-inside:avoid}.card h3{margin:0 0 8px}.table-wrap{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:7px;margin:8px 0 14px}table{border-collapse:collapse;width:100%;min-width:620px}th,td{padding:7px 9px;border-bottom:1px solid #e8edf1;text-align:left;vertical-align:top;font-size:11.5px}th{background:var(--soft);color:#435466;text-transform:uppercase;letter-spacing:.025em;font-size:10.5px}tr:last-child td{border-bottom:0}.figure{margin:12px 0 20px;break-inside:avoid}.report-plot{width:100%;min-width:0}.graph-stats-compact small{display:block;max-width:240px;overflow-wrap:anywhere}.graph-statistics-note{font-size:12px}.figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.figure figcaption{font-size:11.5px;color:var(--muted);margin-top:6px}.summary-box{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0}.summary-box>div{border:1px solid var(--line);border-radius:7px;padding:9px;background:var(--soft)}.summary-box strong{display:block;font-size:16px}.summary-box span{font-size:10.5px;color:var(--muted)}.swatch{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.14)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f9fb;border:1px solid var(--line);border-radius:6px;padding:10px;font:11px/1.45 Consolas,monospace}.hash{font-family:Consolas,monospace;font-size:10.5px;overflow-wrap:anywhere}.muted{color:var(--muted)}.report-page{break-after:page;page-break-after:always}.report-page:last-child{break-after:auto;page-break-after:auto}.report-footer{border-top:1px solid var(--line);margin-top:30px;padding-top:10px;color:var(--muted);font-size:11px;display:flex;justify-content:space-between;gap:12px}@media(max-width:760px){.report{padding:20px 16px}.report-header{display:block}.report-meta{text-align:left;margin-top:10px}.report-grid,.summary-box{grid-template-columns:1fr}table{min-width:560px}}@media print{html{background:#fff}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.report{max-width:none;padding:0}.card,.figure,.table-wrap{break-inside:avoid}}@page{size:'+(landscape?'A4 landscape':'A4 portrait')+';margin:12mm}';
