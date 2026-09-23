@@ -20,6 +20,7 @@
     graphTimer: null,
     graphGeneration: 0,
     suppressRelayout: false,
+    seriesCache: new Map(),
     channelMode: 'combined',
     thresholdContexts: {observed:null, model:null},
   };
@@ -347,18 +348,47 @@
     await v2DrawGraph(null);
   }
 
+  function seriesCacheKey(source,range,maxPoints,maxGapSeconds){
+    const start=range?.[0]||'',end=range?.[1]||'';
+    return [source.item.id,source.col,start,end,maxPoints,maxGapSeconds].join('\u001f');
+  }
+  function rememberSeriesData(cacheKey,sourceId,data){
+    ui.seriesCache.delete(cacheKey);
+    ui.seriesCache.set(cacheKey,{sourceId,data});
+    // The cache contains authoritative display slices only. Keep it deliberately
+    // small so zoom responsiveness improves without retaining a large set of
+    // high-density Plotly payloads.
+    while(ui.seriesCache.size>12)ui.seriesCache.delete(ui.seriesCache.keys().next().value);
+  }
+  function pruneSeriesCache(){
+    const live=new Set([...state.files.keys()]);
+    for(const [cacheKey,entry] of ui.seriesCache){
+      if(!live.has(entry.sourceId))ui.seriesCache.delete(cacheKey);
+    }
+  }
   async function v2SeriesFor(key, range=null) {
     const source = mappingObject(key);
     if (!source) return null;
+    const maxPoints=displayPointBudget(range);
+    const maxGapSeconds=Number($('gapInput').value||900);
+    const cacheKey=seriesCacheKey(source,range,maxPoints,maxGapSeconds);
+    const cached=ui.seriesCache.get(cacheKey);
+    if(cached){
+      // Refresh LRU order without changing the authoritative payload.
+      ui.seriesCache.delete(cacheKey);
+      ui.seriesCache.set(cacheKey,cached);
+      return {...source,data:cached.data};
+    }
     const args = {
       path: source.item.virtualPath,
       column: source.col,
-      max_points: displayPointBudget(range),
-      max_gap_seconds:Number($('gapInput').value||900),
+      max_points:maxPoints,
+      max_gap_seconds:maxGapSeconds,
       start: range?.[0] || null,
       end: range?.[1] || null,
     };
     const data = await engine.call('series_data', args);
+    rememberSeriesData(cacheKey,source.item.id,data);
     return {...source, data};
   }
 
@@ -851,6 +881,7 @@
   const exActions=$('addExclusionBtn').parentElement;
   const rangeButton=document.createElement('button');rangeButton.className='btn quiet';rangeButton.textContent='Exclude visible period';rangeButton.onclick=()=>{const range=ui.graphRange;if(!range)return;addExclusionRow({start:modelClock(range[0]),end:modelClock(range[1])});};exActions.appendChild(rangeButton);
   const undoButton=document.createElement('button');undoButton.className='btn quiet';undoButton.textContent='Undo removal';undoButton.onclick=()=>{const row=state.deletedExclusions?.pop();if(row){state.exclusions.push(row);renderExclusions();void drawTimeChart();}};exActions.appendChild(undoButton);
+  window.addEventListener('icm:source-pool-changed',pruneSeriesCache);
   installSourcePoolControl();
   installGraphControls();
   installSpillStatus();
