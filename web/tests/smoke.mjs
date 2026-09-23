@@ -899,7 +899,10 @@ try{
   await page.selectOption('#modelSelect',[modelDepth]);
   await page.selectOption('#rainSelect',rain);
   await page.click('#applyMappingBtn');
-  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'));
+  await page.waitForFunction(()=>{
+    const text=document.querySelector('#mappingStatus')?.textContent||'';
+    return !text.includes('Observed: not mapped')&&text.includes('observed.csv')&&text.includes('1 comparison scenario')&&text.includes('rainfall mapped');
+  },null,{timeout:60000});
   if(await page.inputValue('#obsThreshold')!=='')throw new Error('Incompatible Level → Depth remapping must clear the previous hydraulic threshold rather than silently reusing it.');
   const depthThresholdControls=await page.evaluate(()=>({
     observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
