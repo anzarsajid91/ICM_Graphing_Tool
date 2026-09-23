@@ -1219,6 +1219,15 @@ try{
   await precisionRoute('spills','thresholds');
   await page.click('#runSpillsBtn');
   await page.waitForFunction(()=>Boolean(state.spillSnapshot)&&state.spillSnapshot.signature===analysisSignature(),null,{timeout:60000});
+  const freshObservedThreshold=await page.inputValue('#obsThreshold');
+  const changedObservedThreshold=String(Number(freshObservedThreshold||0)+0.01);
+  await page.fill('#obsThreshold',changedObservedThreshold);
+  await precisionRoute('reports','report-generation');
+  await page.waitForFunction(()=>document.querySelector('#reportPreflight [data-result="spill"] .report-readiness-state')?.textContent.trim()==='Stale');
+  await precisionRoute('spills','assessment');
+  await page.fill('#obsThreshold',freshObservedThreshold);
+  await page.click('#runSpillsBtn');
+  await page.waitForFunction(()=>Boolean(state.spillSnapshot)&&state.spillSnapshot.signature===analysisSignature(),null,{timeout:60000});
   await precisionRoute('spills','results');
   const spillLayout=await page.evaluate(()=>{const panel=document.querySelector('#tab-spills .panel')?.getBoundingClientRect();const wraps=[...document.querySelectorAll('#tab-spills .two-col .table-wrap')].map(x=>x.getBoundingClientRect());return {panelRight:panel?.right||0,wraps:wraps.map(x=>({left:x.left,right:x.right,width:x.width}))};});
   if(spillLayout.wraps.some(x=>x.right>spillLayout.panelRight+1))throw new Error(`Spill yearly tables escape the panel: ${JSON.stringify(spillLayout)}`);
