@@ -1224,9 +1224,14 @@ function reportProjectRegistry(){
     const quantities=[...new Set((asset.seriesKeys||[]).map(key=>seriesMap.get(key)?.quantity).filter(Boolean))];
     const relationships=(registry.relationships||[]).filter(x=>x.from===asset.id||x.to===asset.id).map(x=>x.type==='upstream-flow'?x.from+' → '+x.to:x.from+' ↔ '+x.to);
     const roles=[...new Set(sources.map(x=>x.role).filter(Boolean))];
-    return '<tr><td><strong>'+esc(asset.id)+'</strong><br><span class="muted">'+esc(asset.kind||'asset')+'</span></td><td>'+esc(roles.join(', ')||'—')+'</td><td>'+esc(sources.map(x=>x.name).join(', ')||'association only')+'</td><td>'+esc(quantities.join(', ')||'—')+'</td><td>'+esc(relationships.join(', ')||'—')+'</td></tr>';
+    const associationContext=[
+      asset.metadata?.diameterMm!=null?'D = '+fmt(asset.metadata.diameterMm,1)+' mm':null,
+      asset.metadata?.rainGauge?'RG '+asset.metadata.rainGauge:null,
+    ].filter(Boolean).join(' · ');
+    return '<tr><td><strong>'+esc(asset.id)+'</strong><br><span class="muted">'+esc(asset.kind||'asset')+'</span></td><td>'+esc(roles.join(', ')||'—')+'</td><td>'+esc(sources.map(x=>x.name).join(', ')||'association only')+'</td><td>'+esc(quantities.join(', ')||'—')+'</td><td>'+esc(associationContext||'—')+'</td><td>'+esc(relationships.join(', ')||'—')+'</td></tr>';
   }).join('');
-  return '<div class="note"><strong>Canonical project context.</strong> Files are classified once into assets, engineering series and workbook relationships; the same registry is reused across workflows.</div><div class="table-wrap"><table><thead><tr><th>Asset</th><th>Role</th><th>Source</th><th>Quantities</th><th>Relationships</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  const associationSource=registry.associationSource?' Association metadata source: '+esc(registry.associationSource)+'.':'';
+  return '<div class="note"><strong>Canonical project context.</strong> Files are classified once into assets, engineering series and workbook relationships; the same registry is reused across workflows.'+associationSource+'</div><div class="table-wrap"><table><thead><tr><th>Asset</th><th>Role</th><th>Source</th><th>Quantities</th><th>Association context</th><th>Relationships</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 function reportAnalysisPeriod(){
   const explicit=analysisBounds(),refs=[
