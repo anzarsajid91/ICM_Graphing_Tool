@@ -381,6 +381,24 @@ function surveyFdv(monitor,flow,depth,velocity,count=200){
   const data=Array.from({length:count},()=>`${flow} ${depth} ${velocity}`);
   return Buffer.from([...header,...data].join('\n')+'\n','utf8');
 }
+function surveyRatingFdv(monitor,count=200){
+  const header=[
+    `**IDENTIFIER: 1,${monitor}`,
+    '**FIELD: 3,FLOW,DEPTH,VELOCITY',
+    '**UNITS: 3,m3/s,m,m/s',
+    '**CONSTANTS: 2,START,INTERVAL',
+    '*CSTART',
+    '2601050000 2',
+    '*CEND',
+  ];
+  const data=Array.from({length:count},(_,i)=>{
+    const depth=0.20+0.0025*i;
+    const flow=1.50*Math.pow(depth,1.50);
+    const velocity=0.45+0.05*Math.sin(i/10);
+    return `${flow.toFixed(6)} ${depth.toFixed(6)} ${velocity.toFixed(6)}`;
+  });
+  return Buffer.from([...header,...data].join('\n')+'\n','utf8');
+}
 function surveyRainfallR(){
   const values=Array.from({length:200},(_,i)=>i<20?12:0);
   return Buffer.from(`*CSTART\n2601050000 2601050640 2\n*CEND\n${values.join(' ')}\n`,'utf8');
@@ -816,7 +834,7 @@ try{
   await page.setInputFiles('#fileInput',[
     {name:'FM01.fdv',mimeType:'text/plain',buffer:surveyFdv('FM01',0.10,0.20,0.40)},
     {name:'FM02.fdv',mimeType:'text/plain',buffer:surveyFdv('FM02',0.10,0.20,0.40)},
-    {name:'FM03.fdv',mimeType:'text/plain',buffer:surveyFdv('FM03',0.25,0.30,0.50)},
+    {name:'FM03.fdv',mimeType:'text/plain',buffer:surveyRatingFdv('FM03')},
     {name:'RG01.r',mimeType:'text/plain',buffer:surveyRainfallR()},
     {name:'RG02.r',mimeType:'text/plain',buffer:surveyRainfallR()},
   ]);
