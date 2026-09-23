@@ -380,7 +380,17 @@ body.precision-workbench{
 .pw-route-verification-storage #tab-storage > .panel,
 .pw-route-spills-thresholds #tab-spills > .panel,
 .pw-route-spills-results #tab-spills > .panel,
-.pw-route-report-builder #tab-workspace > .panel{
+.pw-route-report-builder #tab-workspace > .panel,
+.pw-route-survey-fdv-check #tab-data-health > .panel,
+.pw-route-survey-rainfall-check #tab-rain-events > .panel,
+.pw-route-survey-volume-balance #tab-data-health > .panel,
+.pw-route-graphs-comparison #tab-compare > .panel,
+.pw-route-graphs-rating #tab-compare > .panel,
+.pw-route-graphs-dwf #tab-compare > .panel,
+.pw-route-spills-storage #tab-storage > .panel,
+.pw-route-spills-assessment #tab-spills > .panel,
+.pw-route-reports-report-generation #tab-workspace > .panel,
+.pw-route-reports-workspace #tab-workspace > .panel{
   box-shadow:none;
 }
 
