@@ -1511,6 +1511,8 @@ try{
   if(simOptions.length!==1||simOptions.some(x=>/—\s*Seconds\b/i.test(x)))throw new Error('Simulated export should expose one user series and hide auxiliary Seconds: '+JSON.stringify(simOptions));
 
   stage='multi-file drag and drop regression';
+  await precisionRoute('graphs','comparison');
+  const routeBeforeDrop=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
   const beforeDrop=await page.locator('#poolBody tr').count();
   await page.evaluate(()=>{
     window.__sourcePoolEventEvidence={count:0,details:[]};
@@ -1546,6 +1548,7 @@ try{
   }));
   if(sourceEventEvidence.events?.count!==1||sourceEventEvidence.events?.details?.[0]?.reason!=='ingest')throw new Error('Real multi-file ingestion must emit exactly one source-pool state event: '+JSON.stringify(sourceEventEvidence));
   if(!sourceEventEvidence.professional||!sourceEventEvidence.complete||!sourceEventEvidence.balance||sourceEventEvidence.professionalFresh!==false||sourceEventEvidence.completeFresh!==false||sourceEventEvidence.balanceFresh!==false)throw new Error('Source-pool change must retain prior evidence but mark every source-dependent survey result stale: '+JSON.stringify(sourceEventEvidence));
+  if(sourceEventEvidence.route?.workspace!==routeBeforeDrop.workspace||sourceEventEvidence.route?.page!==routeBeforeDrop.page)throw new Error('Drag/drop import changed the active Precision route: '+JSON.stringify({before:routeBeforeDrop,after:sourceEventEvidence.route}));
 
   stage='FastPath handoff preserves applied mapping';
   await precisionRoute('data','series-mapping');
