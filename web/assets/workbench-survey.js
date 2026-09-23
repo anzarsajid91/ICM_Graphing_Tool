@@ -338,7 +338,7 @@
     }, 'advanced_bridge');
     result.sheet_name = table.sheetName;
     survey.association = result;
-    window.ICMProjectRegistry?.setRelationships(result.records || [], file.name);
+    window.ICMProjectRegistry?.setRelationships(result.records || [], file.name, result.issues || []);
     survey.associationSource = {
       name: file.name,
       size: file.size,
@@ -369,7 +369,7 @@
     }, 'advanced_bridge');
     refreshed.sheet_name = survey.association.sheet_name || survey.associationSource?.sheet || null;
     survey.association = refreshed;
-    window.ICMProjectRegistry?.setRelationships(refreshed.records || [], survey.associationSource?.name || 'fm_rg_assoc.xlsx');
+    window.ICMProjectRegistry?.setRelationships(refreshed.records || [], survey.associationSource?.name || 'fm_rg_assoc.xlsx', refreshed.issues || []);
     renderAssociation();
   }
 
