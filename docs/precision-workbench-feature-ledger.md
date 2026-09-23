@@ -1,39 +1,65 @@
 # Precision Workbench feature coverage ledger
 
-Baseline: `fc8e269f9743f4d2731d2e1fac4e51f0e86ad1bd`
+This ledger reflects the canonical post-PR25 workflow. Historical route names are retained only as compatibility aliases; they are not separate user-facing implementations.
 
-| Surface | Existing source/control | Precision Workbench route | Calculation contract | Status |
-|---|---|---|---|---|
-| 01 Sources | `.source-panel`, file/folder inputs, source pool | Data / Sources | Parsers + source registry unchanged | Implemented |
-| 02 Series mapping | `.mapping-panel`, observed/model/rain selectors | Data / Series mapping | Mapping catalogue unchanged | Implemented |
-| 03 Time series | `#tab-graph`, Plotly graph/statistics | Data / Time series | Native-resolution analysis; display decimation only | Implemented |
-| 04 Survey configuration | `#surveyAssociationPanel` runtime insertion | Survey / Configuration | Workbook precedence/topology unchanged | Implemented |
-| 05 Data Health | `#tab-data-health`, health table | Survey / Data Health | QA methods unchanged | Implemented |
-| 06 Rainfall response | `.survey-professional`, complete survey result | Survey / Rainfall response | FSAT/WAPUG controls unchanged | Implemented |
-| 07 Flow continuity | `#surveyBalancePanel` | Survey / Flow continuity | Common-support volume balance unchanged | Implemented |
-| 08 Gauges & accumulation | professional gauge/rain evidence | Rainfall / Gauges & accumulation | Rainfall interval semantics unchanged | Implemented |
-| 09 Events & hydraulic response | `#tab-rain-events` | Rainfall / Events & hydraulic response | Event detection unchanged | Implemented |
-| 10 Comparison diagnostics | `#tab-compare` | Verification / Comparison diagnostics | Alignment/metrics unchanged | Implemented |
-| 11 Depth/rating | rating subpanel in compare | Verification / Depth agreement / rating | Diagnostic fit unchanged | Implemented |
-| 12 DWF | DWF subpanel in compare | Verification / DWF | DWF qualification unchanged | Implemented |
-| 13 Thresholds & exclusions | `#tab-spills`, exclusion editor | Spills / Thresholds & exclusions | Exclusion/count contracts unchanged | Implemented |
-| 14 Spill results | spill summaries/tables | Spills / Results | Canonical counting unchanged | Implemented |
-| 15 Storage screening | `#tab-storage` | Verification / Storage screening | Screening/integration unchanged | Implemented |
-| 16 Workspace save/restore | `#tab-workspace` persistence controls | Report / Workspace save/restore | Schema/migration unchanged | Implemented |
-| 17 Report builder | report readiness/export controls | Report / Report builder | Snapshot/readiness unchanged | Implemented |
-| 18 Exported engineering report | HTML export paths | Report output | Existing result objects unchanged | Implemented |
-| 19 Provenance/audit | project registry/provenance CSV/report appendix | Report / Provenance | Source lineage unchanged | Implemented |
-| Existing rating residual/exceedance controls | comparison runtime | Verification | Unchanged | Implemented |
-| Existing multiple scenarios | `#modelSelect` | Data mapping + Verification | Canonical select remains synchronized | Implemented |
-| Existing source pool collapse/audit | `#sourcePoolToggle`, `#poolBody` | Data / Sources | Unchanged | Implemented |
-| Existing review notes | `#reviewNotes` | Report / Report builder | Reviewer text remains separate from computed findings | Implemented |
-| Existing domain registry | `#domainRegistryPanel`/registry API | Report / Provenance and left-rail asset context | Unchanged | Implemented |
+## Canonical workspaces and feature ownership
 
-## Redesign-specific verification notes
+| Order | Workspace / subtab | Existing capability retained | Calculation / state contract |
+|---:|---|---|---|
+| 1 | **Data / Time Series → Sources** | file/folder import, drag/drop, source pool, parsing/audit | original bytes retained; FastPath preview reconciles to authoritative parser |
+|  | **Series Mapping** | observed, model scenario(s), rainfall mapping; colour controls | shared mapping state; model scenarios remain distinct |
+|  | **Time Series** | hydraulic/rainfall graph, statistics, exclusions, threshold overlays, adaptive zoom | native-resolution Python data; display reduction only; zoom does not change analysis scope |
+| 2 | **Spills → Spill Assessment** | observed/model spill configuration/results, thresholds, exclusions, monthly/yearly/count/duration/volume outputs | canonical spill engine and 12/24-hour rules; observed/model thresholds remain distinct |
+|  | **Storage Assessment** | level/overflow-flow mapping, units, threshold, target count, ranked blocks, monthly outputs | authoritative support-aware storage screening; partial/invalid support withheld |
+| 3 | **Flow Survey → FDV Check** | data health, weekly/whole-survey QA, coverage/gaps/invalid/zero/flatline/out-of-range evidence | existing survey quality methods; missing evidence remains unknown |
+|  | **Rainfall Check** | rainfall QA, accumulation, event qualification/response, network rainfall context | rainfall interval semantics, WAPUG/manual criteria and exclusions retained |
+|  | **Volume Balance** | flow continuity, topology, upstream/downstream volume comparison, RAG/recommendations | actual-timestep integration on common valid support; signed residual/declared assumptions retained |
+| 4 | **Graphs → Observed vs Modelled** | comparison metrics, residuals, cumulative diagnostics, exceedance, multi-scenario scatter | canonical Python pairing/metrics; linear/log view population is explicit |
+|  | **Depth / Rating** | depth agreement and Q/H diagnostic, generic fit and monitor-diameter context | authoritative comparison/rating methods; diameter context only from defensible association data |
+|  | **DWF** | dry-weather baseline and qualification | missing rainfall is not dry; authoritative validity-aware DWF path |
+| 5 | **Reports → Report Generation** | readiness/preflight, report sections, scenario subset, scatter scale, HTML/four-period exports | coherent dependency-signed snapshot; stale selected results rejected |
+|  | **Workspace Save / Restore** | schema migration, named/file workspace persistence, mappings/appearance/exclusions/settings/report choices | source SHA-256 fingerprints; supported route/schema migration; unresolved source guidance |
 
-- Six primary workspaces and route-specific secondary navigation are implemented over the existing canonical controls and calculation paths.
-- Data / Time series, Verification / Comparison and Rainfall / Events use Focus Canvas by default on desktop: 74 px compact rail, inspector drawer, and explicit visible-Plotly resize. Standard layout remains one click away.
-- Browser acceptance asserts no document horizontal overflow at 1366×768, 1487×1058 and 1920×1080, plus a >1000 px time-series chart at the 1440 px reference viewport in Focus Canvas.
-- Single-series observed traces are fixed to `#d32f2f`; first model trace is `#5755d9`. FDV multi-variable graphs retain quantity-specific colours for depth/flow/velocity.
-- Engineering Python modules were not changed by the redesign; the browser shell reuses the existing IDs, state, result objects and Python/Pyodide bridges.
-- The exact built `_site` and browser screenshot evidence are retained as PR workflow artifacts. Production deployment remains restricted to `main`.
+## Legacy route migration
+
+| Legacy route | Canonical route |
+|---|---|
+| `verification/comparison` | `graphs/comparison` |
+| `verification/rating` | `graphs/rating` |
+| `verification/dwf` | `graphs/dwf` |
+| `verification/storage` | `spills/storage` |
+| `spills/thresholds`, `spills/results` | `spills/assessment` |
+| `survey/configuration`, `survey/data-health` | `survey/fdv-check` |
+| `survey/rainfall-response`, `rainfall/gauges`, `rainfall/events` | `survey/rainfall-check` |
+| `survey/flow-continuity` | `survey/volume-balance` |
+| `report/builder` | `reports/report-generation` |
+| `report/workspace` | `reports/workspace` |
+
+## Feature-preservation notes
+
+- Precision ROUTES are the sole user-facing navigation owner. Legacy tabs remain implementation surfaces behind canonical routes rather than a second navigation model.
+- Import never chooses a new route on the user's behalf. FastPath may prepare a preview graph while the active workspace/subtab remains unchanged.
+- Data-only workflows remain valid: observed-only, model-only Depth/Level, rainfall-only and multi-scenario mappings are covered separately.
+- Hydraulic threshold controls are quantity-aware. Depth/Level may expose threshold controls; Flow/Velocity do not. Absolute Level retains source unit/reference context (for example Station A `m AD`).
+- Threshold display and spill calculations share canonical stored values. Threshold changes invalidate affected spill readiness.
+- Graphs uses authoritative paired values and statistics. Log scatter filters only strictly positive plotted pairs and reports the removed count without modifying source data.
+- Observed traces retain the established red default; the first model retains `#5755d9`; rainfall keeps its established convention.
+- The Plotly mini range slider remains absent. Adaptive zoom can restore native source points without changing analytical scope.
+- Survey dependency signatures include association records/source/topology, source identities, analysis period, exclusions and relevant criteria. Late results are discarded.
+- Report Generation is first/default for ordinary Reports navigation. Explicit deep links/workspace restore may reopen a deliberately saved supporting subtab.
+- Report readiness exposes Current, Stale, Partial, Not run, Blocked and Error semantics with reasons.
+- Downloaded reports rebuild full-period authoritative traces, retain rainfall/threshold/context, integrate graph metrics without duplication, contain wide tables/legends, preserve © 2026 Anzar Sajid and keep audit/provenance context.
+- Workspace schema v1/v2/v3 migration is explicit; missing/changed source fingerprints produce reattachment guidance; unsupported schemas fail before mutating the active workspace.
+- FastPath remains a worker-side display accelerator only. Python/Pyodide/native-resolution engineering calculations remain authoritative.
+
+## Acceptance ownership
+
+Final acceptance for this ledger is the exact-head PR #30 workflow set:
+1. Workbench CI on Linux and Windows.
+2. Pages verify/build/source checks.
+3. Chromium complete browser workflow using repository reference data.
+4. Firefox Precision shell/navigation/focus checks.
+5. Same-runner repeated FastPath baseline comparison.
+6. Retained screenshots, downloaded HTML and print/PDF evidence reviewed against the requested workflow and Station A reference presentation.
+
+The exact final head SHA and workflow run IDs are recorded in PR #30 after the last tracked documentation change so that evidence does not become stale merely by documenting it.
