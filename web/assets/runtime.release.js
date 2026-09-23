@@ -1268,10 +1268,13 @@ function reportAnalysisPeriod(){
     ...state.mapping.models.map(mappingObject),
     mappingObject(state.mapping.rain),
   ].filter(Boolean);
-  const starts=refs.map(x=>modelClock(x.item?.parsed?.start)).filter(Boolean).map(x=>new Date(x).getTime()).filter(Number.isFinite);
-  const ends=refs.map(x=>modelClock(x.item?.parsed?.end)).filter(Boolean).map(x=>new Date(x).getTime()).filter(Number.isFinite);
-  const start=explicit.start||(starts.length?new Date(Math.min(...starts)).toISOString():null);
-  const end=explicit.end||(ends.length?new Date(Math.max(...ends)).toISOString():null);
+  // Source timestamps use the workbench model-clock/unspecified contract. Keep
+  // them timezone-neutral: routing them through Date/toISOString shifts the
+  // analytical window by the browser timezone and can produce an empty report.
+  const starts=refs.map(x=>modelClock(x.item?.parsed?.start)).filter(Boolean).sort();
+  const ends=refs.map(x=>modelClock(x.item?.parsed?.end)).filter(Boolean).sort();
+  const start=explicit.start||(starts.length?starts[0]:null);
+  const end=explicit.end||(ends.length?ends[ends.length-1]:null);
   return [start,end];
 }
 async function downloadReport(){
