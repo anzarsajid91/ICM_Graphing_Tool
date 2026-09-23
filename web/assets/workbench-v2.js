@@ -278,13 +278,15 @@
     const next=['flow','depth','velocity','combined'].includes(String(mode))?String(mode):'combined';
     ui.channelMode=next;
     updateChannelControls();
+    updateGraphThresholdControls();
     ui.graphRange=null;
     if(redraw&&state.mapping.observed)void v2DrawGraph(null);
   }
 
   function updateGraphThresholdControls(){
-    const observedContext=thresholdContext(observedThresholdSelection());
-    const modelContext=thresholdContext(modelThresholdSelection());
+    const channelAllowsHydraulicThreshold=!['flow','velocity'].includes(ui.channelMode);
+    const observedContext=channelAllowsHydraulicThreshold?thresholdContext(observedThresholdSelection()):null;
+    const modelContext=channelAllowsHydraulicThreshold?thresholdContext(modelThresholdSelection()):null;
     const observedControl=document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]');
     const modelControl=document.querySelector('#v2GraphToolbar [data-threshold-role="model"]');
     if(observedControl)observedControl.hidden=!observedContext;
