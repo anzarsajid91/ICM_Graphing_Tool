@@ -648,7 +648,11 @@
         panelOrder=[...(rainEntry?['rainfall']:[]),quantity||'hydraulic'];
         layout={...commonLayout,height:Number(options.height)||850,bargap:0};
         const hydDomain=[plotBottom,hydraulicTop];
-        layout.yaxis={title:{text:obs?.source?.col||'Value',standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zeroline:false,automargin:true};
+        const obsUnit=obs?seriesUnit(obs.source.item,obs.source.col):null;
+        const obsReference=obs?seriesReference(obs.source.item,obs.source.col):null;
+        const quantityTitle=quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):(obs?.source?.col||'Value');
+        const hydraulicAxisTitle=quantityTitle+(obsUnit?' ('+obsUnit+')':'')+(quantity==='level'&&obsReference?' · '+obsReference:'');
+        layout.yaxis={title:{text:hydraulicAxisTitle,standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zeroline:false,automargin:true};
         if(obs){
           traces.push({x:obs.source.data.timestamp,y:obs.source.data.value,name:'Observed '+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):obs.source.col),type:traceType(obs.source.data),mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2.2},yaxis:'y'});
         }
