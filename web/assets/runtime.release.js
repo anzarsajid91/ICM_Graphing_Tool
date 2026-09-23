@@ -1143,6 +1143,13 @@ async function applyWorkspace(w){
   const matched=(w.source_references||[]).filter(r=>[...state.files.values()].some(x=>x.hash===r.sha256)).length;
   $('workspaceStatus').textContent=`Restoring workspace… ${matched}/${expected} source fingerprint(s) matched; rebuilding mappings and graph.`;
   await applyMapping();
+  // Rebuild report scenario choices only after the restored model mapping is
+  // authoritative, then re-apply the persisted scenario subset by fingerprint.
+  $('modelSelect')?.dispatchEvent(new Event('change',{bubbles:true}));
+  if($('reportScenarioSelect')&&Array.isArray(ro.scenarios)&&ro.scenarios.length){
+    const restoredScenarioKeys=ro.scenarios.map(findSeriesFromWorkspace).filter(Boolean);
+    [...$('reportScenarioSelect').options].forEach(o=>o.selected=restoredScenarioKeys.includes(o.value));
+  }
   for(const [id,value] of Object.entries(w.rain_events?.manual||{})){if($(id))$(id).value=value;}
   $('rainCriteriaMode').value=w.rain_events?.criteria_mode||'manual';
   criteriaModeChanged();
