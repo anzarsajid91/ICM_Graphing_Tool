@@ -338,7 +338,7 @@ def _comparison_metric_reasons(paired, metrics):
     return reasons
 
 
-def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
+def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]", obs_unit=None, model_unit=None):
     oq, mq = _comparison_quantity(obs_path, obs_col), _comparison_quantity(model_path, model_col)
     if not oq or not mq:
         raise ValueError(
@@ -351,8 +351,14 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
             f"selected channels resolve to {oq!r} and {mq!r}. "
             "Depth and absolute level remain distinct."
         )
-    obs = _load(obs_path).frame
+    obs_contract = _series_contract(obs_path, obs_col, unit_override=obs_unit)
+    model_contract = _series_contract(model_path, model_col, unit_override=model_unit)
+    obs = _load(obs_path).frame.copy()
     mod = _load(model_path).frame.copy()
+    if obs_unit and float(obs_contract.get("scale_to_canonical") or 1.0) != 1.0:
+        obs[obs_col] = pd.to_numeric(obs[obs_col], errors="coerce") * float(obs_contract["scale_to_canonical"])
+    if model_unit and float(model_contract.get("scale_to_canonical") or 1.0) != 1.0:
+        mod[model_col] = pd.to_numeric(mod[model_col], errors="coerce") * float(model_contract["scale_to_canonical"])
     if float(offset_minutes or 0):
         mod["timestamp"] = pd.to_datetime(mod["timestamp"], errors="coerce") + pd.to_timedelta(float(offset_minutes), unit="m")
     domain_start,domain_end=_comparison_domain(obs,mod,start,end)
@@ -379,8 +385,6 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
     positive_metrics = calibration_metrics(positive_paired)
     positive_metrics["unavailable_reasons"] = _comparison_metric_reasons(positive_paired, positive_metrics)
     positive_removed_count = max(0, int(metrics.get("pairs") or 0) - int(positive_metrics.get("pairs") or 0))
-    obs_contract = _series_contract(obs_path, obs_col)
-    model_contract = _series_contract(model_path, model_col)
     p = residual_series(paired) if not paired.empty else paired.copy()
     if not p.empty:
         p["residual"] = p["residual_model_minus_observed"]
