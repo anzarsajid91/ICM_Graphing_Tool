@@ -125,9 +125,12 @@
       this.associationSource=null;
       this.render();
     }
-    setRelationships(records=[],source='fm_rg_assoc.xlsx'){
+    setRelationships(records=[],source='fm_rg_assoc.xlsx',issues=[]){
       this.relationships=[];
       this.associationSource=source||'fm_rg_assoc.xlsx';
+      const ambiguousMonitors=new Set((issues||[])
+        .filter(issue=>String(issue?.severity||'').toLowerCase()==='error'&&issue?.monitor)
+        .map(issue=>norm(issue.monitor)));
       for(const [id,asset] of [...this.assets.entries()]){
         if(asset.metadata){delete asset.metadata.rainGauge;delete asset.metadata.diameterMm;}
         if(!(asset.sourceIds||[]).length)this.assets.delete(id);
@@ -137,7 +140,14 @@
         if(!downstream)continue;
         const asset=this.assets.get(downstream)||{id:downstream,kind:'flow-monitor',sourceIds:[],seriesKeys:[],metadata:{}};
         asset.kind='flow-monitor';
-        asset.metadata={...asset.metadata,rainGauge:record.rain_gauge||null,diameterMm:record.diameter_mm??null};
+        const ambiguous=ambiguousMonitors.has(downstream);
+        asset.metadata={
+          ...asset.metadata,
+          rainGauge:record.rain_gauge||null,
+          diameterMm:ambiguous?null:(record.diameter_mm??null),
+          diameterSource:this.associationSource,
+          associationStatus:ambiguous?'ambiguous':'valid',
+        };
         this.assets.set(downstream,asset);
         for(const upstream of record.upstream||[]){
           const up=norm(upstream);
