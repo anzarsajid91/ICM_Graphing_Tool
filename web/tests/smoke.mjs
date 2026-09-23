@@ -1041,6 +1041,15 @@ try{
   await page.selectOption('#dwfFlowSelect',dwf);
   await page.click('#runDwfBtn');
   await page.waitForSelector('#dwfSummary .summary-box',{timeout:60000});
+  if(await page.evaluate(()=>window.__ICM_WORKBENCH__.dwfFresh?.())!==true)throw new Error('Fresh DWF result was not bound to its source/criteria signature.');
+  await page.fill('#dwfDryDay','0.8');
+  await page.locator('#dwfDryDay').dispatchEvent('change');
+  await page.waitForFunction(()=>document.querySelector('#dwfSummary')?.textContent.includes('Stale DWF result cleared.'));
+  if(await page.evaluate(()=>window.__ICM_WORKBENCH__.dwfFresh?.())!==false)throw new Error('DWF criteria change did not invalidate the prior result.');
+  await page.fill('#dwfDryDay','1');
+  await page.locator('#dwfDryDay').dispatchEvent('change');
+  await page.click('#runDwfBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.dwfFresh?.()===true&&document.querySelector('#dwfSummary .summary-box'),null,{timeout:60000});
   await captureEvidence('09-verification-dwf');
 
   stage='rainfall event workflow and cumulative multi-R plot';
@@ -1067,6 +1076,14 @@ try{
   await page.click('#runRainEventsBtn');
   await page.waitForFunction(()=>document.querySelector('#rainEventSummary')?.textContent.includes('qualifying events'),null,{timeout:60000});
   if(await page.locator('#rainEventBody tr').count()<1)throw new Error('Manual rainfall criteria should identify the demo event');
+  if(await page.evaluate(()=>window.__ICM_WORKBENCH__.rainEventsFresh?.())!==true)throw new Error('Fresh rainfall-event result was not bound to source/criteria/exclusion dependencies.');
+  await page.fill('#rainMinIntensity','1.1');
+  await page.locator('#rainMinIntensity').dispatchEvent('change');
+  await page.waitForFunction(()=>document.querySelector('#rainEventSummary')?.textContent.includes('Stale rainfall-event result cleared.')&&window.__ICM_WORKBENCH__.rainEventsFresh?.()===false&&state.rainEvents.length===0);
+  await page.fill('#rainMinIntensity','1');
+  await page.locator('#rainMinIntensity').dispatchEvent('change');
+  await page.click('#runRainEventsBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.rainEventsFresh?.()===true&&document.querySelectorAll('#rainEventBody tr').length>0,null,{timeout:60000});
   await precisionRoute('rainfall','events');
   await captureEvidence('10-rainfall-events');
 
@@ -1074,6 +1091,14 @@ try{
   await clickTab('data-health');
   await page.click('#runHealthBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#healthBody tr').length>0,null,{timeout:60000});
+  if(await page.evaluate(()=>window.__ICM_WORKBENCH__.healthFresh?.())!==true)throw new Error('Fresh Data Health result was not bound to source/gap dependencies.');
+  await page.fill('#gapInput','901');
+  await page.locator('#gapInput').dispatchEvent('change');
+  await page.waitForFunction(()=>document.querySelector('#healthBody')?.textContent.includes('Stale Data Health result cleared.')&&window.__ICM_WORKBENCH__.healthFresh?.()===false);
+  await page.fill('#gapInput','900');
+  await page.locator('#gapInput').dispatchEvent('change');
+  await page.click('#runHealthBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.healthFresh?.()===true&&document.querySelectorAll('#healthBody tr').length>0,null,{timeout:60000});
   await captureEvidence('02-survey-data-health');
   const healthHead=await page.locator('#healthBody').evaluate(el=>el.closest('table')?.querySelector('thead')?.textContent||'');
   if(!healthHead.includes('Flatline')||!healthHead.includes('Out of range')||!healthHead.includes('Zero %'))throw new Error('Enhanced FDV flow-survey screening columns are missing');
@@ -1320,6 +1345,7 @@ try{
   if(workspace.report_options?.scatter_scale!=='current'||workspace.report_options?.include_time_series!==true||workspace.report_options?.include_spills_storage!==true||workspace.report_options?.include_comparison!==true||workspace.report_options?.include_survey!==true||!workspace.report_options?.scenarios?.length)throw new Error('Workspace did not persist report section/scatter/scenario options: '+JSON.stringify(workspace.report_options));
   if(workspace.exclusions?.[0]?.start!=='2026-01-01T00:08')throw new Error(`Exclusion wall clock shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
   if(workspace.exclusions?.[0]?.end!=='2026-01-01T00:10')throw new Error(`Exclusion end shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
+  if(workspace.analysis?.dwf_flow?.column!=='flow'||Number(workspace.analysis?.dwf_dry_day_mm)!==1||Number(workspace.analysis?.dwf_baseline_days)!==28||Number(workspace.analysis?.dwf_adp_hours)!==6)throw new Error('DWF source/criteria were not persisted in the workspace: '+JSON.stringify(workspace.analysis));
   const savedRatingUnits={
     obsDepth:workspace.analysis?.rating_obs_depth_unit,
     obsFlow:workspace.analysis?.rating_obs_flow_unit,
@@ -1375,6 +1401,14 @@ try{
     modelFlow:document.querySelector('#ratingModelFlowUnit')?.value,
   }));
   if(JSON.stringify(restoredRatingUnits)!==JSON.stringify({obsDepth:'m',obsFlow:'m3/s',modelDepth:'m',modelFlow:'m3/s'}))throw new Error('Rating unit overrides were not restored: '+JSON.stringify(restoredRatingUnits));
+  const restoredDwf=await page.evaluate(()=>({
+    flow:document.querySelector('#dwfFlowSelect')?.selectedOptions?.[0]?.textContent||'',
+    dryDay:Number(document.querySelector('#dwfDryDay')?.value),
+    baseline:Number(document.querySelector('#dwfBaselineDays')?.value),
+    adp:Number(document.querySelector('#dwfAdpHours')?.value),
+    fresh:window.__ICM_WORKBENCH__.dwfFresh?.(),
+  }));
+  if(!/observed\.csv — flow/i.test(restoredDwf.flow)||restoredDwf.dryDay!==1||restoredDwf.baseline!==28||restoredDwf.adp!==6||restoredDwf.fresh!==false)throw new Error('Workspace did not restore DWF configuration while correctly withholding derived DWF results: '+JSON.stringify(restoredDwf));
 
   stage='workspace migration and source reattachment guidance';
   const legacyWorkspace=JSON.parse(JSON.stringify(workspace));
