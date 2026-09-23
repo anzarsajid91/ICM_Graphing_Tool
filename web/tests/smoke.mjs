@@ -348,7 +348,22 @@ async function inspectReportHtml(html,minFigures=1){
       };
     },minFigures);
     if(dir)await p.screenshot({path:path.join(dir,`report-${minFigures}-figures.png`),fullPage:true});
-    return result;
+    await p.emulateMedia({media:'print'});
+    const print=await p.evaluate(()=>{
+      const root=document.documentElement;
+      const figures=[...document.querySelectorAll('.figure img,.figure .report-plot')];
+      const tableEscapes=[...document.querySelectorAll('.table-wrap')].filter(el=>el.scrollWidth>el.clientWidth+2).length;
+      return {
+        overflow:root.scrollWidth-root.clientWidth,
+        zero:figures.filter(x=>x.getBoundingClientRect().width<=0||x.getBoundingClientRect().height<=0).length,
+        tableEscapes,
+        pageRule:[...document.styleSheets].some(sheet=>{try{return [...sheet.cssRules].some(rule=>rule.type===CSSRule.PAGE_RULE);}catch{return false;}}),
+      };
+    });
+    if(print.overflow>2||print.zero||print.tableEscapes)throw new Error('Print-layout containment failed: '+JSON.stringify(print));
+    if(dir)await p.pdf({path:path.join(dir,`report-${minFigures}-figures-print.pdf`),format:'A4',landscape:minFigures>=4,printBackground:true});
+    await p.emulateMedia({media:'screen'});
+    return {...result,print};
   }finally{await p.close();}
 }
 async function waitReady(){
