@@ -868,6 +868,11 @@
       { state: 'fresh', label: 'Fresh' } : { state: 'not-calculated', label: 'Not calculated' };
     const complete = survey.batch ?
       { state: 'fresh', label: 'Fresh' } : { state: 'not-calculated', label: 'Not calculated' };
+    const rating = !state.rating ?
+      { state: 'not-calculated', label: 'Not calculated' } :
+      (state.rating.signature && typeof ratingInputSignature === 'function' && state.rating.signature !== ratingInputSignature() ?
+        { state: 'stale', label: 'Stale' } :
+        { state: 'fresh', label: 'Fresh' });
     const association = survey.association ?
       { state: 'loaded', label: 'Loaded' } : { state: 'not-loaded', label: 'Not loaded' };
     const rows = [
@@ -875,6 +880,7 @@
       ['spill', 'Spill / EDM', spill],
       ['professional-survey', 'Professional survey', professional],
       ['complete-survey', 'Complete survey', complete],
+      ['rating', 'Rating / fitted relationship', rating],
       ['survey-association', 'Survey association', association],
     ];
     root.innerHTML = rows.map(([key, label, status]) =>
