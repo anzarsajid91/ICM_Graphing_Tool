@@ -1286,6 +1286,38 @@ try{
   }));
   if(JSON.stringify(restoredRatingUnits)!==JSON.stringify({obsDepth:'m',obsFlow:'m3/s',modelDepth:'m',modelFlow:'m3/s'}))throw new Error('Rating unit overrides were not restored: '+JSON.stringify(restoredRatingUnits));
 
+  stage='workspace migration and source reattachment guidance';
+  const legacyWorkspace=JSON.parse(JSON.stringify(workspace));
+  legacyWorkspace.schema_version=1;
+  legacyWorkspace.navigation={workspace:'verification',page:'storage'};
+  await page.setInputFiles('#workspaceInput',{name:'legacy-workspace-v1.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(legacyWorkspace))});
+  await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('Workspace loaded.'),null,{timeout:60000});
+  const legacyRoute=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
+  if(legacyRoute.workspace!=='spills'||legacyRoute.page!=='storage')throw new Error('Supported v1 workspace / legacy Storage route did not migrate to Spills / Storage Assessment: '+JSON.stringify(legacyRoute));
+
+  const missingWorkspace=JSON.parse(JSON.stringify(workspace));
+  missingWorkspace.source_references=[...(missingWorkspace.source_references||[]),{
+    sha256:'0000000000000000000000000000000000000000000000000000000000000000',
+    display_name:'missing-or-changed-source.csv',
+    file_name:'missing-or-changed-source.csv',
+    size:1234,
+    format:'tabular_csv'
+  }];
+  await page.setInputFiles('#workspaceInput',{name:'workspace-missing-source.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(missingWorkspace))});
+  await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('Workspace loaded with unresolved sources.'),null,{timeout:60000});
+  const reattachGuidance=(await page.locator('#workspaceStatus').textContent())||'';
+  if(!reattachGuidance.includes('Reattach missing or changed files in Data / Sources')||!reattachGuidance.includes('Not run or Stale'))throw new Error('Missing/changed workspace sources lack actionable reattachment/staleness guidance: '+reattachGuidance);
+
+  const beforeUnsupported=await page.evaluate(()=>({mapping:JSON.stringify(state.mapping),files:state.files.size}));
+  await page.setInputFiles('#workspaceInput',{name:'unsupported-workspace-v99.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({schema_version:99,navigation:{workspace:'data',page:'sources'}}))});
+  await page.waitForFunction(()=>/Unsupported workspace schema version 99/i.test(document.querySelector('#workspaceStatus')?.textContent||''),null,{timeout:10000});
+  const afterUnsupported=await page.evaluate(()=>({mapping:JSON.stringify(state.mapping),files:state.files.size,status:document.querySelector('#workspaceStatus')?.textContent||''}));
+  if(afterUnsupported.mapping!==beforeUnsupported.mapping||afterUnsupported.files!==beforeUnsupported.files)throw new Error('Unsupported workspace schema mutated the active workspace before failing safely: '+JSON.stringify({beforeUnsupported,afterUnsupported}));
+
+  // Return to the canonical current workspace before recalculating report inputs.
+  await page.setInputFiles('#workspaceInput',workspacePath);
+  await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.startsWith('Workspace loaded.'),null,{timeout:60000});
+
   // Workspace import intentionally invalidates calculated snapshots. Recalculate every
   // analysis used by the report rather than weakening stale-result export guards.
   await clickTab('compare');
