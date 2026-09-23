@@ -644,7 +644,13 @@ try{
     await precisionRoute(testCase.route[0],testCase.route[1]);
     const before=await page.locator('#poolBody tr').count();
     const payload=Buffer.from('timestamp,Depth (m)\n2026-01-01T00:00:00,'+(0.1+index/10).toFixed(2)+'\n2026-01-01T00:01:00,'+(0.2+index/10).toFixed(2)+'\n');
-    await page.setInputFiles(testCase.input,{name:testCase.name,mimeType:'text/csv',buffer:payload});
+    if(testCase.input==='#folderInput'){
+      const dir=await fs.mkdtemp(path.join(os.tmpdir(),'icm-route-folder-'));
+      await fs.writeFile(path.join(dir,testCase.name),payload);
+      await page.setInputFiles(testCase.input,dir);
+    }else{
+      await page.setInputFiles(testCase.input,{name:testCase.name,mimeType:'text/csv',buffer:payload});
+    }
     await page.waitForFunction(([expected,name])=>document.querySelectorAll('#poolBody tr').length===expected&&[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),[before+1,testCase.name],{timeout:60000});
     const route=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
     if(route.workspace!==testCase.route[0]||route.page!==testCase.route[1])throw new Error('Import changed the active Precision route: '+JSON.stringify({testCase,route}));
