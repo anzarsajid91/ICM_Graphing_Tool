@@ -1,7 +1,10 @@
 const $ = (id) => document.getElementById(id);
 const state = {
   files: new Map(), mapping: { observed: '', models: [], rain: '' }, comparisons: [],
-  spills: {}, exclusions: [], exclusionHistory: [], rainEvents: [], modelColours: {}, storage: null, storageSignature: null, rating: null,
+  spills: {}, exclusions: [], exclusionHistory: [], rainEvents: [], rainEventResult: null, rainEventSignature: null, rainEventGeneration: 0,
+  modelColours: {}, storage: null, storageSignature: null, rating: null,
+  dwfResult: null, dwfSignature: null, dwfGeneration: 0,
+  healthResult: null, healthSignature: null, healthGeneration: 0,
 };
 const diagnostic = {
   status: 'booting', errors: [],
@@ -678,6 +681,77 @@ function graphAnnotations(){const out=[],a=nullableNumber($('obsThreshold').valu
 async function drawTimeChart(){return window.ICMGraph?.draw();}
 
 function analysisBounds(){return {start:modelClock($('analysisStart').value)||null,end:modelClock($('analysisEnd').value)||null};}
+
+function appliedRainCriteria(){
+  const preset=$('rainCriteriaMode')?.value==='wapug';
+  return {
+    mode:preset?'wapug':'manual',
+    minimum_intensity:preset?5:Number($('rainMinIntensity')?.value||5),
+    minimum_intensity_duration_min:preset?6:Number($('rainIntensityDuration')?.value||6),
+    minimum_depth_mm:preset?5:Number($('rainTotalDepth')?.value||5),
+    minimum_event_duration_min:preset?60:Number($('rainEventDuration')?.value||60),
+    dry_gap_min:preset?15:Number($('rainDryGap')?.value||15),
+  };
+}
+function rainEventInputSignature(){
+  return JSON.stringify({
+    rain:workspaceSeries(state.mapping.rain),
+    conversion_factor:Number($('rainFactor')?.value||1),
+    criteria:appliedRainCriteria(),
+    exclusions:exclusionPayload(false,'rainfall'),
+    time_basis:'model clock/unspecified',
+  });
+}
+function rainEventsFresh(){
+  return Boolean(state.rainEventResult&&state.rainEventSignature&&state.rainEventSignature===rainEventInputSignature());
+}
+function invalidateRainEvents(reason='Rainfall-event inputs changed.'){
+  ++state.rainEventGeneration;
+  const had=Boolean(state.rainEventResult||state.rainEventSignature||state.rainEvents.length);
+  state.rainEventResult=null;state.rainEventSignature=null;state.rainEvents=[];
+  if(had){
+    if($('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary audit-warn"><strong>Stale rainfall-event result cleared.</strong> '+esc(reason)+' Re-run Rainfall Check before relying on event bands or response diagnostics.</div>';
+    if($('rainEventBody'))$('rainEventBody').innerHTML='';
+    if($('eventResponseBody'))$('eventResponseBody').innerHTML='';
+    void drawTimeChart();
+  }
+}
+function dwfInputSignature(){
+  return JSON.stringify({
+    flow:workspaceSeries($('dwfFlowSelect')?.value),
+    rain:workspaceSeries(state.mapping.rain),
+    rain_factor:Number($('rainFactor')?.value||1),
+    dry_day_mm:Number($('dwfDryDay')?.value||1),
+    baseline_days:Number($('dwfBaselineDays')?.value||28),
+    min_dry_days:5,
+    adp_hours:Number($('dwfAdpHours')?.value||6),
+    time_basis:'model clock/unspecified',
+  });
+}
+function dwfFresh(){return Boolean(state.dwfResult&&state.dwfSignature&&state.dwfSignature===dwfInputSignature());}
+function invalidateDwf(reason='DWF inputs changed.'){
+  ++state.dwfGeneration;
+  const had=Boolean(state.dwfResult||state.dwfSignature);
+  state.dwfResult=null;state.dwfSignature=null;
+  if(had&&$('dwfSummary'))$('dwfSummary').innerHTML='<div class="pool-summary audit-warn"><strong>Stale DWF result cleared.</strong> '+esc(reason)+' Recalculate the dry-weather baseline before relying on it.</div>';
+}
+function healthInputSignature(){
+  return JSON.stringify({
+    sources:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({sha256:x.hash,format:x.parsed?.format,columns:x.parsed?.columns||[]})).sort((a,b)=>String(a.sha256).localeCompare(String(b.sha256))),
+    max_gap_seconds:Number($('gapInput')?.value||900),
+    time_basis:'model clock/unspecified',
+  });
+}
+function healthFresh(){return Boolean(state.healthResult&&state.healthSignature&&state.healthSignature===healthInputSignature());}
+function invalidateHealth(reason='Data Health inputs changed.'){
+  ++state.healthGeneration;
+  const had=Boolean(state.healthResult||state.healthSignature);
+  state.healthResult=null;state.healthSignature=null;
+  if(had&&$('healthBody'))$('healthBody').innerHTML='<tr><td colspan="13" class="audit-warn"><strong>Stale Data Health result cleared.</strong> '+esc(reason)+' Re-run FDV Check before relying on QA evidence.</td></tr>';
+}
+diagnostic.rainEventsFresh=rainEventsFresh;
+diagnostic.dwfFresh=dwfFresh;
+diagnostic.healthFresh=healthFresh;
 async function runCompare(){const obs=mappingObject(state.mapping.observed),models=currentModels();if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();state.comparisons=[];for(const m of models){try{state.comparisons.push({model:m,result:await engine.call('compare_series',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,max_gap_seconds:gap,offset_minutes:offset,...bounds,exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])})});}catch(err){state.comparisons.push({model:m,error:String(err?.message||err)});}}if(signature!==analysisSignature()){state.comparisons=[];throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');}await renderComparisons();state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};}
 const metricCard=(k,v,reason='')=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${reason?`<small>${esc(reason)}</small>`:''}</div>`;
 function metricPresentation(metrics,key,unit=''){
@@ -938,7 +1012,22 @@ async function runRating(){
   await Plotly.react('ratingChart',traces,{template:'plotly_white',title:'Flow–depth rating relationship',xaxis:{title:'Depth / hydraulic head (m)'},yaxis:{title:'Flow (m³/s)'},margin:{l:68,r:24,t:52,b:60},legend:{orientation:'h',y:1.15},shapes,annotations},{responsive:true,displaylogo:false});
 }
 
-async function runDwf(){const flow=mappingObject($('dwfFlowSelect').value),rain=mappingObject(state.mapping.rain);if(!flow)throw new Error('Select observed flow.');const r=await engine.call('dwf_scaled',{flow_path:flow.item.virtualPath,flow_col:flow.col,rain_path:rain?.item.virtualPath||null,rain_col:rain?.col||'rainfall',rain_factor:Number($('rainFactor').value||1),dry_day_mm:Number($('dwfDryDay').value||1),baseline_days:Number($('dwfBaselineDays').value||28),min_dry_days:5,adp_hours:Number($('dwfAdpHours').value||6)},'advanced_bridge');$('dwfSummary').innerHTML=`<div class="summary-box"><div><strong>${esc(r.available)}</strong><span>availability/confidence</span></div><div><strong>${fmt(r.average_dwf,5)}</strong><span>average DWF</span></div><div><strong>${r.dry_days_used??'—'}</strong><span>dry days used</span></div><div><strong>${fmt(r.dry_day_threshold_mm,2)} mm</strong><span>dry-day threshold</span></div><div><strong>${r.baseline_days??'—'}</strong><span>baseline days</span></div><div><strong>${fmt(r.adp_hours,1)} hr</strong><span>ADP window</span></div></div>${r.reason?`<div class="pool-summary">${esc(r.reason)}</div>`:''}`;}
+async function runDwf(){
+  const flow=mappingObject($('dwfFlowSelect').value),rain=mappingObject(state.mapping.rain);
+  if(!flow)throw new Error('Select observed flow.');
+  const signature=dwfInputSignature(),generation=++state.dwfGeneration;
+  const r=await engine.call('dwf_scaled',{
+    flow_path:flow.item.virtualPath,flow_col:flow.col,
+    rain_path:rain?.item.virtualPath||null,rain_col:rain?.col||'rainfall',
+    rain_factor:Number($('rainFactor').value||1),
+    dry_day_mm:Number($('dwfDryDay').value||1),
+    baseline_days:Number($('dwfBaselineDays').value||28),
+    min_dry_days:5,adp_hours:Number($('dwfAdpHours').value||6)
+  },'advanced_bridge');
+  if(generation!==state.dwfGeneration||signature!==dwfInputSignature())throw new Error('DWF inputs changed while calculation was running. The late result was discarded.');
+  state.dwfResult=r;state.dwfSignature=signature;
+  $('dwfSummary').innerHTML=`<div class="summary-box"><div><strong>${esc(r.available)}</strong><span>availability/confidence</span></div><div><strong>${fmt(r.average_dwf,5)}</strong><span>average DWF</span></div><div><strong>${r.dry_days_used??'—'}</strong><span>dry days used</span></div><div><strong>${fmt(r.dry_day_threshold_mm,2)} mm</strong><span>dry-day threshold</span></div><div><strong>${r.baseline_days??'—'}</strong><span>baseline days</span></div><div><strong>${fmt(r.adp_hours,1)} hr</strong><span>ADP window</span></div></div>${r.reason?`<div class="pool-summary">${esc(r.reason)}</div>`:''}`;
+}
 
 function exclusionPayload(strict=true,role=null,key=null){
   const rows=[];
@@ -961,10 +1050,54 @@ function renderExclusions(){
   document.querySelectorAll('.remove-ex').forEach(b=>b.addEventListener('click',()=>{state.deletedExclusions??=[];state.deletedExclusions.push(state.exclusions.find(x=>x.id===b.dataset.id));state.exclusions=state.exclusions.filter(x=>x.id!==b.dataset.id);renderExclusions();void drawTimeChart();}));
 }
 
-async function runRainEvents(){const rain=mappingObject(state.mapping.rain);if(!rain)throw new Error('Map a rainfall series first.');const preset=$('rainCriteriaMode').value==='wapug',r=await engine.call('rainfall_event_scaled',{path:rain.item.virtualPath,column:rain.col,conversion_factor:Number($('rainFactor').value||1),minimum_intensity:preset?5:Number($('rainMinIntensity').value||5),minimum_intensity_duration_min:preset?6:Number($('rainIntensityDuration').value||6),minimum_depth_mm:preset?5:Number($('rainTotalDepth').value||5),minimum_event_duration_min:preset?60:Number($('rainEventDuration').value||60),dry_gap_min:preset?15:Number($('rainDryGap').value||15),exclusions_json:JSON.stringify(exclusionPayload(true,'rainfall'))},'advanced_bridge');state.rainEvents=r.events||[];$('rainEventSummary').innerHTML=`<div class="summary-box"><div><strong>${r.count}</strong><span>qualifying events</span></div><div><strong>${fmt(r.criteria.minimum_intensity,2)}</strong><span>minimum intensity</span></div><div><strong>${fmt(r.criteria.minimum_depth_mm,2)} mm</strong><span>minimum depth</span></div><div><strong>${fmt(r.criteria.dry_gap_min,1)} min</strong><span>dry gap</span></div></div>`;$('rainEventBody').innerHTML=state.rainEvents.map(e=>`<tr><td>${e.event}</td><td>${esc(e.start)}</td><td>${esc(e.end)}</td><td>${fmt(e.duration_min,1)}</td><td>${fmt(e.total_depth_mm,3)}</td><td>${fmt(e.peak_intensity,3)}</td><td>${fmt(e.intensity_streak_min,1)}</td></tr>`).join('');await drawTimeChart();await renderEventResponses();}
-async function renderEventResponses(){const obs=mappingObject(state.mapping.observed),model=currentModels()[0];if(!obs||!model||!state.rainEvents.length){$('eventResponseBody').innerHTML='';return;}const r=await engine.call('event_response_result',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:model.item.virtualPath,model_col:model.col,events_json:JSON.stringify(state.rainEvents),baseline_hours:3,post_hours:6});$('eventResponseBody').innerHTML=(r.rows||[]).map(x=>`<tr><td>${x.event}</td><td>${esc(x.rain_start)}</td><td>${fmt(x.rain_depth_mm,2)}</td><td>${fmt(x.observed_baseline,4)}</td><td>${fmt(x.observed_uplift,4)}</td><td>${fmt(x.modelled_uplift,4)}</td><td>${fmt(x.uplift_error_percent,1)}</td><td>${fmt(x.peak_lag_minutes,1)}</td></tr>`).join('');}
+async function runRainEvents(){
+  const rain=mappingObject(state.mapping.rain);if(!rain)throw new Error('Map a rainfall series first.');
+  const criteria=appliedRainCriteria(),signature=rainEventInputSignature(),generation=++state.rainEventGeneration;
+  const r=await engine.call('rainfall_event_scaled',{
+    path:rain.item.virtualPath,column:rain.col,
+    conversion_factor:Number($('rainFactor').value||1),
+    minimum_intensity:criteria.minimum_intensity,
+    minimum_intensity_duration_min:criteria.minimum_intensity_duration_min,
+    minimum_depth_mm:criteria.minimum_depth_mm,
+    minimum_event_duration_min:criteria.minimum_event_duration_min,
+    dry_gap_min:criteria.dry_gap_min,
+    exclusions_json:JSON.stringify(exclusionPayload(true,'rainfall'))
+  },'advanced_bridge');
+  if(generation!==state.rainEventGeneration||signature!==rainEventInputSignature())throw new Error('Rainfall-event inputs changed while calculation was running. The late result was discarded.');
+  state.rainEventResult=r;state.rainEventSignature=signature;state.rainEvents=r.events||[];
+  $('rainEventSummary').innerHTML=`<div class="summary-box"><div><strong>${r.count}</strong><span>qualifying events</span></div><div><strong>${fmt(r.criteria.minimum_intensity,2)}</strong><span>minimum intensity</span></div><div><strong>${fmt(r.criteria.minimum_depth_mm,2)} mm</strong><span>minimum depth</span></div><div><strong>${fmt(r.criteria.dry_gap_min,1)} min</strong><span>dry gap</span></div></div>`;
+  $('rainEventBody').innerHTML=state.rainEvents.map(e=>`<tr><td>${e.event}</td><td>${esc(e.start)}</td><td>${esc(e.end)}</td><td>${fmt(e.duration_min,1)}</td><td>${fmt(e.total_depth_mm,3)}</td><td>${fmt(e.peak_intensity,3)}</td><td>${fmt(e.intensity_streak_min,1)}</td></tr>`).join('');
+  await drawTimeChart();
+  await renderEventResponses(generation,signature);
+}
+async function renderEventResponses(expectedGeneration=state.rainEventGeneration,expectedSignature=state.rainEventSignature){
+  const obs=mappingObject(state.mapping.observed),model=currentModels()[0];
+  if(!obs||!model||!state.rainEvents.length){$('eventResponseBody').innerHTML='';return;}
+  const responseSignature=JSON.stringify({event_signature:expectedSignature,observed:workspaceSeries(state.mapping.observed),model:workspaceSeries(sourceKey(model.item.id,model.col))});
+  const r=await engine.call('event_response_result',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:model.item.virtualPath,model_col:model.col,events_json:JSON.stringify(state.rainEvents),baseline_hours:3,post_hours:6});
+  const currentModel=currentModels()[0];
+  const currentSignature=JSON.stringify({event_signature:state.rainEventSignature,observed:workspaceSeries(state.mapping.observed),model:currentModel?workspaceSeries(sourceKey(currentModel.item.id,currentModel.col)):null});
+  if(expectedGeneration!==state.rainEventGeneration||!rainEventsFresh()||responseSignature!==currentSignature)throw new Error('Event-response inputs changed while calculation was running. The late result was discarded.');
+  $('eventResponseBody').innerHTML=(r.rows||[]).map(x=>`<tr><td>${x.event}</td><td>${esc(x.rain_start)}</td><td>${fmt(x.rain_depth_mm,2)}</td><td>${fmt(x.observed_baseline,4)}</td><td>${fmt(x.observed_uplift,4)}</td><td>${fmt(x.modelled_uplift,4)}</td><td>${fmt(x.uplift_error_percent,1)}</td><td>${fmt(x.peak_lag_minutes,1)}</td></tr>`).join('');
+}
 function criteriaModeChanged(){const manual=$('rainCriteriaMode').value==='manual';for(const id of ['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'])$(id).disabled=!manual;}
-async function runHealth(){const rows=[];for(const item of state.files.values()){if(item.status!=='ready')continue;try{const r=await engine.call('data_assessment',{path:item.virtualPath,max_gap_seconds:Number($('gapInput').value||900)});for(const x of r.weekly||[])rows.push({...x,file:item.displayName});}catch(err){rows.push({file:item.displayName,comment:String(err?.message||err),rag:'Red'});}}$('healthBody').innerHTML=rows.map(x=>`<tr><td>${esc(x.file)}</td><td>${x.week_ending?esc(modelClock(x.week_ending).slice(0,10)):'—'}</td><td>${esc(x.channel||'—')}</td><td>${fmt(x.coverage_percent,1)}</td><td>${fmt(x.minimum)}</td><td>${fmt(x.mean)}</td><td>${fmt(x.maximum)}</td><td>${fmt(x.zero_percent,1)}</td><td>${fmt(Number(x.flatline_minutes)/60,1)}</td><td>${x.out_of_range_count??'—'}</td><td>${x.large_gap_count??'—'}</td><td class="${x.rag==='Green'?'audit-good':x.rag==='Red'?'audit-bad':'audit-warn'}">${esc(x.rag||'—')}</td><td>${esc(x.comment||'')}</td></tr>`).join('');}
+async function runHealth(){
+  const signature=healthInputSignature(),generation=++state.healthGeneration,rows=[];
+  for(const item of state.files.values()){
+    if(item.status!=='ready')continue;
+    try{
+      const r=await engine.call('data_assessment',{path:item.virtualPath,max_gap_seconds:Number($('gapInput').value||900)});
+      if(generation!==state.healthGeneration||signature!==healthInputSignature())throw new Error('Data Health inputs changed while calculation was running. The late result was discarded.');
+      for(const x of r.weekly||[])rows.push({...x,file:item.displayName});
+    }catch(err){
+      if(generation!==state.healthGeneration||signature!==healthInputSignature())throw err;
+      rows.push({file:item.displayName,comment:String(err?.message||err),rag:'Red'});
+    }
+  }
+  if(generation!==state.healthGeneration||signature!==healthInputSignature())throw new Error('Data Health inputs changed while calculation was running. The late result was discarded.');
+  state.healthResult={rows:JSON.parse(JSON.stringify(rows))};state.healthSignature=signature;
+  $('healthBody').innerHTML=rows.map(x=>`<tr><td>${esc(x.file)}</td><td>${x.week_ending?esc(modelClock(x.week_ending).slice(0,10)):'—'}</td><td>${esc(x.channel||'—')}</td><td>${fmt(x.coverage_percent,1)}</td><td>${fmt(x.minimum)}</td><td>${fmt(x.mean)}</td><td>${fmt(x.maximum)}</td><td>${fmt(x.zero_percent,1)}</td><td>${fmt(Number(x.flatline_minutes)/60,1)}</td><td>${x.out_of_range_count??'—'}</td><td>${x.large_gap_count??'—'}</td><td class="${x.rag==='Green'?'audit-good':x.rag==='Red'?'audit-bad':'audit-warn'}">${esc(x.rag||'—')}</td><td>${esc(x.comment||'')}</td></tr>`).join('');
+}
 
 async function runSpills(){const obs=mappingObject(state.mapping.observed),model=currentModels()[0],exc=JSON.stringify(exclusionPayload()),gap=Number($('gapInput').value||900);if(!obs&&!model)throw new Error('Apply observed/model mappings first.');state.spills={};if(obs&&$('obsThreshold').value!=='')state.spills.observed=await engine.call('spill_result',{path:obs.item.virtualPath,column:obs.col,threshold:Number($('obsThreshold').value),exclusions_json:exc,max_gap_seconds:gap});if(model&&$('modelThreshold').value!=='')state.spills.model=await engine.call('spill_result',{path:model.item.virtualPath,column:model.col,threshold:Number($('modelThreshold').value),exclusions_json:exc,max_gap_seconds:gap});renderSpills();await drawTimeChart();}
 function spillSummaryHtml(r){if(!r)return'<div class="pool-summary">Not calculated.</div>';return `<div class="summary-box"><div><strong>${fmt(r.total_spill_count,0)}</strong><span>12/24 spill count</span></div><div><strong>${fmt(r.total_spill_duration_hours,3)} h</strong><span>physical duration</span></div><div><strong>${r.coverage_fraction==null?'—':fmt(r.coverage_fraction*100,1)+'%'}</strong><span>assessable coverage</span></div><div><strong>${fmt((r.excluded_seconds||0)/3600,2)} h</strong><span>excluded</span></div><div><strong>${fmt((r.unknown_seconds||0)/3600,2)} h</strong><span>unknown gap</span></div><div><strong>${esc(r.count_status||r.status)}</strong><span>count status</span></div></div>`;}
@@ -1078,12 +1211,15 @@ function thresholdWorkspaceSeries(role){
   const model=mappingObject(key);
   return model&&['depth','level'].includes(String(seriesQuantity(model.item,model.col)||'').toLowerCase())?workspaceSeries(key):null;
 }
-function workspaceObject(){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:'model clock/unspecified',saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#1f77b4',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#2ca02c'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:state.rainEvents,manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
+function workspaceObject(){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:'model clock/unspecified',saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#1f77b4',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#2ca02c'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
 function downloadBlob(name,content,type='application/octet-stream'){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 function downloadWorkspace(){downloadBlob(`icm-workbench-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(workspaceObject(),null,2),'application/json');$('workspaceStatus').textContent='Workspace downloaded. Raw files were not embedded.';}
 function findSeriesFromWorkspace(ref){if(!ref)return'';const item=[...state.files.values()].find(x=>x.hash===ref.sha256);return item&&item.parsed?.columns.includes(ref.column)?sourceKey(item.id,ref.column):'';}
 async function applyWorkspace(w){
   w=migrateBrowserWorkspace(w);
+  ++state.rainEventGeneration;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;
+  ++state.dwfGeneration;state.dwfResult=null;state.dwfSignature=null;
+  ++state.healthGeneration;state.healthResult=null;state.healthSignature=null;
   state.rating=null;
   diagnostic.lastRating=null;
   Plotly.purge('ratingChart');
@@ -1113,6 +1249,10 @@ async function applyWorkspace(w){
   $('storageFlowSelect').value=findSeriesFromWorkspace(a.storage_flow);
   if($('storageLevelUnit'))$('storageLevelUnit').value=a.storage_level_unit||'';
   if($('storageFlowUnit'))$('storageFlowUnit').value=a.storage_flow_unit||'';
+  if($('dwfFlowSelect'))$('dwfFlowSelect').value=findSeriesFromWorkspace(a.dwf_flow);
+  if($('dwfDryDay'))$('dwfDryDay').value=a.dwf_dry_day_mm??1;
+  if($('dwfBaselineDays'))$('dwfBaselineDays').value=a.dwf_baseline_days??28;
+  if($('dwfAdpHours'))$('dwfAdpHours').value=a.dwf_adp_hours??6;
   if($('ratingObsDepthUnit'))$('ratingObsDepthUnit').value=a.rating_obs_depth_unit||'';
   if($('ratingObsFlowUnit'))$('ratingObsFlowUnit').value=a.rating_obs_flow_unit||'';
   if($('ratingModelDepthUnit'))$('ratingModelDepthUnit').value=a.rating_model_depth_unit||'';
@@ -1138,7 +1278,9 @@ async function applyWorkspace(w){
     const restoredScenarioKeys=ro.scenarios.map(findSeriesFromWorkspace).filter(Boolean);
     [...$('reportScenarioSelect').options].forEach(o=>o.selected=restoredScenarioKeys.includes(o.value));
   }
-  state.rainEvents=w.rain_events?.events||[];
+  state.rainEvents=[];
+  state.rainEventResult=null;state.rainEventSignature=null;
+  if(w.rain_events?.events?.length&&$('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary">Workspace contained derived rainfall events. They were not reactivated automatically; re-run Rainfall Check against the reattached authoritative sources.</div>';
   const expected=(w.source_references||[]).length;
   const matched=(w.source_references||[]).filter(r=>[...state.files.values()].some(x=>x.hash===r.sha256)).length;
   $('workspaceStatus').textContent=`Restoring workspace… ${matched}/${expected} source fingerprint(s) matched; rebuilding mappings and graph.`;
@@ -1591,11 +1733,18 @@ async function chooseFolder(){if('showDirectoryPicker'in window){try{const handl
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
-  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.storageSignature=null;state.rating=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
+  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);void importGuard(async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=files.length+' dropped file'+(files.length===1?'':'s')+' detected · preparing import…';await ingestFiles(files);});});
   eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('applyMappingBtn').addEventListener('click',()=>{state.rating=null;});$('modelSelect').addEventListener('change',()=>{renderModelColourControls();autoSuggestAdvanced(allSeries());});eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
   eventGuard('runCompareBtn','metricGrid',runCompare);$('scatterScale').addEventListener('change',()=>{if(state.comparisons.length)void guarded('metricGrid',renderComparisons);});$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);for(const id of ['ratingObsDepth','ratingObsDepthUnit','ratingObsFlow','ratingObsFlowUnit','ratingModelDepth','ratingModelDepthUnit','ratingModelFlow','ratingModelFlowUnit'])$(id)?.addEventListener('change',()=>{state.rating=null;});eventGuard('runDwfBtn','dwfSummary',runDwf);
   $('rainCriteriaMode').addEventListener('change',criteriaModeChanged);eventGuard('runRainEventsBtn','rainEventSummary',runRainEvents);eventGuard('runHealthBtn','healthBody',runHealth);
+  document.addEventListener('change',event=>{
+    const id=event.target?.id||'';
+    if(['rainCriteriaMode','rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap','rainFactor','rainSelect'].includes(id)||event.target?.closest?.('#exclusionRows'))invalidateRainEvents('Rainfall source, conversion, criteria or exclusion context changed.');
+    if(['dwfFlowSelect','rainSelect','rainFactor','dwfDryDay','dwfBaselineDays','dwfAdpHours'].includes(id))invalidateDwf('DWF source or qualification criteria changed.');
+    if(id==='gapInput')invalidateHealth('Maximum gap criterion changed.');
+  },true);
+  window.addEventListener('icm:source-pool-changed',()=>{invalidateRainEvents('Source pool changed.');invalidateDwf('Source pool changed.');invalidateHealth('Source pool changed.');});
   $('addExclusionBtn').addEventListener('click',()=>addExclusionRow());eventGuard('runSpillsBtn','obsSpillSummary',runSpills);eventGuard('runStorageBtn','storageSummary',runStorage);
   $('downloadWorkspaceBtn').addEventListener('click',()=>guarded('workspaceStatus',downloadWorkspace));$('loadWorkspaceBtn').addEventListener('click',()=>$('workspaceInput').click());$('workspaceInput').addEventListener('change',e=>e.target.files[0]&&guarded('workspaceStatus',()=>loadWorkspaceFile(e.target.files[0])));eventGuard('saveNamedWorkspaceBtn','workspaceStatus',saveNamedWorkspace);eventGuard('loadNamedWorkspaceBtn','workspaceStatus',loadNamedWorkspace);eventGuard('downloadReportBtn','workspaceStatus',downloadReport);eventGuard('downloadFourPeriodBtn','workspaceStatus',downloadFourPeriod);$('downloadManifestBtn')?.addEventListener('click',()=>guarded('workspaceStatus',downloadManifest));document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn)));
 }
