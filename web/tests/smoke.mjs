@@ -412,6 +412,8 @@ async function verifyStationAThresholdChain(){
       return row?{quantity:row.statistics.quantity,unit:row.statistics.unit,min:Number(row.statistics.minimum),max:Number(row.statistics.maximum)}:null;
     });
     if(!support||!Number.isFinite(support.min)||!Number.isFinite(support.max)||support.max<support.min)throw new Error('Station A hydraulic support unavailable: '+JSON.stringify(support));
+    const stationAxisTitle=await probe.evaluate(()=>document.querySelector('#timeChart')?.layout?.yaxis?.title?.text||'');
+    if(!/Level/i.test(stationAxisTitle)||!/\(m\)/i.test(stationAxisTitle)||!/\bAD\b/i.test(stationAxisTitle))throw new Error('Station A hydraulic axis must identify Level, metre unit and AD reference: '+stationAxisTitle);
     const threshold=Number((support.min+(support.max-support.min)*0.6).toPrecision(10));
     await probe.fill('#graphObsThreshold',String(threshold));
     await probe.waitForFunction(value=>{
@@ -440,7 +442,7 @@ async function verifyStationAThresholdChain(){
     const plot=JSON.parse(html.slice(start+marker.length,end));
     const reportThreshold=(plot.layout?.shapes||[]).find(s=>s.type==='line'&&s.yref!=='paper');
     if(!reportThreshold||Math.abs(Number(reportThreshold.y0)-threshold)>1e-9)throw new Error('Station A report threshold line differs from the configured/calculated threshold: '+JSON.stringify({threshold,reportThreshold}));
-    if(!html.includes('Observed / EDM hydraulic threshold')||!html.includes(String(threshold)))throw new Error('Station A report settings do not record the configured hydraulic threshold.');
+    if(!html.includes('Observed / EDM hydraulic threshold')||!html.includes(String(threshold))||!html.includes('AD'))throw new Error('Station A report settings do not record the configured Level threshold with its vertical reference.');
     const dir=process.env.ICM_EVIDENCE_DIR;
     if(dir){
       await fs.mkdir(dir,{recursive:true});
