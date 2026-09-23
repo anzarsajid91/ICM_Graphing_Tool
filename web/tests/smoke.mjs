@@ -496,7 +496,9 @@ function surveyRainfallR(){
   const values=Array.from({length:200},(_,i)=>i<20?12:0);
   return Buffer.from(`*CSTART\n2601050000 2601050640 2\n*CEND\n${values.join(' ')}\n`,'utf8');
 }
+let cachedAssociationWorkbook=null;
 async function associationWorkbook({variant=false}={}){
+  if(!variant&&cachedAssociationWorkbook)return {name:'fm_rg_assoc.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(cachedAssociationWorkbook)};
   const bytes=await page.evaluate(variant=>{
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.aoa_to_sheet([
@@ -508,7 +510,9 @@ async function associationWorkbook({variant=false}={}){
     XLSX.utils.book_append_sheet(wb,ws,'Associations');
     return Array.from(new Uint8Array(XLSX.write(wb,{type:'array',bookType:'xlsx'})));
   },variant);
-  return {name:'fm_rg_assoc.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(bytes)};
+  const buffer=Buffer.from(bytes);
+  if(!variant)cachedAssociationWorkbook=Buffer.from(buffer);
+  return {name:'fm_rg_assoc.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer};
 }
 
 try{
