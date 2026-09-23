@@ -509,9 +509,10 @@ function wireContextUpdates(){
     event.preventDefault();
     const targetPage=buttons[index].dataset.page;
     buttons[index].click();
-    // navigate() rebuilds the secondary navigation, so restore focus to the
-    // corresponding newly-created button after the route transition.
-    requestAnimationFrame(()=>qs('#pwSecondaryNav button[data-page="'+CSS.escape(targetPage)+'"]')?.focus());
+    // navigate() is synchronous and rebuilds the secondary navigation before
+    // returning. Restore focus immediately so keyboard state is deterministic
+    // across Firefox/Chromium and does not depend on animation-frame timing.
+    qs('#pwSecondaryNav button[data-page="'+CSS.escape(targetPage)+'"]')?.focus({preventScroll:true});
   });
   const focusMedia=matchMedia('(min-width:901px)');
   focusMedia.addEventListener?.('change',()=>applyFocusCanvas(false));
