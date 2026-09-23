@@ -7,8 +7,8 @@ const browser=await launcher.launch({headless:true});
 const context=await browser.newContext({viewport:{width:1440,height:1000}});
 const page=await context.newPage();
 const errors=[];
-page.on('pageerror',e=>errors.push(String(e)));
-page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+page.on('pageerror',e=>errors.push('pageerror '+String(e?.name||'Error')+': '+String(e?.message||String(e))+(e?.stack?' | '+String(e.stack).replace(/\s+/g,' '):'')));
+page.on('console',m=>{if(m.type()==='error'){const loc=m.location?.()||{};errors.push('console: '+m.text()+(loc.url?' @ '+loc.url+':'+String((loc.lineNumber??0)+1)+':'+String((loc.columnNumber??0)+1):''));}});
 try{
   await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
