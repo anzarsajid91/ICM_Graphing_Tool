@@ -717,14 +717,19 @@ function invalidateRainEvents(reason='Rainfall-event inputs changed.'){
   }
 }
 function dwfInputSignature(){
+  const flowKey=$('dwfFlowSelect')?.value||'';
   return JSON.stringify({
-    flow:workspaceSeries($('dwfFlowSelect')?.value),
+    flow:workspaceSeries(flowKey),
+    flow_unit_override:$('dwfFlowUnit')?.value||null,
     rain:workspaceSeries(state.mapping.rain),
     rain_factor:Number($('rainFactor')?.value||1),
     dry_day_mm:Number($('dwfDryDay')?.value||1),
     baseline_days:Number($('dwfBaselineDays')?.value||28),
     min_dry_days:5,
     adp_hours:Number($('dwfAdpHours')?.value||6),
+    analysis:analysisBounds(),
+    flow_exclusions:exclusionPayload(false,'observed',flowKey),
+    rainfall_exclusions:exclusionPayload(false,'rainfall',state.mapping.rain),
     time_basis:'model clock/unspecified',
   });
 }
@@ -1013,20 +1018,26 @@ async function runRating(){
 }
 
 async function runDwf(){
-  const flow=mappingObject($('dwfFlowSelect').value),rain=mappingObject(state.mapping.rain);
+  const flowKey=$('dwfFlowSelect').value,flow=mappingObject(flowKey),rain=mappingObject(state.mapping.rain);
   if(!flow)throw new Error('Select observed flow.');
-  const signature=dwfInputSignature(),generation=++state.dwfGeneration;
+  const signature=dwfInputSignature(),generation=++state.dwfGeneration,bounds=analysisBounds();
   const r=await engine.call('dwf_scaled',{
     flow_path:flow.item.virtualPath,flow_col:flow.col,
+    flow_unit_override:$('dwfFlowUnit')?.value||null,
     rain_path:rain?.item.virtualPath||null,rain_col:rain?.col||'rainfall',
     rain_factor:Number($('rainFactor').value||1),
     dry_day_mm:Number($('dwfDryDay').value||1),
     baseline_days:Number($('dwfBaselineDays').value||28),
-    min_dry_days:5,adp_hours:Number($('dwfAdpHours').value||6)
+    min_dry_days:5,adp_hours:Number($('dwfAdpHours').value||6),
+    start:bounds.start,end:bounds.end,
+    flow_exclusions_json:JSON.stringify(exclusionPayload(true,'observed',flowKey)),
+    rainfall_exclusions_json:JSON.stringify(exclusionPayload(true,'rainfall',state.mapping.rain))
   },'advanced_bridge');
   if(generation!==state.dwfGeneration||signature!==dwfInputSignature())throw new Error('DWF inputs changed while calculation was running. The late result was discarded.');
   state.dwfResult=r;state.dwfSignature=signature;
-  $('dwfSummary').innerHTML=`<div class="summary-box"><div><strong>${esc(r.available)}</strong><span>availability/confidence</span></div><div><strong>${fmt(r.average_dwf,5)}</strong><span>average DWF</span></div><div><strong>${r.dry_days_used??'—'}</strong><span>dry days used</span></div><div><strong>${fmt(r.dry_day_threshold_mm,2)} mm</strong><span>dry-day threshold</span></div><div><strong>${r.baseline_days??'—'}</strong><span>baseline days</span></div><div><strong>${fmt(r.adp_hours,1)} hr</strong><span>ADP window</span></div></div>${r.reason?`<div class="pool-summary">${esc(r.reason)}</div>`:''}`;
+  const dwfValue=r.average_dwf==null?'—':fmt(r.average_dwf,5)+' '+esc(r.flow_unit||'');
+  const period=(r.analysis_start||r.analysis_end)?esc((r.analysis_start||'source start')+' → '+(r.analysis_end||'source end')):'Full mapped source support';
+  $('dwfSummary').innerHTML=`<div class="summary-box"><div><strong>${esc(r.available)}</strong><span>availability/confidence</span></div><div><strong>${dwfValue}</strong><span>average DWF</span></div><div><strong>${r.dry_days_used??'—'}</strong><span>dry days used</span></div><div><strong>${fmt(r.dry_day_threshold_mm,2)} mm</strong><span>dry-day threshold</span></div><div><strong>${r.baseline_days??'—'}</strong><span>baseline days</span></div><div><strong>${fmt(r.adp_hours,1)} hr</strong><span>ADP window</span></div></div><div class="pool-summary">Analysis support: ${period} · ${r.excluded_flow_rows||0} excluded flow row(s) · ${r.excluded_rainfall_rows||0} excluded rainfall row(s) · ${esc(r.context_method||'canonical DWF method')}.</div>${r.reason?`<div class="pool-summary">${esc(r.reason)}</div>`:''}`;
 }
 
 function exclusionPayload(strict=true,role=null,key=null){
@@ -1211,7 +1222,7 @@ function thresholdWorkspaceSeries(role){
   const model=mappingObject(key);
   return model&&['depth','level'].includes(String(seriesQuantity(model.item,model.col)||'').toLowerCase())?workspaceSeries(key):null;
 }
-function workspaceObject(){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:'model clock/unspecified',saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#1f77b4',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#2ca02c'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
+function workspaceObject(){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:'model clock/unspecified',saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#1f77b4',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#2ca02c'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
 function downloadBlob(name,content,type='application/octet-stream'){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 function downloadWorkspace(){downloadBlob(`icm-workbench-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(workspaceObject(),null,2),'application/json');$('workspaceStatus').textContent='Workspace downloaded. Raw files were not embedded.';}
 function findSeriesFromWorkspace(ref){if(!ref)return'';const item=[...state.files.values()].find(x=>x.hash===ref.sha256);return item&&item.parsed?.columns.includes(ref.column)?sourceKey(item.id,ref.column):'';}
@@ -1250,6 +1261,7 @@ async function applyWorkspace(w){
   if($('storageLevelUnit'))$('storageLevelUnit').value=a.storage_level_unit||'';
   if($('storageFlowUnit'))$('storageFlowUnit').value=a.storage_flow_unit||'';
   if($('dwfFlowSelect'))$('dwfFlowSelect').value=findSeriesFromWorkspace(a.dwf_flow);
+  if($('dwfFlowUnit'))$('dwfFlowUnit').value=a.dwf_flow_unit||'';
   if($('dwfDryDay'))$('dwfDryDay').value=a.dwf_dry_day_mm??1;
   if($('dwfBaselineDays'))$('dwfBaselineDays').value=a.dwf_baseline_days??28;
   if($('dwfAdpHours'))$('dwfAdpHours').value=a.dwf_adp_hours??6;
@@ -1746,7 +1758,7 @@ function wireEvents(){
   document.addEventListener('change',event=>{
     const id=event.target?.id||'';
     if(['rainCriteriaMode','rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap','rainFactor','rainSelect'].includes(id)||event.target?.closest?.('#exclusionRows'))invalidateRainEvents('Rainfall source, conversion, criteria or exclusion context changed.');
-    if(['dwfFlowSelect','rainSelect','rainFactor','dwfDryDay','dwfBaselineDays','dwfAdpHours'].includes(id))invalidateDwf('DWF source or qualification criteria changed.');
+    if(['dwfFlowSelect','dwfFlowUnit','rainSelect','rainFactor','dwfDryDay','dwfBaselineDays','dwfAdpHours','analysisStart','analysisEnd'].includes(id)||event.target?.closest?.('#exclusionRows'))invalidateDwf('DWF source, unit, analysis period, exclusion or qualification criteria changed.');
     if(id==='gapInput')invalidateHealth('Maximum gap criterion changed.');
   },true);
   window.addEventListener('icm:source-pool-changed',()=>{invalidateRainEvents('Source pool changed.');invalidateDwf('Source pool changed.');invalidateHealth('Source pool changed.');});
