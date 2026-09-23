@@ -92,6 +92,11 @@ body.precision-workbench{
   padding:8px 12px;cursor:pointer;font-size:13px;line-height:20px;font-weight:600;min-height:38px
 }
 .pw-secondary-nav button:hover{color:var(--pw-text)}
+/* Secondary navigation is rebuilt on route changes. Use :focus as the
+   cross-browser fallback as well as the global :focus-visible rule so a
+   keyboard-restored focused tab always has an explicit visible ring in
+   Firefox, Chromium and Safari. */
+.pw-secondary-nav button:focus{outline:3px solid color-mix(in srgb,var(--pw-focus) 45%,transparent);outline-offset:2px}
 .pw-secondary-nav button[aria-current="page"]{color:var(--pw-teal-strong);border-bottom-color:var(--pw-teal)}
 .pw-scopebar{
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--pw-surface-soft);
