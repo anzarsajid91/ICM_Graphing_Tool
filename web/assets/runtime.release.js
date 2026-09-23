@@ -678,7 +678,7 @@ function graphAnnotations(){const out=[],a=nullableNumber($('obsThreshold').valu
 async function drawTimeChart(){return window.ICMGraph?.draw();}
 
 function analysisBounds(){return {start:modelClock($('analysisStart').value)||null,end:modelClock($('analysisEnd').value)||null};}
-async function runCompare(){const obs=mappingObject(state.mapping.observed),models=currentModels();if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();state.comparisons=[];for(const m of models){try{state.comparisons.push({model:m,result:await engine.call('compare_series',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,max_gap_seconds:gap,offset_minutes:offset,...bounds,exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])})});}catch(err){state.comparisons.push({model:m,error:String(err?.message||err)});}}await renderComparisons();state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};}
+async function runCompare(){const obs=mappingObject(state.mapping.observed),models=currentModels();if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();state.comparisons=[];for(const m of models){try{state.comparisons.push({model:m,result:await engine.call('compare_series',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,max_gap_seconds:gap,offset_minutes:offset,...bounds,exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])})});}catch(err){state.comparisons.push({model:m,error:String(err?.message||err)});}}if(signature!==analysisSignature()){state.comparisons=[];throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');}await renderComparisons();state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};}
 const metricCard=(k,v,reason='')=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${reason?`<small>${esc(reason)}</small>`:''}</div>`;
 function metricPresentation(metrics,key,unit=''){
   const value=metrics?.[key],reason=metrics?.unavailable_reasons?.[key]||'';
@@ -699,10 +699,20 @@ function regressionLinePoints(metrics,pairs,log=false){
   if(!Number.isFinite(slope)||!Number.isFinite(intercept)||pairs.length<2)return null;
   const xs=pairs.map(x=>Number(x.obs)).filter(x=>Number.isFinite(x)&&(log?x>0:true));
   if(xs.length<2)return null;
-  const lo=Math.min(...xs),hi=Math.max(...xs);
+  let lo=Math.min(...xs),hi=Math.max(...xs);
   if(!(hi>lo))return null;
-  const candidates=[[lo,intercept+slope*lo],[hi,intercept+slope*hi]].filter(([,y])=>Number.isFinite(y)&&(!log||y>0));
-  return candidates.length===2?{x:candidates.map(x=>x[0]),y:candidates.map(x=>x[1])}:null;
+  if(log){
+    const yLo=intercept+slope*lo,yHi=intercept+slope*hi;
+    if(yLo<=0&&yHi<=0)return null;
+    const root=slope!==0?-intercept/slope:null;
+    const eps=x=>Math.max(Math.abs(x||1)*1e-9,1e-12);
+    if(yLo<=0&&yHi>0&&Number.isFinite(root))lo=Math.max(lo,root+eps(root));
+    if(yHi<=0&&yLo>0&&Number.isFinite(root))hi=Math.min(hi,root-eps(root));
+    if(!(lo>0&&hi>lo))return null;
+  }
+  const y0=intercept+slope*lo,y1=intercept+slope*hi;
+  if(!Number.isFinite(y0)||!Number.isFinite(y1)||(log&&(y0<=0||y1<=0)))return null;
+  return {x:[lo,hi],y:[y0,y1]};
 }
 function comparisonUnit(result){return result?.observed_unit||result?.modelled_unit||'';}
 function comparisonQuantity(result){return result?.observed_quantity||result?.modelled_quantity||'value';}
@@ -846,7 +856,7 @@ function ratingExclusions(role,selections){
 async function runRating(){
   const od=mappingObject($('ratingObsDepth').value),of=mappingObject($('ratingObsFlow').value),md=mappingObject($('ratingModelDepth').value),mf=mappingObject($('ratingModelFlow').value);
   if(!od)throw new Error('Select observed depth or level.');
-  const gap=Number($('gapInput').value||900);
+  const gap=Number($('gapInput').value||900),requestSignature=ratingInputSignature();
 
   // Depth/level agreement uses the canonical Python comparison regression. Do
   // not create a second JavaScript regression implementation.
@@ -875,7 +885,8 @@ async function runRating(){
       {x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1',line:{dash:'dash',color:'#667085'}},
     ];
     if(fitAvailable)traces.push({x:[lo,hi],y:[intercept+slope*lo,intercept+slope*hi],mode:'lines',name:'Python fitted relationship',line:{width:2,color:state.modelColours[state.mapping.models[0]]||palette[0]}});
-    state.rating={kind:'depth-agreement',result:depth,context:null,signature:ratingInputSignature()};
+    if(requestSignature!==ratingInputSignature())throw new Error('Rating inputs changed while calculation was running. The late result was discarded.');
+    state.rating={kind:'depth-agreement',result:depth,context:null,signature:requestSignature};
     await Plotly.react('ratingChart',traces,{template:'plotly_white',title:'Observed vs modelled depth / level agreement',xaxis:{title:'Observed'+(unit?' ('+unit+')':'')},yaxis:{title:'Modelled'+(unit?' ('+unit+')':'')},margin:{l:65,r:24,t:48,b:58},legend:{orientation:'h',y:1.13}},{responsive:true,displaylogo:false});
     return;
   }
@@ -921,7 +932,8 @@ async function runRating(){
     shapes.push({type:'line',xref:'x',yref:'paper',x0:o.diameter_m,x1:o.diameter_m,y0:0,y1:1,line:{dash:'dot',width:1.5,color:'#667085'}});
     annotations.push({xref:'x',yref:'paper',x:o.diameter_m,y:1,text:`Pipe crown D = ${fmt(o.diameter_mm,1)} mm`,showarrow:false,yanchor:'bottom',font:{size:10,color:'#475467'}});
   }
-  state.rating={kind:'flow-depth',result:r,context:diameterContext,signature:ratingInputSignature(),config:{observedDepth:workspaceSeries($('ratingObsDepth').value),observedDepthUnit:$('ratingObsDepthUnit')?.value||null,observedFlow:workspaceSeries($('ratingObsFlow').value),observedFlowUnit:$('ratingObsFlowUnit')?.value||null,modelDepth:workspaceSeries($('ratingModelDepth').value),modelDepthUnit:$('ratingModelDepthUnit')?.value||null,modelFlow:workspaceSeries($('ratingModelFlow').value),modelFlowUnit:$('ratingModelFlowUnit')?.value||null}};
+  if(requestSignature!==ratingInputSignature())throw new Error('Rating inputs changed while calculation was running. The late result was discarded.');
+  state.rating={kind:'flow-depth',result:r,context:diameterContext,signature:requestSignature,config:{observedDepth:workspaceSeries($('ratingObsDepth').value),observedDepthUnit:$('ratingObsDepthUnit')?.value||null,observedFlow:workspaceSeries($('ratingObsFlow').value),observedFlowUnit:$('ratingObsFlowUnit')?.value||null,modelDepth:workspaceSeries($('ratingModelDepth').value),modelDepthUnit:$('ratingModelDepthUnit')?.value||null,modelFlow:workspaceSeries($('ratingModelFlow').value),modelFlowUnit:$('ratingModelFlowUnit')?.value||null}};
   diagnostic.lastRating={mode:o.rating_mode||'data-fitted-generic',monitor:diameterContext.monitor||null,diameter_mm:diameterContext.diameter_mm||null,pairs:o.n||0};
   await Plotly.react('ratingChart',traces,{template:'plotly_white',title:'Flow–depth rating relationship',xaxis:{title:'Depth / hydraulic head (m)'},yaxis:{title:'Flow (m³/s)'},margin:{l:68,r:24,t:52,b:60},legend:{orientation:'h',y:1.15},shapes,annotations},{responsive:true,displaylogo:false});
 }
@@ -1140,7 +1152,17 @@ function analysisSignature(){
   };
   return JSON.stringify({mapping:w.mapping,analysis:w.analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual,time_basis:w.time_basis,project_context:projectContext});
 }
-function assertFreshResults(){const sig=analysisSignature();for(const [label,snapshot] of [['Spill',state.spillSnapshot],['Comparison',state.comparisonSnapshot]]){if(snapshot && snapshot.signature!==sig)throw new Error(`${label} results are stale. Recalculate after changing analytical inputs before exporting.`);}if(state.storage&&state.storageSignature&&state.storageSignature!==sig)throw new Error('Storage results are stale. Recalculate after changing analytical inputs before exporting.');if(state.rating?.signature&&state.rating.signature!==ratingInputSignature())throw new Error('Rating results are stale. Recalculate the fitted relationship after changing mappings, exclusions or analysis inputs before exporting.');}
+function assertFreshResults(){
+  const sig=analysisSignature();
+  for(const [label,snapshot] of [['Spill',state.spillSnapshot],['Comparison',state.comparisonSnapshot]]){
+    if(snapshot&&snapshot.signature!==sig)throw new Error(`${label} results are stale. Recalculate after changing analytical inputs before exporting.`);
+  }
+  if(state.storage&&state.storageSignature&&state.storageSignature!==sig)throw new Error('Storage results are stale. Recalculate after changing analytical inputs before exporting.');
+  if(state.rating?.signature&&state.rating.signature!==ratingInputSignature())throw new Error('Rating results are stale. Recalculate the fitted relationship after changing mappings, exclusions or analysis inputs before exporting.');
+  if(diagnostic.lastProfessionalSurvey&&diagnostic.professionalSurveyFresh&&!diagnostic.professionalSurveyFresh())throw new Error('Professional flow-survey results are stale. Re-run before exporting.');
+  if(diagnostic.survey?.batch&&diagnostic.surveyFresh&&!diagnostic.surveyFresh('complete'))throw new Error('Complete flow-survey results are stale. Re-run before exporting.');
+  if(diagnostic.survey?.balance&&diagnostic.surveyFresh&&!diagnostic.surveyFresh('balance'))throw new Error('Volume-balance results are stale. Recalculate before exporting.');
+}
 
 function reportCss(landscape=false){
   return ':root{--ink:#182433;--muted:#667788;--line:#d9e1e8;--soft:#f5f8fa;--accent:#315b9b}*{box-sizing:border-box}html{background:#eef2f5}body{margin:0;color:var(--ink);font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:1.45;background:#fff}.report{max-width:1180px;margin:0 auto;padding:30px 34px 42px}.report-header{border-bottom:3px solid var(--accent);padding-bottom:16px;margin-bottom:22px;display:flex;justify-content:space-between;gap:24px;align-items:flex-end}.report-header h1{font-size:26px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em}.report-header p{margin:0;color:var(--muted)}.report-meta{text-align:right;color:var(--muted);font-size:12px;white-space:nowrap}h2{font-size:18px;margin:26px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:14px;margin:18px 0 8px}.note{background:var(--soft);border-left:4px solid var(--accent);padding:10px 12px;margin:12px 0 18px}.report-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.card{min-width:0;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:#fff;break-inside:avoid}.card h3{margin:0 0 8px}.table-wrap{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:7px;margin:8px 0 14px}table{border-collapse:collapse;width:100%;min-width:620px}th,td{padding:7px 9px;border-bottom:1px solid #e8edf1;text-align:left;vertical-align:top;font-size:11.5px}th{background:var(--soft);color:#435466;text-transform:uppercase;letter-spacing:.025em;font-size:10.5px}tr:last-child td{border-bottom:0}.figure{margin:12px 0 20px;break-inside:avoid}.report-plot{width:100%;min-width:0}.report-figure-metrics{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}.report-figure-metrics-title{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}.report-figure-metrics .graph-statistics-note{margin:0 0 7px}.report-figure-metrics .table-wrap{margin:0}.report-figure-metrics .graph-stats-compact{font-size:10.5px}.graph-stats-compact small{display:block;max-width:240px;overflow-wrap:anywhere}.graph-statistics-note{font-size:12px}.figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.figure figcaption{font-size:11.5px;color:var(--muted);margin-top:6px}.summary-box{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0}.summary-box>div{border:1px solid var(--line);border-radius:7px;padding:9px;background:var(--soft)}.summary-box strong{display:block;font-size:16px}.summary-box span{font-size:10.5px;color:var(--muted)}.swatch{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.14)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f9fb;border:1px solid var(--line);border-radius:6px;padding:10px;font:11px/1.45 Consolas,monospace}.hash{font-family:Consolas,monospace;font-size:10.5px;overflow-wrap:anywhere}.muted{color:var(--muted)}.report-page{break-after:page;page-break-after:always}.report-page:last-child{break-after:auto;page-break-after:auto}.report-footer{border-top:1px solid var(--line);margin-top:30px;padding-top:10px;color:var(--muted);font-size:11px;display:flex;justify-content:space-between;gap:12px}@media(max-width:760px){.report{padding:20px 16px}.report-header{display:block}.report-meta{text-align:left;margin-top:10px}.report-grid,.summary-box{grid-template-columns:1fr}table{min-width:560px}}@media print{html{background:#fff}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.report{max-width:none;padding:0}.card,.figure,.table-wrap{break-inside:avoid}}@page{size:'+(landscape?'A4 landscape':'A4 portrait')+';margin:12mm}';
