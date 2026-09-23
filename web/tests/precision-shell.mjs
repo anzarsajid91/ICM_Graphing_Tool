@@ -190,6 +190,8 @@ try{
     };
   });
   if(!reportComposition.builder||reportComposition.workspace||!reportComposition.readiness||!reportComposition.options||!reportComposition.scenarioSelect||!reportComposition.scatterScale||!reportComposition.reportExport||reportComposition.workspaceExport)throw new Error('Report builder ownership/options are incorrect: '+JSON.stringify(reportComposition));
+  // 683×384 is the CSS-pixel layout equivalent of a 1366×768 viewport at
+  // 200% browser zoom. Keep it alongside the native desktop and narrow cases.
   for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080},{width:390,height:844},{width:683,height:384}]){
     await page.setViewportSize(size);
     await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','sources',false));
@@ -201,6 +203,15 @@ try{
     }));
     if(layout.overflow>1||!layout.sourceVisible||!layout.railVisible)throw new Error('Responsive shell failure '+size.width+'x'+size.height+': '+JSON.stringify(layout));
   }
+  await page.setViewportSize({width:683,height:384});
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation',false));
+  const zoom200=await page.evaluate(()=>({
+    overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+    reportButtonVisible:Boolean(document.querySelector('#downloadReportBtn')?.getClientRects().length),
+    secondaryNavVisible:Boolean(document.querySelector('#pwSecondaryNav')?.getClientRects().length),
+    menuVisible:Boolean(document.querySelector('#pwRailToggle')?.getClientRects().length),
+  }));
+  if(zoom200.overflow>1||!zoom200.reportButtonVisible||!zoom200.secondaryNavVisible||!zoom200.menuVisible)throw new Error('200% zoom-equivalent layout lost navigation or report actions: '+JSON.stringify(zoom200));
   await page.setViewportSize({width:1440,height:1000});
 
   // Browser history must restore canonical Precision routes, not only the URL.
