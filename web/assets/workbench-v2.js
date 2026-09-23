@@ -20,6 +20,7 @@
     graphTimer: null,
     graphGeneration: 0,
     channelMode: 'combined',
+    thresholdContexts: {observed:null, model:null},
   };
   window.__ICM_WORKBENCH__.uiV2 = ui;
 
@@ -110,12 +111,14 @@
         <label>Observed / EDM depth / level threshold
           <input id="graphObsThreshold" type="number" step="any" placeholder="Not shown" />
         </label>
+        <small id="graphObsThresholdContext" class="v2-threshold-context"></small>
         <label class="v2-show-toggle"><input id="showGraphObsThreshold" type="checkbox" checked /> Show line</label>
       </div>
       <div class="v2-threshold-control" data-threshold-role="model">
         <label>Model depth / level threshold
           <input id="graphModelThreshold" type="number" step="any" placeholder="Not shown" />
         </label>
+        <small id="graphModelThresholdContext" class="v2-threshold-context"></small>
         <label class="v2-show-toggle"><input id="showGraphModelThreshold" type="checkbox" checked /> Show line</label>
       </div>
       <div class="v2-density" id="graphDensity"><strong>Adaptive display</strong>Full view is reduced for speed; zoom progressively refines toward every source timestep. Thresholds are drawn on the Depth / Level panel only.</div>`;
@@ -191,6 +194,66 @@
   function isThresholdQuantity(value){
     return ['depth','level'].includes(String(value||'').toLowerCase());
   }
+  function thresholdSelectionForKey(key,{fdvFallback=false}={}){
+    const selected=mappingObject(key);
+    if(!selected)return null;
+    if(isThresholdQuantity(seriesQuantity(selected.item,selected.col)))return selected;
+    if(fdvFallback&&String(selected.item?.parsed?.format||'')==='fdv_ascii'){
+      const hydraulic=hydraulicSeriesForItem(selected.item).find(x=>isThresholdQuantity(x.quantity));
+      return hydraulic?mappingObject(hydraulic.key):null;
+    }
+    return null;
+  }
+  function observedThresholdSelection(key=state.mapping.observed){
+    return thresholdSelectionForKey(key,{fdvFallback:true});
+  }
+  function modelThresholdSelection(keys=state.mapping.models){
+    for(const key of keys||[]){
+      const selected=thresholdSelectionForKey(key);
+      if(selected)return selected;
+    }
+    return null;
+  }
+  function thresholdContext(selection){
+    if(!selection)return null;
+    const quantity=String(seriesQuantity(selection.item,selection.col)||'').toLowerCase();
+    if(!isThresholdQuantity(quantity))return null;
+    return {
+      quantity,
+      unit:seriesUnit(selection.item,selection.col)||null,
+      reference:seriesReference(selection.item,selection.col)||null,
+      label:seriesLabel(selection.item,selection.col),
+    };
+  }
+  function thresholdContextsCompatible(previous,next){
+    if(!previous||!next)return false;
+    return previous.quantity===next.quantity&&String(previous.unit||'')===String(next.unit||'')&&String(previous.reference||'')===String(next.reference||'');
+  }
+  function thresholdContextText(context){
+    if(!context)return 'No eligible Depth / Level series is mapped.';
+    const quantity=context.quantity==='level'?'Absolute level':'Depth';
+    const unit=context.unit||'unit unresolved';
+    const reference=context.reference||'reference / datum not supplied';
+    return quantity+' · '+unit+' · '+reference;
+  }
+  function numericThreshold(id,label){
+    const raw=$(id)?.value??'';
+    if(raw==='')return null;
+    const value=Number(raw);
+    if(!Number.isFinite(value))throw new Error(label+' must be a finite numeric value.');
+    return value;
+  }
+  function reconcileThresholdContext(role,previous,next){
+    const spillId=role==='observed'?'obsThreshold':'modelThreshold';
+    const graphId=role==='observed'?'graphObsThreshold':'graphModelThreshold';
+    const configured=$(spillId)?.value!=='';
+    if(configured&&previous&&!thresholdContextsCompatible(previous,next)){
+      $(spillId).value='';
+      if($(graphId))$(graphId).value='';
+      return role+' threshold cleared because the mapped hydraulic quantity, unit or reference changed; reassign or explicitly convert it.';
+    }
+    return '';
+  }
 
   function updateChannelControls(){
     const nav=document.getElementById('v2ChannelNav'),strip=document.getElementById('v2ChannelStrip'),selected=mappingObject(state.mapping.observed);
@@ -218,19 +281,43 @@
   }
 
   function updateGraphThresholdControls(){
-    const observedHasDepth=observedGraphSeries().some(source=>isThresholdQuantity(source.quantity||mappedQuantity(source.key)));
-    const modelHasDepth=(state.mapping.models||[]).some(key=>isThresholdQuantity(mappedQuantity(key)));
+    const observedContext=thresholdContext(observedThresholdSelection());
+    const modelContext=thresholdContext(modelThresholdSelection());
     const observedControl=document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]');
     const modelControl=document.querySelector('#v2GraphToolbar [data-threshold-role="model"]');
-    if(observedControl)observedControl.hidden=!observedHasDepth;
-    if(modelControl)modelControl.hidden=!modelHasDepth;
+    if(observedControl)observedControl.hidden=!observedContext;
+    if(modelControl)modelControl.hidden=!modelContext;
+    if($('graphObsThresholdContext'))$('graphObsThresholdContext').textContent=thresholdContextText(observedContext);
+    if($('graphModelThresholdContext'))$('graphModelThresholdContext').textContent=thresholdContextText(modelContext);
+    ui.thresholdContexts={observed:observedContext,model:modelContext};
+  }
+  function updateThresholdRangeStatus(observedEntries,modelEntries){
+    const apply=(role,context,value,entries)=>{
+      const target=$(role==='observed'?'graphObsThresholdContext':'graphModelThresholdContext');
+      if(!target||!context)return;
+      const values=entries.filter(x=>isThresholdQuantity(x.quantity)).flatMap(x=>x.source?.data?.value||[]).map(Number).filter(Number.isFinite);
+      let text=thresholdContextText(context);
+      if(value!==null&&values.length){
+        const min=Math.min(...values),max=Math.max(...values),unit=context.unit?' '+context.unit:'';
+        if(value<min||value>max)text+=' · configured '+fmt(value,4)+unit+' is outside plotted support '+fmt(min,4)+'–'+fmt(max,4)+unit+'; threshold remains configured.';
+      }
+      target.textContent=text;
+    };
+    apply('observed',thresholdContext(observedThresholdSelection()),numericThreshold('obsThreshold','Observed threshold'),observedEntries);
+    apply('model',thresholdContext(modelThresholdSelection()),numericThreshold('modelThreshold','Model threshold'),modelEntries);
   }
 
   async function v2ApplyMapping() {
     const previousMapping=JSON.stringify(state.mapping);
+    const previousObservedContext=thresholdContext(observedThresholdSelection(state.mapping.observed));
+    const previousModelContext=thresholdContext(modelThresholdSelection(state.mapping.models));
     state.mapping.observed = $('observedSelect').value;
     state.mapping.models = [...$('modelSelect').selectedOptions].map(o => o.value);
     state.mapping.rain = $('rainSelect').value;
+    const thresholdMessages=[
+      reconcileThresholdContext('observed',previousObservedContext,thresholdContext(observedThresholdSelection())),
+      reconcileThresholdContext('model',previousModelContext,thresholdContext(modelThresholdSelection())),
+    ].filter(Boolean);
     const mappingChanged=previousMapping!==JSON.stringify(state.mapping);
     if(mappingChanged&&state.rating){
       state.rating=null;
@@ -242,7 +329,7 @@
     const obs = mappingObject(state.mapping.observed);
     const models = currentModels();
     if (!obs && !state.mapping.rain) throw new Error('Select an observed or rainfall series.');
-    $('mappingStatus').textContent = `Observed: ${obs?seriesLabel(obs.item, obs.col):'not mapped'} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`;
+    $('mappingStatus').textContent = `Observed: ${obs?seriesLabel(obs.item, obs.col):'not mapped'} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`+(thresholdMessages.length?' '+thresholdMessages.join(' '):'');
     renderModelColourControls();
     renderExclusions();
     if($('graphObsThreshold'))$('graphObsThreshold').value=$('obsThreshold').value;
@@ -603,6 +690,7 @@
       window.__ICM_WORKBENCH__.lastGraphMode=fdvMode?'fdv-multi-variable':'single-series';
       window.__ICM_WORKBENCH__.lastPanelOrder=panelOrder;
       renderGraphStatistics(statisticRows,displayRange);
+      updateThresholdRangeStatus(observedEntries,modelEntries);
       const density=$('graphDensity');
       if(density){
         const native=Object.values(pointCounts).every(x=>x.native),shown=Object.values(pointCounts).reduce((sum,x)=>sum+(x.shown||0),0),raw=Object.values(pointCounts).reduce((sum,x)=>sum+(x.raw||0),0);
@@ -682,12 +770,15 @@
   }
 
   async function v2RunSpills() {
-    const observed = mappingObject(state.mapping.observed);
-    const model = mappingObject($('spillModelSelect').value);
-    if (!observed && !model) throw new Error('Map an observed series first. A model series is optional.');
-    const observedThreshold = $('obsThreshold').value;
-    const modelThreshold = $('modelThreshold').value;
-    if (observedThreshold === '' && (!model || modelThreshold === '')) throw new Error('Enter at least one spill threshold.');
+    const observed = observedThresholdSelection();
+    const activeModelKey=$('spillModelSelect').value;
+    const model = thresholdSelectionForKey(activeModelKey);
+    const observedThreshold = numericThreshold('obsThreshold','Observed threshold');
+    const modelThreshold = numericThreshold('modelThreshold','Model threshold');
+    if (observedThreshold!==null&&!observed) throw new Error('Observed spill threshold requires a mapped Depth or Level series. Flow and Velocity cannot consume a hydraulic-level threshold.');
+    if (modelThreshold!==null&&activeModelKey&&!model) throw new Error('Model spill threshold requires the active model to be a Depth or Level series. Flow and Velocity cannot consume a hydraulic-level threshold.');
+    if (!observed && !model) throw new Error('Map an eligible observed or model Depth / Level series before calculating hydraulic-level spills.');
+    if (observedThreshold===null && (!model || modelThreshold===null)) throw new Error('Enter at least one spill threshold.');
 
     const exclusionsFor=(role,key)=>JSON.stringify(exclusionPayload(true,role,key));
     const bounds=analysisBounds();
@@ -697,15 +788,15 @@
     state.spills = {};
     const started = performance.now();
 
-    if (observed && observedThreshold !== '') {
+    if (observed && observedThreshold !== null) {
       setOperationStatus('Calculating observed EDM spills…', 'running');
       await nextPaint();
-      state.spills.observed = await engine.call('spill_result',{path:observed.item.virtualPath,column:observed.col,threshold:Number(observedThreshold),exclusions_json:exclusionsFor('observed',state.mapping.observed),max_gap_seconds:gap,...bounds});
+      state.spills.observed = await engine.call('spill_result',{path:observed.item.virtualPath,column:observed.col,threshold:observedThreshold,exclusions_json:exclusionsFor('observed',sourceKey(observed.item.id,observed.col)),max_gap_seconds:gap,...bounds});
     }
-    if (model && modelThreshold !== '') {
+    if (model && modelThreshold !== null) {
       setOperationStatus('Calculating modelled spills…', 'running');
       await nextPaint();
-      state.spills.model = await engine.call('spill_result',{path:model.item.virtualPath,column:model.col,threshold:Number(modelThreshold),exclusions_json:exclusionsFor('model',$('spillModelSelect').value),max_gap_seconds:gap,...bounds});
+      state.spills.model = await engine.call('spill_result',{path:model.item.virtualPath,column:model.col,threshold:modelThreshold,exclusions_json:exclusionsFor('model',sourceKey(model.item.id,model.col)),max_gap_seconds:gap,...bounds});
     }
     state.spillSnapshot={config,signature,results:JSON.parse(JSON.stringify(state.spills))};
     renderSpillsV2();
