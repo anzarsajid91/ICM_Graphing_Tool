@@ -46,6 +46,18 @@ assert.equal(snapshot.sources.find(x=>x.id==='model').role,'model');
 assert.equal(snapshot.series.some(x=>x.column==='Seconds'),false);
 assert.equal(snapshot.series.filter(x=>x.assetId==='FM01').length,3);
 assert.equal(snapshot.relationships.length,2);
+assert.equal(snapshot.assets.find(x=>x.id==='FM01').metadata.diameterMm,450);
+assert.equal(snapshot.assets.find(x=>x.id==='FM01').metadata.associationStatus,'valid');
 assert.equal(snapshot.assets.some(x=>x.id==='FM00'),true);
 assert.equal(snapshot.assets.some(x=>x.id==='RG01'),true);
+
+registry.setRelationships([
+  {monitor:'FM01',rain_gauge:'RG01',diameter_mm:450,upstream:[]},
+],'fm_rg_assoc.xlsx',[
+  {severity:'error',monitor:'FM01',field:'monitor',message:'Conflicting duplicate monitor row.'},
+]);
+const ambiguous=registry.snapshot().assets.find(x=>x.id==='FM01');
+assert.equal(ambiguous.metadata.diameterMm,null);
+assert.equal(ambiguous.metadata.associationStatus,'ambiguous');
+
 console.log('Domain registry regressions passed: source roles, hydraulic quantities, auxiliary filtering and association relationships.');
