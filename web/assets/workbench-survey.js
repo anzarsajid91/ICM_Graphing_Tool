@@ -5,7 +5,9 @@
     association: null,
     associationSource: null,
     batch: null,
+    batchSignature: null,
     balance: null,
+    balanceSignature: null,
     generation: 0,
   };
   window.__ICM_WORKBENCH__.survey = survey;
@@ -496,14 +498,39 @@
       amber_tolerance_percent: Number(document.getElementById('surveyBalanceTolerance') && document.getElementById('surveyBalanceTolerance').value || 10),
     };
   }
+  function surveyDependencySignature(kind='complete') {
+    const controls=currentControls();
+    const association=(survey.association?.records||[]).map(row=>({
+      monitor:row.monitor||null,rain_gauge:row.rain_gauge||null,diameter_mm:row.diameter_mm??null,upstream:row.upstream||[]
+    }));
+    return JSON.stringify({
+      kind,
+      analysis:typeof analysisSignature==='function'?analysisSignature():null,
+      association,
+      association_source:survey.associationSource?{name:survey.associationSource.name||null,sha256:survey.associationSource.sha256||null,sheet:survey.associationSource.sheet||null}:null,
+      monitor_sources:monitorSourceSpecs(),
+      rain_sources:kind==='complete'?rainSourceSpecs():[],
+      controls,
+      population_above_50k:document.getElementById('surveyPopulation')?document.getElementById('surveyPopulation').value==='over50':true,
+      apply_fault_cutoff:Boolean(document.getElementById('surveyApplyFaultCutoff')&&document.getElementById('surveyApplyFaultCutoff').checked),
+    });
+  }
+  function surveyFresh(kind){
+    if(kind==='balance')return Boolean(survey.balance&&survey.balanceSignature===surveyDependencySignature('balance'));
+    return Boolean(survey.batch&&survey.batchSignature===surveyDependencySignature('complete'));
+  }
+  window.__ICM_WORKBENCH__.surveyDependencySignature=surveyDependencySignature;
+  window.__ICM_WORKBENCH__.surveyFresh=surveyFresh;
 
   function invalidateSurveyResults(reason) {
-    survey.batch = null;
-    survey.balance = null;
+    // Preserve the previous evidence for review, but invalidate its dependency
+    // signature immediately. Stale results are never exported as current.
+    survey.generation += 1;
     const status = document.getElementById('completeSurveyStatus');
-    if (status) status.textContent = reason + ' Re-run the complete survey assessment.';
+    if (status && survey.batch) status.textContent = reason + ' Previous complete-survey results are stale; re-run before relying on or exporting them.';
     const summary = document.getElementById('surveyBalanceSummary');
-    if (summary) summary.innerHTML = '<div class="privacy-note">' + esc(reason) + ' Recalculate volume balance before relying on the previous result.</div>';
+    if (summary && survey.balance) summary.insertAdjacentHTML('afterbegin','<div class="privacy-note"><strong>Stale:</strong> ' + esc(reason) + ' Recalculate volume balance before relying on the previous result.</div>');
+    renderReportPreflight();
   }
 
   async function runSurveyBalance() {
@@ -514,6 +541,7 @@
     button.textContent = 'Calculating…';
     try {
       const controls = currentControls();
+      const signature=surveyDependencySignature('balance'),generation=++survey.generation;
       const result = await engine.call('survey_volume_balance_result', {
         association_json: JSON.stringify(survey.association.records),
         monitor_sources_json: JSON.stringify(monitorSourceSpecs()),
@@ -523,8 +551,11 @@
         end: controls.end,
         amber_tolerance_percent: controls.amber_tolerance_percent,
       }, 'advanced_bridge');
+      if(generation!==survey.generation||signature!==surveyDependencySignature('balance'))throw new Error('Volume-balance inputs changed while calculation was running. The late result was discarded.');
       survey.balance = result;
+      survey.balanceSignature=signature;
       renderVolumeBalance(result);
+      renderReportPreflight();
       return result;
     } finally {
       button.disabled = false;
@@ -543,6 +574,7 @@
     const started=performance.now();
     try {
       const controls = currentControls();
+      const signature=surveyDependencySignature('complete'),generation=++survey.generation;
       const result = await engine.call('professional_survey_batch_result', {
         association_json: JSON.stringify(survey.association.records),
         monitor_sources_json: JSON.stringify(monitorSourceSpecs()),
@@ -558,10 +590,14 @@
         end: controls.end,
         amber_tolerance_percent: controls.amber_tolerance_percent,
       }, 'advanced_bridge');
+      if(generation!==survey.generation||signature!==surveyDependencySignature('complete'))throw new Error('Complete-survey inputs changed while calculation was running. The late result was discarded.');
       survey.batch = result;
+      survey.batchSignature=signature;
       survey.balance = result.volume_balance || null;
+      survey.balanceSignature=survey.balance?surveyDependencySignature('balance'):null;
       renderCompleteSurvey(result);
       renderVolumeBalance(survey.balance);
+      renderReportPreflight();
       const elapsed=(performance.now()-started)/1000;
       status.innerHTML='<strong>Complete survey assessment calculated.</strong> Workbook mappings were authoritative · '+fmt(elapsed,1)+' s.';
       return result;
@@ -847,9 +883,14 @@
     const comparison = readinessState(state.comparisonSnapshot);
     const spill = readinessState(state.spillSnapshot);
     const professional = window.__ICM_WORKBENCH__.lastProfessionalSurvey ?
-      { state: 'fresh', label: 'Fresh' } : { state: 'not-calculated', label: 'Not calculated' };
+      (window.__ICM_WORKBENCH__.professionalSurveyFresh?.()?{ state:'fresh',label:'Fresh' }:{ state:'stale',label:'Stale' }) :
+      { state: 'not-calculated', label: 'Not calculated' };
     const complete = survey.batch ?
-      { state: 'fresh', label: 'Fresh' } : { state: 'not-calculated', label: 'Not calculated' };
+      (surveyFresh('complete')?{ state:'fresh',label:'Fresh' }:{ state:'stale',label:'Stale' }) :
+      { state: 'not-calculated', label: 'Not calculated' };
+    const balance = survey.balance ?
+      (surveyFresh('balance')?{ state:'fresh',label:'Fresh' }:{ state:'stale',label:'Stale' }) :
+      { state: 'not-calculated', label: 'Not calculated' };
     const rating = !state.rating ?
       { state: 'not-calculated', label: 'Not calculated' } :
       (state.rating.signature && typeof ratingInputSignature === 'function' && state.rating.signature !== ratingInputSignature() ?
@@ -862,6 +903,7 @@
       ['spill', 'Spill / EDM', spill],
       ['professional-survey', 'Professional survey', professional],
       ['complete-survey', 'Complete survey', complete],
+      ['volume-balance', 'Volume balance', balance],
       ['rating', 'Rating / fitted relationship', rating],
       ['survey-association', 'Survey association', association],
     ];
@@ -891,6 +933,9 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       guarded('workspaceStatus', async () => {
+        if(survey.batch&&!surveyFresh('complete'))throw new Error('Complete flow-survey results are stale. Re-run the assessment before exporting.');
+        if(survey.balance&&!surveyFresh('balance'))throw new Error('Volume-balance results are stale. Recalculate before exporting.');
+        if(window.__ICM_WORKBENCH__.lastProfessionalSurvey&&!window.__ICM_WORKBENCH__.professionalSurveyFresh?.())throw new Error('Professional flow-survey results are stale. Re-run the assessment before exporting.');
         const extra = surveyReportHtml();
         if (!state.mapping.observed && !state.mapping.rain) {
           const body = '<div class="note">Survey-only report. No hydraulic or rainfall graph mapping was available for the full engineering report.</div>' + extra + reportSources(workspaceObject()) + reportExclusions(workspaceObject());
