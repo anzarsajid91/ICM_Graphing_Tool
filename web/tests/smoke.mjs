@@ -1665,6 +1665,13 @@ try{
   await page.waitForFunction(()=>JSON.stringify(window.__ICM_WORKBENCH__.lastPanelOrder)===JSON.stringify(['rainfall','flow']),null,{timeout:60000});
   const selectedChannelMode=await page.evaluate(()=>window.__ICM_WORKBENCH__.uiV2?.channelMode||null);
   if(selectedChannelMode!=='flow')throw new Error('Flow channel navigation did not retain its selected state: '+JSON.stringify(selectedChannelMode));
+  if(await page.locator('#v2GraphToolbar [data-threshold-role="observed"]').evaluate(el=>!el.hidden))throw new Error('Flow-only FDV view must not expose a hydraulic-level threshold control.');
+  await page.click('#v2ChannelNav [data-channel="velocity"]');
+  await page.waitForFunction(()=>JSON.stringify(window.__ICM_WORKBENCH__.lastPanelOrder)===JSON.stringify(['rainfall','velocity']),null,{timeout:60000});
+  if(await page.locator('#v2GraphToolbar [data-threshold-role="observed"]').evaluate(el=>!el.hidden))throw new Error('Velocity-only FDV view must not expose a hydraulic-level threshold control.');
+  await page.click('#v2ChannelNav [data-channel="depth"]');
+  await page.waitForFunction(()=>JSON.stringify(window.__ICM_WORKBENCH__.lastPanelOrder)===JSON.stringify(['rainfall','depth']),null,{timeout:60000});
+  if(await page.locator('#v2GraphToolbar [data-threshold-role="observed"]').evaluate(el=>el.hidden))throw new Error('Depth FDV view must expose the observed hydraulic threshold control.');
   await page.click('#v2ChannelNav [data-channel="combined"]');
   await page.waitForFunction(()=>JSON.stringify(window.__ICM_WORKBENCH__.lastPanelOrder)===JSON.stringify(['rainfall','flow','depth','velocity']),null,{timeout:60000});
   await captureEvidence('01c-reference-fdv-graph');
