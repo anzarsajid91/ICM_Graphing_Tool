@@ -435,14 +435,16 @@ def _column_quantity_hint(column):
         return None
     if any(token in key for token in ("rainfall", "rain", "precip")):
         return "rainfall"
-    if any(token in key for token in ("velocity", "vel")):
+    # Resolve level/stage before velocity shorthand. "level" contains "vel",
+    # so a broad substring check would otherwise misclassify hydraulic level.
+    if any(token in key for token in ("waterlevel", "level", "stage")):
+        return "level"
+    if "velocity" in key or key == "vel":
         return "velocity"
     if any(token in key for token in ("discharge", "flow")):
         return "flow"
     if "depth" in key:
         return "depth"
-    if any(token in key for token in ("waterlevel", "level", "stage")):
-        return "level"
     return None
 
 
