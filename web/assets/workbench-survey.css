@@ -309,8 +309,8 @@
 .report-readiness-reason{
   grid-column:1/-1;
   color:#61778a;
-  font-size:9.5px;
-  line-height:1.35;
+  font-size:11px;
+  line-height:1.4;
 }
 .report-readiness-state[data-state="current"]{color:#17643f}
 .report-readiness-state[data-state="partial"]{color:#8a5a00}
