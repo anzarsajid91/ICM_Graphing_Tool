@@ -35,6 +35,30 @@ def rating_curve_fit(depth, flow, diameter_m=None):
             "n": int(len(d)),
             "message": "At least 5 positive valid depth-flow pairs are required.",
         }
+    depth_span = float(d.max() - d.min())
+    flow_span = float(q.max() - q.min())
+    depth_scale = max(1.0, float(np.nanmax(np.abs(d.to_numpy()))))
+    flow_scale = max(1.0, float(np.nanmax(np.abs(q.to_numpy()))))
+    if d.nunique(dropna=True) < 3 or depth_span <= np.finfo(float).eps * depth_scale * 100:
+        return {
+            **base,
+            "ok": False,
+            "n": int(len(d)),
+            "message": "Insufficient depth variation for a defensible fitted rating relationship.",
+            "depth_min": float(d.min()),
+            "depth_max": float(d.max()),
+        }
+    if q.nunique(dropna=True) < 3 or flow_span <= np.finfo(float).eps * flow_scale * 100:
+        return {
+            **base,
+            "ok": False,
+            "n": int(len(d)),
+            "message": "Insufficient flow variation for a defensible fitted rating relationship.",
+            "depth_min": float(d.min()),
+            "depth_max": float(d.max()),
+            "flow_min": float(q.min()),
+            "flow_max": float(q.max()),
+        }
     x = np.log10(d.to_numpy())
     y = np.log10(q.to_numpy())
     b, loga = np.polyfit(x, y, 1)
