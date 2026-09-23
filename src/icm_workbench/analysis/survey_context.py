@@ -21,7 +21,8 @@ _HEADER_ALIASES = {
     },
     "diameter_mm": {
         "diameter", "diametermm", "pipediameter", "pipediametermm",
-        "pipediam", "pipeidmm",
+        "pipediam", "pipeidmm", "diameterm", "pipediameterm", "pipeidm",
+        "diametercm", "pipediametercm", "pipeidcm",
     },
     "upstream": {
         "upstream", "upstreamtrace", "upstreammonitor", "upstreammonitors",
@@ -50,6 +51,33 @@ def _float_or_none(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def _diameter_value_mm(value: Any, header: Any) -> tuple[float | None, str | None, bool]:
+    """Resolve supported diameter header units to canonical millimetres.
+
+    The historic fm_rg_assoc contract uses millimetres when the header carries no
+    explicit unit. Explicit m/cm headers are converted; unsupported explicit units
+    are left unresolved rather than guessed.
+    """
+    number = _float_or_none(value)
+    if number is None:
+        return None, None, True
+    raw_header = str(header or "")
+    token = _header_token(raw_header)
+    if any(x in token for x in ("inch", "inches", "feet", "foot")) or token.endswith("ft"):
+        return None, raw_header or None, False
+    if "centimet" in token or token.endswith("cm"):
+        return float(number) * 10.0, "cm", True
+    if "millimet" in token or token.endswith("mm"):
+        return float(number), "mm", True
+    if (
+        "metre" in token
+        or "meter" in token
+        or token in {"diameterm", "pipediameterm", "pipeidm"}
+    ):
+        return float(number) * 1000.0, "m", True
+    return float(number), "mm (assumed by fm_rg_assoc contract)", True
 
 
 def _split_upstream(value: Any) -> list[str]:
@@ -116,15 +144,26 @@ def normalise_association_table(
                     }
                 )
             continue
+        diameter_header = (
+            headers[positions["diameter_mm"]]
+            if positions["diameter_mm"] >= 0 and positions["diameter_mm"] < len(headers)
+            else None
+        )
+        diameter_raw = cell("diameter_mm")
+        diameter_mm, diameter_unit, diameter_unit_supported = _diameter_value_mm(
+            diameter_raw, diameter_header
+        )
         record = {
             "monitor": monitor,
             "rain_gauge": _clean_text(cell("rain_gauge")) or None,
-            "diameter_mm": _float_or_none(cell("diameter_mm")),
+            "diameter_mm": diameter_mm,
+            "diameter_raw": _clean_text(diameter_raw) or None,
+            "diameter_source_unit": diameter_unit,
             "upstream": _split_upstream(cell("upstream")),
             "source": "fm_rg_assoc.xlsx",
             "row": row_index,
         }
-        if _clean_text(cell("diameter_mm")) and record["diameter_mm"] is None:
+        if _clean_text(diameter_raw) and _float_or_none(diameter_raw) is None:
             issues.append(
                 {
                     "severity": "warning",
@@ -132,6 +171,19 @@ def normalise_association_table(
                     "monitor": monitor,
                     "field": "diameter_mm",
                     "message": "Pipe diameter is not numeric; workbook value retained as unresolved.",
+                }
+            )
+        elif _clean_text(diameter_raw) and not diameter_unit_supported:
+            issues.append(
+                {
+                    "severity": "warning",
+                    "row": row_index,
+                    "monitor": monitor,
+                    "field": "diameter_mm",
+                    "message": (
+                        "Pipe diameter unit is unsupported; use mm, cm or m. "
+                        "Diameter is treated as unresolved."
+                    ),
                 }
             )
         if record["diameter_mm"] is not None and record["diameter_mm"] <= 0:
