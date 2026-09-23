@@ -91,6 +91,7 @@ details.subpanel[open]>summary{margin-bottom:12px}
 .v2-operation-status.running{background:#eef6fd;color:#245f8e;border-color:#c8dfef}
 .v2-operation-status.done{background:#eff8f3;color:#276242;border-color:#cde4d5}
 .v2-operation-status.error{background:#fff3f2;color:#8b3430;border-color:#efd2cf}
+.v2-threshold-context{display:block;grid-column:1/-1;color:#66788a;font-size:11px;line-height:16px;overflow-wrap:anywhere}
 .v2-yearly-title{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:12px 0 7px}
 .v2-yearly-title h4{margin:0;color:#28465f;font-size:12.5px}
 .v2-yearly-title span{font-size:10.5px;color:#708294}
