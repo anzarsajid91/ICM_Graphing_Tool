@@ -890,7 +890,7 @@ try{
   if(await page.inputValue('#obsThreshold')!=='')throw new Error('Observed threshold must remain cleared in a model-only mapping.');
   if(await page.inputValue('#modelThreshold')!=='1.05')throw new Error('Model-only threshold did not persist into Spills.');
   await page.click('#runSpillsBtn');
-  await page.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in')&&Boolean(state.spills?.model)&&!state.spills?.observed&&Math.abs(Number(state.spillSnapshot?.config?.analysis?.model_threshold)-1.05)<1e-9,null,{timeout:60000});
   const modelOnlySpill=await page.evaluate(()=>({observed:Boolean(state.spills?.observed),model:Boolean(state.spills?.model),threshold:state.spillSnapshot?.config?.analysis?.model_threshold}));
   if(modelOnlySpill.observed||!modelOnlySpill.model||Math.abs(Number(modelOnlySpill.threshold)-1.05)>1e-9)throw new Error('Model-only spill calculation did not consume the canonical model threshold: '+JSON.stringify(modelOnlySpill));
 
