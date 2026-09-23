@@ -463,6 +463,8 @@ async function verifyStationAThresholdChain(){
     const plot=JSON.parse(html.slice(start+marker.length,end));
     const reportThreshold=(plot.layout?.shapes||[]).find(s=>s.type==='line'&&s.yref!=='paper');
     if(!reportThreshold||Math.abs(Number(reportThreshold.y0)-threshold)>1e-9)throw new Error('Station A report threshold line differs from the configured/calculated threshold: '+JSON.stringify({threshold,reportThreshold}));
+    const reportLevelAxis=plot.layout?.yaxis?.title?.text||'';
+    if(!/Level/i.test(reportLevelAxis)||!/\(m\)/i.test(reportLevelAxis)||!/\bAD\b/i.test(reportLevelAxis))throw new Error('Station A report level axis must retain quantity, unit and AD reference: '+reportLevelAxis);
     if(!html.includes('Observed / EDM hydraulic threshold')||!html.includes(String(threshold))||!html.includes('AD'))throw new Error('Station A report settings do not record the configured Level threshold with its vertical reference.');
     const dir=process.env.ICM_EVIDENCE_DIR;
     if(dir){
