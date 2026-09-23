@@ -35,9 +35,12 @@
   function inferQuantity(text){
     const n=normalise(text);
     if(n.includes('rain'))return 'rainfall';
-    if(n.includes('velocity')||n.includes('vel'))return 'velocity';
-    if((n.includes('flow_m3_s')||n.includes('flow')||n.includes('discharge'))&&!n.includes('overflow'))return 'flow';
+    // Resolve level/stage before the velocity shorthand. "level" itself contains
+    // the substring "vel", so broad substring matching would misclassify a
+    // hydraulic level column as velocity and break FastPath/authoritative parity.
     if(['level','stage','maod','mald','water_level'].some(x=>n.includes(x)))return 'level';
+    if(n.includes('velocity')||n==='vel'||/(^|_)vel($|_)/.test(n))return 'velocity';
+    if((n.includes('flow_m3_s')||n.includes('flow')||n.includes('discharge'))&&!n.includes('overflow'))return 'flow';
     if(n.includes('depth'))return 'depth';
     return null;
   }

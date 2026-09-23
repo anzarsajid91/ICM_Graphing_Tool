@@ -4,65 +4,76 @@ const qs=(sel,root=document)=>root.querySelector(sel);
 const qsa=(sel,root=document)=>[...root.querySelectorAll(sel)];
 const ROUTES={
   data:{
-    label:'Data & Time Series',
+    label:'Data / Time Series',
     icon:'data',
     pages:{
       sources:{label:'Sources',title:'Survey data sources',description:'Import, parse and audit survey, model and rainfall files in one local source pool.',root:()=>qs('.source-panel')},
-      'series-mapping':{label:'Series mapping',title:'Series mapping',description:'Map observed, model, rainfall and optional hydraulic channels from the shared catalogue.',root:()=>qs('.mapping-panel')},
-      'time-series':{label:'Time series',title:'Flow and rainfall review',description:'Review native hydraulic traces with rainfall, exclusions, thresholds and auditable statistics.',tab:'graph',root:()=>$('tab-graph')}
-    }
-  },
-  survey:{
-    label:'Flow Survey',
-    icon:'survey',
-    pages:{
-      configuration:{label:'Configuration',title:'Survey association configuration',description:'Review authoritative fm_rg_assoc.xlsx relationships, conflicts and topology evidence.',tab:'data-health',root:()=>$('tab-data-health')},
-      'data-health':{label:'Data Health',title:'Survey health and data coverage',description:'Inspect coverage, gaps, invalid values, flatlines and engineering suitability evidence.',tab:'data-health',root:()=>$('tab-data-health')},
-      'rainfall-response':{label:'Rainfall response',title:'Rainfall response evidence',description:'Review qualified rainfall and hydraulic response evidence with the existing FSAT-derived method.',tab:'data-health',root:()=>$('tab-data-health')},
-      'flow-continuity':{label:'Flow continuity',title:'Flow continuity and volume balance',description:'Assess downstream versus common-support upstream volume evidence with explicit limitations.',tab:'data-health',root:()=>$('tab-data-health')}
-    }
-  },
-  rainfall:{
-    label:'Rainfall',
-    icon:'rainfall',
-    pages:{
-      gauges:{label:'Gauges & accumulation',title:'Network rainfall gauges and accumulation',description:'Review gauge support, accumulation and network rainfall evidence without treating missing rainfall as dry.',tab:'data-health',root:()=>$('tab-data-health')},
-      events:{label:'Events & hydraulic response',title:'Rainfall events and hydraulic response',description:'Inspect event qualification, separation, coverage and linked hydraulic response.',tab:'rain-events',root:()=>$('tab-rain-events')}
-    }
-  },
-  verification:{
-    label:'Assessment',
-    icon:'verify',
-    pages:{
-      comparison:{label:'Comparison diagnostics',title:'Verification diagnostics',description:'Compare observed and modelled data using bounded interpolation and the canonical calibration metrics.',tab:'compare',root:()=>$('tab-compare')},
-      rating:{label:'Depth agreement / rating',title:'Depth and flow–depth diagnostics',description:'Inspect depth agreement or Q/H rating evidence with sample support and validity limitations.',tab:'compare',root:()=>$('tab-compare')},
-      dwf:{label:'DWF',title:'Dry-weather flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')},
-      storage:{label:'Storage screening',title:'Idealised storage screening',description:'Review support-aware storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')}
+      'series-mapping':{label:'Series Mapping',title:'Series mapping',description:'Map observed, model, rainfall and optional hydraulic channels from the shared catalogue.',root:()=>qs('.mapping-panel')},
+      'time-series':{label:'Time Series',title:'Hydraulic time series',description:'Review native hydraulic traces with rainfall, exclusions, thresholds and auditable statistics.',tab:'graph',root:()=>$('tab-graph')}
     }
   },
   spills:{
     label:'Spills',
     icon:'spills',
     pages:{
-      thresholds:{label:'Thresholds & exclusions',title:'Spill thresholds and exclusions',description:'Configure thresholds and auditable global/channel-specific exclusion periods.',tab:'spills',root:()=>$('tab-spills')},
-      results:{label:'Results',title:'Spill assessment results',description:'Review physical intervals, assessment support, canonical counts and observed/model differences.',tab:'spills',root:()=>$('tab-spills')}
+      assessment:{label:'Spill Assessment',title:'EDM / model spill assessment',description:'Configure thresholds and exclusions, then review physical spill intervals, 12/24 counts and observed/model evidence.',tab:'spills',root:()=>$('tab-spills')},
+      storage:{label:'Storage Assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')}
     }
   },
-  report:{
-    label:'Report',
+  survey:{
+    label:'Flow Survey',
+    icon:'survey',
+    pages:{
+      'fdv-check':{label:'FDV Check',title:'FDV check',description:'Data health, telemetry QA and whole-survey/weekly evidence with missing support reported as unknown.',tab:'data-health',root:()=>$('tab-data-health')},
+      'rainfall-check':{label:'Rainfall Check',title:'Rainfall check',description:'Rainfall QA, accumulation, event qualification and hydraulic-response evidence in one canonical workflow.',tab:'rain-events',root:()=>$('tab-rain-events')},
+      'volume-balance':{label:'Volume Balance',title:'Volume balance',description:'Assess upstream/downstream flow continuity on common valid temporal support with explicit assumptions.',tab:'data-health',root:()=>$('tab-data-health')}
+    }
+  },
+  graphs:{
+    label:'Graphs',
+    icon:'verify',
+    pages:{
+      comparison:{label:'Observed vs Modelled',title:'Observed versus modelled diagnostics',description:'Compare scenarios using the canonical bounded-alignment engine, scatter views and verification statistics.',tab:'compare',root:()=>$('tab-compare')},
+      rating:{label:'Depth / Rating',title:'Depth agreement and flow–depth diagnostics',description:'Inspect depth agreement and Q/H rating evidence with sample support and validity limitations.',tab:'compare',root:()=>$('tab-compare')},
+      dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
+    }
+  },
+  reports:{
+    label:'Reports',
     icon:'report',
     pages:{
-      workspace:{label:'Workspace save/restore',title:'Workspace save and restore',description:'Persist configuration and source fingerprints without embedding raw engineering files.',tab:'workspace',root:()=>$('tab-workspace')},
-      builder:{label:'Report builder',title:'Engineering report builder',description:'Review section readiness and export coherent engineering-report snapshots.',tab:'workspace',root:()=>$('tab-workspace')}
+      'report-generation':{label:'Report Generation',title:'Report generation',description:'Review result readiness and export a coherent snapshot of current authoritative analyses.',tab:'workspace',root:()=>$('tab-workspace')},
+      workspace:{label:'Workspace Save / Restore',title:'Workspace save and restore',description:'Persist configuration and source fingerprints without embedding raw engineering files.',tab:'workspace',root:()=>$('tab-workspace')}
     }
   }
 };
+const ROUTE_ALIASES={
+  'verification/comparison':['graphs','comparison'],
+  'verification/rating':['graphs','rating'],
+  'verification/dwf':['graphs','dwf'],
+  'verification/storage':['spills','storage'],
+  'spills/thresholds':['spills','assessment'],
+  'spills/results':['spills','assessment'],
+  'survey/configuration':['survey','fdv-check'],
+  'survey/data-health':['survey','fdv-check'],
+  'survey/rainfall-response':['survey','rainfall-check'],
+  'survey/flow-continuity':['survey','volume-balance'],
+  'rainfall/gauges':['survey','rainfall-check'],
+  'rainfall/events':['survey','rainfall-check'],
+  'report/builder':['reports','report-generation'],
+  'report/workspace':['reports','workspace']
+};
+function canonicalRoute(workspace,page){
+  if(ROUTES[workspace]?.pages[page])return {workspace,page};
+  const alias=ROUTE_ALIASES[workspace+'/'+page];
+  return alias?{workspace:alias[0],page:alias[1]}:null;
+}
 let current={workspace:'data',page:'sources'};
 let docked=[];
 let syncingLegacy=false;
 let focusPreference=null;
 let railCollapsed=false;
-const FOCUS_ROUTES=new Set(['data/time-series','verification/comparison','rainfall/events']);
+const FOCUS_ROUTES=new Set(['data/time-series','graphs/comparison','survey/rainfall-check']);
 try{
   const saved=sessionStorage.getItem('icm-pw-focus-canvas');
   if(saved==='on'||saved==='off')focusPreference=saved==='on';
@@ -155,8 +166,8 @@ function ensureSpillSurfaces(){
 function makeActionGroup(className='pw-surface-actions'){const x=document.createElement('div');x.className=className;return x;}
 function ensureReportSurfaces(){
   const panel=qs('#tab-workspace .panel');if(!panel||$('pwWorkspaceSurface'))return;
+  const builder=ensureSection('pwReportBuilderSurface','Report Generation','Check result readiness, select the report period where required, then export the engineering report.');
   const workspace=ensureSection('pwWorkspaceSurface','Workspace save / restore','Save local configuration and source fingerprints without embedding raw engineering files.');
-  const builder=ensureSection('pwReportBuilderSurface','Report output','Check result readiness, select the report period where required, then export the engineering report.');
   const workspaceName=$('workspaceName')?.closest('label'),named=$('namedWorkspaceSelect')?.closest('.actions');if(workspaceName)workspace.appendChild(workspaceName);if(named)workspace.appendChild(named);
   const wsActions=makeActionGroup();for(const id of ['downloadWorkspaceBtn','loadWorkspaceBtn']){const b=$(id);if(b){b.classList.remove('primary');b.textContent=id==='downloadWorkspaceBtn'?'Export workspace JSON':'Load workspace JSON';wsActions.appendChild(b);}}workspace.appendChild(wsActions);
   const wsStatus=$('workspaceStatus'),privacy=qs('#tab-workspace .privacy-note');if(wsStatus)workspace.appendChild(wsStatus);if(privacy)workspace.appendChild(privacy);
@@ -164,30 +175,38 @@ function ensureReportSurfaces(){
   const reportActions=makeActionGroup();for(const id of ['downloadReportBtn','downloadFourPeriodBtn']){const b=$(id);if(b){b.classList.toggle('primary',id==='downloadReportBtn');b.textContent=id==='downloadReportBtn'?'Export assessment report':'Export four-period report';reportActions.appendChild(b);}}builder.appendChild(reportActions);
   const mirror=document.createElement('div');mirror.id='pwReportStatusMirror';mirror.className='report-status pw-status-mirror';mirror.textContent=wsStatus?.textContent||'Report export ready when required analyses are current.';builder.appendChild(mirror);
   if(wsStatus)new MutationObserver(()=>{mirror.textContent=wsStatus.textContent;}).observe(wsStatus,{childList:true,subtree:true,characterData:true});
-  panel.append(workspace,builder);
+  panel.append(builder,workspace);
 }
 function preparePageComposition(){
   ensureDataHealthSurface();ensureSpillSurfaces();ensureReportSurfaces();
-  own($('surveyAssociationPanel'),['survey/configuration']);
-  own(qs('#tab-data-health .tool-main-section'),['survey/data-health']);
-  own(qs('.survey-professional'),['survey/rainfall-response','rainfall/gauges']);
-  own($('completeSurveyPanel'),['survey/rainfall-response']);
-  own($('surveyBalancePanel'),['survey/flow-continuity']);
-  own(qs('#tab-compare > .panel'),['verification/comparison','verification/rating','verification/dwf']);
-  own(qs('#tab-compare .tool-main-section'),['verification/comparison']);
-  own($('pwRatingPanel'),['verification/rating']);
-  own($('pwDwfPanel'),['verification/dwf']);
-  own($('tab-storage'),['verification/storage']);
-  own($('pwSpillThresholdSurface'),['spills/thresholds']);
-  own($('pwSpillResultsSurface'),['spills/results']);
-  own($('pwWorkspaceSurface'),['report/workspace']);
-  own($('pwReportBuilderSurface'),['report/builder']);
-  for(const sel of ['#tab-data-health>.panel>.panel-head','#tab-data-health .tool-main-head','#tab-spills>.panel>.panel-head','#tab-workspace>.panel>.panel-head']){const el=qs(sel);if(el)el.classList.add('pw-legacy-framing');}
+  const rainfallPanel=qs('#tab-rain-events > .panel');
+  const professional=qs('.survey-professional');
+  const completeSurvey=$('completeSurveyPanel');
+  if(rainfallPanel&&professional&&!rainfallPanel.contains(professional))rainfallPanel.appendChild(professional);
+  if(rainfallPanel&&completeSurvey&&!rainfallPanel.contains(completeSurvey))rainfallPanel.appendChild(completeSurvey);
+  own($('surveyAssociationPanel'),['survey/fdv-check']);
+  own(qs('#tab-data-health .tool-main-section'),['survey/fdv-check']);
+  own($('pwDataHealthSummary'),['survey/fdv-check']);
+  own(professional,['survey/rainfall-check']);
+  own(completeSurvey,['survey/rainfall-check']);
+  own($('surveyBalancePanel'),['survey/volume-balance']);
+  own(qs('#tab-compare > .panel'),['graphs/comparison','graphs/rating','graphs/dwf']);
+  own(qs('#tab-compare > .panel > .panel-head'),['graphs/comparison']);
+  own(qs('#tab-compare .tool-main-section'),['graphs/comparison']);
+  own($('pwRatingPanel'),['graphs/rating']);
+  own($('pwDwfPanel'),['graphs/dwf']);
+  own($('tab-storage'),['spills/storage']);
+  own($('pwSpillThresholdSurface'),['spills/assessment']);
+  own($('pwSpillResultsSurface'),['spills/assessment']);
+  own($('pwReportBuilderSurface'),['reports/report-generation']);
+  own($('pwWorkspaceSurface'),['reports/workspace']);
+  for(const sel of ['#tab-data-health>.panel>.panel-head','#tab-spills>.panel>.panel-head','#tab-workspace>.panel>.panel-head']){const el=qs(sel);if(el)el.classList.add('pw-legacy-framing');}
   for(const selector of ['#tab-spills .tool-main-section','#tab-workspace .tool-main-section']){const legacy=qs(selector);if(legacy)legacy.hidden=true;}
   const balanceBtn=$('runSurveyBalanceBtn');if(balanceBtn){balanceBtn.classList.add('primary');balanceBtn.textContent='Recalculate balance';}
   const ratingBtn=$('runRatingBtn');if(ratingBtn)ratingBtn.classList.add('primary');
   const dwfBtn=$('runDwfBtn');if(dwfBtn)dwfBtn.classList.add('primary');
 }
+
 function applyPageComposition(){
   preparePageComposition();
   const key=current.workspace+'/'+current.page;
@@ -197,7 +216,8 @@ function applyPageComposition(){
     // The legacy stylesheet contains display rules for active tab content.
     // Enforce route ownership inline as well so nested/embedded workflows have
     // identical containment in Chromium and Firefox.
-    node.style.display=hidden?'none':'';
+    if(hidden)node.style.setProperty('display','none','important');
+    else node.style.removeProperty('display');
   });
 }
 function buildShell(){
@@ -296,11 +316,11 @@ function inspectorContext(page){
   body.innerHTML='<div class="pw-context-card"><h4>Current context</h4><dl><dt>Workspace</dt><dd>'+esc(ROUTES[current.workspace].label)+'</dd><dt>Page</dt><dd>'+esc(page.label)+'</dd><dt>Processing</dt><dd>Local browser</dd></dl></div>';
   const root=page.root?.();
   if(current.workspace==='data'&&current.page==='time-series'){dock($('v2GraphToolbar'));dock($('sharedAnalysisPanel'));dock(qs('.appearance-panel',root));}
-  if(current.workspace==='verification'&&current.page==='comparison'){dock($('sharedAnalysisPanel'));dock(qs('.mapping-grid',root));dock(qs('.actions',root));}
-  if(current.workspace==='survey'&&current.page==='rainfall-response'){dock($('sharedAnalysisPanel'));dock(qs('.survey-method',root));}
-  if(current.workspace==='survey'&&current.page==='flow-continuity')dock($('sharedAnalysisPanel'));
-  if(current.workspace==='rainfall'&&current.page==='events')dock($('sharedAnalysisPanel'));
-  if(current.workspace==='verification'&&['rating','dwf','storage'].includes(current.page))dock($('sharedAnalysisPanel'));
+  if(current.workspace==='graphs'&&current.page==='comparison'){dock($('sharedAnalysisPanel'));dock(qs('.mapping-grid',root));dock(qs('.actions',root));}
+  if(current.workspace==='survey'&&current.page==='rainfall-check'){dock($('sharedAnalysisPanel'));dock(qs('.survey-method',root));}
+  if(current.workspace==='survey'&&current.page==='volume-balance')dock($('sharedAnalysisPanel'));
+  if(current.workspace==='graphs'&&['rating','dwf'].includes(current.page))dock($('sharedAnalysisPanel'));
+  if(current.workspace==='spills'&&current.page==='storage')dock($('sharedAnalysisPanel'));
   const useful=docked.length>0;
   document.body.classList.toggle('pw-has-inspector',useful);
   if(inspector){inspector.hidden=!useful;if(!useful)inspector.classList.remove('is-open');}
@@ -316,26 +336,28 @@ function legacyTab(name){
 function wireLegacyNavigation(){
   const defaults={
     graph:['data','time-series'],
-    'data-health':['survey','data-health'],
-    'rain-events':['rainfall','events'],
-    compare:['verification','comparison'],
-    storage:['verification','storage'],
-    spills:['spills','results'],
-    workspace:['report','builder']
+    'data-health':['survey','fdv-check'],
+    'rain-events':['survey','rainfall-check'],
+    compare:['graphs','comparison'],
+    storage:['spills','storage'],
+    spills:['spills','assessment'],
+    workspace:['reports','report-generation']
   };
   qsa('.tabs .tab[data-tab]').forEach(btn=>btn.addEventListener('click',()=>{
     if(syncingLegacy)return;
     const next=defaults[btn.dataset.tab];if(next)navigate(next[0],next[1],false);
   }));
 }
+
 function routeKey(){return 'pw-route-'+current.workspace+'-'+current.page;}
 function clearRouteClasses(){[...document.body.classList].filter(x=>x.startsWith('pw-route-')).forEach(x=>document.body.classList.remove(x));}
 function parseHash(){
   const raw=location.hash.replace(/^#\/?/,'').trim();if(!raw)return null;
-  const [w,p]=raw.split('/');return ROUTES[w]?.pages[p]?{workspace:w,page:p}:null;
+  const [w,p]=raw.split('/');return canonicalRoute(w,p);
 }
 function navigate(workspace,page,push=false){
-  if(!ROUTES[workspace]?.pages[page])return;
+  const resolved=canonicalRoute(workspace,page);if(!resolved)return;
+  workspace=resolved.workspace;page=resolved.page;
   restoreDocked();
   current={workspace,page};
   const spec=ROUTES[workspace],p=spec.pages[page];
@@ -345,16 +367,16 @@ function navigate(workspace,page,push=false){
   // Route ownership is semantic, not only visual. Explicitly hide every
   // legacy tab panel before exposing the selected Precision route so an
   // old active-tab class can never leak another task's primary action.
-  qsa('main.shell>.tab-panel').forEach(x=>{x.hidden=true;});
+  qsa('main.shell>.tab-panel').forEach(x=>{x.hidden=true;x.style.setProperty('display','none','important');});
   const root=p.root?.();
   if(root){
     root.classList.add('pw-route-visible');
-    if(root.classList.contains('tab-panel'))root.hidden=false;
+    if(root.classList.contains('tab-panel')){root.hidden=false;root.style.removeProperty('display');}
     let ancestor=root.parentElement;
     while(ancestor&&ancestor!==qs('main.shell')){
       if(ancestor.classList.contains('tab-panel')||ancestor.classList.contains('embedded-workflow')){
         ancestor.classList.add('pw-route-visible');
-        if(ancestor.classList.contains('tab-panel'))ancestor.hidden=false;
+        if(ancestor.classList.contains('tab-panel')){ancestor.hidden=false;ancestor.style.removeProperty('display');}
       }
       ancestor=ancestor.parentElement;
     }

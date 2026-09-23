@@ -221,7 +221,7 @@
     association.innerHTML =
       '<div class="subhead"><div><h3>Survey configuration — fm_rg_assoc.xlsx</h3>' +
       '<p>The association workbook is authoritative for monitor → rain gauge, pipe diameter and upstream-flow relationships. Conflicts inferred from FDV/source metadata are shown but do not override the workbook.</p></div>' +
-      '<div class="actions"><button class="btn primary" id="chooseAssocBtn" type="button">Load fm_rg_assoc.xlsx</button>' +
+      '<div class="actions"><button class="btn" id="chooseAssocBtn" type="button">Load fm_rg_assoc.xlsx</button>' +
       '<input id="assocFileInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></div></div>' +
       '<div id="surveyAssociationStatus" class="pool-summary">No association workbook loaded. You can load it directly or include it in the selected survey folder.</div>' +
       '<div id="surveyAssociationSummary"></div><div id="surveyAssociationTable"></div>';
@@ -233,7 +233,7 @@
     full.innerHTML =
       '<div class="subhead"><div><h3>Complete survey assessment</h3>' +
       '<p>Runs the mapped network rainfall qualification and FSAT-derived weekly monitor assessment across the survey, then applies the workbook diameter to Event Response criteria.</p></div>' +
-      '<button class="btn primary" id="runCompleteSurveyBtn" type="button">Run complete survey assessment</button></div>' +
+      '<button class="btn" id="runCompleteSurveyBtn" type="button">Run complete survey assessment</button></div>' +
       '<div class="survey-control-grid">' +
       '<label>Volume-balance Amber tolerance (%)<input id="surveyBalanceTolerance" type="number" min="0" max="50" step="1" value="10"></label>' +
       '<div class="survey-control-note">Analysis start/end and maximum gap use the shared workbench controls. Exclusions remain scoped: Observed / EDM applies to survey hydraulics; Rainfall applies to .R data. Antecedent source data remains available to Event Response diagnostics.</div></div>' +
@@ -338,7 +338,7 @@
     }, 'advanced_bridge');
     result.sheet_name = table.sheetName;
     survey.association = result;
-    window.ICMProjectRegistry?.setRelationships(result.records || [], file.name);
+    window.ICMProjectRegistry?.setRelationships(result.records || [], file.name, result.issues || []);
     survey.associationSource = {
       name: file.name,
       size: file.size,
@@ -369,7 +369,7 @@
     }, 'advanced_bridge');
     refreshed.sheet_name = survey.association.sheet_name || survey.associationSource?.sheet || null;
     survey.association = refreshed;
-    window.ICMProjectRegistry?.setRelationships(refreshed.records || [], survey.associationSource?.name || 'fm_rg_assoc.xlsx');
+    window.ICMProjectRegistry?.setRelationships(refreshed.records || [], survey.associationSource?.name || 'fm_rg_assoc.xlsx', refreshed.issues || []);
     renderAssociation();
   }
 
@@ -868,6 +868,11 @@
       { state: 'fresh', label: 'Fresh' } : { state: 'not-calculated', label: 'Not calculated' };
     const complete = survey.batch ?
       { state: 'fresh', label: 'Fresh' } : { state: 'not-calculated', label: 'Not calculated' };
+    const rating = !state.rating ?
+      { state: 'not-calculated', label: 'Not calculated' } :
+      (state.rating.signature && typeof ratingInputSignature === 'function' && state.rating.signature !== ratingInputSignature() ?
+        { state: 'stale', label: 'Stale' } :
+        { state: 'fresh', label: 'Fresh' });
     const association = survey.association ?
       { state: 'loaded', label: 'Loaded' } : { state: 'not-loaded', label: 'Not loaded' };
     const rows = [
@@ -875,6 +880,7 @@
       ['spill', 'Spill / EDM', spill],
       ['professional-survey', 'Professional survey', professional],
       ['complete-survey', 'Complete survey', complete],
+      ['rating', 'Rating / fitted relationship', rating],
       ['survey-association', 'Survey association', association],
     ];
     root.innerHTML = rows.map(([key, label, status]) =>
@@ -904,8 +910,8 @@
       event.stopImmediatePropagation();
       guarded('workspaceStatus', async () => {
         const extra = surveyReportHtml();
-        if (!state.mapping.observed) {
-          const body = '<div class="note">Survey-only report. No observed graph mapping was required for this export.</div>' + extra + reportSources(workspaceObject()) + reportExclusions(workspaceObject());
+        if (!state.mapping.observed && !state.mapping.rain) {
+          const body = '<div class="note">Survey-only report. No hydraulic or rainfall graph mapping was available for the full engineering report.</div>' + extra + reportSources(workspaceObject()) + reportExclusions(workspaceObject());
           downloadBlob('icm-workbench-survey-report-' + new Date().toISOString().slice(0, 10) + '.html', reportShell('ICM Graphing Tool — Flow Survey Assessment', 'Association-driven survey QA, Event Response and flow-continuity review', body, true), 'text/html');
           document.getElementById('workspaceStatus').textContent = 'Survey assessment HTML downloaded.';
           return;
