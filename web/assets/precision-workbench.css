@@ -229,6 +229,11 @@ body.precision-workbench{
 .pw-route-spills-results #pwSpillResultsSurface>.two-col{margin-top:0}
 .pw-route-report-provenance #pwProvenanceSurface #domainRegistryPanel{display:block!important;margin:0}
 .pw-status-mirror{margin:0!important}
+.pw-report-options{display:grid;gap:16px;padding:16px}
+.pw-report-options .mapping-grid{align-items:start}
+.pw-check-stack{display:grid;gap:8px;padding-top:4px}
+.pw-check-stack>span{display:flex;align-items:center;gap:8px;font-weight:500}
+.pw-report-options select[multiple]{min-height:112px}
 .pw-domain-provenance{margin-top:0}
 .precision-workbench input[type="checkbox"],.precision-workbench input[type="radio"]{width:18px;height:18px;min-height:18px!important;flex:0 0 18px;padding:0}
 .precision-workbench .ex-row{grid-template-columns:72px minmax(180px,1fr) minmax(180px,1fr) minmax(160px,.8fr) auto;grid-template-areas:"enabled start end scope remove" ". reason reason reason .";gap:8px 12px;align-items:end}
