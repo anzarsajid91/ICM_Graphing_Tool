@@ -496,18 +496,18 @@ function surveyRainfallR(){
   const values=Array.from({length:200},(_,i)=>i<20?12:0);
   return Buffer.from(`*CSTART\n2601050000 2601050640 2\n*CEND\n${values.join(' ')}\n`,'utf8');
 }
-async function associationWorkbook(){
-  const bytes=await page.evaluate(()=>{
+async function associationWorkbook({variant=false}={}){
+  const bytes=await page.evaluate(variant=>{
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.aoa_to_sheet([
       ['FDV_Name','RG','Pipe Diameter (mm)','Upstream Trace'],
-      ['FM03','RG02',600,'FM01, FM02'],
+      ['FM03','RG02',600,variant?'FM01':'FM01, FM02'],
       ['FM01','RG01',450,''],
       ['FM02','RG01',450,''],
     ]);
     XLSX.utils.book_append_sheet(wb,ws,'Associations');
     return Array.from(new Uint8Array(XLSX.write(wb,{type:'array',bookType:'xlsx'})));
-  });
+  },variant);
   return {name:'fm_rg_assoc.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(bytes)};
 }
 
@@ -1014,6 +1014,25 @@ try{
   const fm03Balance=(completeSurvey.volume_balance?.rows||[]).find(x=>x.downstream_monitor==='FM03');
   if(!fm03Balance||fm03Balance.rag!=='Green'||fm03Balance.legacy_fsat_status!=='OK')throw new Error('Expected FM03 downstream volume balance to reconcile Green/OK: '+JSON.stringify(fm03Balance));
   if(!((await page.locator('#surveyBalanceTable').textContent())||'').includes('Likely source / first check'))throw new Error('Volume-balance diagnostic recommendation column is missing');
+
+  // Association/topology is a calculation dependency. Change the FM03 upstream
+  // topology and require the already-calculated complete/balance evidence to
+  // become stale without being silently deleted.
+  const completeSignatureBeforeTopology=await page.evaluate(()=>window.__ICM_WORKBENCH__.surveyDependencySignature?.('complete'));
+  await precisionRoute('survey','fdv-check');
+  await page.setInputFiles('#assocFileInput',await associationWorkbook({variant:true}));
+  await page.waitForFunction(previous=>window.__ICM_WORKBENCH__.surveyDependencySignature?.('complete')!==previous,completeSignatureBeforeTopology,{timeout:60000});
+  const topologyStale=await page.evaluate(()=>({
+    completeExists:Boolean(window.__ICM_WORKBENCH__.survey?.batch),
+    balanceExists:Boolean(window.__ICM_WORKBENCH__.survey?.balance),
+    completeFresh:window.__ICM_WORKBENCH__.surveyFresh?.('complete'),
+    balanceFresh:window.__ICM_WORKBENCH__.surveyFresh?.('balance'),
+  }));
+  if(!topologyStale.completeExists||!topologyStale.balanceExists||topologyStale.completeFresh!==false||topologyStale.balanceFresh!==false)throw new Error('Association topology change did not stale dependent survey evidence: '+JSON.stringify(topologyStale));
+  await page.setInputFiles('#assocFileInput',await associationWorkbook());
+  await page.waitForFunction(original=>window.__ICM_WORKBENCH__.surveyDependencySignature?.('complete')===original,completeSignatureBeforeTopology,{timeout:60000});
+  if(await page.evaluate(()=>window.__ICM_WORKBENCH__.surveyFresh?.('complete')!==true||window.__ICM_WORKBENCH__.surveyFresh?.('balance')!==true))throw new Error('Restoring the exact authoritative association context did not restore dependency equivalence.');
+
   // Capture Data Health again with representative FM/RG survey sources populated.
   await precisionRoute('survey','data-health');
   await page.click('#runHealthBtn');
