@@ -328,7 +328,7 @@
     }
     const obs = mappingObject(state.mapping.observed);
     const models = currentModels();
-    if (!obs && !state.mapping.rain) throw new Error('Select an observed or rainfall series.');
+    if (!obs && !models.length && !state.mapping.rain) throw new Error('Select at least one observed, modelled or rainfall series.');
     $('mappingStatus').textContent = `Observed: ${obs?seriesLabel(obs.item, obs.col):'not mapped'} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`+(thresholdMessages.length?' '+thresholdMessages.join(' '):'');
     renderModelColourControls();
     renderExclusions();
@@ -474,9 +474,10 @@
   }
 
   function graphTitle(fdvMode,observedEntries,modelEntries){
-    const prefix=modelEntries.length?'Observed vs Simulated':'Observed';
+    const hasObserved=observedEntries.length>0,hasModel=modelEntries.length>0;
+    const prefix=hasObserved&&hasModel?'Observed vs Simulated':hasModel?'Simulated':'Observed';
     if(fdvMode)return prefix+' — All';
-    const quantity=String(observedEntries[0]?.quantity||'').toLowerCase();
+    const quantity=String(observedEntries[0]?.quantity||modelEntries[0]?.quantity||'').toLowerCase();
     const label={depth:'Depth',level:'Level',flow:'Flow',velocity:'Velocity',rainfall:'Rainfall'}[quantity];
     return prefix+(label?' — '+label:'');
   }
@@ -501,7 +502,7 @@
   }
 
   async function v2DrawGraph(range=ui.graphRange,options={}) {
-    if (!state.mapping.observed && !state.mapping.rain) {
+    if (!state.mapping.observed && !(state.mapping.models||[]).length && !state.mapping.rain) {
       Plotly.purge('timeChart');
       return;
     }
@@ -644,14 +645,14 @@
         traces.push(graphStatisticsTrace(statisticRows,statsDomain));
         window.__ICM_WORKBENCH__.lastPanelDomains=panelDomains;
       }else{
-        const obs=observedEntries[0],quantity=String(obs?.quantity||'').toLowerCase();
+        const obs=observedEntries[0],primary=obs||modelEntries[0],quantity=String(primary?.quantity||'').toLowerCase();
         panelOrder=[...(rainEntry?['rainfall']:[]),quantity||'hydraulic'];
         layout={...commonLayout,height:Number(options.height)||850,bargap:0};
         const hydDomain=[plotBottom,hydraulicTop];
-        const obsUnit=obs?seriesUnit(obs.source.item,obs.source.col):null;
-        const obsReference=obs?seriesReference(obs.source.item,obs.source.col):null;
-        const quantityTitle=quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):(obs?.source?.col||'Value');
-        const hydraulicAxisTitle=quantityTitle+(obsUnit?' ('+obsUnit+')':'')+(quantity==='level'&&obsReference?' · '+obsReference:'');
+        const primaryUnit=primary?seriesUnit(primary.source.item,primary.source.col):null;
+        const primaryReference=primary?seriesReference(primary.source.item,primary.source.col):null;
+        const quantityTitle=quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):(primary?.source?.col||'Value');
+        const hydraulicAxisTitle=quantityTitle+(primaryUnit?' ('+primaryUnit+')':'')+(quantity==='level'&&primaryReference?' · '+primaryReference:'');
         layout.yaxis={title:{text:hydraulicAxisTitle,standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zeroline:false,automargin:true};
         if(obs){
           traces.push({x:obs.source.data.timestamp,y:obs.source.data.value,name:'Observed '+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):obs.source.col),type:traceType(obs.source.data),mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2.2},yaxis:'y'});
@@ -667,9 +668,12 @@
         }
         // ICM HYD exports commonly describe the vertical hydraulic series as
         // "level" rather than "depth". Both belong to the same threshold-bearing
-        // hydraulic axis; flow and velocity remain ineligible.
-        const singleDepth=isThresholdQuantity(quantity),hasDepthModel=singleDepth&&modelEntries.some(x=>isThresholdQuantity(x.quantity));
-        const showObserved=singleDepth&&$('showGraphObsThreshold')?.checked!==false&&observedThreshold!==null;
+        // hydraulic axis; flow and velocity remain ineligible. Model-only
+        // depth/level review is valid even when no observed series is mapped.
+        const singleDepth=isThresholdQuantity(quantity);
+        const hasObservedDepth=Boolean(obs)&&isThresholdQuantity(obs.quantity);
+        const hasDepthModel=modelEntries.some(x=>isThresholdQuantity(x.quantity));
+        const showObserved=hasObservedDepth&&$('showGraphObsThreshold')?.checked!==false&&observedThreshold!==null;
         const showModel=hasDepthModel&&$('showGraphModelThreshold')?.checked!==false&&modelThreshold!==null;
         const coincident=showObserved&&showModel&&Math.abs(Number(observedThreshold)-Number(modelThreshold))<=1e-12;
         const thresholdQuantityLabel=quantity==='level'?'level':'depth';
