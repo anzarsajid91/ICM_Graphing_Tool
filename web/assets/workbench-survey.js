@@ -860,7 +860,12 @@
           await refreshAssociationConflicts();
           renderAssociation();
         }
-        if (status) status.textContent = 'Workspace loaded. ' + Number(restored && restored.matched || 0) + '/' + Number(restored && restored.expected || 0) + ' source fingerprint(s) matched the current pool.';
+        if (status) {
+          const matched=Number(restored&&restored.matched||0),expected=Number(restored&&restored.expected||0);
+          status.textContent=matched<expected
+            ?'Workspace loaded with unresolved sources. '+matched+'/'+expected+' source fingerprint(s) matched. Reattach missing or changed files in Data / Sources; derived results remain Not run or Stale until dependencies are verified and recalculated.'
+            :'Workspace loaded. '+matched+'/'+expected+' source fingerprint(s) matched the current pool; derived calculations must be rerun before report export.';
+        }
         renderReportPreflight();
         return restored;
       } finally {
@@ -869,12 +874,43 @@
     };
   }
 
+  function resultReadiness(payload,defaultReason='Dependencies match the current analytical state.') {
+    const statuses=[],reasons=[],seen=new Set();
+    const walk=(value,depth=0)=>{
+      if(value==null||depth>6)return;
+      if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')return;
+      if(Array.isArray(value)){value.slice(0,200).forEach(x=>walk(x,depth+1));return;}
+      if(typeof value!=='object'||seen.has(value))return;
+      seen.add(value);
+      for(const [key,item] of Object.entries(value)){
+        const lower=String(key).toLowerCase();
+        if(['calculation_status','status'].includes(lower)&&typeof item==='string')statuses.push(item);
+        if(['reason','error','message'].includes(lower)&&typeof item==='string'&&item.trim())reasons.push(item.trim());
+        if(['result','results','observed','model','modelled','screening','yearly_summary','monthly_summary','rows','monitors','volume_balance','network','monitor'].includes(lower))walk(item,depth+1);
+      }
+    };
+    walk(payload);
+    const tokens=statuses.map(x=>String(x).trim().toLowerCase());
+    const reason=reasons.find(Boolean)||defaultReason;
+    if(reasons.length&&reasons.some(x=>/error|failed|exception/i.test(x)))return {state:'error',label:'Error',reason};
+    if(tokens.some(x=>/error|failed|failure/.test(x)))return {state:'error',label:'Error',reason};
+    if(tokens.some(x=>/blocked|unavailable|withheld|no[- ]?valid|insufficient/.test(x)))return {state:'blocked',label:'Blocked',reason};
+    if(tokens.some(x=>/partial|provisional|incomplete|unknown/.test(x)))return {state:'partial',label:'Partial',reason};
+    return {state:'current',label:'Current',reason:defaultReason};
+  }
+
   function readinessState(snapshot) {
-    if (!snapshot) return { state: 'not-calculated', label: 'Not calculated' };
+    if (!snapshot) return { state:'not-run',label:'Not run',reason:'This analysis has not been calculated for the current workspace.' };
     if (snapshot.signature && typeof analysisSignature === 'function' && snapshot.signature !== analysisSignature()) {
-      return { state: 'stale', label: 'Stale' };
+      return { state:'stale',label:'Stale',reason:'One or more analytical dependencies changed; recalculate before export.' };
     }
-    return { state: 'fresh', label: 'Fresh' };
+    return resultReadiness(snapshot.results||snapshot);
+  }
+
+  function freshSurveyReadiness(result,fresh,kind) {
+    if(!result)return {state:'not-run',label:'Not run',reason:kind+' has not been calculated.'};
+    if(!fresh)return {state:'stale',label:'Stale',reason:kind+' dependencies changed; recalculate before export.'};
+    return resultReadiness(result,kind+' dependencies match the current workspace.');
   }
 
   function renderReportPreflight() {
@@ -882,26 +918,26 @@
     if (!root) return;
     const comparison = readinessState(state.comparisonSnapshot);
     const spill = readinessState(state.spillSnapshot);
-    const professional = window.__ICM_WORKBENCH__.lastProfessionalSurvey ?
-      (window.__ICM_WORKBENCH__.professionalSurveyFresh?.()?{ state:'fresh',label:'Fresh' }:{ state:'stale',label:'Stale' }) :
-      { state: 'not-calculated', label: 'Not calculated' };
-    const complete = survey.batch ?
-      (surveyFresh('complete')?{ state:'fresh',label:'Fresh' }:{ state:'stale',label:'Stale' }) :
-      { state: 'not-calculated', label: 'Not calculated' };
-    const balance = survey.balance ?
-      (surveyFresh('balance')?{ state:'fresh',label:'Fresh' }:{ state:'stale',label:'Stale' }) :
-      { state: 'not-calculated', label: 'Not calculated' };
-    const storage = !state.storage ?
-      { state:'not-calculated',label:'Not calculated' } :
-      (state.storageSignature&&typeof analysisSignature==='function'&&state.storageSignature!==analysisSignature()?
-        { state:'stale',label:'Stale' }:{ state:'fresh',label:'Fresh' });
-    const rating = !state.rating ?
-      { state: 'not-calculated', label: 'Not calculated' } :
-      (state.rating.signature && typeof ratingInputSignature === 'function' && state.rating.signature !== ratingInputSignature() ?
-        { state: 'stale', label: 'Stale' } :
-        { state: 'fresh', label: 'Fresh' });
-    const association = survey.association ?
-      { state: 'loaded', label: 'Loaded' } : { state: 'not-loaded', label: 'Not loaded' };
+    const professional = freshSurveyReadiness(
+      window.__ICM_WORKBENCH__.lastProfessionalSurvey,
+      Boolean(window.__ICM_WORKBENCH__.professionalSurveyFresh?.()),
+      'Professional survey'
+    );
+    const complete = freshSurveyReadiness(survey.batch,surveyFresh('complete'),'Complete survey');
+    const balance = freshSurveyReadiness(survey.balance,surveyFresh('balance'),'Volume balance');
+    const storage = !state.storage
+      ?{state:'not-run',label:'Not run',reason:'Storage Assessment has not been calculated.'}
+      :(state.storageSignature&&typeof analysisSignature==='function'&&state.storageSignature!==analysisSignature()
+        ?{state:'stale',label:'Stale',reason:'Storage dependencies changed; recalculate before export.'}
+        :resultReadiness(state.storage,'Storage dependencies match the current workspace.'));
+    const rating = !state.rating
+      ?{state:'not-run',label:'Not run',reason:'Rating / fitted relationship has not been calculated.'}
+      :(state.rating.signature&&typeof ratingInputSignature==='function'&&state.rating.signature!==ratingInputSignature()
+        ?{state:'stale',label:'Stale',reason:'Rating inputs changed; recalculate before export.'}
+        :resultReadiness(state.rating.result||state.rating,'Rating dependencies match the current workspace.'));
+    const association = survey.association
+      ?{state:'current',label:'Current',reason:'Association workbook context is loaded and participates in survey dependency signatures.'}
+      :{state:'not-run',label:'Not run',reason:'No association workbook is loaded; association-dependent survey workflows are blocked until one is supplied.'};
     const rows = [
       ['comparison', 'Comparison', comparison],
       ['spill', 'Spill / EDM', spill],
@@ -913,9 +949,10 @@
       ['survey-association', 'Survey association', association],
     ];
     root.innerHTML = rows.map(([key, label, status]) =>
-      '<div class="report-readiness-item" data-result="' + esc(key) + '">' +
+      '<div class="report-readiness-item" data-result="' + esc(key) + '" title="' + esc(status.reason||'') + '">' +
       '<span>' + esc(label) + '</span>' +
       '<strong class="report-readiness-state" data-state="' + esc(status.state) + '">' + esc(status.label) + '</strong>' +
+      '<small class="report-readiness-reason">' + esc(status.reason||'') + '</small>' +
       '</div>'
     ).join('');
   }
