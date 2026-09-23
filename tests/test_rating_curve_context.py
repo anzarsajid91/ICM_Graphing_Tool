@@ -159,3 +159,10 @@ def test_compare_series_applies_explicit_unit_overrides_before_pairing(monkeypat
     assert abs(result["metrics"]["rmse"]) < 1e-12
     assert abs(result["metrics"]["mean_bias"]) < 1e-12
     assert [row["obs"] for row in result["paired"]] == [0.10, 0.15, 0.20, 0.25, 0.30, 0.35]
+
+
+def test_column_quantity_hint_does_not_treat_level_as_velocity():
+    assert browser_api._column_quantity_hint("level") == "level"
+    assert browser_api._column_quantity_hint("Water Level") == "level"
+    assert browser_api._column_quantity_hint("Velocity") == "velocity"
+    assert browser_api._column_quantity_hint("vel") == "velocity"
