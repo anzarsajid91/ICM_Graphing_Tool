@@ -9,6 +9,14 @@ from icm_workbench.analysis.review import rating_curve_fit
 from icm_workbench.analysis.survey_context import normalise_association_table
 
 
+def test_unqualified_association_diameter_preserves_mm_contract():
+    result = normalise_association_table(
+        [\"FM\", \"RG\", \"Diameter\", \"Upstream\"],
+        [[\"FM03\", \"RG02\", \"600\", \"FM01;FM02\"]],
+    )
+    assert result[\"records\"][0][\"diameter_mm\"] == 600.0
+    assert result[\"records\"][0][\"diameter_source_unit\"] == \"mm\"
+
 def test_association_diameter_units_are_canonicalised_to_mm():
     metres = normalise_association_table(
         ["FM", "RG", "Pipe Diameter (m)", "Upstream"],
