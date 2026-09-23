@@ -65,21 +65,16 @@ def _diameter_value_mm(value: Any, header: Any) -> tuple[float | None, str | Non
         return None, None, True
     raw_header = str(header or "")
     token = _header_token(raw_header)
-    if (
-        any(x in token for x in ("inch", "inches", "feet", "foot"))
-        or token.endswith("ft")
-        or (token.endswith("in") and "diameter" in token)
-    ):
+    words = set(re.findall(r"[a-z]+", raw_header.lower()))
+    if words.intersection({"in", "inch", "inches", "ft", "foot", "feet"}):
         return None, raw_header or None, False
-    if "centimet" in token or token.endswith("cm"):
+    if words.intersection({"cm", "centimeter", "centimeters", "centimetre", "centimetres"}):
         return float(number) * 10.0, "cm", True
-    if "millimet" in token or token.endswith("mm"):
+    if words.intersection({"mm", "millimeter", "millimeters", "millimetre", "millimetres"}):
         return float(number), "mm", True
-    if (
-        "metre" in token
-        or "meter" in token
-        or token in {"diameterm", "pipediameterm", "pipeidm"}
-    ):
+    if words.intersection({"m", "meter", "meters", "metre", "metres"}) or token in {
+        "diameterm", "pipediameterm", "pipeidm"
+    }:
         return float(number) * 1000.0, "m", True
     return float(number), "mm (assumed by fm_rg_assoc contract)", True
 
