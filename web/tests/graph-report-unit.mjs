@@ -29,7 +29,9 @@ const figure=run(`reportPlotFigure('test',[{name:'</script><script>bad</script>'
 assert(!figure.includes('<script>bad'));
 assert(figure.includes('\\u003c/script>'));
 assert(figure.includes('application/json'));
-assert(figure.includes('Graph statistics'));
+assert(figure.includes('Graph metrics'));
+assert(figure.includes('report-figure-metrics'));
+assert(!figure.includes('<h3>Graph statistics</h3>'));
 await run(`(async()=>{reportPlotlyBundle='var Plotly={};/*$&*/';window.embeddedReport=await interactiveReportHtml('<html><body>ORIGINAL</body></html>');})()`);
 assert(sandbox.window.embeddedReport.includes('/*$&*/'));
 assert.equal((sandbox.window.embeddedReport.match(/<\/body>/g)||[]).length,1);
