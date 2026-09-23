@@ -891,6 +891,10 @@
     const balance = survey.balance ?
       (surveyFresh('balance')?{ state:'fresh',label:'Fresh' }:{ state:'stale',label:'Stale' }) :
       { state: 'not-calculated', label: 'Not calculated' };
+    const storage = !state.storage ?
+      { state:'not-calculated',label:'Not calculated' } :
+      (state.storageSignature&&typeof analysisSignature==='function'&&state.storageSignature!==analysisSignature()?
+        { state:'stale',label:'Stale' }:{ state:'fresh',label:'Fresh' });
     const rating = !state.rating ?
       { state: 'not-calculated', label: 'Not calculated' } :
       (state.rating.signature && typeof ratingInputSignature === 'function' && state.rating.signature !== ratingInputSignature() ?
@@ -901,6 +905,7 @@
     const rows = [
       ['comparison', 'Comparison', comparison],
       ['spill', 'Spill / EDM', spill],
+      ['storage', 'Storage Assessment', storage],
       ['professional-survey', 'Professional survey', professional],
       ['complete-survey', 'Complete survey', complete],
       ['volume-balance', 'Volume balance', balance],
