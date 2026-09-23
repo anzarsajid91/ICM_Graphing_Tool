@@ -63,6 +63,14 @@ def test_rating_curve_fit_exposes_generic_and_diameter_informed_context():
     assert "theoretical" in informed["diameter_method_note"].lower()
 
 
+def test_rating_curve_fit_withholds_flat_data():
+    depth = pd.Series([0.30] * 20)
+    flow = pd.Series([0.20] * 20)
+    result = rating_curve_fit(depth, flow, diameter_m=0.45)
+    assert result["ok"] is False
+    assert "variation" in result["message"].lower()
+
+
 def test_rating_sources_uses_canonical_pairs_exclusions_and_diameter(monkeypatch):
     timestamps = pd.date_range("2026-01-01", periods=12, freq="5min")
     depth = pd.DataFrame({"timestamp": timestamps, "depth": np.linspace(0.1, 0.32, 12)})
