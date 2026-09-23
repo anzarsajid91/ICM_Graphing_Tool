@@ -1271,6 +1271,18 @@ try{
   await page.selectOption('#rainSelect',fmRain);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphMode==='fdv-multi-variable',null,{timeout:60000});
+  // The previous demo Depth threshold had unresolved units. FM01 resolves Depth
+  // explicitly to metres, so the unit-safe remapping contract must clear the
+  // old numeric value rather than silently reinterpret it. Reassign the
+  // threshold explicitly in the new FDV context before testing its presentation.
+  if(await page.inputValue('#obsThreshold')!=='')throw new Error('Unresolved-unit Depth threshold must be cleared when remapped to an explicitly metre-based FDV Depth series.');
+  await precisionRoute('data','time-series');
+  await page.fill('#graphObsThreshold','0.20');
+  await page.waitForFunction(()=>{
+    const chart=document.querySelector('#timeChart');
+    const lines=(chart?.layout?.shapes||[]).filter(s=>s.type==='line'&&s.yref!=='paper');
+    return lines.length===1&&Math.abs(Number(lines[0].y0)-0.20)<1e-9;
+  },null,{timeout:60000});
   const fdvThresholdControls=await page.evaluate(()=>({
     observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
     modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
