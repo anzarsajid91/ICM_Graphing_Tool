@@ -194,10 +194,15 @@ try{
   }
   await page.setViewportSize({width:1440,height:1000});
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',true));
-  await page.waitForFunction(()=>location.hash==='#/survey/data-health');
-  if((await page.locator('#pwPageTitle').textContent())?.trim()!=='Survey health and data coverage')throw new Error('Deep-link title mismatch');
+  await page.waitForFunction(()=>location.hash==='#/survey/fdv-check');
+  if((await page.locator('#pwPageTitle').textContent())?.trim()!=='FDV check')throw new Error('Canonical FDV Check deep-link title mismatch');
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='data-health',null,{timeout:30000});
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='fdv-check',null,{timeout:30000});
+  // Legacy PR25-era deep links remain accepted, but resolve to the new canonical route.
+  await page.evaluate(()=>{location.hash='#/survey/data-health';});
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='fdv-check',null,{timeout:30000});
+  if((await page.locator('#pwPageTitle').textContent())?.trim()!=='FDV check')throw new Error('Legacy Data Health deep link did not migrate to FDV Check.');
   if(errors.length)throw new Error('Browser errors: '+errors.join(' | '));
   console.log(browserName+' Precision Workbench shell acceptance passed.');
 }finally{
