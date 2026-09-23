@@ -1077,7 +1077,10 @@ try{
     {name:'storm-alpha.r',mimeType:'text/plain',buffer:rainfallR([6,12,0,3])},
     {name:'storm-beta.R',mimeType:'text/plain',buffer:rainfallR([3,3,3,3])},
   ]);
-  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===7&&window.__ICM_WORKBENCH__.lastCumulativeRainfall?.files===2,null,{timeout:90000});
+  await page.waitForFunction(()=>{
+    const rows=[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent||'');
+    return rows.some(text=>text.includes('storm-alpha.r')&&text.includes('Ready'))&&rows.some(text=>text.includes('storm-beta.R')&&text.includes('Ready'))&&window.__ICM_WORKBENCH__.lastCumulativeRainfall?.files===2;
+  },null,{timeout:90000});
   const cumulativeRain=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastCumulativeRainfall);
   if(cumulativeRain.traces!==2)throw new Error(`Expected two cumulative rainfall traces: ${JSON.stringify(cumulativeRain)}`);
   const totals=[...cumulativeRain.totals].sort((a,b)=>a.file.localeCompare(b.file));
