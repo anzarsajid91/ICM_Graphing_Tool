@@ -732,7 +732,9 @@ try{
   const of=await optionValue('#ratingObsFlow','observed.csv — flow');
   const md=await optionValue('#ratingModelDepth','model.csv — depth');
   const mf=await optionValue('#ratingModelFlow','model.csv — flow');
-  await page.selectOption('#ratingObsDepth',od);await page.selectOption('#ratingObsFlow','');await page.selectOption('#ratingModelDepth',md);await page.selectOption('#ratingModelFlow','');
+  await page.selectOption('#ratingObsDepth',od);await page.selectOption('#ratingObsDepthUnit','m');await page.selectOption('#ratingObsFlow','');
+  await page.selectOption('#ratingObsFlowUnit','m3/s');await page.selectOption('#ratingModelDepth',md);await page.selectOption('#ratingModelDepthUnit','m');
+  await page.selectOption('#ratingModelFlow','');await page.selectOption('#ratingModelFlowUnit','m3/s');
   await page.click('#runRatingBtn');
   await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Valid paired points'),null,{timeout:60000});
   await page.waitForFunction(()=>document.querySelector('#ratingChart')?.data?.length>=3,null,{timeout:60000});
@@ -1009,6 +1011,13 @@ try{
   if(workspace.schema_version!==3||workspace.time_basis!=='model clock/unspecified')throw new Error(`Unexpected workspace schema/time basis: ${JSON.stringify(workspace)}`);
   if(workspace.exclusions?.[0]?.start!=='2026-01-01T00:08')throw new Error(`Exclusion wall clock shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
   if(workspace.exclusions?.[0]?.end!=='2026-01-01T00:10')throw new Error(`Exclusion end shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
+  const savedRatingUnits={
+    obsDepth:workspace.analysis?.rating_obs_depth_unit,
+    obsFlow:workspace.analysis?.rating_obs_flow_unit,
+    modelDepth:workspace.analysis?.rating_model_depth_unit,
+    modelFlow:workspace.analysis?.rating_model_flow_unit,
+  };
+  if(JSON.stringify(savedRatingUnits)!==JSON.stringify({obsDepth:'m',obsFlow:'m3/s',modelDepth:'m',modelFlow:'m3/s'}))throw new Error('Rating unit overrides were not persisted in the workspace: '+JSON.stringify(savedRatingUnits));
 
   // A workspace must not advertise completion before its asynchronous mapping
   // and graph restoration has actually finished.
@@ -1041,6 +1050,13 @@ try{
     plottedTraces:Array.isArray(document.querySelector('#timeChart')?.data)?document.querySelector('#timeChart').data.length:0,
   }));
   if(!restoreReady.mappingCompleted||restoreReady.prematureLoaded||!restoreReady.observedMapped||restoreReady.plottedTraces<1)throw new Error(`Workspace announced loaded before restoration completed: ${JSON.stringify(restoreReady)}`);
+  const restoredRatingUnits=await page.evaluate(()=>({
+    obsDepth:document.querySelector('#ratingObsDepthUnit')?.value,
+    obsFlow:document.querySelector('#ratingObsFlowUnit')?.value,
+    modelDepth:document.querySelector('#ratingModelDepthUnit')?.value,
+    modelFlow:document.querySelector('#ratingModelFlowUnit')?.value,
+  }));
+  if(JSON.stringify(restoredRatingUnits)!==JSON.stringify({obsDepth:'m',obsFlow:'m3/s',modelDepth:'m',modelFlow:'m3/s'}))throw new Error('Rating unit overrides were not restored: '+JSON.stringify(restoredRatingUnits));
 
   // Workspace import intentionally invalidates calculated snapshots. Recalculate every
   // analysis used by the report rather than weakening stale-result export guards.
@@ -1061,6 +1077,20 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.lastProfessionalSurvey),null,{timeout:120000});
   await page.click('#runCompleteSurveyBtn');
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.survey?.batch),null,{timeout:120000});
+
+  // Workspace restore invalidates the derived rating result. Recalculate it on the
+  // restored monitor-specific inputs so report export is proven against fresh,
+  // authoritative rating evidence rather than a persisted/stale chart.
+  await precisionRoute('graphs','rating');
+  const restoredFm03Depth=await optionValue('#ratingObsDepth','FM03.fdv — depth');
+  const restoredFm03Flow=await optionValue('#ratingObsFlow','FM03.fdv — flow');
+  if(!restoredFm03Depth||!restoredFm03Flow)throw new Error('Restored workspace lost FM03 rating inputs.');
+  await page.selectOption('#ratingObsDepth',restoredFm03Depth);
+  await page.selectOption('#ratingObsFlow',restoredFm03Flow);
+  await page.selectOption('#ratingModelDepth','');
+  await page.selectOption('#ratingModelFlow','');
+  await page.click('#runRatingBtn');
+  await page.waitForFunction(()=>Boolean(state.rating)&&state.rating.signature===ratingInputSignature()&&document.querySelector('#ratingSummary')?.textContent.includes('Diameter-informed data fit'),null,{timeout:60000});
 
   // Regression guard for live-regression #11: presentation-only rerenders must
   // not invalidate a fresh engineering result when the exclusion state is unchanged.
@@ -1103,6 +1133,7 @@ try{
     spill:'Fresh',
     'professional-survey':'Fresh',
     'complete-survey':'Fresh',
+    rating:'Fresh',
     'survey-association':'Loaded',
   };
   for(const [key,expected] of Object.entries(readinessExpected)){
@@ -1127,6 +1158,7 @@ try{
   if(!report.includes('Observed spills by month')||!report.includes('Model spills by month')||!report.includes('Observed vs modelled monthly spill comparison'))throw new Error('Assessment report is missing the reference-style monthly spill tables.');
   if(!report.includes('Professional flow-survey / rainfall assessment')||!report.includes('professional_flow_survey'))throw new Error('Professional flow-survey assessment missing from report/audit appendix');
   if(!report.includes('Complete flow-survey context')||!report.includes('Flow continuity / volume balance')||!report.includes('fm_rg_assoc.xlsx'))throw new Error('Association-driven complete survey context missing from exported report');
+  if(!report.includes('Diameter-informed empirical Q–H rating curve')||!report.includes('rating_diagnostic')||!report.includes('600 mm'))throw new Error('Fresh diameter-informed rating chart/provenance missing from exported report');
   if(!report.includes('report-grid')||!report.includes('table-wrap'))throw new Error('Professional report layout classes missing');
   const reportLayout=await inspectReportHtml(report,3);
   if(reportLayout.headers!==1||reportLayout.figures<reportLayout.minFigures||reportLayout.zero||reportLayout.overflow>2)throw new Error(`Assessment report visual containment failed: ${JSON.stringify(reportLayout)}`);
