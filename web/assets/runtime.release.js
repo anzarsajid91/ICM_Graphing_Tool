@@ -1298,7 +1298,7 @@ async function downloadReport(){
   const scenarioTable=scenarioRows?'<p class="muted">'+esc(populationLabel)+' Metrics are sample-weighted; bias is modelled minus observed. Regression is raw-scale M = intercept + slope × O.</p><div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Pairs</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Log filtered</th><th>Status</th><th>Valid support</th></tr></thead><tbody>'+scenarioRows+'</tbody></table></div>':'<p class="muted">No scenario comparison has been calculated.</p>';
   let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints.</div>';
   body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
-  body+='<h2>Full analysis-period graph</h2>'+timeFigure;
+  body+='<h2>Full time-period graph</h2>'+timeFigure;
   body+='<h2>Spill / EDM assessment</h2><div class="report-grid"><div class="card"><h3>Observed / EDM</h3>'+spillSummaryHtml(state.spills.observed)+reportYearlySpills(state.spills.observed)+'</div><div class="card"><h3>Modelled</h3>'+spillSummaryHtml(state.spills.model)+reportYearlySpills(state.spills.model)+'</div></div>';
   body+='<h3>Observed spills by month</h3>'+reportSpillCountMatrix(state.spills.observed);
   body+='<h3>Model spills by month</h3>'+reportSpillCountMatrix(state.spills.model);
