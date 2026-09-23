@@ -1147,9 +1147,11 @@ try{
   await captureEvidence('05-report-workspace');
   const reportDownload=await downloadFrom('#downloadReportBtn');
   const report=await fs.readFile(await reportDownload.path(),'utf8');
-  const reportPlotMatch=report.match(/<script type="application\\/json" id="assessment-time-graph-data">([\\s\\S]*?)<\\/script>/);
-  if(!reportPlotMatch)throw new Error('Assessment report full-period Plotly payload missing');
-  const reportPlot=JSON.parse(reportPlotMatch[1]);
+  const reportPlotMarker='<script type="application/json" id="assessment-time-graph-data">';
+  const reportPlotStart=report.indexOf(reportPlotMarker);
+  const reportPlotEnd=reportPlotStart>=0?report.indexOf('</script>',reportPlotStart+reportPlotMarker.length):-1;
+  if(reportPlotStart<0||reportPlotEnd<0)throw new Error('Assessment report full-period Plotly payload missing');
+  const reportPlot=JSON.parse(report.slice(reportPlotStart+reportPlotMarker.length,reportPlotEnd));
   const populatedReportTraces=(reportPlot.data||[]).filter(t=>/^(Observed|Model|Rainfall)/.test(String(t.name||''))&&Array.isArray(t.x)&&t.x.filter(Boolean).length>0);
   if(populatedReportTraces.length<3)throw new Error('Assessment report full-period graph contains empty mapped traces: '+JSON.stringify((reportPlot.data||[]).map(t=>({name:t.name,points:(t.x||[]).filter(Boolean).length}))));
   const reportRange=reportPlot.layout?.xaxis?.range||[];
