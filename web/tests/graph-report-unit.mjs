@@ -32,6 +32,10 @@ assert(figure.includes('application/json'));
 assert(figure.includes('Graph metrics'));
 assert(figure.includes('report-figure-metrics'));
 assert(!figure.includes('<h3>Graph statistics</h3>'));
+sandbox.document.getElementById=id=>id==='meaningful'?{data:[{x:['2026-01-01'],y:[1]}]}:id==='blank'?{data:[{x:[],y:[]}]}:null;
+assert.equal(run(`chartHasReportData('meaningful')`),true);
+assert.equal(run(`chartHasReportData('blank')`),false);
+
 await run(`(async()=>{reportPlotlyBundle='var Plotly={};/*$&*/';window.embeddedReport=await interactiveReportHtml('<html><body>ORIGINAL</body></html>');})()`);
 assert(sandbox.window.embeddedReport.includes('/*$&*/'));
 assert.equal((sandbox.window.embeddedReport.match(/<\/body>/g)||[]).length,1);
