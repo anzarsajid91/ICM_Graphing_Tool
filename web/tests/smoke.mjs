@@ -1041,9 +1041,23 @@ try{
   await precisionRoute('verification','dwf');
   const dwf=await optionValue('#dwfFlowSelect','observed.csv — flow');
   await page.selectOption('#dwfFlowSelect',dwf);
+  await page.selectOption('#dwfFlowUnit','m3/s');
+  await page.fill('#analysisStart','2026-01-01T00:02');
+  await page.fill('#analysisEnd','2026-01-01T00:12');
+  await page.locator('#analysisStart').dispatchEvent('change');
+  await page.locator('#analysisEnd').dispatchEvent('change');
   await page.click('#runDwfBtn');
   await page.waitForSelector('#dwfSummary .summary-box',{timeout:60000});
-  if(await page.evaluate(()=>window.__ICM_WORKBENCH__.dwfFresh?.())!==true)throw new Error('Fresh DWF result was not bound to its source/criteria signature.');
+  const boundedDwf=await page.evaluate(()=>window.__ICM_WORKBENCH__.dwfResult);
+  if(boundedDwf?.analysis_start!=='2026-01-01T00:02:00'||boundedDwf?.analysis_end!=='2026-01-01T00:12:00'||boundedDwf?.flow_unit!=='m³/s')throw new Error('DWF did not consume the shared analysis period / canonical flow unit: '+JSON.stringify(boundedDwf));
+  if(await page.evaluate(()=>window.__ICM_WORKBENCH__.dwfFresh?.())!==true)throw new Error('Fresh DWF result was not bound to its source/criteria/period signature.');
+  await page.fill('#analysisStart','');
+  await page.fill('#analysisEnd','');
+  await page.locator('#analysisStart').dispatchEvent('change');
+  await page.locator('#analysisEnd').dispatchEvent('change');
+  await page.waitForFunction(()=>document.querySelector('#dwfSummary')?.textContent.includes('Stale DWF result cleared.'));
+  await page.click('#runDwfBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.dwfFresh?.()===true&&document.querySelector('#dwfSummary .summary-box'),null,{timeout:60000});
   await page.fill('#dwfDryDay','0.8');
   await page.locator('#dwfDryDay').dispatchEvent('change');
   await page.waitForFunction(()=>document.querySelector('#dwfSummary')?.textContent.includes('Stale DWF result cleared.'));
@@ -1347,7 +1361,7 @@ try{
   if(workspace.report_options?.scatter_scale!=='current'||workspace.report_options?.include_time_series!==true||workspace.report_options?.include_spills_storage!==true||workspace.report_options?.include_comparison!==true||workspace.report_options?.include_survey!==true||!workspace.report_options?.scenarios?.length)throw new Error('Workspace did not persist report section/scatter/scenario options: '+JSON.stringify(workspace.report_options));
   if(workspace.exclusions?.[0]?.start!=='2026-01-01T00:08')throw new Error(`Exclusion wall clock shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
   if(workspace.exclusions?.[0]?.end!=='2026-01-01T00:10')throw new Error(`Exclusion end shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
-  if(workspace.analysis?.dwf_flow?.column!=='flow'||Number(workspace.analysis?.dwf_dry_day_mm)!==1||Number(workspace.analysis?.dwf_baseline_days)!==28||Number(workspace.analysis?.dwf_adp_hours)!==6)throw new Error('DWF source/criteria were not persisted in the workspace: '+JSON.stringify(workspace.analysis));
+  if(workspace.analysis?.dwf_flow?.column!=='flow'||workspace.analysis?.dwf_flow_unit!=='m3/s'||Number(workspace.analysis?.dwf_dry_day_mm)!==1||Number(workspace.analysis?.dwf_baseline_days)!==28||Number(workspace.analysis?.dwf_adp_hours)!==6)throw new Error('DWF source/unit/criteria were not persisted in the workspace: '+JSON.stringify(workspace.analysis));
   const savedRatingUnits={
     obsDepth:workspace.analysis?.rating_obs_depth_unit,
     obsFlow:workspace.analysis?.rating_obs_flow_unit,
@@ -1405,12 +1419,13 @@ try{
   if(JSON.stringify(restoredRatingUnits)!==JSON.stringify({obsDepth:'m',obsFlow:'m3/s',modelDepth:'m',modelFlow:'m3/s'}))throw new Error('Rating unit overrides were not restored: '+JSON.stringify(restoredRatingUnits));
   const restoredDwf=await page.evaluate(()=>({
     flow:document.querySelector('#dwfFlowSelect')?.selectedOptions?.[0]?.textContent||'',
+    unit:document.querySelector('#dwfFlowUnit')?.value||'',
     dryDay:Number(document.querySelector('#dwfDryDay')?.value),
     baseline:Number(document.querySelector('#dwfBaselineDays')?.value),
     adp:Number(document.querySelector('#dwfAdpHours')?.value),
     fresh:window.__ICM_WORKBENCH__.dwfFresh?.(),
   }));
-  if(!/observed\.csv — flow/i.test(restoredDwf.flow)||restoredDwf.dryDay!==1||restoredDwf.baseline!==28||restoredDwf.adp!==6||restoredDwf.fresh!==false)throw new Error('Workspace did not restore DWF configuration while correctly withholding derived DWF results: '+JSON.stringify(restoredDwf));
+  if(!/observed\.csv — flow/i.test(restoredDwf.flow)||restoredDwf.unit!=='m3/s'||restoredDwf.dryDay!==1||restoredDwf.baseline!==28||restoredDwf.adp!==6||restoredDwf.fresh!==false)throw new Error('Workspace did not restore DWF configuration while correctly withholding derived DWF results: '+JSON.stringify(restoredDwf));
 
   stage='workspace migration and source reattachment guidance';
   const legacyWorkspace=JSON.parse(JSON.stringify(workspace));
