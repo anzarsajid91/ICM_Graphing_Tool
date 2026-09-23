@@ -873,6 +873,19 @@ async function renderComparisons(){
 
 function useGraphZoom(){const r=$('timeChart')?.layout?.xaxis?.range;if(r?.length===2){$('analysisStart').value=toLocalInput(r[0]);$('analysisEnd').value=toLocalInput(r[1]);}}
 
+function storageInputSignature(){
+  const levelKey=$('storageLevelSelect')?.value||'',flowKey=$('storageFlowSelect')?.value||'';
+  return JSON.stringify({
+    analysis:analysisSignature(),
+    level:workspaceSeries(levelKey),
+    flow:workspaceSeries(flowKey),
+    level_unit_override:$('storageLevelUnit')?.value||null,
+    flow_unit_override:$('storageFlowUnit')?.value||null,
+    threshold:nullableNumber($('storageThreshold')?.value??''),
+    target_count:Number($('targetCount')?.value||10),
+    exclusions:exclusionPayload(false,'model',levelKey),
+  });
+}
 function ratingInputSignature(){
   return JSON.stringify({
     analysis:analysisSignature(),
@@ -1122,7 +1135,7 @@ async function runStorage(){
   if($('storageThreshold').value==='')throw new Error('Set the modelled level threshold.');
   const threshold=Number($('storageThreshold').value);
   if(!Number.isFinite(threshold))throw new Error('Storage level threshold must be a finite numeric value.');
-  const signature=analysisSignature();
+  const signature=storageInputSignature();
   const args={
     level_path:level.item.virtualPath,level_col:level.col,flow_path:flow.item.virtualPath,flow_col:flow.col,threshold,
     level_unit_override:$('storageLevelUnit')?.value||null,flow_unit_override:$('storageFlowUnit')?.value||null,
@@ -1130,9 +1143,9 @@ async function runStorage(){
     ...analysisBounds(),target_count:Number($('targetCount').value||10),max_gap_seconds:Number($('gapInput').value||900)
   };
   const r=await engine.call('storage_result',args);
-  if(signature!==analysisSignature())throw new Error('Storage inputs changed while calculation was running. The late result was discarded.');
+  if(signature!==storageInputSignature())throw new Error('Storage inputs changed while calculation was running. The late result was discarded.');
   const mv=await engine.call('monthly_spill_volume_result',{...args,target_count:undefined},'advanced_bridge');
-  if(signature!==analysisSignature())throw new Error('Storage inputs changed while calculation was running. The late result was discarded.');
+  if(signature!==storageInputSignature())throw new Error('Storage inputs changed while calculation was running. The late result was discarded.');
   state.storage=r;state.storageSignature=signature;
   $('storageSummary').innerHTML=(r.screening||[]).map(x=>`<div class="summary-box"><div><strong>${x.year}</strong><span>year</span></div><div><strong>${x.required_storage_m3==null?'Withheld':fmt(x.required_storage_m3,2)+' m³'}</strong><span>idealised required storage</span></div><div><strong>${x.physical_blocks}</strong><span>counting blocks</span></div><div><strong>${x.max_block_volume_m3==null?'Withheld':fmt(x.max_block_volume_m3,2)+' m³'}</strong><span>maximum block</span></div><div><strong>${x.annual_block_volume_m3==null?'Withheld':fmt(x.annual_block_volume_m3,2)+' m³'}</strong><span>annual block volume</span></div><div><strong>${x.target_count}</strong><span>target count</span></div><div><strong>${esc(x.status||'unknown')}</strong><span>${esc(x.reason||'')}</span></div></div>`).join('')||'<div class="pool-summary">No counted spill blocks.</div>';
   $('storageBody').innerHTML=(r.blocks||[]).map(x=>`<tr><td>${x.year}</td><td>${x.counting_block}</td><td>${esc(x.start)}</td><td>${esc(x.end)}</td><td>${x.volume_m3==null?'Withheld':fmt(x.volume_m3,3)}</td><td>${x.requested_seconds?fmt(100*Number(x.valid_seconds||0)/Number(x.requested_seconds),1)+'%':'—'}</td><td>${esc(x.status||'unknown')}</td><td>${x.physical_discharges}</td></tr>`).join('');
@@ -1343,7 +1356,7 @@ function assertFreshResults(options=null){
   const includeSurvey=options?options.include_survey!==false:true;
   if(includeSpills&&state.spillSnapshot&&state.spillSnapshot.signature!==sig)throw new Error('Spill results are stale. Recalculate after changing analytical inputs before exporting.');
   if(includeComparison&&state.comparisonSnapshot&&state.comparisonSnapshot.signature!==sig)throw new Error('Comparison results are stale. Recalculate after changing analytical inputs before exporting.');
-  if(includeSpills&&state.storage&&state.storageSignature&&state.storageSignature!==sig)throw new Error('Storage results are stale. Recalculate after changing analytical inputs before exporting.');
+  if(includeSpills&&state.storage&&state.storageSignature&&state.storageSignature!==storageInputSignature())throw new Error('Storage results are stale. Recalculate after changing storage mappings, units, threshold, target, exclusions or analysis inputs before exporting.');
   if(includeComparison&&state.rating?.signature&&state.rating.signature!==ratingInputSignature())throw new Error('Rating results are stale. Recalculate the fitted relationship after changing mappings, exclusions or analysis inputs before exporting.');
   if(includeSurvey&&diagnostic.lastProfessionalSurvey&&diagnostic.professionalSurveyFresh&&!diagnostic.professionalSurveyFresh())throw new Error('Professional flow-survey results are stale. Re-run before exporting.');
   if(includeSurvey&&diagnostic.survey?.batch&&diagnostic.surveyFresh&&!diagnostic.surveyFresh('complete'))throw new Error('Complete flow-survey results are stale. Re-run before exporting.');
