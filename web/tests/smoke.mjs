@@ -621,7 +621,18 @@ try{
     modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
   }));
   if(levelThresholdControls.observedHidden!==false||levelThresholdControls.modelHidden!==true)throw new Error('Observed level data must expose the observed threshold control while keeping the unmapped model threshold hidden: '+JSON.stringify(levelThresholdControls));
-  await page.evaluate(()=>{const input=document.querySelector('#graphObsThreshold');input.value='1.5';input.dispatchEvent(new Event('input',{bubbles:true}));});
+  const levelThresholdContext=(await page.locator('#graphObsThresholdContext').textContent())||'';
+  if(!levelThresholdContext.includes('Absolute level')||!levelThresholdContext.includes('reference / datum not supplied'))throw new Error('Level threshold must expose quantity/reference context: '+levelThresholdContext);
+
+  // Numeric edge cases: zero and valid negative absolute levels are legitimate
+  // values and must not be lost through truthiness checks.
+  await page.fill('#graphObsThreshold','0');
+  await page.waitForFunction(()=>Number((document.querySelector('#timeChart')?.layout?.shapes||[]).find(s=>s.type==='line'&&s.yref!=='paper')?.y0)===0,null,{timeout:60000});
+  await page.fill('#graphObsThreshold','-0.25');
+  await page.waitForFunction(()=>Number((document.querySelector('#timeChart')?.layout?.shapes||[]).find(s=>s.type==='line'&&s.yref!=='paper')?.y0)===-0.25,null,{timeout:60000});
+  await page.fill('#graphObsThreshold','99');
+  await page.waitForFunction(()=>document.querySelector('#graphObsThresholdContext')?.textContent.includes('outside plotted support'),null,{timeout:60000});
+  await page.fill('#graphObsThreshold','1.5');
   await page.waitForFunction(()=>{
     const chart=document.querySelector('#timeChart');
     const thresholdLegend=(chart?.data||[]).filter(t=>/threshold|spill level/i.test(String(t.name||'')));
@@ -704,6 +715,7 @@ try{
   await page.selectOption('#rainSelect',rain);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'));
+  if(await page.inputValue('#obsThreshold')!=='')throw new Error('Incompatible Level → Depth remapping must clear the previous hydraulic threshold rather than silently reusing it.');
   const depthThresholdControls=await page.evaluate(()=>({
     observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
     modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
