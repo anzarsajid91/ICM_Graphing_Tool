@@ -233,7 +233,7 @@
     full.innerHTML =
       '<div class="subhead"><div><h3>Complete survey assessment</h3>' +
       '<p>Runs the mapped network rainfall qualification and FSAT-derived weekly monitor assessment across the survey, then applies the workbook diameter to Event Response criteria.</p></div>' +
-      '<button class="btn primary" id="runCompleteSurveyBtn" type="button">Run complete survey assessment</button></div>' +
+      '<button class="btn" id="runCompleteSurveyBtn" type="button">Run complete survey assessment</button></div>' +
       '<div class="survey-control-grid">' +
       '<label>Volume-balance Amber tolerance (%)<input id="surveyBalanceTolerance" type="number" min="0" max="50" step="1" value="10"></label>' +
       '<div class="survey-control-note">Analysis start/end and maximum gap use the shared workbench controls. Exclusions remain scoped: Observed / EDM applies to survey hydraulics; Rainfall applies to .R data. Antecedent source data remains available to Event Response diagnostics.</div></div>' +
