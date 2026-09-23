@@ -221,7 +221,7 @@
     association.innerHTML =
       '<div class="subhead"><div><h3>Survey configuration — fm_rg_assoc.xlsx</h3>' +
       '<p>The association workbook is authoritative for monitor → rain gauge, pipe diameter and upstream-flow relationships. Conflicts inferred from FDV/source metadata are shown but do not override the workbook.</p></div>' +
-      '<div class="actions"><button class="btn primary" id="chooseAssocBtn" type="button">Load fm_rg_assoc.xlsx</button>' +
+      '<div class="actions"><button class="btn" id="chooseAssocBtn" type="button">Load fm_rg_assoc.xlsx</button>' +
       '<input id="assocFileInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></div></div>' +
       '<div id="surveyAssociationStatus" class="pool-summary">No association workbook loaded. You can load it directly or include it in the selected survey folder.</div>' +
       '<div id="surveyAssociationSummary"></div><div id="surveyAssociationTable"></div>';
