@@ -1134,7 +1134,7 @@ async function applyWorkspace(w){
   if($('reportIncludeComparison')&&ro.include_comparison!==undefined)$('reportIncludeComparison').checked=Boolean(ro.include_comparison);
   if($('reportIncludeSurvey')&&ro.include_survey!==undefined)$('reportIncludeSurvey').checked=Boolean(ro.include_survey);
   if($('reportScatterScale')&&ro.scatter_scale)$('reportScatterScale').value=ro.scatter_scale;
-  if($('reportScenarioSelect')&&Array.isArray(ro.scenarios)&&ro.scenarios.length){
+  if($('reportScenarioSelect')&&Array.isArray(ro.scenarios)){
     const restoredScenarioKeys=ro.scenarios.map(findSeriesFromWorkspace).filter(Boolean);
     [...$('reportScenarioSelect').options].forEach(o=>o.selected=restoredScenarioKeys.includes(o.value));
   }
@@ -1146,7 +1146,7 @@ async function applyWorkspace(w){
   // Rebuild report scenario choices only after the restored model mapping is
   // authoritative, then re-apply the persisted scenario subset by fingerprint.
   $('modelSelect')?.dispatchEvent(new Event('change',{bubbles:true}));
-  if($('reportScenarioSelect')&&Array.isArray(ro.scenarios)&&ro.scenarios.length){
+  if($('reportScenarioSelect')&&Array.isArray(ro.scenarios)){
     const restoredScenarioKeys=ro.scenarios.map(findSeriesFromWorkspace).filter(Boolean);
     [...$('reportScenarioSelect').options].forEach(o=>o.selected=restoredScenarioKeys.includes(o.value));
   }
@@ -1273,12 +1273,10 @@ function reportPlotFigure(id,traces,layout,statistics,caption=''){
   return '<figure class="figure"><div class="report-plot" id="'+id+'" style="height:'+layout.height+'px"></div><script type="application/json" id="'+id+'-data">'+payload+'</script>'+stats+'<figcaption>'+esc(caption)+'</figcaption></figure>';
 }
 function selectedReportComparisons(){
-  const selected=$('reportScenarioSelect')?new Set([...$('reportScenarioSelect').selectedOptions].map(o=>o.value)):new Set();
-  return state.comparisons.filter(entry=>{
-    if(!entry.result)return false;
-    const key=sourceKey(entry.model.item.id,entry.model.col);
-    return selected.size===0||selected.has(key);
-  });
+  const control=$('reportScenarioSelect');
+  if(!control)return state.comparisons.filter(entry=>entry.result);
+  const selected=new Set([...control.selectedOptions].map(o=>o.value));
+  return state.comparisons.filter(entry=>entry.result&&selected.has(sourceKey(entry.model.item.id,entry.model.col)));
 }
 function reportComparisonScatterFigure(entries,log=false){
   if(!entries?.length)return '<p class="muted">No selected comparison scenario has a current authoritative result.</p>';
