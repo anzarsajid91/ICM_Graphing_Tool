@@ -301,6 +301,27 @@ async function verifyFastPathFailureFallsBack(){
   }finally{await probe.close();}
 }
 
+async function verifyMixedSiblingImport(){
+  const probe=await context.newPage(),probeErrors=[];
+  probe.on('pageerror',error=>probeErrors.push(String(error)));
+  try{
+    await probe.goto(baseUrl+'?mixed_import='+Date.now(),{waitUntil:'domcontentloaded'});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+    const valid={name:'sibling-valid.csv',mimeType:'text/csv',buffer:Buffer.from('timestamp,Depth (m)\n2026-02-01T00:00:00,0.2\n2026-02-01T00:01:00,0.3\n')};
+    const invalid={name:'sibling-invalid.fdv',mimeType:'text/plain',buffer:Buffer.from('this is not a valid FDV file\n')};
+    await probe.setInputFiles('#fileInput',[valid,invalid]);
+    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===2&&[...document.querySelectorAll('#poolBody tr')].some(r=>r.textContent.includes('sibling-valid.csv')&&r.textContent.includes('Ready'))&&[...document.querySelectorAll('#poolBody tr')].some(r=>r.textContent.includes('sibling-invalid.fdv')&&r.textContent.includes('Error')),null,{timeout:90000});
+    const result=await probe.evaluate(()=>({
+      rows:[...document.querySelectorAll('#poolBody tr')].map(r=>r.textContent),
+      validMapped:[...document.querySelectorAll('#observedSelect option')].some(o=>o.textContent.includes('sibling-valid.csv')),
+      summary:document.querySelector('#poolSummary')?.textContent||'',
+    }));
+    if(!result.validMapped||!result.summary.includes('1 parsed successfully'))throw new Error('Valid sibling did not remain usable after another file failed: '+JSON.stringify(result));
+    if(probeErrors.length)throw new Error('Mixed sibling import produced browser errors: '+probeErrors.join(' | '));
+    return result;
+  }finally{await probe.close();}
+}
+
 async function inspectReportHtml(html,minFigures=1){
   const p=await context.newPage();
   const reportErrors=[],reportFailedRequests=[];
@@ -528,6 +549,10 @@ async function associationWorkbook({variant=false}={}){
 }
 
 try{
+  stage='mixed-success import isolation';
+  performanceEvidence.mixedSiblingImport=await verifyMixedSiblingImport();
+  await writePerformanceEvidence();
+
   stage='cold import baseline';
   performanceEvidence.coldImport=await measureColdReferenceImport();
   await writePerformanceEvidence();
