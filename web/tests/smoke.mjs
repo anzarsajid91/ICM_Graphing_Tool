@@ -716,14 +716,14 @@ try{
   const mf=await optionValue('#ratingModelFlow','model.csv — flow');
   await page.selectOption('#ratingObsDepth',od);await page.selectOption('#ratingObsFlow','');await page.selectOption('#ratingModelDepth',md);await page.selectOption('#ratingModelFlow','');
   await page.click('#runRatingBtn');
-  await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Depth pairs'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Valid paired points'),null,{timeout:60000});
   await page.waitForFunction(()=>document.querySelector('#ratingChart')?.data?.length>=3,null,{timeout:60000});
 
   stage='flow-depth rating';
   await precisionRoute('verification','rating');
   await page.selectOption('#ratingObsFlow',of);await page.selectOption('#ratingModelFlow',mf);
   await page.click('#runRatingBtn');
-  await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Observed fit'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Data-fitted / Generic Rating Curve'),null,{timeout:60000});
   await page.waitForSelector('#ratingChart .main-svg',{timeout:60000});
 
   stage='dry weather flow';
@@ -859,6 +859,27 @@ try{
   if(!continuityLayout.headings.includes('Likely source / first check')||!continuityLayout.headings.includes('Recommendation'))throw new Error('Flow-continuity table must retain diagnosis and recommendation evidence: '+JSON.stringify(continuityLayout.headings));
   await page.waitForFunction(()=>document.querySelector('#globalOperation')?.hidden===true&&!document.body.classList.contains('operation-busy'),null,{timeout:60000});
   await captureEvidence('03-survey-flow-continuity');
+
+  stage='diameter-informed fm_rg_assoc rating curve';
+  await precisionRoute('graphs','rating');
+  const fm03RatingDepth=await optionValue('#ratingObsDepth','FM03.fdv — depth');
+  const fm03RatingFlow=await optionValue('#ratingObsFlow','FM03.fdv — flow');
+  if(!fm03RatingDepth||!fm03RatingFlow)throw new Error('FM03 rating depth/flow options are missing after association-driven import.');
+  await page.selectOption('#ratingObsDepth',fm03RatingDepth);
+  await page.selectOption('#ratingObsFlow',fm03RatingFlow);
+  await page.selectOption('#ratingModelDepth','');
+  await page.selectOption('#ratingModelFlow','');
+  await page.click('#runRatingBtn');
+  await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Diameter-informed data fit'),null,{timeout:60000});
+  const diameterRating=await page.evaluate(()=>({
+    text:document.querySelector('#ratingSummary')?.textContent||'',
+    diagnostic:window.__ICM_WORKBENCH__.lastRating||null,
+    crownLines:(document.querySelector('#ratingChart')?.layout?.shapes||[]).filter(x=>x.xref==='x'&&x.yref==='paper').length,
+  }));
+  if(diameterRating.diagnostic?.monitor!=='FM03'||Number(diameterRating.diagnostic?.diameter_mm)!==600||diameterRating.crownLines<1||!diameterRating.text.includes('fm_rg_assoc.xlsx')){
+    throw new Error('Monitor-specific fm_rg_assoc diameter was not applied/provenanced correctly: '+JSON.stringify(diameterRating));
+  }
+  await captureEvidence('08b-diameter-rating');
 
   stage='FDV stacked hydraulic graph';
   await precisionRoute('data','series-mapping');
