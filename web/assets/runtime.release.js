@@ -1399,8 +1399,8 @@ function hydraulicGraphLayout({fdvMode=false,quantities=[],statistics=[],hasRain
     if(quantities.includes('depth')||quantities.includes('level'))panels.push({axis:'yaxis',title:axisTitle(quantities.includes('depth')?'depth':'level')});
     if(quantities.includes('velocity'))panels.push({axis:'yaxis4',title:axisTitle('velocity')});
   }else if(statistics.some(r=>r.role!=='Rainfall')){
-    const s=statistics.find(r=>r.role!=='Rainfall')?.statistics||{};
-    panels.push({axis:'yaxis',title:`${s.quantity||'Hydraulic value'} (${s.unit||'unit unresolved'})`});
+    const row=statistics.find(r=>r.role!=='Rainfall'),s=row?.statistics||{},quantity=String(s.quantity||'').toLowerCase();
+    panels.push({axis:'yaxis',title:quantity?axisTitle(quantity):`Hydraulic value (${s.unit||'unit unresolved'})`});
   }
   if(!panels.length)panels.push({axis:'yaxis',title:'Value'});
   const gap=panels.length>2?.055:.09;
