@@ -35,6 +35,17 @@ def _quantity(path):
     if "U_FLOW" in text:return "flow","m³/s"
     if "U_LEVEL" in text or "M AD" in text or "MAOD" in text:return "level","m"
     return "depth","m"
+
+def _vertical_reference(path, quantity):
+    if quantity != "level":
+        return None
+    text=_head(path).upper()
+    if "M AOD" in text or "MAOD" in text:
+        return "AOD"
+    if "M AD" in text:
+        return "AD"
+    return None
+
 def parse_icm_hyd_csv(path):
     lines=path.read_text(encoding="utf-8",errors="replace").splitlines(); start=next((i+1 for i,line in enumerate(lines) if line.strip().lower().startswith("p_datetime")),None)
     if start is None:raise ValueError("P_DATETIME section not found")
@@ -51,7 +62,12 @@ def parse_icm_hyd_csv(path):
     invalid=int(frame.timestamp.isna().sum());malformed+=invalid;frame=frame.dropna(subset=["timestamp"])
     if frame.empty:raise ValueError("No valid P_DATETIME/value rows found")
     values,audit=clean_numeric(frame.pop("raw_value")); frame["value"]=values; frame=frame.sort_values("timestamp")
-    return ParsedData(frame,"icm_hyd_p_datetime_csv",{"quantity":quantity,"original_unit":unit,"canonical_unit":unit,"unit_status":"resolved","conversion_factor":1.0,"time_basis":"model clock/unspecified","timestamp_convention":"instantaneous"},{**audit,"malformed_rows":malformed,"duplicate_timestamps":int(frame.timestamp.duplicated().sum()),"rows":len(frame)})
+    reference=_vertical_reference(path,quantity)
+    metadata={"quantity":quantity,"original_unit":unit,"canonical_unit":unit,"unit_status":"resolved","conversion_factor":1.0,"time_basis":"model clock/unspecified","timestamp_convention":"instantaneous"}
+    if reference is not None:
+        metadata["vertical_reference"]=reference
+        metadata["source_unit_label"]=f"{unit} {reference}"
+    return ParsedData(frame,"icm_hyd_p_datetime_csv",metadata,{**audit,"malformed_rows":malformed,"duplicate_timestamps":int(frame.timestamp.duplicated().sum()),"rows":len(frame)})
 def parse_tabular_csv(path):
     try:df=pd.read_csv(path,sep=None,engine="python")
     except Exception as exc:raise ValueError(f"Could not parse tabular CSV: {exc}") from exc
