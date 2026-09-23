@@ -510,6 +510,26 @@ try{
   if(architecture.localAssetUrls.some(url=>!new URL(url).searchParams.get('v')))throw new Error('A local JS/CSS asset is not release-versioned: '+JSON.stringify(architecture.localAssetUrls));
   if(!((await page.locator('footer').textContent())||'').includes('© 2026 Anzar Sajid'))throw new Error('Live footer copyright missing');
 
+  stage='import preserves active Precision route';
+  const routeImportCases=[
+    {route:['spills','assessment'],input:'#fileInput',name:'route-spills.csv'},
+    {route:['survey','fdv-check'],input:'#fileInput',name:'route-survey.csv'},
+    {route:['graphs','comparison'],input:'#fileInput',name:'route-graphs.csv'},
+    {route:['reports','report-generation'],input:'#folderInput',name:'route-reports.csv'},
+  ];
+  for(const [index,testCase] of routeImportCases.entries()){
+    await precisionRoute(testCase.route[0],testCase.route[1]);
+    const before=await page.locator('#poolBody tr').count();
+    const payload=Buffer.from('timestamp,Depth (m)\n2026-01-01T00:00:00,'+(0.1+index/10).toFixed(2)+'\n2026-01-01T00:01:00,'+(0.2+index/10).toFixed(2)+'\n');
+    await page.setInputFiles(testCase.input,{name:testCase.name,mimeType:'text/csv',buffer:payload});
+    await page.waitForFunction(([expected,name])=>document.querySelectorAll('#poolBody tr').length===expected&&[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),[before+1,testCase.name],{timeout:60000});
+    const route=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
+    if(route.workspace!==testCase.route[0]||route.page!==testCase.route[1])throw new Error('Import changed the active Precision route: '+JSON.stringify({testCase,route}));
+  }
+  await precisionRoute('data','sources');
+  await page.click('#clearPoolBtn');
+  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0);
+
   stage='source pool and collapsed file list';
   const observedPath=path.join(root,'examples/demo/observed.csv');
   const modelPath=path.join(root,'examples/demo/model.csv');
@@ -1304,11 +1324,15 @@ try{
   const sourceEventEvidence=await page.evaluate(()=>({
     events:window.__sourcePoolEventEvidence,
     professional:Boolean(window.__ICM_WORKBENCH__.lastProfessionalSurvey),
+    professionalFresh:window.__ICM_WORKBENCH__.professionalSurveyFresh?.()??null,
     complete:Boolean(window.__ICM_WORKBENCH__.survey?.batch),
+    completeFresh:window.__ICM_WORKBENCH__.surveyFresh?.('complete')??null,
     balance:Boolean(window.__ICM_WORKBENCH__.survey?.balance),
+    balanceFresh:window.__ICM_WORKBENCH__.surveyFresh?.('balance')??null,
+    route:window.__ICM_PRECISION_WORKBENCH__.route(),
   }));
   if(sourceEventEvidence.events?.count!==1||sourceEventEvidence.events?.details?.[0]?.reason!=='ingest')throw new Error('Real multi-file ingestion must emit exactly one source-pool state event: '+JSON.stringify(sourceEventEvidence));
-  if(sourceEventEvidence.professional||sourceEventEvidence.complete||sourceEventEvidence.balance)throw new Error('Real source-pool change did not invalidate source-dependent survey results: '+JSON.stringify(sourceEventEvidence));
+  if(!sourceEventEvidence.professional||!sourceEventEvidence.complete||!sourceEventEvidence.balance||sourceEventEvidence.professionalFresh!==false||sourceEventEvidence.completeFresh!==false||sourceEventEvidence.balanceFresh!==false)throw new Error('Source-pool change must retain prior evidence but mark every source-dependent survey result stale: '+JSON.stringify(sourceEventEvidence));
 
   stage='FastPath handoff preserves applied mapping';
   await precisionRoute('data','series-mapping');
