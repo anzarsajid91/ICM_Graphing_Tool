@@ -646,25 +646,30 @@
         window.__ICM_WORKBENCH__.lastPanelDomains=panelDomains;
       }else{
         const obs=observedEntries[0],primary=obs||modelEntries[0],quantity=String(primary?.quantity||'').toLowerCase();
-        panelOrder=[...(rainEntry?['rainfall']:[]),quantity||'hydraulic'];
-        layout={...commonLayout,height:Number(options.height)||850,bargap:0};
+        const rainfallOnly=!primary&&Boolean(rainEntry);
+        panelOrder=rainfallOnly?['rainfall']:[...(rainEntry?['rainfall']:[]),quantity||'hydraulic'];
+        layout={...commonLayout,height:Number(options.height)||(rainfallOnly?720:850),bargap:0};
         const hydDomain=[plotBottom,hydraulicTop];
         const primaryUnit=primary?seriesUnit(primary.source.item,primary.source.col):null;
         const primaryReference=primary?seriesReference(primary.source.item,primary.source.col):null;
         const quantityTitle=quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):(primary?.source?.col||'Value');
         const hydraulicAxisTitle=quantityTitle+(primaryUnit?' ('+primaryUnit+')':'')+(quantity==='level'&&primaryReference?' · '+primaryReference:'');
-        layout.yaxis={title:{text:hydraulicAxisTitle,standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zeroline:false,automargin:true};
+        layout.yaxis=rainfallOnly
+          ?{title:{text:'Rainfall (mm/h)',standoff:10},domain:[plotBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true}
+          :{title:{text:hydraulicAxisTitle,standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zeroline:false,automargin:true};
         if(obs){
           traces.push({x:obs.source.data.timestamp,y:obs.source.data.value,name:'Observed '+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):obs.source.col),type:traceType(obs.source.data),mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2.2},yaxis:'y'});
         }
         for(const item of modelEntries){
           traces.push({x:item.source.data.timestamp,y:item.source.data.value,name:`Simulated: ${item.source.col}`,meta:item.source.item.displayName,type:traceType(item.source.data),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:2},yaxis:'y'});
         }
-        layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:hydraulicTop,text:'<b>'+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):'Hydraulic')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
+        if(primary)layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:hydraulicTop,text:'<b>'+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):'Hydraulic')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
         if(rainEntry){
-          layout.yaxis2={title:{text:'Rainfall (mm/h)',standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true};
+          if(!rainfallOnly){
+            layout.yaxis2={title:{text:'Rainfall (mm/h)',standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true};
+          }
           layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
-          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
+          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:rainfallOnly?'y':'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
         }
         // ICM HYD exports commonly describe the vertical hydraulic series as
         // "level" rather than "depth". Both belong to the same threshold-bearing
