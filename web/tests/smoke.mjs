@@ -808,6 +808,32 @@ try{
   const modelDepth=await optionValue('#modelSelect','model.csv — depth');
   const modelFlow=await optionValue('#ratingModelFlow','model.csv — flow');
   if(!obsDepth||!obsFlow||!modelDepth||!modelFlow)throw new Error('Expected demo depth/flow series options were not created');
+
+  stage='model-only hydraulic threshold workflow';
+  await page.selectOption('#observedSelect','');
+  await page.selectOption('#modelSelect',[modelDepth]);
+  await page.selectOption('#rainSelect','');
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('Observed: not mapped')&&document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall not mapped'),null,{timeout:60000});
+  await precisionRoute('data','time-series');
+  const modelOnlyThresholdControls=await page.evaluate(()=>({
+    observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
+    modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden,
+    modelTrace:(document.querySelector('#timeChart')?.data||[]).some(t=>/^Simulated:/.test(String(t.name||''))),
+    yTitle:document.querySelector('#timeChart')?.layout?.yaxis?.title?.text||''
+  }));
+  if(modelOnlyThresholdControls.observedHidden!==true||modelOnlyThresholdControls.modelHidden!==false||!modelOnlyThresholdControls.modelTrace||!/Depth/i.test(modelOnlyThresholdControls.yTitle))throw new Error('Model-only Depth mapping must render the model and expose only its hydraulic threshold: '+JSON.stringify(modelOnlyThresholdControls));
+  await page.fill('#graphModelThreshold','1.05');
+  await page.waitForFunction(()=>{const chart=document.querySelector('#timeChart');return (chart?.layout?.shapes||[]).some(s=>s.type==='line'&&s.yref==='y'&&Math.abs(Number(s.y0)-1.05)<1e-9);},null,{timeout:60000});
+  await precisionRoute('spills','assessment');
+  if(await page.inputValue('#obsThreshold')!=='')throw new Error('Observed threshold must remain cleared in a model-only mapping.');
+  if(await page.inputValue('#modelThreshold')!=='1.05')throw new Error('Model-only threshold did not persist into Spills.');
+  await page.click('#runSpillsBtn');
+  await page.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in'),null,{timeout:60000});
+  const modelOnlySpill=await page.evaluate(()=>({observed:Boolean(state.spills?.observed),model:Boolean(state.spills?.model),threshold:state.spillSnapshot?.config?.analysis?.model_threshold}));
+  if(modelOnlySpill.observed||!modelOnlySpill.model||Math.abs(Number(modelOnlySpill.threshold)-1.05)>1e-9)throw new Error('Model-only spill calculation did not consume the canonical model threshold: '+JSON.stringify(modelOnlySpill));
+
+  await precisionRoute('data','series-mapping');
   await page.selectOption('#observedSelect',obsDepth);
   await page.selectOption('#modelSelect',[modelDepth]);
   await page.selectOption('#rainSelect',rain);
