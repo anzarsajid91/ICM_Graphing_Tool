@@ -886,6 +886,7 @@
         const lower=String(key).toLowerCase();
         if(['calculation_status','status'].includes(lower)&&typeof item==='string')statuses.push(item);
         if(['reason','error','message'].includes(lower)&&typeof item==='string'&&item.trim())reasons.push(item.trim());
+        if(lower==='error'&&typeof item==='string'&&item.trim())statuses.push('error');
         if(['result','results','observed','model','modelled','screening','yearly_summary','monthly_summary','rows','monitors','volume_balance','network','monitor'].includes(lower))walk(item,depth+1);
       }
     };
