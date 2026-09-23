@@ -103,67 +103,49 @@
   }
 
   function simplifyNavigation() {
+    // The Precision Workbench owns all user-facing navigation. Keep the legacy
+    // tab strip intact only as an internal compatibility surface for existing
+    // panel switching; do not rename, reorder, remove, or relocate routes here.
+    // This avoids two independent navigation systems mutating the same DOM.
     const nav = document.querySelector('nav.tabs');
     if (!nav) return;
-    const labels = {
-      graph: 'Data & Time Series',
-      'data-health': 'Flow Survey',
-      'rain-events': 'Rainfall',
-      compare: 'Assessment',
-      spills: 'Spills',
-      workspace: 'Report',
-    };
     const workflow = {
       graph: {
-        label: 'Data & Time Series',
+        label: 'Data / Time Series',
         description: 'Map source channels and review observed, modelled and rainfall time series before moving into engineering diagnostics.',
         tools: ['Source mapping', 'Time-series graph', 'Threshold overlays', 'Graph statistics'],
-      },
-      'data-health': {
-        label: 'Flow Survey',
-        description: 'Assess flow-survey completeness, response and network context using the survey association workbook where supplied.',
-        tools: ['fm_rg_assoc', 'Data health', 'FSAT Event Response', 'Flow continuity / volume balance'],
-      },
-      'rain-events': {
-        label: 'Rainfall',
-        description: 'Review rainfall quality and identify wet-weather events and their hydraulic response.',
-        tools: ['Gauge assessment', 'WAPUG / manual events', 'Event bands', 'Hydraulic response'],
-      },
-      compare: {
-        label: 'Assessment',
-        description: 'Compare observed and modelled hydraulics over a controlled period and investigate where the model differs.',
-        tools: ['Pairs & calibration metrics', 'Residuals', 'Cumulative / exceedance', 'Depth & rating diagnostics', 'Storage'],
       },
       spills: {
         label: 'Spills',
         description: 'Assess observed/EDM and model spill behaviour with explicit validity, exclusions and reporting periods.',
-        tools: ['12/24 counting', 'Duration / volume', 'Exclusions', 'Yearly / monthly summaries'],
+        tools: ['12/24 counting', 'Duration / volume', 'Exclusions', 'Storage Assessment'],
+      },
+      'data-health': {
+        label: 'Flow Survey · FDV Check',
+        description: 'Assess flow-survey completeness, response and network context using the survey association workbook where supplied.',
+        tools: ['fm_rg_assoc', 'Data health', 'FSAT Event Response', 'Flow continuity / volume balance'],
+      },
+      'rain-events': {
+        label: 'Flow Survey · Rainfall Check',
+        description: 'Review rainfall quality and identify wet-weather events and their hydraulic response.',
+        tools: ['Gauge assessment', 'WAPUG / manual events', 'Event bands', 'Hydraulic response'],
+      },
+      compare: {
+        label: 'Graphs',
+        description: 'Compare observed and modelled hydraulics over a controlled period and investigate where the model differs.',
+        tools: ['Pairs & calibration metrics', 'Residuals', 'Cumulative / exceedance', 'Depth & rating diagnostics'],
+      },
+      storage: {
+        label: 'Spills · Storage Assessment',
+        description: 'Review support-aware storage screening and modelled spill-volume evidence.',
+        tools: ['Level threshold', 'Overflow volume', 'Ranked blocks', 'Monthly outputs'],
       },
       workspace: {
-        label: 'Report',
-        description: 'Save the review state and produce reproducible engineering outputs with provenance and audit context.',
-        tools: ['Workspace persistence', 'HTML engineering report', 'Source provenance', 'Audit appendix'],
+        label: 'Reports',
+        description: 'Produce reproducible engineering outputs and preserve workspace/provenance context.',
+        tools: ['Report Generation', 'Workspace persistence', 'Source provenance', 'Audit appendix'],
       },
     };
-    const order = ['graph', 'data-health', 'rain-events', 'compare', 'spills', 'workspace'];
-    for (const name of order) {
-      const button = nav.querySelector('.tab[data-tab="' + name + '"]');
-      if (button) {
-        button.textContent = labels[name];
-        nav.appendChild(button);
-      }
-    }
-    const storageButton = nav.querySelector('.tab[data-tab="storage"]');
-    if (storageButton) storageButton.remove();
-
-    const storage = document.getElementById('tab-storage');
-    const verification = document.getElementById('tab-compare');
-    if (storage && verification && storage.parentElement !== verification) {
-      storage.classList.remove('tab-panel');
-      storage.classList.add('embedded-workflow', 'verification-storage');
-      verification.appendChild(storage);
-    }
-
     let guide = document.getElementById('workflowGuide');
     if (!guide) {
       guide = document.createElement('section');
@@ -183,7 +165,7 @@
     renderWorkflow(nav.querySelector('.tab.active')?.dataset.tab || 'graph');
     nav.addEventListener('click', event => {
       const button = event.target.closest('.tab[data-tab]');
-      if (button && workflow[button.dataset.tab]) renderWorkflow(button.dataset.tab);
+      if (button) renderWorkflow(button.dataset.tab);
     });
   }
 
