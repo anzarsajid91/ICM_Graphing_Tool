@@ -15,6 +15,8 @@ assert.equal(layout.yaxis3.title.text,'Flow (m³/s)');
 assert(!layout.yaxis3.overlaying);
 const levelLayout=run(`hydraulicGraphLayout({fdvMode:true,quantities:['level'],statistics:[{role:'Observed',statistics:{quantity:'level',unit:'m'}}]})`);
 assert.equal(levelLayout.yaxis.title.text,'Level (m)');
+const absoluteLevelLayout=run(`hydraulicGraphLayout({fdvMode:false,quantities:['level'],statistics:[{role:'Observed',reference:'AD',statistics:{quantity:'level',unit:'m'}}]})`);
+assert.equal(absoluteLevelLayout.yaxis.title.text,'Level (m) · AD');
 const thresholdSettings=run(`reportSettingsTable({time_basis:'model clock',mapping:{observed:{quantity:'level',unit:'m'},models:[{quantity:'level',unit:'m'}]},analysis:{observed_threshold:1.5,model_threshold:1.6,time_offset_minutes:0,rain_factor:1}})`);
 assert(thresholdSettings.includes('Observed / EDM hydraulic threshold'));
 assert(thresholdSettings.includes('Model hydraulic threshold'));
