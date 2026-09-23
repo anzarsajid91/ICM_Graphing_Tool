@@ -1412,9 +1412,14 @@ try{
       }
     };
   });
+  // Report choices belong to Report Generation under the canonical Precision
+  // navigation. Mutate them there, then return to Workspace Save / Restore to
+  // prove that loading the workspace restores those choices.
+  await precisionRoute('reports','report-generation');
   await page.selectOption('#reportScatterScale','log');
   await page.uncheck('#reportIncludeSurvey');
   await page.selectOption('#reportScenarioSelect',[]);
+  await precisionRoute('reports','workspace');
   await page.setInputFiles('#workspaceInput',workspacePath);
   await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('Workspace loaded.'),null,{timeout:60000});
   const restoredReportOptions=await page.evaluate(()=>({
