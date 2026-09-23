@@ -13,7 +13,16 @@ try{
   await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
   const labels=(await page.locator('.pw-primary-nav button').allTextContents()).map(x=>x.replace(/^[^A-Za-z]+/,'').trim());
-  if(labels.join('|')!=='Data & Time Series|Flow Survey|Rainfall|Assessment|Spills|Report')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
+  if(labels.join('|')!=='Data / Time Series|Spills|Flow Survey|Graphs|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
+  const surveyTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
+  if(surveyTabs.join('|')!=='FDV Check|Rainfall Check|Volume Balance')throw new Error('Flow Survey subtab order mismatch: '+JSON.stringify(surveyTabs));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation',false));
+  const reportTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
+  if(reportTabs[0]!=='Report Generation')throw new Error('Reports must land on Report Generation first: '+JSON.stringify(reportTabs));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('verification','storage',false));
+  const migrated=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
+  if(migrated.workspace!=='spills'||migrated.page!=='storage')throw new Error('Legacy Storage route did not migrate: '+JSON.stringify(migrated));
   const productTitle=((await page.locator('.pw-brand-title').textContent())||'').trim();
   if(productTitle!=='ICM Graphing Tool')throw new Error('Product title must be ICM Graphing Tool, got '+JSON.stringify(productTitle));
   if(await page.locator('#pwRailToggle').count()!==1)throw new Error('Navigation rail needs an explicit collapse/expand control.');
@@ -42,7 +51,7 @@ try{
   await page.click('#pwRailToggle');
   const railCollapsed=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
   if(!(railCollapsed<railExpanded))throw new Error('Rail collapse control did not reduce navigation width: '+JSON.stringify({railExpanded,railCollapsed}));
-  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','data-health',false));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const railAfterRoute=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
   if(Math.abs(railAfterRoute-railCollapsed)>2)throw new Error('Route change mutated the user-selected rail collapse state: '+JSON.stringify({railCollapsed,railAfterRoute}));
   await page.click('#pwRailToggle');
@@ -53,7 +62,7 @@ try{
   if(inspectorContainment.inspectorScroll>inspectorContainment.inspectorClient+1||inspectorContainment.toolbarScroll>inspectorContainment.toolbarClient+1)throw new Error('Docked time-series Inspector controls overflow horizontally: '+JSON.stringify(inspectorContainment));
 
   // Refinement acceptance: shared legacy tabs must expose only the surface owned by the selected route.
-  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','flow-continuity',false));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','volume-balance',false));
   const continuityComposition=await page.evaluate(()=>{
     const visible=el=>Boolean(el)&&!el.hidden&&el.getClientRects().length>0;
     return{
@@ -65,13 +74,13 @@ try{
   });
   if(!continuityComposition.balance||continuityComposition.completeSurvey||continuityComposition.rawHealth||continuityComposition.professional)throw new Error('Flow continuity route ownership is incorrect: '+JSON.stringify(continuityComposition));
 
-  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','data-health',false));
-  if(await page.locator('#pwDataHealthSummary').count()!==1)throw new Error('Data Health must lead with a monitor/source triage summary before raw channel/week detail.');
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
+  if(await page.locator('#pwDataHealthSummary').count()!==1)throw new Error('FDV Check must lead with a monitor/source triage summary before raw channel/week detail.');
   const healthComposition=await page.evaluate(()=>({
     summaryVisible:getComputedStyle(document.querySelector('#pwDataHealthSummary')).display!=='none',
     rawInsideDetails:Boolean(document.querySelector('#pwDataHealthDetails #healthBody')),
   }));
-  if(!healthComposition.summaryVisible||!healthComposition.rawInsideDetails)throw new Error('Data Health summary/detail composition is incomplete: '+JSON.stringify(healthComposition));
+  if(!healthComposition.summaryVisible||!healthComposition.rawInsideDetails)throw new Error('FDV Check summary/detail composition is incomplete: '+JSON.stringify(healthComposition));
   const typeScale=await page.evaluate(()=>({
     title:Number.parseFloat(getComputedStyle(document.querySelector('.pw-page-title')).fontSize),
     section:Number.parseFloat(getComputedStyle(document.querySelector('.panel-head h2')).fontSize),
@@ -106,15 +115,15 @@ try{
   if(stylesheetRhythmFailures.length)throw new Error('Precision stylesheet contains spacing outside the 8px base / 4px micro rhythm: '+JSON.stringify(stylesheetRhythmFailures));
 
   const primaryRoutes=[
-    ['survey','data-health','runHealthBtn'],
-    ['survey','flow-continuity','runSurveyBalanceBtn'],
-    ['rainfall','events','runRainEventsBtn'],
-    ['verification','comparison','runCompareBtn'],
-    ['verification','rating','runRatingBtn'],
-    ['verification','dwf','runDwfBtn'],
-    ['verification','storage','runStorageBtn'],
-    ['spills','thresholds','runSpillsBtn'],
-    ['report','builder','downloadReportBtn'],
+    ['survey','fdv-check','runHealthBtn'],
+    ['survey','volume-balance','runSurveyBalanceBtn'],
+    ['survey','rainfall-check','runRainEventsBtn'],
+    ['graphs','comparison','runCompareBtn'],
+    ['graphs','rating','runRatingBtn'],
+    ['graphs','dwf','runDwfBtn'],
+    ['spills','storage','runStorageBtn'],
+    ['spills','assessment','runSpillsBtn'],
+    ['reports','report-generation','downloadReportBtn'],
   ];
   for(const [workspace,route,expected] of primaryRoutes){
     await page.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,route]);
@@ -130,7 +139,7 @@ try{
     }
   }
 
-  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('verification','storage',false));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('spills','storage',false));
   const verificationContainment=await page.evaluate(()=>{
     const state=(id,selector)=>{const root=document.getElementById(id);const el=selector?root?.querySelector(selector):root;const css=el?getComputedStyle(el):null;return {id,selector:selector||null,hidden:el?.hidden??null,display:css?.display??null,visibility:css?.visibility??null,rects:el?.getClientRects().length??0};};
     return {comparison:state('tab-compare',':scope > .panel'),storage:state('tab-storage')};
@@ -147,11 +156,11 @@ try{
     };
     return [
       inspect('data','time-series','#tab-graph>.panel'),
-      inspect('rainfall','events','#tab-rain-events>.panel'),
-      inspect('verification','comparison','#tab-compare>.panel'),
-      inspect('verification','storage','#tab-storage>.panel'),
-      inspect('spills','results','#tab-spills>.panel'),
-      inspect('report','builder','#tab-workspace>.panel'),
+      inspect('survey','rainfall-check','#tab-rain-events>.panel'),
+      inspect('graphs','comparison','#tab-compare>.panel'),
+      inspect('spills','storage','#tab-storage>.panel'),
+      inspect('spills','assessment','#tab-spills>.panel'),
+      inspect('reports','report-generation','#tab-workspace>.panel'),
     ];
   });
   const noisySurface=quietSurfaces.find(x=>!x.exists||x.overflow>1||(x.shadow&&x.shadow!=='none'));
@@ -160,7 +169,7 @@ try{
   const inspectorText=(await page.locator('#pwInspectorBody').textContent())||'';
   if(inspectorText.includes('Live context'))throw new Error('Inspector must not present the hard-coded Live context result state.');
 
-  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('report','builder',false));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation',false));
   const reportComposition=await page.evaluate(()=>{
     const visible=el=>Boolean(el)&&!el.hidden&&el.getClientRects().length>0;
     return{
@@ -184,11 +193,16 @@ try{
     if(layout.overflow>1||!layout.sourceVisible||!layout.railVisible)throw new Error('Responsive shell failure '+size.width+'x'+size.height+': '+JSON.stringify(layout));
   }
   await page.setViewportSize({width:1440,height:1000});
-  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','data-health',true));
-  await page.waitForFunction(()=>location.hash==='#/survey/data-health');
-  if((await page.locator('#pwPageTitle').textContent())?.trim()!=='Survey health and data coverage')throw new Error('Deep-link title mismatch');
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',true));
+  await page.waitForFunction(()=>location.hash==='#/survey/fdv-check');
+  if((await page.locator('#pwPageTitle').textContent())?.trim()!=='FDV check')throw new Error('Canonical FDV Check deep-link title mismatch');
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='data-health',null,{timeout:30000});
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='fdv-check',null,{timeout:30000});
+  // Legacy PR25-era deep links remain accepted, but resolve to the new canonical route.
+  await page.evaluate(()=>{location.hash='#/survey/data-health';});
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='fdv-check',null,{timeout:30000});
+  if((await page.locator('#pwPageTitle').textContent())?.trim()!=='FDV check')throw new Error('Legacy Data Health deep link did not migrate to FDV Check.');
   if(errors.length)throw new Error('Browser errors: '+errors.join(' | '));
   console.log(browserName+' Precision Workbench shell acceptance passed.');
 }finally{

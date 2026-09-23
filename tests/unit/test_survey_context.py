@@ -27,6 +27,8 @@ def test_fm_rg_assoc_normalisation_and_workbook_precedence():
         "monitor": "FM03",
         "rain_gauge": "RG02",
         "diameter_mm": 600.0,
+        "diameter_raw": "600",
+        "diameter_source_unit": "mm",
         "upstream": ["FM01", "FM02"],
         "source": "fm_rg_assoc.xlsx",
         "row": 2,

@@ -21,7 +21,8 @@ _HEADER_ALIASES = {
     },
     "diameter_mm": {
         "diameter", "diametermm", "pipediameter", "pipediametermm",
-        "pipediam", "pipeidmm",
+        "pipediam", "pipeidmm", "diameterm", "pipediameterm", "pipeidm",
+        "diametercm", "pipediametercm", "pipeidcm",
     },
     "upstream": {
         "upstream", "upstreamtrace", "upstreammonitor", "upstreammonitors",
@@ -51,6 +52,52 @@ def _float_or_none(value: Any) -> float | None:
         return None
     return number if math.isfinite(number) else None
 
+
+def _diameter_value_mm(value: Any, header: Any) -> tuple[float | None, str | None, bool]:
+    """Resolve supported association diameter units to canonical millimetres.
+
+    The established fm_rg_assoc convention is millimetres when the column header
+    does not explicitly state a unit. Unit detection therefore requires a
+    delimited/suffixed unit token; letters inside the word "diameter" must never
+    be mistaken for the unit "meter".
+    """
+    number = _float_or_none(value)
+    if number is None:
+        return None, None, True
+
+    raw_header = str(header or "").strip()
+    token = _header_token(raw_header)
+    lower = raw_header.lower().replace("³", "3")
+    explicit = re.search(
+        r"(?:^|[\s_\[(])"
+        r"(mm|millimet(?:re|er)s?|cm|centimet(?:re|er)s?|m|met(?:re|er)s?|"
+        r"in|inch(?:es)?|ft|feet|foot)"
+        r"\s*[\])]?[\s]*$",
+        lower,
+    )
+    unit = explicit.group(1) if explicit else None
+
+    # Preserve compact aliases where the unit is genuinely encoded in the
+    # canonicalised header. Bare Diameter/PipeDiameter remains the historical
+    # millimetre convention and is labelled as an assumption for provenance.
+    if unit is None:
+        if token in {"diameterm", "pipediameterm", "pipeidm"}:
+            unit = "m"
+        elif token in {"diametercm", "pipediametercm", "pipeidcm"}:
+            unit = "cm"
+        elif token in {"diametermm", "pipediametermm", "pipeidmm"}:
+            unit = "mm"
+
+    if unit in {"in", "inch", "inches", "ft", "feet", "foot"}:
+        return None, raw_header or None, False
+    if unit in {"cm", "centimetre", "centimetres", "centimeter", "centimeters"}:
+        return float(number) * 10.0, "cm", True
+    if unit in {"m", "metre", "metres", "meter", "meters"}:
+        return float(number) * 1000.0, "m", True
+    if unit in {"mm", "millimetre", "millimetres", "millimeter", "millimeters"}:
+        return float(number), "mm", True
+
+    return float(number), "mm (assumed by fm_rg_assoc contract)", True
 
 def _split_upstream(value: Any) -> list[str]:
     text = _clean_text(value)
@@ -116,15 +163,26 @@ def normalise_association_table(
                     }
                 )
             continue
+        diameter_header = (
+            headers[positions["diameter_mm"]]
+            if positions["diameter_mm"] >= 0 and positions["diameter_mm"] < len(headers)
+            else None
+        )
+        diameter_raw = cell("diameter_mm")
+        diameter_mm, diameter_unit, diameter_unit_supported = _diameter_value_mm(
+            diameter_raw, diameter_header
+        )
         record = {
             "monitor": monitor,
             "rain_gauge": _clean_text(cell("rain_gauge")) or None,
-            "diameter_mm": _float_or_none(cell("diameter_mm")),
+            "diameter_mm": diameter_mm,
+            "diameter_raw": _clean_text(diameter_raw) or None,
+            "diameter_source_unit": diameter_unit,
             "upstream": _split_upstream(cell("upstream")),
             "source": "fm_rg_assoc.xlsx",
             "row": row_index,
         }
-        if _clean_text(cell("diameter_mm")) and record["diameter_mm"] is None:
+        if _clean_text(diameter_raw) and _float_or_none(diameter_raw) is None:
             issues.append(
                 {
                     "severity": "warning",
@@ -132,6 +190,19 @@ def normalise_association_table(
                     "monitor": monitor,
                     "field": "diameter_mm",
                     "message": "Pipe diameter is not numeric; workbook value retained as unresolved.",
+                }
+            )
+        elif _clean_text(diameter_raw) and not diameter_unit_supported:
+            issues.append(
+                {
+                    "severity": "warning",
+                    "row": row_index,
+                    "monitor": monitor,
+                    "field": "diameter_mm",
+                    "message": (
+                        "Pipe diameter unit is unsupported; use mm, cm or m. "
+                        "Diameter is treated as unresolved."
+                    ),
                 }
             )
         if record["diameter_mm"] is not None and record["diameter_mm"] <= 0:

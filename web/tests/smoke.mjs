@@ -21,20 +21,35 @@ page.on('console',m=>{if(m.type()==='error')consoleErrors.push(`console: ${m.tex
 page.on('requestfailed',r=>failedRequests.push(`${r.method()} ${r.url()} :: ${r.failure()?.errorText||'failed'}`));
 
 async function optionValue(selector,needle){return page.locator(`${selector} option`).evaluateAll((opts,n)=>opts.find(x=>x.textContent.includes(n))?.value||'',needle);}
+const routeAliases={
+  'verification/comparison':['graphs','comparison'],
+  'verification/rating':['graphs','rating'],
+  'verification/dwf':['graphs','dwf'],
+  'verification/storage':['spills','storage'],
+  'rainfall/events':['survey','rainfall-check'],
+  'survey/data-health':['survey','fdv-check'],
+  'survey/rainfall-response':['survey','rainfall-check'],
+  'survey/flow-continuity':['survey','volume-balance'],
+  'spills/thresholds':['spills','assessment'],
+  'spills/results':['spills','assessment'],
+  'report/builder':['reports','report-generation'],
+  'report/workspace':['reports','workspace'],
+};
 async function precisionRoute(workspace,subpage){
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+  const expected=routeAliases[workspace+'/'+subpage]||[workspace,subpage];
   await page.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,subpage]);
-  await page.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},[workspace,subpage]);
+  await page.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},expected);
 }
 async function clickTab(name){
   const routes={
     graph:['data','time-series'],
-    compare:['verification','comparison'],
-    'rain-events':['rainfall','events'],
-    'data-health':['survey','data-health'],
-    spills:['spills','results'],
-    storage:['verification','storage'],
-    workspace:['report','builder']
+    compare:['graphs','comparison'],
+    'rain-events':['survey','rainfall-check'],
+    'data-health':['survey','fdv-check'],
+    spills:['spills','assessment'],
+    storage:['spills','storage'],
+    workspace:['reports','report-generation']
   };
   const next=routes[name];
   if(next){await precisionRoute(next[0],next[1]);return;}
@@ -74,6 +89,7 @@ async function measureColdReferenceImport(){
     const previewEvidence=await probe.evaluate(()=>({
       engineStatus:window.__ICM_WORKBENCH__?.status||null,
       graphMode:window.__ICM_WORKBENCH__?.lastGraphMode||null,
+      route:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,
       preview:window.__ICM_WORKBENCH__?.fastpathPreview||null,
       record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
       row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('Cold-FM01.fdv'))?.textContent||null
@@ -115,6 +131,7 @@ async function measureFreshFastPathImport({dataset,relativePath,sourcePath,input
     const previewEvidence=await probe.evaluate(name=>({
       engineStatus:window.__ICM_WORKBENCH__?.status||null,
       graphMode:window.__ICM_WORKBENCH__?.lastGraphMode||null,
+      route:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,
       preview:window.__ICM_WORKBENCH__?.fastpathPreview||null,
       record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
       row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes(name))?.textContent||null
@@ -364,6 +381,24 @@ function surveyFdv(monitor,flow,depth,velocity,count=200){
   const data=Array.from({length:count},()=>`${flow} ${depth} ${velocity}`);
   return Buffer.from([...header,...data].join('\n')+'\n','utf8');
 }
+function surveyRatingFdv(monitor,count=200){
+  const header=[
+    `**IDENTIFIER: 1,${monitor}`,
+    '**FIELD: 3,FLOW,DEPTH,VELOCITY',
+    '**UNITS: 3,m3/s,m,m/s',
+    '**CONSTANTS: 2,START,INTERVAL',
+    '*CSTART',
+    '2601050000 2',
+    '*CEND',
+  ];
+  const data=Array.from({length:count},(_,i)=>{
+    const depth=0.20+0.0025*i;
+    const flow=1.50*Math.pow(depth,1.50);
+    const velocity=0.45+0.05*Math.sin(i/10);
+    return `${flow.toFixed(6)} ${depth.toFixed(6)} ${velocity.toFixed(6)}`;
+  });
+  return Buffer.from([...header,...data].join('\n')+'\n','utf8');
+}
 function surveyRainfallR(){
   const values=Array.from({length:200},(_,i)=>i<20?12:0);
   return Buffer.from(`*CSTART\n2601050000 2601050640 2\n*CEND\n${values.join(' ')}\n`,'utf8');
@@ -390,9 +425,11 @@ try{
   if(!liveMode){
     const cold=performanceEvidence.coldImport,engineAfterSelection=Number(cold.engineReadyFromNavigationMs)-Number(cold.selectionAtFromNavigationMs);
     if(cold.selectionOutcome!=='graph'||cold.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Cold FastPath preview did not render: '+JSON.stringify(cold));
+    if(cold.previewEvidence?.route?.workspace!=='data'||cold.previewEvidence?.route?.page!=='sources')throw new Error('Cold FastPath preview must not take navigation away from Data / Sources: '+JSON.stringify(cold.previewEvidence?.route));
     if(cold.previewEvidence?.engineStatus==='ready'||!(cold.timeToOutcomeMs<engineAfterSelection))throw new Error('Cold FastPath preview did not render before authoritative engine readiness: '+JSON.stringify(cold));
     if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM01 parsing: '+JSON.stringify(cold.finalEvidence));
   }
+  if(!liveMode){
   stage='fresh CSV FastPath benchmarks';
   performanceEvidence.freshCsvImports=[];
   const modelReference=await extractFirstModelReference();
@@ -406,6 +443,7 @@ try{
     await writePerformanceEvidence();
     const engineAfterSelection=Number(measured.engineReadyFromNavigationMs)-Number(measured.selectionAtFromNavigationMs);
     if(measured.selectionOutcome!=='graph'||measured.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Fresh CSV FastPath preview did not render: '+JSON.stringify(measured));
+    if(measured.previewEvidence?.route?.workspace!=='data'||measured.previewEvidence?.route?.page!=='sources')throw new Error('Fresh FastPath preview must prepare the graph without changing the user-selected Data / Sources page: '+JSON.stringify(measured.previewEvidence?.route));
     if(measured.previewEvidence?.engineStatus==='ready'||!(measured.timeToOutcomeMs<engineAfterSelection))throw new Error('Fresh CSV preview did not render before authoritative engine readiness: '+JSON.stringify(measured));
     if(measured.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Fresh CSV FastPath preview did not reconcile exactly: '+JSON.stringify(measured));
     if(measured.archiveMember){
@@ -413,6 +451,7 @@ try{
       if(previewColumns.some(x=>/^seconds?$/i.test(x)))throw new Error('Model FastPath preview must hide auxiliary Seconds from the engineering graph: '+JSON.stringify(measured));
       if(!previewColumns.length)throw new Error('Model FastPath preview did not expose an engineering series: '+JSON.stringify(measured));
     }
+  }
   }
   stage='FastPath failure falls back to authoritative import';
   performanceEvidence.fastpathFailureFallback=await verifyFastPathFailureFallsBack();
@@ -432,7 +471,7 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
   const primaryLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(primaryLabels.map(x=>x.trim()).join('|')!=='Data & Time Series|Flow Survey|Rainfall|Assessment|Spills|Report')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
+  if(primaryLabels.map(x=>x.trim()).join('|')!=='Data / Time Series|Spills|Flow Survey|Graphs|Reports')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
   for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080}]){
     await page.setViewportSize(size);
     await precisionRoute('data','sources');
@@ -484,7 +523,7 @@ try{
   const denseObserved=await optionValue('#observedSelect','dense-observed.csv — level');
   const rain=await optionValue('#rainSelect','rainfall.csv — rainfall');
   if(!denseObserved||!rain)throw new Error('Expected dense observed and rainfall series options');
-  if((await page.inputValue('#obsColor')).toLowerCase()!=='#ff0000')throw new Error('Observed default colour should be reference red');
+  if((await page.inputValue('#obsColor')).toLowerCase()!=='#d32f2f')throw new Error('Observed default colour should be reference red');
   await page.selectOption('#observedSelect',denseObserved);
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect','');
@@ -495,7 +534,7 @@ try{
   if(!fullDensity||fullDensity.raw!==40000||fullDensity.shown>15000||fullDensity.native!==false)throw new Error(`Full adaptive density incorrect: ${JSON.stringify(fullDensity)}`);
   const observedOnlyLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return {traceCount:chart.data.filter(t=>t.type!=='table').length,hasTable:chart.data.some(t=>t.type==='table'),hasRainTrace:chart.data.some(t=>t.type!=='table'&&t.yaxis==='y2'),hasY2:Boolean(chart.layout.yaxis2),hydDomain:chart.layout.yaxis.domain,observedColour:chart.data.find(t=>t.type!=='table')?.line?.color};});
   if(observedOnlyLayout.traceCount!==1||!observedOnlyLayout.hasTable||observedOnlyLayout.hasRainTrace||observedOnlyLayout.hasY2||observedOnlyLayout.hydDomain[0]<.28||observedOnlyLayout.hydDomain[1]!==1)throw new Error(`Observed-only/no-rain graph layout incorrect: ${JSON.stringify(observedOnlyLayout)}`);
-  if(String(observedOnlyLayout.observedColour).toLowerCase()!=='#ff0000')throw new Error('Observed plotted trace should be red, got '+JSON.stringify(observedOnlyLayout.observedColour));
+  if(String(observedOnlyLayout.observedColour).toLowerCase()!=='#d32f2f')throw new Error('Observed plotted trace should be red, got '+JSON.stringify(observedOnlyLayout.observedColour));
 
   stage='same-series observed and comparison mapping without rainfall';
   await page.selectOption('#modelSelect',[denseObserved]);
@@ -504,8 +543,8 @@ try{
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.data?.filter(t=>t.type!=='table').length===2&&document.querySelector('#timeChart')?.data?.some(t=>t.type==='table'),null,{timeout:60000});
   const comparisonNoRainLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart'),lines=chart.data.filter(t=>t.type!=='table');return {traceCount:lines.length,hasTable:chart.data.some(t=>t.type==='table'),hasRainTrace:lines.some(t=>t.yaxis==='y2'),hasY2:Boolean(chart.layout.yaxis2),hydDomain:chart.layout.yaxis.domain,observedColour:lines[0]?.line?.color,modelColour:lines[1]?.line?.color};});
   if(comparisonNoRainLayout.traceCount!==2||!comparisonNoRainLayout.hasTable||comparisonNoRainLayout.hasRainTrace||comparisonNoRainLayout.hasY2||comparisonNoRainLayout.hydDomain[0]<.28||comparisonNoRainLayout.hydDomain[1]!==1)throw new Error(`Observed+comparison/no-rain graph layout incorrect: ${JSON.stringify(comparisonNoRainLayout)}`);
-  if(String(comparisonNoRainLayout.observedColour).toLowerCase()!=='#ff0000')throw new Error('Observed comparison trace should remain red, got '+JSON.stringify(comparisonNoRainLayout.observedColour));
-  if(String(comparisonNoRainLayout.modelColour).toLowerCase()!=='#0008ff')throw new Error('First model plotted trace should use #5755d9, got '+JSON.stringify(comparisonNoRainLayout.modelColour));
+  if(String(comparisonNoRainLayout.observedColour).toLowerCase()!=='#d32f2f')throw new Error('Observed comparison trace should remain red, got '+JSON.stringify(comparisonNoRainLayout.observedColour));
+  if(String(comparisonNoRainLayout.modelColour).toLowerCase()!=='#5755d9')throw new Error('First model plotted trace should use #5755d9, got '+JSON.stringify(comparisonNoRainLayout.modelColour));
 
   stage='observed-only mapping with rainfall';
   await page.selectOption('#modelSelect',[]);
@@ -542,21 +581,26 @@ try{
   // assertions and screenshots so review evidence represents the shipped experience.
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
   await page.waitForFunction(()=>document.body.classList.contains('pw-focus-canvas')&&document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
-  const nonDepthThresholdControls=await page.evaluate(()=>({
+  const levelThresholdControls=await page.evaluate(()=>({
     observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
     modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
   }));
-  if(nonDepthThresholdControls.observedHidden!==true||nonDepthThresholdControls.modelHidden!==true)throw new Error('Threshold controls must be hidden when no depth series is mapped: '+JSON.stringify(nonDepthThresholdControls));
+  if(levelThresholdControls.observedHidden!==false||levelThresholdControls.modelHidden!==true)throw new Error('Observed level data must expose the observed threshold control while keeping the unmapped model threshold hidden: '+JSON.stringify(levelThresholdControls));
   await page.evaluate(()=>{const input=document.querySelector('#graphObsThreshold');input.value='1.5';input.dispatchEvent(new Event('input',{bubbles:true}));});
-  await page.waitForTimeout(450);
-  const nonDepthThresholdPresentation=await page.evaluate(()=>{
+  await page.waitForFunction(()=>{
+    const chart=document.querySelector('#timeChart');
+    const thresholdLegend=(chart?.data||[]).filter(t=>/threshold|spill level/i.test(String(t.name||'')));
+    const thresholdShapes=(chart?.layout?.shapes||[]).filter(s=>s.type==='line'&&s.yref!=='paper');
+    return thresholdLegend.length===1&&thresholdShapes.length===1&&thresholdShapes[0].yref==='y'&&Number(thresholdShapes[0].y0)===1.5;
+  },null,{timeout:60000});
+  const levelThresholdPresentation=await page.evaluate(()=>{
     const chart=document.querySelector('#timeChart');
     return{
       thresholdLegend:(chart.data||[]).filter(t=>/threshold|spill level/i.test(String(t.name||''))).map(t=>t.name),
-      thresholdShapes:(chart.layout.shapes||[]).filter(s=>s.type==='line'&&s.yref!=='paper').map(s=>({yref:s.yref,y0:s.y0}))
+      thresholdShapes:(chart.layout.shapes||[]).filter(s=>s.type==='line'&&s.yref!=='paper').map(s=>({yref:s.yref,y0:s.y0,dash:s.line?.dash}))
     };
   });
-  if(nonDepthThresholdPresentation.thresholdLegend.length||nonDepthThresholdPresentation.thresholdShapes.length)throw new Error('A level/non-depth graph must not display spill-threshold lines: '+JSON.stringify(nonDepthThresholdPresentation));
+  if(levelThresholdPresentation.thresholdLegend.length!==1||levelThresholdPresentation.thresholdShapes.length!==1||levelThresholdPresentation.thresholdShapes[0].dash!=='dash')throw new Error('Observed level threshold must be visible as one dashed line on the hydraulic level axis: '+JSON.stringify(levelThresholdPresentation));
   const graphLayout=await page.evaluate(()=>({hyd:document.querySelector('#timeChart').layout.yaxis.domain,rain:document.querySelector('#timeChart').layout.yaxis2.domain,rainRange:document.querySelector('#timeChart').layout.yaxis2.range}));
   if(!(graphLayout.hyd[1]<graphLayout.rain[0]&&(graphLayout.rain[0]-graphLayout.hyd[1])>=.04))throw new Error(`Rainfall and hydraulic panels are not independently separated: ${JSON.stringify(graphLayout)}`);
   if(!(graphLayout.rainRange[0]>graphLayout.rainRange[1]))throw new Error(`Rainfall axis should be reversed top-down: ${JSON.stringify(graphLayout.rainRange)}`);
@@ -592,6 +636,20 @@ try{
   stage='observed-only yearly spill calculation';
   await precisionRoute('spills','thresholds');
   if(await page.inputValue('#obsThreshold')!=='1.5')throw new Error('Graph observed threshold was not synchronised to spill calculation');
+  // Exercise the reverse direction from the user's reported workflow: edit the
+  // canonical spill threshold, return to Time Series, refresh, and require the
+  // same line/value to be visible on the vertical hydraulic axis.
+  await page.fill('#obsThreshold','1.55');
+  await page.waitForFunction(()=>document.querySelector('#graphObsThreshold')?.value==='1.55');
+  await precisionRoute('data','time-series');
+  await page.click('#refreshGraphBtn');
+  await page.waitForFunction(()=>{
+    const chart=document.querySelector('#timeChart');
+    const lines=(chart?.layout?.shapes||[]).filter(s=>s.type==='line'&&s.yref!=='paper');
+    return lines.length===1&&lines[0].yref==='y'&&Number(lines[0].y0)===1.55;
+  },null,{timeout:60000});
+  await precisionRoute('spills','thresholds');
+  if(await page.inputValue('#obsThreshold')!=='1.55')throw new Error('Spill threshold changed while returning from the graph.');
   await page.click('#runSpillsBtn');
   await page.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in'),null,{timeout:60000});
   await precisionRoute('spills','results');
@@ -624,7 +682,7 @@ try{
   for(const id of ['#observedFlowColour','#observedDepthColour','#observedVelocityColour','#rainColor'])if(await page.locator(id).count()!==1)throw new Error('Per-series colour control missing: '+id);
   const modelColour=await page.inputValue('#modelColourControls .model-colour');
   const colourWidth=await page.locator('#modelColourControls .model-colour').evaluate(el=>el.getBoundingClientRect().width);
-  if(modelColour.toLowerCase()!=='#0008ff')throw new Error(`First model default colour should match the reference simulated blue, got ${modelColour}`);
+  if(modelColour.toLowerCase()!=='#5755d9')throw new Error(`First model default colour should match the reference simulated blue, got ${modelColour}`);
   if(colourWidth>90)throw new Error(`Model colour picker should be a compact swatch, width=${colourWidth}`);
   await clickTab('graph');
   await page.fill('#graphObsThreshold','1.0');
@@ -649,11 +707,24 @@ try{
   await page.waitForFunction(()=>document.querySelectorAll('#scenarioBody tr').length===1&&document.querySelectorAll('#metricGrid .metric').length>=10,null,{timeout:60000});
   const comparisonValidity=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastComparisonValidity);
   if(!comparisonValidity||comparisonValidity.status!=='partial'||!(Number(comparisonValidity.coverage)>0&&Number(comparisonValidity.coverage)<1))throw new Error(`Comparison validity contract should expose the demo telemetry gap as partial support: ${JSON.stringify(comparisonValidity)}`);
-  const metricText=await page.locator('#metricGrid').textContent();
-  if(!metricText.includes('Calculation status')||!metricText.includes('Valid support'))throw new Error('Comparison validity cards are missing');
+  let metricText=await page.locator('#metricGrid').textContent();
+  if(!metricText.includes('Calculation status')||!metricText.includes('Valid support')||!metricText.includes('Pearson r')||!metricText.includes('Regression R²')||!metricText.includes('Slope')||!metricText.includes('Intercept'))throw new Error('Comparison validity/regression cards are missing: '+metricText);
   for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])await page.waitForSelector(`#${id} .main-svg`,{timeout:60000});
-  await precisionRoute('verification','comparison');
-  await captureEvidence('08-verification-comparison');
+  const linearScatter=await page.evaluate(()=>{
+    const chart=document.querySelector('#scatterChart'),markers=(chart?.data||[]).filter(t=>t.mode==='markers'),fits=(chart?.data||[]).filter(t=>/ fit$/.test(String(t.name||''))),agreement=(chart?.data||[]).filter(t=>String(t.name||'')==='1:1 agreement');
+    return {xType:chart?.layout?.xaxis?.type,yType:chart?.layout?.yaxis?.type,xTitle:chart?.layout?.xaxis?.title?.text,yTitle:chart?.layout?.yaxis?.title?.text,markers:markers.length,fits:fits.length,agreement:agreement.length,hover:markers[0]?.hovertemplate||''};
+  });
+  if(linearScatter.xType!=='linear'||linearScatter.yType!=='linear'||linearScatter.markers<1||linearScatter.fits<1||linearScatter.agreement!==1||!linearScatter.hover.includes('Observed:')||!/Observed .+\(/.test(linearScatter.xTitle||'')||!/Modelled .+\(/.test(linearScatter.yTitle||''))throw new Error('Linear scatter acceptance failed: '+JSON.stringify(linearScatter));
+  await page.selectOption('#scatterScale','log');
+  await page.waitForFunction(()=>document.querySelector('#scatterChart')?.layout?.xaxis?.type==='log'&&document.querySelector('#scatterChart')?.layout?.yaxis?.type==='log',null,{timeout:10000});
+  metricText=await page.locator('#metricGrid').textContent();
+  if(!metricText.includes('Positive pairs')||!metricText.includes('Removed ≤0 pairs'))throw new Error('Log scatter sample accounting is missing: '+metricText);
+  const logScatter=await page.evaluate(()=>{const chart=document.querySelector('#scatterChart'),points=(chart?.data||[]).filter(t=>t.mode==='markers').flatMap(t=>(t.x||[]).map((x,i)=>[Number(x),Number(t.y?.[i])]).filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1])));return {points,xType:chart?.layout?.xaxis?.type,yType:chart?.layout?.yaxis?.type};});
+  if(logScatter.points.some(([x,y])=>x<=0||y<=0))throw new Error('Log scatter contains a nonpositive plotted pair: '+JSON.stringify(logScatter));
+  await page.selectOption('#scatterScale','linear');
+  await page.waitForFunction(()=>document.querySelector('#scatterChart')?.layout?.xaxis?.type==='linear');
+  await precisionRoute('graphs','comparison');
+  await captureEvidence('08-graphs-comparison');
 
   stage='depth-only agreement fit';
   await precisionRoute('verification','rating');
@@ -661,16 +732,18 @@ try{
   const of=await optionValue('#ratingObsFlow','observed.csv — flow');
   const md=await optionValue('#ratingModelDepth','model.csv — depth');
   const mf=await optionValue('#ratingModelFlow','model.csv — flow');
-  await page.selectOption('#ratingObsDepth',od);await page.selectOption('#ratingObsFlow','');await page.selectOption('#ratingModelDepth',md);await page.selectOption('#ratingModelFlow','');
+  await page.selectOption('#ratingObsDepth',od);await page.selectOption('#ratingObsDepthUnit','m');await page.selectOption('#ratingObsFlow','');
+  await page.selectOption('#ratingObsFlowUnit','m3/s');await page.selectOption('#ratingModelDepth',md);await page.selectOption('#ratingModelDepthUnit','m');
+  await page.selectOption('#ratingModelFlow','');await page.selectOption('#ratingModelFlowUnit','m3/s');
   await page.click('#runRatingBtn');
-  await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Depth pairs'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Valid paired points'),null,{timeout:60000});
   await page.waitForFunction(()=>document.querySelector('#ratingChart')?.data?.length>=3,null,{timeout:60000});
 
   stage='flow-depth rating';
   await precisionRoute('verification','rating');
   await page.selectOption('#ratingObsFlow',of);await page.selectOption('#ratingModelFlow',mf);
   await page.click('#runRatingBtn');
-  await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Observed fit'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Data-fitted / Generic Rating Curve'),null,{timeout:60000});
   await page.waitForSelector('#ratingChart .main-svg',{timeout:60000});
 
   stage='dry weather flow';
@@ -716,11 +789,13 @@ try{
   const healthHead=await page.locator('#healthBody').evaluate(el=>el.closest('table')?.querySelector('thead')?.textContent||'');
   if(!healthHead.includes('Flatline')||!healthHead.includes('Out of range')||!healthHead.includes('Zero %'))throw new Error('Enhanced FDV flow-survey screening columns are missing');
 
-  stage='association workbook and simplified survey navigation';
-  await precisionRoute('survey','configuration');
-  const navLabels=await page.locator('nav.tabs .tab').allTextContents();
-  if(navLabels.join('|')!=='Data & Time Series|Flow Survey|Rainfall|Assessment|Spills|Report')throw new Error('Unexpected simplified navigation: '+JSON.stringify(navLabels));
-  if(await page.locator('.tab[data-tab="storage"]').count()!==0)throw new Error('Storage should be embedded under Verification, not exposed as a top-level tab');
+  stage='association workbook and canonical survey navigation';
+  await precisionRoute('survey','fdv-check');
+  const navLabels=await page.locator('.pw-primary-nav button').allTextContents();
+  if(navLabels.map(x=>x.trim()).join('|')!=='Data / Time Series|Spills|Flow Survey|Graphs|Reports')throw new Error('Unexpected Precision navigation: '+JSON.stringify(navLabels));
+  if(navLabels.some(x=>/storage/i.test(x)))throw new Error('Storage must remain a Spills subtab, not a primary workspace: '+JSON.stringify(navLabels));
+  const flowSurveySubtabs=await page.locator('.pw-secondary-nav button').allTextContents();
+  if(flowSurveySubtabs.map(x=>x.trim()).join('|')!=='FDV Check|Rainfall Check|Volume Balance')throw new Error('Unexpected Flow Survey subtab sequence: '+JSON.stringify(flowSurveySubtabs));
   const workflowGuide=await page.locator('#workflowGuide').textContent();
   if(!workflowGuide.includes('Workflow')||!workflowGuide.includes('Survey')||!workflowGuide.includes('FSAT Event Response')||!workflowGuide.includes('volume balance'))throw new Error('Contextual Survey workflow guide is incomplete: '+workflowGuide);
   const activeTabStyle=await page.locator('.pw-primary-nav button[aria-current="page"]').evaluate(el=>({fontWeight:getComputedStyle(el).fontWeight,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
@@ -763,7 +838,7 @@ try{
   await page.setInputFiles('#fileInput',[
     {name:'FM01.fdv',mimeType:'text/plain',buffer:surveyFdv('FM01',0.10,0.20,0.40)},
     {name:'FM02.fdv',mimeType:'text/plain',buffer:surveyFdv('FM02',0.10,0.20,0.40)},
-    {name:'FM03.fdv',mimeType:'text/plain',buffer:surveyFdv('FM03',0.25,0.30,0.50)},
+    {name:'FM03.fdv',mimeType:'text/plain',buffer:surveyRatingFdv('FM03')},
     {name:'RG01.r',mimeType:'text/plain',buffer:surveyRainfallR()},
     {name:'RG02.r',mimeType:'text/plain',buffer:surveyRainfallR()},
   ]);
@@ -806,6 +881,27 @@ try{
   if(!continuityLayout.headings.includes('Likely source / first check')||!continuityLayout.headings.includes('Recommendation'))throw new Error('Flow-continuity table must retain diagnosis and recommendation evidence: '+JSON.stringify(continuityLayout.headings));
   await page.waitForFunction(()=>document.querySelector('#globalOperation')?.hidden===true&&!document.body.classList.contains('operation-busy'),null,{timeout:60000});
   await captureEvidence('03-survey-flow-continuity');
+
+  stage='diameter-informed fm_rg_assoc rating curve';
+  await precisionRoute('graphs','rating');
+  const fm03RatingDepth=await optionValue('#ratingObsDepth','FM03.fdv — depth');
+  const fm03RatingFlow=await optionValue('#ratingObsFlow','FM03.fdv — flow');
+  if(!fm03RatingDepth||!fm03RatingFlow)throw new Error('FM03 rating depth/flow options are missing after association-driven import.');
+  await page.selectOption('#ratingObsDepth',fm03RatingDepth);
+  await page.selectOption('#ratingObsFlow',fm03RatingFlow);
+  await page.selectOption('#ratingModelDepth','');
+  await page.selectOption('#ratingModelFlow','');
+  await page.click('#runRatingBtn');
+  await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Diameter-informed data fit'),null,{timeout:60000});
+  const diameterRating=await page.evaluate(()=>({
+    text:document.querySelector('#ratingSummary')?.textContent||'',
+    diagnostic:window.__ICM_WORKBENCH__.lastRating||null,
+    crownLines:(document.querySelector('#ratingChart')?.layout?.shapes||[]).filter(x=>x.xref==='x'&&x.yref==='paper').length,
+  }));
+  if(diameterRating.diagnostic?.monitor!=='FM03'||Number(diameterRating.diagnostic?.diameter_mm)!==600||diameterRating.crownLines<1||!diameterRating.text.includes('fm_rg_assoc.xlsx')){
+    throw new Error('Monitor-specific fm_rg_assoc diameter was not applied/provenanced correctly: '+JSON.stringify(diameterRating));
+  }
+  await captureEvidence('08b-diameter-rating');
 
   stage='FDV stacked hydraulic graph';
   await precisionRoute('data','series-mapping');
@@ -855,7 +951,7 @@ try{
   if(!fdvGraph.table||JSON.stringify(fdvGraph.table.header)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('FDV graph must contain the reference-style Plotly statistics band: '+JSON.stringify(fdvGraph.table));
   for(const row of ['Observed Flow','Observed Depth','Observed Velocity','Rainfall'])if(!fdvGraph.table.series.some(x=>x.includes(row)))throw new Error('FDV statistics row missing '+row+': '+JSON.stringify(fdvGraph.table.series));
   if(!fdvGraph.table.units.some(x=>/mm\/h/i.test(x)))throw new Error('Rainfall statistics must expose mm/h: '+JSON.stringify(fdvGraph.table.units));
-  if(fdvGraph.colours['Observed flow']?.toLowerCase()!=='#ff0000'||fdvGraph.colours['Observed depth']?.toLowerCase()!=='#ff0000'||fdvGraph.colours['Observed velocity']?.toLowerCase()!=='#ff0000'||fdvGraph.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('FDV default colours do not match the observed-red reference convention: '+JSON.stringify(fdvGraph.colours));
+  if(fdvGraph.colours['Observed flow']?.toLowerCase()!=='#d32f2f'||fdvGraph.colours['Observed depth']?.toLowerCase()!=='#d32f2f'||fdvGraph.colours['Observed velocity']?.toLowerCase()!=='#d32f2f'||fdvGraph.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('FDV default colours do not match the observed-red reference convention: '+JSON.stringify(fdvGraph.colours));
   if(!fdvGraph.externalStatsHidden)throw new Error('FDV statistics must not be duplicated outside the Plotly figure.');
   await precisionRoute('data','time-series');
   await captureEvidence('01b-fdv-stacked-graph');
@@ -915,6 +1011,13 @@ try{
   if(workspace.schema_version!==3||workspace.time_basis!=='model clock/unspecified')throw new Error(`Unexpected workspace schema/time basis: ${JSON.stringify(workspace)}`);
   if(workspace.exclusions?.[0]?.start!=='2026-01-01T00:08')throw new Error(`Exclusion wall clock shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
   if(workspace.exclusions?.[0]?.end!=='2026-01-01T00:10')throw new Error(`Exclusion end shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
+  const savedRatingUnits={
+    obsDepth:workspace.analysis?.rating_obs_depth_unit,
+    obsFlow:workspace.analysis?.rating_obs_flow_unit,
+    modelDepth:workspace.analysis?.rating_model_depth_unit,
+    modelFlow:workspace.analysis?.rating_model_flow_unit,
+  };
+  if(JSON.stringify(savedRatingUnits)!==JSON.stringify({obsDepth:'m',obsFlow:'m3/s',modelDepth:'m',modelFlow:'m3/s'}))throw new Error('Rating unit overrides were not persisted in the workspace: '+JSON.stringify(savedRatingUnits));
 
   // A workspace must not advertise completion before its asynchronous mapping
   // and graph restoration has actually finished.
@@ -947,6 +1050,13 @@ try{
     plottedTraces:Array.isArray(document.querySelector('#timeChart')?.data)?document.querySelector('#timeChart').data.length:0,
   }));
   if(!restoreReady.mappingCompleted||restoreReady.prematureLoaded||!restoreReady.observedMapped||restoreReady.plottedTraces<1)throw new Error(`Workspace announced loaded before restoration completed: ${JSON.stringify(restoreReady)}`);
+  const restoredRatingUnits=await page.evaluate(()=>({
+    obsDepth:document.querySelector('#ratingObsDepthUnit')?.value,
+    obsFlow:document.querySelector('#ratingObsFlowUnit')?.value,
+    modelDepth:document.querySelector('#ratingModelDepthUnit')?.value,
+    modelFlow:document.querySelector('#ratingModelFlowUnit')?.value,
+  }));
+  if(JSON.stringify(restoredRatingUnits)!==JSON.stringify({obsDepth:'m',obsFlow:'m3/s',modelDepth:'m',modelFlow:'m3/s'}))throw new Error('Rating unit overrides were not restored: '+JSON.stringify(restoredRatingUnits));
 
   // Workspace import intentionally invalidates calculated snapshots. Recalculate every
   // analysis used by the report rather than weakening stale-result export guards.
@@ -967,6 +1077,20 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.lastProfessionalSurvey),null,{timeout:120000});
   await page.click('#runCompleteSurveyBtn');
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.survey?.batch),null,{timeout:120000});
+
+  // Workspace restore invalidates the derived rating result. Recalculate it on the
+  // restored monitor-specific inputs so report export is proven against fresh,
+  // authoritative rating evidence rather than a persisted/stale chart.
+  await precisionRoute('graphs','rating');
+  const restoredFm03Depth=await optionValue('#ratingObsDepth','FM03.fdv — depth');
+  const restoredFm03Flow=await optionValue('#ratingObsFlow','FM03.fdv — flow');
+  if(!restoredFm03Depth||!restoredFm03Flow)throw new Error('Restored workspace lost FM03 rating inputs.');
+  await page.selectOption('#ratingObsDepth',restoredFm03Depth);
+  await page.selectOption('#ratingObsFlow',restoredFm03Flow);
+  await page.selectOption('#ratingModelDepth','');
+  await page.selectOption('#ratingModelFlow','');
+  await page.click('#runRatingBtn');
+  await page.waitForFunction(()=>Boolean(state.rating)&&state.rating.signature===ratingInputSignature()&&document.querySelector('#ratingSummary')?.textContent.includes('Diameter-informed data fit'),null,{timeout:60000});
 
   // Regression guard for live-regression #11: presentation-only rerenders must
   // not invalidate a fresh engineering result when the exclusion state is unchanged.
@@ -1009,6 +1133,7 @@ try{
     spill:'Fresh',
     'professional-survey':'Fresh',
     'complete-survey':'Fresh',
+    rating:'Fresh',
     'survey-association':'Loaded',
   };
   for(const [key,expected] of Object.entries(readinessExpected)){
@@ -1022,14 +1147,29 @@ try{
   await captureEvidence('05-report-workspace');
   const reportDownload=await downloadFrom('#downloadReportBtn');
   const report=await fs.readFile(await reportDownload.path(),'utf8');
+  const reportPlotMarker='<script type="application/json" id="assessment-time-graph-data">';
+  const reportPlotStart=report.indexOf(reportPlotMarker);
+  const reportPlotEnd=reportPlotStart>=0?report.indexOf('</script>',reportPlotStart+reportPlotMarker.length):-1;
+  if(reportPlotStart<0||reportPlotEnd<0)throw new Error('Assessment report full-period Plotly payload missing');
+  const reportPlot=JSON.parse(report.slice(reportPlotStart+reportPlotMarker.length,reportPlotEnd));
+  const populatedReportTraces=(reportPlot.data||[]).filter(t=>/^(Observed|Model|Rainfall)/.test(String(t.name||''))&&Array.isArray(t.x)&&t.x.filter(Boolean).length>0);
+  if(populatedReportTraces.length<3)throw new Error('Assessment report full-period graph contains empty mapped traces: '+JSON.stringify((reportPlot.data||[]).map(t=>({name:t.name,points:(t.x||[]).filter(Boolean).length}))));
+  const reportRange=reportPlot.layout?.xaxis?.range||[];
+  if(!String(reportRange[0]||'').startsWith('2026-01-01T00:00')||!String(reportRange[1]||'').startsWith('2026-01-01T00:14'))throw new Error('Assessment report analytical period shifted from model clock: '+JSON.stringify(reportRange));
   if(!report.includes('© 2026 Anzar Sajid'))throw new Error('Report copyright missing');
   if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
   if(!report.includes('project_registry')||!report.includes('web-worker'))throw new Error('Report audit appendix is missing canonical project registry / worker execution provenance');
-  if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Project data context')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
+  if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Full time-period graph')||!report.includes('Project data context')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
+  const reportGraphIndex=report.indexOf('Full time-period graph'),reportSpillIndex=report.indexOf('Spill / EDM assessment'),reportScenarioIndex=report.indexOf('Scenario comparison');
+  if(!(reportGraphIndex>=0&&reportSpillIndex>reportGraphIndex&&reportScenarioIndex>reportSpillIndex))throw new Error('Assessment report must follow the supplied Station A review order: full-period graph, spill/EDM tables, then scenario diagnostics.');
+  if(!report.includes('Observed / EDM hydraulic threshold')||!report.includes('Model hydraulic threshold'))throw new Error('Assessment report settings must identify the observed and model hydraulic threshold values explicitly.');
   if(report.includes('<h3>Graph statistics</h3>'))throw new Error('Assessment report should not duplicate graph statistics outside the reference-style figure.');
   if(!report.includes('Observed spills by month')||!report.includes('Model spills by month')||!report.includes('Observed vs modelled monthly spill comparison'))throw new Error('Assessment report is missing the reference-style monthly spill tables.');
   if(!report.includes('Professional flow-survey / rainfall assessment')||!report.includes('professional_flow_survey'))throw new Error('Professional flow-survey assessment missing from report/audit appendix');
   if(!report.includes('Complete flow-survey context')||!report.includes('Flow continuity / volume balance')||!report.includes('fm_rg_assoc.xlsx'))throw new Error('Association-driven complete survey context missing from exported report');
+  if(!report.includes('Diameter-informed empirical Q–H rating curve')||!report.includes('rating_diagnostic')||!report.includes('600 mm'))throw new Error('Fresh diameter-informed rating chart/provenance missing from exported report');
+  if(report.includes('Cumulative-volume diagnostic where dimensional flow support is available.')||report.includes('Time-weighted exceedance diagnostic where available.'))throw new Error('Unavailable flow-only diagnostics must not be exported as blank report figures');
+
   if(!report.includes('report-grid')||!report.includes('table-wrap'))throw new Error('Professional report layout classes missing');
   const reportLayout=await inspectReportHtml(report,3);
   if(reportLayout.headers!==1||reportLayout.figures<reportLayout.minFigures||reportLayout.zero||reportLayout.overflow>2)throw new Error(`Assessment report visual containment failed: ${JSON.stringify(reportLayout)}`);
@@ -1095,7 +1235,7 @@ try{
   if(!near(rv.minimum,.42)||!near(rv.maximum,1.48)||!near(rv.mean,.8804642627,1e-8))throw new Error('Reference FM01 velocity statistics mismatch: '+JSON.stringify(rv));
   if(!near(rr.minimum,0)||!near(rr.maximum,66)||!near(rr.mean,.1264818213,1e-8)||!near(rr.total,85,1e-6))throw new Error('Reference RG01 rainfall statistics/total mismatch: '+JSON.stringify(rr));
   if(JSON.stringify(referenceEvidence.order)!==JSON.stringify(['rainfall','flow','depth','velocity']))throw new Error('Reference FDV panel order mismatch: '+JSON.stringify(referenceEvidence.order));
-  if(referenceEvidence.colours['Observed flow']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed depth']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed velocity']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('Reference FDV colours mismatch: '+JSON.stringify(referenceEvidence.colours));
+  if(referenceEvidence.colours['Observed flow']?.toLowerCase()!=='#d32f2f'||referenceEvidence.colours['Observed depth']?.toLowerCase()!=='#d32f2f'||referenceEvidence.colours['Observed velocity']?.toLowerCase()!=='#d32f2f'||referenceEvidence.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('Reference FDV colours mismatch: '+JSON.stringify(referenceEvidence.colours));
   if(JSON.stringify(referenceEvidence.tableHeader)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('Reference Plotly statistics header mismatch: '+JSON.stringify(referenceEvidence.tableHeader));
   if(!referenceEvidence.tableTotals.some(x=>/85(?:\.0+)? mm/.test(x)))throw new Error('Reference rainfall total 85 mm missing from Plotly statistics: '+JSON.stringify(referenceEvidence.tableTotals));
   if(referenceEvidence.pointCounts?.observed?.raw!==20161||referenceEvidence.pointCounts?.rainfall?.raw!==20161)throw new Error('Reference full-period source counts mismatch: '+JSON.stringify(referenceEvidence.pointCounts));

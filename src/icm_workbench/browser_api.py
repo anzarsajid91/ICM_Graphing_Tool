@@ -296,7 +296,49 @@ def _comparison_coverage(observed, obs_col, modelled, model_col, domain_start, d
     }
 
 
-def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]"):
+def _comparison_metric_reasons(paired, metrics):
+    """Explain undefined verification statistics without manufacturing finite scores."""
+    finite = paired.copy() if paired is not None else pd.DataFrame(columns=["obs", "sim"])
+    if not finite.empty:
+        finite = finite[
+            np.isfinite(pd.to_numeric(finite["obs"], errors="coerce"))
+            & np.isfinite(pd.to_numeric(finite["sim"], errors="coerce"))
+        ]
+    n = int(len(finite))
+    reasons = {}
+    if n == 0:
+        reason = "no finite paired observed/modelled values"
+        for key in ("rmse","mae","mean_bias","correlation","r2_correlation","regression_slope","regression_intercept","regression_r2","nse","kge_2009"):
+            if metrics.get(key) is None:
+                reasons[key] = reason
+        return reasons
+    o = pd.to_numeric(finite["obs"], errors="coerce").to_numpy(float)
+    s = pd.to_numeric(finite["sim"], errors="coerce").to_numpy(float)
+    obs_variable = n >= 2 and float(np.std(o)) > 0
+    sim_variable = n >= 2 and float(np.std(s)) > 0
+    if metrics.get("regression_slope") is None or metrics.get("regression_intercept") is None:
+        reason = "requires at least two pairs and non-constant observed values"
+        reasons["regression_slope"] = reason
+        reasons["regression_intercept"] = reason
+    if metrics.get("regression_r2") is None:
+        reasons["regression_r2"] = "requires at least two pairs and non-constant observed values" if not obs_variable else "undefined because modelled values have zero variance"
+    if metrics.get("correlation") is None or metrics.get("r2_correlation") is None:
+        reason = "requires at least two pairs with non-zero variance in both observed and modelled values"
+        reasons["correlation"] = reason
+        reasons["r2_correlation"] = reason
+    if metrics.get("nse") is None:
+        reasons["nse"] = "undefined because observed values have zero variance"
+    if metrics.get("kge_2009") is None:
+        if not (obs_variable and sim_variable):
+            reasons["kge_2009"] = "requires non-zero variance in both observed and modelled values"
+        elif float(np.mean(o)) == 0:
+            reasons["kge_2009"] = "undefined because the observed mean is zero"
+        else:
+            reasons["kge_2009"] = "undefined for this paired sample"
+    return reasons
+
+
+def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]", obs_unit=None, model_unit=None):
     oq, mq = _comparison_quantity(obs_path, obs_col), _comparison_quantity(model_path, model_col)
     if not oq or not mq:
         raise ValueError(
@@ -309,8 +351,14 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
             f"selected channels resolve to {oq!r} and {mq!r}. "
             "Depth and absolute level remain distinct."
         )
-    obs = _load(obs_path).frame
+    obs_contract = _series_contract(obs_path, obs_col, unit_override=obs_unit)
+    model_contract = _series_contract(model_path, model_col, unit_override=model_unit)
+    obs = _load(obs_path).frame.copy()
     mod = _load(model_path).frame.copy()
+    if obs_unit and float(obs_contract.get("scale_to_canonical") or 1.0) != 1.0:
+        obs[obs_col] = pd.to_numeric(obs[obs_col], errors="coerce") * float(obs_contract["scale_to_canonical"])
+    if model_unit and float(model_contract.get("scale_to_canonical") or 1.0) != 1.0:
+        mod[model_col] = pd.to_numeric(mod[model_col], errors="coerce") * float(model_contract["scale_to_canonical"])
     if float(offset_minutes or 0):
         mod["timestamp"] = pd.to_datetime(mod["timestamp"], errors="coerce") + pd.to_timedelta(float(offset_minutes), unit="m")
     domain_start,domain_end=_comparison_domain(obs,mod,start,end)
@@ -328,11 +376,22 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
     for exc in exclusions:
         paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
     metrics = calibration_metrics(paired)
+    metrics["unavailable_reasons"] = _comparison_metric_reasons(paired, metrics)
+    positive_mask = (
+        pd.to_numeric(paired["obs"], errors="coerce").gt(0)
+        & pd.to_numeric(paired["sim"], errors="coerce").gt(0)
+    ) if not paired.empty else pd.Series(dtype=bool)
+    positive_paired = paired.loc[positive_mask].copy() if not paired.empty else paired.copy()
+    positive_metrics = calibration_metrics(positive_paired)
+    positive_metrics["unavailable_reasons"] = _comparison_metric_reasons(positive_paired, positive_metrics)
+    positive_removed_count = max(0, int(metrics.get("pairs") or 0) - int(positive_metrics.get("pairs") or 0))
     p = residual_series(paired) if not paired.empty else paired.copy()
     if not p.empty:
         p["residual"] = p["residual_model_minus_observed"]
     payload = {
         "metrics": metrics,
+        "positive_metrics": positive_metrics,
+        "positive_removed_count": positive_removed_count,
         "paired": _records(p),
         "calculation_status":coverage.get("status","unavailable"),
         "coverage_fraction":coverage.get("coverage_fraction"),
@@ -340,14 +399,28 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
         "validity_model":"validity-v1",
         "observed_quantity": oq,
         "modelled_quantity": mq,
+        "observed_unit": obs_contract.get("canonical_unit"),
+        "modelled_unit": model_contract.get("canonical_unit"),
+        "pairing_method": "observed timestamps with exact or bounded linear model interpolation; no extrapolation across disallowed gaps",
+        "metric_weighting": "sample-weighted paired values",
     }
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
 
 
 def _quantity(path, column):
-    metadata = getattr(_load(path), "metadata", {})
-    return metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
+    metadata = getattr(_load(path), "metadata", {}) or {}
+    details = {}
+    if isinstance(metadata.get("series_metadata"), dict):
+        details = metadata["series_metadata"].get(column) or {}
+    if not details and isinstance(metadata.get("channels"), dict):
+        details = metadata["channels"].get(column) or {}
+    return (
+        details.get("quantity")
+        or metadata.get("quantity_by_column", {}).get(column)
+        or _column_quantity_hint(column)
+        or metadata.get("quantity")
+    )
 
 
 def _column_quantity_hint(column):
@@ -362,14 +435,16 @@ def _column_quantity_hint(column):
         return None
     if any(token in key for token in ("rainfall", "rain", "precip")):
         return "rainfall"
-    if any(token in key for token in ("velocity", "vel")):
+    # Resolve level/stage before velocity shorthand. "level" contains "vel",
+    # so a broad substring check would otherwise misclassify hydraulic level.
+    if any(token in key for token in ("waterlevel", "level", "stage")):
+        return "level"
+    if "velocity" in key or key == "vel":
         return "velocity"
     if any(token in key for token in ("discharge", "flow")):
         return "flow"
     if "depth" in key:
         return "depth"
-    if any(token in key for token in ("waterlevel", "level", "stage")):
-        return "level"
     return None
 
 
@@ -403,7 +478,12 @@ def _series_contract(path, column, unit_override=None):
         details = dict(metadata["series_metadata"].get(column) or {})
     if not details and isinstance(metadata.get("channels"), dict):
         details = dict(metadata["channels"].get(column) or {})
-    quantity = details.get("quantity") or metadata.get("quantity_by_column", {}).get(column) or metadata.get("quantity")
+    quantity = (
+        details.get("quantity")
+        or metadata.get("quantity_by_column", {}).get(column)
+        or _column_quantity_hint(column)
+        or metadata.get("quantity")
+    )
     original_unit = details.get("original_unit", metadata.get("original_unit"))
     resolved_unit = details.get("canonical_unit", metadata.get("canonical_unit"))
     format_name = getattr(parsed, "format_name", None)
