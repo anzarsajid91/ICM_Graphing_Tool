@@ -18,6 +18,19 @@
        check.getUTCHours()!==Number(h)||check.getUTCMinutes()!==Number(mi)||check.getUTCSeconds()!==Number(s))return null;
     return epoch;
   }
+  function decodeText(bytes){
+    const data=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes||0);
+    if(data.length>=2&&data[0]===0xff&&data[1]===0xfe)return new TextDecoder('utf-16le').decode(data);
+    if(data.length>=2&&data[0]===0xfe&&data[1]===0xff)return new TextDecoder('utf-16be').decode(data);
+    if(data.length>=3&&data[0]===0xef&&data[1]===0xbb&&data[2]===0xbf)return new TextDecoder('utf-8').decode(data);
+    const sample=data.subarray(0,Math.min(4096,data.length));
+    let evenNull=0,oddNull=0;
+    for(let i=0;i<sample.length;i+=1)if(sample[i]===0)(i%2===0?evenNull++:oddNull++);
+    if(sample.length&&evenNull+oddNull>=Math.max(2,Math.floor(sample.length/8))){
+      return new TextDecoder(evenNull>oddNull?'utf-16be':'utf-16le').decode(data);
+    }
+    return new TextDecoder('utf-8',{fatal:false}).decode(data);
+  }
   function parseTimestamp(value){
     const raw=String(value??'').trim();
     let m=raw.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)?$/);
@@ -355,5 +368,5 @@
     }catch(error){return ineligible(name,error);}
   }
 
-  root.ICMFastPathCore=Object.freeze({schemaVersion:1,parseText,canonicalUnit,detectUnit,inferQuantity,parseTimestamp});
+  root.ICMFastPathCore=Object.freeze({schemaVersion:1,parseText,canonicalUnit,detectUnit,inferQuantity,parseTimestamp,decodeText});
 })(typeof self!=='undefined'?self:globalThis);
