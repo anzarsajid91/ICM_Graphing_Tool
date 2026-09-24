@@ -19,7 +19,9 @@
     graphRefreshing: false,
     graphTimer: null,
     graphGeneration: 0,
+    suppressRelayout: false,
     channelMode: 'combined',
+    thresholdContexts: {observed:null, model:null},
   };
   window.__ICM_WORKBENCH__.uiV2 = ui;
 
@@ -37,6 +39,11 @@
     button.disabled = true;
     button.classList.add('is-busy');
     button.textContent = runningText;
+    // Clear any stale completed spill status before yielding a paint. This makes
+    // the visible state truthful during the async hand-off and prevents a user
+    // (or acceptance runner) from mistaking the previous result for completion
+    // of the newly requested calculation.
+    if (target === 'spillRunStatus') setOperationStatus(runningText, 'running');
     operationBegin(target);
     operationUpdate(operationLabel(target), null, runningText);
     await nextPaint();
@@ -110,12 +117,14 @@
         <label>Observed / EDM depth / level threshold
           <input id="graphObsThreshold" type="number" step="any" placeholder="Not shown" />
         </label>
+        <small id="graphObsThresholdContext" class="v2-threshold-context"></small>
         <label class="v2-show-toggle"><input id="showGraphObsThreshold" type="checkbox" checked /> Show line</label>
       </div>
       <div class="v2-threshold-control" data-threshold-role="model">
         <label>Model depth / level threshold
           <input id="graphModelThreshold" type="number" step="any" placeholder="Not shown" />
         </label>
+        <small id="graphModelThresholdContext" class="v2-threshold-context"></small>
         <label class="v2-show-toggle"><input id="showGraphModelThreshold" type="checkbox" checked /> Show line</label>
       </div>
       <div class="v2-density" id="graphDensity"><strong>Adaptive display</strong>Full view is reduced for speed; zoom progressively refines toward every source timestep. Thresholds are drawn on the Depth / Level panel only.</div>`;
@@ -191,6 +200,66 @@
   function isThresholdQuantity(value){
     return ['depth','level'].includes(String(value||'').toLowerCase());
   }
+  function thresholdSelectionForKey(key,{fdvFallback=false}={}){
+    const selected=mappingObject(key);
+    if(!selected)return null;
+    if(isThresholdQuantity(seriesQuantity(selected.item,selected.col)))return selected;
+    if(fdvFallback&&String(selected.item?.parsed?.format||'')==='fdv_ascii'){
+      const hydraulic=hydraulicSeriesForItem(selected.item).find(x=>isThresholdQuantity(x.quantity));
+      return hydraulic?mappingObject(hydraulic.key):null;
+    }
+    return null;
+  }
+  function observedThresholdSelection(key=state.mapping.observed){
+    return thresholdSelectionForKey(key,{fdvFallback:true});
+  }
+  function modelThresholdSelection(keys=state.mapping.models){
+    for(const key of keys||[]){
+      const selected=thresholdSelectionForKey(key);
+      if(selected)return selected;
+    }
+    return null;
+  }
+  function thresholdContext(selection){
+    if(!selection)return null;
+    const quantity=String(seriesQuantity(selection.item,selection.col)||'').toLowerCase();
+    if(!isThresholdQuantity(quantity))return null;
+    return {
+      quantity,
+      unit:seriesUnit(selection.item,selection.col)||null,
+      reference:seriesReference(selection.item,selection.col)||null,
+      label:seriesLabel(selection.item,selection.col),
+    };
+  }
+  function thresholdContextsCompatible(previous,next){
+    if(!previous||!next)return false;
+    return previous.quantity===next.quantity&&String(previous.unit||'')===String(next.unit||'')&&String(previous.reference||'')===String(next.reference||'');
+  }
+  function thresholdContextText(context){
+    if(!context)return 'No eligible Depth / Level series is mapped.';
+    const quantity=context.quantity==='level'?'Absolute level':'Depth';
+    const unit=context.unit||'unit unresolved';
+    const reference=context.reference||'reference / datum not supplied';
+    return quantity+' · '+unit+' · '+reference;
+  }
+  function numericThreshold(id,label){
+    const raw=$(id)?.value??'';
+    if(raw==='')return null;
+    const value=Number(raw);
+    if(!Number.isFinite(value))throw new Error(label+' must be a finite numeric value.');
+    return value;
+  }
+  function reconcileThresholdContext(role,previous,next){
+    const spillId=role==='observed'?'obsThreshold':'modelThreshold';
+    const graphId=role==='observed'?'graphObsThreshold':'graphModelThreshold';
+    const configured=$(spillId)?.value!=='';
+    if(configured&&previous&&!thresholdContextsCompatible(previous,next)){
+      $(spillId).value='';
+      if($(graphId))$(graphId).value='';
+      return role+' threshold cleared because the mapped hydraulic quantity, unit or reference changed; reassign or explicitly convert it.';
+    }
+    return '';
+  }
 
   function updateChannelControls(){
     const nav=document.getElementById('v2ChannelNav'),strip=document.getElementById('v2ChannelStrip'),selected=mappingObject(state.mapping.observed);
@@ -213,24 +282,50 @@
     const next=['flow','depth','velocity','combined'].includes(String(mode))?String(mode):'combined';
     ui.channelMode=next;
     updateChannelControls();
+    updateGraphThresholdControls();
     ui.graphRange=null;
     if(redraw&&state.mapping.observed)void v2DrawGraph(null);
   }
 
   function updateGraphThresholdControls(){
-    const observedHasDepth=observedGraphSeries().some(source=>isThresholdQuantity(source.quantity||mappedQuantity(source.key)));
-    const modelHasDepth=(state.mapping.models||[]).some(key=>isThresholdQuantity(mappedQuantity(key)));
+    const channelAllowsHydraulicThreshold=!['flow','velocity'].includes(ui.channelMode);
+    const observedContext=channelAllowsHydraulicThreshold?thresholdContext(observedThresholdSelection()):null;
+    const modelContext=channelAllowsHydraulicThreshold?thresholdContext(modelThresholdSelection()):null;
     const observedControl=document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]');
     const modelControl=document.querySelector('#v2GraphToolbar [data-threshold-role="model"]');
-    if(observedControl)observedControl.hidden=!observedHasDepth;
-    if(modelControl)modelControl.hidden=!modelHasDepth;
+    if(observedControl)observedControl.hidden=!observedContext;
+    if(modelControl)modelControl.hidden=!modelContext;
+    if($('graphObsThresholdContext'))$('graphObsThresholdContext').textContent=thresholdContextText(observedContext);
+    if($('graphModelThresholdContext'))$('graphModelThresholdContext').textContent=thresholdContextText(modelContext);
+    ui.thresholdContexts={observed:observedContext,model:modelContext};
+  }
+  function updateThresholdRangeStatus(observedEntries,modelEntries){
+    const apply=(role,context,value,entries)=>{
+      const target=$(role==='observed'?'graphObsThresholdContext':'graphModelThresholdContext');
+      if(!target||!context)return;
+      const values=entries.filter(x=>isThresholdQuantity(x.quantity)).flatMap(x=>x.source?.data?.value||[]).map(Number).filter(Number.isFinite);
+      let text=thresholdContextText(context);
+      if(value!==null&&values.length){
+        const min=Math.min(...values),max=Math.max(...values),unit=context.unit?' '+context.unit:'';
+        if(value<min||value>max)text+=' · configured '+fmt(value,4)+unit+' is outside plotted support '+fmt(min,4)+'–'+fmt(max,4)+unit+'; threshold remains configured.';
+      }
+      target.textContent=text;
+    };
+    apply('observed',thresholdContext(observedThresholdSelection()),numericThreshold('obsThreshold','Observed threshold'),observedEntries);
+    apply('model',thresholdContext(modelThresholdSelection()),numericThreshold('modelThreshold','Model threshold'),modelEntries);
   }
 
   async function v2ApplyMapping() {
     const previousMapping=JSON.stringify(state.mapping);
+    const previousObservedContext=thresholdContext(observedThresholdSelection(state.mapping.observed));
+    const previousModelContext=thresholdContext(modelThresholdSelection(state.mapping.models));
     state.mapping.observed = $('observedSelect').value;
     state.mapping.models = [...$('modelSelect').selectedOptions].map(o => o.value);
     state.mapping.rain = $('rainSelect').value;
+    const thresholdMessages=[
+      reconcileThresholdContext('observed',previousObservedContext,thresholdContext(observedThresholdSelection())),
+      reconcileThresholdContext('model',previousModelContext,thresholdContext(modelThresholdSelection())),
+    ].filter(Boolean);
     const mappingChanged=previousMapping!==JSON.stringify(state.mapping);
     if(mappingChanged&&state.rating){
       state.rating=null;
@@ -241,8 +336,8 @@
     }
     const obs = mappingObject(state.mapping.observed);
     const models = currentModels();
-    if (!obs && !state.mapping.rain) throw new Error('Select an observed or rainfall series.');
-    $('mappingStatus').textContent = `Observed: ${obs?seriesLabel(obs.item, obs.col):'not mapped'} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`;
+    if (!obs && !models.length && !state.mapping.rain) throw new Error('Select at least one observed, modelled or rainfall series.');
+    $('mappingStatus').textContent = `Observed: ${obs?seriesLabel(obs.item, obs.col):'not mapped'} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`+(thresholdMessages.length?' '+thresholdMessages.join(' '):'');
     renderModelColourControls();
     renderExclusions();
     if($('graphObsThreshold'))$('graphObsThreshold').value=$('obsThreshold').value;
@@ -253,7 +348,7 @@
     const previous=select.value;
     select.innerHTML='<option value="">No model selected</option>'+state.mapping.models.map(key=>{const m=mappingObject(key);return `<option value="${esc(key)}">${esc(seriesLabel(m.item,m.col))}</option>`;}).join('');
     if(state.mapping.models.includes(previous))select.value=previous;
-    if(state.mapping.models.length===1)select.value=state.mapping.models[0];
+    else if(state.mapping.models.length)select.value=state.mapping.models[0];
     autoSuggestAdvanced(allSeries());
     ui.graphRange = null;
     await v2DrawGraph(null);
@@ -270,6 +365,10 @@
       start: range?.[0] || null,
       end: range?.[1] || null,
     };
+    // Always ask the authoritative worker for the requested visible window.
+    // Caching full display slices here can silently defeat native-resolution
+    // refinement after Plotly zoom/purge cycles. Engineering calculations were
+    // never cached by this layer and remain unchanged.
     const data = await engine.call('series_data', args);
     return {...source, data};
   }
@@ -387,9 +486,10 @@
   }
 
   function graphTitle(fdvMode,observedEntries,modelEntries){
-    const prefix=modelEntries.length?'Observed vs Simulated':'Observed';
+    const hasObserved=observedEntries.length>0,hasModel=modelEntries.length>0;
+    const prefix=hasObserved&&hasModel?'Observed vs Simulated':hasModel?'Simulated':'Observed';
     if(fdvMode)return prefix+' — All';
-    const quantity=String(observedEntries[0]?.quantity||'').toLowerCase();
+    const quantity=String(observedEntries[0]?.quantity||modelEntries[0]?.quantity||'').toLowerCase();
     const label={depth:'Depth',level:'Level',flow:'Flow',velocity:'Velocity',rainfall:'Rainfall'}[quantity];
     return prefix+(label?' — '+label:'');
   }
@@ -414,7 +514,7 @@
   }
 
   async function v2DrawGraph(range=ui.graphRange,options={}) {
-    if (!state.mapping.observed && !state.mapping.rain) {
+    if (!state.mapping.observed && !(state.mapping.models||[]).length && !state.mapping.rain) {
       Plotly.purge('timeChart');
       return;
     }
@@ -557,28 +657,40 @@
         traces.push(graphStatisticsTrace(statisticRows,statsDomain));
         window.__ICM_WORKBENCH__.lastPanelDomains=panelDomains;
       }else{
-        const obs=observedEntries[0],quantity=String(obs?.quantity||'').toLowerCase();
-        panelOrder=[...(rainEntry?['rainfall']:[]),quantity||'hydraulic'];
-        layout={...commonLayout,height:Number(options.height)||850,bargap:0};
+        const obs=observedEntries[0],primary=obs||modelEntries[0],quantity=String(primary?.quantity||'').toLowerCase();
+        const rainfallOnly=!primary&&Boolean(rainEntry);
+        panelOrder=rainfallOnly?['rainfall']:[...(rainEntry?['rainfall']:[]),quantity||'hydraulic'];
+        layout={...commonLayout,height:Number(options.height)||(rainfallOnly?720:850),bargap:0};
         const hydDomain=[plotBottom,hydraulicTop];
-        layout.yaxis={title:{text:obs?.source?.col||'Value',standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zeroline:false,automargin:true};
+        const primaryUnit=primary?seriesUnit(primary.source.item,primary.source.col):null;
+        const primaryReference=primary?seriesReference(primary.source.item,primary.source.col):null;
+        const quantityTitle=quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):(primary?.source?.col||'Value');
+        const hydraulicAxisTitle=quantityTitle+(primaryUnit?' ('+primaryUnit+')':'')+(quantity==='level'&&primaryReference?' · '+primaryReference:'');
+        layout.yaxis=rainfallOnly
+          ?{title:{text:'Rainfall (mm/h)',standoff:10},domain:[plotBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true}
+          :{title:{text:hydraulicAxisTitle,standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zeroline:false,automargin:true};
         if(obs){
           traces.push({x:obs.source.data.timestamp,y:obs.source.data.value,name:'Observed '+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):obs.source.col),type:traceType(obs.source.data),mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2.2},yaxis:'y'});
         }
         for(const item of modelEntries){
           traces.push({x:item.source.data.timestamp,y:item.source.data.value,name:`Simulated: ${item.source.col}`,meta:item.source.item.displayName,type:traceType(item.source.data),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:2},yaxis:'y'});
         }
-        layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:hydraulicTop,text:'<b>'+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):'Hydraulic')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
+        if(primary)layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:hydraulicTop,text:'<b>'+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):'Hydraulic')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
         if(rainEntry){
-          layout.yaxis2={title:{text:'Rainfall (mm/h)',standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true};
+          if(!rainfallOnly){
+            layout.yaxis2={title:{text:'Rainfall (mm/h)',standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true};
+          }
           layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
-          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
+          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:rainfallOnly?'y':'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
         }
         // ICM HYD exports commonly describe the vertical hydraulic series as
         // "level" rather than "depth". Both belong to the same threshold-bearing
-        // hydraulic axis; flow and velocity remain ineligible.
-        const singleDepth=isThresholdQuantity(quantity),hasDepthModel=singleDepth&&modelEntries.some(x=>isThresholdQuantity(x.quantity));
-        const showObserved=singleDepth&&$('showGraphObsThreshold')?.checked!==false&&observedThreshold!==null;
+        // hydraulic axis; flow and velocity remain ineligible. Model-only
+        // depth/level review is valid even when no observed series is mapped.
+        const singleDepth=isThresholdQuantity(quantity);
+        const hasObservedDepth=Boolean(obs)&&isThresholdQuantity(obs.quantity);
+        const hasDepthModel=modelEntries.some(x=>isThresholdQuantity(x.quantity));
+        const showObserved=hasObservedDepth&&$('showGraphObsThreshold')?.checked!==false&&observedThreshold!==null;
         const showModel=hasDepthModel&&$('showGraphModelThreshold')?.checked!==false&&modelThreshold!==null;
         const coincident=showObserved&&showModel&&Math.abs(Number(observedThreshold)-Number(modelThreshold))<=1e-12;
         const thresholdQuantityLabel=quantity==='level'?'level':'depth';
@@ -594,7 +706,12 @@
 
       const chartNode=$('timeChart');
       if(chartNode){chartNode.style.height=layout.height+'px';chartNode.style.minHeight=layout.height+'px';}
-      await Plotly.react('timeChart',traces,layout,{responsive:true,displaylogo:false,scrollZoom:true});
+      ui.suppressRelayout=true;
+      try{
+        await Plotly.react('timeChart',traces,layout,{responsive:true,displaylogo:false,scrollZoom:true});
+      }finally{
+        ui.suppressRelayout=false;
+      }
       wireAdaptiveZoom();
       if(generation!==ui.graphGeneration)return;
       ui.graphRange=range;
@@ -603,6 +720,7 @@
       window.__ICM_WORKBENCH__.lastGraphMode=fdvMode?'fdv-multi-variable':'single-series';
       window.__ICM_WORKBENCH__.lastPanelOrder=panelOrder;
       renderGraphStatistics(statisticRows,displayRange);
+      updateThresholdRangeStatus(observedEntries,modelEntries);
       const density=$('graphDensity');
       if(density){
         const native=Object.values(pointCounts).every(x=>x.native),shown=Object.values(pointCounts).reduce((sum,x)=>sum+(x.shown||0),0),raw=Object.values(pointCounts).reduce((sum,x)=>sum+(x.raw||0),0);
@@ -621,22 +739,35 @@
     return undefined;
   }
 
+  function adaptiveZoomRelayout(event) {
+    // Plotly.react can emit relayout events while the workbench is replacing
+    // display traces. Those are implementation-side redraws, not a user's
+    // analytical viewport change, and must not overwrite a pending zoom.
+    if(ui.suppressRelayout||ui.graphRefreshing)return;
+    const range = relayoutRange(event);
+    if (range === undefined) return;
+    ui.graphRange = range;
+    ++ui.graphGeneration;
+    clearTimeout(ui.graphTimer);
+    ui.graphTimer = setTimeout(() => void v2DrawGraph(range), 220);
+  }
+
   function wireAdaptiveZoom() {
     const chart = $('timeChart');
-    if (!chart || chart.__v2AdaptiveZoom) return;
-    chart.__v2AdaptiveZoom = true;
-    chart.on('plotly_relayout', event => {
-      const range = relayoutRange(event);
-      if (range === undefined) return;
-      ui.graphRange = range;
-      ++ui.graphGeneration;
-      clearTimeout(ui.graphTimer);
-      ui.graphTimer = setTimeout(() => void v2DrawGraph(range), 220);
-    });
+    if (!chart || typeof chart.on!=='function') return;
+    // Plotly.purge removes Plotly event subscriptions but does not guarantee
+    // removal of arbitrary DOM properties. Rebind deterministically after each
+    // react so a stale marker can never leave zoom refinement disconnected.
+    const previous=chart.__v2AdaptiveZoomHandler;
+    if(previous&&typeof chart.removeListener==='function'){
+      try{chart.removeListener('plotly_relayout',previous);}catch{}
+    }
+    chart.__v2AdaptiveZoomHandler=adaptiveZoomRelayout;
+    chart.on('plotly_relayout',adaptiveZoomRelayout);
   }
 
   function scheduleGraphRedraw(delay=120) {
-    if ((!state.mapping.observed && !state.mapping.rain) || !$('timeChart')) return;
+    if ((!state.mapping.observed && !(state.mapping.models||[]).length && !state.mapping.rain) || !$('timeChart')) return;
     clearTimeout(ui.graphTimer);
     ui.graphTimer = setTimeout(() => void v2DrawGraph(ui.graphRange), delay);
   }
@@ -656,7 +787,9 @@
   function annualComparison() {
     const observed = state.spills.observed;
     const model = state.spills.model;
-    if (!observed || !model) return '<div class="v2-empty">A model result is optional. Select and calculate a model only when an observed/model comparison is required.</div>';
+    if (observed && !model) return '<div class="v2-empty">A model result is optional. Select and calculate a model only when an observed/model comparison is required.</div>';
+    if (!observed && model) return '<div class="v2-empty">Model-only spill assessment is shown. Add and calculate an observed Depth / Level series when an observed/model comparison is required.</div>';
+    if (!observed && !model) return '<div class="v2-empty">No spill result has been calculated.</div>';
     const om = new Map(annualRows(observed).map(x=>[Number(x.year),x]));
     const mm = new Map(annualRows(model).map(x=>[Number(x.year),x]));
     const years = [...new Set([...om.keys(),...mm.keys()])].sort((a,b)=>a-b);
@@ -682,12 +815,15 @@
   }
 
   async function v2RunSpills() {
-    const observed = mappingObject(state.mapping.observed);
-    const model = mappingObject($('spillModelSelect').value);
-    if (!observed && !model) throw new Error('Map an observed series first. A model series is optional.');
-    const observedThreshold = $('obsThreshold').value;
-    const modelThreshold = $('modelThreshold').value;
-    if (observedThreshold === '' && (!model || modelThreshold === '')) throw new Error('Enter at least one spill threshold.');
+    const observed = observedThresholdSelection();
+    const activeModelKey=$('spillModelSelect').value;
+    const model = thresholdSelectionForKey(activeModelKey);
+    const observedThreshold = numericThreshold('obsThreshold','Observed threshold');
+    const modelThreshold = numericThreshold('modelThreshold','Model threshold');
+    if (observedThreshold!==null&&!observed) throw new Error('Observed spill threshold requires a mapped Depth or Level series. Flow and Velocity cannot consume a hydraulic-level threshold.');
+    if (modelThreshold!==null&&activeModelKey&&!model) throw new Error('Model spill threshold requires the active model to be a Depth or Level series. Flow and Velocity cannot consume a hydraulic-level threshold.');
+    if (!observed && !model) throw new Error('Map an eligible observed or model Depth / Level series before calculating hydraulic-level spills.');
+    if (observedThreshold===null && (!model || modelThreshold===null)) throw new Error('Enter at least one spill threshold.');
 
     const exclusionsFor=(role,key)=>JSON.stringify(exclusionPayload(true,role,key));
     const bounds=analysisBounds();
@@ -697,16 +833,17 @@
     state.spills = {};
     const started = performance.now();
 
-    if (observed && observedThreshold !== '') {
+    if (observed && observedThreshold !== null) {
       setOperationStatus('Calculating observed EDM spills…', 'running');
       await nextPaint();
-      state.spills.observed = await engine.call('spill_result',{path:observed.item.virtualPath,column:observed.col,threshold:Number(observedThreshold),exclusions_json:exclusionsFor('observed',state.mapping.observed),max_gap_seconds:gap,...bounds});
+      state.spills.observed = await engine.call('spill_result',{path:observed.item.virtualPath,column:observed.col,threshold:observedThreshold,exclusions_json:exclusionsFor('observed',sourceKey(observed.item.id,observed.col)),max_gap_seconds:gap,...bounds});
     }
-    if (model && modelThreshold !== '') {
+    if (model && modelThreshold !== null) {
       setOperationStatus('Calculating modelled spills…', 'running');
       await nextPaint();
-      state.spills.model = await engine.call('spill_result',{path:model.item.virtualPath,column:model.col,threshold:Number(modelThreshold),exclusions_json:exclusionsFor('model',$('spillModelSelect').value),max_gap_seconds:gap,...bounds});
+      state.spills.model = await engine.call('spill_result',{path:model.item.virtualPath,column:model.col,threshold:modelThreshold,exclusions_json:exclusionsFor('model',sourceKey(model.item.id,model.col)),max_gap_seconds:gap,...bounds});
     }
+    if(signature!==analysisSignature()){state.spills={};throw new Error('Spill inputs changed while calculation was running. The late result was discarded.');}
     state.spillSnapshot={config,signature,results:JSON.parse(JSON.stringify(state.spills))};
     renderSpillsV2();
     const elapsed = (performance.now()-started)/1000;

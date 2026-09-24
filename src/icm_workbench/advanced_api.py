@@ -321,14 +321,76 @@ def multi_gauge_rainfall_result(sources_json,conversion_factor=1.0):
     result=multi_gauge_rainfall_assessment(gauges);result["conversion_factor"]=float(conversion_factor)
     return json.dumps(python_bridge._jsonable(result),ensure_ascii=False)
 
-def dwf_scaled(flow_path,flow_col,rain_path=None,rain_col="rainfall",rain_factor=1.0,dry_day_mm=1.0,baseline_days=28,min_dry_days=5,adp_hours=6.0):
-    flow=python_bridge._load(flow_path).frame
+def dwf_scaled(
+    flow_path,
+    flow_col,
+    rain_path=None,
+    rain_col="rainfall",
+    rain_factor=1.0,
+    dry_day_mm=1.0,
+    baseline_days=28,
+    min_dry_days=5,
+    adp_hours=6.0,
+    start=None,
+    end=None,
+    flow_exclusions_json="[]",
+    rainfall_exclusions_json="[]",
+    flow_unit_override=None,
+):
+    """Run the canonical DWF method on the shared Graphs analytical context.
+
+    The underlying :func:`dry_weather_flow` definition is unchanged. This bridge
+    resolves the selected flow to canonical m³/s, applies the declared analysis
+    window, and masks role-appropriate exclusions before invoking that method.
+    Rainfall exclusions therefore become unknown support, never dry weather.
+    """
+    flow,flow_contract=python_bridge._scaled_dimensional_frame(
+        flow_path,
+        flow_col,
+        unit_override=flow_unit_override,
+        allowed_quantities=("flow",),
+        required_canonical_unit="m³/s",
+    )
     rain=None
     rain_parsed=None
     if rain_path:
         rain_parsed=python_bridge._load(rain_path)
         rain=rain_parsed.frame.copy()
+        if rain_col not in rain.columns:
+            raise ValueError(f"Mapped rainfall column {rain_col!r} is unavailable.")
         rain[rain_col]=pd.to_numeric(rain[rain_col],errors="coerce")*float(rain_factor)
+
+    analysis_start=python_bridge._model_clock_timestamp(start)
+    analysis_end=python_bridge._model_clock_timestamp(end)
+
+    def _bound(frame):
+        if frame is None:
+            return None
+        out=frame.copy()
+        stamp=pd.to_datetime(out["timestamp"],errors="coerce")
+        keep=stamp.notna()
+        if analysis_start is not None:
+            keep &= stamp>=analysis_start
+        if analysis_end is not None:
+            keep &= stamp<=analysis_end
+        return out.loc[keep].copy()
+
+    def _mask(frame,column,exclusions):
+        if frame is None or not exclusions:
+            return frame,0
+        out=frame.copy()
+        stamp=pd.to_datetime(out["timestamp"],errors="coerce")
+        mask=pd.Series(False,index=out.index)
+        for exc in exclusions:
+            mask |= (stamp>=pd.Timestamp(exc.start))&(stamp<pd.Timestamp(exc.end))
+        out.loc[mask,column]=np.nan
+        return out,int(mask.sum())
+
+    flow=_bound(flow)
+    rain=_bound(rain)
+    flow,excluded_flow_rows=_mask(flow,flow_col,python_bridge._exclusions(flow_exclusions_json))
+    rain,excluded_rainfall_rows=_mask(rain,rain_col,python_bridge._exclusions(rainfall_exclusions_json))
+
     metadata=getattr(rain_parsed,"metadata",{}) or {} if rain_parsed is not None else {}
     interval=metadata.get("interval_min") if rain_parsed is not None else None
     result=dry_weather_flow(
@@ -342,6 +404,13 @@ def dwf_scaled(flow_path,flow_col,rain_path=None,rain_col="rainfall",rain_factor
         rain_max_gap_seconds=python_bridge._rain_support_gap_seconds(rain_parsed) if rain_parsed is not None else None,
     )
     result["rain_conversion_factor"]=float(rain_factor)
+    result["flow_contract"]=flow_contract
+    result["flow_unit"]="m³/s"
+    result["analysis_start"]=None if analysis_start is None else analysis_start.isoformat()
+    result["analysis_end"]=None if analysis_end is None else analysis_end.isoformat()
+    result["excluded_flow_rows"]=excluded_flow_rows
+    result["excluded_rainfall_rows"]=excluded_rainfall_rows
+    result["context_method"]="shared analysis period; role-scoped exclusions applied before canonical DWF-v2"
     return json.dumps(python_bridge._jsonable(result),ensure_ascii=False)
 
 def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshold,exclusions_json="[]",max_gap_seconds=900.0,start=None,end=None,level_unit_override=None,flow_unit_override=None,**_ignored):

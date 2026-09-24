@@ -213,6 +213,27 @@
     }
   }
 
+  let professionalGeneration=0;
+  function professionalSurveySignature(){
+    const selector=id=>$(id)?.value||'';
+    return JSON.stringify({
+      analysis:typeof analysisSignature==='function'?analysisSignature():null,
+      source_pool_revision:window.__ICM_WORKBENCH__.sourcePoolRevision||0,
+      selections:{
+        depth:selector('surveyDepthSelect'),velocity:selector('surveyVelocitySelect'),flow:selector('surveyFlowSelect'),rain:selector('surveyRainSelect')
+      },
+      units:{depth:selector('surveyDepthUnit'),velocity:selector('surveyVelocityUnit'),flow:selector('surveyFlowUnit')},
+      population:selector('surveyPopulation'),
+      apply_fault_cutoff:Boolean($('surveyApplyFaultCutoff')?.checked),
+      rain_factor:Number($('rainFactor')?.value||1),
+      rainfall_sources:rainfallRItems().map(item=>({hash:item.hash||null,name:item.displayName,columns:item.parsed?.columns||[]})),
+    });
+  }
+  window.__ICM_WORKBENCH__.professionalSurveyFresh=()=>Boolean(
+    window.__ICM_WORKBENCH__.lastProfessionalSurvey&&
+    window.__ICM_WORKBENCH__.professionalSurveySignature===professionalSurveySignature()
+  );
+
   function surveyDate(value) {
     if (!value) return '—';
     const text = modelClock(value);
@@ -279,7 +300,7 @@
       weeks + '</tbody></table></div>' + surveyMethodHtml(result);
   }
 
-  function renderProfessionalSurvey(result) {
+  function renderProfessionalSurvey(result,signature=professionalSurveySignature()) {
     const n = result.network || {}, m = result.monitor || {}, c = n.criteria || {};
     $('professionalSurveySummary').innerHTML =
       '<div class="summary-box survey-summary">' +
@@ -329,6 +350,7 @@
       'Assessment complete · mapped monitor rainfall used for response analysis · ' +
       (n.gauge_count ?? 0) + ' rainfall gauge(s) used for network context · raw sources unchanged.';
     window.__ICM_WORKBENCH__.lastProfessionalSurvey = result;
+    window.__ICM_WORKBENCH__.professionalSurveySignature = signature;
     window.__ICM_WORKBENCH__.professionalSurveyReportHtml = surveyReportHtml(result);
   }
 
@@ -377,13 +399,15 @@
       end:modelClock($('analysisEnd')?.value) || null,
       max_gap_seconds:Number($('gapInput')?.value || 900),
     };
+    const requestSignature=professionalSurveySignature(),generation=++professionalGeneration;
     const oldText = button.textContent;
     button.disabled = true;
     button.textContent = 'Assessing…';
     $('professionalSurveyStatus').textContent = 'Running support-aware network rainfall and weekly monitor assessment…';
     try {
       const result = await engine.call('professional_flow_survey_result', args, 'advanced_bridge');
-      renderProfessionalSurvey(result);
+      if(generation!==professionalGeneration||requestSignature!==professionalSurveySignature())throw new Error('Professional survey inputs changed while calculation was running. The late result was discarded.');
+      renderProfessionalSurvey(result,requestSignature);
     } finally {
       button.disabled = false;
       button.textContent = oldText;
@@ -399,11 +423,10 @@
     });
     window.addEventListener('icm:source-pool-changed', () => {
       populateProfessionalSurveySelectors();
+      professionalGeneration+=1;
       const hadResult=Boolean(window.__ICM_WORKBENCH__.lastProfessionalSurvey);
-      window.__ICM_WORKBENCH__.lastProfessionalSurvey = null;
-      window.__ICM_WORKBENCH__.professionalSurveyReportHtml = '';
       if (hadResult && $('professionalSurveyStatus')) {
-        $('professionalSurveyStatus').textContent = 'Source pool changed. Re-run the professional assessment before relying on or exporting these findings.';
+        $('professionalSurveyStatus').textContent = 'Source pool changed. Previous professional-survey results are stale; re-run before relying on or exporting them.';
       }
     });
     document.addEventListener('click', event => {
@@ -414,9 +437,8 @@
     document.addEventListener('change', event => {
       const id = event.target?.id || '';
       if (['surveyDepthSelect','surveyVelocitySelect','surveyFlowSelect','surveyRainSelect','surveyPopulation','surveyApplyFaultCutoff','surveyDepthUnit','surveyVelocityUnit','surveyFlowUnit','rainFactor','analysisStart','analysisEnd','gapInput'].includes(id)) {
-        window.__ICM_WORKBENCH__.lastProfessionalSurvey = null;
-        window.__ICM_WORKBENCH__.professionalSurveyReportHtml = '';
-        if ($('professionalSurveyStatus')) $('professionalSurveyStatus').textContent = 'Assessment inputs changed. Re-run the professional assessment before relying on or exporting these findings.';
+        professionalGeneration+=1;
+        if (window.__ICM_WORKBENCH__.lastProfessionalSurvey && $('professionalSurveyStatus')) $('professionalSurveyStatus').textContent = 'Assessment inputs changed. Previous professional-survey results are stale; re-run before relying on or exporting them.';
       }
     }, true);
   }

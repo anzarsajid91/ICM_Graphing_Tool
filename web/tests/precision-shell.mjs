@@ -7,13 +7,19 @@ const browser=await launcher.launch({headless:true});
 const context=await browser.newContext({viewport:{width:1440,height:1000}});
 const page=await context.newPage();
 const errors=[];
-page.on('pageerror',e=>errors.push(String(e)));
-page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+page.on('pageerror',e=>errors.push('pageerror '+String(e?.name||'Error')+': '+String(e?.message||String(e))+(e?.stack?' | '+String(e.stack).replace(/\s+/g,' '):'')));
+page.on('console',m=>{if(m.type()==='error'){const loc=m.location?.()||{};errors.push('console: '+m.text()+(loc.url?' @ '+loc.url+':'+String((loc.lineNumber??0)+1)+':'+String((loc.columnNumber??0)+1):''));}});
 try{
   await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
   const labels=(await page.locator('.pw-primary-nav button').allTextContents()).map(x=>x.replace(/^[^A-Za-z]+/,'').trim());
   if(labels.join('|')!=='Data / Time Series|Spills|Flow Survey|Graphs|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
+  const navigationOwnership=await page.evaluate(()=>({
+    legacyDisplay:getComputedStyle(document.querySelector('nav.tabs')).display,
+    precisionVisible:[...document.querySelectorAll('.pw-primary-nav button')].filter(x=>x.getClientRects().length>0).length,
+    legacyLabels:[...document.querySelectorAll('nav.tabs .tab')].map(x=>x.textContent.trim()),
+  }));
+  if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==5)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const surveyTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
   if(surveyTabs.join('|')!=='FDV Check|Rainfall Check|Volume Balance')throw new Error('Flow Survey subtab order mismatch: '+JSON.stringify(surveyTabs));
@@ -176,12 +182,17 @@ try{
       builder:visible(document.querySelector('#pwReportBuilderSurface')),
       workspace:visible(document.querySelector('#pwWorkspaceSurface')),
       readiness:visible(document.querySelector('#reportPreflight')),
+      options:visible(document.querySelector('#pwReportOptions')),
+      scenarioSelect:visible(document.querySelector('#reportScenarioSelect')),
+      scatterScale:visible(document.querySelector('#reportScatterScale')),
       reportExport:visible(document.querySelector('#downloadReportBtn')),
       workspaceExport:visible(document.querySelector('#downloadWorkspaceBtn')),
     };
   });
-  if(!reportComposition.builder||reportComposition.workspace||!reportComposition.readiness||!reportComposition.reportExport||reportComposition.workspaceExport)throw new Error('Report builder ownership is incorrect: '+JSON.stringify(reportComposition));
-  for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080}]){
+  if(!reportComposition.builder||reportComposition.workspace||!reportComposition.readiness||!reportComposition.options||!reportComposition.scenarioSelect||!reportComposition.scatterScale||!reportComposition.reportExport||reportComposition.workspaceExport)throw new Error('Report builder ownership/options are incorrect: '+JSON.stringify(reportComposition));
+  // 683×384 is the CSS-pixel layout equivalent of a 1366×768 viewport at
+  // 200% browser zoom. Keep it alongside the native desktop and narrow cases.
+  for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080},{width:390,height:844},{width:683,height:384}]){
     await page.setViewportSize(size);
     await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','sources',false));
     const layout=await page.evaluate(()=>({
@@ -192,7 +203,45 @@ try{
     }));
     if(layout.overflow>1||!layout.sourceVisible||!layout.railVisible)throw new Error('Responsive shell failure '+size.width+'x'+size.height+': '+JSON.stringify(layout));
   }
+  await page.setViewportSize({width:683,height:384});
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation',false));
+  const zoom200=await page.evaluate(()=>({
+    overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+    reportButtonVisible:Boolean(document.querySelector('#downloadReportBtn')?.getClientRects().length),
+    secondaryNavVisible:Boolean(document.querySelector('#pwSecondaryNav')?.getClientRects().length),
+    menuVisible:Boolean(document.querySelector('#pwRailToggle')?.getClientRects().length),
+  }));
+  if(zoom200.overflow>1||!zoom200.reportButtonVisible||!zoom200.secondaryNavVisible||!zoom200.menuVisible)throw new Error('200% zoom-equivalent layout lost navigation or report actions: '+JSON.stringify(zoom200));
   await page.setViewportSize({width:1440,height:1000});
+
+  // Browser history must restore canonical Precision routes, not only the URL.
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','sources',true));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','rainfall-check',true));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation',true));
+  await page.goBack({waitUntil:'commit'});
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().workspace==='survey'&&window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='rainfall-check');
+  await page.goBack({waitUntil:'commit'});
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().workspace==='data'&&window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='sources');
+  await page.goForward({waitUntil:'commit'});
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().workspace==='survey'&&window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='rainfall-check');
+
+  // Secondary workspaces support deterministic keyboard order and visible focus.
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
+  await page.locator('#pwSecondaryNav button').first().focus();
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='rainfall-check');
+  const keyboardFocus=await page.evaluate(()=>({
+    page:window.__ICM_PRECISION_WORKBENCH__.route().page,
+    activeText:document.activeElement?.textContent?.trim()||'',
+    outline:getComputedStyle(document.activeElement).outlineStyle,
+    outlineWidth:getComputedStyle(document.activeElement).outlineWidth,
+  }));
+  if(keyboardFocus.activeText!=='Rainfall Check'||keyboardFocus.outline==='none'||Number.parseFloat(keyboardFocus.outlineWidth||'0')<=0)throw new Error('Keyboard subtab focus/navigation failed: '+JSON.stringify(keyboardFocus));
+  await page.keyboard.press('End');
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='volume-balance');
+  await page.keyboard.press('Home');
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='fdv-check');
+
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',true));
   await page.waitForFunction(()=>location.hash==='#/survey/fdv-check');
   if((await page.locator('#pwPageTitle').textContent())?.trim()!=='FDV check')throw new Error('Canonical FDV Check deep-link title mismatch');
