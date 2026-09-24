@@ -749,32 +749,33 @@ try{
 
   stage='graph threshold controls and rainfall top band';
   await precisionRoute('data','time-series');
+  const standardLayout=await page.evaluate(()=>({
+    focus:document.body.classList.contains('pw-focus-canvas'),
+    rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
+    labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none'),
+    inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none',
+    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden,
+    scopebarCount:document.querySelectorAll('#pwScopebar,.pw-scopebar').length
+  }));
+  if(standardLayout.focus||standardLayout.rail<180||!standardLayout.labelled||!standardLayout.inspectorToggleVisible||standardLayout.railToggleHidden||standardLayout.scopebarCount!==0)throw new Error('Time Series must default to expanded labelled navigation with no global scope strip: '+JSON.stringify(standardLayout));
+  // Focus canvas remains available as an explicit opt-in, but it is no longer
+  // the default state when entering graph-heavy routes.
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
+  await page.waitForFunction(()=>document.body.classList.contains('pw-focus-canvas')&&document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
   const focusLayout=await page.evaluate(()=>({
     focus:document.body.classList.contains('pw-focus-canvas'),
     rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
     work:document.querySelector('.pw-workarea')?.getBoundingClientRect().width||0,
     inspectorPosition:getComputedStyle(document.querySelector('.pw-inspector')).position,
-    inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none',
     railToggleHidden:document.querySelector('#pwRailToggle')?.hidden
   }));
-  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||!focusLayout.inspectorToggleVisible||focusLayout.railToggleHidden!==true)throw new Error('Graph-heavy routes must default to a focused analytical canvas: '+JSON.stringify(focusLayout));
-  await page.waitForFunction(()=>document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
+  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||focusLayout.railToggleHidden!==true)throw new Error('Explicit Focus canvas must still maximise the graph workspace: '+JSON.stringify(focusLayout));
   await page.click('#pwInspectorToggle');
   await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.click('#pwInspectorClose');
   await page.waitForFunction(()=>!document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(false));
-  const standardLayout=await page.evaluate(()=>({
-    focus:document.body.classList.contains('pw-focus-canvas'),
-    rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
-    labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none'),
-    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden
-  }));
-  if(standardLayout.focus||standardLayout.rail<180||!standardLayout.labelled||standardLayout.railToggleHidden)throw new Error('Explicit standard layout must restore labelled navigation: '+JSON.stringify(standardLayout));
-  // Return to the intended graph-first default before the remaining analytical
-  // assertions and screenshots so review evidence represents the shipped experience.
-  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
-  await page.waitForFunction(()=>document.body.classList.contains('pw-focus-canvas')&&document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
+  await page.waitForFunction(()=>!document.body.classList.contains('pw-focus-canvas')&&document.querySelector('.pw-rail')?.getBoundingClientRect().width>=180,null,{timeout:10000});
   const levelThresholdControls=await page.evaluate(()=>({
     observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
     modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
