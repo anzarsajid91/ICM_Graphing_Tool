@@ -318,6 +318,10 @@ class BrowserPythonEngine {
     const buffer=payload.byteOffset===0&&payload.byteLength===payload.buffer.byteLength?payload.buffer:payload.slice().buffer;
     return this._request('addFile',{path:item.virtualPath,bytes:buffer},[buffer]);
   }
+  async removeFile(path){
+    if(!this.ready)return true;
+    return this._request('removeFile',{path:String(path||'')});
+  }
   async call(name,args={},module='python_bridge'){
     if(!this.ready)throw new Error('Reference Python worker is not ready.');
     if(!['python_bridge','advanced_bridge'].includes(module))throw new Error('Unsupported browser bridge.');
