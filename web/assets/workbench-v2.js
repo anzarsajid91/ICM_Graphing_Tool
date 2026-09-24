@@ -22,10 +22,129 @@
     suppressRelayout: false,
     channelMode: 'combined',
     thresholdContexts: {observed:null, model:null},
+    exclusionCapture: false,
+    lastInspectedPoint: null,
   };
   window.__ICM_WORKBENCH__.uiV2 = ui;
 
   const nextPaint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  const modebarIcons={
+    period:{width:512,height:512,path:'M64 96h384v320H64zM128 64v96M384 64v96M128 256h256'},
+    fitY:{width:512,height:512,path:'M256 48l-72 72h48v272h-48l72 72 72-72h-48V120h48z'},
+    exclusion:{width:512,height:512,path:'M72 96h368v320H72zM112 136l288 240M400 136L112 376'},
+  };
+  function setGraphInteractionStatus(text,kind=''){
+    const el=$('v2GraphInteractionStatus');
+    if(!el)return;
+    el.className=('v2-graph-interaction-status '+kind).trim();
+    el.textContent=text;
+  }
+  function visibleGraphRange(){
+    const range=$('timeChart')?.layout?.xaxis?.range;
+    return Array.isArray(range)&&range.length===2?range:null;
+  }
+  function useVisiblePeriodFromGraph(){
+    const range=visibleGraphRange();
+    if(!range){setGraphInteractionStatus('No bounded visible period is available yet.','warn');return false;}
+    useGraphZoom();
+    setGraphInteractionStatus('Visible graph period copied to the analysis start/end controls.','done');
+    return true;
+  }
+  function fitVisibleY(){
+    const chart=$('timeChart'),range=visibleGraphRange();
+    if(!chart?.data?.length){setGraphInteractionStatus('Load a graph before fitting the Y axes.','warn');return false;}
+    const start=range?new Date(range[0]).getTime():-Infinity,end=range?new Date(range[1]).getTime():Infinity;
+    const bounds=new Map();
+    for(const trace of chart.data){
+      if(!trace||trace.type==='table'||trace.visible==='legendonly'||!Array.isArray(trace.x)||!Array.isArray(trace.y))continue;
+      const axisRef=trace.yaxis||'y',axisKey=axisRef==='y'?'yaxis':'yaxis'+axisRef.slice(1);
+      const axisTitle=String(chart.layout?.[axisKey]?.title?.text||'');
+      if(/rainfall/i.test(axisTitle))continue;
+      for(let i=0;i<trace.x.length;i+=1){
+        const time=new Date(trace.x[i]).getTime(),value=Number(trace.y[i]);
+        if(!Number.isFinite(time)||!Number.isFinite(value)||time<start||time>end)continue;
+        const current=bounds.get(axisKey)||{min:Infinity,max:-Infinity};
+        current.min=Math.min(current.min,value);current.max=Math.max(current.max,value);bounds.set(axisKey,current);
+      }
+    }
+    const update={};
+    for(const [axisKey,b] of bounds.entries()){
+      if(!Number.isFinite(b.min)||!Number.isFinite(b.max))continue;
+      const span=Math.max(Math.abs(b.max-b.min),Math.abs(b.max||b.min||1)*0.02,1e-9),pad=span*0.06;
+      update[axisKey+'.range']=[b.min-pad,b.max+pad];
+      update[axisKey+'.autorange']=false;
+    }
+    if(!Object.keys(update).length){setGraphInteractionStatus('No visible hydraulic values were available to fit.','warn');return false;}
+    void Plotly.relayout(chart,update);
+    setGraphInteractionStatus('Hydraulic Y axes fitted to the currently visible time window.','done');
+    return true;
+  }
+  function setExclusionCapture(enabled){
+    ui.exclusionCapture=Boolean(enabled);
+    const chart=$('timeChart');
+    if(chart?.data?.length)void Plotly.relayout(chart,{dragmode:ui.exclusionCapture?'select':'zoom'});
+    setGraphInteractionStatus(
+      ui.exclusionCapture
+        ?'Exclusion capture active — drag horizontally across the graph. Each selection adds a separate exclusion; repeat as needed, then edit reason/scope under Spills.'
+        :'Exclusion capture off — standard zoom/pan behaviour restored.',
+      ui.exclusionCapture?'active':''
+    );
+    return ui.exclusionCapture;
+  }
+  function captureGraphExclusion(event){
+    if(!ui.exclusionCapture)return false;
+    const range=event?.range?.x;
+    if(!Array.isArray(range)||range.length!==2)return false;
+    const a=modelClock(range[0]),b=modelClock(range[1]),start=a<=b?a:b,end=a<=b?b:a;
+    if(!start||!end||end<=start)return false;
+    addExclusionRow({start,end,reason:'Graph-selected exclusion',scope:'both',enabled:true});
+    diagnostic.lastGraphExclusion={start,end,count:state.exclusions.length};
+    setGraphInteractionStatus('Added exclusion '+start+' → '+end+'. Capture remains active for additional periods.','done');
+    scheduleGraphRedraw(40);
+    return true;
+  }
+  function inspectGraphPoint(event){
+    const point=(event?.points||[]).find(p=>p&&p.x!==undefined&&p.y!==undefined&&Number.isFinite(Number(p.y)));
+    if(!point)return false;
+    const trace=point.fullData||point.data||{},series=String(trace.name||'Series'),timestamp=modelClock(point.x)||String(point.x),value=String(point.y);
+    const text=timestamp+' | '+series+' | '+value;
+    ui.lastInspectedPoint={timestamp,series,value,text};
+    const target=$('v2PointInspectorValue'),copy=$('v2PointInspectorCopy');
+    if(target)target.textContent=text;
+    if(copy)copy.disabled=false;
+    return true;
+  }
+  async function copyInspectedPoint(){
+    const text=ui.lastInspectedPoint?.text;
+    if(!text)return false;
+    try{
+      await navigator.clipboard.writeText(text);
+    }catch{
+      const input=document.createElement('textarea');input.value=text;input.style.position='fixed';input.style.left='-10000px';document.body.appendChild(input);input.select();document.execCommand('copy');input.remove();
+    }
+    setGraphInteractionStatus('Selected graph point copied to the clipboard.','done');
+    return true;
+  }
+  function timeGraphModebarButtons(){
+    return [
+      {name:'Use visible period for analysis',icon:modebarIcons.period,click:()=>useVisiblePeriodFromGraph()},
+      {name:'Fit Y axes to visible period',icon:modebarIcons.fitY,click:()=>fitVisibleY()},
+      {name:'Add multiple exclusion periods',icon:modebarIcons.exclusion,click:()=>setExclusionCapture(!ui.exclusionCapture)},
+    ];
+  }
+  function wireGraphInteractions(){
+    const chart=$('timeChart');
+    if(!chart||typeof chart.on!=='function')return;
+    for(const [property,eventName] of [['__v2SelectedHandler','plotly_selected'],['__v2ClickHandler','plotly_click']]){
+      const previous=chart[property];
+      if(previous&&typeof chart.removeListener==='function'){try{chart.removeListener(eventName,previous);}catch{}}
+    }
+    chart.__v2SelectedHandler=captureGraphExclusion;
+    chart.__v2ClickHandler=inspectGraphPoint;
+    chart.on('plotly_selected',captureGraphExclusion);
+    chart.on('plotly_click',inspectGraphPoint);
+  }
 
   function setOperationStatus(text, kind='') {
     const el = document.getElementById('spillRunStatus');
@@ -145,6 +264,22 @@
       stats.setAttribute('aria-live','polite');
       stats.innerHTML = '<div class="v2-empty">Map a series to calculate native-resolution graph statistics.</div>';
       chart.insertAdjacentElement('afterend', stats);
+    }
+    if(chart&&!document.getElementById('v2GraphInteractionStatus')){
+      const status=document.createElement('div');
+      status.id='v2GraphInteractionStatus';
+      status.className='v2-graph-interaction-status';
+      status.textContent='Mouse wheel scrolls the page. Use Plotly zoom/pan deliberately; graph actions are available from the modebar.';
+      chart.insertAdjacentElement('beforebegin',status);
+    }
+    if(chart&&!document.getElementById('v2PointInspector')){
+      const inspector=document.createElement('div');
+      inspector.id='v2PointInspector';
+      inspector.className='v2-point-inspector';
+      inspector.innerHTML='<span><strong>Point inspector</strong><span id="v2PointInspectorValue">Click a plotted trace to inspect an exact timestamp/value.</span></span><button type="button" class="btn quiet" id="v2PointInspectorCopy" disabled>Copy point</button>';
+      const stats=document.getElementById('graphStatistics');
+      (stats||chart).insertAdjacentElement('afterend',inspector);
+      $('v2PointInspectorCopy')?.addEventListener('click',()=>void copyInspectedPoint());
     }
 
     const syncFromSpill = () => {
@@ -631,8 +766,11 @@
         title:{text:options.title||graphTitle(multiPanelMode,observedEntries,modelEntries),x:.01,xanchor:'left',font:{size:18,color:'#263746'}},
         margin:{l:86,r:42,t:106,b:38},
         hovermode:'x unified',
-        legend:{orientation:'h',y:1.025,x:1,xanchor:'right',yanchor:'bottom',font:{size:11},traceorder:'normal'},
-        xaxis:{title:null,autorange:!displayRange,showgrid:false,zeroline:false,anchor:'free',position:axisPosition,side:'bottom',rangeslider:{visible:false},automargin:true,tickfont:{size:10,color:'#506272'}},
+        hoversubplots:'axis',
+        dragmode:ui.exclusionCapture?'select':'zoom',
+        selectdirection:'h',
+        legend:{orientation:'h',y:1.025,x:1,xanchor:'right',yanchor:'bottom',font:{size:11},traceorder:'normal',groupclick:'togglegroup'},
+        xaxis:{title:null,autorange:!displayRange,showgrid:false,zeroline:false,anchor:'free',position:axisPosition,side:'bottom',rangeslider:{visible:false},automargin:true,tickfont:{size:10,color:'#506272'},showspikes:true,spikemode:'across',spikesnap:'cursor',spikedash:'dot',spikethickness:1,spikecolor:'#9fb0bd'},
         annotations:[...v2GraphAnnotations(),{xref:'paper',x:.5,yref:'paper',y:statsTop+.018,text:'<b>Statistics</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}}],
         uirevision:'icm-reference-plot-v1',
         paper_bgcolor:'#ffffff',plot_bgcolor:'#ffffff',
@@ -668,17 +806,17 @@
           panelDomains.rainfall=[rainBottom,1];
           layout.yaxis={title:{text:'Rainfall (mm/h)',standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true,tickfont:{size:10,color:'#506272'},titlefont:{size:11,color:'#263746'}};
           layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
-          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:'y',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
+          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:'rainfall:'+rainEntry.source.item.id+':'+rainEntry.source.col,legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:'y',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
         }
         for(const quantity of canonical){
           const axis=axisByPanel[quantity];if(!axis)continue;
           for(const item of observedEntries.filter(x=>x.quantity===quantity)){
             const d=item.source.data;
-            traces.push({x:d.timestamp,y:d.value,name:`Observed ${quantity}`,type:traceType(d),mode:'lines',connectgaps:false,line:{color:colourFor(quantity),width:quantity==='depth'?1.8:1.5},yaxis:axis,hovertemplate:'%{x}<br>'+quantity.charAt(0).toUpperCase()+quantity.slice(1)+' %{y:.4g}<extra></extra>'});
+            traces.push({x:d.timestamp,y:d.value,name:`Observed ${quantity}`,uid:'observed:'+item.source.item.id+':'+item.source.col,legendgroup:'observed',type:traceType(d),mode:'lines',connectgaps:false,line:{color:colourFor(quantity),width:quantity==='depth'?1.8:1.5},yaxis:axis,hovertemplate:'%{x}<br>'+quantity.charAt(0).toUpperCase()+quantity.slice(1)+' %{y:.4g}<extra></extra>'});
           }
           for(const item of modelEntries.filter(x=>x.quantity===quantity)){
             const d=item.source.data;
-            traces.push({x:d.timestamp,y:d.value,name:`Model ${item.index+1} · ${item.source.col}`,meta:item.source.item.displayName,type:traceType(d),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:1.6},yaxis:axis});
+            traces.push({x:d.timestamp,y:d.value,name:`Model ${item.index+1} · ${item.source.col}`,uid:'model:'+item.source.item.id+':'+item.source.col,legendgroup:'model:'+item.source.item.id,meta:item.source.item.displayName,type:traceType(d),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:1.6},yaxis:axis});
           }
         }
         const observedThresholdSeries=observedThresholdSelection();
@@ -712,10 +850,10 @@
           ?{title:{text:'Rainfall (mm/h)',standoff:10},domain:[plotBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true}
           :{title:{text:hydraulicAxisTitle,standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zeroline:false,automargin:true};
         if(obs){
-          traces.push({x:obs.source.data.timestamp,y:obs.source.data.value,name:'Observed '+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):obs.source.col),type:traceType(obs.source.data),mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2.2},yaxis:'y'});
+          traces.push({x:obs.source.data.timestamp,y:obs.source.data.value,name:'Observed '+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):obs.source.col),uid:'observed:'+obs.source.item.id+':'+obs.source.col,legendgroup:'observed',type:traceType(obs.source.data),mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2.2},yaxis:'y'});
         }
         for(const item of modelEntries){
-          traces.push({x:item.source.data.timestamp,y:item.source.data.value,name:`Simulated: ${item.source.col}`,meta:item.source.item.displayName,type:traceType(item.source.data),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:2},yaxis:'y'});
+          traces.push({x:item.source.data.timestamp,y:item.source.data.value,name:`Simulated: ${item.source.col}`,uid:'model:'+item.source.item.id+':'+item.source.col,legendgroup:'model:'+item.source.item.id,meta:item.source.item.displayName,type:traceType(item.source.data),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:2},yaxis:'y'});
         }
         if(primary)layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:hydraulicTop,text:'<b>'+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):'Hydraulic')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
         if(rainEntry){
@@ -723,7 +861,7 @@
             layout.yaxis2={title:{text:'Rainfall (mm/h)',standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true};
           }
           layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
-          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:rainfallOnly?'y':'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
+          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:'rainfall:'+rainEntry.source.item.id+':'+rainEntry.source.col,legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:rainfallOnly?'y':'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
         }
         // ICM HYD exports commonly describe the vertical hydraulic series as
         // "level" rather than "depth". Both belong to the same threshold-bearing
@@ -750,11 +888,12 @@
       if(chartNode){chartNode.style.height=layout.height+'px';chartNode.style.minHeight=layout.height+'px';}
       ui.suppressRelayout=true;
       try{
-        await Plotly.react('timeChart',traces,layout,{responsive:true,displaylogo:false,scrollZoom:true});
+        await Plotly.react('timeChart',traces,layout,plotConfig(graphTitle(multiPanelMode,observedEntries,modelEntries),{modeBarButtonsToAdd:timeGraphModebarButtons(),modeBarButtonsToRemove:['select2d','lasso2d']}));
       }finally{
         ui.suppressRelayout=false;
       }
       wireAdaptiveZoom();
+      wireGraphInteractions();
       if(generation!==ui.graphGeneration)return;
       ui.graphRange=range;
       window.__ICM_WORKBENCH__.lastGraphPointCounts=pointCounts;
@@ -826,17 +965,62 @@
     return `<div class="v2-yearly-title"><h4>Yearly spill summary</h4><span>${esc(result.count_status||result.status||'')}</span></div>${annual}<details class="v2-monthly-detail"><summary>Monthly detail</summary>${monthly}</details>`;
   }
 
+  function spillDeviationRag(observed,model){
+    const o=Number(observed),m=Number(model);
+    if(!Number.isFinite(o)||!Number.isFinite(m)||o<0||m<0)return {deviation:null,rag:null,label:'Not comparable'};
+    if(o===0&&m===0)return {deviation:0,rag:'Green',label:'0.0%'};
+    if(o===0)return {deviation:Infinity,rag:'Red',label:'∞'};
+    const deviation=Math.abs(m-o)/Math.abs(o)*100;
+    const rag=deviation<=5?'Green':deviation<=10?'Amber':'Red';
+    return {deviation,rag,label:fmt(deviation,1)+'%'};
+  }
+  function spillSupport(result){
+    if(!result)return null;
+    const hours=(hourKey,secondKey)=>{
+      const h=Number(result?.[hourKey]);if(Number.isFinite(h))return h;
+      const s=Number(result?.[secondKey]);return Number.isFinite(s)?s/3600:null;
+    };
+    return {valid:hours('valid_hours','valid_seconds'),unknown:hours('unknown_hours','unknown_seconds'),excluded:hours('excluded_hours','excluded_seconds'),requested:hours('requested_hours','requested_seconds')};
+  }
+  function spillComparisonSupport(observed,model){
+    if(!observed||!model)return {comparable:false,reason:'Both observed and modelled results are required.'};
+    if(String(observed.count_status||observed.status||'')!=='definitive'||String(model.count_status||model.status||'')!=='definitive'){
+      return {comparable:false,reason:'One or both spill results are not definitive because usable temporal support is incomplete.'};
+    }
+    const a=spillSupport(observed),b=spillSupport(model),toleranceHours=1/3600;
+    for(const key of ['valid','unknown','excluded','requested']){
+      if(a?.[key]===null||b?.[key]===null)continue;
+      if(Math.abs(a[key]-b[key])>toleranceHours)return {comparable:false,reason:'Observed and modelled assessment support/masks differ; RAG is withheld.'};
+    }
+    return {comparable:true,reason:'Observed and modelled assessment support is aligned.'};
+  }
+  function spillRagCell(result){
+    if(!result?.rag)return '<span class="spill-rag-na">Not comparable</span>';
+    return '<span class="spill-rag spill-rag-'+result.rag.toLowerCase()+'">'+esc(result.rag)+' · '+esc(result.label)+'</span>';
+  }
+  window.__ICM_WORKBENCH__.spillDeviationRag=spillDeviationRag;
+
   function annualComparison() {
     const observed = state.spills.observed;
     const model = state.spills.model;
     if (observed && !model) return '<div class="v2-empty">A model result is optional. Select and calculate a model only when an observed/model comparison is required.</div>';
     if (!observed && model) return '<div class="v2-empty">Model-only spill assessment is shown. Add and calculate an observed Depth / Level series when an observed/model comparison is required.</div>';
     if (!observed && !model) return '<div class="v2-empty">No spill result has been calculated.</div>';
+    const overallSupport=spillComparisonSupport(observed,model);
+    const overallCount=overallSupport.comparable?spillDeviationRag(observed.total_spill_count,model.total_spill_count):null;
+    const overallDuration=overallSupport.comparable?spillDeviationRag(observed.total_spill_duration_hours,model.total_spill_duration_hours):null;
+    const summary='<div class="summary-box spill-compare-summary"><div><strong>'+spillRagCell(overallCount)+'</strong><span>Overall spill-count deviation</span></div><div><strong>'+spillRagCell(overallDuration)+'</strong><span>Overall duration deviation</span></div><div><strong>'+(overallSupport.comparable?'Comparable':'Withheld')+'</strong><span>'+esc(overallSupport.reason)+'</span></div></div>';
     const om = new Map(annualRows(observed).map(x=>[Number(x.year),x]));
     const mm = new Map(annualRows(model).map(x=>[Number(x.year),x]));
     const years = [...new Set([...om.keys(),...mm.keys()])].sort((a,b)=>a-b);
-    if (!years.length) return '<div class="v2-empty">No annual spill results.</div>';
-    return `<p>Individual assessment domains. Differences are withheld because coverage and masks may differ.</p><div class="table-wrap"><table class="data-table"><thead><tr><th>Year</th><th>Observed count</th><th>Model count</th><th>Observed duration h</th><th>Model duration h</th></tr></thead><tbody>${years.map(year=>{const o=om.get(year),m=mm.get(year);return `<tr><td>${year}</td><td>${fmt(o?.spill_count,0)}</td><td>${fmt(m?.spill_count,0)}</td><td>${fmt(o?.duration_hours,2)}</td><td>${fmt(m?.duration_hours,2)}</td></tr>`;}).join('')}</tbody></table></div>`;
+    if (!years.length) return summary+'<div class="v2-empty">No annual spill results.</div>';
+    const rows=years.map(year=>{
+      const o=om.get(year),m=mm.get(year),support=spillComparisonSupport(o,m);
+      const count=support.comparable?spillDeviationRag(o?.spill_count,m?.spill_count):null;
+      const duration=support.comparable?spillDeviationRag(o?.duration_hours,m?.duration_hours):null;
+      return `<tr><td>${year}</td><td>${fmt(o?.spill_count,0)}</td><td>${fmt(m?.spill_count,0)}</td><td>${support.comparable?esc(count.label):'—'}</td><td>${spillRagCell(count)}</td><td>${fmt(o?.duration_hours,2)}</td><td>${fmt(m?.duration_hours,2)}</td><td>${support.comparable?esc(duration.label):'—'}</td><td>${spillRagCell(duration)}</td><td title="${esc(support.reason)}">${support.comparable?'Matched':'Not comparable'}</td></tr>`;
+    }).join('');
+    return summary+'<p class="spill-rag-method">RAG uses absolute deviation from observed: Green ≤5%, Amber &gt;5–10%, Red &gt;10%. If observed = 0 and model &gt; 0 the deviation is treated as Red/∞. RAG is withheld where temporal support or masks differ.</p><div class="table-wrap spill-annual-compare"><table class="data-table"><thead><tr><th>Year</th><th>Observed count</th><th>Model count</th><th>Count deviation</th><th>Count RAG</th><th>Observed duration h</th><th>Model duration h</th><th>Duration deviation</th><th>Duration RAG</th><th>Support</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
 
   function renderSpillsV2() {
@@ -919,7 +1103,7 @@
     }
   }
 
-  window.ICMGraph = {draw: v2DrawGraph, applyMapping: v2ApplyMapping, setChannel: setChannelMode, channel:()=>ui.channelMode};
+  window.ICMGraph = {draw:v2DrawGraph,applyMapping:v2ApplyMapping,setChannel:setChannelMode,channel:()=>ui.channelMode,useVisiblePeriod:useVisiblePeriodFromGraph,fitVisibleY,setExclusionCapture,captureExclusionRange:(range)=>captureGraphExclusion({range:{x:range}}),inspectPoint:inspectGraphPoint};
   const exActions=$('addExclusionBtn').parentElement;
   const rangeButton=document.createElement('button');rangeButton.className='btn quiet';rangeButton.textContent='Exclude visible period';rangeButton.onclick=()=>{const range=ui.graphRange;if(!range)return;addExclusionRow({start:modelClock(range[0]),end:modelClock(range[1])});};exActions.appendChild(rangeButton);
   const undoButton=document.createElement('button');undoButton.className='btn quiet';undoButton.textContent='Undo removal';undoButton.onclick=()=>{const row=state.deletedExclusions?.pop();if(row){state.exclusions.push(row);renderExclusions();void drawTimeChart();}};exActions.appendChild(undoButton);
