@@ -85,6 +85,19 @@ async function addFile(path,bytes){
   return true;
 }
 
+async function removeFile(path){
+  if(!ready)return true;
+  if(!path||!String(path).startsWith('/data/'))throw new Error('Unsafe worker data path.');
+  const safePath=String(path);
+  try{
+    pyodide.FS.unlink(safePath);
+  }catch(error){
+    const message=String(error&&error.message||error||'');
+    if(!/no such file|enoent/i.test(message))throw error;
+  }
+  return callPython('drop_cache',{path:safePath},'python_bridge');
+}
+
 async function callPython(name,args={},module='python_bridge'){
   if(!ready)throw new Error('Python worker is not ready.');
   if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(String(name)))throw new Error('Unsafe Python operation name.');
@@ -112,6 +125,7 @@ async function handle(message){
   const {id,type}=message||{};
   if(type==='boot')return reply(id,await boot());
   if(type==='addFile')return reply(id,await addFile(message.path,message.bytes));
+  if(type==='removeFile')return reply(id,await removeFile(message.path));
   if(type==='call')return reply(id,await callPython(message.name,message.args,message.module));
   if(type==='clear')return reply(id,await clear());
   if(type==='ping')return reply(id,{ready});
