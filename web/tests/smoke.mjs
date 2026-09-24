@@ -708,6 +708,13 @@ try{
   await precisionRoute('data','sources');
   await page.click('#clearPoolBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0);
+  const clearedThresholds=await page.evaluate(()=>({
+    observed:document.querySelector('#obsThreshold')?.value||'',
+    modelled:document.querySelector('#modelThreshold')?.value||'',
+    graphObserved:document.querySelector('#graphObsThreshold')?.value||'',
+    graphModelled:document.querySelector('#graphModelThreshold')?.value||'',
+  }));
+  if(Object.values(clearedThresholds).some(Boolean))throw new Error('Clearing the source pool must invalidate source-bound hydraulic thresholds: '+JSON.stringify(clearedThresholds));
 
   stage='source pool and collapsed file list';
   const observedPath=path.join(root,'examples/demo/observed.csv');
