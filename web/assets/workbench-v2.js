@@ -348,7 +348,7 @@
     const previous=select.value;
     select.innerHTML='<option value="">No model selected</option>'+state.mapping.models.map(key=>{const m=mappingObject(key);return `<option value="${esc(key)}">${esc(seriesLabel(m.item,m.col))}</option>`;}).join('');
     if(state.mapping.models.includes(previous))select.value=previous;
-    if(state.mapping.models.length===1)select.value=state.mapping.models[0];
+    else if(state.mapping.models.length)select.value=state.mapping.models[0];
     autoSuggestAdvanced(allSeries());
     ui.graphRange = null;
     await v2DrawGraph(null);
