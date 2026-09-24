@@ -5,6 +5,7 @@ const state = {
   modelColours: {}, storage: null, storageSignature: null, rating: null,
   dwfResult: null, dwfSignature: null, dwfGeneration: 0,
   healthResult: null, healthSignature: null, healthGeneration: 0,
+  seriesQuantityOverrides: new Map(),
 };
 const diagnostic = {
   status: 'booting', errors: [],
@@ -46,11 +47,15 @@ function seriesMetadata(item,col){
   const metadata=item?.parsed?.metadata||{};
   return metadata.channels?.[col]||metadata.series_metadata?.[col]||{};
 }
-function seriesQuantity(item,col){
+function declaredSeriesQuantity(item,col){
   const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
   const token=String(col||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'');
   const hinted=token.includes('rain')?'rainfall':(token.includes('velocity')||token==='vel')?'velocity':(token.includes('flow')||token==='q'||token.includes('discharge'))?'flow':token.includes('depth')?'depth':(token.includes('level')||token.includes('stage'))?'level':null;
   return detail.quantity||metadata.quantity_by_column?.[col]||hinted||metadata.quantity||null;
+}
+function seriesQuantity(item,col){
+  const key=item?.id?sourceKey(item.id,col):'';
+  return (key&&state.seriesQuantityOverrides.get(key))||declaredSeriesQuantity(item,col);
 }
 function seriesUnit(item,col){
   const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
@@ -418,6 +423,77 @@ function allSeries(){
 }
 function setOptions(select,all,{none=false,preserve=true}={}){const prev=preserve?select.value:'';select.innerHTML=(none?'<option value="">None</option>':'<option value="">Select…</option>')+all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');if([...select.options].some(o=>o.value===prev))select.value=prev;}
 
+function genericSeriesSemanticsRows(){
+  const rows=[],seen=new Set();
+  const add=(role,key)=>{
+    if(!key||seen.has(key))return;
+    const mapped=mappingObject(key);
+    if(!mapped)return;
+    const declared=declaredSeriesQuantity(mapped.item,mapped.col);
+    const overridden=state.seriesQuantityOverrides.has(key);
+    if(declared&&!overridden)return;
+    seen.add(key);
+    rows.push({role,key,mapped,quantity:state.seriesQuantityOverrides.get(key)||''});
+  };
+  add('Observed',$('observedSelect')?.value||'');
+  for(const option of [...($('modelSelect')?.selectedOptions||[])])add('Model',option.value);
+  add('Rainfall',$('rainSelect')?.value||'');
+  return rows;
+}
+function renderSeriesSemanticsOverrides(){
+  const panel=$('seriesSemanticsPanel'),target=$('seriesSemanticsRows');
+  if(!panel||!target)return;
+  const rows=genericSeriesSemanticsRows();
+  panel.hidden=!rows.length;
+  if(!rows.length){target.innerHTML='';return;}
+  const options=[
+    ['','Unspecified / generic numeric'],
+    ['level','Absolute level'],
+    ['depth','Depth'],
+    ['flow','Flow'],
+    ['velocity','Velocity'],
+    ['rainfall','Rainfall'],
+  ];
+  target.innerHTML=rows.map(row=>{
+    const source=seriesLabel(row.mapped.item,row.mapped.col);
+    return '<div class="series-semantics-row"><div class="series-semantics-source"><strong>'+esc(row.role)+'</strong> · '+esc(source)+'</div><label>Interpret Value as<select data-series-quantity-key="'+esc(row.key)+'">'+options.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label></div>';
+  }).join('');
+  target.querySelectorAll('[data-series-quantity-key]').forEach(select=>select.addEventListener('change',()=>{
+    void guarded('mappingStatus',()=>applySeriesQuantityOverride(select.dataset.seriesQuantityKey,select.value||null));
+  }));
+}
+async function applySeriesQuantityOverride(key,quantity,{refresh=true}={}){
+  const mapped=mappingObject(key);
+  if(!mapped)throw new Error('The selected generic series is no longer available.');
+  const declared=declaredSeriesQuantity(mapped.item,mapped.col);
+  if(declared&&!state.seriesQuantityOverrides.has(key)&&String(declared).toLowerCase()!==String(quantity||'').toLowerCase()){
+    throw new Error('Quantity overrides are only available for unresolved generic series.');
+  }
+  const requested=quantity?String(quantity).toLowerCase():null;
+  await engine.call('set_series_quantity',{path:mapped.item.virtualPath,column:mapped.col,quantity:requested});
+  const metadata=mapped.item.parsed.metadata||(mapped.item.parsed.metadata={});
+  const seriesMetadata=metadata.series_metadata||(metadata.series_metadata={});
+  const details=seriesMetadata[mapped.col]||(seriesMetadata[mapped.col]={});
+  const quantityByColumn=metadata.quantity_by_column||(metadata.quantity_by_column={});
+  if(requested){
+    state.seriesQuantityOverrides.set(key,requested);
+    details.quantity=requested;details.quantity_source='user';quantityByColumn[mapped.col]=requested;
+  }else{
+    state.seriesQuantityOverrides.delete(key);
+    if(details.quantity_source==='user'){delete details.quantity;delete details.quantity_source;}
+    quantityByColumn[mapped.col]=null;
+  }
+  window.ICMProjectRegistry?.registerSource(mapped.item);
+  if(refresh){
+    renderSeriesSemanticsOverrides();
+    autoSuggestAdvanced(allSeries());
+    $('mappingStatus').textContent=requested
+      ?'Generic series classified as '+requested+'. Apply mapping to refresh graphs and threshold controls.'
+      :'Generic series returned to unresolved numeric data. Apply mapping to refresh graphs and threshold controls.';
+  }
+  return true;
+}
+
 function reconcileFastPath(item){
   const preview=item&&item.preview,parsed=item&&item.parsed;
   if(!preview||!preview.eligible||!parsed)return {status:'not-applicable',mismatches:[]};
@@ -643,7 +719,7 @@ function renderPool(){
 function renderSeriesOptions(){
   const all=allSeries(),obs=$('observedSelect'),mod=$('modelSelect'),rain=$('rainSelect'),prevMods=[...mod.selectedOptions].map(o=>o.value);setOptions(obs,all);mod.innerHTML=all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');[...mod.options].forEach(o=>o.selected=prevMods.includes(o.value));setOptions(rain,all,{none:true});
   for(const id of ['storageLevelSelect','storageFlowSelect','ratingObsDepth','ratingObsFlow','ratingModelDepth','ratingModelFlow','dwfFlowSelect'])setOptions($(id),all);
-  autoSuggestMappings(all);autoSuggestAdvanced(all);renderModelColourControls();
+  autoSuggestMappings(all);autoSuggestAdvanced(all);renderModelColourControls();renderSeriesSemanticsOverrides();
 }
 function autoSuggestMappings(all){
   if(!$('observedSelect').value){
@@ -1236,7 +1312,7 @@ function thresholdWorkspaceSeries(role){
   const model=mappingObject(key);
   return model&&['depth','level'].includes(String(seriesQuantity(model.item,model.col)||'').toLowerCase())?workspaceSeries(key):null;
 }
-function workspaceObject(strictExclusions=true){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:'model clock/unspecified',saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#1f77b4',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#2ca02c'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
+function workspaceObject(strictExclusions=true){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:'model clock/unspecified',saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity})).filter(x=>x.series&&x.quantity),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#1f77b4',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#2ca02c'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
 function downloadBlob(name,content,type='application/octet-stream'){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 function downloadWorkspace(){downloadBlob(`icm-workbench-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(workspaceObject(),null,2),'application/json');$('workspaceStatus').textContent='Workspace downloaded. Raw files were not embedded.';}
 function findSeriesFromWorkspace(ref){
@@ -1270,6 +1346,12 @@ async function applyWorkspace(w){
   diagnostic.lastRating=null;
   Plotly.purge('ratingChart');
   if($('ratingSummary'))$('ratingSummary').innerHTML='<div class="pool-summary">Workspace restored. Recalculate the fitted relationship for the restored inputs.</div>';
+  renderSeriesOptions();
+  state.seriesQuantityOverrides.clear();
+  for(const entry of w.series_quantity_overrides||[]){
+    const key=findSeriesFromWorkspace(entry?.series);
+    if(key&&entry?.quantity)await applySeriesQuantityOverride(key,entry.quantity,{refresh:false});
+  }
   renderSeriesOptions();
   state.mapping.observed=findSeriesFromWorkspace(w.mapping?.observed);
   state.mapping.models=(w.mapping?.models||[]).map(findSeriesFromWorkspace).filter(Boolean);
@@ -1791,9 +1873,9 @@ async function chooseFolder(){if('showDirectoryPicker'in window){try{const handl
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
-  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
+  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};state.seriesQuantityOverrides.clear();diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);void importGuard(async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=files.length+' dropped file'+(files.length===1?'':'s')+' detected · preparing import…';await ingestFiles(files);});});
-  eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('applyMappingBtn').addEventListener('click',()=>{state.rating=null;});$('modelSelect').addEventListener('change',()=>{renderModelColourControls();autoSuggestAdvanced(allSeries());});eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
+  eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('applyMappingBtn').addEventListener('click',()=>{state.rating=null;});$('observedSelect').addEventListener('change',()=>{renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('modelSelect').addEventListener('change',()=>{renderModelColourControls();renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('rainSelect').addEventListener('change',renderSeriesSemanticsOverrides);eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
   eventGuard('runCompareBtn','metricGrid',runCompare);$('scatterScale').addEventListener('change',()=>{if(state.comparisons.length)void guarded('metricGrid',renderComparisons);});$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);for(const id of ['ratingObsDepth','ratingObsDepthUnit','ratingObsFlow','ratingObsFlowUnit','ratingModelDepth','ratingModelDepthUnit','ratingModelFlow','ratingModelFlowUnit'])$(id)?.addEventListener('change',()=>{state.rating=null;});eventGuard('runDwfBtn','dwfSummary',runDwf);
   $('rainCriteriaMode').addEventListener('change',criteriaModeChanged);eventGuard('runRainEventsBtn','rainEventSummary',runRainEvents);eventGuard('runHealthBtn','healthBody',runHealth);
   document.addEventListener('change',event=>{
