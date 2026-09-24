@@ -57,6 +57,15 @@ def clear_cache():
     return True
 
 
+def drop_cache(path):
+    """Remove cached parsed/series data for one source path."""
+    path = str(path)
+    _CACHE.pop(path, None)
+    for key in [key for key in _SERIES_CACHE if key and key[0] == path]:
+        _SERIES_CACHE.pop(key, None)
+    return True
+
+
 def _model_clock_timestamp(value):
     """Return a timezone-naive timestamp for the workbench model-clock time basis."""
     if value in (None, ""):
