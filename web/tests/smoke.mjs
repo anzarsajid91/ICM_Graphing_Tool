@@ -1458,7 +1458,11 @@ try{
   legacyWorkspace.schema_version=1;
   legacyWorkspace.navigation={workspace:'verification',page:'storage'};
   await page.setInputFiles('#workspaceInput',{name:'legacy-workspace-v1.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(legacyWorkspace))});
-  await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('Workspace loaded.'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('Workspace loaded.')&&
+    window.__ICM_WORKBENCH__?.workspaceRestore?.navigation?.workspace==='spills'&&
+    window.__ICM_WORKBENCH__?.workspaceRestore?.navigation?.page==='storage'&&
+    window.__ICM_PRECISION_WORKBENCH__?.route?.().workspace==='spills'&&
+    window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='storage',null,{timeout:60000});
   const legacyRoute=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
   if(legacyRoute.workspace!=='spills'||legacyRoute.page!=='storage')throw new Error('Supported v1 workspace / legacy Storage route did not migrate to Spills / Storage Assessment: '+JSON.stringify(legacyRoute));
 
