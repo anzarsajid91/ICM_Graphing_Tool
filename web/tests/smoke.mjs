@@ -1533,6 +1533,15 @@ try{
   await precisionRoute('spills','results');
   const spillLayout=await page.evaluate(()=>{const panel=document.querySelector('#tab-spills .panel')?.getBoundingClientRect();const wraps=[...document.querySelectorAll('#tab-spills .two-col .table-wrap')].map(x=>x.getBoundingClientRect());return {panelRight:panel?.right||0,wraps:wraps.map(x=>({left:x.left,right:x.right,width:x.width}))};});
   if(spillLayout.wraps.some(x=>x.right>spillLayout.panelRight+1))throw new Error(`Spill yearly tables escape the panel: ${JSON.stringify(spillLayout)}`);
+
+  // Workspace import invalidates derived storage evidence as well. Re-run Storage
+  // on the restored source/unit/threshold inputs so Report Generation is tested
+  // against a fresh dependency-signed storage result rather than weakening the
+  // stale-result guard.
+  await precisionRoute('spills','storage');
+  await page.click('#runStorageBtn');
+  await page.waitForFunction(()=>Boolean(state.storage)&&state.storageSignature===storageInputSignature(),null,{timeout:60000});
+
   // File/exclusion changes correctly invalidate survey snapshots. Re-run both the
   // legacy single-monitor assessment and the association-driven complete survey
   // so report assertions exercise fresh, auditable results.
