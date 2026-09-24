@@ -1433,7 +1433,7 @@ function hydraulicGraphLayout({fdvMode=false,quantities=[],statistics=[],hasRain
   const available=1-gap*(panels.length-1);
   const legendRows=Math.max(1,Math.ceil((statistics.length+2)/4));
   const layout={template:'plotly_white',height:Math.max(610,panels.length*185+130),
-    margin:{l:86,r:34,t:(title?80:44)+legendRows*24,b:62},hovermode:'x unified',
+    margin:{l:fdvMode?112:86,r:34,t:(title?80:44)+legendRows*24,b:62},hovermode:'x unified',
     font:{family:'Segoe UI, Arial, sans-serif',size:12,color:'#334155'},
     legend:{orientation:'h',x:0,y:1.04,xanchor:'left',yanchor:'bottom',font:{size:12},traceorder:'normal'},
     xaxis:{title:{text:'Time'},domain:[0,1],showgrid:false,automargin:true,rangeslider:{visible:false},autorange:!range},
