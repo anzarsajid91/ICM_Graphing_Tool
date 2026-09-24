@@ -887,7 +887,13 @@
       // Preserve user zoom/legend state only while the subplot topology is stable.
       // Rainfall/source removal can renumber y-axes; carrying the previous UI state
       // across that structural change can leave Plotly with stale axis references.
-      layout.uirevision='icm-reference-plot-v2:'+panelOrder.join('|');
+      layout.uirevision='icm-reference-plot-v2:'+JSON.stringify({
+        observed:state.mapping.observed||null,
+        models:[...(state.mapping.models||[])],
+        rain:state.mapping.rain||null,
+        channel:ui.channelMode,
+        panels:panelOrder,
+      });
       const chartNode=$('timeChart');
       if(chartNode){chartNode.style.height=layout.height+'px';chartNode.style.minHeight=layout.height+'px';}
       ui.suppressRelayout=true;
