@@ -115,7 +115,7 @@
         </div>
 
         <div class="subpanel"><div class="subhead"><h3>Dry-weather-flow baseline</h3><button class="btn" id="runDwfBtn">Calculate DWF</button></div>
-          <div class="mapping-grid compact-wide"><label>Observed flow<select id="dwfFlowSelect"></select></label><label>Dry-day rainfall threshold (mm)<input id="dwfDryDay" type="number" value="1" step="0.1" /></label><label>Baseline days<input id="dwfBaselineDays" type="number" value="28" /></label><label>ADP window (hr)<input id="dwfAdpHours" type="number" value="6" step="0.5" /></label></div><div id="dwfSummary"></div>
+          <div class="mapping-grid compact-wide"><label>Observed flow<select id="dwfFlowSelect"></select></label><label>Observed flow unit<select id="dwfFlowUnit"><option value="">Auto from source</option><option value="m3/s">m³/s</option><option value="L/s">L/s</option><option value="Ml/d">Ml/d</option></select></label><label>Dry-day rainfall threshold (mm)<input id="dwfDryDay" type="number" value="1" step="0.1" /></label><label>Baseline days<input id="dwfBaselineDays" type="number" value="28" /></label><label>ADP window (hr)<input id="dwfAdpHours" type="number" value="6" step="0.5" /></label></div><p class="muted">Uses the shared analysis period and role-scoped exclusions. Rainfall must be mapped with a defensible conversion to mm/h; missing or excluded rainfall support is never treated as dry.</p><div id="dwfSummary"></div>
         </div>
       </div>
     </section>

@@ -1,7 +1,10 @@
 const $ = (id) => document.getElementById(id);
 const state = {
   files: new Map(), mapping: { observed: '', models: [], rain: '' }, comparisons: [],
-  spills: {}, exclusions: [], exclusionHistory: [], rainEvents: [], modelColours: {}, storage: null, rating: null,
+  spills: {}, exclusions: [], exclusionHistory: [], rainEvents: [], rainEventResult: null, rainEventSignature: null, rainEventGeneration: 0,
+  modelColours: {}, storage: null, storageSignature: null, rating: null,
+  dwfResult: null, dwfSignature: null, dwfGeneration: 0,
+  healthResult: null, healthSignature: null, healthGeneration: 0,
 };
 const diagnostic = {
   status: 'booting', errors: [],
@@ -52,6 +55,11 @@ function seriesQuantity(item,col){
 function seriesUnit(item,col){
   const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
   return detail.canonical_unit||metadata.canonical_unit||detail.original_unit||metadata.original_unit||null;
+}
+function seriesReference(item,col){
+  const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
+  return detail.vertical_reference||detail.level_reference||detail.depth_reference||detail.reference||detail.datum||
+    metadata.vertical_reference||metadata.level_reference||metadata.depth_reference||metadata.reference||metadata.datum||null;
 }
 function isAuxiliarySeries(item,col){
   const token=String(col||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
@@ -673,7 +681,84 @@ function graphAnnotations(){const out=[],a=nullableNumber($('obsThreshold').valu
 async function drawTimeChart(){return window.ICMGraph?.draw();}
 
 function analysisBounds(){return {start:modelClock($('analysisStart').value)||null,end:modelClock($('analysisEnd').value)||null};}
-async function runCompare(){const obs=mappingObject(state.mapping.observed),models=currentModels();if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();state.comparisons=[];for(const m of models){try{state.comparisons.push({model:m,result:await engine.call('compare_series',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,max_gap_seconds:gap,offset_minutes:offset,...bounds,exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])})});}catch(err){state.comparisons.push({model:m,error:String(err?.message||err)});}}await renderComparisons();state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};}
+
+function appliedRainCriteria(){
+  const preset=$('rainCriteriaMode')?.value==='wapug';
+  return {
+    mode:preset?'wapug':'manual',
+    minimum_intensity:preset?5:Number($('rainMinIntensity')?.value||5),
+    minimum_intensity_duration_min:preset?6:Number($('rainIntensityDuration')?.value||6),
+    minimum_depth_mm:preset?5:Number($('rainTotalDepth')?.value||5),
+    minimum_event_duration_min:preset?60:Number($('rainEventDuration')?.value||60),
+    dry_gap_min:preset?15:Number($('rainDryGap')?.value||15),
+  };
+}
+function rainEventInputSignature(){
+  return JSON.stringify({
+    rain:workspaceSeries(state.mapping.rain),
+    conversion_factor:Number($('rainFactor')?.value||1),
+    criteria:appliedRainCriteria(),
+    exclusions:exclusionPayload(false,'rainfall'),
+    time_basis:'model clock/unspecified',
+  });
+}
+function rainEventsFresh(){
+  return Boolean(state.rainEventResult&&state.rainEventSignature&&state.rainEventSignature===rainEventInputSignature());
+}
+function invalidateRainEvents(reason='Rainfall-event inputs changed.'){
+  ++state.rainEventGeneration;
+  const had=Boolean(state.rainEventResult||state.rainEventSignature||state.rainEvents.length);
+  state.rainEventResult=null;state.rainEventSignature=null;state.rainEvents=[];
+  if(had){
+    if($('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary audit-warn"><strong>Stale rainfall-event result cleared.</strong> '+esc(reason)+' Re-run Rainfall Check before relying on event bands or response diagnostics.</div>';
+    if($('rainEventBody'))$('rainEventBody').innerHTML='';
+    if($('eventResponseBody'))$('eventResponseBody').innerHTML='';
+    void drawTimeChart();
+  }
+}
+function dwfInputSignature(){
+  const flowKey=$('dwfFlowSelect')?.value||'';
+  return JSON.stringify({
+    flow:workspaceSeries(flowKey),
+    flow_unit_override:$('dwfFlowUnit')?.value||null,
+    rain:workspaceSeries(state.mapping.rain),
+    rain_factor:Number($('rainFactor')?.value||1),
+    dry_day_mm:Number($('dwfDryDay')?.value||1),
+    baseline_days:Number($('dwfBaselineDays')?.value||28),
+    min_dry_days:5,
+    adp_hours:Number($('dwfAdpHours')?.value||6),
+    analysis:analysisBounds(),
+    flow_exclusions:exclusionPayload(false,'observed',flowKey),
+    rainfall_exclusions:exclusionPayload(false,'rainfall',state.mapping.rain),
+    time_basis:'model clock/unspecified',
+  });
+}
+function dwfFresh(){return Boolean(state.dwfResult&&state.dwfSignature&&state.dwfSignature===dwfInputSignature());}
+function invalidateDwf(reason='DWF inputs changed.'){
+  ++state.dwfGeneration;
+  const had=Boolean(state.dwfResult||state.dwfSignature);
+  state.dwfResult=null;state.dwfSignature=null;
+  if(had&&$('dwfSummary'))$('dwfSummary').innerHTML='<div class="pool-summary audit-warn"><strong>Stale DWF result cleared.</strong> '+esc(reason)+' Recalculate the dry-weather baseline before relying on it.</div>';
+}
+function healthInputSignature(){
+  return JSON.stringify({
+    sources:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({sha256:x.hash,format:x.parsed?.format,columns:x.parsed?.columns||[]})).sort((a,b)=>String(a.sha256).localeCompare(String(b.sha256))),
+    max_gap_seconds:Number($('gapInput')?.value||900),
+    time_basis:'model clock/unspecified',
+  });
+}
+function healthFresh(){return Boolean(state.healthResult&&state.healthSignature&&state.healthSignature===healthInputSignature());}
+function invalidateHealth(reason='Data Health inputs changed.'){
+  ++state.healthGeneration;
+  const had=Boolean(state.healthResult||state.healthSignature);
+  state.healthResult=null;state.healthSignature=null;
+  if(had&&$('healthBody'))$('healthBody').innerHTML='<tr><td colspan="13" class="audit-warn"><strong>Stale Data Health result cleared.</strong> '+esc(reason)+' Re-run FDV Check before relying on QA evidence.</td></tr>';
+}
+diagnostic.rainEventsFresh=rainEventsFresh;
+diagnostic.dwfFresh=dwfFresh;
+Object.defineProperty(diagnostic,'dwfResult',{get:()=>state.dwfResult});
+diagnostic.healthFresh=healthFresh;
+async function runCompare(){const obs=mappingObject(state.mapping.observed),models=currentModels();if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();state.comparisons=[];for(const m of models){try{state.comparisons.push({model:m,result:await engine.call('compare_series',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,max_gap_seconds:gap,offset_minutes:offset,...bounds,exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])})});}catch(err){state.comparisons.push({model:m,error:String(err?.message||err)});}}if(signature!==analysisSignature()){state.comparisons=[];throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');}await renderComparisons();state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};}
 const metricCard=(k,v,reason='')=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${reason?`<small>${esc(reason)}</small>`:''}</div>`;
 function metricPresentation(metrics,key,unit=''){
   const value=metrics?.[key],reason=metrics?.unavailable_reasons?.[key]||'';
@@ -694,10 +779,20 @@ function regressionLinePoints(metrics,pairs,log=false){
   if(!Number.isFinite(slope)||!Number.isFinite(intercept)||pairs.length<2)return null;
   const xs=pairs.map(x=>Number(x.obs)).filter(x=>Number.isFinite(x)&&(log?x>0:true));
   if(xs.length<2)return null;
-  const lo=Math.min(...xs),hi=Math.max(...xs);
+  let lo=Math.min(...xs),hi=Math.max(...xs);
   if(!(hi>lo))return null;
-  const candidates=[[lo,intercept+slope*lo],[hi,intercept+slope*hi]].filter(([,y])=>Number.isFinite(y)&&(!log||y>0));
-  return candidates.length===2?{x:candidates.map(x=>x[0]),y:candidates.map(x=>x[1])}:null;
+  if(log){
+    const yLo=intercept+slope*lo,yHi=intercept+slope*hi;
+    if(yLo<=0&&yHi<=0)return null;
+    const root=slope!==0?-intercept/slope:null;
+    const eps=x=>Math.max(Math.abs(x||1)*1e-9,1e-12);
+    if(yLo<=0&&yHi>0&&Number.isFinite(root))lo=Math.max(lo,root+eps(root));
+    if(yHi<=0&&yLo>0&&Number.isFinite(root))hi=Math.min(hi,root-eps(root));
+    if(!(lo>0&&hi>lo))return null;
+  }
+  const y0=intercept+slope*lo,y1=intercept+slope*hi;
+  if(!Number.isFinite(y0)||!Number.isFinite(y1)||(log&&(y0<=0||y1<=0)))return null;
+  return {x:[lo,hi],y:[y0,y1]};
 }
 function comparisonUnit(result){return result?.observed_unit||result?.modelled_unit||'';}
 function comparisonQuantity(result){return result?.observed_quantity||result?.modelled_quantity||'value';}
@@ -779,6 +874,19 @@ async function renderComparisons(){
 
 function useGraphZoom(){const r=$('timeChart')?.layout?.xaxis?.range;if(r?.length===2){$('analysisStart').value=toLocalInput(r[0]);$('analysisEnd').value=toLocalInput(r[1]);}}
 
+function storageInputSignature(){
+  const levelKey=$('storageLevelSelect')?.value||'',flowKey=$('storageFlowSelect')?.value||'';
+  return JSON.stringify({
+    analysis:analysisSignature(),
+    level:workspaceSeries(levelKey),
+    flow:workspaceSeries(flowKey),
+    level_unit_override:$('storageLevelUnit')?.value||null,
+    flow_unit_override:$('storageFlowUnit')?.value||null,
+    threshold:nullableNumber($('storageThreshold')?.value??''),
+    target_count:Number($('targetCount')?.value||10),
+    exclusions:exclusionPayload(false,'model',levelKey),
+  });
+}
 function ratingInputSignature(){
   return JSON.stringify({
     analysis:analysisSignature(),
@@ -841,7 +949,7 @@ function ratingExclusions(role,selections){
 async function runRating(){
   const od=mappingObject($('ratingObsDepth').value),of=mappingObject($('ratingObsFlow').value),md=mappingObject($('ratingModelDepth').value),mf=mappingObject($('ratingModelFlow').value);
   if(!od)throw new Error('Select observed depth or level.');
-  const gap=Number($('gapInput').value||900);
+  const gap=Number($('gapInput').value||900),requestSignature=ratingInputSignature();
 
   // Depth/level agreement uses the canonical Python comparison regression. Do
   // not create a second JavaScript regression implementation.
@@ -870,7 +978,8 @@ async function runRating(){
       {x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1',line:{dash:'dash',color:'#667085'}},
     ];
     if(fitAvailable)traces.push({x:[lo,hi],y:[intercept+slope*lo,intercept+slope*hi],mode:'lines',name:'Python fitted relationship',line:{width:2,color:state.modelColours[state.mapping.models[0]]||palette[0]}});
-    state.rating={kind:'depth-agreement',result:depth,context:null,signature:ratingInputSignature()};
+    if(requestSignature!==ratingInputSignature())throw new Error('Rating inputs changed while calculation was running. The late result was discarded.');
+    state.rating={kind:'depth-agreement',result:depth,context:null,signature:requestSignature};
     await Plotly.react('ratingChart',traces,{template:'plotly_white',title:'Observed vs modelled depth / level agreement',xaxis:{title:'Observed'+(unit?' ('+unit+')':'')},yaxis:{title:'Modelled'+(unit?' ('+unit+')':'')},margin:{l:65,r:24,t:48,b:58},legend:{orientation:'h',y:1.13}},{responsive:true,displaylogo:false});
     return;
   }
@@ -916,12 +1025,34 @@ async function runRating(){
     shapes.push({type:'line',xref:'x',yref:'paper',x0:o.diameter_m,x1:o.diameter_m,y0:0,y1:1,line:{dash:'dot',width:1.5,color:'#667085'}});
     annotations.push({xref:'x',yref:'paper',x:o.diameter_m,y:1,text:`Pipe crown D = ${fmt(o.diameter_mm,1)} mm`,showarrow:false,yanchor:'bottom',font:{size:10,color:'#475467'}});
   }
-  state.rating={kind:'flow-depth',result:r,context:diameterContext,signature:ratingInputSignature(),config:{observedDepth:workspaceSeries($('ratingObsDepth').value),observedDepthUnit:$('ratingObsDepthUnit')?.value||null,observedFlow:workspaceSeries($('ratingObsFlow').value),observedFlowUnit:$('ratingObsFlowUnit')?.value||null,modelDepth:workspaceSeries($('ratingModelDepth').value),modelDepthUnit:$('ratingModelDepthUnit')?.value||null,modelFlow:workspaceSeries($('ratingModelFlow').value),modelFlowUnit:$('ratingModelFlowUnit')?.value||null}};
+  if(requestSignature!==ratingInputSignature())throw new Error('Rating inputs changed while calculation was running. The late result was discarded.');
+  state.rating={kind:'flow-depth',result:r,context:diameterContext,signature:requestSignature,config:{observedDepth:workspaceSeries($('ratingObsDepth').value),observedDepthUnit:$('ratingObsDepthUnit')?.value||null,observedFlow:workspaceSeries($('ratingObsFlow').value),observedFlowUnit:$('ratingObsFlowUnit')?.value||null,modelDepth:workspaceSeries($('ratingModelDepth').value),modelDepthUnit:$('ratingModelDepthUnit')?.value||null,modelFlow:workspaceSeries($('ratingModelFlow').value),modelFlowUnit:$('ratingModelFlowUnit')?.value||null}};
   diagnostic.lastRating={mode:o.rating_mode||'data-fitted-generic',monitor:diameterContext.monitor||null,diameter_mm:diameterContext.diameter_mm||null,pairs:o.n||0};
   await Plotly.react('ratingChart',traces,{template:'plotly_white',title:'Flow–depth rating relationship',xaxis:{title:'Depth / hydraulic head (m)'},yaxis:{title:'Flow (m³/s)'},margin:{l:68,r:24,t:52,b:60},legend:{orientation:'h',y:1.15},shapes,annotations},{responsive:true,displaylogo:false});
 }
 
-async function runDwf(){const flow=mappingObject($('dwfFlowSelect').value),rain=mappingObject(state.mapping.rain);if(!flow)throw new Error('Select observed flow.');const r=await engine.call('dwf_scaled',{flow_path:flow.item.virtualPath,flow_col:flow.col,rain_path:rain?.item.virtualPath||null,rain_col:rain?.col||'rainfall',rain_factor:Number($('rainFactor').value||1),dry_day_mm:Number($('dwfDryDay').value||1),baseline_days:Number($('dwfBaselineDays').value||28),min_dry_days:5,adp_hours:Number($('dwfAdpHours').value||6)},'advanced_bridge');$('dwfSummary').innerHTML=`<div class="summary-box"><div><strong>${esc(r.available)}</strong><span>availability/confidence</span></div><div><strong>${fmt(r.average_dwf,5)}</strong><span>average DWF</span></div><div><strong>${r.dry_days_used??'—'}</strong><span>dry days used</span></div><div><strong>${fmt(r.dry_day_threshold_mm,2)} mm</strong><span>dry-day threshold</span></div><div><strong>${r.baseline_days??'—'}</strong><span>baseline days</span></div><div><strong>${fmt(r.adp_hours,1)} hr</strong><span>ADP window</span></div></div>${r.reason?`<div class="pool-summary">${esc(r.reason)}</div>`:''}`;}
+async function runDwf(){
+  const flowKey=$('dwfFlowSelect').value,flow=mappingObject(flowKey),rain=mappingObject(state.mapping.rain);
+  if(!flow)throw new Error('Select observed flow.');
+  const signature=dwfInputSignature(),generation=++state.dwfGeneration,bounds=analysisBounds();
+  const r=await engine.call('dwf_scaled',{
+    flow_path:flow.item.virtualPath,flow_col:flow.col,
+    flow_unit_override:$('dwfFlowUnit')?.value||null,
+    rain_path:rain?.item.virtualPath||null,rain_col:rain?.col||'rainfall',
+    rain_factor:Number($('rainFactor').value||1),
+    dry_day_mm:Number($('dwfDryDay').value||1),
+    baseline_days:Number($('dwfBaselineDays').value||28),
+    min_dry_days:5,adp_hours:Number($('dwfAdpHours').value||6),
+    start:bounds.start,end:bounds.end,
+    flow_exclusions_json:JSON.stringify(exclusionPayload(true,'observed',flowKey)),
+    rainfall_exclusions_json:JSON.stringify(exclusionPayload(true,'rainfall',state.mapping.rain))
+  },'advanced_bridge');
+  if(generation!==state.dwfGeneration||signature!==dwfInputSignature())throw new Error('DWF inputs changed while calculation was running. The late result was discarded.');
+  state.dwfResult=r;state.dwfSignature=signature;
+  const dwfValue=r.average_dwf==null?'—':fmt(r.average_dwf,5)+' '+esc(r.flow_unit||'');
+  const period=(r.analysis_start||r.analysis_end)?esc((r.analysis_start||'source start')+' → '+(r.analysis_end||'source end')):'Full mapped source support';
+  $('dwfSummary').innerHTML=`<div class="summary-box"><div><strong>${esc(r.available)}</strong><span>availability/confidence</span></div><div><strong>${dwfValue}</strong><span>average DWF</span></div><div><strong>${r.dry_days_used??'—'}</strong><span>dry days used</span></div><div><strong>${fmt(r.dry_day_threshold_mm,2)} mm</strong><span>dry-day threshold</span></div><div><strong>${r.baseline_days??'—'}</strong><span>baseline days</span></div><div><strong>${fmt(r.adp_hours,1)} hr</strong><span>ADP window</span></div></div><div class="pool-summary">Analysis support: ${period} · ${r.excluded_flow_rows||0} excluded flow row(s) · ${r.excluded_rainfall_rows||0} excluded rainfall row(s) · ${esc(r.context_method||'canonical DWF method')}.</div>${r.reason?`<div class="pool-summary">${esc(r.reason)}</div>`:''}`;
+}
 
 function exclusionPayload(strict=true,role=null,key=null){
   const rows=[];
@@ -944,10 +1075,54 @@ function renderExclusions(){
   document.querySelectorAll('.remove-ex').forEach(b=>b.addEventListener('click',()=>{state.deletedExclusions??=[];state.deletedExclusions.push(state.exclusions.find(x=>x.id===b.dataset.id));state.exclusions=state.exclusions.filter(x=>x.id!==b.dataset.id);renderExclusions();void drawTimeChart();}));
 }
 
-async function runRainEvents(){const rain=mappingObject(state.mapping.rain);if(!rain)throw new Error('Map a rainfall series first.');const preset=$('rainCriteriaMode').value==='wapug',r=await engine.call('rainfall_event_scaled',{path:rain.item.virtualPath,column:rain.col,conversion_factor:Number($('rainFactor').value||1),minimum_intensity:preset?5:Number($('rainMinIntensity').value||5),minimum_intensity_duration_min:preset?6:Number($('rainIntensityDuration').value||6),minimum_depth_mm:preset?5:Number($('rainTotalDepth').value||5),minimum_event_duration_min:preset?60:Number($('rainEventDuration').value||60),dry_gap_min:preset?15:Number($('rainDryGap').value||15),exclusions_json:JSON.stringify(exclusionPayload(true,'rainfall'))},'advanced_bridge');state.rainEvents=r.events||[];$('rainEventSummary').innerHTML=`<div class="summary-box"><div><strong>${r.count}</strong><span>qualifying events</span></div><div><strong>${fmt(r.criteria.minimum_intensity,2)}</strong><span>minimum intensity</span></div><div><strong>${fmt(r.criteria.minimum_depth_mm,2)} mm</strong><span>minimum depth</span></div><div><strong>${fmt(r.criteria.dry_gap_min,1)} min</strong><span>dry gap</span></div></div>`;$('rainEventBody').innerHTML=state.rainEvents.map(e=>`<tr><td>${e.event}</td><td>${esc(e.start)}</td><td>${esc(e.end)}</td><td>${fmt(e.duration_min,1)}</td><td>${fmt(e.total_depth_mm,3)}</td><td>${fmt(e.peak_intensity,3)}</td><td>${fmt(e.intensity_streak_min,1)}</td></tr>`).join('');await drawTimeChart();await renderEventResponses();}
-async function renderEventResponses(){const obs=mappingObject(state.mapping.observed),model=currentModels()[0];if(!obs||!model||!state.rainEvents.length){$('eventResponseBody').innerHTML='';return;}const r=await engine.call('event_response_result',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:model.item.virtualPath,model_col:model.col,events_json:JSON.stringify(state.rainEvents),baseline_hours:3,post_hours:6});$('eventResponseBody').innerHTML=(r.rows||[]).map(x=>`<tr><td>${x.event}</td><td>${esc(x.rain_start)}</td><td>${fmt(x.rain_depth_mm,2)}</td><td>${fmt(x.observed_baseline,4)}</td><td>${fmt(x.observed_uplift,4)}</td><td>${fmt(x.modelled_uplift,4)}</td><td>${fmt(x.uplift_error_percent,1)}</td><td>${fmt(x.peak_lag_minutes,1)}</td></tr>`).join('');}
+async function runRainEvents(){
+  const rain=mappingObject(state.mapping.rain);if(!rain)throw new Error('Map a rainfall series first.');
+  const criteria=appliedRainCriteria(),signature=rainEventInputSignature(),generation=++state.rainEventGeneration;
+  const r=await engine.call('rainfall_event_scaled',{
+    path:rain.item.virtualPath,column:rain.col,
+    conversion_factor:Number($('rainFactor').value||1),
+    minimum_intensity:criteria.minimum_intensity,
+    minimum_intensity_duration_min:criteria.minimum_intensity_duration_min,
+    minimum_depth_mm:criteria.minimum_depth_mm,
+    minimum_event_duration_min:criteria.minimum_event_duration_min,
+    dry_gap_min:criteria.dry_gap_min,
+    exclusions_json:JSON.stringify(exclusionPayload(true,'rainfall'))
+  },'advanced_bridge');
+  if(generation!==state.rainEventGeneration||signature!==rainEventInputSignature())throw new Error('Rainfall-event inputs changed while calculation was running. The late result was discarded.');
+  state.rainEventResult=r;state.rainEventSignature=signature;state.rainEvents=r.events||[];
+  $('rainEventSummary').innerHTML=`<div class="summary-box"><div><strong>${r.count}</strong><span>qualifying events</span></div><div><strong>${fmt(r.criteria.minimum_intensity,2)}</strong><span>minimum intensity</span></div><div><strong>${fmt(r.criteria.minimum_depth_mm,2)} mm</strong><span>minimum depth</span></div><div><strong>${fmt(r.criteria.dry_gap_min,1)} min</strong><span>dry gap</span></div></div>`;
+  $('rainEventBody').innerHTML=state.rainEvents.map(e=>`<tr><td>${e.event}</td><td>${esc(e.start)}</td><td>${esc(e.end)}</td><td>${fmt(e.duration_min,1)}</td><td>${fmt(e.total_depth_mm,3)}</td><td>${fmt(e.peak_intensity,3)}</td><td>${fmt(e.intensity_streak_min,1)}</td></tr>`).join('');
+  await drawTimeChart();
+  await renderEventResponses(generation,signature);
+}
+async function renderEventResponses(expectedGeneration=state.rainEventGeneration,expectedSignature=state.rainEventSignature){
+  const obs=mappingObject(state.mapping.observed),model=currentModels()[0];
+  if(!obs||!model||!state.rainEvents.length){$('eventResponseBody').innerHTML='';return;}
+  const responseSignature=JSON.stringify({event_signature:expectedSignature,observed:workspaceSeries(state.mapping.observed),model:workspaceSeries(sourceKey(model.item.id,model.col))});
+  const r=await engine.call('event_response_result',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:model.item.virtualPath,model_col:model.col,events_json:JSON.stringify(state.rainEvents),baseline_hours:3,post_hours:6});
+  const currentModel=currentModels()[0];
+  const currentSignature=JSON.stringify({event_signature:state.rainEventSignature,observed:workspaceSeries(state.mapping.observed),model:currentModel?workspaceSeries(sourceKey(currentModel.item.id,currentModel.col)):null});
+  if(expectedGeneration!==state.rainEventGeneration||!rainEventsFresh()||responseSignature!==currentSignature)throw new Error('Event-response inputs changed while calculation was running. The late result was discarded.');
+  $('eventResponseBody').innerHTML=(r.rows||[]).map(x=>`<tr><td>${x.event}</td><td>${esc(x.rain_start)}</td><td>${fmt(x.rain_depth_mm,2)}</td><td>${fmt(x.observed_baseline,4)}</td><td>${fmt(x.observed_uplift,4)}</td><td>${fmt(x.modelled_uplift,4)}</td><td>${fmt(x.uplift_error_percent,1)}</td><td>${fmt(x.peak_lag_minutes,1)}</td></tr>`).join('');
+}
 function criteriaModeChanged(){const manual=$('rainCriteriaMode').value==='manual';for(const id of ['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'])$(id).disabled=!manual;}
-async function runHealth(){const rows=[];for(const item of state.files.values()){if(item.status!=='ready')continue;try{const r=await engine.call('data_assessment',{path:item.virtualPath,max_gap_seconds:Number($('gapInput').value||900)});for(const x of r.weekly||[])rows.push({...x,file:item.displayName});}catch(err){rows.push({file:item.displayName,comment:String(err?.message||err),rag:'Red'});}}$('healthBody').innerHTML=rows.map(x=>`<tr><td>${esc(x.file)}</td><td>${x.week_ending?esc(modelClock(x.week_ending).slice(0,10)):'—'}</td><td>${esc(x.channel||'—')}</td><td>${fmt(x.coverage_percent,1)}</td><td>${fmt(x.minimum)}</td><td>${fmt(x.mean)}</td><td>${fmt(x.maximum)}</td><td>${fmt(x.zero_percent,1)}</td><td>${fmt(Number(x.flatline_minutes)/60,1)}</td><td>${x.out_of_range_count??'—'}</td><td>${x.large_gap_count??'—'}</td><td class="${x.rag==='Green'?'audit-good':x.rag==='Red'?'audit-bad':'audit-warn'}">${esc(x.rag||'—')}</td><td>${esc(x.comment||'')}</td></tr>`).join('');}
+async function runHealth(){
+  const signature=healthInputSignature(),generation=++state.healthGeneration,rows=[];
+  for(const item of state.files.values()){
+    if(item.status!=='ready')continue;
+    try{
+      const r=await engine.call('data_assessment',{path:item.virtualPath,max_gap_seconds:Number($('gapInput').value||900)});
+      if(generation!==state.healthGeneration||signature!==healthInputSignature())throw new Error('Data Health inputs changed while calculation was running. The late result was discarded.');
+      for(const x of r.weekly||[])rows.push({...x,file:item.displayName});
+    }catch(err){
+      if(generation!==state.healthGeneration||signature!==healthInputSignature())throw err;
+      rows.push({file:item.displayName,comment:String(err?.message||err),rag:'Red'});
+    }
+  }
+  if(generation!==state.healthGeneration||signature!==healthInputSignature())throw new Error('Data Health inputs changed while calculation was running. The late result was discarded.');
+  state.healthResult={rows:JSON.parse(JSON.stringify(rows))};state.healthSignature=signature;
+  $('healthBody').innerHTML=rows.map(x=>`<tr><td>${esc(x.file)}</td><td>${x.week_ending?esc(modelClock(x.week_ending).slice(0,10)):'—'}</td><td>${esc(x.channel||'—')}</td><td>${fmt(x.coverage_percent,1)}</td><td>${fmt(x.minimum)}</td><td>${fmt(x.mean)}</td><td>${fmt(x.maximum)}</td><td>${fmt(x.zero_percent,1)}</td><td>${fmt(Number(x.flatline_minutes)/60,1)}</td><td>${x.out_of_range_count??'—'}</td><td>${x.large_gap_count??'—'}</td><td class="${x.rag==='Green'?'audit-good':x.rag==='Red'?'audit-bad':'audit-warn'}">${esc(x.rag||'—')}</td><td>${esc(x.comment||'')}</td></tr>`).join('');
+}
 
 async function runSpills(){const obs=mappingObject(state.mapping.observed),model=currentModels()[0],exc=JSON.stringify(exclusionPayload()),gap=Number($('gapInput').value||900);if(!obs&&!model)throw new Error('Apply observed/model mappings first.');state.spills={};if(obs&&$('obsThreshold').value!=='')state.spills.observed=await engine.call('spill_result',{path:obs.item.virtualPath,column:obs.col,threshold:Number($('obsThreshold').value),exclusions_json:exc,max_gap_seconds:gap});if(model&&$('modelThreshold').value!=='')state.spills.model=await engine.call('spill_result',{path:model.item.virtualPath,column:model.col,threshold:Number($('modelThreshold').value),exclusions_json:exc,max_gap_seconds:gap});renderSpills();await drawTimeChart();}
 function spillSummaryHtml(r){if(!r)return'<div class="pool-summary">Not calculated.</div>';return `<div class="summary-box"><div><strong>${fmt(r.total_spill_count,0)}</strong><span>12/24 spill count</span></div><div><strong>${fmt(r.total_spill_duration_hours,3)} h</strong><span>physical duration</span></div><div><strong>${r.coverage_fraction==null?'—':fmt(r.coverage_fraction*100,1)+'%'}</strong><span>assessable coverage</span></div><div><strong>${fmt((r.excluded_seconds||0)/3600,2)} h</strong><span>excluded</span></div><div><strong>${fmt((r.unknown_seconds||0)/3600,2)} h</strong><span>unknown gap</span></div><div><strong>${esc(r.count_status||r.status)}</strong><span>count status</span></div></div>`;}
@@ -955,7 +1130,30 @@ function monthlyTable(r){if(!r)return'';const c=new Map((r.monthly_counts||[]).m
 function spillComparisonHtml(){const o=state.spills.observed,m=state.spills.model;if(!o||!m)return'<div class="pool-summary">Calculate both observed and modelled spills to compare.</div>';if(o.count_status!=='definitive'||m.count_status!=='definitive')return'<div class="privacy-note"><strong>Comparison withheld:</strong> one or both series contain unexcluded unknown coverage. Resolve the data gap or explicitly exclude the unusable period before interpreting count differences.</div>';const om=new Map((o.monthly_counts||[]).map(x=>[`${x.year}-${x.month}`,x.spill_count])),mm=new Map((m.monthly_counts||[]).map(x=>[`${x.year}-${x.month}`,x.spill_count])),keys=[...new Set([...om.keys(),...mm.keys()])].sort();return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Year-month</th><th>Observed</th><th>Modelled</th><th>Difference (model−obs)</th></tr></thead><tbody>${keys.map(k=>`<tr><td>${k}</td><td>${om.get(k)||0}</td><td>${mm.get(k)||0}</td><td>${(mm.get(k)||0)-(om.get(k)||0)}</td></tr>`).join('')}</tbody></table></div>`;}
 function renderSpills(){$('obsSpillSummary').innerHTML=spillSummaryHtml(state.spills.observed);$('modelSpillSummary').innerHTML=spillSummaryHtml(state.spills.model);$('obsMonthly').innerHTML=monthlyTable(state.spills.observed);$('modelMonthly').innerHTML=monthlyTable(state.spills.model);$('spillComparison').innerHTML=spillComparisonHtml();const rows=[];for(const[name,r]of[['Observed',state.spills.observed],['Modelled',state.spills.model]])for(const e of r?.events||[])rows.push(`<tr><td>${name}</td><td>${esc(e.start)}</td><td>${esc(e.end)}</td><td>${fmt(Number(e.duration_seconds)/3600,3)}</td></tr>`);$('eventBody').innerHTML=rows.join('');diagnostic.lastSpills={observed:state.spills.observed?{excluded_seconds:state.spills.observed.excluded_seconds,count:state.spills.observed.total_spill_count}:null,modelled:state.spills.model?{excluded_seconds:state.spills.model.excluded_seconds,count:state.spills.model.total_spill_count}:null};}
 
-async function runStorage(){const level=mappingObject($('storageLevelSelect').value),flow=mappingObject($('storageFlowSelect').value);if(!level||!flow)throw new Error('Select modelled level and overflow flow series.');if($('storageThreshold').value==='')throw new Error('Set the modelled level threshold.');const args={level_path:level.item.virtualPath,level_col:level.col,flow_path:flow.item.virtualPath,flow_col:flow.col,threshold:Number($('storageThreshold').value),level_unit_override:$('storageLevelUnit')?.value||null,flow_unit_override:$('storageFlowUnit')?.value||null,exclusions_json:JSON.stringify(exclusionPayload(true,'model',$('storageLevelSelect').value)),...analysisBounds(),target_count:Number($('targetCount').value||10),max_gap_seconds:Number($('gapInput').value||900)},r=await engine.call('storage_result',args);state.storage=r;$('storageSummary').innerHTML=(r.screening||[]).map(x=>`<div class="summary-box"><div><strong>${x.year}</strong><span>year</span></div><div><strong>${x.required_storage_m3==null?'Withheld':fmt(x.required_storage_m3,2)+' m³'}</strong><span>idealised required storage</span></div><div><strong>${x.physical_blocks}</strong><span>counting blocks</span></div><div><strong>${x.max_block_volume_m3==null?'Withheld':fmt(x.max_block_volume_m3,2)+' m³'}</strong><span>maximum block</span></div><div><strong>${x.annual_block_volume_m3==null?'Withheld':fmt(x.annual_block_volume_m3,2)+' m³'}</strong><span>annual block volume</span></div><div><strong>${x.target_count}</strong><span>target count</span></div><div><strong>${esc(x.status||'unknown')}</strong><span>${esc(x.reason||'')}</span></div></div>`).join('')||'<div class="pool-summary">No counted spill blocks.</div>';$('storageBody').innerHTML=(r.blocks||[]).map(x=>`<tr><td>${x.year}</td><td>${x.counting_block}</td><td>${esc(x.start)}</td><td>${esc(x.end)}</td><td>${x.volume_m3==null?'Withheld':fmt(x.volume_m3,3)}</td><td>${x.requested_seconds?fmt(100*Number(x.valid_seconds||0)/Number(x.requested_seconds),1)+'%':'—'}</td><td>${esc(x.status||'unknown')}</td><td>${x.physical_discharges}</td></tr>`).join('');const mv=await engine.call('monthly_spill_volume_result',{...args,target_count:undefined},'advanced_bridge');$('monthlyVolume').innerHTML=monthlyVolumeHtml(mv.rows||[]);diagnostic.lastStorage={screeningRows:(r.screening||[]).length,blocks:(r.blocks||[]).length};}
+async function runStorage(){
+  const level=mappingObject($('storageLevelSelect').value),flow=mappingObject($('storageFlowSelect').value);
+  if(!level||!flow)throw new Error('Select modelled level and overflow flow series.');
+  if($('storageThreshold').value==='')throw new Error('Set the modelled level threshold.');
+  const threshold=Number($('storageThreshold').value);
+  if(!Number.isFinite(threshold))throw new Error('Storage level threshold must be a finite numeric value.');
+  const signature=storageInputSignature();
+  const args={
+    level_path:level.item.virtualPath,level_col:level.col,flow_path:flow.item.virtualPath,flow_col:flow.col,threshold,
+    level_unit_override:$('storageLevelUnit')?.value||null,flow_unit_override:$('storageFlowUnit')?.value||null,
+    exclusions_json:JSON.stringify(exclusionPayload(true,'model',$('storageLevelSelect').value)),
+    ...analysisBounds(),target_count:Number($('targetCount').value||10),max_gap_seconds:Number($('gapInput').value||900)
+  };
+  const r=await engine.call('storage_result',args);
+  if(signature!==storageInputSignature())throw new Error('Storage inputs changed while calculation was running. The late result was discarded.');
+  const mv=await engine.call('monthly_spill_volume_result',{...args,target_count:undefined},'advanced_bridge');
+  if(signature!==storageInputSignature())throw new Error('Storage inputs changed while calculation was running. The late result was discarded.');
+  state.storage=r;state.storageSignature=signature;
+  $('storageSummary').innerHTML=(r.screening||[]).map(x=>`<div class="summary-box"><div><strong>${x.year}</strong><span>year</span></div><div><strong>${x.required_storage_m3==null?'Withheld':fmt(x.required_storage_m3,2)+' m³'}</strong><span>idealised required storage</span></div><div><strong>${x.physical_blocks}</strong><span>counting blocks</span></div><div><strong>${x.max_block_volume_m3==null?'Withheld':fmt(x.max_block_volume_m3,2)+' m³'}</strong><span>maximum block</span></div><div><strong>${x.annual_block_volume_m3==null?'Withheld':fmt(x.annual_block_volume_m3,2)+' m³'}</strong><span>annual block volume</span></div><div><strong>${x.target_count}</strong><span>target count</span></div><div><strong>${esc(x.status||'unknown')}</strong><span>${esc(x.reason||'')}</span></div></div>`).join('')||'<div class="pool-summary">No counted spill blocks.</div>';
+  $('storageBody').innerHTML=(r.blocks||[]).map(x=>`<tr><td>${x.year}</td><td>${x.counting_block}</td><td>${esc(x.start)}</td><td>${esc(x.end)}</td><td>${x.volume_m3==null?'Withheld':fmt(x.volume_m3,3)}</td><td>${x.requested_seconds?fmt(100*Number(x.valid_seconds||0)/Number(x.requested_seconds),1)+'%':'—'}</td><td>${esc(x.status||'unknown')}</td><td>${x.physical_discharges}</td></tr>`).join('');
+  $('monthlyVolume').innerHTML=monthlyVolumeHtml(mv.rows||[]);
+  diagnostic.lastStorage={screeningRows:(r.screening||[]).length,blocks:(r.blocks||[]).length};
+}
+
 function monthlyVolumeHtml(rows){if(!rows.length)return'<div class="pool-summary">No physical spill volume in the assessed period.</div>';return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Month</th><th>Volume m³</th><th>Valid hr</th><th>Unknown/uncovered hr</th><th>Excluded hr</th><th>Coverage</th><th>Status</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${x.year}-${String(x.month).padStart(2,'0')}</td><td>${x.volume_m3==null?'Withheld':fmt(x.volume_m3,3)}</td><td>${fmt(x.valid_seconds/3600,2)}</td><td>${fmt((Number(x.gap_seconds||0)+Number(x.uncovered_seconds||0))/3600,2)}</td><td>${fmt(x.excluded_seconds/3600,2)}</td><td>${x.coverage_fraction==null?'—':fmt(100*x.coverage_fraction,1)+'%'}</td><td>${esc(x.status||'unknown')}</td></tr>`).join('')}</tbody></table></div>`;}
 
 function migrateBrowserWorkspace(input){
@@ -1007,14 +1205,67 @@ function workspaceSeries(key){
   const x=mappingObject(key);
   if(!x)return null;
   const domain=window.ICMProjectRegistry?.getSeries(key);
-  return {sha256:x.item.hash,display_name:x.item.displayName,file_name:x.item.file.name,column:x.col,asset_id:domain?.assetId||null,role:domain?.role||null,quantity:domain?.quantity||seriesQuantity(x.item,x.col)||null,unit:domain?.unit||seriesUnit(x.item,x.col)||null};
+  return {sha256:x.item.hash,display_name:x.item.displayName,file_name:x.item.file.name,column:x.col,asset_id:domain?.assetId||null,role:domain?.role||null,quantity:domain?.quantity||seriesQuantity(x.item,x.col)||null,unit:domain?.unit||seriesUnit(x.item,x.col)||null,reference:seriesReference(x.item,x.col)||null};
 }
-function workspaceObject(){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:'model clock/unspecified',saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#1f77b4',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#2ca02c'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:state.rainEvents,manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
+function reportOptions(){
+  const checked=id=>$(id)?Boolean($(id).checked):true;
+  const selectedScenarioKeys=$('reportScenarioSelect')?[...$('reportScenarioSelect').selectedOptions].map(o=>o.value):[];
+  const selectedScenarios=selectedScenarioKeys.map(workspaceSeries).filter(Boolean);
+  return {
+    include_time_series:checked('reportIncludeTimeSeries'),
+    include_spills_storage:checked('reportIncludeSpillsStorage'),
+    include_comparison:checked('reportIncludeComparison'),
+    include_survey:checked('reportIncludeSurvey'),
+    scatter_scale:$('reportScatterScale')?.value||'current',
+    scenarios:selectedScenarios,
+  };
+}
+function thresholdWorkspaceSeries(role){
+  if(role==='observed'){
+    const direct=mappingObject(state.mapping.observed);
+    if(direct&&['depth','level'].includes(String(seriesQuantity(direct.item,direct.col)||'').toLowerCase()))return workspaceSeries(state.mapping.observed);
+    if(direct&&String(direct.item?.parsed?.format||'')==='fdv_ascii'){
+      const hydraulic=hydraulicSeriesForItem(direct.item).find(x=>['depth','level'].includes(String(x.quantity||'').toLowerCase()));
+      if(hydraulic)return workspaceSeries(hydraulic.key);
+    }
+    return null;
+  }
+  const key=$('spillModelSelect')?.value||state.mapping.models.find(k=>{
+    const m=mappingObject(k);return m&&['depth','level'].includes(String(seriesQuantity(m.item,m.col)||'').toLowerCase());
+  })||'';
+  const model=mappingObject(key);
+  return model&&['depth','level'].includes(String(seriesQuantity(model.item,model.col)||'').toLowerCase())?workspaceSeries(key):null;
+}
+function workspaceObject(strictExclusions=true){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:'model clock/unspecified',saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#1f77b4',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#2ca02c'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
 function downloadBlob(name,content,type='application/octet-stream'){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 function downloadWorkspace(){downloadBlob(`icm-workbench-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(workspaceObject(),null,2),'application/json');$('workspaceStatus').textContent='Workspace downloaded. Raw files were not embedded.';}
-function findSeriesFromWorkspace(ref){if(!ref)return'';const item=[...state.files.values()].find(x=>x.hash===ref.sha256);return item&&item.parsed?.columns.includes(ref.column)?sourceKey(item.id,ref.column):'';}
+function findSeriesFromWorkspace(ref){
+  if(!ref)return'';
+  const files=[...state.files.values()];
+  const sameHash=ref.sha256?files.filter(x=>x.hash===ref.sha256):[];
+  // A SHA identifies content, not necessarily scenario identity: two separately
+  // named model scenarios can legitimately contain identical bytes. Prefer the
+  // persisted display/file name within the matching hash set; only fall back to
+  // SHA alone when it identifies exactly one loaded source.
+  let item=sameHash.find(x=>
+    (ref.display_name&&x.displayName===ref.display_name)||
+    (ref.file_name&&x.file?.name===ref.file_name)
+  );
+  if(!item&&sameHash.length===1)item=sameHash[0];
+  if(!item&&!ref.sha256){
+    const byName=files.filter(x=>
+      (ref.display_name&&x.displayName===ref.display_name)||
+      (ref.file_name&&x.file?.name===ref.file_name)
+    );
+    if(byName.length===1)item=byName[0];
+  }
+  return item&&item.parsed?.columns.includes(ref.column)?sourceKey(item.id,ref.column):'';
+}
 async function applyWorkspace(w){
   w=migrateBrowserWorkspace(w);
+  ++state.rainEventGeneration;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;
+  ++state.dwfGeneration;state.dwfResult=null;state.dwfSignature=null;
+  ++state.healthGeneration;state.healthResult=null;state.healthSignature=null;
   state.rating=null;
   diagnostic.lastRating=null;
   Plotly.purge('ratingChart');
@@ -1044,6 +1295,11 @@ async function applyWorkspace(w){
   $('storageFlowSelect').value=findSeriesFromWorkspace(a.storage_flow);
   if($('storageLevelUnit'))$('storageLevelUnit').value=a.storage_level_unit||'';
   if($('storageFlowUnit'))$('storageFlowUnit').value=a.storage_flow_unit||'';
+  if($('dwfFlowSelect'))$('dwfFlowSelect').value=findSeriesFromWorkspace(a.dwf_flow);
+  if($('dwfFlowUnit'))$('dwfFlowUnit').value=a.dwf_flow_unit||'';
+  if($('dwfDryDay'))$('dwfDryDay').value=a.dwf_dry_day_mm??1;
+  if($('dwfBaselineDays'))$('dwfBaselineDays').value=a.dwf_baseline_days??28;
+  if($('dwfAdpHours'))$('dwfAdpHours').value=a.dwf_adp_hours??6;
   if($('ratingObsDepthUnit'))$('ratingObsDepthUnit').value=a.rating_obs_depth_unit||'';
   if($('ratingObsFlowUnit'))$('ratingObsFlowUnit').value=a.rating_obs_flow_unit||'';
   if($('ratingModelDepthUnit'))$('ratingModelDepthUnit').value=a.rating_model_depth_unit||'';
@@ -1059,11 +1315,30 @@ async function applyWorkspace(w){
   if(ap.threshold1_color)$('threshold1Color').value=ap.threshold1_color;
   if(ap.threshold2_label)$('threshold2Label').value=ap.threshold2_label;
   if(ap.threshold2_color)$('threshold2Color').value=ap.threshold2_color;
-  state.rainEvents=w.rain_events?.events||[];
+  const ro=w.report_options||{};
+  if($('reportIncludeTimeSeries')&&ro.include_time_series!==undefined)$('reportIncludeTimeSeries').checked=Boolean(ro.include_time_series);
+  if($('reportIncludeSpillsStorage')&&ro.include_spills_storage!==undefined)$('reportIncludeSpillsStorage').checked=Boolean(ro.include_spills_storage);
+  if($('reportIncludeComparison')&&ro.include_comparison!==undefined)$('reportIncludeComparison').checked=Boolean(ro.include_comparison);
+  if($('reportIncludeSurvey')&&ro.include_survey!==undefined)$('reportIncludeSurvey').checked=Boolean(ro.include_survey);
+  if($('reportScatterScale')&&ro.scatter_scale)$('reportScatterScale').value=ro.scatter_scale;
+  if($('reportScenarioSelect')&&Array.isArray(ro.scenarios)){
+    const restoredScenarioKeys=ro.scenarios.map(findSeriesFromWorkspace).filter(Boolean);
+    [...$('reportScenarioSelect').options].forEach(o=>o.selected=restoredScenarioKeys.includes(o.value));
+  }
+  state.rainEvents=[];
+  state.rainEventResult=null;state.rainEventSignature=null;
+  if(w.rain_events?.events?.length&&$('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary">Workspace contained derived rainfall events. They were not reactivated automatically; re-run Rainfall Check against the reattached authoritative sources.</div>';
   const expected=(w.source_references||[]).length;
   const matched=(w.source_references||[]).filter(r=>[...state.files.values()].some(x=>x.hash===r.sha256)).length;
   $('workspaceStatus').textContent=`Restoring workspace… ${matched}/${expected} source fingerprint(s) matched; rebuilding mappings and graph.`;
   await applyMapping();
+  // Rebuild report scenario choices only after the restored model mapping is
+  // authoritative, then re-apply the persisted scenario subset by fingerprint.
+  $('modelSelect')?.dispatchEvent(new Event('change',{bubbles:true}));
+  if($('reportScenarioSelect')&&Array.isArray(ro.scenarios)){
+    const restoredScenarioKeys=ro.scenarios.map(findSeriesFromWorkspace).filter(Boolean);
+    [...$('reportScenarioSelect').options].forEach(o=>o.selected=restoredScenarioKeys.includes(o.value));
+  }
   for(const [id,value] of Object.entries(w.rain_events?.manual||{})){if($(id))$(id).value=value;}
   $('rainCriteriaMode').value=w.rain_events?.criteria_mode||'manual';
   criteriaModeChanged();
@@ -1087,11 +1362,34 @@ function saveNamedWorkspace(){const name=$('workspaceName').value.trim();if(!nam
 function renderNamedWorkspaces(){const all=readNamedWorkspaces(),s=$('namedWorkspaceSelect'),prev=s.value;s.innerHTML='<option value="">Select saved workspace…</option>'+Object.keys(all).sort().map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');if(all[prev])s.value=prev;}
 async function loadNamedWorkspace(){const name=$('namedWorkspaceSelect').value,all=readNamedWorkspaces();if(!name||!all[name])throw new Error('Select a saved browser workspace.');await applyWorkspace(all[name]);}
 
-function analysisSignature(){const w=workspaceObject();return JSON.stringify({mapping:w.mapping,analysis:w.analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual});}
-function assertFreshResults(){const sig=analysisSignature();for(const [label,snapshot] of [['Spill',state.spillSnapshot],['Comparison',state.comparisonSnapshot]]){if(snapshot && snapshot.signature!==sig)throw new Error(`${label} results are stale. Recalculate after changing analytical inputs before exporting.`);}if(state.rating?.signature&&state.rating.signature!==ratingInputSignature())throw new Error('Rating results are stale. Recalculate the fitted relationship after changing mappings, exclusions or analysis inputs before exporting.');}
+function analysisSignature(){
+  // Signatures must tolerate a partially edited exclusion row so existing
+  // results can become stale immediately without throwing during normal form editing.
+  // Calculation/save/export paths continue to call workspaceObject() strictly.
+  const w=workspaceObject(false),registry=w.project_registry||{};
+  const projectContext={
+    relationships:registry.relationships||[],
+    issues:registry.issues||[],
+    associationSource:registry.associationSource||null,
+  };
+  return JSON.stringify({mapping:w.mapping,analysis:w.analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual,time_basis:w.time_basis,project_context:projectContext});
+}
+function assertFreshResults(options=null){
+  const sig=analysisSignature();
+  const includeSpills=options?options.include_spills_storage!==false:true;
+  const includeComparison=options?options.include_comparison!==false:true;
+  const includeSurvey=options?options.include_survey!==false:true;
+  if(includeSpills&&state.spillSnapshot&&state.spillSnapshot.signature!==sig)throw new Error('Spill results are stale. Recalculate after changing analytical inputs before exporting.');
+  if(includeComparison&&state.comparisonSnapshot&&state.comparisonSnapshot.signature!==sig)throw new Error('Comparison results are stale. Recalculate after changing analytical inputs before exporting.');
+  if(includeSpills&&state.storage&&state.storageSignature&&state.storageSignature!==storageInputSignature())throw new Error('Storage results are stale. Recalculate after changing storage mappings, units, threshold, target, exclusions or analysis inputs before exporting.');
+  if(includeComparison&&state.rating?.signature&&state.rating.signature!==ratingInputSignature())throw new Error('Rating results are stale. Recalculate the fitted relationship after changing mappings, exclusions or analysis inputs before exporting.');
+  if(includeSurvey&&diagnostic.lastProfessionalSurvey&&diagnostic.professionalSurveyFresh&&!diagnostic.professionalSurveyFresh())throw new Error('Professional flow-survey results are stale. Re-run before exporting.');
+  if(includeSurvey&&diagnostic.survey?.batch&&diagnostic.surveyFresh&&!diagnostic.surveyFresh('complete'))throw new Error('Complete flow-survey results are stale. Re-run before exporting.');
+  if(includeSurvey&&diagnostic.survey?.balance&&diagnostic.surveyFresh&&!diagnostic.surveyFresh('balance'))throw new Error('Volume-balance results are stale. Recalculate before exporting.');
+}
 
 function reportCss(landscape=false){
-  return ':root{--ink:#182433;--muted:#667788;--line:#d9e1e8;--soft:#f5f8fa;--accent:#315b9b}*{box-sizing:border-box}html{background:#eef2f5}body{margin:0;color:var(--ink);font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:1.45;background:#fff}.report{max-width:1180px;margin:0 auto;padding:30px 34px 42px}.report-header{border-bottom:3px solid var(--accent);padding-bottom:16px;margin-bottom:22px;display:flex;justify-content:space-between;gap:24px;align-items:flex-end}.report-header h1{font-size:26px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em}.report-header p{margin:0;color:var(--muted)}.report-meta{text-align:right;color:var(--muted);font-size:12px;white-space:nowrap}h2{font-size:18px;margin:26px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:14px;margin:18px 0 8px}.note{background:var(--soft);border-left:4px solid var(--accent);padding:10px 12px;margin:12px 0 18px}.report-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.card{min-width:0;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:#fff;break-inside:avoid}.card h3{margin:0 0 8px}.table-wrap{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:7px;margin:8px 0 14px}table{border-collapse:collapse;width:100%;min-width:620px}th,td{padding:7px 9px;border-bottom:1px solid #e8edf1;text-align:left;vertical-align:top;font-size:11.5px}th{background:var(--soft);color:#435466;text-transform:uppercase;letter-spacing:.025em;font-size:10.5px}tr:last-child td{border-bottom:0}.figure{margin:12px 0 20px;break-inside:avoid}.report-plot{width:100%;min-width:0}.report-figure-metrics{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}.report-figure-metrics-title{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}.report-figure-metrics .graph-statistics-note{margin:0 0 7px}.report-figure-metrics .table-wrap{margin:0}.report-figure-metrics .graph-stats-compact{font-size:10.5px}.graph-stats-compact small{display:block;max-width:240px;overflow-wrap:anywhere}.graph-statistics-note{font-size:12px}.figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.figure figcaption{font-size:11.5px;color:var(--muted);margin-top:6px}.summary-box{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0}.summary-box>div{border:1px solid var(--line);border-radius:7px;padding:9px;background:var(--soft)}.summary-box strong{display:block;font-size:16px}.summary-box span{font-size:10.5px;color:var(--muted)}.swatch{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.14)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f9fb;border:1px solid var(--line);border-radius:6px;padding:10px;font:11px/1.45 Consolas,monospace}.hash{font-family:Consolas,monospace;font-size:10.5px;overflow-wrap:anywhere}.muted{color:var(--muted)}.report-page{break-after:page;page-break-after:always}.report-page:last-child{break-after:auto;page-break-after:auto}.report-footer{border-top:1px solid var(--line);margin-top:30px;padding-top:10px;color:var(--muted);font-size:11px;display:flex;justify-content:space-between;gap:12px}@media(max-width:760px){.report{padding:20px 16px}.report-header{display:block}.report-meta{text-align:left;margin-top:10px}.report-grid,.summary-box{grid-template-columns:1fr}table{min-width:560px}}@media print{html{background:#fff}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.report{max-width:none;padding:0}.card,.figure,.table-wrap{break-inside:avoid}}@page{size:'+(landscape?'A4 landscape':'A4 portrait')+';margin:12mm}';
+  return ':root{--ink:#182433;--muted:#667788;--line:#d9e1e8;--soft:#f5f8fa;--accent:#315b9b}*{box-sizing:border-box}html{background:#eef2f5}body{margin:0;color:var(--ink);font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:1.45;background:#fff}.report{max-width:1180px;margin:0 auto;padding:30px 34px 42px}.report-header{border-bottom:3px solid var(--accent);padding-bottom:16px;margin-bottom:22px;display:flex;justify-content:space-between;gap:24px;align-items:flex-end}.report-header h1{font-size:26px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em}.report-header p{margin:0;color:var(--muted)}.report-meta{text-align:right;color:var(--muted);font-size:12px;white-space:nowrap}h2{font-size:18px;margin:26px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:14px;margin:18px 0 8px}.note{background:var(--soft);border-left:4px solid var(--accent);padding:10px 12px;margin:12px 0 18px}.report-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.card{min-width:0;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:#fff;break-inside:avoid}.card h3{margin:0 0 8px}.table-wrap{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:7px;margin:8px 0 14px}table{border-collapse:collapse;width:100%;min-width:620px}th,td{padding:7px 9px;border-bottom:1px solid #e8edf1;text-align:left;vertical-align:top;font-size:11.5px}th{background:var(--soft);color:#435466;text-transform:uppercase;letter-spacing:.025em;font-size:10.5px}tr:last-child td{border-bottom:0}.figure{margin:12px 0 20px;break-inside:avoid}.report-plot{width:100%;min-width:0}.report-figure-metrics{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}.report-figure-metrics-title{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}.report-figure-metrics .graph-statistics-note{margin:0 0 7px}.report-figure-metrics .table-wrap{margin:0}.report-figure-metrics .graph-stats-compact{font-size:10.5px}.graph-stats-compact small{display:block;max-width:240px;overflow-wrap:anywhere}.graph-statistics-note{font-size:12px}.figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.figure figcaption{font-size:11.5px;color:var(--muted);margin-top:6px}.summary-box{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0}.summary-box>div{border:1px solid var(--line);border-radius:7px;padding:9px;background:var(--soft)}.summary-box strong{display:block;font-size:16px}.summary-box span{font-size:10.5px;color:var(--muted)}.swatch{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.14)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f9fb;border:1px solid var(--line);border-radius:6px;padding:10px;font:11px/1.45 Consolas,monospace}.hash{font-family:Consolas,monospace;font-size:10.5px;overflow-wrap:anywhere}.muted{color:var(--muted)}.report-page{break-after:page;page-break-after:always}.report-page:last-child{break-after:auto;page-break-after:auto}.report-footer{border-top:1px solid var(--line);margin-top:30px;padding-top:10px;color:var(--muted);font-size:11px;display:flex;justify-content:space-between;gap:12px}@media(max-width:760px){.report{padding:20px 16px}.report-header{display:block}.report-meta{text-align:left;margin-top:10px}.report-grid,.summary-box{grid-template-columns:1fr}table{min-width:560px}}@media print{html{background:#fff}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.report{max-width:none;padding:0}.card,.figure,.table-wrap{break-inside:avoid}.period-figure{break-inside:auto}.period-figure .report-plot{break-inside:avoid}.period-figure .report-figure-metrics{break-before:page;page-break-before:always;break-inside:avoid}.period-figure figcaption{break-inside:avoid}}@page{size:'+(landscape?'A4 landscape':'A4 portrait')+';margin:12mm}';
 }
 function reportShell(title,subtitle,body,landscape=false){
   return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+reportCss(landscape)+'</style></head><body><main class="report"><header class="report-header"><div><h1>'+esc(title)+'</h1><p>'+esc(subtitle)+'</p></div><div class="report-meta">Generated '+esc(new Date().toLocaleString())+'<br>ICM Graphing Tool</div></header>'+body+'<footer class="report-footer"><span>Engineering review output · source data processed locally in the browser</span><span>© 2026 Anzar Sajid</span></footer></main></body></html>';
@@ -1112,8 +1410,13 @@ function reportObservedColour(quantity){
   return $('obsColor').value;
 }
 function hydraulicGraphLayout({fdvMode=false,quantities=[],statistics=[],hasRain=false,rainMax=1,range=null,title='',shapes=[],annotations=[]}={}){
-  const unitFor=q=>statistics.find(r=>r.statistics?.quantity===q)?.statistics?.unit;
-  const axisTitle=q=>`${q.charAt(0).toUpperCase()+q.slice(1)} (${unitFor(q)||'unit unresolved'})`;
+  const statisticFor=q=>statistics.find(r=>r.statistics?.quantity===q);
+  const unitFor=q=>statisticFor(q)?.statistics?.unit;
+  const referenceFor=q=>statisticFor(q)?.reference||statisticFor(q)?.statistics?.vertical_reference||null;
+  const axisTitle=q=>{
+    const label=q.charAt(0).toUpperCase()+q.slice(1),unit=unitFor(q)||'unit unresolved',reference=q==='level'?referenceFor(q):null;
+    return `${label} (${unit})${reference?' · '+reference:''}`;
+  };
   const panels=[];
   if(hasRain)panels.push({axis:'yaxis2',title:axisTitle('rainfall'),rain:true});
   if(fdvMode){
@@ -1121,8 +1424,8 @@ function hydraulicGraphLayout({fdvMode=false,quantities=[],statistics=[],hasRain
     if(quantities.includes('depth')||quantities.includes('level'))panels.push({axis:'yaxis',title:axisTitle(quantities.includes('depth')?'depth':'level')});
     if(quantities.includes('velocity'))panels.push({axis:'yaxis4',title:axisTitle('velocity')});
   }else if(statistics.some(r=>r.role!=='Rainfall')){
-    const s=statistics.find(r=>r.role!=='Rainfall')?.statistics||{};
-    panels.push({axis:'yaxis',title:`${s.quantity||'Hydraulic value'} (${s.unit||'unit unresolved'})`});
+    const row=statistics.find(r=>r.role!=='Rainfall'),s=row?.statistics||{},quantity=String(s.quantity||'').toLowerCase();
+    panels.push({axis:'yaxis',title:quantity?axisTitle(quantity):`Hydraulic value (${s.unit||'unit unresolved'})`});
   }
   if(!panels.length)panels.push({axis:'yaxis',title:'Value'});
   const gap=panels.length>2?.055:.09;
@@ -1130,7 +1433,7 @@ function hydraulicGraphLayout({fdvMode=false,quantities=[],statistics=[],hasRain
   const available=1-gap*(panels.length-1);
   const legendRows=Math.max(1,Math.ceil((statistics.length+2)/4));
   const layout={template:'plotly_white',height:Math.max(610,panels.length*185+130),
-    margin:{l:86,r:34,t:(title?80:44)+legendRows*24,b:62},hovermode:'x unified',
+    margin:{l:fdvMode?112:86,r:34,t:(title?80:44)+legendRows*24,b:62},hovermode:'x unified',
     font:{family:'Segoe UI, Arial, sans-serif',size:12,color:'#334155'},
     legend:{orientation:'h',x:0,y:1.04,xanchor:'left',yanchor:'bottom',font:{size:12},traceorder:'normal'},
     xaxis:{title:{text:'Time'},domain:[0,1],showgrid:false,automargin:true,rangeslider:{visible:false},autorange:!range},
@@ -1159,12 +1462,57 @@ function graphStatisticsHtml(rows){
   }).join('')+'</tbody></table></div>';
 }
 let reportPlotlyBundle=null;
-function reportPlotFigure(id,traces,layout,statistics,caption=''){
+function reportPlotFigure(id,traces,layout,statistics,caption='',options={}){
   const payload=JSON.stringify({data:traces,layout:{...layout,autosize:true,width:undefined}}).replace(/</g,'\\u003c');
   const stats=statistics?.length
     ?'<div class="report-figure-metrics"><div class="report-figure-metrics-title">Graph metrics</div>'+graphStatisticsHtml(statistics)+'</div>'
     :'';
-  return '<figure class="figure"><div class="report-plot" id="'+id+'" style="height:'+layout.height+'px"></div><script type="application/json" id="'+id+'-data">'+payload+'</script>'+stats+'<figcaption>'+esc(caption)+'</figcaption></figure>';
+  const captionHtml='<figcaption>'+esc(caption)+'</figcaption>';
+  const period=options.period===true;
+  return '<figure class="figure'+(period?' period-figure':'')+'"><div class="report-plot" id="'+id+'" style="height:'+layout.height+'px"></div><script type="application/json" id="'+id+'-data">'+payload+'</script>'+(period?captionHtml+stats:stats+captionHtml)+'</figure>';
+}
+function selectedReportComparisons(){
+  const control=$('reportScenarioSelect');
+  if(!control)return state.comparisons.filter(entry=>entry.result);
+  const selected=new Set([...control.selectedOptions].map(o=>o.value));
+  return state.comparisons.filter(entry=>entry.result&&selected.has(sourceKey(entry.model.item.id,entry.model.col)));
+}
+function reportComparisonScatterFigure(entries,log=false){
+  if(!entries?.length)return '<p class="muted">No selected comparison scenario has a current authoritative result.</p>';
+  const traces=[],values=[];
+  entries.forEach((entry,i)=>{
+    const population=scatterPopulation(entry.result,log),pairs=population.pairs,metrics=population.metrics||{};
+    const key=sourceKey(entry.model.item.id,entry.model.col),colour=state.modelColours[key]||palette[i%palette.length];
+    const scenario=entry.model.item.displayName+' · '+entry.model.col;
+    values.push(...pairs.flatMap(x=>[Number(x.obs),Number(x.sim)]));
+    traces.push({x:pairs.map(x=>x.obs),y:pairs.map(x=>x.sim),mode:'markers',name:scenario,marker:{size:6,opacity:.5,color:colour},
+      customdata:pairs.map(x=>[x.timestamp,x.obs,x.sim]),
+      hovertemplate:'<b>'+esc(scenario)+'</b><br>%{customdata[0]}<br>Observed: %{customdata[1]:.5g}<br>Modelled: %{customdata[2]:.5g}<extra></extra>'});
+    const fit=regressionLinePoints(metrics,pairs,log);
+    if(fit)traces.push({x:fit.x,y:fit.y,mode:'lines',name:scenario+' fit',line:{color:colour,width:2,dash:'dash'},hoverinfo:'skip'});
+  });
+  const finite=values.filter(v=>Number.isFinite(v)&&(!log||v>0));
+  if(finite.length){
+    const lo=Math.min(...finite),hi=Math.max(...finite);
+    if(hi>lo)traces.push({x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1 agreement',line:{color:'#64748b',width:1.5,dash:'dot'},hoverinfo:'skip'});
+  }
+  const first=entries[0].result,quantity=comparisonQuantity(first),unit=comparisonUnit(first);
+  const axisLabel=(role)=>role+' '+quantity+(unit?' ('+unit+')':'');
+  const layout={template:'plotly_white',height:520,margin:{l:78,r:28,t:72,b:68},
+    title:{text:'Observed vs modelled '+(log?'log₁₀':'linear')+' scatter',x:.01,xanchor:'left'},
+    legend:{orientation:'h',x:0,y:1.04,xanchor:'left',yanchor:'bottom'},showlegend:true,
+    xaxis:{title:{text:axisLabel('Observed')},type:log?'log':'linear',automargin:true},
+    yaxis:{title:{text:axisLabel('Modelled')},type:log?'log':'linear',automargin:true,scaleanchor:'x',scaleratio:1},
+  };
+  const caption=log?'Observed versus modelled log₁₀ scatter; only strictly positive authoritative pairs are shown.':'Observed versus modelled linear scatter using authoritative paired values.';
+  return reportPlotFigure('assessment-scatter-report',traces,layout,[],caption);
+}
+function reportStorageHtml(){
+  const r=state.storage;
+  if(!r)return '<p class="muted">Storage Assessment not calculated.</p>';
+  const screening=(r.screening||[]).map(x=>'<tr><td>'+esc(x.year)+'</td><td>'+(x.required_storage_m3==null?'Withheld':fmt(x.required_storage_m3,2))+'</td><td>'+esc(x.physical_blocks)+'</td><td>'+(x.max_block_volume_m3==null?'Withheld':fmt(x.max_block_volume_m3,2))+'</td><td>'+esc(x.status||'unknown')+'</td><td>'+esc(x.reason||'')+'</td></tr>').join('');
+  return '<div class="note">Idealised storage screening is diagnostic evidence, not hydraulic design sizing. Volumes use actual valid support and declared units.</div>'+
+    (screening?'<div class="table-wrap"><table><thead><tr><th>Year</th><th>Required storage m³</th><th>Counting blocks</th><th>Maximum block m³</th><th>Status</th><th>Reason</th></tr></thead><tbody>'+screening+'</tbody></table></div>':'<p class="muted">No storage-screening rows were produced.</p>');
 }
 async function interactiveReportHtml(html){
   if(!reportPlotlyBundle){
@@ -1188,10 +1536,11 @@ function reportSettingsTable(w){
     if(value==null)return '—';
     const unit=ref?.unit?String(ref.unit):'';
     const quantity=ref?.quantity?String(ref.quantity):'';
-    return String(value)+(unit?' '+unit:'')+(quantity?' · '+quantity:'');
+    const reference=ref?.reference?String(ref.reference):'reference / datum not supplied';
+    return String(value)+(unit?' '+unit:'')+(quantity?' · '+quantity:'')+' · '+reference;
   };
-  const observedRef=w.mapping?.observed||null;
-  const modelRef=w.active_spill_model||w.mapping?.models?.[0]||null;
+  const observedRef=a.observed_threshold_series||w.mapping?.observed||null;
+  const modelRef=a.model_threshold_series||w.active_spill_model||w.mapping?.models?.[0]||null;
   const rows=[['Time basis',w.time_basis||'model clock/unspecified'],['Analysis start',a.analysis_start||'Full available period'],['Analysis end',a.analysis_end||'Full available period'],['Maximum interpolation gap',(a.max_gap_seconds==null?'—':fmt(a.max_gap_seconds,0)+' s')],['Observed / EDM hydraulic threshold',thresholdValue(a.observed_threshold,observedRef)],['Model hydraulic threshold',thresholdValue(a.model_threshold,modelRef)],['Model time offset',fmt(a.time_offset_minutes||0,1)+' min'],['Rainfall conversion factor',fmt(a.rain_factor==null?1:a.rain_factor,4)]];
   return '<div class="table-wrap"><table><tbody>'+rows.map(x=>'<tr><th>'+esc(x[0])+'</th><td>'+esc(x[1])+'</td></tr>').join('')+'</tbody></table></div>';
 }
@@ -1293,57 +1642,74 @@ function reportAnalysisPeriod(){
   return [start,end];
 }
 async function downloadReport(){
-  assertFreshResults();
-  if(!state.mapping.observed&&!state.mapping.rain)throw new Error('Apply a mapping before exporting the report.');
+  const options=reportOptions();
+  assertFreshResults(options);
+  if(!state.mapping.observed&&!(state.mapping.models||[]).length&&!state.mapping.rain)throw new Error('Apply at least one observed, modelled or rainfall mapping before exporting the report.');
   await drawTimeChart();
   const reportSignature=analysisSignature(),period=reportAnalysisPeriod();
-  const reportSeries=await reportTraces(period);
-  const currentLayout=$('timeChart').layout||{};
-  const shapes=JSON.parse(JSON.stringify(currentLayout.shapes||[]));
-  const annotations=JSON.parse(JSON.stringify(currentLayout.annotations||[]));
-  const fullLayout=hydraulicGraphLayout({...reportSeries,range:period[0]&&period[1]?period:null,title:'Full analysis period',shapes,annotations});
-  const thresholdLegendTraces=JSON.parse(JSON.stringify(($('timeChart')?.data||[]).filter(t=>/threshold/i.test(String(t.name||''))&&(t.x||[]).every(x=>x==null))));
-  const timeFigure=reportPlotFigure('assessment-time-graph',[...reportSeries.traces,...thresholdLegendTraces],fullLayout,reportSeries.statistics,'Declared report analysis period; zoom state is not used as an analytical input.');
-  const images=await Promise.all([reportChart('scatterChart',760,500),reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440),reportChart('ratingChart',760,500)]);
-  const scatterImg=images[0],residImg=images[1],cumulativeImg=images[2],exceedanceImg=images[3],ratingImg=images[4];
-  const w=state.spillSnapshot&&state.spillSnapshot.config||state.comparisonSnapshot&&state.comparisonSnapshot.config||workspaceObject();
-  const log=$('scatterScale').value==='log';
-  const scenarioRows=state.comparisons.map((x,i)=>{
-    if(!x.result)return '';
+  let timeFigure='';
+  if(options.include_time_series){
+    const reportSeries=await reportTraces(period);
+    const currentLayout=$('timeChart').layout||{};
+    const shapes=JSON.parse(JSON.stringify(currentLayout.shapes||[]));
+    const annotations=JSON.parse(JSON.stringify(currentLayout.annotations||[]));
+    const fullLayout=hydraulicGraphLayout({...reportSeries,range:period[0]&&period[1]?period:null,title:'Full analysis period',shapes,annotations});
+    const thresholdLegendTraces=JSON.parse(JSON.stringify(($('timeChart')?.data||[]).filter(t=>/threshold/i.test(String(t.name||''))&&(t.x||[]).every(x=>x==null))));
+    timeFigure=reportPlotFigure('assessment-time-graph',[...reportSeries.traces,...thresholdLegendTraces],fullLayout,reportSeries.statistics,'Declared report analysis period; zoom state is not used as an analytical input.');
+  }
+
+  const w=workspaceObject();
+  const selectedComparisons=selectedReportComparisons();
+  const log=options.scatter_scale==='current'?$('scatterScale').value==='log':options.scatter_scale==='log';
+  const scenarioRows=selectedComparisons.map((x,i)=>{
     const population=scatterPopulation(x.result,log),q=population.metrics||{},unit=comparisonUnit(x.result);
     const uv=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),4)+(unit?' '+esc(unit):'');
     return '<tr><td>Model '+(i+1)+' · '+esc(x.model.item.displayName)+' · '+esc(x.model.col)+'</td><td>'+(q.pairs??population.pairs.length)+'</td><td>'+fmt(q.correlation)+'</td><td>'+fmt(q.regression_r2)+'</td><td>'+fmt(q.regression_slope)+'</td><td>'+uv(q.regression_intercept)+'</td><td>'+uv(q.rmse)+'</td><td>'+uv(q.mae)+'</td><td>'+uv(q.mean_bias)+'</td><td>'+fmt(q.nse)+'</td><td>'+fmt(q.kge_2009)+'</td><td>'+(log?population.removed_count:'—')+'</td><td>'+esc(x.result.calculation_status||'—')+'</td><td>'+(x.result.coverage_fraction==null?'—':fmt(x.result.coverage_fraction*100,1)+'%')+'</td></tr>';
   }).join('');
   const populationLabel=log?'Positive observed/modelled pairs only (log₁₀ view; nonpositive values are filtered from this view, not altered).':'All finite authoritative paired values (linear view).';
-  const scenarioTable=scenarioRows?'<p class="muted">'+esc(populationLabel)+' Metrics are sample-weighted; bias is modelled minus observed. Regression is raw-scale M = intercept + slope × O.</p><div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Pairs</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Log filtered</th><th>Status</th><th>Valid support</th></tr></thead><tbody>'+scenarioRows+'</tbody></table></div>':'<p class="muted">No scenario comparison has been calculated.</p>';
-  let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints.</div>';
+  const scenarioTable=scenarioRows?'<p class="muted">'+esc(populationLabel)+' Metrics are sample-weighted; bias is modelled minus observed. Regression is raw-scale M = intercept + slope × O.</p><div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Pairs</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Log filtered</th><th>Status</th><th>Valid support</th></tr></thead><tbody>'+scenarioRows+'</tbody></table></div>':'<p class="muted">No selected scenario comparison has a current result.</p>';
+
+  let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints. Report section/scenario choices are explicit and stored in the workspace.</div>';
   body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
-  body+='<h2>Full time-period graph</h2>'+timeFigure;
-  body+='<h2>Spill / EDM assessment</h2><div class="report-grid"><div class="card"><h3>Observed / EDM</h3>'+spillSummaryHtml(state.spills.observed)+reportYearlySpills(state.spills.observed)+'</div><div class="card"><h3>Modelled</h3>'+spillSummaryHtml(state.spills.model)+reportYearlySpills(state.spills.model)+'</div></div>';
-  body+='<h3>Observed spills by month</h3>'+reportSpillCountMatrix(state.spills.observed);
-  body+='<h3>Model spills by month</h3>'+reportSpillCountMatrix(state.spills.model);
-  body+='<h3>Observed vs modelled monthly spill comparison</h3>'+reportMonthlySpillComparison(state.spills.observed,state.spills.modelled||state.spills.model);
-  body+='<h2>Scenario comparison</h2>'+scenarioTable;
-  if(window.__ICM_WORKBENCH__.professionalSurveyReportHtml)body+=window.__ICM_WORKBENCH__.professionalSurveyReportHtml;
-  const diag=[];
-  if(scatterImg)diag.push('<figure class="figure"><img src="'+scatterImg+'" alt="Observed versus modelled scatter plot"><figcaption>'+esc(log?'Observed versus modelled log₁₀ scatter; positive pairs only.':'Observed versus modelled linear scatter.')+'</figcaption></figure>');
-  if(residImg)diag.push('<figure class="figure"><img src="'+residImg+'" alt="Residual plot"><figcaption>Model minus observed residual through time using all valid pairs.</figcaption></figure>');
-  if(cumulativeImg)diag.push('<figure class="figure"><img src="'+cumulativeImg+'" alt="Cumulative flow volume plot"><figcaption>Cumulative-volume diagnostic where dimensional flow support is available.</figcaption></figure>');
-  if(exceedanceImg)diag.push('<figure class="figure"><img src="'+exceedanceImg+'" alt="Flow duration plot"><figcaption>Time-weighted exceedance diagnostic where available.</figcaption></figure>');
-  if(ratingImg&&state.rating){
-    const rc=state.rating.context||{},rr=state.rating.result?.observed||state.rating.result?.metrics||{};
-    const ratingCaption=state.rating.kind==='flow-depth'
-      ?((rr.rating_mode==='diameter-informed-data-fit'?'Diameter-informed empirical Q–H rating curve':'Generic data-fitted Q–H rating curve')+(rc.diameter_mm?' · D = '+fmt(rc.diameter_mm,1)+' mm':'')+(rc.source?.file?' · '+rc.source.file:''))
-      :'Observed versus modelled depth / level fitted relationship using authoritative Python regression coefficients.';
-    diag.push('<figure class="figure"><img src="'+ratingImg+'" alt="Rating or fitted relationship plot"><figcaption>'+esc(ratingCaption)+'</figcaption></figure>');
+
+  if(options.include_time_series)body+='<h2>Full time-period graph</h2>'+timeFigure;
+
+  if(options.include_spills_storage){
+    body+='<h2>Spill / EDM assessment</h2><div class="report-grid"><div class="card"><h3>Observed / EDM</h3>'+spillSummaryHtml(state.spills.observed)+reportYearlySpills(state.spills.observed)+'</div><div class="card"><h3>Modelled</h3>'+spillSummaryHtml(state.spills.model)+reportYearlySpills(state.spills.model)+'</div></div>';
+    body+='<h3>Observed spills by month</h3>'+reportSpillCountMatrix(state.spills.observed);
+    body+='<h3>Model spills by month</h3>'+reportSpillCountMatrix(state.spills.model);
+    body+='<h3>Observed vs modelled monthly spill comparison</h3>'+reportMonthlySpillComparison(state.spills.observed,state.spills.modelled||state.spills.model);
+    body+='<h2>Storage Assessment</h2>'+reportStorageHtml();
   }
-  if(diag.length)body+='<div class="report-grid">'+diag.join('')+'</div>';
+
+  if(options.include_comparison){
+    body+='<h2>Scenario comparison</h2>'+scenarioTable;
+    body+=reportComparisonScatterFigure(selectedComparisons,log);
+    const allCurrent=state.comparisons.filter(x=>x.result);
+    const allSelected=selectedComparisons.length===allCurrent.length;
+    const images=allSelected?await Promise.all([reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440),reportChart('ratingChart',760,500)]):['','','',await reportChart('ratingChart',760,500)];
+    const [residImg,cumulativeImg,exceedanceImg,ratingImg]=images,diag=[];
+    if(residImg)diag.push('<figure class="figure"><img src="'+residImg+'" alt="Residual plot"><figcaption>Model minus observed residual through time using all valid pairs.</figcaption></figure>');
+    if(cumulativeImg)diag.push('<figure class="figure"><img src="'+cumulativeImg+'" alt="Cumulative flow volume plot"><figcaption>Cumulative-volume diagnostic where dimensional flow support is available.</figcaption></figure>');
+    if(exceedanceImg)diag.push('<figure class="figure"><img src="'+exceedanceImg+'" alt="Flow duration plot"><figcaption>Time-weighted exceedance diagnostic where available.</figcaption></figure>');
+    if(ratingImg&&state.rating){
+      const rc=state.rating.context||{},rr=state.rating.result?.observed||state.rating.result?.metrics||{};
+      const ratingCaption=state.rating.kind==='flow-depth'
+        ?((rr.rating_mode==='diameter-informed-data-fit'?'Diameter-informed empirical Q–H rating curve':'Generic data-fitted Q–H rating curve')+(rc.diameter_mm?' · D = '+fmt(rc.diameter_mm,1)+' mm':'')+(rc.source?.file?' · '+rc.source.file:''))
+        :'Observed versus modelled depth / level fitted relationship using authoritative Python regression coefficients.';
+      diag.push('<figure class="figure"><img src="'+ratingImg+'" alt="Rating or fitted relationship plot"><figcaption>'+esc(ratingCaption)+'</figcaption></figure>');
+    }
+    if(!allSelected)body+='<p class="muted">Residual/cumulative/exceedance screenshots are omitted because the report contains a selected scenario subset; this avoids mixing a different on-screen scenario population into the exported snapshot.</p>';
+    if(diag.length)body+='<div class="report-grid">'+diag.join('')+'</div>';
+  }
+
+  if(options.include_survey&&window.__ICM_WORKBENCH__.professionalSurveyReportHtml)body+=window.__ICM_WORKBENCH__.professionalSurveyReportHtml;
   body+='<h2>Exclusions</h2>'+reportExclusions(w);
   const notes=$('reviewNotes')&&$('reviewNotes').value||'';
   body+='<h2>Reviewer notes</h2><div class="card">'+(notes?'<p>'+esc(notes).replaceAll('\n','<br>')+'</p>':'<p class="muted">No reviewer notes recorded.</p>')+'</div>';
   body+='<h2>Project data context</h2>'+reportProjectRegistry();
   body+='<h2>Source provenance</h2>'+reportSources(w);
-  body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({spills:state.spillSnapshot,comparison:state.comparisonSnapshot,professional_flow_survey:window.__ICM_WORKBENCH__.lastProfessionalSurvey||null,rating_diagnostic:state.rating||null,project_registry:window.ICMProjectRegistry?.snapshot()||null,execution:diagnostic.execution||'unknown'},null,2))+'</pre></details>';
+  body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({report_options:options,spills:state.spillSnapshot,storage:state.storage,comparison:state.comparisonSnapshot,professional_flow_survey:window.__ICM_WORKBENCH__.lastProfessionalSurvey||null,rating_diagnostic:state.rating||null,project_registry:window.ICMProjectRegistry?.snapshot()||null,execution:diagnostic.execution||'unknown'},null,2))+'</pre></details>';
   const html=await interactiveReportHtml(reportShell('ICM Calibration Workbench — Engineering Assessment','Professional hydraulic data review and model-verification output',body,false));
   if(reportSignature!==analysisSignature())throw new Error('Inputs changed during report generation. Retry export.');
   downloadBlob('icm-workbench-report-'+new Date().toISOString().slice(0,10)+'.html',html,'text/html');
@@ -1371,14 +1737,14 @@ async function reportTraces(period){
       yaxis:rain?'y2':axisFor(quantity),line:rain?undefined:{color:traceColour,width:1.5},
       marker:rain?{color:traceColour}:undefined,opacity:rain?.72:1});
     statistics.push({role:entry.role,compact_label:compactGraphRole(entry.role,source.item,source.col),
-      label:seriesLabel(source.item,source.col),statistics:d.statistics,factor});
+      label:seriesLabel(source.item,source.col),statistics:d.statistics,factor,reference:seriesReference(source.item,source.col)||null});
     if(rain){hasRain=true;rainMax=values.reduce((m,v)=>v==null?m:Math.max(m,v*1.12),1);}
   }
   return {traces,statistics,quantities,fdvMode,hasRain,rainMax};
 }
 async function downloadFourPeriod(){
-  assertFreshResults();
-  if(!state.mapping.observed&&!state.mapping.rain)throw new Error('Apply a mapping before exporting.');
+  assertFreshResults({include_spills_storage:false,include_comparison:false,include_survey:false});
+  if(!state.mapping.observed&&!(state.mapping.models||[]).length&&!state.mapping.rain)throw new Error('Apply at least one observed, modelled or rainfall mapping before exporting.');
   const year=Number($('reportYear').value);
   if(!Number.isInteger(year)||year<1900||year>9998)throw new Error('Enter a valid report year.');
   const periods=[['Complete year',year+'-01-01T00:00:00',(year+1)+'-01-01T00:00:00'],['January – April',year+'-01-01T00:00:00',year+'-05-01T00:00:00'],['May – August',year+'-05-01T00:00:00',year+'-09-01T00:00:00'],['September – December',year+'-09-01T00:00:00',(year+1)+'-01-01T00:00:00']];
@@ -1391,7 +1757,8 @@ async function downloadFourPeriod(){
     const [title,a,b]=periods[i],result=await reportTraces([a,b]);
     result.traces.push(...thresholdTraces);
     const layout=hydraulicGraphLayout({...result,range:[a,b],title:year+' — '+title,shapes});
-    body+='<section class="report-page"><h2>'+esc(title)+'</h2><p class="muted">'+esc(a)+' to '+esc(b)+' · end exclusive</p>'+reportPlotFigure('period-graph-'+i,result.traces,layout,result.statistics,'Aligned hydraulic panels with a separate rainfall band above.')+'</section>';
+    layout.height=Math.min(Number(layout.height||580),580);
+    body+='<section class="report-page"><h2>'+esc(title)+'</h2><p class="muted">'+esc(a)+' to '+esc(b)+' · end exclusive</p>'+reportPlotFigure('period-graph-'+i,result.traces,layout,result.statistics,'Aligned hydraulic panels with a separate rainfall band above.',{period:true})+'</section>';
   }
   body+='<h2>Analysis settings</h2>'+reportSettingsTable(w)+'<h2>Exclusions</h2>'+reportExclusions(w)+'<h2>Source provenance</h2>'+reportSources(w);
   const html=await interactiveReportHtml(reportShell('ICM Calibration Workbench — '+year+' Four-Period Report','Annual hydraulic time-series review',body,true));
@@ -1424,11 +1791,18 @@ async function chooseFolder(){if('showDirectoryPicker'in window){try{const handl
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
-  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.storage=null;state.rating=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
+  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);void importGuard(async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=files.length+' dropped file'+(files.length===1?'':'s')+' detected · preparing import…';await ingestFiles(files);});});
   eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('applyMappingBtn').addEventListener('click',()=>{state.rating=null;});$('modelSelect').addEventListener('change',()=>{renderModelColourControls();autoSuggestAdvanced(allSeries());});eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
   eventGuard('runCompareBtn','metricGrid',runCompare);$('scatterScale').addEventListener('change',()=>{if(state.comparisons.length)void guarded('metricGrid',renderComparisons);});$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);for(const id of ['ratingObsDepth','ratingObsDepthUnit','ratingObsFlow','ratingObsFlowUnit','ratingModelDepth','ratingModelDepthUnit','ratingModelFlow','ratingModelFlowUnit'])$(id)?.addEventListener('change',()=>{state.rating=null;});eventGuard('runDwfBtn','dwfSummary',runDwf);
   $('rainCriteriaMode').addEventListener('change',criteriaModeChanged);eventGuard('runRainEventsBtn','rainEventSummary',runRainEvents);eventGuard('runHealthBtn','healthBody',runHealth);
+  document.addEventListener('change',event=>{
+    const id=event.target?.id||'';
+    if(['rainCriteriaMode','rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap','rainFactor','rainSelect'].includes(id)||event.target?.closest?.('#exclusionRows'))invalidateRainEvents('Rainfall source, conversion, criteria or exclusion context changed.');
+    if(['dwfFlowSelect','dwfFlowUnit','rainSelect','rainFactor','dwfDryDay','dwfBaselineDays','dwfAdpHours','analysisStart','analysisEnd'].includes(id)||event.target?.closest?.('#exclusionRows'))invalidateDwf('DWF source, unit, analysis period, exclusion or qualification criteria changed.');
+    if(id==='gapInput')invalidateHealth('Maximum gap criterion changed.');
+  },true);
+  window.addEventListener('icm:source-pool-changed',()=>{invalidateRainEvents('Source pool changed.');invalidateDwf('Source pool changed.');invalidateHealth('Source pool changed.');});
   $('addExclusionBtn').addEventListener('click',()=>addExclusionRow());eventGuard('runSpillsBtn','obsSpillSummary',runSpills);eventGuard('runStorageBtn','storageSummary',runStorage);
   $('downloadWorkspaceBtn').addEventListener('click',()=>guarded('workspaceStatus',downloadWorkspace));$('loadWorkspaceBtn').addEventListener('click',()=>$('workspaceInput').click());$('workspaceInput').addEventListener('change',e=>e.target.files[0]&&guarded('workspaceStatus',()=>loadWorkspaceFile(e.target.files[0])));eventGuard('saveNamedWorkspaceBtn','workspaceStatus',saveNamedWorkspace);eventGuard('loadNamedWorkspaceBtn','workspaceStatus',loadNamedWorkspace);eventGuard('downloadReportBtn','workspaceStatus',downloadReport);eventGuard('downloadFourPeriodBtn','workspaceStatus',downloadFourPeriod);$('downloadManifestBtn')?.addEventListener('click',()=>guarded('workspaceStatus',downloadManifest));document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn)));
 }

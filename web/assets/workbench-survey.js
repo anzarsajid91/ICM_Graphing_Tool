@@ -5,7 +5,9 @@
     association: null,
     associationSource: null,
     batch: null,
+    batchSignature: null,
     balance: null,
+    balanceSignature: null,
     generation: 0,
   };
   window.__ICM_WORKBENCH__.survey = survey;
@@ -103,67 +105,49 @@
   }
 
   function simplifyNavigation() {
+    // The Precision Workbench owns all user-facing navigation. Keep the legacy
+    // tab strip intact only as an internal compatibility surface for existing
+    // panel switching; do not rename, reorder, remove, or relocate routes here.
+    // This avoids two independent navigation systems mutating the same DOM.
     const nav = document.querySelector('nav.tabs');
     if (!nav) return;
-    const labels = {
-      graph: 'Data & Time Series',
-      'data-health': 'Flow Survey',
-      'rain-events': 'Rainfall',
-      compare: 'Assessment',
-      spills: 'Spills',
-      workspace: 'Report',
-    };
     const workflow = {
       graph: {
-        label: 'Data & Time Series',
+        label: 'Data / Time Series',
         description: 'Map source channels and review observed, modelled and rainfall time series before moving into engineering diagnostics.',
         tools: ['Source mapping', 'Time-series graph', 'Threshold overlays', 'Graph statistics'],
-      },
-      'data-health': {
-        label: 'Flow Survey',
-        description: 'Assess flow-survey completeness, response and network context using the survey association workbook where supplied.',
-        tools: ['fm_rg_assoc', 'Data health', 'FSAT Event Response', 'Flow continuity / volume balance'],
-      },
-      'rain-events': {
-        label: 'Rainfall',
-        description: 'Review rainfall quality and identify wet-weather events and their hydraulic response.',
-        tools: ['Gauge assessment', 'WAPUG / manual events', 'Event bands', 'Hydraulic response'],
-      },
-      compare: {
-        label: 'Assessment',
-        description: 'Compare observed and modelled hydraulics over a controlled period and investigate where the model differs.',
-        tools: ['Pairs & calibration metrics', 'Residuals', 'Cumulative / exceedance', 'Depth & rating diagnostics', 'Storage'],
       },
       spills: {
         label: 'Spills',
         description: 'Assess observed/EDM and model spill behaviour with explicit validity, exclusions and reporting periods.',
-        tools: ['12/24 counting', 'Duration / volume', 'Exclusions', 'Yearly / monthly summaries'],
+        tools: ['12/24 counting', 'Duration / volume', 'Exclusions', 'Storage Assessment'],
+      },
+      'data-health': {
+        label: 'Flow Survey · FDV Check',
+        description: 'Assess flow-survey completeness, response and network context using the survey association workbook where supplied.',
+        tools: ['fm_rg_assoc', 'Data health', 'FSAT Event Response', 'Flow continuity / volume balance'],
+      },
+      'rain-events': {
+        label: 'Flow Survey · Rainfall Check',
+        description: 'Review rainfall quality and identify wet-weather events and their hydraulic response.',
+        tools: ['Gauge assessment', 'WAPUG / manual events', 'Event bands', 'Hydraulic response'],
+      },
+      compare: {
+        label: 'Graphs',
+        description: 'Compare observed and modelled hydraulics over a controlled period and investigate where the model differs.',
+        tools: ['Pairs & calibration metrics', 'Residuals', 'Cumulative / exceedance', 'Depth & rating diagnostics'],
+      },
+      storage: {
+        label: 'Spills · Storage Assessment',
+        description: 'Review support-aware storage screening and modelled spill-volume evidence.',
+        tools: ['Level threshold', 'Overflow volume', 'Ranked blocks', 'Monthly outputs'],
       },
       workspace: {
-        label: 'Report',
-        description: 'Save the review state and produce reproducible engineering outputs with provenance and audit context.',
-        tools: ['Workspace persistence', 'HTML engineering report', 'Source provenance', 'Audit appendix'],
+        label: 'Reports',
+        description: 'Produce reproducible engineering outputs and preserve workspace/provenance context.',
+        tools: ['Report Generation', 'Workspace persistence', 'Source provenance', 'Audit appendix'],
       },
     };
-    const order = ['graph', 'data-health', 'rain-events', 'compare', 'spills', 'workspace'];
-    for (const name of order) {
-      const button = nav.querySelector('.tab[data-tab="' + name + '"]');
-      if (button) {
-        button.textContent = labels[name];
-        nav.appendChild(button);
-      }
-    }
-    const storageButton = nav.querySelector('.tab[data-tab="storage"]');
-    if (storageButton) storageButton.remove();
-
-    const storage = document.getElementById('tab-storage');
-    const verification = document.getElementById('tab-compare');
-    if (storage && verification && storage.parentElement !== verification) {
-      storage.classList.remove('tab-panel');
-      storage.classList.add('embedded-workflow', 'verification-storage');
-      verification.appendChild(storage);
-    }
-
     let guide = document.getElementById('workflowGuide');
     if (!guide) {
       guide = document.createElement('section');
@@ -183,7 +167,7 @@
     renderWorkflow(nav.querySelector('.tab.active')?.dataset.tab || 'graph');
     nav.addEventListener('click', event => {
       const button = event.target.closest('.tab[data-tab]');
-      if (button && workflow[button.dataset.tab]) renderWorkflow(button.dataset.tab);
+      if (button) renderWorkflow(button.dataset.tab);
     });
   }
 
@@ -346,9 +330,10 @@
       sha256: await sha256(file),
       sheet: table.sheetName,
     };
-    survey.batch = null;
-    survey.balance = null;
-    survey.generation += 1;
+    // Preserve previously calculated survey evidence when association topology
+    // changes. The dependency signature makes it stale immediately; retaining
+    // the result lets the user review what changed and restoring an identical
+    // authoritative workbook can restore dependency equivalence.
     renderAssociation();
     invalidateSurveyResults('Association workbook changed.');
   }
@@ -504,24 +489,61 @@
     renderSurveySchematic(survey.balance);
   }
 
-  function currentControls() {
-    return {
+  function currentControls(strict=true) {
+    const controls={
       start: modelClock(document.getElementById('analysisStart') && document.getElementById('analysisStart').value) || null,
       end: modelClock(document.getElementById('analysisEnd') && document.getElementById('analysisEnd').value) || null,
-      hydraulic_exclusions_json: JSON.stringify(exclusionPayload(true, 'observed')),
-      rainfall_exclusions_json: JSON.stringify(exclusionPayload(true, 'rainfall')),
+      hydraulic_exclusions_json: JSON.stringify(exclusionPayload(strict, 'observed')),
+      rainfall_exclusions_json: JSON.stringify(exclusionPayload(strict, 'rainfall')),
       max_gap_seconds: Number(document.getElementById('gapInput') && document.getElementById('gapInput').value || 900),
       amber_tolerance_percent: Number(document.getElementById('surveyBalanceTolerance') && document.getElementById('surveyBalanceTolerance').value || 10),
     };
+    // Dependency/readiness checks must remain computable while the user is
+    // editing an exclusion row. Preserve the raw edit state in the signature so
+    // a partial row still makes prior results stale, while actual calculations
+    // retain strict exclusion validation.
+    if(!strict)controls.exclusion_edit_state=(state.exclusions||[]).map(item=>({
+      enabled:item.enabled!==false,
+      start:modelClock(item.start)||'',
+      end:modelClock(item.end)||'',
+      scope:item.scope||'both',
+      reason:String(item.reason||''),
+    }));
+    return controls;
   }
+  function surveyDependencySignature(kind='complete') {
+    const controls=currentControls(false);
+    const association=(survey.association?.records||[]).map(row=>({
+      monitor:row.monitor||null,rain_gauge:row.rain_gauge||null,diameter_mm:row.diameter_mm??null,upstream:row.upstream||[]
+    }));
+    return JSON.stringify({
+      kind,
+      analysis:typeof analysisSignature==='function'?analysisSignature():null,
+      association,
+      association_source:survey.associationSource?{name:survey.associationSource.name||null,sha256:survey.associationSource.sha256||null,sheet:survey.associationSource.sheet||null}:null,
+      monitor_sources:monitorSourceSpecs(),
+      rain_sources:kind==='complete'?rainSourceSpecs():[],
+      controls,
+      population_above_50k:document.getElementById('surveyPopulation')?document.getElementById('surveyPopulation').value==='over50':true,
+      apply_fault_cutoff:Boolean(document.getElementById('surveyApplyFaultCutoff')&&document.getElementById('surveyApplyFaultCutoff').checked),
+    });
+  }
+  function surveyFresh(kind){
+    if(kind==='balance')return Boolean(survey.balance&&survey.balanceSignature===surveyDependencySignature('balance'));
+    return Boolean(survey.batch&&survey.batchSignature===surveyDependencySignature('complete'));
+  }
+  window.__ICM_WORKBENCH__.surveyDependencySignature=surveyDependencySignature;
+  window.__ICM_WORKBENCH__.surveyFresh=surveyFresh;
 
   function invalidateSurveyResults(reason) {
-    survey.batch = null;
-    survey.balance = null;
+    // Preserve the previous evidence for review, but invalidate its dependency
+    // signature immediately. Stale results are never exported as current.
+    survey.generation += 1;
     const status = document.getElementById('completeSurveyStatus');
-    if (status) status.textContent = reason + ' Re-run the complete survey assessment.';
+    if (status && survey.batch) status.textContent = reason + ' Previous complete-survey results are stale; re-run before relying on or exporting them.';
     const summary = document.getElementById('surveyBalanceSummary');
-    if (summary) summary.innerHTML = '<div class="privacy-note">' + esc(reason) + ' Recalculate volume balance before relying on the previous result.</div>';
+    if (summary && survey.balance) summary.insertAdjacentHTML('afterbegin','<div class="privacy-note"><strong>Stale:</strong> ' + esc(reason) + ' Recalculate volume balance before relying on the previous result.</div>');
+    renderReportPreflight();
   }
 
   async function runSurveyBalance() {
@@ -532,6 +554,7 @@
     button.textContent = 'Calculating…';
     try {
       const controls = currentControls();
+      const signature=surveyDependencySignature('balance'),generation=++survey.generation;
       const result = await engine.call('survey_volume_balance_result', {
         association_json: JSON.stringify(survey.association.records),
         monitor_sources_json: JSON.stringify(monitorSourceSpecs()),
@@ -541,8 +564,11 @@
         end: controls.end,
         amber_tolerance_percent: controls.amber_tolerance_percent,
       }, 'advanced_bridge');
+      if(generation!==survey.generation||signature!==surveyDependencySignature('balance'))throw new Error('Volume-balance inputs changed while calculation was running. The late result was discarded.');
       survey.balance = result;
+      survey.balanceSignature=signature;
       renderVolumeBalance(result);
+      renderReportPreflight();
       return result;
     } finally {
       button.disabled = false;
@@ -561,6 +587,7 @@
     const started=performance.now();
     try {
       const controls = currentControls();
+      const signature=surveyDependencySignature('complete'),generation=++survey.generation;
       const result = await engine.call('professional_survey_batch_result', {
         association_json: JSON.stringify(survey.association.records),
         monitor_sources_json: JSON.stringify(monitorSourceSpecs()),
@@ -576,10 +603,14 @@
         end: controls.end,
         amber_tolerance_percent: controls.amber_tolerance_percent,
       }, 'advanced_bridge');
+      if(generation!==survey.generation||signature!==surveyDependencySignature('complete'))throw new Error('Complete-survey inputs changed while calculation was running. The late result was discarded.');
       survey.batch = result;
+      survey.batchSignature=signature;
       survey.balance = result.volume_balance || null;
+      survey.balanceSignature=survey.balance?surveyDependencySignature('balance'):null;
       renderCompleteSurvey(result);
       renderVolumeBalance(survey.balance);
+      renderReportPreflight();
       const elapsed=(performance.now()-started)/1000;
       status.innerHTML='<strong>Complete survey assessment calculated.</strong> Workbook mappings were authoritative · '+fmt(elapsed,1)+' s.';
       return result;
@@ -811,8 +842,8 @@
 
   function wireWorkspacePersistence() {
     const coreWorkspaceObject = workspaceObject;
-    workspaceObject = function() {
-      const value = coreWorkspaceObject();
+    workspaceObject = function(...args) {
+      const value = coreWorkspaceObject(...args);
       value.survey = {
         association: survey.association,
         association_source: survey.associationSource,
@@ -842,7 +873,12 @@
           await refreshAssociationConflicts();
           renderAssociation();
         }
-        if (status) status.textContent = 'Workspace loaded. ' + Number(restored && restored.matched || 0) + '/' + Number(restored && restored.expected || 0) + ' source fingerprint(s) matched the current pool.';
+        if (status) {
+          const matched=Number(restored&&restored.matched||0),expected=Number(restored&&restored.expected||0);
+          status.textContent=matched<expected
+            ?'Workspace loaded with unresolved sources. '+matched+'/'+expected+' source fingerprint(s) matched. Reattach missing or changed files in Data / Sources; derived results remain Not run or Stale until dependencies are verified and recalculated.'
+            :'Workspace loaded. '+matched+'/'+expected+' source fingerprint(s) matched the current pool; derived calculations must be rerun before report export.';
+        }
         renderReportPreflight();
         return restored;
       } finally {
@@ -851,12 +887,44 @@
     };
   }
 
+  function resultReadiness(payload,defaultReason='Dependencies match the current analytical state.') {
+    const statuses=[],reasons=[],seen=new Set();
+    const walk=(value,depth=0)=>{
+      if(value==null||depth>6)return;
+      if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')return;
+      if(Array.isArray(value)){value.slice(0,200).forEach(x=>walk(x,depth+1));return;}
+      if(typeof value!=='object'||seen.has(value))return;
+      seen.add(value);
+      for(const [key,item] of Object.entries(value)){
+        const lower=String(key).toLowerCase();
+        if(['calculation_status','status'].includes(lower)&&typeof item==='string')statuses.push(item);
+        if(['reason','error','message'].includes(lower)&&typeof item==='string'&&item.trim())reasons.push(item.trim());
+        if(lower==='error'&&typeof item==='string'&&item.trim())statuses.push('error');
+        if(['result','results','observed','model','modelled','screening','yearly_summary','monthly_summary','rows','monitors','volume_balance','network','monitor'].includes(lower))walk(item,depth+1);
+      }
+    };
+    walk(payload);
+    const tokens=statuses.map(x=>String(x).trim().toLowerCase());
+    const reason=reasons.find(Boolean)||defaultReason;
+    if(reasons.length&&reasons.some(x=>/error|failed|exception/i.test(x)))return {state:'error',label:'Error',reason};
+    if(tokens.some(x=>/error|failed|failure/.test(x)))return {state:'error',label:'Error',reason};
+    if(tokens.some(x=>/blocked|unavailable|withheld|no[- ]?valid|insufficient/.test(x)))return {state:'blocked',label:'Blocked',reason};
+    if(tokens.some(x=>/partial|provisional|incomplete|unknown/.test(x)))return {state:'partial',label:'Partial',reason};
+    return {state:'current',label:'Current',reason:defaultReason};
+  }
+
   function readinessState(snapshot) {
-    if (!snapshot) return { state: 'not-calculated', label: 'Not calculated' };
+    if (!snapshot) return { state:'not-run',label:'Not run',reason:'This analysis has not been calculated for the current workspace.' };
     if (snapshot.signature && typeof analysisSignature === 'function' && snapshot.signature !== analysisSignature()) {
-      return { state: 'stale', label: 'Stale' };
+      return { state:'stale',label:'Stale',reason:'One or more analytical dependencies changed; recalculate before export.' };
     }
-    return { state: 'fresh', label: 'Fresh' };
+    return resultReadiness(snapshot.results||snapshot);
+  }
+
+  function freshSurveyReadiness(result,fresh,kind) {
+    if(!result)return {state:'not-run',label:'Not run',reason:kind+' has not been calculated.'};
+    if(!fresh)return {state:'stale',label:'Stale',reason:kind+' dependencies changed; recalculate before export.'};
+    return resultReadiness(result,kind+' dependencies match the current workspace.');
   }
 
   function renderReportPreflight() {
@@ -864,29 +932,41 @@
     if (!root) return;
     const comparison = readinessState(state.comparisonSnapshot);
     const spill = readinessState(state.spillSnapshot);
-    const professional = window.__ICM_WORKBENCH__.lastProfessionalSurvey ?
-      { state: 'fresh', label: 'Fresh' } : { state: 'not-calculated', label: 'Not calculated' };
-    const complete = survey.batch ?
-      { state: 'fresh', label: 'Fresh' } : { state: 'not-calculated', label: 'Not calculated' };
-    const rating = !state.rating ?
-      { state: 'not-calculated', label: 'Not calculated' } :
-      (state.rating.signature && typeof ratingInputSignature === 'function' && state.rating.signature !== ratingInputSignature() ?
-        { state: 'stale', label: 'Stale' } :
-        { state: 'fresh', label: 'Fresh' });
-    const association = survey.association ?
-      { state: 'loaded', label: 'Loaded' } : { state: 'not-loaded', label: 'Not loaded' };
+    const professional = freshSurveyReadiness(
+      window.__ICM_WORKBENCH__.lastProfessionalSurvey,
+      Boolean(window.__ICM_WORKBENCH__.professionalSurveyFresh?.()),
+      'Professional survey'
+    );
+    const complete = freshSurveyReadiness(survey.batch,surveyFresh('complete'),'Complete survey');
+    const balance = freshSurveyReadiness(survey.balance,surveyFresh('balance'),'Volume balance');
+    const storage = !state.storage
+      ?{state:'not-run',label:'Not run',reason:'Storage Assessment has not been calculated.'}
+      :(state.storageSignature&&typeof storageInputSignature==='function'&&state.storageSignature!==storageInputSignature()
+        ?{state:'stale',label:'Stale',reason:'Storage dependencies changed; recalculate before export.'}
+        :resultReadiness(state.storage,'Storage dependencies match the current workspace.'));
+    const rating = !state.rating
+      ?{state:'not-run',label:'Not run',reason:'Rating / fitted relationship has not been calculated.'}
+      :(state.rating.signature&&typeof ratingInputSignature==='function'&&state.rating.signature!==ratingInputSignature()
+        ?{state:'stale',label:'Stale',reason:'Rating inputs changed; recalculate before export.'}
+        :resultReadiness(state.rating.result||state.rating,'Rating dependencies match the current workspace.'));
+    const association = survey.association
+      ?{state:'current',label:'Current',reason:'Association workbook context is loaded and participates in survey dependency signatures.'}
+      :{state:'not-run',label:'Not run',reason:'No association workbook is loaded; association-dependent survey workflows are blocked until one is supplied.'};
     const rows = [
       ['comparison', 'Comparison', comparison],
       ['spill', 'Spill / EDM', spill],
+      ['storage', 'Storage Assessment', storage],
       ['professional-survey', 'Professional survey', professional],
       ['complete-survey', 'Complete survey', complete],
+      ['volume-balance', 'Volume balance', balance],
       ['rating', 'Rating / fitted relationship', rating],
       ['survey-association', 'Survey association', association],
     ];
     root.innerHTML = rows.map(([key, label, status]) =>
-      '<div class="report-readiness-item" data-result="' + esc(key) + '">' +
+      '<div class="report-readiness-item" data-result="' + esc(key) + '" title="' + esc(status.reason||'') + '">' +
       '<span>' + esc(label) + '</span>' +
       '<strong class="report-readiness-state" data-state="' + esc(status.state) + '">' + esc(status.label) + '</strong>' +
+      '<small class="report-readiness-reason">' + esc(status.reason||'') + '</small>' +
       '</div>'
     ).join('');
   }
@@ -909,9 +989,12 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       guarded('workspaceStatus', async () => {
+        if(survey.batch&&!surveyFresh('complete'))throw new Error('Complete flow-survey results are stale. Re-run the assessment before exporting.');
+        if(survey.balance&&!surveyFresh('balance'))throw new Error('Volume-balance results are stale. Recalculate before exporting.');
+        if(window.__ICM_WORKBENCH__.lastProfessionalSurvey&&!window.__ICM_WORKBENCH__.professionalSurveyFresh?.())throw new Error('Professional flow-survey results are stale. Re-run the assessment before exporting.');
         const extra = surveyReportHtml();
-        if (!state.mapping.observed && !state.mapping.rain) {
-          const body = '<div class="note">Survey-only report. No hydraulic or rainfall graph mapping was available for the full engineering report.</div>' + extra + reportSources(workspaceObject()) + reportExclusions(workspaceObject());
+        if (!state.mapping.observed && !(state.mapping.models||[]).length && !state.mapping.rain) {
+          const body = '<div class="note">Survey-only report. No observed, modelled or rainfall graph mapping was available for the full engineering report.</div>' + extra + reportSources(workspaceObject()) + reportExclusions(workspaceObject());
           downloadBlob('icm-workbench-survey-report-' + new Date().toISOString().slice(0, 10) + '.html', reportShell('ICM Graphing Tool — Flow Survey Assessment', 'Association-driven survey QA, Event Response and flow-continuity review', body, true), 'text/html');
           document.getElementById('workspaceStatus').textContent = 'Survey assessment HTML downloaded.';
           return;
