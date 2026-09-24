@@ -1099,6 +1099,7 @@ try{
   if(/Traceback|pyodide|browser_api\.py/i.test(mismatchComparisonText))throw new Error('Quantity mismatch UI leaked a raw Python traceback: '+mismatchComparisonText);
 
   const expectedErrorCount=await page.evaluate(()=>window.__ICM_WORKBENCH__?.errors?.length||0);
+  const expectedConsoleErrorCount=consoleErrors.length;
   await precisionRoute('graphs','rating');
   await page.selectOption('#ratingObsDepth',mismatchLevel);
   await page.selectOption('#ratingObsFlow','');
@@ -1110,6 +1111,11 @@ try{
   if(/Traceback|pyodide|browser_api\.py/i.test(mismatchRatingText))throw new Error('Depth/Rating mismatch UI leaked a raw Python traceback: '+mismatchRatingText);
   const recordedError=await page.evaluate(index=>window.__ICM_WORKBENCH__?.errors?.[index]||null,expectedErrorCount);
   if(!recordedError?.display_message||!/like-for-like vertical quantities/i.test(recordedError.display_message))throw new Error('Expected concise diagnostic error was not recorded: '+JSON.stringify(recordedError));
+  const expectedConsoleErrors=consoleErrors.slice(expectedConsoleErrorCount);
+  if(expectedConsoleErrors.length!==1||!/like-for-like vertical quantities|Depth and absolute Level remain distinct/i.test(expectedConsoleErrors[0])){
+    throw new Error('Unexpected console output during intentional quantity-mismatch regression: '+JSON.stringify(expectedConsoleErrors));
+  }
+  consoleErrors.splice(expectedConsoleErrorCount);
   await page.evaluate(index=>{const errors=window.__ICM_WORKBENCH__?.errors;if(Array.isArray(errors)&&errors.length>index)errors.splice(index);},expectedErrorCount);
 
   await precisionRoute('data','series-mapping');
