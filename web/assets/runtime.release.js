@@ -318,6 +318,10 @@ class BrowserPythonEngine {
     const buffer=payload.byteOffset===0&&payload.byteLength===payload.buffer.byteLength?payload.buffer:payload.slice().buffer;
     return this._request('addFile',{path:item.virtualPath,bytes:buffer},[buffer]);
   }
+  async removeFile(path){
+    if(!this.ready)return true;
+    return this._request('removeFile',{path:String(path||'')});
+  }
   async call(name,args={},module='python_bridge'){
     if(!this.ready)throw new Error('Reference Python worker is not ready.');
     if(!['python_bridge','advanced_bridge'].includes(module))throw new Error('Unsupported browser bridge.');
@@ -717,6 +721,129 @@ async function ingestFiles(files){
   if(active&&active.status==='ready')await handoffFastPath(active);
   if(engineInfo&&$('poolSummary'))renderPool();
 }
+function sourceKeyBelongsTo(key,sourceId){
+  if(!key||!sourceId)return false;
+  const [id]=parseSourceKey(key);
+  return id===sourceId;
+}
+function rebuildSpillModelSelect(){
+  const select=$('spillModelSelect');
+  if(!select)return;
+  const previous=select.value;
+  select.innerHTML='<option value="">No model selected</option>'+state.mapping.models.map(key=>{
+    const mapped=mappingObject(key);
+    return mapped?'<option value="'+esc(key)+'">'+esc(seriesLabel(mapped.item,mapped.col))+'</option>':'';
+  }).join('');
+  if(state.mapping.models.includes(previous))select.value=previous;
+  else if(state.mapping.models.length)select.value=state.mapping.models[0];
+}
+async function removeSourceById(sourceId){
+  const item=state.files.get(sourceId);
+  if(!item)return false;
+  if(TRANSIENT_SOURCE_STATUSES.has(item.status))throw new Error('Wait for '+item.displayName+' to finish importing before removing it.');
+
+  syncExclusionsFromEditor();
+  const observedRemoved=sourceKeyBelongsTo(state.mapping.observed,sourceId);
+  const removedModelKeys=(state.mapping.models||[]).filter(key=>sourceKeyBelongsTo(key,sourceId));
+  const rainfallRemoved=sourceKeyBelongsTo(state.mapping.rain,sourceId);
+  const mappedChanged=observedRemoved||removedModelKeys.length>0||rainfallRemoved;
+  const selectionRemoved=id=>sourceKeyBelongsTo($(id)?.value||'',sourceId);
+  const ratingAffected=['ratingObsDepth','ratingObsFlow','ratingModelDepth','ratingModelFlow'].some(selectionRemoved);
+  const storageAffected=['storageLevelSelect','storageFlowSelect'].some(selectionRemoved);
+  const dwfAffected=selectionRemoved('dwfFlowSelect')||selectionRemoved('rainSelect')||rainfallRemoved;
+  const rainfallAnalysisAffected=selectionRemoved('rainSelect')||rainfallRemoved;
+
+  const orphanedExclusions=(state.exclusions||[]).filter(exclusion=>sourceKeyBelongsTo(exclusion.scope||'',sourceId));
+  if(orphanedExclusions.length){
+    state.deletedExclusions??=[];
+    state.deletedExclusions.push(...orphanedExclusions.map(exclusion=>({...exclusion,removed_with_source:item.displayName,removed_at:new Date().toISOString()})));
+    const orphanIds=new Set(orphanedExclusions.map(exclusion=>exclusion.id));
+    state.exclusions=state.exclusions.filter(exclusion=>!orphanIds.has(exclusion.id));
+  }
+
+  state.files.delete(sourceId);
+  window.ICMProjectRegistry?.removeSource(sourceId);
+  for(const key of [...state.seriesQuantityOverrides.keys()])if(sourceKeyBelongsTo(key,sourceId))state.seriesQuantityOverrides.delete(key);
+  for(const key of Object.keys(state.modelColours||{}))if(sourceKeyBelongsTo(key,sourceId))delete state.modelColours[key];
+  if(observedRemoved)state.mapping.observed='';
+  if(removedModelKeys.length)state.mapping.models=state.mapping.models.filter(key=>!sourceKeyBelongsTo(key,sourceId));
+  if(rainfallRemoved)state.mapping.rain='';
+
+  if(diagnostic.fastpathActiveSourceId===sourceId){
+    diagnostic.fastpathActiveSourceId=null;
+    window.ICMFastPath?.clear?.();
+  }
+  try{
+    await engine.removeFile(item.virtualPath);
+  }catch(error){
+    diagnostic.errors.push({time:new Date().toISOString(),target:'source-remove-worker',message:String(error?.message||error),file:item.displayName});
+  }
+
+  if(observedRemoved){
+    for(const id of ['obsThreshold','graphObsThreshold'])if($(id))$(id).value='';
+  }
+  if(removedModelKeys.length){
+    for(const id of ['modelThreshold','graphModelThreshold'])if($(id))$(id).value='';
+  }
+  if(mappedChanged){
+    state.comparisons=[];
+    state.comparisonSnapshot=null;
+    state.spills={};
+    state.spillSnapshot=null;
+    for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])Plotly.purge(id);
+    renderSpills();
+  }
+  if(rainfallAnalysisAffected){
+    state.rainEvents=[];
+    state.rainEventResult=null;
+    state.rainEventSignature=null;
+    ++state.rainEventGeneration;
+    if($('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary">Rainfall source removed. Re-run Rainfall Check after selecting another source.</div>';
+    if($('rainEventBody'))$('rainEventBody').innerHTML='';
+    if($('eventResponseBody'))$('eventResponseBody').innerHTML='';
+  }
+  if(dwfAffected){
+    state.dwfResult=null;
+    state.dwfSignature=null;
+    ++state.dwfGeneration;
+    if($('dwfSummary'))$('dwfSummary').innerHTML='<div class="pool-summary">DWF input source removed. Select a valid flow/rainfall source and recalculate.</div>';
+  }
+  if(ratingAffected){
+    state.rating=null;
+    diagnostic.lastRating=null;
+    Plotly.purge('ratingChart');
+    if($('ratingSummary'))$('ratingSummary').innerHTML='<div class="pool-summary">Rating input source removed. Select valid replacement series and recalculate.</div>';
+  }
+  if(storageAffected){
+    state.storage=null;
+    state.storageSignature=null;
+    if($('storageSummary'))$('storageSummary').innerHTML='<div class="pool-summary">Storage input source removed. Select valid replacement series and recalculate.</div>';
+    if($('storageBody'))$('storageBody').innerHTML='';
+    if($('monthlyVolume'))$('monthlyVolume').innerHTML='';
+  }
+  state.healthResult=null;
+  state.healthSignature=null;
+  ++state.healthGeneration;
+  if($('healthBody'))$('healthBody').innerHTML='';
+
+  renderPool();
+  renderSeriesOptions();
+  rebuildSpillModelSelect();
+  renderExclusions();
+  if(mappedChanged)await drawTimeChart();
+  notifySourcePoolChanged('remove');
+  if($('mappingStatus')){
+    const cleared=[
+      observedRemoved?'observed mapping':null,
+      removedModelKeys.length?removedModelKeys.length+' model mapping'+(removedModelKeys.length===1?'':'s'):null,
+      rainfallRemoved?'rainfall mapping':null,
+      orphanedExclusions.length?orphanedExclusions.length+' source-specific exclusion'+(orphanedExclusions.length===1?'':'s'):null,
+    ].filter(Boolean);
+    $('mappingStatus').textContent='Removed '+item.displayName+'. '+(cleared.length?'Cleared '+cleared.join(', ')+'; unaffected sources and mappings were retained.':'Existing mappings were unaffected.');
+  }
+  return true;
+}
+
 function renderPool(){
   const items=[...state.files.values()],ready=items.filter(x=>x.status==='ready').length,preview=items.filter(x=>['preview-ready','validating','preview-only'].includes(x.status)&&x.preview&&x.preview.eligible).length;
   $('poolSummary').textContent=items.length?items.length+' file(s) in the source pool · '+ready+' parsed successfully'+(preview?' · '+preview+' preview-ready/validating':'')+'.':'No files loaded.';
@@ -729,8 +856,11 @@ function renderPool(){
     const auditText=item.status==='error'?(item.error||'Failed'):(item.preview&&item.preview.eligible&&item.status!=='ready'?'FastPath structural preview':sent+' sentinel; '+malformed+' malformed/invalid');
     const reconcile=item.fastpathReconciliation&&item.fastpathReconciliation.status==='mismatch'?' · preview mismatch ⚠':item.fastpathReconciliation&&item.fastpathReconciliation.status==='matched'?' · preview validated':'';
     const status=item.status==='error'?'<span class="audit-bad">Error</span>':esc(statusLabel+reconcile)+(item.status==='ready'&&Number.isFinite(item.loadSeconds)?' · '+fmt(item.loadSeconds,1)+' s':'');
-    return '<tr><td><div class="file-name">'+esc(item.displayName)+'</div><small>'+mb(item.file.size)+' · SHA '+(item.hash?item.hash.slice(0,10):'…')+'</small></td><td>'+esc(p.format||'—')+'</td><td>'+(p.rows??'—')+'</td><td>'+period+'</td><td class="'+((sent||malformed||(item.fastpathReconciliation&&item.fastpathReconciliation.status==='mismatch'))?'audit-warn':'audit-good')+'">'+esc(auditText)+'</td><td>'+status+'</td></tr>';
+    const removeDisabled=TRANSIENT_SOURCE_STATUSES.has(item.status);
+    const removeTitle=removeDisabled?'Finish importing before removing':'Remove '+item.displayName;
+    return '<tr data-source-id="'+esc(item.id)+'"><td><div class="file-name">'+esc(item.displayName)+'</div><small>'+mb(item.file.size)+' · SHA '+(item.hash?item.hash.slice(0,10):'…')+'</small></td><td>'+esc(p.format||'—')+'</td><td>'+(p.rows??'—')+'</td><td>'+period+'</td><td class="'+((sent||malformed||(item.fastpathReconciliation&&item.fastpathReconciliation.status==='mismatch'))?'audit-warn':'audit-good')+'">'+esc(auditText)+'</td><td>'+status+'</td><td class="source-remove-cell"><button type="button" class="source-remove-btn" data-source-remove="'+esc(item.id)+'" aria-label="'+esc(removeTitle)+'" title="'+esc(removeTitle)+'" '+(removeDisabled?'disabled':'')+'>×</button></td></tr>';
   }).join('');
+  document.querySelectorAll('[data-source-remove]').forEach(button=>button.addEventListener('click',()=>void guarded('poolSummary',()=>removeSourceById(button.dataset.sourceRemove))));
 }
 function renderSeriesOptions(){
   const all=allSeries(),obs=$('observedSelect'),mod=$('modelSelect'),rain=$('rainSelect'),prevMods=[...mod.selectedOptions].map(o=>o.value);

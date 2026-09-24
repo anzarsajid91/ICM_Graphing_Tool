@@ -516,6 +516,93 @@ async function verifyStationAThresholdChain(){
   }
 }
 
+async function verifyIndividualSourceRemoval(){
+  if(liveMode)return null;
+  const probe=await context.newPage(),probeErrors=[];
+  probe.on('pageerror',error=>probeErrors.push('pageerror: '+String(error)));
+  probe.on('console',message=>{if(message.type()==='error'&&!message.text().includes('favicon.ico'))probeErrors.push('console: '+message.text());});
+  try{
+    await probe.goto(baseUrl+'?individual_source_remove='+Date.now(),{waitUntil:'domcontentloaded'});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+    const fdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv'));
+    const rain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG01.R'));
+    await probe.setInputFiles('#fileInput',[
+      {name:'RemoveTest-FM01.fdv',mimeType:'text/plain',buffer:fdv},
+      {name:'RemoveTest-RG01.R',mimeType:'text/plain',buffer:rain},
+    ]);
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(row=>/RemoveTest-(FM01|RG01)/.test(row.textContent)&&row.textContent.includes('Ready')).length===2,null,{timeout:120000});
+    const probeRoute=async(workspace,subpage)=>{
+      await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+      await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,subpage]);
+      await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},[workspace,subpage],{timeout:30000});
+    };
+    await probeRoute('data','series-mapping');
+    const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>options.find(o=>o.textContent.includes(text))?.value||'',needle);
+    const observed=await option('#observedSelect','RemoveTest-FM01.fdv — depth');
+    const rainfall=await option('#rainSelect','RemoveTest-RG01.R — rainfall');
+    if(!observed||!rainfall)throw new Error('Reference removal fixture did not expose FM01 depth and RG01 rainfall series.');
+    await probe.selectOption('#observedSelect',observed);
+    await probe.selectOption('#modelSelect',[]);
+    await probe.selectOption('#rainSelect',rainfall);
+    await probe.click('#applyMappingBtn');
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.lastGraphStatistics?.some(row=>String(row.label||'').includes('RemoveTest-RG01')),null,{timeout:60000});
+    await probeRoute('data','time-series');
+    await probe.fill('#graphObsThreshold','0.20');
+    await probe.waitForFunction(()=>Math.abs(Number(document.querySelector('#obsThreshold')?.value)-0.20)<1e-9,null,{timeout:30000});
+    await probeRoute('data','sources');
+
+    const rows=probe.locator('#poolBody tr');
+    const rainRow=rows.filter({hasText:'RemoveTest-RG01.R'});
+    const fdvRow=rows.filter({hasText:'RemoveTest-FM01.fdv'});
+    const removeControls=await probe.locator('#poolBody .source-remove-btn').count();
+    if(removeControls!==2)throw new Error('Each ready source row must expose one compact remove control.');
+    await rainRow.locator('.source-remove-btn').click();
+    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===1
+      &&!document.querySelector('#poolBody')?.textContent.includes('RemoveTest-RG01.R')
+      &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
+      &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===1
+      &&!(document.querySelector('#timeChart')?.data||[]).some(trace=>String(trace.name||'').includes('Rainfall')),
+      null,{timeout:60000});
+    const afterRain=await probe.evaluate(()=>({
+      rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+      mapping:{...state.mapping,models:[...(state.mapping.models||[])]},
+      registry:(window.ICMProjectRegistry?.snapshot()?.sources||[]).map(source=>source.name),
+      sourcePool:window.__ICM_WORKBENCH__?.sourcePool||null,
+      threshold:document.querySelector('#obsThreshold')?.value||'',
+      graphNames:(document.querySelector('#timeChart')?.data||[]).map(trace=>trace.name),
+    }));
+    if(afterRain.rows.length!==1||!afterRain.rows[0].includes('RemoveTest-FM01.fdv')||afterRain.registry.length!==1||!afterRain.registry[0].includes('RemoveTest-FM01.fdv')){
+      throw new Error('Removing rainfall must retain the unrelated FM01 source in both pool and project registry: '+JSON.stringify(afterRain));
+    }
+    if(afterRain.mapping.observed!==observed||afterRain.mapping.rain!==''||afterRain.threshold!=='0.20'||afterRain.sourcePool?.reason!=='remove'){
+      throw new Error('Removing mapped rainfall must preserve the observed mapping/threshold while clearing only rainfall: '+JSON.stringify(afterRain));
+    }
+    if(afterRain.graphNames.some(name=>String(name||'').includes('Rainfall')))throw new Error('Removed rainfall trace remained on the graph: '+JSON.stringify(afterRain.graphNames));
+
+    await fdvRow.locator('.source-remove-btn').click();
+    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0
+      &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
+      &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===0
+      &&!(document.querySelector('#timeChart')?.data||[]).length,
+      null,{timeout:60000});
+    const afterFdv=await probe.evaluate(()=>({
+      mapping:{...state.mapping,models:[...(state.mapping.models||[])]},
+      registry:window.ICMProjectRegistry?.snapshot()?.sources?.length??null,
+      threshold:document.querySelector('#obsThreshold')?.value||'',
+      graphThreshold:document.querySelector('#graphObsThreshold')?.value||'',
+      graphTraces:(document.querySelector('#timeChart')?.data||[]).length,
+      sourcePool:window.__ICM_WORKBENCH__?.sourcePool||null,
+      mappingStatus:document.querySelector('#mappingStatus')?.textContent||'',
+    }));
+    if(afterFdv.mapping.observed!==''||afterFdv.registry!==0||afterFdv.threshold!==''||afterFdv.graphThreshold!==''||afterFdv.graphTraces!==0||afterFdv.sourcePool?.reason!=='remove'){
+      throw new Error('Removing the mapped observed source must clear its mapping/threshold/graph without resurrecting registry data: '+JSON.stringify(afterFdv));
+    }
+    if(!/Removed RemoveTest-FM01\.fdv/.test(afterFdv.mappingStatus))throw new Error('Source removal did not leave an auditable status message: '+afterFdv.mappingStatus);
+    if(probeErrors.length)throw new Error('Individual source-removal probe errors: '+probeErrors.join(' | '));
+    return {afterRain,afterFdv,referenceFiles:['FM01.fdv','RG01.R']};
+  }finally{await probe.close();}
+}
+
 async function waitReady(){
   try{await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready'&&document.querySelector('#engineStatus')?.textContent.includes('ready'),null,{timeout:120000});}
   catch(err){const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);throw new Error(`Engine readiness failed. status=${status}; diagnostic=${JSON.stringify(diag)}; original=${err}`);}
@@ -638,6 +725,9 @@ try{
   await writePerformanceEvidence();
   stage='analysis-worker restart during pending FastPath import';
   performanceEvidence.pendingImportRestart=await verifyRestartDuringPendingImport();
+  await writePerformanceEvidence();
+  stage='individual source removal with supplied reference files';
+  performanceEvidence.individualSourceRemoval=await verifyIndividualSourceRemoval();
   await writePerformanceEvidence();
   stage='open application';
   const applicationNavigationStart=Date.now();
