@@ -1454,8 +1454,10 @@ try{
   await page.waitForSelector('#modelMonthly .v2-yearly-title',{timeout:60000});
   if(await page.locator('#spillComparison tbody tr').count()<1)throw new Error('Annual observed/model spill comparison missing');
   const spillDiag=await page.evaluate(()=>window.__ICM_WORKBENCH__.lastSpills);
+  const spillStatusText=(await page.locator('#spillRunStatus').textContent())||'';
   if(!spillDiag?.observed)throw new Error(`Observed spill diagnostic missing: ${JSON.stringify(spillDiag)}`);
   if(Math.abs(Number(spillDiag.observed.excluded_seconds)-120)>0.001)throw new Error(`Expected 120 seconds excluded in model clock, got ${JSON.stringify(spillDiag)}`);
+  if(Number(spillDiag.observed.applied_exclusion_count)!==1||!spillStatusText.includes('Observed: 1 period(s), 0.033 h excluded'))throw new Error('Spill exclusion audit must show exactly what was applied: '+JSON.stringify({spillDiag,spillStatusText}));
   if(!spillDiag.observed.yearly?.length)throw new Error('Yearly spill summary missing from browser diagnostic');
   console.log('NUMERICAL_PARITY '+JSON.stringify({rainfall_totals_mm:totals.map(x=>Number(x.total_mm)),fm03_balance_ratio:Number(fm03Balance.balance_ratio),fm03_rag:fm03Balance.rag,fm03_legacy:fm03Balance.legacy_fsat_status,excluded_seconds:Number(spillDiag.observed.excluded_seconds)}));
 
