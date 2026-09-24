@@ -596,11 +596,27 @@ async function verifyIndividualSourceRemoval(){
     if(afterRain.graphNames.some(name=>String(name||'').includes('Rainfall')))throw new Error('Removed rainfall trace remained on the graph: '+JSON.stringify(afterRain.graphNames));
 
     await fdvRow.locator('.source-remove-btn').click();
-    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0
-      &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
-      &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===0
-      &&!(document.querySelector('#timeChart')?.data||[]).length,
-      null,{timeout:60000});
+    try{
+      await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0
+        &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
+        &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===0
+        &&!(document.querySelector('#timeChart')?.data||[]).length,
+        null,{timeout:60000});
+    }catch(error){
+      const debug=await probe.evaluate(()=>({
+        rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+        mapping:{...state.mapping,models:[...(state.mapping.models||[])]},
+        sourcePool:window.__ICM_WORKBENCH__?.sourcePool||null,
+        registry:window.ICMProjectRegistry?.snapshot()?.sources?.length??null,
+        graphDataLength:(document.querySelector('#timeChart')?.data||[]).length,
+        graphNames:(document.querySelector('#timeChart')?.data||[]).map(trace=>trace.name),
+        graphRefreshing:window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing,
+        diagnosticErrors:(window.__ICM_WORKBENCH__?.errors||[]).slice(-8),
+        poolSummary:document.querySelector('#poolSummary')?.textContent||'',
+        mappingStatus:document.querySelector('#mappingStatus')?.textContent||'',
+      }));
+      throw new Error('Removing the final mapped FDV source did not settle to an empty graph/source state: '+JSON.stringify(debug)+' | probe errors: '+probeErrors.join(' | ')+' | original: '+String(error));
+    }
     const afterFdv=await probe.evaluate(()=>({
       mapping:{...state.mapping,models:[...(state.mapping.models||[])]},
       registry:window.ICMProjectRegistry?.snapshot()?.sources?.length??null,
