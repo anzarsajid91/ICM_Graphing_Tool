@@ -1880,7 +1880,9 @@ try{
   const realFdvPlotStart=realReport.indexOf(realFdvPlotMarker),realFdvPlotEnd=realFdvPlotStart>=0?realReport.indexOf('</script>',realFdvPlotStart+realFdvPlotMarker.length):-1;
   if(realFdvPlotStart<0||realFdvPlotEnd<0)throw new Error('Real FDV four-period graph payload missing.');
   const realFdvPlot=JSON.parse(realReport.slice(realFdvPlotStart+realFdvPlotMarker.length,realFdvPlotEnd));
-  if(Number(realFdvPlot.layout?.margin?.l||0)<100)throw new Error('Real FDV four-period report left margin is insufficient for unclipped hydraulic axis titles: '+JSON.stringify(realFdvPlot.layout?.margin));
+  if(Number(realFdvPlot.layout?.margin?.l||0)<100)throw new Error('Real FDV four-period report left margin is insufficient for hydraulic axis titles: '+JSON.stringify(realFdvPlot.layout?.margin));
+  if(Number(realFdvPlot.layout?.height||0)>600)throw new Error('Real FDV four-period graph is too tall for an intact landscape print page: '+JSON.stringify({height:realFdvPlot.layout?.height}));
+  if((realReport.match(/class="figure period-figure"/g)||[]).length!==4||!realReport.includes('page-break-before:always'))throw new Error('Four-period report is missing explicit graph/metrics print pagination.');
   const realLayout=await inspectReportHtml(realReport,4);
   if(realLayout.figures!==4||realLayout.zero||realLayout.overflow>2)throw new Error('Real-data report layout failed: '+JSON.stringify(realLayout));
 
