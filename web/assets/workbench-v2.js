@@ -337,7 +337,8 @@
     const obs = mappingObject(state.mapping.observed);
     const models = currentModels();
     if (!obs && !models.length && !state.mapping.rain) throw new Error('Select at least one observed, modelled or rainfall series.');
-    $('mappingStatus').textContent = `Observed: ${obs?seriesLabel(obs.item, obs.col):'not mapped'} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`+(thresholdMessages.length?' '+thresholdMessages.join(' '):'');
+    const mappingSummary = `Observed: ${obs?seriesLabel(obs.item, obs.col):'not mapped'} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`+(thresholdMessages.length?' '+thresholdMessages.join(' '):'');
+    $('mappingStatus').textContent = 'Applying mapping and refreshing graph…';
     renderModelColourControls();
     renderExclusions();
     if($('graphObsThreshold'))$('graphObsThreshold').value=$('obsThreshold').value;
@@ -352,6 +353,7 @@
     autoSuggestAdvanced(allSeries());
     ui.graphRange = null;
     await v2DrawGraph(null);
+    $('mappingStatus').textContent = mappingSummary;
   }
 
   async function v2SeriesFor(key, range=null) {
