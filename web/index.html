@@ -104,15 +104,15 @@
         <div class="two-col"><div id="cumulativeChart" class="chart small"></div><div id="exceedanceChart" class="chart small"></div></div>
         <h3>Scenario table</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Scenario</th><th>Pairs</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Log filtered</th><th>Valid support</th></tr></thead><tbody id="scenarioBody"></tbody></table></div>
 
-        <div class="subpanel"><div class="subhead"><div><h3>Depth agreement / flow–depth rating diagnostics</h3><p class="appearance-hint">Select observed + modelled depth for a depth-only agreement fit. Add the corresponding flow channels to fit hydraulic Q = aHᵇ rating curves.</p></div><button class="btn" id="runRatingBtn">Fit selected diagnostic</button></div>
+        <div class="subpanel"><div class="subhead"><div><h3>Depth / level agreement and flow–depth rating diagnostics</h3><p class="appearance-hint">For agreement, select like-for-like vertical quantities: Depth ↔ Depth or absolute Level ↔ absolute Level. Depth and absolute Level are not interchangeable. Add the corresponding flow channels to fit empirical hydraulic Q = aHᵇ rating curves.</p></div><button class="btn" id="runRatingBtn">Fit selected diagnostic</button></div>
           <div class="mapping-grid compact-wide">
-            <label>Observed depth<select id="ratingObsDepth"></select></label>
-            <label>Observed depth unit<select id="ratingObsDepthUnit"><option value="">Auto from source</option><option value="m">m</option><option value="mm">mm</option></select></label>
-            <label>Observed flow (optional for depth-only)<select id="ratingObsFlow"></select></label>
+            <label>Observed depth / level<select id="ratingObsDepth"></select></label>
+            <label>Observed vertical unit<select id="ratingObsDepthUnit"><option value="">Auto from source</option><option value="m">m</option><option value="mm">mm</option></select></label>
+            <label>Observed flow (optional for agreement)<select id="ratingObsFlow"></select></label>
             <label>Observed flow unit<select id="ratingObsFlowUnit"><option value="">Auto from source</option><option value="m3/s">m³/s</option><option value="L/s">L/s</option><option value="Ml/d">Ml/d</option></select></label>
-            <label>Modelled depth<select id="ratingModelDepth"></select></label>
-            <label>Modelled depth unit<select id="ratingModelDepthUnit"><option value="">Auto from source</option><option value="m">m</option><option value="mm">mm</option></select></label>
-            <label>Modelled flow (optional for depth-only)<select id="ratingModelFlow"></select></label>
+            <label>Modelled depth / level<select id="ratingModelDepth"></select></label>
+            <label>Modelled vertical unit<select id="ratingModelDepthUnit"><option value="">Auto from source</option><option value="m">m</option><option value="mm">mm</option></select></label>
+            <label>Modelled flow (optional for agreement)<select id="ratingModelFlow"></select></label>
             <label>Modelled flow unit<select id="ratingModelFlowUnit"><option value="">Auto from source</option><option value="m3/s">m³/s</option><option value="L/s">L/s</option><option value="Ml/d">Ml/d</option></select></label>
           </div>
           <div id="ratingSummary"></div><div id="ratingChart" class="chart small"></div>

@@ -73,7 +73,7 @@ function isAuxiliarySeries(item,col){
 function hydraulicSeriesForItem(item){
   if(!item||item.status!=='ready')return[];
   const columns=(item.parsed?.columns||[]).filter(col=>!isAuxiliarySeries(item,col));
-  const order=['depth','flow','velocity'];
+  const order=['depth','level','flow','velocity'];
   const byQuantity=new Map();
   for(const col of columns){
     const quantity=String(seriesQuantity(item,col)||'').toLowerCase();
@@ -165,7 +165,23 @@ function operationEnd(){
   document.body.classList.remove('operation-busy');
 }
 async function operationPaint(){await new Promise(resolve=>requestAnimationFrame(()=>resolve()));}
-const showError=(target,message)=>{const el=$(target);if(el)el.innerHTML=`<div class="privacy-note audit-bad"><strong>Operation failed:</strong> ${esc(message)}</div>`;diagnostic.errors.push({time:new Date().toISOString(),target,message:String(message)});console.error(message);};
+function conciseErrorMessage(error){
+  const raw=String(error?.message??error??'Operation failed.').trim();
+  const lines=raw.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  const tagged=[...lines].reverse().find(line=>/^(?:ValueError|TypeError|RuntimeError|KeyError|AssertionError|Error):\s*/.test(line));
+  let message=tagged?tagged.replace(/^(?:ValueError|TypeError|RuntimeError|KeyError|AssertionError|Error):\s*/,''):'';
+  if(!message){
+    message=[...lines].reverse().find(line=>!/^Traceback\b/.test(line)&&!/^File\s+/.test(line)&&!/^at\s+/.test(line))||raw;
+  }
+  return message.length>900?message.slice(0,897)+'…':message;
+}
+const showError=(target,message)=>{
+  const raw=String(message?.message??message??'Operation failed.');
+  const display=conciseErrorMessage(message);
+  const el=$(target);if(el)el.innerHTML=`<div class="privacy-note audit-bad"><strong>Operation failed:</strong> ${esc(display)}</div>`;
+  diagnostic.errors.push({time:new Date().toISOString(),target,message:raw,display_message:display});
+  console.error(raw);
+};
 async function guarded(target,fn){
   operationBegin(target);
   try{
@@ -717,8 +733,16 @@ function renderPool(){
   }).join('');
 }
 function renderSeriesOptions(){
-  const all=allSeries(),obs=$('observedSelect'),mod=$('modelSelect'),rain=$('rainSelect'),prevMods=[...mod.selectedOptions].map(o=>o.value);setOptions(obs,all);mod.innerHTML=all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');[...mod.options].forEach(o=>o.selected=prevMods.includes(o.value));setOptions(rain,all,{none:true});
-  for(const id of ['storageLevelSelect','storageFlowSelect','ratingObsDepth','ratingObsFlow','ratingModelDepth','ratingModelFlow','dwfFlowSelect'])setOptions($(id),all);
+  const all=allSeries(),obs=$('observedSelect'),mod=$('modelSelect'),rain=$('rainSelect'),prevMods=[...mod.selectedOptions].map(o=>o.value);
+  setOptions(obs,all);
+  mod.innerHTML=all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');
+  [...mod.options].forEach(o=>o.selected=prevMods.includes(o.value));
+  setOptions(rain,all,{none:true});
+  const quantity=s=>String(s.quantity||seriesQuantity(s.item,s.col)||'').toLowerCase();
+  const vertical=all.filter(s=>['depth','level'].includes(quantity(s)));
+  const flow=all.filter(s=>quantity(s)==='flow');
+  for(const id of ['storageLevelSelect','ratingObsDepth','ratingModelDepth'])setOptions($(id),vertical);
+  for(const id of ['storageFlowSelect','ratingObsFlow','ratingModelFlow','dwfFlowSelect'])setOptions($(id),flow);
   autoSuggestMappings(all);autoSuggestAdvanced(all);renderModelColourControls();renderSeriesSemanticsOverrides();
 }
 function autoSuggestMappings(all){
@@ -738,14 +762,16 @@ function prefer(select,all,predicate){if(select.value)return;const s=all.find(pr
 function autoSuggestAdvanced(all){
   const obs=mappingObject($('observedSelect').value),model=mappingObject([...$('modelSelect').selectedOptions][0]?.value||'');
   const q=(s,name)=>String(s.quantity||seriesQuantity(s.item,s.col)||'').toLowerCase()===name;
-  const depth=s=>q(s,'depth')||q(s,'level');
-  prefer($('ratingObsDepth'),all,s=>(!obs||s.item.id===obs.item.id)&&depth(s));
+  const vertical=s=>q(s,'depth')||q(s,'level');
+  const obsVertical=obs&&['depth','level'].includes(String(seriesQuantity(obs.item,obs.col)||'').toLowerCase())?String(seriesQuantity(obs.item,obs.col)).toLowerCase():null;
+  if(!$('ratingObsDepth').value&&obs&&obsVertical)$('ratingObsDepth').value=sourceKey(obs.item.id,obs.col);
+  prefer($('ratingObsDepth'),all,s=>(!obs||s.item.id===obs.item.id)&&vertical(s));
   prefer($('ratingObsFlow'),all,s=>(!obs||s.item.id===obs.item.id)&&q(s,'flow'));
-  prefer($('ratingModelDepth'),all,s=>(!model||s.item.id===model.item.id)&&depth(s));
+  prefer($('ratingModelDepth'),all,s=>(!model||s.item.id===model.item.id)&&vertical(s)&&(!obsVertical||q(s,obsVertical)));
   prefer($('ratingModelFlow'),all,s=>(!model||s.item.id===model.item.id)&&q(s,'flow'));
   prefer($('dwfFlowSelect'),all,s=>(!obs||s.item.id===obs.item.id)&&q(s,'flow'));
   prefer($('storageFlowSelect'),all,s=>q(s,'flow'));
-  prefer($('storageLevelSelect'),all,s=>(!model||s.item.id===model.item.id)&&depth(s));
+  prefer($('storageLevelSelect'),all,s=>(!model||s.item.id===model.item.id)&&vertical(s));
 }
 function renderModelColourControls(){const models=[...$('modelSelect').selectedOptions].map(o=>mappingObject(o.value)).filter(Boolean);$('modelColourControls').innerHTML=models.map((m,i)=>{const key=sourceKey(m.item.id,m.col);if(!state.modelColours[key])state.modelColours[key]=palette[i%palette.length];return `<label title="${esc(m.item.displayName)} · ${esc(m.col)}"><span class="colour-label-text">Model ${i+1} · ${esc(m.item.displayName)} · ${esc(m.col)}</span><input class="model-colour" aria-label="Model ${i+1} colour" data-key='${esc(key)}' type="color" value="${state.modelColours[key]}"></label>`;}).join('');document.querySelectorAll('.model-colour').forEach(x=>x.addEventListener('input',()=>{state.modelColours[x.dataset.key]=x.value;guarded('mappingStatus',drawTimeChart);}));}
 
@@ -834,7 +860,37 @@ diagnostic.rainEventsFresh=rainEventsFresh;
 diagnostic.dwfFresh=dwfFresh;
 Object.defineProperty(diagnostic,'dwfResult',{get:()=>state.dwfResult});
 diagnostic.healthFresh=healthFresh;
-async function runCompare(){const obs=mappingObject(state.mapping.observed),models=currentModels();if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();state.comparisons=[];for(const m of models){try{state.comparisons.push({model:m,result:await engine.call('compare_series',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,max_gap_seconds:gap,offset_minutes:offset,...bounds,exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])})});}catch(err){state.comparisons.push({model:m,error:String(err?.message||err)});}}if(signature!==analysisSignature()){state.comparisons=[];throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');}await renderComparisons();state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};}
+function comparisonQuantityMismatch(observed,model){
+  if(!observed||!model)return null;
+  const observedQuantity=String(seriesQuantity(observed.item,observed.col)||'').toLowerCase();
+  const modelQuantity=String(seriesQuantity(model.item,model.col)||'').toLowerCase();
+  if(!observedQuantity||!modelQuantity)return 'Observed and modelled quantities must be explicitly classified before comparison. Use Series Mapping to classify any generic Value channel.';
+  if(observedQuantity===modelQuantity)return null;
+  const name=q=>q==='level'?'absolute Level':q.charAt(0).toUpperCase()+q.slice(1);
+  return `Observed ${name(observedQuantity)} cannot be compared directly with modelled ${name(modelQuantity)}. Depth and absolute Level remain distinct. Map like-for-like series, or explicitly reclassify a generic Value channel only when its source meaning supports that classification.`;
+}
+async function runCompare(){
+  const obs=mappingObject(state.mapping.observed),models=currentModels();
+  if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');
+  const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();
+  state.comparisons=[];
+  for(const m of models){
+    const mismatch=comparisonQuantityMismatch(obs,m);
+    if(mismatch){state.comparisons.push({model:m,error:mismatch});continue;}
+    try{
+      state.comparisons.push({model:m,result:await engine.call('compare_series',{
+        obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,
+        max_gap_seconds:gap,offset_minutes:offset,...bounds,
+        exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])
+      })});
+    }catch(err){
+      state.comparisons.push({model:m,error:conciseErrorMessage(err)});
+    }
+  }
+  if(signature!==analysisSignature()){state.comparisons=[];throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');}
+  await renderComparisons();
+  state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};
+}
 const metricCard=(k,v,reason='')=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${reason?`<small>${esc(reason)}</small>`:''}</div>`;
 function metricPresentation(metrics,key,unit=''){
   const value=metrics?.[key],reason=metrics?.unavailable_reasons?.[key]||'';
@@ -1030,6 +1086,8 @@ async function runRating(){
   // Depth/level agreement uses the canonical Python comparison regression. Do
   // not create a second JavaScript regression implementation.
   if(md && (!of || !mf)){
+    const mismatch=comparisonQuantityMismatch(od,md);
+    if(mismatch)throw new Error('Depth / level agreement requires like-for-like vertical quantities. '+mismatch);
     const depth=await engine.call('compare_series',{
       obs_path:od.item.virtualPath,obs_col:od.col,
       model_path:md.item.virtualPath,model_col:md.col,
@@ -1130,7 +1188,19 @@ async function runDwf(){
   $('dwfSummary').innerHTML=`<div class="summary-box"><div><strong>${esc(r.available)}</strong><span>availability/confidence</span></div><div><strong>${dwfValue}</strong><span>average DWF</span></div><div><strong>${r.dry_days_used??'—'}</strong><span>dry days used</span></div><div><strong>${fmt(r.dry_day_threshold_mm,2)} mm</strong><span>dry-day threshold</span></div><div><strong>${r.baseline_days??'—'}</strong><span>baseline days</span></div><div><strong>${fmt(r.adp_hours,1)} hr</strong><span>ADP window</span></div></div><div class="pool-summary">Analysis support: ${period} · ${r.excluded_flow_rows||0} excluded flow row(s) · ${r.excluded_rainfall_rows||0} excluded rainfall row(s) · ${esc(r.context_method||'canonical DWF method')}.</div>${r.reason?`<div class="pool-summary">${esc(r.reason)}</div>`:''}`;
 }
 
+function syncExclusionsFromEditor(){
+  const root=$('exclusionRows');
+  if(!root)return;
+  root.querySelectorAll('.ex-row').forEach(row=>{
+    const entry=state.exclusions.find(x=>x.id===row.dataset.id);
+    if(!entry)return;
+    row.querySelectorAll('[data-field]').forEach(input=>{
+      entry[input.dataset.field]=input.type==='checkbox'?input.checked:input.value;
+    });
+  });
+}
 function exclusionPayload(strict=true,role=null,key=null){
+  syncExclusionsFromEditor();
   const rows=[];
   for(const x of state.exclusions){
     if(!x.start&&!x.end&&!String(x.reason||'').trim())continue;
@@ -1596,17 +1666,56 @@ function reportStorageHtml(){
   return '<div class="note">Idealised storage screening is diagnostic evidence, not hydraulic design sizing. Volumes use actual valid support and declared units.</div>'+
     (screening?'<div class="table-wrap"><table><thead><tr><th>Year</th><th>Required storage m³</th><th>Counting blocks</th><th>Maximum block m³</th><th>Status</th><th>Reason</th></tr></thead><tbody>'+screening+'</tbody></table></div>':'<p class="muted">No storage-screening rows were produced.</p>');
 }
+async function staticReportFallbackHtml(html,reason='Interactive Plotly runtime could not be embedded.'){
+  if(!window.Plotly)throw new Error('Plotly is unavailable for report rendering.');
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const plots=[...doc.querySelectorAll('.report-plot')];
+  for(const placeholder of plots){
+    const payloadNode=doc.getElementById(placeholder.id+'-data');
+    if(!payloadNode)continue;
+    const payload=JSON.parse(payloadNode.textContent||'{}');
+    const height=Math.max(320,Number(payload.layout?.height||520));
+    const width=980;
+    const host=document.createElement('div');
+    Object.assign(host.style,{position:'fixed',left:'-12000px',top:'0',width:width+'px',height:height+'px',background:'#fff'});
+    document.body.appendChild(host);
+    try{
+      await Plotly.newPlot(host,payload.data||[],{...(payload.layout||{}),width,height,autosize:false},{staticPlot:true,displaylogo:false,responsive:false});
+      const uri=await Plotly.toImage(host,{format:'svg',width,height});
+      const img=doc.createElement('img');
+      img.setAttribute('src',uri);
+      img.setAttribute('alt',(payload.layout?.title?.text||placeholder.id||'Engineering graph').replace(/<[^>]+>/g,''));
+      img.setAttribute('class','report-static-plot');
+      placeholder.replaceWith(img);
+      payloadNode.remove();
+    }finally{
+      try{Plotly.purge(host);}catch{}
+      host.remove();
+    }
+  }
+  const note=doc.createElement('div');
+  note.className='note';
+  note.innerHTML='<strong>Static graph export.</strong> '+esc(reason)+' Graphs are embedded as self-contained SVG snapshots; calculations and report values are unchanged.';
+  const report=doc.querySelector('.report');
+  if(report)report.insertBefore(note,report.children[1]||null);
+  diagnostic.reportRuntimeFallback={used:true,reason:String(reason),plot_count:plots.length,time:new Date().toISOString()};
+  return '<!doctype html>'+doc.documentElement.outerHTML;
+}
 async function interactiveReportHtml(html){
+  const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,scrollZoom:true}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
   if(!reportPlotlyBundle){
     const source=[...document.scripts].find(s=>/plotly-[\d.]+(?:\.min)?\.js/.test(s.src))?.src;
-    if(!source)throw new Error('The Plotly runtime source is unavailable; reload the application before exporting.');
-    const response=await fetch(source);
-    if(!response.ok)throw new Error('Could not embed Plotly in the report. Check the connection and retry export.');
-    const bundle=await response.text();
-    if(bundle.length<10000||!bundle.includes('Plotly'))throw new Error('Invalid Plotly runtime received; report export stopped.');
-    reportPlotlyBundle=bundle;
+    if(!source)return staticReportFallbackHtml(html,'The external Plotly script source was not available for embedding.');
+    try{
+      const response=await fetch(source);
+      if(!response.ok)throw new Error('Plotly bundle request returned HTTP '+response.status+'.');
+      const bundle=await response.text();
+      if(bundle.length<10000||!bundle.includes('Plotly'))throw new Error('The retrieved Plotly runtime was invalid.');
+      reportPlotlyBundle=bundle;
+    }catch(err){
+      return staticReportFallbackHtml(html,conciseErrorMessage(err));
+    }
   }
-  const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,scrollZoom:true}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
   const embedded='<script>'+reportPlotlyBundle.replace(/<\/script/gi,'<\\/script')+'</script><script>'+boot+'</script></body>';
   return html.replace('</body>',()=>embedded);
 }
