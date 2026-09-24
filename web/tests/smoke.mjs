@@ -557,7 +557,12 @@ async function verifyIndividualSourceRemoval(){
     const removeControls=await probe.locator('#poolBody .source-remove-btn').count();
     if(removeControls!==2)throw new Error('Each ready source row must expose one compact remove control.');
     await rainRow.locator('.source-remove-btn').click();
-    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===1&&!document.querySelector('#poolBody')?.textContent.includes('RemoveTest-RG01.R'),null,{timeout:30000});
+    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===1
+      &&!document.querySelector('#poolBody')?.textContent.includes('RemoveTest-RG01.R')
+      &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
+      &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===1
+      &&!(document.querySelector('#timeChart')?.data||[]).some(trace=>String(trace.name||'').includes('Rainfall')),
+      null,{timeout:60000});
     const afterRain=await probe.evaluate(()=>({
       rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
       mapping:{...state.mapping,models:[...(state.mapping.models||[])]},
@@ -575,7 +580,11 @@ async function verifyIndividualSourceRemoval(){
     if(afterRain.graphNames.some(name=>String(name||'').includes('Rainfall')))throw new Error('Removed rainfall trace remained on the graph: '+JSON.stringify(afterRain.graphNames));
 
     await fdvRow.locator('.source-remove-btn').click();
-    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0,null,{timeout:30000});
+    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0
+      &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
+      &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===0
+      &&!(document.querySelector('#timeChart')?.data||[]).length,
+      null,{timeout:60000});
     const afterFdv=await probe.evaluate(()=>({
       mapping:{...state.mapping,models:[...(state.mapping.models||[])]},
       registry:window.ICMProjectRegistry?.snapshot()?.sources?.length??null,
