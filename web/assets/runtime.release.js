@@ -1856,7 +1856,7 @@ async function staticReportFallbackHtml(html,reason='Interactive Plotly runtime 
   return '<!doctype html>'+doc.documentElement.outerHTML;
 }
 async function interactiveReportHtml(html){
-  const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,displayModeBar:true,scrollZoom:false}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
+  const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
   if(!reportPlotlyBundle){
     const source=[...document.scripts].find(s=>/plotly-[\d.]+(?:\.min)?\.js/.test(s.src))?.src;
     if(!source)return staticReportFallbackHtml(html,'The external Plotly script source was not available for embedding.');
