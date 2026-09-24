@@ -1326,12 +1326,14 @@ try{
   await precisionRoute('data','time-series');
   await captureEvidence('01b-fdv-stacked-graph');
   await precisionRoute('data','series-mapping');
-  // Restore the comparison mapping used by the remainder of the acceptance workflow.
+  // Restore the two-scenario comparison mapping used by the remainder of the
+  // acceptance workflow so workspace/report persistence is exercised against
+  // the same multi-scenario state already proven above.
   await page.selectOption('#observedSelect',obsDepth);
-  await page.selectOption('#modelSelect',[modelDepth]);
+  await page.selectOption('#modelSelect',[modelDepth,variantDepth]);
   await page.selectOption('#rainSelect',rain);
   await page.click('#applyMappingBtn');
-  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('2 comparison scenario'),null,{timeout:60000});
   stage='spill exclusions in Asia/Kolkata and annual comparison';
   await precisionRoute('spills','thresholds');
   await page.fill('#obsThreshold','1.0');
