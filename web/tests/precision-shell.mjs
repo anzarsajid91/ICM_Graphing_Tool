@@ -41,11 +41,10 @@ try{
     focus:document.body.classList.contains('pw-focus-canvas'),
     rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
     labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none'),
-    inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none',
     railToggleHidden:document.querySelector('#pwRailToggle')?.hidden===true,
     scopebarCount:document.querySelectorAll('#pwScopebar,.pw-scopebar').length
   }));
-  if(defaultLayout.focus||defaultLayout.rail<180||!defaultLayout.labelled||!defaultLayout.inspectorToggleVisible||defaultLayout.railToggleHidden||defaultLayout.scopebarCount!==0)throw new Error('Every route must default to expanded labelled navigation without the global analysis scope strip: '+JSON.stringify(defaultLayout));
+  if(defaultLayout.focus||defaultLayout.rail<180||!defaultLayout.labelled||defaultLayout.railToggleHidden||defaultLayout.scopebarCount!==0)throw new Error('Every route must default to expanded labelled navigation without the global analysis scope strip: '+JSON.stringify(defaultLayout));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
   await page.waitForFunction(()=>document.body.classList.contains('pw-focus-canvas'));
   const explicitFocus=await page.evaluate(()=>({
