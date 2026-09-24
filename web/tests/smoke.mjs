@@ -875,7 +875,7 @@ try{
   await page.selectOption('#modelSelect',[modelDepth]);
   await page.selectOption('#rainSelect','');
   await page.click('#applyMappingBtn');
-  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('Observed: not mapped')&&document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall not mapped'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('Observed: not mapped')&&document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall not mapped')&&!document.querySelector('#applyMappingBtn')?.disabled&&window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false,null,{timeout:60000});
   await precisionRoute('data','time-series');
   const modelOnlyThresholdControls=await page.evaluate(()=>({
     observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
