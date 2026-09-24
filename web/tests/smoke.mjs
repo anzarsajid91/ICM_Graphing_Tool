@@ -531,6 +531,12 @@ async function verifyIndividualSourceRemoval(){
       {name:'RemoveTest-RG01.R',mimeType:'text/plain',buffer:rain},
     ]);
     await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(row=>/RemoveTest-(FM01|RG01)/.test(row.textContent)&&row.textContent.includes('Ready')).length===2,null,{timeout:120000});
+    const probeRoute=async(workspace,subpage)=>{
+      await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+      await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,subpage]);
+      await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},[workspace,subpage],{timeout:30000});
+    };
+    await probeRoute('data','series-mapping');
     const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>options.find(o=>o.textContent.includes(text))?.value||'',needle);
     const observed=await option('#observedSelect','RemoveTest-FM01.fdv — depth');
     const rainfall=await option('#rainSelect','RemoveTest-RG01.R — rainfall');
@@ -540,8 +546,10 @@ async function verifyIndividualSourceRemoval(){
     await probe.selectOption('#rainSelect',rainfall);
     await probe.click('#applyMappingBtn');
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.lastGraphStatistics?.some(row=>String(row.label||'').includes('RemoveTest-RG01')),null,{timeout:60000});
+    await probeRoute('data','time-series');
     await probe.fill('#graphObsThreshold','0.20');
     await probe.waitForFunction(()=>Math.abs(Number(document.querySelector('#obsThreshold')?.value)-0.20)<1e-9,null,{timeout:30000});
+    await probeRoute('data','sources');
 
     const rows=probe.locator('#poolBody tr');
     const rainRow=rows.filter({hasText:'RemoveTest-RG01.R'});
