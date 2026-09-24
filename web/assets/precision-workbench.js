@@ -71,7 +71,7 @@ function canonicalRoute(workspace,page){
 let current={workspace:'data',page:'sources'};
 let docked=[];
 let syncingLegacy=false;
-let focusPreference=null;
+let focusPreference=false;
 let railCollapsed=false;
 const FOCUS_ROUTES=new Set(['data/time-series','graphs/comparison','survey/rainfall-check']);
 try{
@@ -249,7 +249,7 @@ function buildShell(){
   });
   const stage=document.createElement('div');stage.className='pw-stage';
   const context=document.createElement('section');context.className='pw-context';
-  context.innerHTML='<div class="pw-context-head"><div><div class="pw-breadcrumb"><span id="pwBreadcrumbWorkspace"></span><span>›</span><strong id="pwBreadcrumbPage"></strong></div><h2 class="pw-page-title" id="pwPageTitle"></h2><p class="pw-page-description" id="pwPageDescription"></p></div><div class="pw-context-actions"><button class="pw-focus-toggle" id="pwFocusToggle" type="button" aria-pressed="false" hidden>Focus canvas</button><button class="pw-rail-toggle" id="pwRailToggle" type="button">Menu</button><button class="pw-inspector-toggle" id="pwInspectorToggle" type="button">Inspector</button></div></div><nav class="pw-secondary-nav" id="pwSecondaryNav" aria-label="Workspace pages"></nav><div class="pw-scopebar" id="pwScopebar" aria-label="Current analysis scope"></div>';
+  context.innerHTML='<div class="pw-context-head"><div><div class="pw-breadcrumb"><span id="pwBreadcrumbWorkspace"></span><span>›</span><strong id="pwBreadcrumbPage"></strong></div><h2 class="pw-page-title" id="pwPageTitle"></h2><p class="pw-page-description" id="pwPageDescription"></p></div><div class="pw-context-actions"><button class="pw-focus-toggle" id="pwFocusToggle" type="button" aria-pressed="false" hidden>Focus canvas</button><button class="pw-rail-toggle" id="pwRailToggle" type="button">Menu</button><button class="pw-inspector-toggle" id="pwInspectorToggle" type="button">Inspector</button></div></div><nav class="pw-secondary-nav" id="pwSecondaryNav" aria-label="Workspace pages"></nav>';
   const workarea=document.createElement('div');workarea.className='pw-workarea';
   const inspector=document.createElement('aside');inspector.className='pw-inspector';inspector.id='pwInspector';inspector.innerHTML='<div class="pw-inspector-head"><div><strong>Inspector</strong><span id="pwInspectorSubtitle">Context and settings</span></div><button class="pw-inspector-drawer-close" id="pwInspectorClose" type="button" aria-label="Close inspector">×</button></div><div class="pw-inspector-body" id="pwInspectorBody"></div>';
   const parent=topbar?.parentNode||document.body;
@@ -434,10 +434,9 @@ function resizeVisuals(){
 }
 function applyFocusCanvas(userInitiated=false){
   const eligible=isFocusRoute(),desktop=matchMedia('(min-width:901px)').matches;
-  // Graph-heavy routes default to focus mode unless the user explicitly opts out.
-  // This makes the analytical canvas primary while retaining every setting in the
-  // overlay inspector and a one-click path back to the standard layout.
-  const active=eligible&&desktop&&focusPreference!==false;
+  // Keep the full labelled navigation visible by default on every route.
+  // Focus canvas remains an explicit opt-in for users who want maximum graph width.
+  const active=eligible&&desktop&&focusPreference===true;
   document.body.classList.toggle('pw-focus-canvas',active);
   const button=$('pwFocusToggle');
   if(button){

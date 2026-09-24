@@ -220,6 +220,20 @@
     }
     return null;
   }
+  function unresolvedSelectionForKey(key){
+    const selected=mappingObject(key);
+    return selected&&!String(seriesQuantity(selected.item,selected.col)||'').trim()?selected:null;
+  }
+  function observedUnresolvedSelection(key=state.mapping.observed){
+    return unresolvedSelectionForKey(key);
+  }
+  function modelUnresolvedSelection(keys=state.mapping.models){
+    for(const key of keys||[]){
+      const selected=unresolvedSelectionForKey(key);
+      if(selected)return selected;
+    }
+    return null;
+  }
   function thresholdContext(selection){
     if(!selection)return null;
     const quantity=String(seriesQuantity(selection.item,selection.col)||'').toLowerCase();
@@ -291,12 +305,26 @@
     const channelAllowsHydraulicThreshold=!['flow','velocity'].includes(ui.channelMode);
     const observedContext=channelAllowsHydraulicThreshold?thresholdContext(observedThresholdSelection()):null;
     const modelContext=channelAllowsHydraulicThreshold?thresholdContext(modelThresholdSelection()):null;
+    const observedUnresolved=channelAllowsHydraulicThreshold?observedUnresolvedSelection():null;
+    const modelUnresolved=channelAllowsHydraulicThreshold?modelUnresolvedSelection():null;
     const observedControl=document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]');
     const modelControl=document.querySelector('#v2GraphToolbar [data-threshold-role="model"]');
-    if(observedControl)observedControl.hidden=!observedContext;
-    if(modelControl)modelControl.hidden=!modelContext;
-    if($('graphObsThresholdContext'))$('graphObsThresholdContext').textContent=thresholdContextText(observedContext);
-    if($('graphModelThresholdContext'))$('graphModelThresholdContext').textContent=thresholdContextText(modelContext);
+    if(observedControl)observedControl.hidden=!(observedContext||observedUnresolved);
+    if(modelControl)modelControl.hidden=!(modelContext||modelUnresolved);
+    const setEnabled=(role,enabled)=>{
+      const input=$(role==='observed'?'graphObsThreshold':'graphModelThreshold');
+      const toggle=$(role==='observed'?'showGraphObsThreshold':'showGraphModelThreshold');
+      if(input)input.disabled=!enabled;
+      if(toggle)toggle.disabled=!enabled;
+    };
+    setEnabled('observed',Boolean(observedContext));
+    setEnabled('model',Boolean(modelContext));
+    if($('graphObsThresholdContext'))$('graphObsThresholdContext').textContent=observedContext
+      ?thresholdContextText(observedContext)
+      :(observedUnresolved?'Generic numeric observed series · assign Depth or Level in Series Mapping to enable a hydraulic threshold.':thresholdContextText(null));
+    if($('graphModelThresholdContext'))$('graphModelThresholdContext').textContent=modelContext
+      ?thresholdContextText(modelContext)
+      :(modelUnresolved?'Generic numeric model series · assign Depth or Level in Series Mapping to enable a hydraulic threshold.':thresholdContextText(null));
     ui.thresholdContexts={observed:observedContext,model:modelContext};
   }
   function updateThresholdRangeStatus(observedEntries,modelEntries){

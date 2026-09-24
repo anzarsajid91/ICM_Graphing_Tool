@@ -661,6 +661,61 @@ try{
   await page.click('#clearPoolBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0);
 
+  stage='generic Time Value CSV import and model threshold classification';
+  const genericPayload=Buffer.from(
+    'Time,Value\n'
+    +'01/01/2024 00:00,1.58\n'
+    +'01/01/2024 00:00,1.58\n'
+    +'01/01/2024 00:13,1.47\n'
+    +'01/01/2024 00:15,2.73\n'
+    +'01/01/2024 00:30,1.83\n'
+  );
+  await page.setInputFiles('#fileInput',{name:'generic-model.csv',mimeType:'text/csv',buffer:genericPayload});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('generic-model.csv')&&row.textContent.includes('Ready')),null,{timeout:60000});
+  await precisionRoute('data','series-mapping');
+  const genericModel=await optionValue('#modelSelect','generic-model.csv — Value');
+  if(!genericModel)throw new Error('Generic Time/Value CSV was not exposed as a mappable numeric series.');
+  await page.selectOption('#observedSelect','');
+  await page.selectOption('#modelSelect',[genericModel]);
+  await page.selectOption('#rainSelect','');
+  await page.waitForFunction(()=>document.querySelector('#seriesSemanticsPanel')?.hidden===false&&document.querySelectorAll('#seriesSemanticsRows select').length===1);
+  const genericSemanticsText=(await page.locator('#seriesSemanticsPanel').textContent())||'';
+  if(!genericSemanticsText.includes('without guessing hydraulic meaning'))throw new Error('Generic CSV mapping must make the no-guessing contract explicit.');
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&!document.querySelector('#applyMappingBtn')?.disabled,null,{timeout:60000});
+  await precisionRoute('data','time-series');
+  const genericThresholdState=await page.evaluate(()=>({
+    hidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden,
+    disabled:document.querySelector('#graphModelThreshold')?.disabled,
+    context:document.querySelector('#graphModelThresholdContext')?.textContent||'',
+    hasModel:(document.querySelector('#timeChart')?.data||[]).some(t=>/^Simulated:/.test(String(t.name||''))),
+  }));
+  if(genericThresholdState.hidden||!genericThresholdState.disabled||!genericThresholdState.context.includes('assign Depth or Level')||!genericThresholdState.hasModel)throw new Error('Generic model series must graph successfully while keeping the hydraulic threshold disabled pending explicit classification: '+JSON.stringify(genericThresholdState));
+  await precisionRoute('data','series-mapping');
+  await page.selectOption('#seriesSemanticsRows select','level');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level'),null,{timeout:30000});
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&!document.querySelector('#applyMappingBtn')?.disabled,null,{timeout:60000});
+  await precisionRoute('data','time-series');
+  const classifiedThresholdState=await page.evaluate(()=>({
+    hidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden,
+    disabled:document.querySelector('#graphModelThreshold')?.disabled,
+    context:document.querySelector('#graphModelThresholdContext')?.textContent||'',
+  }));
+  if(classifiedThresholdState.hidden||classifiedThresholdState.disabled||!classifiedThresholdState.context.includes('Absolute level'))throw new Error('Explicit generic-series Level classification must enable the modelled hydraulic threshold: '+JSON.stringify(classifiedThresholdState));
+  await page.fill('#graphModelThreshold','2.0');
+  await page.waitForFunction(()=>{const chart=document.querySelector('#timeChart');return (chart?.layout?.shapes||[]).some(s=>s.type==='line'&&s.yref==='y'&&Math.abs(Number(s.y0)-2.0)<1e-9);},null,{timeout:60000});
+  await precisionRoute('data','sources');
+  await page.click('#clearPoolBtn');
+  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0);
+  const clearedThresholds=await page.evaluate(()=>({
+    observed:document.querySelector('#obsThreshold')?.value||'',
+    modelled:document.querySelector('#modelThreshold')?.value||'',
+    graphObserved:document.querySelector('#graphObsThreshold')?.value||'',
+    graphModelled:document.querySelector('#graphModelThreshold')?.value||'',
+  }));
+  if(Object.values(clearedThresholds).some(Boolean))throw new Error('Clearing the source pool must invalidate source-bound hydraulic thresholds: '+JSON.stringify(clearedThresholds));
+
   stage='source pool and collapsed file list';
   const observedPath=path.join(root,'examples/demo/observed.csv');
   const modelPath=path.join(root,'examples/demo/model.csv');
@@ -749,32 +804,32 @@ try{
 
   stage='graph threshold controls and rainfall top band';
   await precisionRoute('data','time-series');
+  const standardLayout=await page.evaluate(()=>({
+    focus:document.body.classList.contains('pw-focus-canvas'),
+    rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
+    labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none'),
+    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden,
+    scopebarCount:document.querySelectorAll('#pwScopebar,.pw-scopebar').length
+  }));
+  if(standardLayout.focus||standardLayout.rail<180||!standardLayout.labelled||standardLayout.railToggleHidden||standardLayout.scopebarCount!==0)throw new Error('Time Series must default to expanded labelled navigation with no global scope strip: '+JSON.stringify(standardLayout));
+  // Focus canvas remains available as an explicit opt-in, but it is no longer
+  // the default state when entering graph-heavy routes.
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
+  await page.waitForFunction(()=>document.body.classList.contains('pw-focus-canvas')&&document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
   const focusLayout=await page.evaluate(()=>({
     focus:document.body.classList.contains('pw-focus-canvas'),
     rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
     work:document.querySelector('.pw-workarea')?.getBoundingClientRect().width||0,
     inspectorPosition:getComputedStyle(document.querySelector('.pw-inspector')).position,
-    inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none',
     railToggleHidden:document.querySelector('#pwRailToggle')?.hidden
   }));
-  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||!focusLayout.inspectorToggleVisible||focusLayout.railToggleHidden!==true)throw new Error('Graph-heavy routes must default to a focused analytical canvas: '+JSON.stringify(focusLayout));
-  await page.waitForFunction(()=>document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
+  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||focusLayout.railToggleHidden!==true)throw new Error('Explicit Focus canvas must still maximise the graph workspace: '+JSON.stringify(focusLayout));
   await page.click('#pwInspectorToggle');
   await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.click('#pwInspectorClose');
   await page.waitForFunction(()=>!document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(false));
-  const standardLayout=await page.evaluate(()=>({
-    focus:document.body.classList.contains('pw-focus-canvas'),
-    rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
-    labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none'),
-    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden
-  }));
-  if(standardLayout.focus||standardLayout.rail<180||!standardLayout.labelled||standardLayout.railToggleHidden)throw new Error('Explicit standard layout must restore labelled navigation: '+JSON.stringify(standardLayout));
-  // Return to the intended graph-first default before the remaining analytical
-  // assertions and screenshots so review evidence represents the shipped experience.
-  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
-  await page.waitForFunction(()=>document.body.classList.contains('pw-focus-canvas')&&document.querySelector('#timeChart')?.getBoundingClientRect().width>1000,null,{timeout:10000});
+  await page.waitForFunction(()=>!document.body.classList.contains('pw-focus-canvas')&&document.querySelector('.pw-rail')?.getBoundingClientRect().width>=180,null,{timeout:10000});
   const levelThresholdControls=await page.evaluate(()=>({
     observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
     modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
@@ -1850,13 +1905,18 @@ try{
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect',await optionValue('#rainSelect','Reference-RG01.R — rainfall'));
   await precisionRoute('data','time-series');
-  // Appearance controls live in the contextual inspector on graph-first routes.
-  // Open the inspector before interacting with them so acceptance follows the
-  // shipped user path rather than trying to click an off-canvas detail panel.
+  // In the new expanded-default shell the contextual inspector is docked and
+  // directly visible. Focus/mobile layouts expose the same inspector via the
+  // drawer toggle. Exercise whichever presentation is actually active.
   const inspector=page.locator('#pwInspector');
-  if(!(await inspector.evaluate(el=>el.classList.contains('is-open')))){
-    await page.click('#pwInspectorToggle');
-    await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
+  const inspectorToggle=page.locator('#pwInspectorToggle');
+  if(await inspectorToggle.isVisible()){
+    if(!(await inspector.evaluate(el=>el.classList.contains('is-open')))){
+      await inspectorToggle.click();
+      await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
+    }
+  }else{
+    await inspector.waitFor({state:'visible'});
   }
   const rainfallAppearance=page.locator('#pwInspector details.appearance-panel');
   if(!(await rainfallAppearance.evaluate(el=>el.open)))await rainfallAppearance.locator('summary').click();

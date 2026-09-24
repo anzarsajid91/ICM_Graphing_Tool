@@ -20,6 +20,39 @@ def test_csv_year_first_timestamp_preserves_full_month(tmp_path:Path):
     assert parsed.audit["invalid_timestamps"]==0
 
 
+def test_generic_time_value_csv_is_accepted_without_guessing_quantity(tmp_path:Path):
+    p=tmp_path/"generic.csv"
+    p.write_text(
+        "Time,Value\n"
+        "01/01/2024 00:00,1.58\n"
+        "01/01/2024 00:00,1.58\n"
+        "01/01/2024 00:13,1.47\n"
+        "01/01/2024 00:15,2.73\n",
+        encoding="utf-8",
+    )
+    parsed=parse_tabular_csv(p)
+    assert parsed.format_name=="tabular_csv"
+    assert list(parsed.frame.columns)==["timestamp","Value"]
+    assert parsed.frame["Value"].tolist()==pytest.approx([1.58,1.58,1.47,2.73])
+    assert parsed.metadata["quantity_by_column"]["Value"] is None
+    assert parsed.metadata["series_metadata"]["Value"]["unit_status"]=="unresolved"
+    assert parsed.audit["duplicate_timestamps"]==1
+    assert parsed.metadata["source_encoding"]=="utf-8"
+
+
+def test_generic_time_value_csv_accepts_utf16_excel_style_export(tmp_path:Path):
+    p=tmp_path/"generic-utf16.csv"
+    p.write_text(
+        "Time,Value\n"
+        "01/01/2024 00:00,1.58\n"
+        "01/01/2024 00:15,2.73\n",
+        encoding="utf-16",
+    )
+    parsed=parse_tabular_csv(p)
+    assert parsed.frame["Value"].tolist()==pytest.approx([1.58,2.73])
+    assert parsed.metadata["source_encoding"]=="utf-16"
+
+
 def test_csv_day_first_timestamp_still_uses_uk_convention(tmp_path:Path):
     p=tmp_path/"uk.csv"
     p.write_text("timestamp,depth\n02/01/2026 00:00,1.0\n13/01/2026 00:00,2.0\n",encoding="utf-8")

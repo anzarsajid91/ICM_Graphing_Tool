@@ -328,6 +328,23 @@ body.precision-workbench{
 }
 
 
+
+.series-semantics-panel{
+  margin-top:12px;padding:12px;border:1px solid var(--pw-border);border-radius:8px;background:var(--pw-surface-soft)
+}
+.series-semantics-panel[hidden]{display:none!important}
+.series-semantics-copy{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}
+.series-semantics-copy strong{font-size:13px;color:var(--pw-text)}
+.series-semantics-copy span{font-size:12px;line-height:18px;color:var(--pw-muted);max-width:920px}
+.series-semantics-rows{display:grid;gap:8px}
+.series-semantics-row{
+  display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,260px);gap:12px;align-items:end
+}
+.series-semantics-row .series-semantics-source{min-width:0;font-size:12px;color:var(--pw-muted);overflow-wrap:anywhere}
+.series-semantics-row label{margin:0}
+@media(max-width:720px){.series-semantics-row{grid-template-columns:1fr}}
+
+
 /* FastPath preview: intentionally compact and subordinate to the graph itself. */
 .fastpath-preview-bar{
   display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:8px 12px;
