@@ -772,7 +772,7 @@
         legend:{orientation:'h',y:1.025,x:1,xanchor:'right',yanchor:'bottom',font:{size:11},traceorder:'normal',groupclick:'togglegroup'},
         xaxis:{title:null,autorange:!displayRange,showgrid:false,zeroline:false,anchor:'free',position:axisPosition,side:'bottom',rangeslider:{visible:false},automargin:true,tickfont:{size:10,color:'#506272'},showspikes:true,spikemode:'across',spikesnap:'cursor',spikedash:'dot',spikethickness:1,spikecolor:'#9fb0bd'},
         annotations:[...v2GraphAnnotations(),{xref:'paper',x:.5,yref:'paper',y:statsTop+.018,text:'<b>Statistics</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}}],
-        uirevision:'icm-reference-plot-v1',
+        uirevision:'icm-reference-plot-v2',
         paper_bgcolor:'#ffffff',plot_bgcolor:'#ffffff',
       };
       if(displayRange?.length===2){commonLayout.xaxis.range=displayRange;commonLayout.xaxis.autorange=false;}
@@ -884,6 +884,10 @@
         window.__ICM_WORKBENCH__.lastPanelDomains=null;
       }
 
+      // Preserve user zoom/legend state only while the subplot topology is stable.
+      // Rainfall/source removal can renumber y-axes; carrying the previous UI state
+      // across that structural change can leave Plotly with stale axis references.
+      layout.uirevision='icm-reference-plot-v2:'+panelOrder.join('|');
       const chartNode=$('timeChart');
       if(chartNode){chartNode.style.height=layout.height+'px';chartNode.style.minHeight=layout.height+'px';}
       ui.suppressRelayout=true;
