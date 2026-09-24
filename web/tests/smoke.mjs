@@ -709,6 +709,9 @@ try{
   stage='analysis-worker restart during pending FastPath import';
   performanceEvidence.pendingImportRestart=await verifyRestartDuringPendingImport();
   await writePerformanceEvidence();
+  stage='individual source removal with supplied reference files';
+  performanceEvidence.individualSourceRemoval=await verifyIndividualSourceRemoval();
+  await writePerformanceEvidence();
   stage='open application';
   const applicationNavigationStart=Date.now();
   await page.goto(baseUrl+(liveMode?`?live_verify=${Date.now()}`:''),{waitUntil:'domcontentloaded'});
