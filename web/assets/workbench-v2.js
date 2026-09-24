@@ -135,7 +135,7 @@
       strip.id='v2ChannelStrip';
       strip.className='v2-channel-strip';
       strip.hidden=true;
-      strip.innerHTML='<span class="v2-channel-label">Hydraulic view</span><div class="v2-channel-nav fastpath-channel-nav" id="v2ChannelNav" hidden><button type="button" data-channel="flow">Flow</button><button type="button" data-channel="depth">Depth</button><button type="button" data-channel="velocity">Velocity</button><button type="button" data-channel="combined" class="active">Combined</button></div>';
+      strip.innerHTML='<span class="v2-channel-label">Hydraulic view</span><div class="v2-channel-nav fastpath-channel-nav" id="v2ChannelNav" hidden><button type="button" data-channel="flow">Flow</button><button type="button" data-channel="depth">Depth</button><button type="button" data-channel="level">Level</button><button type="button" data-channel="velocity">Velocity</button><button type="button" data-channel="combined" class="active">Combined</button></div>';
       chart.insertAdjacentElement('beforebegin',strip);
     }
     if (chart && !document.getElementById('graphStatistics')) {
@@ -293,7 +293,7 @@
   }
 
   function setChannelMode(mode,redraw=true){
-    const next=['flow','depth','velocity','combined'].includes(String(mode))?String(mode):'combined';
+    const next=['flow','depth','level','velocity','combined'].includes(String(mode))?String(mode):'combined';
     ui.channelMode=next;
     updateChannelControls();
     updateGraphThresholdControls();
@@ -409,19 +409,20 @@
     for(const e of exclusionPayload(false)){
       if(e.enabled)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:overlayBottom,y1:1,fillcolor:'#b45309',opacity:.12,line:{width:0},layer:'below',label:{text:e.reason}});
     }
-    // Spill thresholds are the canonical analytical values. The graph toolbar is
-    // an editing alias only, so workspace restores/programmatic changes cannot
-    // leave the plotted threshold state out of sync with spill calculations.
+    // Spill thresholds are the canonical analytical values. Keep the observed
+    // and model axes distinct when one is Depth and the other is absolute Level.
     const obs = nullableNumber($('obsThreshold').value);
     const model = nullableNumber($('modelThreshold').value);
-    const showObserved=Boolean(targetAxis)&&options.showObserved===true&&$('showGraphObsThreshold')?.checked!==false&&obs!==null;
-    const showModel=Boolean(targetAxis)&&options.showModel===true&&$('showGraphModelThreshold')?.checked!==false&&model!==null;
-    const coincident=showObserved&&showModel&&Math.abs(Number(obs)-Number(model))<=1e-12;
+    const observedAxis=options.observedAxis||targetAxis||null;
+    const modelAxis=options.modelAxis||targetAxis||null;
+    const showObserved=Boolean(observedAxis)&&options.showObserved===true&&$('showGraphObsThreshold')?.checked!==false&&obs!==null;
+    const showModel=Boolean(modelAxis)&&options.showModel===true&&$('showGraphModelThreshold')?.checked!==false&&model!==null;
+    const coincident=showObserved&&showModel&&observedAxis===modelAxis&&Math.abs(Number(obs)-Number(model))<=1e-12;
     if(coincident){
-      shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:targetAxis,y0:obs,y1:obs,line:{color:$('threshold1Color').value,width:2,dash:'dash'},layer:'above'});
+      shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:observedAxis,y0:obs,y1:obs,line:{color:$('threshold1Color').value,width:2,dash:'dash'},layer:'above'});
     }else{
-      if(showObserved)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:targetAxis,y0:obs,y1:obs,line:{color:$('threshold1Color').value,width:2,dash:'dash'},layer:'above'});
-      if(showModel)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:targetAxis,y0:model,y1:model,line:{color:$('threshold2Color').value,width:2,dash:'dash'},layer:'above'});
+      if(showObserved)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:observedAxis,y0:obs,y1:obs,line:{color:$('threshold1Color').value,width:2,dash:'dash'},layer:'above'});
+      if(showModel)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:modelAxis,y0:model,y1:model,line:{color:$('threshold2Color').value,width:2,dash:'dash'},layer:'above'});
     }
     if($('showEventOverlay').checked){
       for(const e of state.rainEvents)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:overlayBottom,y1:1,fillcolor:$('rainEventColor').value,opacity:.08,line:{width:0},layer:'below'});
@@ -559,7 +560,7 @@
       const selectedObserved=mappingObject(state.mapping.observed);
       const selectedQuantity=String(selectedObserved?seriesQuantity(selectedObserved.item,selectedObserved.col):'').toLowerCase();
       const observedEntries=[],modelEntries=[];
-      const canonical=['flow','depth','velocity'];
+      const canonical=['flow','depth','level','velocity'];
 
       for(let observedIndex=0;observedIndex<observedSources.length;observedIndex+=1){
         const source=observedSources[observedIndex],obs=await v2SeriesFor(source.key,range);
@@ -596,12 +597,14 @@
         }
       }
 
+      const panelQuantities=new Set([...observedEntries,...modelEntries].map(x=>String(x.quantity||'').toLowerCase()).filter(q=>canonical.includes(q)));
+      const multiPanelMode=fdvMode||panelQuantities.size>1;
       const statisticRows=[];
       const addStat=(role,entry,factor=1)=>statisticRows.push({
         role,compact_label:compactGraphRole(role,entry.item,entry.col),
         label:seriesLabel(entry.item,entry.col),statistics:entry.data.statistics,factor
       });
-      if(fdvMode){
+      if(multiPanelMode){
         for(const quantity of canonical){
           for(const item of observedEntries.filter(x=>x.quantity===quantity))addStat('Observed',item.source);
           for(const item of modelEntries.filter(x=>x.quantity===quantity))addStat(`Model ${item.index+1}`,item.source);
@@ -625,7 +628,7 @@
 
       const commonLayout={
         template:'plotly_white',
-        title:{text:options.title||graphTitle(fdvMode,observedEntries,modelEntries),x:.01,xanchor:'left',font:{size:18,color:'#263746'}},
+        title:{text:options.title||graphTitle(multiPanelMode,observedEntries,modelEntries),x:.01,xanchor:'left',font:{size:18,color:'#263746'}},
         margin:{l:86,r:42,t:106,b:38},
         hovermode:'x unified',
         legend:{orientation:'h',y:1.025,x:1,xanchor:'right',yanchor:'bottom',font:{size:11},traceorder:'normal'},
@@ -636,7 +639,7 @@
       };
       if(displayRange?.length===2){commonLayout.xaxis.range=displayRange;commonLayout.xaxis.autorange=false;}
 
-      if(fdvMode){
+      if(multiPanelMode){
         const available=new Set([...observedEntries,...modelEntries].map(x=>x.quantity).filter(q=>canonical.includes(q)));
         const hydraulicPanels=canonical.filter(q=>available.has(q));
         panelOrder=[...(rainEntry?['rainfall']:[]),...hydraulicPanels];
@@ -649,7 +652,12 @@
           const bottom=Math.max(plotBottom,top-share);
           const n=(rainEntry?2:1)+index,axisKey=n===1?'yaxis':`yaxis${n}`,axisRef=n===1?'y':`y${n}`;
           axisByPanel[panel]=axisRef;panelDomains[panel]=[bottom,top];
-          const title=panel==='flow'?'Flow (m³/s)':panel==='depth'?'Depth (m)':'Velocity (m/s)';
+          const representative=observedEntries.find(x=>x.quantity===panel)?.source||modelEntries.find(x=>x.quantity===panel)?.source;
+          const unit=representative?seriesUnit(representative.item,representative.col):null;
+          const reference=representative&&panel==='level'?seriesReference(representative.item,representative.col):null;
+          const label={flow:'Flow',depth:'Depth',level:'Level',velocity:'Velocity'}[panel]||panel;
+          const defaultUnit={flow:'m³/s',depth:'m',level:'m',velocity:'m/s'}[panel]||'';
+          const title=label+' ('+(unit||defaultUnit)+')'+(reference?' · '+reference:'');
           layout[axisKey]={title:{text:title,standoff:10},domain:[bottom,top],anchor:'x',showgrid:true,gridcolor:'#e8eef3',gridwidth:1,zeroline:false,automargin:true,tickfont:{size:10,color:'#506272'},titlefont:{size:11,color:'#263746'},ticks:'outside',ticklen:3,tickcolor:'#9fb0bd'};
           layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:top,text:'<b>'+title.replace(/ \(.+\)$/,'')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
           if(index>0){const separator=Math.min(1,top+hydGap/2);panelDecorations.push({type:'line',xref:'paper',x0:0,x1:1,yref:'paper',y0:separator,y1:separator,line:{color:'#dfe7ec',width:1},layer:'below'});}
@@ -673,16 +681,20 @@
             traces.push({x:d.timestamp,y:d.value,name:`Model ${item.index+1} · ${item.source.col}`,meta:item.source.item.displayName,type:traceType(d),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:1.6},yaxis:axis});
           }
         }
-        const thresholdAxis=axisByPanel.depth||null;
-        const hasObservedDepth=observedEntries.some(x=>x.quantity==='depth'),hasModelDepth=modelEntries.some(x=>x.quantity==='depth');
-        const showObserved=Boolean(thresholdAxis&&hasObservedDepth&&$('showGraphObsThreshold')?.checked!==false&&observedThreshold!==null);
-        const showModel=Boolean(thresholdAxis&&hasModelDepth&&$('showGraphModelThreshold')?.checked!==false&&modelThreshold!==null);
-        const coincident=showObserved&&showModel&&Math.abs(Number(observedThreshold)-Number(modelThreshold))<=1e-12;
-        layout.shapes=[...panelDecorations,...v2GraphShapes(thresholdAxis,{showObserved,showModel,plotBottom})];
-        if(coincident)traces.push({x:[null],y:[null],mode:'lines',name:'Observed + model depth threshold',hoverinfo:'skip',showlegend:true,yaxis:thresholdAxis,line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
+        const observedThresholdSeries=observedThresholdSelection();
+        const activeModelThresholdSeries=thresholdSelectionForKey($('spillModelSelect')?.value||'')||modelThresholdSelection();
+        const observedThresholdQuantity=observedThresholdSeries?String(seriesQuantity(observedThresholdSeries.item,observedThresholdSeries.col)||'').toLowerCase():'';
+        const modelThresholdQuantity=activeModelThresholdSeries?String(seriesQuantity(activeModelThresholdSeries.item,activeModelThresholdSeries.col)||'').toLowerCase():'';
+        const observedThresholdAxis=axisByPanel[observedThresholdQuantity]||null;
+        const modelThresholdAxis=axisByPanel[modelThresholdQuantity]||null;
+        const showObserved=Boolean(observedThresholdAxis&&$('showGraphObsThreshold')?.checked!==false&&observedThreshold!==null);
+        const showModel=Boolean(modelThresholdAxis&&$('showGraphModelThreshold')?.checked!==false&&modelThreshold!==null);
+        const coincident=showObserved&&showModel&&observedThresholdAxis===modelThresholdAxis&&Math.abs(Number(observedThreshold)-Number(modelThreshold))<=1e-12;
+        layout.shapes=[...panelDecorations,...v2GraphShapes(null,{observedAxis:observedThresholdAxis,modelAxis:modelThresholdAxis,showObserved,showModel,plotBottom})];
+        if(coincident)traces.push({x:[null],y:[null],mode:'lines',name:'Observed + model '+observedThresholdQuantity+' threshold',hoverinfo:'skip',showlegend:true,yaxis:observedThresholdAxis,line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
         else{
-          if(showObserved)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold1Label').value||'Observed / EDM depth / level threshold',hoverinfo:'skip',showlegend:true,yaxis:thresholdAxis,line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
-          if(showModel)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold2Label').value||'Model depth / level threshold',hoverinfo:'skip',showlegend:true,yaxis:thresholdAxis,line:{color:$('threshold2Color').value,width:2.5,dash:'dash'}});
+          if(showObserved)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold1Label').value||'Observed / EDM depth / level threshold',hoverinfo:'skip',showlegend:true,yaxis:observedThresholdAxis,line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
+          if(showModel)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold2Label').value||'Model depth / level threshold',hoverinfo:'skip',showlegend:true,yaxis:modelThresholdAxis,line:{color:$('threshold2Color').value,width:2.5,dash:'dash'}});
         }
         traces.push(graphStatisticsTrace(statisticRows,statsDomain));
         window.__ICM_WORKBENCH__.lastPanelDomains=panelDomains;
@@ -747,7 +759,7 @@
       ui.graphRange=range;
       window.__ICM_WORKBENCH__.lastGraphPointCounts=pointCounts;
       window.__ICM_WORKBENCH__.lastGraphRange=range;
-      window.__ICM_WORKBENCH__.lastGraphMode=fdvMode?'fdv-multi-variable':'single-series';
+      window.__ICM_WORKBENCH__.lastGraphMode=fdvMode?'fdv-multi-variable':multiPanelMode?'multi-quantity':'single-series';
       window.__ICM_WORKBENCH__.lastPanelOrder=panelOrder;
       renderGraphStatistics(statisticRows,displayRange);
       updateThresholdRangeStatus(observedEntries,modelEntries);
@@ -855,9 +867,13 @@
     if (!observed && !model) throw new Error('Map an eligible observed or model Depth / Level series before calculating hydraulic-level spills.');
     if (observedThreshold===null && (!model || modelThreshold===null)) throw new Error('Enter at least one spill threshold.');
 
-    const exclusionsFor=(role,key)=>JSON.stringify(exclusionPayload(true,role,key));
+    syncExclusionsFromEditor();
+    const exclusionsFor=(role,key)=>exclusionPayload(true,role,key);
+    const observedExclusions=observed?exclusionsFor('observed',sourceKey(observed.item.id,observed.col)):[];
+    const modelExclusions=model?exclusionsFor('model',sourceKey(model.item.id,model.col)):[];
     const bounds=analysisBounds();
     const config=JSON.parse(JSON.stringify(workspaceObject()));
+    config.applied_exclusions={observed:observedExclusions,model:modelExclusions};
     const signature=analysisSignature();
     const gap = Number($('gapInput').value || 900);
     state.spills = {};
@@ -866,18 +882,23 @@
     if (observed && observedThreshold !== null) {
       setOperationStatus('Calculating observed EDM spills…', 'running');
       await nextPaint();
-      state.spills.observed = await engine.call('spill_result',{path:observed.item.virtualPath,column:observed.col,threshold:observedThreshold,exclusions_json:exclusionsFor('observed',sourceKey(observed.item.id,observed.col)),max_gap_seconds:gap,...bounds});
+      state.spills.observed = await engine.call('spill_result',{path:observed.item.virtualPath,column:observed.col,threshold:observedThreshold,exclusions_json:JSON.stringify(observedExclusions),max_gap_seconds:gap,...bounds});
     }
     if (model && modelThreshold !== null) {
       setOperationStatus('Calculating modelled spills…', 'running');
       await nextPaint();
-      state.spills.model = await engine.call('spill_result',{path:model.item.virtualPath,column:model.col,threshold:modelThreshold,exclusions_json:exclusionsFor('model',sourceKey(model.item.id,model.col)),max_gap_seconds:gap,...bounds});
+      state.spills.model = await engine.call('spill_result',{path:model.item.virtualPath,column:model.col,threshold:modelThreshold,exclusions_json:JSON.stringify(modelExclusions),max_gap_seconds:gap,...bounds});
     }
     if(signature!==analysisSignature()){state.spills={};throw new Error('Spill inputs changed while calculation was running. The late result was discarded.');}
     state.spillSnapshot={config,signature,results:JSON.parse(JSON.stringify(state.spills))};
     renderSpillsV2();
     const elapsed = (performance.now()-started)/1000;
-    setOperationStatus(`Completed in ${elapsed.toFixed(1)} s. Yearly 12/24 counts and physical durations are shown below.`, 'done');
+    const excludedHours=result=>Number(result?.excluded_seconds||0)/3600;
+    const exclusionAudit=[
+      observed?`Observed: ${observedExclusions.length} period(s), ${excludedHours(state.spills.observed).toFixed(3)} h excluded`:null,
+      model?`Model: ${modelExclusions.length} period(s), ${excludedHours(state.spills.model).toFixed(3)} h excluded`:null,
+    ].filter(Boolean).join(' · ');
+    setOperationStatus(`Completed in ${elapsed.toFixed(1)} s. ${exclusionAudit}. Yearly 12/24 counts and physical durations are shown below.`, 'done');
   }
 
   function installHijacks() {
