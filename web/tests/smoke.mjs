@@ -557,12 +557,28 @@ async function verifyIndividualSourceRemoval(){
     const removeControls=await probe.locator('#poolBody .source-remove-btn').count();
     if(removeControls!==2)throw new Error('Each ready source row must expose one compact remove control.');
     await rainRow.locator('.source-remove-btn').click();
-    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===1
-      &&!document.querySelector('#poolBody')?.textContent.includes('RemoveTest-RG01.R')
-      &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
-      &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===1
-      &&!(document.querySelector('#timeChart')?.data||[]).some(trace=>String(trace.name||'').includes('Rainfall')),
-      null,{timeout:60000});
+    try{
+      await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===1
+        &&!document.querySelector('#poolBody')?.textContent.includes('RemoveTest-RG01.R')
+        &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
+        &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===1
+        &&!(document.querySelector('#timeChart')?.data||[]).some(trace=>String(trace.name||'').includes('Rainfall')),
+        null,{timeout:60000});
+    }catch(error){
+      const debug=await probe.evaluate(()=>({
+        rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+        mapping:{...state.mapping,models:[...(state.mapping.models||[])]},
+        sourcePool:window.__ICM_WORKBENCH__?.sourcePool||null,
+        graphNames:(document.querySelector('#timeChart')?.data||[]).map(trace=>trace.name),
+        graphMode:window.__ICM_WORKBENCH__?.lastGraphMode||null,
+        graphRefreshing:window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing,
+        graphGeneration:window.__ICM_WORKBENCH__?.uiV2?.graphGeneration,
+        diagnosticErrors:(window.__ICM_WORKBENCH__?.errors||[]).slice(-8),
+        poolSummary:document.querySelector('#poolSummary')?.textContent||'',
+        mappingStatus:document.querySelector('#mappingStatus')?.textContent||'',
+      }));
+      throw new Error('Removing mapped rainfall did not settle to the expected source/graph state: '+JSON.stringify(debug)+' | probe errors: '+probeErrors.join(' | ')+' | original: '+String(error));
+    }
     const afterRain=await probe.evaluate(()=>({
       rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
       mapping:{...state.mapping,models:[...(state.mapping.models||[])]},
