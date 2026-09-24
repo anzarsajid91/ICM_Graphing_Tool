@@ -1486,6 +1486,19 @@ try{
   await page.waitForFunction(()=>/Unsupported workspace schema version 99/i.test(document.querySelector('#workspaceStatus')?.textContent||''),null,{timeout:10000});
   const afterUnsupported=await page.evaluate(()=>({mapping:JSON.stringify(state.mapping),files:state.files.size,status:document.querySelector('#workspaceStatus')?.textContent||''}));
   if(afterUnsupported.mapping!==beforeUnsupported.mapping||afterUnsupported.files!==beforeUnsupported.files)throw new Error('Unsupported workspace schema mutated the active workspace before failing safely: '+JSON.stringify({beforeUnsupported,afterUnsupported}));
+  // This is an intentional negative-path acceptance case. Once the safe,
+  // non-mutating rejection has been asserted, consume its expected diagnostic so
+  // the final browser-error gate remains reserved for unexpected failures.
+  for(let i=consoleErrors.length-1;i>=0;i--){
+    if(/Unsupported workspace schema version 99/i.test(consoleErrors[i]))consoleErrors.splice(i,1);
+  }
+  await page.evaluate(()=>{
+    const errors=window.__ICM_WORKBENCH__?.errors;
+    if(!Array.isArray(errors))return;
+    for(let i=errors.length-1;i>=0;i--){
+      if(/Unsupported workspace schema version 99/i.test(String(errors[i]?.message||'')))errors.splice(i,1);
+    }
+  });
 
   // Return to the canonical current workspace before recalculating report inputs.
   await page.setInputFiles('#workspaceInput',workspacePath);
