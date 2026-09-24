@@ -21,7 +21,7 @@ self.addEventListener('message',function(event){
     if(!self.ICMFastPathCore)throw new Error('FastPath parser core was not available.');
     const started=performance.now();
     const bytes=message.bytes instanceof Uint8Array?message.bytes:new Uint8Array(message.bytes||0);
-    const text=new TextDecoder('utf-8',{fatal:false}).decode(bytes);
+    const text=self.ICMFastPathCore.decodeText(bytes);
     const parsed=self.ICMFastPathCore.parseText(message.name||'',text,{maxPoints:message.maxPoints||15000});
     reply(id,{parsed:parsed,duration_ms:performance.now()-started,buildToken:BUILD_TOKEN});
   }catch(error){fail(id,error);}
