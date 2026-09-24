@@ -44,3 +44,32 @@ def test_compare_series_explains_undefined_constant_series_metrics(tmp_path):
     assert metrics["correlation"] is None
     assert "zero variance" in metrics["unavailable_reasons"]["nse"]
     assert "non-zero variance" in metrics["unavailable_reasons"]["correlation"]
+
+
+def test_generic_series_quantity_can_be_explicitly_classified_without_guessing_units(tmp_path):
+    import json
+    from icm_workbench.browser_api import clear_cache, parse_source, set_series_quantity
+    generic=tmp_path/"generic.csv"
+    generic.write_text("Time,Value\n01/01/2024 00:00,1.58\n01/01/2024 00:15,2.73\n",encoding="utf-8")
+    clear_cache()
+    before=json.loads(parse_source(str(generic)))
+    assert before["metadata"]["quantity_by_column"]["Value"] is None
+    updated=json.loads(set_series_quantity(str(generic),"Value","level"))
+    assert updated["quantity"]=="level"
+    assert updated["unit"] is None
+    assert updated["unit_status"]=="unresolved"
+    after=json.loads(parse_source(str(generic)))
+    assert after["metadata"]["series_metadata"]["Value"]["quantity"]=="level"
+    assert after["metadata"]["series_metadata"]["Value"]["quantity_source"]=="user"
+    cleared=json.loads(set_series_quantity(str(generic),"Value",None))
+    assert cleared["quantity"] is None
+
+
+def test_declared_series_quantity_cannot_be_silently_retyped(tmp_path):
+    import pytest
+    from icm_workbench.browser_api import clear_cache, set_series_quantity
+    declared=tmp_path/"depth.csv"
+    declared.write_text("timestamp,Depth (m)\n2026-01-01T00:00:00,1\n",encoding="utf-8")
+    clear_cache()
+    with pytest.raises(ValueError,match="already has declared quantity"):
+        set_series_quantity(str(declared),"Depth (m)","flow")
