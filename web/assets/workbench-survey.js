@@ -941,7 +941,7 @@
     const balance = freshSurveyReadiness(survey.balance,surveyFresh('balance'),'Volume balance');
     const storage = !state.storage
       ?{state:'not-run',label:'Not run',reason:'Storage Assessment has not been calculated.'}
-      :(state.storageSignature&&typeof analysisSignature==='function'&&state.storageSignature!==analysisSignature()
+      :(state.storageSignature&&typeof storageInputSignature==='function'&&state.storageSignature!==storageInputSignature()
         ?{state:'stale',label:'Stale',reason:'Storage dependencies changed; recalculate before export.'}
         :resultReadiness(state.storage,'Storage dependencies match the current workspace.'));
     const rating = !state.rating
