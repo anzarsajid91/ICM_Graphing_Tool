@@ -34,22 +34,31 @@ try{
   if(await page.locator('#pwRailToggle').count()!==1)throw new Error('Navigation rail needs an explicit collapse/expand control.');
   if(await page.locator('[data-pw-page="provenance"]').count()!==0)throw new Error('User-facing provenance route should be removed.');
 
-  // Refinement acceptance: graph-heavy analytical routes lead with the focused canvas,
-  // while the standard labelled navigation remains available as an explicit fallback.
+  // Navigation is expanded by default on every route. Focus canvas remains
+  // available only as an explicit user choice.
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
-  const defaultFocus=await page.evaluate(()=>({
+  const defaultLayout=await page.evaluate(()=>({
     focus:document.body.classList.contains('pw-focus-canvas'),
     rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
-    inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none',
+    labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none'),
+    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden===true,
+    scopebarCount:document.querySelectorAll('#pwScopebar,.pw-scopebar').length
+  }));
+  if(defaultLayout.focus||defaultLayout.rail<180||!defaultLayout.labelled||defaultLayout.railToggleHidden||defaultLayout.scopebarCount!==0)throw new Error('Every route must default to expanded labelled navigation without the global analysis scope strip: '+JSON.stringify(defaultLayout));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
+  await page.waitForFunction(()=>document.body.classList.contains('pw-focus-canvas'));
+  const explicitFocus=await page.evaluate(()=>({
+    focus:document.body.classList.contains('pw-focus-canvas'),
+    rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
     railToggleHidden:document.querySelector('#pwRailToggle')?.hidden===true
   }));
-  if(!defaultFocus.focus||defaultFocus.rail>90||!defaultFocus.inspectorToggleVisible||!defaultFocus.railToggleHidden)throw new Error('Graph route must default to the focused analytical canvas: '+JSON.stringify(defaultFocus));
+  if(!explicitFocus.focus||explicitFocus.rail>90||!explicitFocus.railToggleHidden)throw new Error('Explicit Focus canvas did not maximise the analytical workspace: '+JSON.stringify(explicitFocus));
   const graphDominance=await page.evaluate(()=>({
     viewport:document.documentElement.clientWidth,
     panel:document.querySelector('#tab-graph>.panel')?.getBoundingClientRect().width||0,
     chart:document.querySelector('#timeChart')?.getBoundingClientRect().width||0
   }));
-  if(graphDominance.panel/graphDominance.viewport<0.82||graphDominance.chart/graphDominance.viewport<0.78)throw new Error('Focused graph workspace is not sufficiently dominant: '+JSON.stringify(graphDominance));
+  if(graphDominance.panel/graphDominance.viewport<0.82||graphDominance.chart/graphDominance.viewport<0.78)throw new Error('Explicit focused graph workspace is not sufficiently dominant: '+JSON.stringify(graphDominance));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(false));
   await page.waitForFunction(()=>!document.body.classList.contains('pw-focus-canvas'));
   const railExpanded=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
@@ -94,9 +103,8 @@ try{
     nav:Number.parseFloat(getComputedStyle(document.querySelector('.pw-primary-nav button')).fontSize),
     secondary:Number.parseFloat(getComputedStyle(document.querySelector('.pw-secondary-nav button')).fontSize),
     tableHeading:Number.parseFloat(getComputedStyle(document.querySelector('#pwDataHealthSummary th')).fontSize),
-    scopeLabel:Number.parseFloat(getComputedStyle(document.querySelector('.pw-scope-item span')).fontSize),
   }));
-  if(typeScale.title<24||typeScale.section<20||typeScale.subsection<16||typeScale.nav<15||typeScale.secondary>13||typeScale.nav<=typeScale.secondary||typeScale.tableHeading<13||typeScale.scopeLabel<12)throw new Error('Precision typography hierarchy is below the strict PR25 minimums: '+JSON.stringify(typeScale));
+  if(typeScale.title<24||typeScale.section<20||typeScale.subsection<16||typeScale.nav<15||typeScale.secondary>13||typeScale.nav<=typeScale.secondary||typeScale.tableHeading<13)throw new Error('Precision typography hierarchy is below the strict PR25 minimums: '+JSON.stringify(typeScale));
 
   const rhythm=await page.evaluate(()=>{
     const values={};
@@ -106,7 +114,6 @@ try{
     take('primaryNav',document.querySelector('.pw-primary-nav'),['gap']);
     take('panel',document.querySelector('.panel'),['paddingTop','paddingRight','paddingBottom','paddingLeft']);
     take('button',document.querySelector('.btn'),['paddingTop','paddingRight','paddingBottom','paddingLeft']);
-    take('scope',document.querySelector('.pw-scopebar'),['gap','paddingTop','paddingRight','paddingBottom','paddingLeft']);
     return values;
   });
   const rhythmFailures=Object.entries(rhythm).filter(([,v])=>Number.isFinite(v)&&v!==0&&Math.round(v)%4!==0);
