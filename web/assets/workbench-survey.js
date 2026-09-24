@@ -842,8 +842,8 @@
 
   function wireWorkspacePersistence() {
     const coreWorkspaceObject = workspaceObject;
-    workspaceObject = function() {
-      const value = coreWorkspaceObject();
+    workspaceObject = function(...args) {
+      const value = coreWorkspaceObject(...args);
       value.survey = {
         association: survey.association,
         association_source: survey.associationSource,
