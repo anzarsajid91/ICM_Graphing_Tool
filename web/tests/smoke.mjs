@@ -904,6 +904,13 @@ try{
     if(cold.previewEvidence?.engineStatus==='ready'||!(cold.timeToOutcomeMs<engineAfterSelection))throw new Error('Cold FastPath preview did not render before authoritative engine readiness: '+JSON.stringify(cold));
     if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM01 parsing: '+JSON.stringify(cold.finalEvidence));
   }
+  stage='individual source removal with supplied reference files';
+  performanceEvidence.individualSourceRemoval=await verifyIndividualSourceRemoval();
+  await writePerformanceEvidence();
+  stage='Plotly engineering interactions and spill RAG with supplied reference files';
+  performanceEvidence.plotlyEngineeringEnhancements=await verifyPlotlyEngineeringEnhancements();
+  await writePerformanceEvidence();
+
   if(!liveMode){
   stage='fresh CSV FastPath benchmarks';
   performanceEvidence.freshCsvImports=[];
@@ -940,12 +947,6 @@ try{
   await writePerformanceEvidence();
   stage='analysis-worker restart during pending FastPath import';
   performanceEvidence.pendingImportRestart=await verifyRestartDuringPendingImport();
-  await writePerformanceEvidence();
-  stage='individual source removal with supplied reference files';
-  performanceEvidence.individualSourceRemoval=await verifyIndividualSourceRemoval();
-  await writePerformanceEvidence();
-  stage='Plotly engineering interactions and spill RAG with supplied reference files';
-  performanceEvidence.plotlyEngineeringEnhancements=await verifyPlotlyEngineeringEnhancements();
   await writePerformanceEvidence();
   stage='open application';
   const applicationNavigationStart=Date.now();
