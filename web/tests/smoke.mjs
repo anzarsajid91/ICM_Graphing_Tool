@@ -1905,13 +1905,18 @@ try{
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect',await optionValue('#rainSelect','Reference-RG01.R — rainfall'));
   await precisionRoute('data','time-series');
-  // Appearance controls live in the contextual inspector on graph-first routes.
-  // Open the inspector before interacting with them so acceptance follows the
-  // shipped user path rather than trying to click an off-canvas detail panel.
+  // In the new expanded-default shell the contextual inspector is docked and
+  // directly visible. Focus/mobile layouts expose the same inspector via the
+  // drawer toggle. Exercise whichever presentation is actually active.
   const inspector=page.locator('#pwInspector');
-  if(!(await inspector.evaluate(el=>el.classList.contains('is-open')))){
-    await page.click('#pwInspectorToggle');
-    await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
+  const inspectorToggle=page.locator('#pwInspectorToggle');
+  if(await inspectorToggle.isVisible()){
+    if(!(await inspector.evaluate(el=>el.classList.contains('is-open')))){
+      await inspectorToggle.click();
+      await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
+    }
+  }else{
+    await inspector.waitFor({state:'visible'});
   }
   const rainfallAppearance=page.locator('#pwInspector details.appearance-panel');
   if(!(await rainfallAppearance.evaluate(el=>el.open)))await rainfallAppearance.locator('summary').click();
