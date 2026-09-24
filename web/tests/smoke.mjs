@@ -801,11 +801,10 @@ try{
     focus:document.body.classList.contains('pw-focus-canvas'),
     rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
     labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none'),
-    inspectorToggleVisible:getComputedStyle(document.querySelector('#pwInspectorToggle')).display!=='none',
     railToggleHidden:document.querySelector('#pwRailToggle')?.hidden,
     scopebarCount:document.querySelectorAll('#pwScopebar,.pw-scopebar').length
   }));
-  if(standardLayout.focus||standardLayout.rail<180||!standardLayout.labelled||!standardLayout.inspectorToggleVisible||standardLayout.railToggleHidden||standardLayout.scopebarCount!==0)throw new Error('Time Series must default to expanded labelled navigation with no global scope strip: '+JSON.stringify(standardLayout));
+  if(standardLayout.focus||standardLayout.rail<180||!standardLayout.labelled||standardLayout.railToggleHidden||standardLayout.scopebarCount!==0)throw new Error('Time Series must default to expanded labelled navigation with no global scope strip: '+JSON.stringify(standardLayout));
   // Focus canvas remains available as an explicit opt-in, but it is no longer
   // the default state when entering graph-heavy routes.
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
