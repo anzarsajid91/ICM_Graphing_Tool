@@ -850,9 +850,10 @@
       for (const e of result?.events || []) rows.push(`<tr><td>${name}</td><td>${esc(e.start)}</td><td>${esc(e.end)}</td><td>${fmt(Number(e.duration_seconds)/3600,3)}</td></tr>`);
     }
     $('eventBody').innerHTML = rows.join('');
+    const applied=state.spillSnapshot?.config?.applied_exclusions||{};
     window.__ICM_WORKBENCH__.lastSpills = {
-      observed:state.spills.observed?{excluded_seconds:state.spills.observed.excluded_seconds,count:state.spills.observed.total_spill_count,yearly:state.spills.observed.yearly_summary}:null,
-      modelled:state.spills.model?{excluded_seconds:state.spills.model.excluded_seconds,count:state.spills.model.total_spill_count,yearly:state.spills.model.yearly_summary}:null,
+      observed:state.spills.observed?{excluded_seconds:state.spills.observed.excluded_seconds,applied_exclusion_count:(applied.observed||[]).length,count:state.spills.observed.total_spill_count,yearly:state.spills.observed.yearly_summary}:null,
+      modelled:state.spills.model?{excluded_seconds:state.spills.model.excluded_seconds,applied_exclusion_count:(applied.model||[]).length,count:state.spills.model.total_spill_count,yearly:state.spills.model.yearly_summary}:null,
     };
   }
 
