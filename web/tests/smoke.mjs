@@ -661,6 +661,54 @@ try{
   await page.click('#clearPoolBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0);
 
+  stage='generic Time Value CSV import and model threshold classification';
+  const genericPayload=Buffer.from(
+    'Time,Value\n'
+    +'01/01/2024 00:00,1.58\n'
+    +'01/01/2024 00:00,1.58\n'
+    +'01/01/2024 00:13,1.47\n'
+    +'01/01/2024 00:15,2.73\n'
+    +'01/01/2024 00:30,1.83\n'
+  );
+  await page.setInputFiles('#fileInput',{name:'generic-model.csv',mimeType:'text/csv',buffer:genericPayload});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('generic-model.csv')&&row.textContent.includes('Ready')),null,{timeout:60000});
+  await precisionRoute('data','series-mapping');
+  const genericModel=await optionValue('#modelSelect','generic-model.csv — Value');
+  if(!genericModel)throw new Error('Generic Time/Value CSV was not exposed as a mappable numeric series.');
+  await page.selectOption('#observedSelect','');
+  await page.selectOption('#modelSelect',[genericModel]);
+  await page.selectOption('#rainSelect','');
+  await page.waitForFunction(()=>document.querySelector('#seriesSemanticsPanel')?.hidden===false&&document.querySelectorAll('#seriesSemanticsRows select').length===1);
+  const genericSemanticsText=(await page.locator('#seriesSemanticsPanel').textContent())||'';
+  if(!genericSemanticsText.includes('without guessing hydraulic meaning'))throw new Error('Generic CSV mapping must make the no-guessing contract explicit.');
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&!document.querySelector('#applyMappingBtn')?.disabled,null,{timeout:60000});
+  await precisionRoute('data','time-series');
+  const genericThresholdState=await page.evaluate(()=>({
+    hidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden,
+    disabled:document.querySelector('#graphModelThreshold')?.disabled,
+    context:document.querySelector('#graphModelThresholdContext')?.textContent||'',
+    hasModel:(document.querySelector('#timeChart')?.data||[]).some(t=>/^Simulated:/.test(String(t.name||''))),
+  }));
+  if(genericThresholdState.hidden||!genericThresholdState.disabled||!genericThresholdState.context.includes('assign Depth or Level')||!genericThresholdState.hasModel)throw new Error('Generic model series must graph successfully while keeping the hydraulic threshold disabled pending explicit classification: '+JSON.stringify(genericThresholdState));
+  await precisionRoute('data','series-mapping');
+  await page.selectOption('#seriesSemanticsRows select','level');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level'),null,{timeout:30000});
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&!document.querySelector('#applyMappingBtn')?.disabled,null,{timeout:60000});
+  await precisionRoute('data','time-series');
+  const classifiedThresholdState=await page.evaluate(()=>({
+    hidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden,
+    disabled:document.querySelector('#graphModelThreshold')?.disabled,
+    context:document.querySelector('#graphModelThresholdContext')?.textContent||'',
+  }));
+  if(classifiedThresholdState.hidden||classifiedThresholdState.disabled||!classifiedThresholdState.context.includes('Absolute level'))throw new Error('Explicit generic-series Level classification must enable the modelled hydraulic threshold: '+JSON.stringify(classifiedThresholdState));
+  await page.fill('#graphModelThreshold','2.0');
+  await page.waitForFunction(()=>{const chart=document.querySelector('#timeChart');return (chart?.layout?.shapes||[]).some(s=>s.type==='line'&&s.yref==='y'&&Math.abs(Number(s.y0)-2.0)<1e-9);},null,{timeout:60000});
+  await precisionRoute('data','sources');
+  await page.click('#clearPoolBtn');
+  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0);
+
   stage='source pool and collapsed file list';
   const observedPath=path.join(root,'examples/demo/observed.csv');
   const modelPath=path.join(root,'examples/demo/model.csv');
