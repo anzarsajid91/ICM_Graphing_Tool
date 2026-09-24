@@ -85,6 +85,58 @@ def parse_source(path):
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
 
+def set_series_quantity(path, column, quantity=None):
+    """Apply an explicit user quantity to an otherwise-generic numeric series.
+
+    The parser deliberately does not guess that a column named Value is a
+    hydraulic level, flow, depth or velocity. Browser mapping can call this
+    only for unresolved series after the user explicitly assigns the meaning.
+    Units remain unresolved unless the source itself declares them.
+    """
+    parsed = _load(path)
+    column = str(column)
+    if column == "timestamp" or column not in parsed.frame.columns:
+        raise ValueError(f"Unknown value series {column!r}.")
+    allowed = {"depth", "level", "flow", "velocity", "rainfall"}
+    requested = None if quantity in (None, "") else str(quantity).strip().lower()
+    if requested is not None and requested not in allowed:
+        raise ValueError(f"Unsupported series quantity {quantity!r}; expected one of {sorted(allowed)}.")
+
+    metadata = parsed.metadata if isinstance(parsed.metadata, dict) else {}
+    parsed.metadata = metadata
+    series_metadata = metadata.setdefault("series_metadata", {})
+    details = series_metadata.setdefault(column, {})
+    quantity_by_column = metadata.setdefault("quantity_by_column", {})
+    existing_source = details.get("quantity_source")
+    existing = (
+        details.get("quantity")
+        or quantity_by_column.get(column)
+        or _column_quantity_hint(column)
+        or metadata.get("quantity")
+    )
+    if existing and existing_source != "user" and requested != str(existing).lower():
+        raise ValueError(
+            f"Series {column!r} already has declared quantity {existing!r}; "
+            "user quantity overrides are only allowed for unresolved generic series."
+        )
+
+    if requested is None:
+        if existing_source == "user":
+            details.pop("quantity", None)
+            details.pop("quantity_source", None)
+            quantity_by_column[column] = None
+    else:
+        details["quantity"] = requested
+        details["quantity_source"] = "user"
+        quantity_by_column[column] = requested
+    return json.dumps(_jsonable({
+        "column": column,
+        "quantity": requested,
+        "unit": details.get("canonical_unit") or details.get("original_unit"),
+        "unit_status": details.get("unit_status") or "unresolved",
+        "quantity_source": "user" if requested else None,
+    }), ensure_ascii=False)
+
 def _prepared_series(path, column=None):
     parsed = _load(path)
     frame = parsed.frame
