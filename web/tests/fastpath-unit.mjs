@@ -77,6 +77,22 @@ const quoted=core.parseText('quoted.csv','"timestamp","Flow (L/s)"\n"2026-02-01 
 assert.equal(quoted.eligible,true);
 assert.equal(quoted.series[0].canonical_unit,'m³/s');
 
+const genericTimeValue='Time,Value\n01/01/2024 00:00,1.58\n01/01/2024 00:00,1.58\n01/01/2024 00:13,1.47\n01/01/2024 00:15,2.73\n';
+const generic=core.parseText('generic.csv',genericTimeValue);
+assert.equal(generic.eligible,true);
+assert.equal(generic.format,'tabular_csv');
+assert.deepEqual(Array.from(generic.columns),['Value']);
+assert.equal(generic.series[0].quantity,null);
+assert.equal(generic.series[0].unit_status,'unresolved');
+assert.equal(generic.audit.duplicate_timestamps,1);
+assert.deepEqual(Array.from(generic.series[0].values),[1.58,1.58,1.47,2.73]);
+
+const utf16Payload=Buffer.concat([Buffer.from([0xff,0xfe]),Buffer.from(genericTimeValue,'utf16le')]);
+const genericUtf16=core.parseText('generic-utf16.csv',core.decodeText(utf16Payload));
+assert.equal(genericUtf16.eligible,true);
+assert.deepEqual(Array.from(genericUtf16.columns),['Value']);
+assert.equal(genericUtf16.rows,4);
+
 const unresolved=core.parseText('mystery.csv','timestamp,Reading\n2026-02-01T00:00:00,1\n2026-02-01T00:01:00,2\n');
 assert.equal(unresolved.eligible,true);
 assert.equal(unresolved.series[0].unit_status,'unresolved');
