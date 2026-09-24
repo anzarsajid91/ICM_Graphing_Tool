@@ -441,6 +441,26 @@ async function verifyStationAThresholdChain(){
       const chart=document.querySelector('#timeChart');
       return (chart?.layout?.shapes||[]).some(s=>s.type==='line'&&s.yref!=='paper'&&Math.abs(Number(s.y0)-value)<1e-9);
     },threshold,{timeout:120000});
+    const beforeRefresh=await probe.evaluate(value=>({
+      canonical:Number(document.querySelector('#obsThreshold')?.value),
+      alias:Number(document.querySelector('#graphObsThreshold')?.value),
+      line:(document.querySelector('#timeChart')?.layout?.shapes||[]).find(s=>s.type==='line'&&s.yref!=='paper'&&Math.abs(Number(s.y0)-value)<1e-9)||null,
+    }),threshold);
+    await probe.click('#refreshGraphBtn');
+    await probe.waitForFunction(value=>{
+      const chart=document.querySelector('#timeChart');
+      return window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&
+        (chart?.layout?.shapes||[]).some(s=>s.type==='line'&&s.yref!=='paper'&&Math.abs(Number(s.y0)-value)<1e-9);
+    },threshold,{timeout:120000});
+    const afterRefresh=await probe.evaluate(value=>({
+      canonical:Number(document.querySelector('#obsThreshold')?.value),
+      alias:Number(document.querySelector('#graphObsThreshold')?.value),
+      line:(document.querySelector('#timeChart')?.layout?.shapes||[]).find(s=>s.type==='line'&&s.yref!=='paper'&&Math.abs(Number(s.y0)-value)<1e-9)||null,
+    }),threshold);
+    if(Math.abs(beforeRefresh.canonical-threshold)>1e-9||Math.abs(beforeRefresh.alias-threshold)>1e-9||
+       Math.abs(afterRefresh.canonical-threshold)>1e-9||Math.abs(afterRefresh.alias-threshold)>1e-9||!afterRefresh.line){
+      throw new Error('Station A threshold must survive an explicit graph refresh without changing its canonical/alias value: '+JSON.stringify({threshold,beforeRefresh,afterRefresh}));
+    }
     const graphContext=(await probe.locator('#graphObsThresholdContext').textContent())||'';
     if(!new RegExp(support.quantity,'i').test(graphContext)||!/\bm\b/i.test(graphContext)||!/\bAD\b/i.test(graphContext))throw new Error('Station A graph threshold context must identify Level, unit and absolute datum: '+graphContext);
     await nav('spills','assessment');
@@ -453,6 +473,23 @@ async function verifyStationAThresholdChain(){
     await nav('reports','report-generation');
     await probe.uncheck('#reportIncludeComparison');
     await probe.uncheck('#reportIncludeSurvey');
+    await probe.evaluate(()=>{
+      window.__icmOriginalFetch=window.fetch;
+      window.fetch=(input,init)=>{
+        const url=String(input?.url||input||'');
+        if(/plotly-[\d.]+(?:\.min)?\.js/.test(url))return Promise.reject(new Error('forced Plotly embed fetch failure'));
+        return window.__icmOriginalFetch(input,init);
+      };
+    });
+    const fallbackPending=probe.waitForEvent('download');
+    await probe.click('#downloadReportBtn');
+    const fallbackDownload=await fallbackPending;
+    const fallbackHtml=await fs.readFile(await fallbackDownload.path(),'utf8');
+    if(!fallbackHtml.includes('Static graph export')||!fallbackHtml.includes('data:image/svg+xml')){
+      throw new Error('Report export must fall back to self-contained SVG graphs when Plotly bundle re-fetch fails.');
+    }
+    await probe.evaluate(()=>{window.fetch=window.__icmOriginalFetch;delete window.__icmOriginalFetch;});
+    await probe.waitForFunction(()=>!document.querySelector('#downloadReportBtn')?.disabled,null,{timeout:30000});
     const pending=probe.waitForEvent('download');
     await probe.click('#downloadReportBtn');
     const download=await pending;
@@ -473,7 +510,7 @@ async function verifyStationAThresholdChain(){
       await probe.screenshot({path:path.join(dir,'station-a-threshold-chain.png'),fullPage:true});
     }
     if(probeErrors.length)throw new Error('Station A probe browser errors: '+probeErrors.join(' | '));
-    return {observed:selected.observedLabel,rain:selected.rainLabel,quantity:support.quantity,unit:support.unit,reference:selected.observedReference,threshold,controlValue,calcValue,reportValue:Number(reportThreshold.y0)};
+    return {observed:selected.observedLabel,rain:selected.rainLabel,quantity:support.quantity,unit:support.unit,reference:selected.observedReference,threshold,controlValue,calcValue,reportValue:Number(reportThreshold.y0),refreshPreserved:true,reportFallback:true};
   }finally{
     await probe.close();
   }
