@@ -1674,11 +1674,6 @@ try{
   if((fourReport.match(/class="report-page"/g)||[]).length!==4)throw new Error('Four-period report should contain four print-safe period pages');
   if(!fourReport.includes('A4 landscape'))throw new Error('Four-period report should use landscape print layout');
   if((fourReport.match(/Period statistics/g)||[]).length!==0)throw new Error('Four-period report should integrate statistics in each Plotly figure rather than duplicate separate tables');
-  const fourPlotMarker='<script type="application/json" id="period-graph-0-data">';
-  const fourPlotStart=fourReport.indexOf(fourPlotMarker),fourPlotEnd=fourPlotStart>=0?fourReport.indexOf('</script>',fourPlotStart+fourPlotMarker.length):-1;
-  if(fourPlotStart<0||fourPlotEnd<0)throw new Error('Four-period report graph payload missing.');
-  const fourPlot=JSON.parse(fourReport.slice(fourPlotStart+fourPlotMarker.length,fourPlotEnd));
-  if(Number(fourPlot.layout?.margin?.l||0)<100)throw new Error('Four-period FDV report left margin is insufficient for unclipped hydraulic axis titles: '+JSON.stringify(fourPlot.layout?.margin));
   const fourLayout=await inspectReportHtml(fourReport,4);
   if(fourLayout.headers!==1||fourLayout.figures!==4||fourLayout.zero||fourLayout.overflow>2)throw new Error(`Four-period report visual containment failed: ${JSON.stringify(fourLayout)}`);
   if(await page.locator('#downloadManifestBtn').count()!==0)throw new Error('Standalone provenance CSV export should not be user-facing.');
@@ -1881,6 +1876,11 @@ try{
   await page.fill('#reportYear','2026');
   const realDownload=await downloadFrom('#downloadFourPeriodBtn');
   const realReport=await fs.readFile(await realDownload.path(),'utf8');
+  const realFdvPlotMarker='<script type="application/json" id="period-graph-0-data">';
+  const realFdvPlotStart=realReport.indexOf(realFdvPlotMarker),realFdvPlotEnd=realFdvPlotStart>=0?realReport.indexOf('</script>',realFdvPlotStart+realFdvPlotMarker.length):-1;
+  if(realFdvPlotStart<0||realFdvPlotEnd<0)throw new Error('Real FDV four-period graph payload missing.');
+  const realFdvPlot=JSON.parse(realReport.slice(realFdvPlotStart+realFdvPlotMarker.length,realFdvPlotEnd));
+  if(Number(realFdvPlot.layout?.margin?.l||0)<100)throw new Error('Real FDV four-period report left margin is insufficient for unclipped hydraulic axis titles: '+JSON.stringify(realFdvPlot.layout?.margin));
   const realLayout=await inspectReportHtml(realReport,4);
   if(realLayout.figures!==4||realLayout.zero||realLayout.overflow>2)throw new Error('Real-data report layout failed: '+JSON.stringify(realLayout));
 
