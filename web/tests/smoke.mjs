@@ -1106,6 +1106,11 @@ try{
   await page.locator('#rainMinIntensity').dispatchEvent('change');
   await page.click('#runRainEventsBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.rainEventsFresh?.()===true&&document.querySelectorAll('#rainEventBody tr').length>0,null,{timeout:60000});
+  // runRainEvents awaits the optional observed/model Event Response after event
+  // detection. Do not mutate sources/mappings until that guarded operation has
+  // fully completed, otherwise the correct late-result rejection is mistaken
+  // for an application error by the acceptance harness.
+  await page.waitForFunction(()=>!document.body.classList.contains('operation-busy'),null,{timeout:60000});
   await precisionRoute('rainfall','events');
   await captureEvidence('10-rainfall-events');
 
@@ -1336,6 +1341,10 @@ try{
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('2 comparison scenario'),null,{timeout:60000});
   stage='spill exclusions in Asia/Kolkata and annual comparison';
   await precisionRoute('spills','thresholds');
+  // Multiple comparison scenarios require an explicit active spill model.
+  // Select model.csv so observed/model spill acceptance is deterministic and
+  // does not rely on a hidden default after the earlier observed-only FDV phase.
+  await page.selectOption('#spillModelSelect',modelDepth);
   await page.fill('#obsThreshold','1.0');
   await page.fill('#modelThreshold','1.0');
   await page.click('#addExclusionBtn');
