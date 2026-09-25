@@ -82,6 +82,10 @@ function seriesQuantityIsAuthoritative(item,col){
 }
 function seriesUnit(item,col){
   const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
+  // Preserve an incompatible original source unit for provenance, but never
+  // present it as the valid engineering unit after cross-dimension
+  // reinterpretation. Dimensional calculations remain withheld until resolved.
+  if(String(detail.unit_status||'').toLowerCase()==='unresolved'&&!detail.canonical_unit)return null;
   return detail.canonical_unit||metadata.canonical_unit||detail.original_unit||metadata.original_unit||null;
 }
 function seriesReference(item,col){
@@ -549,7 +553,7 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true}={}){
     renderSeriesSemanticsOverrides();
     autoSuggestAdvanced(allSeries());
     const effective=result.quantity||'generic numeric';
-    const unit=result.canonical_unit||result.original_unit||'unit unresolved';
+    const unit=result.unit_status==='unresolved'?'unit unresolved':(result.canonical_unit||result.original_unit||'unit unresolved');
     $('mappingStatus').textContent=requested
       ?'Series classified as '+effective+' · '+unit+'. Apply mapping to refresh graphs and threshold controls.'
       :(result.quantity
