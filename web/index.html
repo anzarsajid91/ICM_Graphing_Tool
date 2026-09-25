@@ -86,15 +86,19 @@
           </div>
         </details>
         <div id="timeChart" class="chart"></div>
+        <section class="subpanel" id="timeSeriesScenarioTable">
+          <div class="subhead"><div><h3>Observed / modelled comparison values</h3><p class="appearance-hint">Populated from the same full-resolution paired values used by the scatter statistics. This review table stays in Time Series and is intentionally excluded from generated reports.</p></div></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Scenario</th><th>Pairs</th><th>Observed mean</th><th>Modelled mean</th><th>Observed peak</th><th>Modelled peak</th><th>Pearson r</th><th>Regression R²</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Valid support</th></tr></thead><tbody id="scenarioBody"></tbody></table></div>
+        </section>
       </div>
     </section>
 
     <section class="tab-panel" id="tab-compare">
       <div class="panel">
-        <div class="panel-head"><div><h2>Calibration comparison</h2><p>Bounded interpolation; no bridging across gaps longer than the configured maximum.</p></div><button class="btn primary" id="runCompareBtn">Run comparison</button></div>
+        <div class="panel-head"><div><h2>Observed vs modelled scatter</h2><p>Generate a direct observed-versus-modelled scatter using the complete common series by default. Bounded interpolation never bridges gaps longer than the configured maximum.</p></div><button class="btn primary" id="runCompareBtn">Generate scatter</button></div>
         <div class="mapping-grid compact-wide">
-          <label>Analysis start<input id="analysisStart" type="datetime-local" /></label>
-          <label>Analysis end<input id="analysisEnd" type="datetime-local" /></label>
+          <label>Analysis start (optional)<input id="analysisStart" type="datetime-local" /><small>Leave blank for the complete common series.</small></label>
+          <label>Analysis end (optional)<input id="analysisEnd" type="datetime-local" /><small>Leave blank for the complete common series.</small></label>
           <label>Preview model time offset (min)<input id="offsetInput" type="number" value="0" step="1" /></label>
           <label>Scatter scale<select id="scatterScale"><option value="linear">Linear</option><option value="log">Log (positive pairs only)</option></select></label>
         </div>
@@ -102,7 +106,6 @@
         <div class="metric-grid" id="metricGrid"></div><div id="comparisonMethodNote" class="pool-summary"></div>
         <div class="two-col"><div id="scatterChart" class="chart small"></div><div id="residualChart" class="chart small"></div></div>
         <div class="two-col"><div id="cumulativeChart" class="chart small"></div><div id="exceedanceChart" class="chart small"></div></div>
-        <h3>Scenario table</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Scenario</th><th>Pairs</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Log filtered</th><th>Valid support</th></tr></thead><tbody id="scenarioBody"></tbody></table></div>
 
         <div class="subpanel"><div class="subhead"><div><h3>Depth / level agreement and flow–depth rating diagnostics</h3><p class="appearance-hint">For agreement, select like-for-like vertical quantities: Depth ↔ Depth or absolute Level ↔ absolute Level. Depth and absolute Level are not interchangeable. Add the corresponding flow channels to fit empirical hydraulic Q = aHᵇ rating curves.</p></div><button class="btn" id="runRatingBtn">Fit selected diagnostic</button></div>
           <div class="mapping-grid compact-wide">
