@@ -1631,9 +1631,17 @@ try{
   await page.selectOption('#ratingObsDepth',od);await page.selectOption('#ratingObsDepthUnit','m');await page.selectOption('#ratingObsFlow','');
   await page.selectOption('#ratingObsFlowUnit','m3/s');await page.selectOption('#ratingModelDepth',md);await page.selectOption('#ratingModelDepthUnit','m');
   await page.selectOption('#ratingModelFlow','');await page.selectOption('#ratingModelFlowUnit','m3/s');
+  await page.waitForTimeout(500);
+  const optionalRatingFlows=await page.evaluate(()=>({
+    observed:document.querySelector('#ratingObsFlow')?.value||'',
+    modelled:document.querySelector('#ratingModelFlow')?.value||'',
+  }));
+  if(optionalRatingFlows.observed||optionalRatingFlows.modelled)throw new Error('Explicitly cleared optional rating-flow inputs must remain clear for depth-only agreement: '+JSON.stringify(optionalRatingFlows));
   await page.click('#runRatingBtn');
   await page.waitForFunction(()=>document.querySelector('#ratingSummary')?.textContent.includes('Valid paired points'),null,{timeout:60000});
   await page.waitForFunction(()=>document.querySelector('#ratingChart')?.data?.length>=3,null,{timeout:60000});
+  const depthOnlyRatingKind=await page.evaluate(()=>state.rating?.kind||null);
+  if(depthOnlyRatingKind!=='depth-agreement')throw new Error('Cleared optional flow inputs must execute the depth-agreement path, got '+JSON.stringify(depthOnlyRatingKind));
 
   stage='flow-depth rating';
   await precisionRoute('verification','rating');
