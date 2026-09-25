@@ -23,6 +23,31 @@ try{
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const surveyTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
   if(surveyTabs.join('|')!=='FDV Check|Rainfall Check|Volume Balance')throw new Error('Flow Survey subtab order mismatch: '+JSON.stringify(surveyTabs));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
+  const dataTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
+  if(dataTabs.join('|')!=='Time Series')throw new Error('Data workspace must be one continuous Time Series workflow: '+JSON.stringify(dataTabs));
+  const unifiedData=await page.evaluate(()=>{
+    const visible=el=>Boolean(el)&&!el.hidden&&el.getClientRects().length>0&&getComputedStyle(el).display!=='none';
+    return {
+      setup:visible(document.querySelector('#pwDataSetupSurface')),
+      sources:visible(document.querySelector('.source-panel')),
+      mapping:visible(document.querySelector('.mapping-panel')),
+      graph:visible(document.querySelector('#timeChart')),
+      standaloneEvents:visible(document.querySelector('#pwTimeSeriesEventSurface')),
+      eventParent:document.querySelector('#runRainEventsBtn')?.closest('#pwTimeSeriesEventSurface')?.id||null,
+    };
+  });
+  if(!unifiedData.setup||!unifiedData.sources||!unifiedData.mapping||!unifiedData.graph||!unifiedData.standaloneEvents||unifiedData.eventParent!=='pwTimeSeriesEventSurface')throw new Error('Upload → assign → graph → standalone WAPUG must share the Data / Time Series workspace: '+JSON.stringify(unifiedData));
+  const wapugPresets=await page.evaluate(()=>{
+    const select=document.querySelector('#rainCriteriaMode');
+    const values=[...select.options].map(x=>x.value);
+    select.value='wapug-under50';select.dispatchEvent(new Event('change',{bubbles:true}));
+    const under=window.__ICM_WORKBENCH__.appliedRainCriteria?.();
+    select.value='wapug';select.dispatchEvent(new Event('change',{bubbles:true}));
+    const over=window.__ICM_WORKBENCH__.appliedRainCriteria?.();
+    return {values,under,over};
+  });
+  if(wapugPresets.values.join('|')!=='wapug|wapug-under50|manual'||wapugPresets.under?.minimum_intensity_duration_min!==4||wapugPresets.under?.minimum_event_duration_min!==30||wapugPresets.over?.minimum_intensity_duration_min!==6||wapugPresets.over?.minimum_event_duration_min!==60)throw new Error('Standalone WAPUG population presets are incorrect: '+JSON.stringify(wapugPresets));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation',false));
   const reportTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
   if(reportTabs[0]!=='Report Generation')throw new Error('Reports must land on Report Generation first: '+JSON.stringify(reportTabs));
@@ -96,6 +121,42 @@ try{
     rawInsideDetails:Boolean(document.querySelector('#pwDataHealthDetails #healthBody')),
   }));
   if(!healthComposition.summaryVisible||!healthComposition.rawInsideDetails)throw new Error('FDV Check summary/detail composition is incomplete: '+JSON.stringify(healthComposition));
+
+  const reviewLayer=await page.evaluate(()=>{
+    const survey=window.__ICM_WORKBENCH__.survey;
+    survey.batch={monitors:[{monitor:'SM-Overflow',status:'complete',rain_gauge:'RG01',diameter_mm:600,weekly:{weeks:[{week_ending:'2026-09-06',rag:'Red',decision_path:'Automated low-response flag'}]},event_response:{rows:[]},contracts:{}}],network:{gauge_count:1,gauge_summary:[],candidate_wapug_events:[],qualified_wapug_events:[]},volume_balance:{rows:[],summary:{Green:0,Amber:0,Red:0,Grey:0}},analysis_controls:{}};
+    window.__ICM_WORKBENCH__.workflow26.render();
+    let missingReason=false;
+    try{window.__ICM_WORKBENCH__.workflow26.applyMonitorReview('SM-Overflow','Green','','AS');}catch{missingReason=true;}
+    window.__ICM_WORKBENCH__.workflow26.applyMonitorReview('SM-Overflow','Green','Monitor installed on overflow link; intermittent response is expected.','AS');
+    const current=window.__ICM_WORKBENCH__.workflow26.reviewedMonitorState(survey.batch.monitors[0]);
+    survey.batch.monitors[0].weekly.weeks[0].rag='Amber';
+    window.__ICM_WORKBENCH__.workflow26.render();
+    const changed=window.__ICM_WORKBENCH__.workflow26.reviewedMonitorState(survey.batch.monitors[0]);
+    const retained={...survey.reviews['monitor:SM-Overflow']};
+    window.__ICM_WORKBENCH__.workflow26.revertMonitorReview('SM-Overflow');
+    return {
+      missingReason,
+      current,
+      changed,
+      retained,
+      headerVisible:Boolean(document.querySelector('#surveyReviewHeader')?.getClientRects().length),
+      monitorDetail:Boolean(document.querySelector('#surveyMonitorDetail')),
+    };
+  });
+  if(!reviewLayer.missingReason||!reviewLayer.current.review_current||reviewLayer.current.reviewed!=='Green'||reviewLayer.changed.review_current||reviewLayer.changed.reviewed!=='Amber'||!reviewLayer.retained.reason||!reviewLayer.headerVisible||!reviewLayer.monitorDetail)throw new Error('Engineer review / stale-review safeguards failed: '+JSON.stringify(reviewLayer));
+
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','rainfall-check',false));
+  const rainfallSeparation=await page.evaluate(()=>{
+    const visible=el=>Boolean(el)&&!el.hidden&&el.getClientRects().length>0&&getComputedStyle(el).display!=='none';
+    return {
+      flowSurveyRain:visible(document.querySelector('#surveyRainfallReview')),
+      statusHeader:visible(document.querySelector('#surveyReviewHeader')),
+      standaloneTimeSeriesEvents:visible(document.querySelector('#pwTimeSeriesEventSurface')),
+    };
+  });
+  if(!rainfallSeparation.flowSurveyRain||!rainfallSeparation.statusHeader||rainfallSeparation.standaloneTimeSeriesEvents)throw new Error('Flow Survey rainfall and standalone Time Series WAPUG state/surfaces are not separated: '+JSON.stringify(rainfallSeparation));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const typeScale=await page.evaluate(()=>({
     title:Number.parseFloat(getComputedStyle(document.querySelector('.pw-page-title')).fontSize),
     section:Number.parseFloat(getComputedStyle(document.querySelector('.panel-head h2')).fontSize),
@@ -128,9 +189,9 @@ try{
   if(stylesheetRhythmFailures.length)throw new Error('Precision stylesheet contains spacing outside the 8px base / 4px micro rhythm: '+JSON.stringify(stylesheetRhythmFailures));
 
   const primaryRoutes=[
-    ['survey','fdv-check','runHealthBtn'],
-    ['survey','volume-balance','runSurveyBalanceBtn'],
-    ['survey','rainfall-check','runRainEventsBtn'],
+    ['survey','fdv-check','runCompleteSurveyBtn'],
+    ['survey','volume-balance','runCompleteSurveyBtn'],
+    ['survey','rainfall-check','runCompleteSurveyBtn'],
     ['graphs','comparison','runCompareBtn'],
     ['graphs','rating','runRatingBtn'],
     ['graphs','dwf','runDwfBtn'],
@@ -169,7 +230,7 @@ try{
     };
     return [
       inspect('data','time-series','#tab-graph>.panel'),
-      inspect('survey','rainfall-check','#tab-rain-events>.panel'),
+      inspect('survey','rainfall-check','#surveyRainfallReview'),
       inspect('graphs','comparison','#tab-compare>.panel'),
       inspect('spills','storage','#tab-storage>.panel'),
       inspect('spills','assessment','#tab-spills>.panel'),
@@ -228,7 +289,7 @@ try{
   await page.goBack({waitUntil:'commit'});
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().workspace==='survey'&&window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='rainfall-check');
   await page.goBack({waitUntil:'commit'});
-  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().workspace==='data'&&window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='sources');
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().workspace==='data'&&window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='time-series');
   await page.goForward({waitUntil:'commit'});
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().workspace==='survey'&&window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='rainfall-check');
 
