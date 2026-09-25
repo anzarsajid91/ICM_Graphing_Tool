@@ -1064,6 +1064,36 @@ try{
   if(classifiedThresholdState.hidden||classifiedThresholdState.disabled||!classifiedThresholdState.context.includes('Absolute level'))throw new Error('Explicit generic-series Level classification must enable the modelled hydraulic threshold: '+JSON.stringify(classifiedThresholdState));
   await page.fill('#graphModelThreshold','2.0');
   await page.waitForFunction(()=>{const chart=document.querySelector('#timeChart');return (chart?.layout?.shapes||[]).some(s=>s.type==='line'&&s.yref==='y'&&Math.abs(Number(s.y0)-2.0)<1e-9);},null,{timeout:60000});
+
+  stage='multiple generic model files expose independent interpretation controls';
+  await precisionRoute('data','series-mapping');
+  await page.setInputFiles('#fileInput',{name:'generic-model-2.csv',mimeType:'text/csv',buffer:genericPayload});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('generic-model-2.csv')&&row.textContent.includes('Ready')),null,{timeout:60000});
+  const genericModel2=await optionValue('#modelSelect','generic-model-2.csv — Value');
+  if(!genericModel2)throw new Error('Second generic model file was not exposed as a mappable numeric series.');
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select').length===2,null,{timeout:30000});
+  const genericRowsBeforeSecondMapping=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].map(row=>row.textContent));
+  if(!genericRowsBeforeSecondMapping.some(text=>text.includes('generic-model.csv — Value'))||!genericRowsBeforeSecondMapping.some(text=>text.includes('generic-model-2.csv — Value'))){
+    throw new Error('Every loaded generic source must receive its own interpretation control before mapping: '+JSON.stringify(genericRowsBeforeSecondMapping));
+  }
+  await page.selectOption('#modelSelect',[genericModel,genericModel2]);
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select').length===2&&[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].every(row=>row.textContent.includes('Model')));
+  await page.evaluate(key=>{
+    const select=[...document.querySelectorAll('#seriesSemanticsRows select')].find(node=>node.dataset.seriesQuantityKey===key);
+    if(!select)throw new Error('Second generic model interpretation selector is missing.');
+    select.value='level';
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+  },genericModel2);
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level'),null,{timeout:30000});
+  const independentSemantics=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select')].map(select=>({key:select.dataset.seriesQuantityKey,value:select.value})));
+  if(independentSemantics.length!==2||independentSemantics.some(row=>row.value!=='level')){
+    throw new Error('Generic model interpretation must remain independent for every loaded file: '+JSON.stringify(independentSemantics));
+  }
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&!document.querySelector('#applyMappingBtn')?.disabled,null,{timeout:60000});
+  await precisionRoute('data','time-series');
+  await page.waitForFunction(()=>((document.querySelector('#timeChart')?.data||[]).filter(trace=>/^Simulated:/.test(String(trace.name||''))).length===2),null,{timeout:60000});
+
   await precisionRoute('data','sources');
   await page.click('#clearPoolBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0);
