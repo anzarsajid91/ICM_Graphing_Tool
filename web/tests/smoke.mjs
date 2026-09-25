@@ -1466,12 +1466,14 @@ try{
   const fullSeriesComparison=await page.evaluate(()=>({
     start:document.querySelector('#analysisStart')?.value||'',
     end:document.querySelector('#analysisEnd')?.value||'',
-    title:document.querySelector('#scatterChart')?._fullLayout?.title?.text||document.querySelector('#scatterChart')?.layout?.title?.text||document.querySelector('#scatterChart')?.layout?.title||'',
+    snapshotStart:state.comparisonSnapshot?.config?.analysis?.analysis_start??null,
+    snapshotEnd:state.comparisonSnapshot?.config?.analysis?.analysis_end??null,
+    pairedCount:Number(state.comparisonSnapshot?.results?.[0]?.result?.metrics?.pairs||0),
     tableTab:document.querySelector('#scenarioBody')?.closest('.tab-panel')?.id||null,
     tableHeaders:[...document.querySelectorAll('#timeSeriesScenarioTable thead th')].map(x=>x.textContent.trim()),
   }));
-  if(fullSeriesComparison.start||fullSeriesComparison.end||!fullSeriesComparison.title.includes('full common support')){
-    throw new Error('Blank comparison dates must use the complete common observed/modelled series: '+JSON.stringify(fullSeriesComparison));
+  if(fullSeriesComparison.start||fullSeriesComparison.end||fullSeriesComparison.snapshotStart!==null||fullSeriesComparison.snapshotEnd!==null||fullSeriesComparison.pairedCount<1){
+    throw new Error('Blank comparison dates must execute against the complete common observed/modelled series: '+JSON.stringify(fullSeriesComparison));
   }
   if(fullSeriesComparison.tableTab!=='tab-graph'||!fullSeriesComparison.tableHeaders.includes('Observed mean')||!fullSeriesComparison.tableHeaders.includes('Modelled peak')){
     throw new Error('Scenario comparison values must live under the main Time Series graph with observed/modelled values: '+JSON.stringify(fullSeriesComparison));
