@@ -1023,27 +1023,46 @@ function comparisonQuantityMismatch(observed,model){
   const name=q=>q==='level'?'absolute Level':q.charAt(0).toUpperCase()+q.slice(1);
   return `Observed ${name(observedQuantity)} cannot be compared directly with modelled ${name(modelQuantity)}. Depth and absolute Level remain distinct. Map like-for-like series, or explicitly reclassify a generic Value channel only when its source meaning supports that classification.`;
 }
-async function runCompare(){
+let comparisonCalculation=null;
+async function ensureComparisonResults(){
   const obs=mappingObject(state.mapping.observed),models=currentModels();
   if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');
-  const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();
-  state.comparisons=[];
-  for(const m of models){
-    const mismatch=comparisonQuantityMismatch(obs,m);
-    if(mismatch){state.comparisons.push({model:m,error:mismatch});continue;}
-    try{
-      state.comparisons.push({model:m,result:await engine.call('compare_series',{
-        obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,
-        max_gap_seconds:gap,offset_minutes:offset,...bounds,
-        exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])
-      })});
-    }catch(err){
-      state.comparisons.push({model:m,error:conciseErrorMessage(err)});
-    }
+  const signature=analysisSignature();
+  if(state.comparisonSnapshot?.signature===signature&&(state.comparisons||[]).length)return;
+  if(comparisonCalculation?.signature===signature){
+    await comparisonCalculation.promise;
+    return;
   }
-  if(signature!==analysisSignature()){state.comparisons=[];throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');}
+  const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),config=workspaceObject();
+  const promise=(async()=>{
+    const results=[];
+    for(const m of models){
+      const mismatch=comparisonQuantityMismatch(obs,m);
+      if(mismatch){results.push({model:m,error:mismatch});continue;}
+      try{
+        results.push({model:m,result:await engine.call('compare_series',{
+          obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,
+          max_gap_seconds:gap,offset_minutes:offset,...bounds,
+          exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])
+        })});
+      }catch(err){
+        results.push({model:m,error:conciseErrorMessage(err)});
+      }
+    }
+    if(signature!==analysisSignature())throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');
+    state.comparisons=results;
+    state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(results.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};
+  })();
+  comparisonCalculation={signature,promise};
+  try{
+    await promise;
+  }finally{
+    if(comparisonCalculation?.promise===promise)comparisonCalculation=null;
+  }
+}
+async function runCompare(){
+  await ensureComparisonResults();
   await renderComparisons();
-  state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};
   window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
 }
 async function ensureTimeSeriesComparisonMetrics(){
@@ -1053,12 +1072,8 @@ async function ensureTimeSeriesComparisonMetrics(){
     window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
     return;
   }
-  const signature=analysisSignature();
-  if(state.comparisonSnapshot?.signature===signature&&(state.comparisons||[]).length){
-    window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
-    return;
-  }
-  await runCompare();
+  await ensureComparisonResults();
+  window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
 }
 window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics=ensureTimeSeriesComparisonMetrics;
 const metricCard=(k,v,reason='')=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${reason?`<small>${esc(reason)}</small>`:''}</div>`;
