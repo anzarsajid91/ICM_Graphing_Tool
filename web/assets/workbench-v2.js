@@ -706,7 +706,8 @@
     const hasObserved=Boolean(state.mapping.observed),hasModels=Boolean((state.mapping.models||[]).length);
     panel.hidden=!(hasObserved&&hasModels);
     if(panel.hidden){target.innerHTML='';return;}
-    const comparisons=state.comparisons||[];
+    const currentSignature=analysisSignature();
+    const comparisons=state.comparisonSnapshot?.signature===currentSignature?(state.comparisons||[]):[];
     if(!comparisons.length){
       target.innerHTML='<div class="v2-empty">Calibration statistics are calculated automatically from the complete common series unless an analysis period has been explicitly set.</div>';
       return;
