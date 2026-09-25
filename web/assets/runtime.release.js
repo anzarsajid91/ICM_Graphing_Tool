@@ -71,6 +71,15 @@ function seriesQuantity(item,col){
   const key=item?.id?sourceKey(item.id,col):'';
   return (key&&state.seriesQuantityOverrides.get(key))||declaredSeriesQuantity(item,col);
 }
+function seriesQuantityIsAuthoritative(item,col){
+  const format=String(item?.parsed?.format||'').toLowerCase();
+  // Generic/tabular CSV quantity is inferred from column/file names by the
+  // parser. Treat that as a helpful default, not an authoritative engineering
+  // declaration, so every observed/model CSV series remains independently
+  // user-interpretable. Native structured formats retain their declared meaning.
+  if(format==='tabular_csv')return false;
+  return Boolean(declaredSeriesQuantity(item,col));
+}
 function seriesUnit(item,col){
   const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
   return detail.canonical_unit||metadata.canonical_unit||detail.original_unit||metadata.original_unit||null;
@@ -484,9 +493,9 @@ function genericSeriesSemanticsRows(){
     if(!mapped)continue;
     const declared=declaredSeriesQuantity(mapped.item,mapped.col);
     const overridden=state.seriesQuantityOverrides.has(key);
-    if(declared&&!overridden)continue;
+    if(seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden)continue;
     seen.add(key);
-    rows.push({role:roleFor(key),key,mapped,quantity:state.seriesQuantityOverrides.get(key)||''});
+    rows.push({role:roleFor(key),key,mapped,quantity:state.seriesQuantityOverrides.get(key)||declared||''});
   }
   return rows;
 }
@@ -516,8 +525,8 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true}={}){
   const mapped=mappingObject(key);
   if(!mapped)throw new Error('The selected generic series is no longer available.');
   const declared=declaredSeriesQuantity(mapped.item,mapped.col);
-  if(declared&&!state.seriesQuantityOverrides.has(key)&&String(declared).toLowerCase()!==String(quantity||'').toLowerCase()){
-    throw new Error('Quantity overrides are only available for unresolved generic series.');
+  if(seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!state.seriesQuantityOverrides.has(key)&&String(declared||'').toLowerCase()!==String(quantity||'').toLowerCase()){
+    throw new Error('Quantity overrides are not available for sources with authoritative native quantity metadata.');
   }
   const requested=quantity?String(quantity).toLowerCase():null;
   await engine.call('set_series_quantity',{path:mapped.item.virtualPath,column:mapped.col,quantity:requested});
