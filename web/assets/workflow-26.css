@@ -2,8 +2,7 @@
 .pw-data-setup-surface{margin:0 0 16px;padding:0;border:0;background:transparent}
 .pw-data-setup-surface>.pw-surface-head{margin-bottom:12px}
 .pw-data-setup-surface .pw-embedded-panel{margin:0 0 12px;box-shadow:none;border-color:var(--pw-border,#dfe5ea)}
-.pw-data-setup-surface .pw-data-source-panel .panel-head h2::before{content:"1. "}
-.pw-data-setup-surface .pw-data-mapping-panel .panel-head h2::before{content:"2. "}
+
 .pw-timeseries-event-surface{margin-top:16px;border:1px solid var(--pw-border,#dfe5ea);border-radius:12px;background:#fff;overflow:hidden}
 .pw-timeseries-event-surface>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;cursor:pointer;list-style:none}
 .pw-timeseries-event-surface>summary::-webkit-details-marker{display:none}
