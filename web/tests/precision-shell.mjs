@@ -128,6 +128,8 @@ try{
     const survey=window.__ICM_WORKBENCH__.survey;
     survey.balance=null;
     survey.reviews={};
+    survey.batchSignature='survey-sig-a';
+    survey.balanceSignature='balance-sig-a';
     const balanceRow={week_ending:'2026-09-06',downstream_monitor:'FM03',upstream_monitors:['FM01','FM02'],rag:'Red',balance_ratio:1.42,recommendation:'Investigate FM03 and upstream support.'};
     survey.batch={
       monitors:[{monitor:'SM-Overflow',status:'complete',rain_gauge:'RG01',diameter_mm:600,weekly:{weeks:[{week_ending:'2026-09-06',rag:'Red',decision_path:'Automated low-response flag'}]},event_response:{rows:[]},contracts:{}}],
@@ -150,6 +152,12 @@ try{
     const gaugeCurrent=window.__ICM_WORKBENCH__.workflow26.reviewedGaugeState(survey.batch.network.gauge_summary[0]);
     const balanceCurrent=window.__ICM_WORKBENCH__.workflow26.reviewedBalanceState(balanceRow);
 
+    survey.batchSignature='survey-sig-b';
+    survey.balanceSignature='balance-sig-b';
+    const monitorSignatureChanged=window.__ICM_WORKBENCH__.workflow26.reviewedMonitorState(survey.batch.monitors[0]);
+    const gaugeSignatureChanged=window.__ICM_WORKBENCH__.workflow26.reviewedGaugeState(survey.batch.network.gauge_summary[0]);
+    const balanceSignatureChanged=window.__ICM_WORKBENCH__.workflow26.reviewedBalanceState(balanceRow);
+
     survey.batch.monitors[0].weekly.weeks[0].rag='Amber';
     survey.batch.network.gauge_summary[0].status='Green';
     balanceRow.rag='Amber';
@@ -167,6 +175,7 @@ try{
     return {
       monitorMissingReason,gaugeMissingReason,
       monitorCurrent,gaugeCurrent,balanceCurrent,
+      monitorSignatureChanged,gaugeSignatureChanged,balanceSignatureChanged,
       monitorChanged,gaugeChanged,balanceChanged,retained,
       headerVisible:Boolean(document.querySelector('#surveyReviewHeader')?.getClientRects().length),
       monitorDetail:Boolean(document.querySelector('#surveyMonitorDetail')),
@@ -179,6 +188,9 @@ try{
     !reviewLayer.monitorCurrent.review_current||reviewLayer.monitorCurrent.reviewed!=='Green'||
     !reviewLayer.gaugeCurrent.review_current||reviewLayer.gaugeCurrent.reviewed!=='Green'||
     !reviewLayer.balanceCurrent.review_current||reviewLayer.balanceCurrent.reviewed!=='Amber'||
+    reviewLayer.monitorSignatureChanged.review_current||reviewLayer.monitorSignatureChanged.reviewed!=='Red'||
+    reviewLayer.gaugeSignatureChanged.review_current||reviewLayer.gaugeSignatureChanged.reviewed!=='Amber'||
+    reviewLayer.balanceSignatureChanged.review_current||reviewLayer.balanceSignatureChanged.reviewed!=='Red'||
     reviewLayer.monitorChanged.review_current||reviewLayer.monitorChanged.reviewed!=='Amber'||
     reviewLayer.gaugeChanged.review_current||reviewLayer.gaugeChanged.reviewed!=='Green'||
     reviewLayer.balanceChanged.review_current||reviewLayer.balanceChanged.reviewed!=='Amber'||
