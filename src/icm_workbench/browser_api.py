@@ -95,13 +95,15 @@ def parse_source(path):
 
 
 def set_series_quantity(path, column, quantity=None):
-    """Apply an explicit user quantity to an otherwise-generic numeric series.
+    """Set user interpretation for editable generic/tabular series.
 
-    The parser deliberately does not guess that a column named Value is a
-    hydraulic level, flow, depth or velocity. Browser mapping can call this
-    only for unresolved series after the user explicitly assigns the meaning.
-    Units remain unresolved unless the source itself declares them.
+    Tabular CSV quantity names are parser-inferred defaults and may be
+    reinterpreted by the engineer. Native structured formats retain their
+    authoritative declared quantity. Any prior canonical scaling is reversed
+    before a new quantity/unit contract is applied, so cross-dimension
+    reinterpretation never silently reuses an incompatible conversion.
     """
+    path = str(path)
     parsed = _load(path)
     column = str(column)
     if column == "timestamp" or column not in parsed.frame.columns:
@@ -109,42 +111,136 @@ def set_series_quantity(path, column, quantity=None):
     allowed = {"depth", "level", "flow", "velocity", "rainfall"}
     requested = None if quantity in (None, "") else str(quantity).strip().lower()
     if requested is not None and requested not in allowed:
-        raise ValueError(f"Unsupported series quantity {quantity!r}; expected one of {sorted(allowed)}.")
+        raise ValueError(
+            f"Unsupported series quantity {quantity!r}; expected one of {sorted(allowed)}."
+        )
 
     metadata = parsed.metadata if isinstance(parsed.metadata, dict) else {}
     parsed.metadata = metadata
     series_metadata = metadata.setdefault("series_metadata", {})
     details = series_metadata.setdefault(column, {})
     quantity_by_column = metadata.setdefault("quantity_by_column", {})
-    existing_source = details.get("quantity_source")
+    existing_source = str(details.get("quantity_source") or "").strip().lower() or None
     existing = (
         details.get("quantity")
         or quantity_by_column.get(column)
         or _column_quantity_hint(column)
         or metadata.get("quantity")
     )
-    if existing and existing_source != "user" and requested != str(existing).lower():
+    existing = None if existing in (None, "") else str(existing).strip().lower()
+
+    tabular_editable = str(getattr(parsed, "format_name", "")).lower() == "tabular_csv"
+    editable_source = existing_source in {"user", "inferred", "unresolved"} or (
+        tabular_editable and existing_source is None
+    )
+    if existing and not editable_source:
+        if requested == existing:
+            return json.dumps(
+                _jsonable(
+                    {
+                        "column": column,
+                        "quantity": existing,
+                        "unit": details.get("canonical_unit")
+                        or metadata.get("canonical_unit")
+                        or details.get("original_unit")
+                        or metadata.get("original_unit"),
+                        "canonical_unit": details.get("canonical_unit")
+                        or metadata.get("canonical_unit"),
+                        "original_unit": details.get("original_unit")
+                        or metadata.get("original_unit"),
+                        "conversion_factor": details.get("conversion_factor")
+                        if details.get("conversion_factor") is not None
+                        else metadata.get("conversion_factor"),
+                        "unit_status": details.get("unit_status")
+                        or metadata.get("unit_status")
+                        or "resolved",
+                        "quantity_source": existing_source or "declared",
+                    }
+                ),
+                ensure_ascii=False,
+            )
         raise ValueError(
             f"Series {column!r} already has declared quantity {existing!r}; "
-            "user quantity overrides are only allowed for unresolved generic series."
+            "user quantity overrides are only allowed for inferred or unresolved generic series."
         )
 
-    if requested is None:
-        if existing_source == "user":
-            details.pop("quantity", None)
-            details.pop("quantity_source", None)
-            quantity_by_column[column] = None
+    # Keep the parser's original inference so clearing a user override restores
+    # the helpful default rather than converting an inferred CSV into a new
+    # permanent declaration.
+    inferred_quantity = details.get("inferred_quantity")
+    if inferred_quantity in (None, "") and existing_source == "inferred":
+        inferred_quantity = existing
+        details["inferred_quantity"] = inferred_quantity
+    target_quantity = requested if requested is not None else inferred_quantity
+    target_quantity = (
+        None
+        if target_quantity in (None, "")
+        else str(target_quantity).strip().lower()
+    )
+
+    values = pd.to_numeric(parsed.frame[column], errors="coerce")
+    current_factor = details.get("conversion_factor")
+    try:
+        current_factor = float(current_factor)
+        if not np.isfinite(current_factor) or abs(current_factor) <= 1e-30:
+            current_factor = None
+    except (TypeError, ValueError):
+        current_factor = None
+
+    # parse_tabular_csv stores canonicalised values when a defensible unit was
+    # inferred. Recover original source values before applying a new semantic
+    # contract; this makes repeated Flow↔Depth↔Level reclassification stable.
+    original_values = values / current_factor if current_factor is not None else values
+    original_unit = details.get("original_unit")
+    if target_quantity and original_unit:
+        canonical, factor = canonical_unit(target_quantity, original_unit)
     else:
-        details["quantity"] = requested
-        details["quantity_source"] = "user"
-        quantity_by_column[column] = requested
-    return json.dumps(_jsonable({
-        "column": column,
-        "quantity": requested,
-        "unit": details.get("canonical_unit") or details.get("original_unit"),
-        "unit_status": details.get("unit_status") or "unresolved",
-        "quantity_source": "user" if requested else None,
-    }), ensure_ascii=False)
+        canonical, factor = (None, None)
+
+    if canonical is not None and factor is not None:
+        factor = float(factor)
+        parsed.frame[column] = original_values * factor
+        unit_status = "resolved"
+    else:
+        factor = None
+        parsed.frame[column] = original_values
+        unit_status = "unresolved"
+
+    details["quantity"] = target_quantity
+    details["quantity_source"] = "user" if requested is not None else (
+        "inferred" if target_quantity else "unresolved"
+    )
+    details["canonical_unit"] = canonical
+    details["conversion_factor"] = factor
+    details["unit_status"] = unit_status
+    quantity_by_column[column] = target_quantity
+
+    # Series-data/statistics caches contain numeric values. Reclassification can
+    # change canonical scaling, so never serve a pre-override cached frame.
+    for key in [
+        key
+        for key in _SERIES_CACHE
+        if key and key[0] == path and len(key) > 1 and str(key[1]) == column
+    ]:
+        _SERIES_CACHE.pop(key, None)
+
+    return json.dumps(
+        _jsonable(
+            {
+                "column": column,
+                "quantity": target_quantity,
+                "requested_quantity": requested,
+                "unit": canonical or original_unit,
+                "canonical_unit": canonical,
+                "original_unit": original_unit,
+                "conversion_factor": factor,
+                "unit_status": unit_status,
+                "quantity_source": details["quantity_source"],
+                "inferred_quantity": inferred_quantity,
+            }
+        ),
+        ensure_ascii=False,
+    )
 
 def _prepared_series(path, column=None):
     parsed = _load(path)
