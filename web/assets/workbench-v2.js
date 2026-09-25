@@ -885,21 +885,34 @@
         window.__ICM_WORKBENCH__.lastPanelDomains=null;
       }
 
-      // Preserve user zoom/legend state only while the subplot topology is stable.
-      // Rainfall/source removal can renumber y-axes; carrying the previous UI state
-      // across that structural change can leave Plotly with stale axis references.
-      layout.uirevision='icm-reference-plot-v2:'+JSON.stringify({
+      // Preserve user zoom/legend state only while the mapped graph identity and
+      // subplot topology are stable. Rainfall/source removal can renumber y-axes;
+      // carrying state across that structural change would be misleading.
+      const graphIdentity=JSON.stringify({
         observed:state.mapping.observed||null,
         models:[...(state.mapping.models||[])],
         rain:state.mapping.rain||null,
         channel:ui.channelMode,
         panels:panelOrder,
       });
+      layout.uirevision='icm-reference-plot-v2:'+graphIdentity;
+      layout.legend={...(layout.legend||{}),uirevision:layout.uirevision};
       const chartNode=$('timeChart');
+      if(chartNode&&chartNode.__v2GraphIdentity===graphIdentity&&Array.isArray(chartNode.data)){
+        const previousVisibility=new Map(
+          chartNode.data.filter(trace=>trace?.uid).map(trace=>[trace.uid,trace.visible])
+        );
+        for(const trace of traces){
+          if(!trace?.uid||!previousVisibility.has(trace.uid))continue;
+          const visible=previousVisibility.get(trace.uid);
+          if(visible!==undefined)trace.visible=visible;
+        }
+      }
       if(chartNode){chartNode.style.height=layout.height+'px';chartNode.style.minHeight=layout.height+'px';}
       ui.suppressRelayout=true;
       try{
         await Plotly.react('timeChart',traces,layout,plotConfig(graphTitle(multiPanelMode,observedEntries,modelEntries),{modeBarButtonsToAdd:timeGraphModebarButtons(),modeBarButtonsToRemove:['select2d','lasso2d']}));
+        if(chartNode)chartNode.__v2GraphIdentity=graphIdentity;
       }finally{
         ui.suppressRelayout=false;
       }
