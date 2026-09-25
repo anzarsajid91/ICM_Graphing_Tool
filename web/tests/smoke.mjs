@@ -805,11 +805,24 @@ async function verifyPlotlyEngineeringEnhancements(){
         window.__ICM_WORKBENCH__.spillDeviationRag(0,0),
         window.__ICM_WORKBENCH__.spillDeviationRag(0,1),
       ],
+      overlapSupport:{
+        overall:window.__ICM_WORKBENCH__.spillComparisonSupport(
+          {count_status:'definitive',valid_hours:8760,unknown_hours:0,excluded_hours:0,requested_hours:8760},
+          {count_status:'definitive',valid_hours:17520,unknown_hours:0,excluded_hours:0,requested_hours:17520},
+          {requireMask:false}
+        ),
+        sharedYear:window.__ICM_WORKBENCH__.spillComparisonSupport(
+          {count_status:'definitive',valid_hours:8760,unknown_hours:0,excluded_hours:0,requested_hours:8760},
+          {count_status:'definitive',valid_hours:8760,unknown_hours:0,excluded_hours:0,requested_hours:8760},
+          {requireMask:false}
+        ),
+      },
     }));
     if((rag.applied.observed||[]).length!==2||(rag.applied.model||[]).length!==2)throw new Error('Both spill calculations must consume both graph-created exclusions: '+JSON.stringify(rag.applied));
     if(rag.green.length<2)throw new Error('Identical FM01 observed/model results must produce Green count and duration RAG: '+JSON.stringify(rag.green));
     const expected=['Green','Amber','Amber','Red','Green','Red'];
     if(rag.cases.map(x=>x.rag).join('|')!==expected.join('|'))throw new Error('Spill RAG boundary criteria are incorrect: '+JSON.stringify(rag.cases));
+    if(rag.overlapSupport.overall.comparable!==false||rag.overlapSupport.sharedYear.comparable!==true)throw new Error('Annual overlap support must remain independently comparable even when whole-series periods differ: '+JSON.stringify(rag.overlapSupport));
 
     if(probeErrors.length)throw new Error('Plotly/reference enhancement probe errors: '+probeErrors.join(' | '));
     return {referenceFiles:['FM01.fdv','RG01.R'],initial,observedOnly,exclusionState,inspectResult,actions,persisted:{before:persisted,after:persistedAfter},modelState,rag};
@@ -1469,17 +1482,32 @@ try{
     snapshotStart:state.comparisonSnapshot?.config?.analysis?.analysis_start??null,
     snapshotEnd:state.comparisonSnapshot?.config?.analysis?.analysis_end??null,
     pairedCount:Number(state.comparisonSnapshot?.results?.[0]?.result?.metrics?.pairs||0),
-    tableTab:document.querySelector('#scenarioBody')?.closest('.tab-panel')?.id||null,
-    tableHeaders:[...document.querySelectorAll('#timeSeriesScenarioTable thead th')].map(x=>x.textContent.trim()),
+    scenarioTableTab:document.querySelector('#scenarioBody')?.closest('.tab-panel')?.id||null,
+    scenarioHeaders:[...document.querySelectorAll('#scenarioComparisonTable thead th')].map(x=>x.textContent.trim()),
   }));
   if(fullSeriesComparison.start||fullSeriesComparison.end||fullSeriesComparison.snapshotStart!==null||fullSeriesComparison.snapshotEnd!==null||fullSeriesComparison.pairedCount<1){
     throw new Error('Blank comparison dates must execute against the complete common observed/modelled series: '+JSON.stringify(fullSeriesComparison));
   }
-  if(fullSeriesComparison.tableTab!=='tab-graph'||!fullSeriesComparison.tableHeaders.includes('Observed mean')||!fullSeriesComparison.tableHeaders.includes('Modelled peak')){
-    throw new Error('Scenario comparison values must live under the main Time Series graph with observed/modelled values: '+JSON.stringify(fullSeriesComparison));
+  if(fullSeriesComparison.scenarioTableTab!=='tab-compare'||!fullSeriesComparison.scenarioHeaders.includes('Slope')||!fullSeriesComparison.scenarioHeaders.includes('Intercept')){
+    throw new Error('Detailed scenario comparison table must remain in Graphs / Comparison with regression fields: '+JSON.stringify(fullSeriesComparison));
   }
   await precisionRoute('data','time-series');
-  if(!(await page.locator('#timeSeriesScenarioTable').isVisible()))throw new Error('Scenario comparison values table is not visible under Data / Time Series.');
+  await page.waitForFunction(()=> {
+    const panel=document.querySelector('#v2CalibrationMetrics'),body=document.querySelector('#v2CalibrationMetricsBody');
+    return panel&&!panel.hidden&&body?.querySelector('tbody tr')&&/Regression R²/.test(body.textContent)&&/RMSE/.test(body.textContent)&&/NSE/.test(body.textContent);
+  },null,{timeout:60000});
+  const timeSeriesCalibration=await page.evaluate(()=>({
+    scenarioTablePresent:Boolean(document.querySelector('#timeSeriesScenarioTable')),
+    panelVisible:!document.querySelector('#v2CalibrationMetrics')?.hidden,
+    followsPointInspector:document.querySelector('#v2PointInspector')?.nextElementSibling?.id==='v2CalibrationMetrics',
+    headers:[...document.querySelectorAll('#v2CalibrationMetrics thead th')].map(x=>x.textContent.trim()),
+    rows:[...document.querySelectorAll('#v2CalibrationMetrics tbody tr')].map(x=>x.textContent),
+  }));
+  const requiredCalibrationHeaders=['Regression R²','Slope','Intercept','RMSE','MAE','Bias (M−O)','NSE'];
+  if(timeSeriesCalibration.scenarioTablePresent||!timeSeriesCalibration.panelVisible||!timeSeriesCalibration.followsPointInspector||
+     requiredCalibrationHeaders.some(header=>!timeSeriesCalibration.headers.includes(header))||timeSeriesCalibration.rows.length<1){
+    throw new Error('Time Series must show compact model-vs-observed calibration statistics below Point Inspector without copying the scenario table: '+JSON.stringify(timeSeriesCalibration));
+  }
   await precisionRoute('graphs','comparison');
   await captureEvidence('08-graphs-comparison');
 
@@ -2224,10 +2252,20 @@ try{
   await page.fill('#reportYear','2026');
   const fourDownload=await downloadFrom('#downloadFourPeriodBtn');
   const fourReport=await fs.readFile(await fourDownload.path(),'utf8');
-  if(!fourReport.includes('Four-Period Report')||!fourReport.includes('separate rainfall band'))throw new Error('Four-period report methodology/layout note missing');
+  if(!fourReport.includes('Four-Period Report'))throw new Error('Four-period report title missing');
   if((fourReport.match(/class="report-page"/g)||[]).length!==4)throw new Error('Four-period report should contain four print-safe period pages');
   if(!fourReport.includes('A4 landscape'))throw new Error('Four-period report should use landscape print layout');
-  if((fourReport.match(/Period statistics/g)||[]).length!==0)throw new Error('Four-period report should integrate statistics in each Plotly figure rather than duplicate separate tables');
+  for(const unwanted of ['Graph metrics','Native source statistics','Aligned hydraulic panels','Series key','Analysis settings','Source provenance']){
+    if(fourReport.includes(unwanted))throw new Error('Four-period screenshot report contains unwanted explanatory/audit text: '+unwanted);
+  }
+  const firstPeriodMarker='<script type="application/json" id="period-graph-0-data">';
+  const firstPeriodStart=fourReport.indexOf(firstPeriodMarker),firstPeriodEnd=firstPeriodStart>=0?fourReport.indexOf('</script>',firstPeriodStart+firstPeriodMarker.length):-1;
+  if(firstPeriodStart<0||firstPeriodEnd<0)throw new Error('Four-period graph payload missing.');
+  const firstPeriodPayload=JSON.parse(fourReport.slice(firstPeriodStart+firstPeriodMarker.length,firstPeriodEnd));
+  const firstPeriodStats=(firstPeriodPayload.data||[]).find(trace=>trace.type==='table');
+  const firstPeriodHeaders=(firstPeriodStats?.header?.values||[]).map(String);
+  if(JSON.stringify(firstPeriodHeaders)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('Four-period screenshot statistics must contain engineering attributes only: '+JSON.stringify(firstPeriodHeaders));
+  if(!fourReport.includes('displayModeBar:true')||!fourReport.includes("toImageButtonOptions:{format:'png'"))throw new Error('Four-period report must expose Plotly camera export for graph + statistics capture.');
   const fourLayout=await inspectReportHtml(fourReport,4);
   if(fourLayout.headers!==1||fourLayout.figures!==4||fourLayout.zero||fourLayout.overflow>2)throw new Error(`Four-period report visual containment failed: ${JSON.stringify(fourLayout)}`);
   if(await page.locator('#downloadManifestBtn').count()!==0)throw new Error('Standalone provenance CSV export should not be user-facing.');
@@ -2440,8 +2478,10 @@ try{
   if(realFdvPlotStart<0||realFdvPlotEnd<0)throw new Error('Real FDV four-period graph payload missing.');
   const realFdvPlot=JSON.parse(realReport.slice(realFdvPlotStart+realFdvPlotMarker.length,realFdvPlotEnd));
   if(Number(realFdvPlot.layout?.margin?.l||0)<100)throw new Error('Real FDV four-period report left margin is insufficient for hydraulic axis titles: '+JSON.stringify(realFdvPlot.layout?.margin));
-  if(Number(realFdvPlot.layout?.height||0)>600)throw new Error('Real FDV four-period graph is too tall for an intact landscape print page: '+JSON.stringify({height:realFdvPlot.layout?.height}));
-  if((realReport.match(/class="figure period-figure"/g)||[]).length!==4||!realReport.includes('page-break-before:always'))throw new Error('Four-period report is missing explicit graph/metrics print pagination.');
+  const realStatsTrace=(realFdvPlot.data||[]).find(trace=>trace.type==='table');
+  if(!realStatsTrace||JSON.stringify((realStatsTrace.header?.values||[]).map(String))!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('Real FDV four-period report must integrate the compact engineering statistics table into the Plotly capture: '+JSON.stringify(realStatsTrace?.header?.values));
+  if(Number(realFdvPlot.layout?.height||0)<650||Number(realFdvPlot.layout?.height||0)>1200)throw new Error('Real FDV four-period graph/statistics capture height is outside the expected landscape range: '+JSON.stringify({height:realFdvPlot.layout?.height}));
+  if((realReport.match(/class="figure period-figure"/g)||[]).length!==4)throw new Error('Four-period report is missing one or more period figures.');
   const realLayout=await inspectReportHtml(realReport,4);
   if(realLayout.figures!==4||realLayout.zero||realLayout.overflow>2)throw new Error('Real-data report layout failed: '+JSON.stringify(realLayout));
 
