@@ -467,19 +467,27 @@ function preferAdvanced(id,all,predicate){
 
 function genericSeriesSemanticsRows(){
   const rows=[],seen=new Set();
-  const add=(role,key)=>{
-    if(!key||seen.has(key))return;
+  const observedKey=$('observedSelect')?.value||'';
+  const modelKeys=new Set([...($('modelSelect')?.selectedOptions||[])].map(option=>option.value));
+  const rainfallKey=$('rainSelect')?.value||'';
+  const roleFor=key=>{
+    const roles=[];
+    if(key===observedKey)roles.push('Observed');
+    if(modelKeys.has(key))roles.push('Model');
+    if(key===rainfallKey)roles.push('Rainfall');
+    return roles.length?roles.join(' + '):'Available series';
+  };
+  for(const series of allSeries()){
+    const key=series.key||sourceKey(series.item.id,series.col);
+    if(!key||seen.has(key))continue;
     const mapped=mappingObject(key);
-    if(!mapped)return;
+    if(!mapped)continue;
     const declared=declaredSeriesQuantity(mapped.item,mapped.col);
     const overridden=state.seriesQuantityOverrides.has(key);
-    if(declared&&!overridden)return;
+    if(declared&&!overridden)continue;
     seen.add(key);
-    rows.push({role,key,mapped,quantity:state.seriesQuantityOverrides.get(key)||''});
-  };
-  add('Observed',$('observedSelect')?.value||'');
-  for(const option of [...($('modelSelect')?.selectedOptions||[])])add('Model',option.value);
-  add('Rainfall',$('rainSelect')?.value||'');
+    rows.push({role:roleFor(key),key,mapped,quantity:state.seriesQuantityOverrides.get(key)||''});
+  }
   return rows;
 }
 function renderSeriesSemanticsOverrides(){
