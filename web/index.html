@@ -86,10 +86,6 @@
           </div>
         </details>
         <div id="timeChart" class="chart"></div>
-        <section class="subpanel" id="timeSeriesScenarioTable">
-          <div class="subhead"><div><h3>Observed / modelled comparison values</h3><p class="appearance-hint">Populated from the same full-resolution paired values used by the scatter statistics. This review table stays in Time Series and is intentionally excluded from generated reports.</p></div></div>
-          <div class="table-wrap"><table class="data-table"><thead><tr><th>Scenario</th><th>Pairs</th><th>Observed mean</th><th>Modelled mean</th><th>Observed peak</th><th>Modelled peak</th><th>Pearson r</th><th>Regression R²</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Valid support</th></tr></thead><tbody id="scenarioBody"></tbody></table></div>
-        </section>
       </div>
     </section>
 
@@ -106,6 +102,11 @@
         <div class="metric-grid" id="metricGrid"></div><div id="comparisonMethodNote" class="pool-summary"></div>
         <div class="two-col"><div id="scatterChart" class="chart small"></div><div id="residualChart" class="chart small"></div></div>
         <div class="two-col"><div id="cumulativeChart" class="chart small"></div><div id="exceedanceChart" class="chart small"></div></div>
+
+        <section class="subpanel" id="scenarioComparisonTable">
+          <div class="subhead"><div><h3>Scenario comparison</h3><p class="appearance-hint">Detailed observed-versus-modelled calibration statistics for each selected model scenario.</p></div></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Scenario</th><th>Pairs</th><th>Observed mean</th><th>Modelled mean</th><th>Observed peak</th><th>Modelled peak</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Valid support</th></tr></thead><tbody id="scenarioBody"></tbody></table></div>
+        </section>
 
         <div class="subpanel"><div class="subhead"><div><h3>Depth / level agreement and flow–depth rating diagnostics</h3><p class="appearance-hint">For agreement, select like-for-like vertical quantities: Depth ↔ Depth or absolute Level ↔ absolute Level. Depth and absolute Level are not interchangeable. Add the corresponding flow channels to fit empirical hydraulic Q = aHᵇ rating curves.</p></div><button class="btn" id="runRatingBtn">Fit selected diagnostic</button></div>
           <div class="mapping-grid compact-wide">
