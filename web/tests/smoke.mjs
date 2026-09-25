@@ -1463,6 +1463,21 @@ try{
   if(logScatter.points.some(([x,y])=>x<=0||y<=0))throw new Error('Log scatter contains a nonpositive plotted pair: '+JSON.stringify(logScatter));
   await page.selectOption('#scatterScale','linear');
   await page.waitForFunction(()=>document.querySelector('#scatterChart')?.layout?.xaxis?.type==='linear');
+  const fullSeriesComparison=await page.evaluate(()=>({
+    start:document.querySelector('#analysisStart')?.value||'',
+    end:document.querySelector('#analysisEnd')?.value||'',
+    title:document.querySelector('#scatterChart')?.layout?.title?.text||'',
+    tableTab:document.querySelector('#scenarioBody')?.closest('.tab-panel')?.id||null,
+    tableHeaders:[...document.querySelectorAll('#timeSeriesScenarioTable thead th')].map(x=>x.textContent.trim()),
+  }));
+  if(fullSeriesComparison.start||fullSeriesComparison.end||!fullSeriesComparison.title.includes('full common support')){
+    throw new Error('Blank comparison dates must use the complete common observed/modelled series: '+JSON.stringify(fullSeriesComparison));
+  }
+  if(fullSeriesComparison.tableTab!=='tab-graph'||!fullSeriesComparison.tableHeaders.includes('Observed mean')||!fullSeriesComparison.tableHeaders.includes('Modelled peak')){
+    throw new Error('Scenario comparison values must live under the main Time Series graph with observed/modelled values: '+JSON.stringify(fullSeriesComparison));
+  }
+  await precisionRoute('data','time-series');
+  if(!(await page.locator('#timeSeriesScenarioTable').isVisible()))throw new Error('Scenario comparison values table is not visible under Data / Time Series.');
   await precisionRoute('graphs','comparison');
   await captureEvidence('08-graphs-comparison');
 
@@ -1496,6 +1511,43 @@ try{
   if(multiScenario.markers.length!==2||multiScenario.markers.some(x=>x.points<2)||new Set(multiScenario.markers.map(x=>x.colour)).size!==2)throw new Error('Multi-scenario scatter must render two independently styled authoritative pair clouds: '+JSON.stringify(multiScenario));
   if(!multiScenario.rows.some(x=>x.includes(longScenarioName))||multiScenario.documentOverflow>2||!multiScenario.legendWithinPanel)throw new Error('Long multi-scenario legend/table containment failed: '+JSON.stringify(multiScenario));
   await captureEvidence('08b-graphs-multiple-scenarios');
+
+  stage='generic observed/modelled scatter without quantity classification';
+  const genericObsName='generic-observed-values.csv',genericModelName='generic-model-values.csv';
+  const genericObsBytes=Buffer.from('timestamp,Value\n2026-01-01T00:00:00,1.0\n2026-01-01T00:15:00,2.0\n2026-01-01T00:30:00,3.0\n','utf8');
+  const genericModelBytes=Buffer.from('timestamp,Value\n2026-01-01T00:00:00,1.1\n2026-01-01T00:15:00,1.9\n2026-01-01T00:30:00,3.2\n','utf8');
+  await page.setInputFiles('#fileInput',{name:genericObsName,mimeType:'text/csv',buffer:genericObsBytes});
+  await page.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),genericObsName,{timeout:60000});
+  await page.setInputFiles('#fileInput',{name:genericModelName,mimeType:'text/csv',buffer:genericModelBytes});
+  await page.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),genericModelName,{timeout:60000});
+  await precisionRoute('data','series-mapping');
+  const genericObs=await optionValue('#observedSelect',genericObsName+' — Value');
+  const genericModel=await optionValue('#modelSelect',genericModelName+' — Value');
+  if(!genericObs||!genericModel)throw new Error('Generic Value series were not exposed for observed/modelled mapping.');
+  await page.selectOption('#observedSelect',genericObs);
+  await page.selectOption('#modelSelect',[genericModel]);
+  await page.selectOption('#rainSelect','');
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
+  await precisionRoute('graphs','comparison');
+  await page.click('#runCompareBtn');
+  await page.waitForFunction(()=>document.querySelector('#scatterChart')?.data?.some(t=>t.mode==='markers')&&document.querySelector('#metricGrid')?.textContent.includes('Pairs'),null,{timeout:60000});
+  const genericScatter=await page.evaluate(()=>({
+    method:document.querySelector('#comparisonMethodNote')?.textContent||'',
+    xTitle:document.querySelector('#scatterChart')?.layout?.xaxis?.title?.text||'',
+    yTitle:document.querySelector('#scatterChart')?.layout?.yaxis?.title?.text||'',
+    pairs:window.__ICM_WORKBENCH__?.lastComparisonValidity?.population,
+    rows:[...document.querySelectorAll('#scenarioBody tr')].map(row=>row.textContent),
+  }));
+  if(!genericScatter.method.includes('generic numeric values')||!genericScatter.xTitle.includes('unit unresolved')||!genericScatter.yTitle.includes('unit unresolved')||genericScatter.rows.length!==1){
+    throw new Error('Generic Value↔Value scatter workflow failed: '+JSON.stringify(genericScatter));
+  }
+  await precisionRoute('data','series-mapping');
+  await page.selectOption('#observedSelect',obsDepth);
+  await page.selectOption('#modelSelect',[modelDepth]);
+  await page.selectOption('#rainSelect',rain);
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
 
   stage='depth-only agreement fit';
   await precisionRoute('verification','rating');
