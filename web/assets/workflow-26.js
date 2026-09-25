@@ -326,6 +326,20 @@
         $('surveyMonitorDetail')?.scrollIntoView({behavior:'smooth',block:'nearest'});
         return;
       }
+      const gaugeOpen = event.target.closest('[data-w26-gauge]');
+      if (gaugeOpen) {
+        survey.selectedGauge = gaugeOpen.dataset.w26Gauge;
+        renderGaugeDetail();
+        $('surveyGaugeDetail')?.scrollIntoView({behavior:'smooth',block:'nearest'});
+        return;
+      }
+      const balanceOpen = event.target.closest('[data-w26-balance]');
+      if (balanceOpen) {
+        survey.selectedBalanceKey = balanceOpen.dataset.w26Balance;
+        renderBalanceReview();
+        $('surveyBalanceReviewDetail')?.scrollIntoView({behavior:'smooth',block:'nearest'});
+        return;
+      }
       const save = event.target.closest('#surveyReviewApply');
       if (save) {
         const name = save.dataset.monitor;
@@ -342,7 +356,39 @@
         return;
       }
       const revert = event.target.closest('#surveyReviewRevert');
-      if (revert) revertMonitorReview(revert.dataset.monitor);
+      if (revert) {
+        revertMonitorReview(revert.dataset.monitor);
+        return;
+      }
+      const genericSave = event.target.closest('[data-w26-review-apply]');
+      if (genericSave) {
+        const form = genericSave.closest('.w26-inline-review');
+        const kind = form?.dataset.reviewKind;
+        const id = form?.dataset.reviewId;
+        const error = form?.querySelector('.w26-review-error');
+        let calculated = 'Grey';
+        if (kind === 'gauge') calculated = normaliseRag(gaugeByName(id)?.status);
+        if (kind === 'balance') calculated = normaliseRag(balanceRowByKey(id)?.rag);
+        try {
+          applyReview(
+            kind,
+            id,
+            calculated,
+            form?.querySelector('.w26-reviewed-status')?.value || calculated,
+            form?.querySelector('.w26-review-reason-input')?.value || '',
+            form?.querySelector('.w26-reviewer-input')?.value || ''
+          );
+          if (error) error.textContent = '';
+        } catch (err) {
+          if (error) error.textContent = String(err?.message || err);
+        }
+        return;
+      }
+      const genericRevert = event.target.closest('[data-w26-review-revert]');
+      if (genericRevert) {
+        const form = genericRevert.closest('.w26-inline-review');
+        revertReview(form?.dataset.reviewKind, form?.dataset.reviewId);
+      }
     });
 
     const observed = [$('completeSurveySummary'), $('surveyBalanceSummary'), $('surveyAssociationStatus')].filter(Boolean);
