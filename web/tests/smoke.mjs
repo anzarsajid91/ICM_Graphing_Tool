@@ -1466,7 +1466,7 @@ try{
   const fullSeriesComparison=await page.evaluate(()=>({
     start:document.querySelector('#analysisStart')?.value||'',
     end:document.querySelector('#analysisEnd')?.value||'',
-    title:document.querySelector('#scatterChart')?.layout?.title?.text||'',
+    title:document.querySelector('#scatterChart')?._fullLayout?.title?.text||document.querySelector('#scatterChart')?.layout?.title?.text||document.querySelector('#scatterChart')?.layout?.title||'',
     tableTab:document.querySelector('#scenarioBody')?.closest('.tab-panel')?.id||null,
     tableHeaders:[...document.querySelectorAll('#timeSeriesScenarioTable thead th')].map(x=>x.textContent.trim()),
   }));
