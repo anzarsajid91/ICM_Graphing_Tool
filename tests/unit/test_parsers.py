@@ -35,6 +35,8 @@ def test_generic_time_value_csv_is_accepted_without_guessing_quantity(tmp_path:P
     assert list(parsed.frame.columns)==["timestamp","Value"]
     assert parsed.frame["Value"].tolist()==pytest.approx([1.58,1.58,1.47,2.73])
     assert parsed.metadata["quantity_by_column"]["Value"] is None
+    assert parsed.metadata["series_metadata"]["Value"]["quantity_source"]=="unresolved"
+    assert parsed.metadata["series_metadata"]["Value"]["inferred_quantity"] is None
     assert parsed.metadata["series_metadata"]["Value"]["unit_status"]=="unresolved"
     assert parsed.audit["duplicate_timestamps"]==1
     assert parsed.metadata["source_encoding"]=="utf-8"
@@ -51,6 +53,18 @@ def test_generic_time_value_csv_accepts_utf16_excel_style_export(tmp_path:Path):
     parsed=parse_tabular_csv(p)
     assert parsed.frame["Value"].tolist()==pytest.approx([1.58,2.73])
     assert parsed.metadata["source_encoding"]=="utf-16"
+
+
+def test_tabular_csv_marks_name_semantics_as_inferred_not_declared(tmp_path:Path):
+    p=tmp_path/"levels.csv"
+    p.write_text("timestamp,Level (m)\n2026-01-01T00:00:00,1.2\n",encoding="utf-8")
+    parsed=parse_tabular_csv(p)
+    meta=parsed.metadata["series_metadata"]["Level (m)"]
+    assert meta["quantity"]=="level"
+    assert meta["inferred_quantity"]=="level"
+    assert meta["quantity_source"]=="inferred"
+    assert meta["canonical_unit"]=="m"
+    assert meta["unit_status"]=="resolved"
 
 
 def test_csv_day_first_timestamp_still_uses_uk_convention(tmp_path:Path):
