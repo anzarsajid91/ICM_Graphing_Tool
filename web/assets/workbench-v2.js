@@ -736,12 +736,20 @@
     target.innerHTML='<div class="table-wrap"><table class="data-table"><thead><tr><th>Model scenario</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Pearson r</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
 
+  function timeSeriesRouteActive(){
+    const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();
+    if(route)return route.workspace==='data'&&route.page==='time-series';
+    const panel=$('tab-graph');
+    return Boolean(panel&&!panel.hidden&&getComputedStyle(panel).display!=='none');
+  }
+
   function refreshTimeSeriesComparisonMetrics() {
     renderTimeSeriesComparisonMetrics();
     if(ui.timeSeriesComparisonTimer){
       clearTimeout(ui.timeSeriesComparisonTimer);
       ui.timeSeriesComparisonTimer=null;
     }
+    if(!timeSeriesRouteActive())return;
     if(!state.mapping.observed||!(state.mapping.models||[]).length){
       ui.timeSeriesComparisonSignature=null;
       return;
@@ -779,6 +787,14 @@
     },1500);
   }
   window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics=renderTimeSeriesComparisonMetrics;
+  window.addEventListener('icm:route-changed',event=>{
+    const detail=event?.detail||{};
+    if(detail.workspace==='data'&&detail.page==='time-series')refreshTimeSeriesComparisonMetrics();
+    else if(ui.timeSeriesComparisonTimer){
+      clearTimeout(ui.timeSeriesComparisonTimer);
+      ui.timeSeriesComparisonTimer=null;
+    }
+  });
 
   async function v2DrawGraph(range=ui.graphRange,options={}) {
     if (!state.mapping.observed && !(state.mapping.models||[]).length && !state.mapping.rain) {
