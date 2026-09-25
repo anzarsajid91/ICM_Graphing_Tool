@@ -1006,17 +1006,37 @@
     };
     return {valid:hours('valid_hours','valid_seconds'),unknown:hours('unknown_hours','unknown_seconds'),excluded:hours('excluded_hours','excluded_seconds'),requested:hours('requested_hours','requested_seconds')};
   }
-  function spillComparisonSupport(observed,model){
+  function spillExclusionMask(result){
+    return (result?.exclusion_audit||[])
+      .map(row=>[modelClock(row?.start),modelClock(row?.end)])
+      .filter(([start,end])=>start&&end&&end>start)
+      .sort((a,b)=>a[0].localeCompare(b[0])||a[1].localeCompare(b[1]));
+  }
+  function spillComparisonSupport(observed,model,{requireMask=true}={}){
     if(!observed||!model)return {comparable:false,reason:'Both observed and modelled results are required.'};
-    if(String(observed.count_status||observed.status||'')!=='definitive'||String(model.count_status||model.status||'')!=='definitive'){
-      return {comparable:false,reason:'One or both spill results are not definitive because usable temporal support is incomplete.'};
+    const observedStatus=String(observed.count_status||observed.status||'').toLowerCase();
+    const modelStatus=String(model.count_status||model.status||'').toLowerCase();
+    if(observedStatus==='unavailable'||modelStatus==='unavailable'){
+      return {comparable:false,reason:'One or both spill results are unavailable.'};
     }
     const a=spillSupport(observed),b=spillSupport(model),toleranceHours=1/3600;
+    if((Number(a?.unknown)||0)>toleranceHours||(Number(b?.unknown)||0)>toleranceHours){
+      return {comparable:false,reason:'One or both series contain unexcluded unknown coverage; RAG is withheld.'};
+    }
     for(const key of ['valid','unknown','excluded','requested']){
       if(a?.[key]===null||b?.[key]===null)continue;
-      if(Math.abs(a[key]-b[key])>toleranceHours)return {comparable:false,reason:'Observed and modelled assessment support/masks differ; RAG is withheld.'};
+      if(Math.abs(a[key]-b[key])>toleranceHours)return {comparable:false,reason:'Observed and modelled assessment support differs; RAG is withheld.'};
     }
-    return {comparable:true,reason:'Observed and modelled assessment support is aligned.'};
+    if(requireMask){
+      const observedMask=spillExclusionMask(observed),modelMask=spillExclusionMask(model);
+      if(JSON.stringify(observedMask)!==JSON.stringify(modelMask)){
+        return {comparable:false,reason:'Observed and modelled exclusion masks differ; RAG is withheld.'};
+      }
+    }
+    const excludedHours=Math.max(Number(a?.excluded)||0,Number(b?.excluded)||0);
+    return excludedHours>toleranceHours
+      ?{comparable:true,reason:'Observed and modelled use the same deliberate exclusion mask; deviations are compared on matched assessable support.'}
+      :{comparable:true,reason:'Observed and modelled assessment support is aligned.'};
   }
   function spillRagCell(result){
     if(!result?.rag)return '<span class="spill-rag-na">Not comparable</span>';
@@ -1039,7 +1059,10 @@
     const years = [...new Set([...om.keys(),...mm.keys()])].sort((a,b)=>a-b);
     if (!years.length) return summary+'<div class="v2-empty">No annual spill results.</div>';
     const rows=years.map(year=>{
-      const o=om.get(year),m=mm.get(year),support=spillComparisonSupport(o,m);
+      const o=om.get(year),m=mm.get(year),rowSupport=spillComparisonSupport(o,m,{requireMask:false});
+      const support=overallSupport.comparable&&rowSupport.comparable
+        ?rowSupport
+        :{comparable:false,reason:overallSupport.comparable?rowSupport.reason:overallSupport.reason};
       const count=support.comparable?spillDeviationRag(o?.spill_count,m?.spill_count):null;
       const duration=support.comparable?spillDeviationRag(o?.duration_hours,m?.duration_hours):null;
       return `<tr><td>${year}</td><td>${fmt(o?.spill_count,0)}</td><td>${fmt(m?.spill_count,0)}</td><td>${support.comparable?esc(count.label):'—'}</td><td>${spillRagCell(count)}</td><td>${fmt(o?.duration_hours,2)}</td><td>${fmt(m?.duration_hours,2)}</td><td>${support.comparable?esc(duration.label):'—'}</td><td>${spillRagCell(duration)}</td><td title="${esc(support.reason)}">${support.comparable?'Matched':'Not comparable'}</td></tr>`;
