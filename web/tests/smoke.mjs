@@ -22,11 +22,13 @@ page.on('requestfailed',r=>failedRequests.push(`${r.method()} ${r.url()} :: ${r.
 
 async function optionValue(selector,needle){return page.locator(`${selector} option`).evaluateAll((opts,n)=>opts.find(x=>x.textContent.includes(n))?.value||'',needle);}
 const routeAliases={
+  'data/sources':['data','time-series'],
+  'data/series-mapping':['data','time-series'],
   'verification/comparison':['graphs','comparison'],
   'verification/rating':['graphs','rating'],
   'verification/dwf':['graphs','dwf'],
   'verification/storage':['spills','storage'],
-  'rainfall/events':['survey','rainfall-check'],
+  'rainfall/events':['data','time-series'],
   'survey/data-health':['survey','fdv-check'],
   'survey/rainfall-response':['survey','rainfall-check'],
   'survey/flow-continuity':['survey','volume-balance'],
@@ -45,7 +47,7 @@ async function clickTab(name){
   const routes={
     graph:['data','time-series'],
     compare:['graphs','comparison'],
-    'rain-events':['survey','rainfall-check'],
+    'rain-events':['data','time-series'],
     'data-health':['survey','fdv-check'],
     spills:['spills','assessment'],
     storage:['spills','storage'],
@@ -913,7 +915,7 @@ try{
   if(!liveMode){
     const cold=performanceEvidence.coldImport,engineAfterSelection=Number(cold.engineReadyFromNavigationMs)-Number(cold.selectionAtFromNavigationMs);
     if(cold.selectionOutcome!=='graph'||cold.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Cold FastPath preview did not render: '+JSON.stringify(cold));
-    if(cold.previewEvidence?.route?.workspace!=='data'||cold.previewEvidence?.route?.page!=='sources')throw new Error('Cold FastPath preview must not take navigation away from Data / Sources: '+JSON.stringify(cold.previewEvidence?.route));
+    if(cold.previewEvidence?.route?.workspace!=='data'||cold.previewEvidence?.route?.page!=='time-series')throw new Error('Cold FastPath preview must not take navigation away from Data / Time Series: '+JSON.stringify(cold.previewEvidence?.route));
     if(cold.previewEvidence?.engineStatus==='ready'||!(cold.timeToOutcomeMs<engineAfterSelection))throw new Error('Cold FastPath preview did not render before authoritative engine readiness: '+JSON.stringify(cold));
     if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM01 parsing: '+JSON.stringify(cold.finalEvidence));
   }
@@ -938,7 +940,7 @@ try{
     await writePerformanceEvidence();
     const engineAfterSelection=Number(measured.engineReadyFromNavigationMs)-Number(measured.selectionAtFromNavigationMs);
     if(measured.selectionOutcome!=='graph'||measured.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Fresh CSV FastPath preview did not render: '+JSON.stringify(measured));
-    if(measured.previewEvidence?.route?.workspace!=='data'||measured.previewEvidence?.route?.page!=='sources')throw new Error('Fresh FastPath preview must prepare the graph without changing the user-selected Data / Sources page: '+JSON.stringify(measured.previewEvidence?.route));
+    if(measured.previewEvidence?.route?.workspace!=='data'||measured.previewEvidence?.route?.page!=='time-series')throw new Error('Fresh FastPath preview must prepare the graph without changing the user-selected Data / Time Series page: '+JSON.stringify(measured.previewEvidence?.route));
     if(measured.previewEvidence?.engineStatus==='ready'||!(measured.timeToOutcomeMs<engineAfterSelection))throw new Error('Fresh CSV preview did not render before authoritative engine readiness: '+JSON.stringify(measured));
     if(measured.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Fresh CSV FastPath preview did not reconcile exactly: '+JSON.stringify(measured));
     if(measured.archiveMember){
@@ -1220,7 +1222,7 @@ try{
     timer:Boolean(window.__ICM_WORKBENCH__?.uiV2?.timeSeriesComparisonTimer),
     workerDetail:window.__ICM_WORKBENCH__?.worker?.detail||null,
   }));
-  if(mappingRouteCalibration.route?.workspace!=='data'||mappingRouteCalibration.route?.page!=='series-mapping'||mappingRouteCalibration.pending||mappingRouteCalibration.timer||mappingRouteCalibration.workerDetail==='compare_series'){
+  if(mappingRouteCalibration.route?.workspace!=='data'||mappingRouteCalibration.route?.page!=='time-series'||mappingRouteCalibration.pending||mappingRouteCalibration.timer||mappingRouteCalibration.workerDetail==='compare_series'){
     throw new Error('Automatic calibration must not consume the analysis worker while the user remains on Series Mapping: '+JSON.stringify(mappingRouteCalibration));
   }
 
@@ -2229,7 +2231,7 @@ try{
   await page.setInputFiles('#workspaceInput',{name:'workspace-missing-source.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(missingWorkspace))});
   await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('Workspace loaded with unresolved sources.'),null,{timeout:60000});
   const reattachGuidance=(await page.locator('#workspaceStatus').textContent())||'';
-  if(!reattachGuidance.includes('Reattach missing or changed files in Data / Sources')||!reattachGuidance.includes('Not run or Stale'))throw new Error('Missing/changed workspace sources lack actionable reattachment/staleness guidance: '+reattachGuidance);
+  if(!reattachGuidance.includes('Reattach missing or changed files in Data / Time Series')||!reattachGuidance.includes('Not run or Stale'))throw new Error('Missing/changed workspace sources lack actionable reattachment/staleness guidance: '+reattachGuidance);
 
   const beforeUnsupported=await page.evaluate(()=>({mapping:JSON.stringify(state.mapping),files:state.files.size}));
   await page.setInputFiles('#workspaceInput',{name:'unsupported-workspace-v99.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({schema_version:99,navigation:{workspace:'data',page:'sources'}}))});
