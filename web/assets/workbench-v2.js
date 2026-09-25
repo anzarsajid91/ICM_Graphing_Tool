@@ -27,6 +27,7 @@
     timeSeriesComparisonSignature: null,
     timeSeriesComparisonPending: null,
     timeSeriesComparisonTimer: null,
+    timeSeriesComparisonGeneration: 0,
   };
   window.__ICM_WORKBENCH__.uiV2 = ui;
 
@@ -743,15 +744,21 @@
     return Boolean(panel&&!panel.hidden&&getComputedStyle(panel).display!=='none');
   }
 
-  function refreshTimeSeriesComparisonMetrics() {
-    renderTimeSeriesComparisonMetrics();
+  function cancelTimeSeriesComparisonTimer(invalidate=false) {
     if(ui.timeSeriesComparisonTimer){
       clearTimeout(ui.timeSeriesComparisonTimer);
       ui.timeSeriesComparisonTimer=null;
     }
+    if(invalidate)ui.timeSeriesComparisonGeneration+=1;
+  }
+
+  function refreshTimeSeriesComparisonMetrics() {
+    renderTimeSeriesComparisonMetrics();
+    cancelTimeSeriesComparisonTimer(false);
     if(!timeSeriesRouteActive())return;
     if(!state.mapping.observed||!(state.mapping.models||[]).length){
       ui.timeSeriesComparisonSignature=null;
+      ui.timeSeriesComparisonGeneration+=1;
       return;
     }
     const ensure=window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics;
@@ -762,38 +769,62 @@
       renderTimeSeriesComparisonMetrics();
       return;
     }
-    if(ui.timeSeriesComparisonSignature===signature&&ui.timeSeriesComparisonPending)return;
-    ui.timeSeriesComparisonSignature=signature;
+
     const target=$('v2CalibrationMetricsBody');
-    if(target)target.innerHTML='<div class="v2-empty">Calibration statistics will calculate automatically after the graph settles…</div>';
-    // Keep the authoritative comparison automatic, but debounce it so quick
-    // mapping/graph changes are never queued behind an expensive comparison.
-    // Any new graph render clears this timer and replaces it with the latest
-    // mapping signature. Explicit Graphs/Comparison runs remain immediate.
+    ui.timeSeriesComparisonSignature=signature;
+
+    // Never queue a second automatic comparison behind an older one. If the
+    // analytical inputs changed while a comparison is running, mark the latest
+    // generation as desired and let the current request finish; its completion
+    // will schedule exactly one calculation for the newest signature.
+    if(ui.timeSeriesComparisonPending){
+      ui.timeSeriesComparisonGeneration+=1;
+      if(target)target.innerHTML='<div class="v2-empty">Finishing the current calibration calculation before refreshing statistics for the latest mapping…</div>';
+      return;
+    }
+
+    const generation=++ui.timeSeriesComparisonGeneration;
+    if(target)target.innerHTML='<div class="v2-empty">Calibration statistics will calculate automatically after the adaptive graph settles…</div>';
+
+    // Automatic comparison is deliberately lower priority than the interactive
+    // time-series graph. Every graph/zoom refresh cancels this timer. This keeps
+    // full-series comparison work from entering the single authoritative Python
+    // worker while adaptive display requests are still being refined.
     ui.timeSeriesComparisonTimer=setTimeout(()=>{
       ui.timeSeriesComparisonTimer=null;
-      if(signature!==analysisSignature()){
-        if(ui.timeSeriesComparisonSignature===signature)ui.timeSeriesComparisonSignature=null;
+      if(generation!==ui.timeSeriesComparisonGeneration||signature!==analysisSignature()||ui.graphRefreshing||ui.graphTimer){
+        if(generation===ui.timeSeriesComparisonGeneration&&timeSeriesRouteActive())refreshTimeSeriesComparisonMetrics();
         return;
       }
       if(target)target.innerHTML='<div class="v2-empty">Calculating calibration statistics…</div>';
-      ui.timeSeriesComparisonPending=Promise.resolve(ensure())
-        .then(()=>{if(signature===analysisSignature())renderTimeSeriesComparisonMetrics();})
-        .catch(err=>{
-          if(ui.timeSeriesComparisonSignature===signature)ui.timeSeriesComparisonSignature=null;
-          if(signature===analysisSignature()&&target)target.innerHTML='<div class="v2-empty">Calibration statistics unavailable: '+esc(String(err?.message||err))+'</div>';
+      let failed=false;
+      const promise=Promise.resolve(ensure());
+      const pending={signature,generation,promise};
+      ui.timeSeriesComparisonPending=pending;
+      promise
+        .then(()=>{
+          if(generation===ui.timeSeriesComparisonGeneration&&signature===analysisSignature())renderTimeSeriesComparisonMetrics();
         })
-        .finally(()=>{ui.timeSeriesComparisonPending=null;});
-    },1500);
+        .catch(err=>{
+          failed=true;
+          if(generation===ui.timeSeriesComparisonGeneration)ui.timeSeriesComparisonSignature=null;
+          if(generation===ui.timeSeriesComparisonGeneration&&signature===analysisSignature()&&target){
+            target.innerHTML='<div class="v2-empty">Calibration statistics unavailable: '+esc(String(err?.message||err))+'</div>';
+          }
+        })
+        .finally(()=>{
+          if(ui.timeSeriesComparisonPending===pending)ui.timeSeriesComparisonPending=null;
+          if(!failed&&timeSeriesRouteActive()&&(generation!==ui.timeSeriesComparisonGeneration||signature!==analysisSignature())){
+            refreshTimeSeriesComparisonMetrics();
+          }
+        });
+    },2500);
   }
   window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics=renderTimeSeriesComparisonMetrics;
   window.addEventListener('icm:route-changed',event=>{
     const detail=event?.detail||{};
     if(detail.workspace==='data'&&detail.page==='time-series')refreshTimeSeriesComparisonMetrics();
-    else if(ui.timeSeriesComparisonTimer){
-      clearTimeout(ui.timeSeriesComparisonTimer);
-      ui.timeSeriesComparisonTimer=null;
-    }
+    else cancelTimeSeriesComparisonTimer(true);
   });
 
   async function v2DrawGraph(range=ui.graphRange,options={}) {
@@ -802,6 +833,7 @@
       return;
     }
     const generation=++ui.graphGeneration;
+    cancelTimeSeriesComparisonTimer(true);
     ui.graphRefreshing=true;
     const pointCounts={};
     try{
@@ -1049,7 +1081,10 @@
         density.innerHTML=`<strong>${native?'Native resolution':'Adaptive display'} · ${shown.toLocaleString()} / ${raw.toLocaleString()} points</strong>${native?'Every available source timestep in the visible window is plotted.':'Zoom further to progressively refine the visible window toward native source detail.'}`;
       }
     }finally{
-      ui.graphRefreshing=false;
+      // A stale draw must never mark the graph idle while a newer generation is
+      // still fetching or painting. That false-idle window previously allowed
+      // relayout events and background calibration to supersede the live draw.
+      if(generation===ui.graphGeneration)ui.graphRefreshing=false;
     }
   }
 
@@ -1070,8 +1105,15 @@
     if (range === undefined) return;
     ui.graphRange = range;
     ++ui.graphGeneration;
+    cancelTimeSeriesComparisonTimer(true);
     clearTimeout(ui.graphTimer);
-    ui.graphTimer = setTimeout(() => void v2DrawGraph(range), 220);
+    ui.graphTimer = setTimeout(() => {
+      ui.graphTimer=null;
+      void v2DrawGraph(range).catch(err=>{
+        showError('mappingStatus',err?.message||err);
+        setGraphInteractionStatus('Adaptive display refresh failed. The previous graph has been retained.','warn');
+      });
+    }, 220);
   }
 
   function wireAdaptiveZoom() {
@@ -1091,7 +1133,14 @@
   function scheduleGraphRedraw(delay=120) {
     if ((!state.mapping.observed && !(state.mapping.models||[]).length && !state.mapping.rain) || !$('timeChart')) return;
     clearTimeout(ui.graphTimer);
-    ui.graphTimer = setTimeout(() => void v2DrawGraph(ui.graphRange), delay);
+    cancelTimeSeriesComparisonTimer(true);
+    ui.graphTimer = setTimeout(() => {
+      ui.graphTimer=null;
+      void v2DrawGraph(ui.graphRange).catch(err=>{
+        showError('mappingStatus',err?.message||err);
+        setGraphInteractionStatus('Graph refresh failed. The previous graph has been retained.','warn');
+      });
+    }, delay);
   }
 
   function annualRows(result) {
