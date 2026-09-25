@@ -132,7 +132,7 @@
       <div class="panel">
         <div class="panel-head"><div><h2>WAPUG / manual rainfall events</h2><p>Detect on the full selected rainfall series; optionally show event bands on the hydraulic graph.</p></div><button class="btn primary" id="runRainEventsBtn">Detect rainfall events</button></div>
         <div class="mapping-grid compact-wide">
-          <label>Criteria mode<select id="rainCriteriaMode"><option value="wapug">WAPUG &gt;50k preset</option><option value="manual">Manual</option></select></label>
+          <label>Criteria mode<select id="rainCriteriaMode"><option value="wapug">WAPUG &gt;50k preset (6 / 60 min)</option><option value="wapug-under50">WAPUG ≤50k preset (4 / 30 min)</option><option value="manual">Manual</option></select></label>
           <label>Minimum intensity<input id="rainMinIntensity" type="number" value="5" step="any" /></label>
           <label>Intensity duration (min)<input id="rainIntensityDuration" type="number" value="6" /></label>
           <label>Minimum event duration (min)<input id="rainEventDuration" type="number" value="60" /></label>
