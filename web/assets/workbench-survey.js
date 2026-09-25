@@ -732,7 +732,8 @@
       ).join('');
       html += '<div class="table-wrap"><table><thead><tr><th>Week</th><th>Downstream</th><th>Upstream</th><th>Downstream m³</th><th>Upstream m³</th><th>Ratio</th><th>Legacy</th><th>RAG</th><th>First check</th><th>QA evidence</th><th>Recommendation</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
     }
-    return html;
+    const reviewHtml = window.__ICM_WORKBENCH__.workflow26ReportHtml?.() || '';
+    return html + reviewHtml;
   }
 
   function addCollapseControl(container, header, label='section') {
