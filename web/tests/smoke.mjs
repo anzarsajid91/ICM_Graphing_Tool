@@ -1577,6 +1577,47 @@ try{
   await page.selectOption('#rainSelect',rain);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('2 comparison scenario'),null,{timeout:60000});
+
+  stage='adaptive multi-series refinement and automatic calibration lifecycle';
+  await precisionRoute('data','time-series');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&
+    (document.querySelector('#timeChart')?.data||[]).filter(t=>String(t.uid||'').startsWith('model__')).length===2,null,{timeout:60000});
+  await page.evaluate(async()=>{
+    const chart=document.querySelector('#timeChart');
+    const trace=(chart?.data||[]).find(t=>Array.isArray(t.x)&&t.x.length>4&&t.type!=='table');
+    if(!trace)throw new Error('No hydraulic trace available for adaptive refinement regression.');
+    const times=trace.x.map(x=>new Date(x).getTime()).filter(Number.isFinite).sort((a,b)=>a-b);
+    if(times.length<5)throw new Error('Insufficient timestamps for adaptive refinement regression.');
+    const min=times[0],max=times[times.length-1],span=max-min;
+    const windows=[[.08,.92],[.18,.82],[.28,.72]];
+    for(const [a,b] of windows){
+      await Plotly.relayout(chart,{'xaxis.range':[new Date(min+span*a).toISOString(),new Date(min+span*b).toISOString()]});
+      await new Promise(resolve=>setTimeout(resolve,80));
+    }
+  });
+  await page.waitForFunction(()=>{
+    const ui=window.__ICM_WORKBENCH__?.uiV2,chart=document.querySelector('#timeChart'),density=document.querySelector('#graphDensity')?.textContent||'';
+    const models=(chart?.data||[]).filter(t=>String(t.uid||'').startsWith('model__')).length;
+    return ui?.graphRefreshing===false&&ui?.graphTimer===null&&models===2&&/points/i.test(density);
+  },null,{timeout:60000});
+  await page.waitForFunction(()=>{
+    const body=document.querySelector('#v2CalibrationMetricsBody'),rows=body?.querySelectorAll('tbody tr')?.length||0,text=body?.textContent||'';
+    return rows===2&&!/Calculating calibration statistics/i.test(text)&&/Regression R²/.test(text)&&/RMSE/.test(text)&&/NSE/.test(text);
+  },null,{timeout:90000});
+  const adaptiveCalibrationEvidence=await page.evaluate(()=>({
+    graphRefreshing:window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing,
+    graphTimer:window.__ICM_WORKBENCH__?.uiV2?.graphTimer,
+    density:document.querySelector('#graphDensity')?.textContent||'',
+    modelTraces:(document.querySelector('#timeChart')?.data||[]).filter(t=>String(t.uid||'').startsWith('model__')).length,
+    calibrationRows:document.querySelectorAll('#v2CalibrationMetricsBody tbody tr').length,
+    calibrationText:document.querySelector('#v2CalibrationMetricsBody')?.textContent||'',
+  }));
+  if(adaptiveCalibrationEvidence.graphRefreshing!==false||adaptiveCalibrationEvidence.graphTimer!==null||
+     adaptiveCalibrationEvidence.modelTraces!==2||adaptiveCalibrationEvidence.calibrationRows!==2||
+     /Calculating calibration statistics/i.test(adaptiveCalibrationEvidence.calibrationText)){
+    throw new Error('Adaptive display/calibration lifecycle did not settle cleanly: '+JSON.stringify(adaptiveCalibrationEvidence));
+  }
+
   await precisionRoute('graphs','comparison');
   await page.click('#runCompareBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#scenarioBody tr').length===2,null,{timeout:60000});
