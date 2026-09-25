@@ -1156,7 +1156,7 @@ async function renderComparisons(){
 
   $('scenarioBody').innerHTML=state.comparisons.map(x=>{
     if(!x.result)return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td colspan="13" class="audit-bad">${esc(x.error||'Unavailable')}</td></tr>`;
-    const pop=scatterPopulation(x.result,log),q=pop.metrics||{},uq=comparisonUnit(x.result);
+    const pop=scatterPopulation(x.result,false),q=x.result.metrics||pop.metrics||{},uq=comparisonUnit(x.result);
     const cell=(key,withUnit=false)=>{const p=metricPresentation(q,key,withUnit?uq:'');return `<span${p.reason?` title="${esc(p.reason)}"`:''}>${esc(p.text)}</span>`;};
     return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${q.pairs??pop.pairs.length}</td><td>${cell('obs_mean',true)}</td><td>${cell('sim_mean',true)}</td><td>${cell('obs_peak',true)}</td><td>${cell('sim_peak',true)}</td><td>${cell('correlation')}</td><td>${cell('regression_r2')}</td><td>${cell('rmse',true)}</td><td>${cell('mae',true)}</td><td>${cell('mean_bias',true)}</td><td>${cell('nse')}</td><td>${cell('kge_2009')}</td><td>${x.result.coverage_fraction==null?'Not available':fmt(Number(x.result.coverage_fraction)*100,1)+'%'}</td></tr>`;
   }).join('');
