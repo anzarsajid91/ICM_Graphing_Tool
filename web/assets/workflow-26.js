@@ -196,7 +196,7 @@
           '<label class="w26-review-reason">Engineering reason<textarea class="w26-review-reason-input" rows="3" placeholder="Required when the reviewed assessment differs from the calculated result.">'+esc(review?.reason || '')+'</textarea></label>'+
           '<div class="w26-review-meta">'+(review ? 'Last reviewed '+esc(new Date(review.reviewed_at).toLocaleString())+' · calculated at review '+esc(review.calculated_status_at_review) : 'No engineer review recorded.')+'</div>'+
           '<div class="w26-review-error" role="alert"></div>'+
-          '<div class="actions left"><button type="button" class="btn primary" data-w26-review-apply>Apply Engineer Review</button>'+
+          '<div class="actions left"><button type="button" class="btn" data-w26-review-apply>Apply Engineer Review</button>'+
           (review ? '<button type="button" class="btn" data-w26-review-revert>Revert to Calculated</button>' : '')+'</div>'+
         '</div>'+
       '</div>';
@@ -508,7 +508,7 @@
             '<label class="w26-review-reason">Engineering reason<textarea id="surveyReviewReason" rows="3" placeholder="Required when the reviewed assessment differs from the calculated result.">'+esc(review?.reason || '')+'</textarea></label>'+
             '<div class="w26-review-meta">'+(review ? 'Last reviewed '+esc(new Date(review.reviewed_at).toLocaleString())+' · calculated at review '+esc(review.calculated_status_at_review) : 'No engineer review recorded.')+'</div>'+
             '<div id="surveyReviewError" class="w26-review-error" role="alert"></div>'+
-            '<div class="actions left"><button type="button" class="btn primary" id="surveyReviewApply" data-monitor="'+esc(monitor.monitor)+'">Apply Engineer Review</button>'+
+            '<div class="actions left"><button type="button" class="btn" id="surveyReviewApply" data-monitor="'+esc(monitor.monitor)+'">Apply Engineer Review</button>'+
             (review ? '<button type="button" class="btn" id="surveyReviewRevert" data-monitor="'+esc(monitor.monitor)+'">Revert to Calculated</button>' : '')+'</div>'+
           '</div></section>'+
       '</div>'+
