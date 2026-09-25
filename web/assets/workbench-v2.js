@@ -24,6 +24,8 @@
     thresholdContexts: {observed:null, model:null},
     exclusionCapture: false,
     lastInspectedPoint: null,
+    timeSeriesComparisonSignature: null,
+    timeSeriesComparisonPending: null,
   };
   window.__ICM_WORKBENCH__.uiV2 = ui;
 
@@ -281,6 +283,15 @@
       const stats=document.getElementById('graphStatistics');
       (stats||chart).insertAdjacentElement('afterend',inspector);
       $('v2PointInspectorCopy')?.addEventListener('click',()=>void copyInspectedPoint());
+    }
+
+    if(chart&&!document.getElementById('v2CalibrationMetrics')){
+      const metrics=document.createElement('section');
+      metrics.id='v2CalibrationMetrics';
+      metrics.className='subpanel v2-calibration-metrics';
+      metrics.hidden=true;
+      metrics.innerHTML='<div class="subhead"><div><h3>Observed vs modelled calibration statistics</h3></div></div><div id="v2CalibrationMetricsBody"></div>';
+      ($('v2PointInspector')||chart).insertAdjacentElement('afterend',metrics);
     }
 
     const syncFromSpill = () => {
@@ -689,6 +700,69 @@
     };
   }
 
+  function renderTimeSeriesComparisonMetrics() {
+    const panel=$('v2CalibrationMetrics'),target=$('v2CalibrationMetricsBody');
+    if(!panel||!target)return;
+    const hasObserved=Boolean(state.mapping.observed),hasModels=Boolean((state.mapping.models||[]).length);
+    panel.hidden=!(hasObserved&&hasModels);
+    if(panel.hidden){target.innerHTML='';return;}
+    const comparisons=state.comparisons||[];
+    if(!comparisons.length){
+      target.innerHTML='<div class="v2-empty">Calibration statistics are calculated automatically from the complete common series unless an analysis period has been explicitly set.</div>';
+      return;
+    }
+    const metric=(metrics,key,unit='')=>{
+      const value=metrics?.[key];
+      return value==null||!Number.isFinite(Number(value))?'—':fmt(Number(value),4)+(unit?' '+unit:'');
+    };
+    const rows=comparisons.map(entry=>{
+      const scenario=entry.model?.item?.displayName||'Model';
+      const column=entry.model?.col||'series';
+      if(!entry.result)return '<tr><td><strong>'+esc(scenario)+'</strong><br><small>'+esc(column)+'</small></td><td colspan="9">Not available</td></tr>';
+      const q=entry.result.metrics||{},unit=entry.result.comparison_unit||'';
+      return '<tr><td><strong>'+esc(scenario)+'</strong><br><small>'+esc(column)+'</small></td>'+
+        '<td>'+metric(q,'regression_r2')+'</td>'+
+        '<td>'+metric(q,'regression_slope')+'</td>'+
+        '<td>'+metric(q,'regression_intercept',unit)+'</td>'+
+        '<td>'+metric(q,'rmse',unit)+'</td>'+
+        '<td>'+metric(q,'mae',unit)+'</td>'+
+        '<td>'+metric(q,'mean_bias',unit)+'</td>'+
+        '<td>'+metric(q,'nse')+'</td>'+
+        '<td>'+metric(q,'kge_2009')+'</td>'+
+        '<td>'+metric(q,'correlation')+'</td></tr>';
+    }).join('');
+    target.innerHTML='<div class="table-wrap"><table class="data-table"><thead><tr><th>Model scenario</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Pearson r</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
+
+  function refreshTimeSeriesComparisonMetrics() {
+    renderTimeSeriesComparisonMetrics();
+    if(!state.mapping.observed||!(state.mapping.models||[]).length){
+      ui.timeSeriesComparisonSignature=null;
+      ui.timeSeriesComparisonPending=null;
+      return;
+    }
+    const ensure=window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics;
+    if(typeof ensure!=='function')return;
+    const signature=analysisSignature();
+    if(state.comparisonSnapshot?.signature===signature&&(state.comparisons||[]).length){
+      ui.timeSeriesComparisonSignature=signature;
+      renderTimeSeriesComparisonMetrics();
+      return;
+    }
+    if(ui.timeSeriesComparisonSignature===signature&&ui.timeSeriesComparisonPending)return;
+    ui.timeSeriesComparisonSignature=signature;
+    const target=$('v2CalibrationMetricsBody');
+    if(target)target.innerHTML='<div class="v2-empty">Calculating calibration statistics…</div>';
+    ui.timeSeriesComparisonPending=Promise.resolve(ensure())
+      .then(()=>{if(signature===analysisSignature())renderTimeSeriesComparisonMetrics();})
+      .catch(err=>{
+        ui.timeSeriesComparisonSignature=null;
+        if(target)target.innerHTML='<div class="v2-empty">Calibration statistics unavailable: '+esc(String(err?.message||err))+'</div>';
+      })
+      .finally(()=>{ui.timeSeriesComparisonPending=null;});
+  }
+  window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics=renderTimeSeriesComparisonMetrics;
+
   async function v2DrawGraph(range=ui.graphRange,options={}) {
     if (!state.mapping.observed && !(state.mapping.models||[]).length && !state.mapping.rain) {
       Plotly.purge('timeChart');
@@ -935,6 +1009,7 @@
       window.__ICM_WORKBENCH__.lastPanelOrder=panelOrder;
       renderGraphStatistics(statisticRows,displayRange);
       updateThresholdRangeStatus(observedEntries,modelEntries);
+      refreshTimeSeriesComparisonMetrics();
       const density=$('graphDensity');
       if(density){
         const native=Object.values(pointCounts).every(x=>x.native),shown=Object.values(pointCounts).reduce((sum,x)=>sum+(x.shown||0),0),raw=Object.values(pointCounts).reduce((sum,x)=>sum+(x.raw||0),0);
@@ -1052,6 +1127,7 @@
     return '<span class="spill-rag spill-rag-'+result.rag.toLowerCase()+'">'+esc(result.rag)+' · '+esc(result.label)+'</span>';
   }
   window.__ICM_WORKBENCH__.spillDeviationRag=spillDeviationRag;
+  window.__ICM_WORKBENCH__.spillComparisonSupport=spillComparisonSupport;
 
   function annualComparison() {
     const observed = state.spills.observed;
@@ -1068,15 +1144,12 @@
     const years = [...new Set([...om.keys(),...mm.keys()])].sort((a,b)=>a-b);
     if (!years.length) return summary+'<div class="v2-empty">No annual spill results.</div>';
     const rows=years.map(year=>{
-      const o=om.get(year),m=mm.get(year),rowSupport=spillComparisonSupport(o,m,{requireMask:false});
-      const support=overallSupport.comparable&&rowSupport.comparable
-        ?rowSupport
-        :{comparable:false,reason:overallSupport.comparable?rowSupport.reason:overallSupport.reason};
+      const o=om.get(year),m=mm.get(year),support=spillComparisonSupport(o,m,{requireMask:false});
       const count=support.comparable?spillDeviationRag(o?.spill_count,m?.spill_count):null;
       const duration=support.comparable?spillDeviationRag(o?.duration_hours,m?.duration_hours):null;
       return `<tr><td>${year}</td><td>${fmt(o?.spill_count,0)}</td><td>${fmt(m?.spill_count,0)}</td><td>${support.comparable?esc(count.label):'—'}</td><td>${spillRagCell(count)}</td><td>${fmt(o?.duration_hours,2)}</td><td>${fmt(m?.duration_hours,2)}</td><td>${support.comparable?esc(duration.label):'—'}</td><td>${spillRagCell(duration)}</td><td title="${esc(support.reason)}">${support.comparable?'Matched':'Not comparable'}</td></tr>`;
     }).join('');
-    return summary+'<p class="spill-rag-method">RAG uses absolute deviation from observed: Green ≤5%, Amber &gt;5–10%, Red &gt;10%. If observed = 0 and model &gt; 0 the deviation is treated as Red/∞. RAG is withheld where temporal support or masks differ.</p><div class="table-wrap spill-annual-compare"><table class="data-table"><thead><tr><th>Year</th><th>Observed count</th><th>Model count</th><th>Count deviation</th><th>Count RAG</th><th>Observed duration h</th><th>Model duration h</th><th>Duration deviation</th><th>Duration RAG</th><th>Support</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    return summary+'<p class="spill-rag-method">RAG uses absolute deviation from observed: Green ≤5%, Amber &gt;5–10%, Red &gt;10%. If observed = 0 and model &gt; 0 the deviation is treated as Red/∞. Overall RAG still requires aligned whole-series support; each yearly row is assessed independently whenever observed and modelled support for that calendar year is aligned.</p><div class="table-wrap spill-annual-compare"><table class="data-table"><thead><tr><th>Year</th><th>Observed count</th><th>Model count</th><th>Count deviation</th><th>Count RAG</th><th>Observed duration h</th><th>Model duration h</th><th>Duration deviation</th><th>Duration RAG</th><th>Support</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
 
   function renderSpillsV2() {
