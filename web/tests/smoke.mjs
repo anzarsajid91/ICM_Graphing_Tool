@@ -1463,6 +1463,23 @@ try{
   if(logScatter.points.some(([x,y])=>x<=0||y<=0))throw new Error('Log scatter contains a nonpositive plotted pair: '+JSON.stringify(logScatter));
   await page.selectOption('#scatterScale','linear');
   await page.waitForFunction(()=>document.querySelector('#scatterChart')?.layout?.xaxis?.type==='linear');
+  const fullSeriesComparison=await page.evaluate(()=>({
+    start:document.querySelector('#analysisStart')?.value||'',
+    end:document.querySelector('#analysisEnd')?.value||'',
+    snapshotStart:state.comparisonSnapshot?.config?.analysis?.analysis_start??null,
+    snapshotEnd:state.comparisonSnapshot?.config?.analysis?.analysis_end??null,
+    pairedCount:Number(state.comparisonSnapshot?.results?.[0]?.result?.metrics?.pairs||0),
+    tableTab:document.querySelector('#scenarioBody')?.closest('.tab-panel')?.id||null,
+    tableHeaders:[...document.querySelectorAll('#timeSeriesScenarioTable thead th')].map(x=>x.textContent.trim()),
+  }));
+  if(fullSeriesComparison.start||fullSeriesComparison.end||fullSeriesComparison.snapshotStart!==null||fullSeriesComparison.snapshotEnd!==null||fullSeriesComparison.pairedCount<1){
+    throw new Error('Blank comparison dates must execute against the complete common observed/modelled series: '+JSON.stringify(fullSeriesComparison));
+  }
+  if(fullSeriesComparison.tableTab!=='tab-graph'||!fullSeriesComparison.tableHeaders.includes('Observed mean')||!fullSeriesComparison.tableHeaders.includes('Modelled peak')){
+    throw new Error('Scenario comparison values must live under the main Time Series graph with observed/modelled values: '+JSON.stringify(fullSeriesComparison));
+  }
+  await precisionRoute('data','time-series');
+  if(!(await page.locator('#timeSeriesScenarioTable').isVisible()))throw new Error('Scenario comparison values table is not visible under Data / Time Series.');
   await precisionRoute('graphs','comparison');
   await captureEvidence('08-graphs-comparison');
 
@@ -1496,6 +1513,63 @@ try{
   if(multiScenario.markers.length!==2||multiScenario.markers.some(x=>x.points<2)||new Set(multiScenario.markers.map(x=>x.colour)).size!==2)throw new Error('Multi-scenario scatter must render two independently styled authoritative pair clouds: '+JSON.stringify(multiScenario));
   if(!multiScenario.rows.some(x=>x.includes(longScenarioName))||multiScenario.documentOverflow>2||!multiScenario.legendWithinPanel)throw new Error('Long multi-scenario legend/table containment failed: '+JSON.stringify(multiScenario));
   await captureEvidence('08b-graphs-multiple-scenarios');
+
+  stage='generic observed/modelled scatter without quantity classification';
+  const genericObsName='generic-observed-values.csv',genericModelName='generic-model-values.csv';
+  const genericObsBytes=Buffer.from('timestamp,Value\n2026-01-01T00:00:00,1.0\n2026-01-01T00:15:00,2.0\n2026-01-01T00:30:00,3.0\n','utf8');
+  const genericModelBytes=Buffer.from('timestamp,Value\n2026-01-01T00:00:00,1.1\n2026-01-01T00:15:00,1.9\n2026-01-01T00:30:00,3.2\n','utf8');
+  await page.setInputFiles('#fileInput',{name:genericObsName,mimeType:'text/csv',buffer:genericObsBytes});
+  await page.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),genericObsName,{timeout:60000});
+  await page.setInputFiles('#fileInput',{name:genericModelName,mimeType:'text/csv',buffer:genericModelBytes});
+  await page.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),genericModelName,{timeout:60000});
+  await precisionRoute('data','series-mapping');
+  const genericObs=await optionValue('#observedSelect',genericObsName+' — Value');
+  const genericModelValue=await optionValue('#modelSelect',genericModelName+' — Value');
+  if(!genericObs||!genericModelValue)throw new Error('Generic Value series were not exposed for observed/modelled mapping.');
+  await page.selectOption('#observedSelect',genericObs);
+  await page.selectOption('#modelSelect',[genericModelValue]);
+  await page.selectOption('#rainSelect','');
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
+  await precisionRoute('graphs','comparison');
+  await page.click('#runCompareBtn');
+  await page.waitForFunction(()=>document.querySelector('#scatterChart')?.data?.some(t=>t.mode==='markers')&&document.querySelector('#metricGrid')?.textContent.includes('Pairs')&&document.querySelectorAll('#scenarioBody tr').length===1,null,{timeout:60000});
+  const genericScatter=await page.evaluate(()=>({
+    method:document.querySelector('#comparisonMethodNote')?.textContent||'',
+    xTitle:document.querySelector('#scatterChart')?.layout?.xaxis?.title?.text||'',
+    yTitle:document.querySelector('#scatterChart')?.layout?.yaxis?.title?.text||'',
+    pairs:window.__ICM_WORKBENCH__?.lastComparisonValidity?.population,
+    rows:[...document.querySelectorAll('#scenarioBody tr')].map(row=>row.textContent),
+  }));
+  if(!genericScatter.method.includes('raw numeric comparison')||!genericScatter.xTitle.includes('unit unresolved')||!genericScatter.yTitle.includes('unit unresolved')||genericScatter.rows.length!==1){
+    throw new Error('Generic Value↔Value scatter workflow failed: '+JSON.stringify(genericScatter));
+  }
+
+  stage='known observed quantity with unresolved model scatter';
+  await precisionRoute('data','series-mapping');
+  await page.selectOption('#observedSelect',obsDepth);
+  await page.selectOption('#modelSelect',[genericModelValue]);
+  await page.selectOption('#rainSelect','');
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
+  await precisionRoute('graphs','comparison');
+  await page.click('#runCompareBtn');
+  await page.waitForFunction(()=>document.querySelector('#scatterChart')?.data?.some(t=>t.mode==='markers')&&document.querySelector('#comparisonMethodNote')?.textContent.includes('raw numeric comparison')&&document.querySelectorAll('#scenarioBody tr').length===1,null,{timeout:60000});
+  const unresolvedCounterpartScatter=await page.evaluate(()=>({
+    xTitle:document.querySelector('#scatterChart')?.layout?.xaxis?.title?.text||'',
+    yTitle:document.querySelector('#scatterChart')?.layout?.yaxis?.title?.text||'',
+    rows:[...document.querySelectorAll('#scenarioBody tr')].map(row=>row.textContent),
+  }));
+  if(!unresolvedCounterpartScatter.xTitle.includes('value')||!unresolvedCounterpartScatter.xTitle.includes('unit unresolved')||!unresolvedCounterpartScatter.yTitle.includes('unit unresolved')||unresolvedCounterpartScatter.rows.length!==1){
+    throw new Error('Known observed ↔ unresolved model raw numeric scatter failed: '+JSON.stringify(unresolvedCounterpartScatter));
+  }
+
+  await precisionRoute('data','series-mapping');
+  await page.selectOption('#observedSelect',obsDepth);
+  await page.selectOption('#modelSelect',[modelDepth]);
+  await page.selectOption('#rainSelect',rain);
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
 
   stage='depth-only agreement fit';
   await precisionRoute('verification','rating');
@@ -2131,8 +2205,9 @@ try{
   if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
   if(!report.includes('project_registry')||!report.includes('web-worker'))throw new Error('Report audit appendix is missing canonical project registry / worker execution provenance');
   if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Full time-period graph')||!report.includes('Project data context')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
-  const reportGraphIndex=report.indexOf('Full time-period graph'),reportSpillIndex=report.indexOf('Spill / EDM assessment'),reportScenarioIndex=report.indexOf('Scenario comparison');
-  if(!(reportGraphIndex>=0&&reportSpillIndex>reportGraphIndex&&reportScenarioIndex>reportSpillIndex))throw new Error('Assessment report must follow the supplied Station A review order: full-period graph, spill/EDM tables, then scenario diagnostics.');
+  const reportGraphIndex=report.indexOf('Full time-period graph'),reportSpillIndex=report.indexOf('Spill / EDM assessment'),reportComparisonIndex=report.indexOf('Observed vs modelled comparison');
+  if(!(reportGraphIndex>=0&&reportSpillIndex>reportGraphIndex&&reportComparisonIndex>reportSpillIndex))throw new Error('Assessment report must follow the supplied Station A review order: full-period graph, spill/EDM tables, then observed/modelled diagnostics.');
+  if(report.includes('<h2>Scenario comparison</h2>')||report.includes('<th>Scenario</th><th>Pairs</th><th>Pearson r</th>'))throw new Error('The Time Series scenario values table must not be duplicated in exported reports.');
   if(!report.includes('Observed / EDM hydraulic threshold')||!report.includes('Model hydraulic threshold'))throw new Error('Assessment report settings must identify the observed and model hydraulic threshold values explicitly.');
   if(report.includes('<h3>Graph statistics</h3>'))throw new Error('Assessment report should not duplicate graph statistics outside the reference-style figure.');
   if(!report.includes('Observed spills by month')||!report.includes('Model spills by month')||!report.includes('Observed vs modelled monthly spill comparison'))throw new Error('Assessment report is missing the reference-style monthly spill tables.');

@@ -461,13 +461,14 @@ function refreshScope(){
   const observed=selectionLabel('observedSelect','Not mapped');
   const rain=selectionLabel('rainSelect','Not mapped');
   const models=$('modelSelect')?.selectedOptions?.length||0;
-  const start=$('analysisStart')?.value||'Selected data';
-  const end=$('analysisEnd')?.value||'full support';
+  const start=$('analysisStart')?.value||'';
+  const end=$('analysisEnd')?.value||'';
+  const period=start||end?(start||'data start')+' → '+(end||'data end'):'Full common series';
   const items=[
     ['Observed',observed],
     ['Models',models?String(models):'None'],
     ['Rain gauge',rain],
-    ['Period',start+' → '+end],
+    ['Period',period],
     ['Time basis','Source-defined']
   ];
   scope.innerHTML=items.map(([k,v])=>'<div class="pw-scope-item"><span>'+esc(k)+'</span><strong title="'+esc(v)+'">'+esc(v)+'</strong></div>').join('');
