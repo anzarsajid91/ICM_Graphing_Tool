@@ -413,6 +413,7 @@ function navigate(workspace,page,push=false){
   if(push){const h='#/'+workspace+'/'+page;if(location.hash!==h)history.pushState(null,'',h);}
   document.title=p.title+' · ICM Graphing Tool';
   resizeVisuals();
+  window.dispatchEvent(new CustomEvent('icm:route-changed',{detail:{workspace,page}}));
 }
 function isFocusRoute(){
   return FOCUS_ROUTES.has(current.workspace+'/'+current.page);

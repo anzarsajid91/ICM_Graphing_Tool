@@ -457,6 +457,14 @@ function allSeries(){
 }
 function setOptions(select,all,{none=false,preserve=true}={}){const prev=preserve?select.value:'';select.innerHTML=(none?'<option value="">None</option>':'<option value="">Select…</option>')+all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');if([...select.options].some(o=>o.value===prev))select.value=prev;}
 
+const advancedSelectionTouched=new Set();
+function preferAdvanced(id,all,predicate){
+  const select=$(id);
+  if(!select||advancedSelectionTouched.has(id)||select.value)return;
+  const series=all.find(predicate);
+  if(series)select.value=series.key;
+}
+
 function genericSeriesSemanticsRows(){
   const rows=[],seen=new Set();
   const add=(role,key)=>{
@@ -910,9 +918,9 @@ function autoSuggestAdvanced(all){
   const obsVertical=obs&&['depth','level'].includes(String(seriesQuantity(obs.item,obs.col)||'').toLowerCase())?String(seriesQuantity(obs.item,obs.col)).toLowerCase():null;
   if(!$('ratingObsDepth').value&&obs&&obsVertical)$('ratingObsDepth').value=sourceKey(obs.item.id,obs.col);
   prefer($('ratingObsDepth'),all,s=>(!obs||s.item.id===obs.item.id)&&vertical(s));
-  prefer($('ratingObsFlow'),all,s=>(!obs||s.item.id===obs.item.id)&&q(s,'flow'));
+  preferAdvanced('ratingObsFlow',all,s=>(!obs||s.item.id===obs.item.id)&&q(s,'flow'));
   prefer($('ratingModelDepth'),all,s=>(!model||s.item.id===model.item.id)&&vertical(s)&&(!obsVertical||q(s,obsVertical)));
-  prefer($('ratingModelFlow'),all,s=>(!model||s.item.id===model.item.id)&&q(s,'flow'));
+  preferAdvanced('ratingModelFlow',all,s=>(!model||s.item.id===model.item.id)&&q(s,'flow'));
   prefer($('dwfFlowSelect'),all,s=>(!obs||s.item.id===obs.item.id)&&q(s,'flow'));
   prefer($('storageFlowSelect'),all,s=>q(s,'flow'));
   prefer($('storageLevelSelect'),all,s=>(!model||s.item.id===model.item.id)&&vertical(s));
@@ -1023,28 +1031,59 @@ function comparisonQuantityMismatch(observed,model){
   const name=q=>q==='level'?'absolute Level':q.charAt(0).toUpperCase()+q.slice(1);
   return `Observed ${name(observedQuantity)} cannot be compared directly with modelled ${name(modelQuantity)}. Depth and absolute Level remain distinct. Map like-for-like series, or explicitly reclassify a generic Value channel only when its source meaning supports that classification.`;
 }
-async function runCompare(){
+let comparisonCalculation=null;
+async function ensureComparisonResults(){
   const obs=mappingObject(state.mapping.observed),models=currentModels();
   if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');
-  const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),signature=analysisSignature(),config=workspaceObject();
-  state.comparisons=[];
-  for(const m of models){
-    const mismatch=comparisonQuantityMismatch(obs,m);
-    if(mismatch){state.comparisons.push({model:m,error:mismatch});continue;}
-    try{
-      state.comparisons.push({model:m,result:await engine.call('compare_series',{
-        obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,
-        max_gap_seconds:gap,offset_minutes:offset,...bounds,
-        exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])
-      })});
-    }catch(err){
-      state.comparisons.push({model:m,error:conciseErrorMessage(err)});
-    }
+  const signature=analysisSignature();
+  if(state.comparisonSnapshot?.signature===signature&&(state.comparisons||[]).length)return;
+  if(comparisonCalculation?.signature===signature){
+    await comparisonCalculation.promise;
+    return;
   }
-  if(signature!==analysisSignature()){state.comparisons=[];throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');}
-  await renderComparisons();
-  state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(state.comparisons.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};
+  const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),config=workspaceObject();
+  const promise=(async()=>{
+    const results=[];
+    for(const m of models){
+      const mismatch=comparisonQuantityMismatch(obs,m);
+      if(mismatch){results.push({model:m,error:mismatch});continue;}
+      try{
+        results.push({model:m,result:await engine.call('compare_series',{
+          obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,
+          max_gap_seconds:gap,offset_minutes:offset,...bounds,
+          exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])
+        })});
+      }catch(err){
+        results.push({model:m,error:conciseErrorMessage(err)});
+      }
+    }
+    if(signature!==analysisSignature())throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');
+    state.comparisons=results;
+    state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(results.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};
+  })();
+  comparisonCalculation={signature,promise};
+  try{
+    await promise;
+  }finally{
+    if(comparisonCalculation?.promise===promise)comparisonCalculation=null;
+  }
 }
+async function runCompare(){
+  await ensureComparisonResults();
+  await renderComparisons();
+  window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
+}
+async function ensureTimeSeriesComparisonMetrics(){
+  if(!state.mapping.observed||!currentModels().length){
+    state.comparisons=[];
+    state.comparisonSnapshot=null;
+    window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
+    return;
+  }
+  await ensureComparisonResults();
+  window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
+}
+window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics=ensureTimeSeriesComparisonMetrics;
 const metricCard=(k,v,reason='')=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${reason?`<small>${esc(reason)}</small>`:''}</div>`;
 function metricPresentation(metrics,key,unit=''){
   const value=metrics?.[key],reason=metrics?.unavailable_reasons?.[key]||'';
@@ -1087,8 +1126,9 @@ async function renderComparisons(){
   if(!first){
     const issues=state.comparisons.map(x=>({name:`${x.model?.item?.displayName||'Model'} · ${x.model?.col||'series'}`,error:x.error||'Comparison returned no usable result.'}));
     $('metricGrid').innerHTML='<div class="pool-summary audit-bad"><strong>Comparison could not be calculated.</strong><br>'+issues.map(x=>esc(x.name)+': '+esc(x.error)).join('<br>')+'<br><small>Check quantity mapping, the shared analysis period, exclusions and the maximum interpolation gap. The error above is retained instead of hiding it behind a generic “no pairs” message.</small></div>';
-    $('scenarioBody').innerHTML=issues.map(x=>'<tr><td>'+esc(x.name)+'</td><td colspan="13" class="audit-bad">'+esc(x.error)+'</td></tr>').join('');
+    $('scenarioBody').innerHTML=issues.map(x=>'<tr><td>'+esc(x.name)+'</td><td colspan="15" class="audit-bad">'+esc(x.error)+'</td></tr>').join('');
     for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])Plotly.purge(id);
+    window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
     return;
   }
   const log=$('scatterScale').value==='log',firstPopulation=scatterPopulation(first.result,log),m=firstPopulation.metrics||{};
@@ -1154,11 +1194,12 @@ async function renderComparisons(){
   await Plotly.react('exceedanceChart',[{x:oe.map(x=>100*x.exceedance_fraction),y:oe.map(x=>x[okey]),name:'Observed',mode:'lines',line:{color:$('obsColor').value}},{x:me.map(x=>100*x.exceedance_fraction),y:me.map(x=>x[mkey]),name:'Modelled',mode:'lines',line:{color:state.modelColours[sourceKey(first.model.id,first.model.col)]||palette[0]}}],{template:'plotly_white',title:d.flow_diagnostics_available?'Flow duration — left-support time weighting':'Unavailable — flow inputs and unmasked support required',xaxis:{title:'Exceedance %'},yaxis:{title:'Value'},margin:{l:55,r:20,t:45,b:50}},plotConfig('engineering-graph'));
 
   $('scenarioBody').innerHTML=state.comparisons.map(x=>{
-    if(!x.result)return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td colspan="13" class="audit-bad">${esc(x.error||'Unavailable')}</td></tr>`;
+    if(!x.result)return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td colspan="15" class="audit-bad">${esc(x.error||'Unavailable')}</td></tr>`;
     const pop=scatterPopulation(x.result,false),q=x.result.metrics||pop.metrics||{},uq=comparisonUnit(x.result);
     const cell=(key,withUnit=false)=>{const p=metricPresentation(q,key,withUnit?uq:'');return `<span${p.reason?` title="${esc(p.reason)}"`:''}>${esc(p.text)}</span>`;};
-    return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${q.pairs??pop.pairs.length}</td><td>${cell('obs_mean',true)}</td><td>${cell('sim_mean',true)}</td><td>${cell('obs_peak',true)}</td><td>${cell('sim_peak',true)}</td><td>${cell('correlation')}</td><td>${cell('regression_r2')}</td><td>${cell('rmse',true)}</td><td>${cell('mae',true)}</td><td>${cell('mean_bias',true)}</td><td>${cell('nse')}</td><td>${cell('kge_2009')}</td><td>${x.result.coverage_fraction==null?'Not available':fmt(Number(x.result.coverage_fraction)*100,1)+'%'}</td></tr>`;
+    return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${q.pairs??pop.pairs.length}</td><td>${cell('obs_mean',true)}</td><td>${cell('sim_mean',true)}</td><td>${cell('obs_peak',true)}</td><td>${cell('sim_peak',true)}</td><td>${cell('correlation')}</td><td>${cell('regression_r2')}</td><td>${cell('regression_slope')}</td><td>${cell('regression_intercept',true)}</td><td>${cell('rmse',true)}</td><td>${cell('mae',true)}</td><td>${cell('mean_bias',true)}</td><td>${cell('nse')}</td><td>${cell('kge_2009')}</td><td>${x.result.coverage_fraction==null?'Not available':fmt(Number(x.result.coverage_fraction)*100,1)+'%'}</td></tr>`;
   }).join('');
+  window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
 }
 
 function useGraphZoom(){const r=$('timeChart')?.layout?.xaxis?.range;if(r?.length===2){$('analysisStart').value=toLocalInput(r[0]);$('analysisEnd').value=toLocalInput(r[1]);}}
@@ -1770,15 +1811,60 @@ function graphStatisticsHtml(rows){
     return '<tr><td><strong>'+esc(label)+'</strong><br><small>'+esc(row.label||'')+'</small></td><td>'+esc(s.unit||'Unresolved')+'</td><td>'+value(scale(s.minimum))+'</td><td>'+value(scale(s.maximum))+'</td><td>'+value(scale(s.mean))+'</td><td>'+value(scale(s.time_weighted_mean))+'</td><td>'+value(scale(s.total))+(s.total!=null?' '+esc(s.total_unit||''):'')+'</td><td>'+value(Number(s.valid_support_seconds||0)/3600)+' h'+(s.coverage_fraction==null?'':' · '+fmt(s.coverage_fraction*100,1)+'%')+'</td><td>'+esc(s.status||'unavailable')+(s.unit?'':' · units unresolved')+'</td></tr>';
   }).join('')+'</tbody></table></div>';
 }
+function reportEngineeringStatisticsTrace(rows,domain=[0,.18]){
+  const value=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),3);
+  const data=(rows||[]).map(row=>{
+    const s=row.statistics||{},factor=row.factor??1,scale=v=>v==null?v:Number(v)*factor;
+    const total=scale(s.total);
+    return {
+      series:row.compact_label||row.role||'Series',
+      unit:s.unit||'—',
+      minimum:value(scale(s.minimum)),
+      maximum:value(scale(s.maximum)),
+      average:value(scale(s.mean)),
+      total:total==null?'—':value(total)+(s.total_unit?' '+s.total_unit:''),
+    };
+  });
+  return {
+    type:'table',name:'Statistics',domain:{x:[0,1],y:domain},columnwidth:[2.2,1,1,1,1,1.3],
+    header:{values:['Series','Unit','Min','Max','Average','Total'],align:['left','center','right','right','right','right'],fill:{color:'#f2f4f7'},line:{color:'#d9e1e8',width:1},font:{family:'Arial, sans-serif',size:11,color:'#263746'},height:27},
+    cells:{values:[data.map(x=>x.series),data.map(x=>x.unit),data.map(x=>x.minimum),data.map(x=>x.maximum),data.map(x=>x.average),data.map(x=>x.total)],align:['left','center','right','right','right','right'],fill:{color:'#ffffff'},line:{color:'#e4e9ed',width:1},font:{family:'Arial, sans-serif',size:10.5,color:'#253746'},height:25},
+    hoverinfo:'skip'
+  };
+}
+function periodReportFigure(traces,layout,statistics){
+  const graphBottom=.24,scaleY=value=>graphBottom+Number(value)*(1-graphBottom);
+  const nextLayout=JSON.parse(JSON.stringify(layout||{}));
+  for(const [key,axis] of Object.entries(nextLayout)){
+    if(!/^yaxis\d*$/.test(key)||!axis||typeof axis!=='object')continue;
+    const domain=Array.isArray(axis.domain)&&axis.domain.length===2?axis.domain:[0,1];
+    axis.domain=[scaleY(domain[0]),scaleY(domain[1])];
+  }
+  nextLayout.annotations=(nextLayout.annotations||[]).map(annotation=>{
+    if(annotation?.yref!=='paper'||!Number.isFinite(Number(annotation.y)))return annotation;
+    return {...annotation,y:scaleY(annotation.y)};
+  });
+  nextLayout.shapes=(nextLayout.shapes||[]).map(shape=>{
+    if(shape?.yref!=='paper')return shape;
+    const out={...shape};
+    if(Number.isFinite(Number(out.y0)))out.y0=scaleY(out.y0);
+    if(Number.isFinite(Number(out.y1)))out.y1=scaleY(out.y1);
+    return out;
+  });
+  nextLayout.height=Math.max(700,Number(nextLayout.height||580)+120);
+  nextLayout.margin={...(nextLayout.margin||{}),b:34};
+  return {traces:[...(traces||[]),reportEngineeringStatisticsTrace(statistics,[0,.18])],layout:nextLayout};
+}
 let reportPlotlyBundle=null;
 function reportPlotFigure(id,traces,layout,statistics,caption='',options={}){
-  const payload=JSON.stringify({data:traces,layout:{...layout,autosize:true,width:undefined}}).replace(/</g,'\\u003c');
-  const stats=statistics?.length
+  const period=options.period===true;
+  const prepared=period&&statistics?.length?periodReportFigure(traces,layout,statistics):{traces,layout};
+  const payload=JSON.stringify({data:prepared.traces,layout:{...prepared.layout,autosize:true,width:undefined}}).replace(/</g,'\\u003c');
+  const stats=!period&&statistics?.length
     ?'<div class="report-figure-metrics"><div class="report-figure-metrics-title">Graph metrics</div>'+graphStatisticsHtml(statistics)+'</div>'
     :'';
-  const captionHtml='<figcaption>'+esc(caption)+'</figcaption>';
-  const period=options.period===true;
-  return '<figure class="figure'+(period?' period-figure':'')+'"><div class="report-plot" id="'+id+'" style="height:'+layout.height+'px"></div><script type="application/json" id="'+id+'-data">'+payload+'</script>'+(period?captionHtml+stats:stats+captionHtml)+'</figure>';
+  const captionHtml=!period&&caption?'<figcaption>'+esc(caption)+'</figcaption>':'';
+  return '<figure class="figure'+(period?' period-figure':'')+'"><div class="report-plot" id="'+id+'" style="height:'+prepared.layout.height+'px"></div><script type="application/json" id="'+id+'-data">'+payload+'</script>'+stats+captionHtml+'</figure>';
 }
 function selectedReportComparisons(){
   const control=$('reportScenarioSelect');
@@ -1859,7 +1945,7 @@ async function staticReportFallbackHtml(html,reason='Interactive Plotly runtime 
   return '<!doctype html>'+doc.documentElement.outerHTML;
 }
 async function interactiveReportHtml(html){
-  const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
+  const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,displayModeBar:true,scrollZoom:false,toImageButtonOptions:{format:'png',filename:el.id,scale:2}}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
   if(!reportPlotlyBundle){
     const source=[...document.scripts].find(s=>/plotly-[\d.]+(?:\.min)?\.js/.test(s.src))?.src;
     if(!source)return staticReportFallbackHtml(html,'The external Plotly script source was not available for embedding.');
@@ -2095,16 +2181,14 @@ async function downloadFourPeriod(){
   await drawTimeChart();
   const shapes=JSON.parse(JSON.stringify($('timeChart').layout?.shapes||[]));
   const thresholdTraces=JSON.parse(JSON.stringify(($('timeChart').data||[]).filter(t=>t.line?.dash==='dash'&&t.x?.every(x=>x==null))));
-  const w=workspaceObject(),signature=analysisSignature();
-  let body='<div class="note">Interactive Plotly graphs with fixed period statistics from native source data. Zoom changes the view, not the statistics period. Display traces may be reduced; calculations use native data.</div><h2>Series key</h2>'+reportMappingTable(w);
+  const signature=analysisSignature();
+  let body='';
   for(let i=0;i<periods.length;i++){
     const [title,a,b]=periods[i],result=await reportTraces([a,b]);
     result.traces.push(...thresholdTraces);
     const layout=hydraulicGraphLayout({...result,range:[a,b],title:year+' — '+title,shapes});
-    layout.height=Math.min(Number(layout.height||580),580);
-    body+='<section class="report-page"><h2>'+esc(title)+'</h2><p class="muted">'+esc(a)+' to '+esc(b)+' · end exclusive</p>'+reportPlotFigure('period-graph-'+i,result.traces,layout,result.statistics,'Aligned hydraulic panels with a separate rainfall band above.',{period:true})+'</section>';
+    body+='<section class="report-page"><h2>'+esc(title)+'</h2>'+reportPlotFigure('period-graph-'+i,result.traces,layout,result.statistics,'',{period:true})+'</section>';
   }
-  body+='<h2>Analysis settings</h2>'+reportSettingsTable(w)+'<h2>Exclusions</h2>'+reportExclusions(w)+'<h2>Source provenance</h2>'+reportSources(w);
   const html=await interactiveReportHtml(reportShell('ICM Calibration Workbench — '+year+' Four-Period Report','Annual hydraulic time-series review',body,true));
   if(signature!==analysisSignature())throw new Error('Inputs changed during report generation. Retry export.');
   downloadBlob('icm-'+year+'-four-period-report.html',html,'text/html');
@@ -2135,10 +2219,10 @@ async function chooseFolder(){if('showDirectoryPicker'in window){try{const handl
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
-  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;state.exclusions=[];state.exclusionHistory=[];state.modelColours={};state.seriesQuantityOverrides.clear();for(const id of ['obsThreshold','modelThreshold','graphObsThreshold','graphModelThreshold'])if($(id))$(id).value='';diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
+  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;advancedSelectionTouched.clear();state.exclusions=[];state.exclusionHistory=[];state.modelColours={};state.seriesQuantityOverrides.clear();for(const id of ['obsThreshold','modelThreshold','graphObsThreshold','graphModelThreshold'])if($(id))$(id).value='';diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);void importGuard(async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=files.length+' dropped file'+(files.length===1?'':'s')+' detected · preparing import…';await ingestFiles(files);});});
   eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('applyMappingBtn').addEventListener('click',()=>{state.rating=null;});$('observedSelect').addEventListener('change',()=>{renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('modelSelect').addEventListener('change',()=>{renderModelColourControls();renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('rainSelect').addEventListener('change',renderSeriesSemanticsOverrides);eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
-  eventGuard('runCompareBtn','metricGrid',runCompare);$('scatterScale').addEventListener('change',()=>{if(state.comparisons.length)void guarded('metricGrid',renderComparisons);});$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);for(const id of ['ratingObsDepth','ratingObsDepthUnit','ratingObsFlow','ratingObsFlowUnit','ratingModelDepth','ratingModelDepthUnit','ratingModelFlow','ratingModelFlowUnit'])$(id)?.addEventListener('change',()=>{state.rating=null;});eventGuard('runDwfBtn','dwfSummary',runDwf);
+  eventGuard('runCompareBtn','metricGrid',runCompare);$('scatterScale').addEventListener('change',()=>{if(state.comparisons.length)void guarded('metricGrid',renderComparisons);});$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);for(const id of ['ratingObsDepth','ratingObsDepthUnit','ratingObsFlow','ratingObsFlowUnit','ratingModelDepth','ratingModelDepthUnit','ratingModelFlow','ratingModelFlowUnit'])$(id)?.addEventListener('change',()=>{if(id==='ratingObsFlow'||id==='ratingModelFlow')advancedSelectionTouched.add(id);state.rating=null;});eventGuard('runDwfBtn','dwfSummary',runDwf);
   $('rainCriteriaMode').addEventListener('change',criteriaModeChanged);eventGuard('runRainEventsBtn','rainEventSummary',runRainEvents);eventGuard('runHealthBtn','healthBody',runHealth);
   document.addEventListener('change',event=>{
     const id=event.target?.id||'';
