@@ -57,6 +57,7 @@ jobs:
           node --check web/assets/workbench-v2-domfix.js
           node --check web/assets/workbench-v3.js
           node --check web/assets/workbench-survey.js
+          node --check web/assets/workflow-26.js
           node --check web/assets/precision-workbench.js
           node --check web/tests/smoke.mjs
           node --check web/tests/precision-shell.mjs
@@ -91,6 +92,7 @@ jobs:
               'assets/app.css',
               'assets/workbench-v2.css',
               'assets/workbench-survey.css',
+              'assets/workflow-26.css',
               'assets/precision-workbench.css',
               'assets/domain-registry.js',
               'assets/runtime.js',
@@ -99,6 +101,7 @@ jobs:
               'assets/workbench-v2-domfix.js',
               'assets/workbench-v3.js',
               'assets/workbench-survey.js',
+              'assets/workflow-26.js',
               'assets/precision-workbench.js',
           ]
           for asset in versioned:
