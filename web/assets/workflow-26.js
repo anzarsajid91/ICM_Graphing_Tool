@@ -807,6 +807,8 @@
           ? JSON.parse(JSON.stringify(value.survey.engineer_reviews))
           : {};
         survey.selectedMonitor = null;
+        survey.selectedGauge = null;
+        survey.selectedBalanceKey = null;
         renderAll();
         return result;
       };
@@ -817,13 +819,20 @@
   installPersistence();
   wb.workflow26ReportHtml = reportHtml;
   wb.workflow26 = {
-    version:1,
+    version:2,
     calculatedMonitorStatus,
     reviewedMonitorState,
+    reviewedGaugeState,
+    reviewedBalanceState,
+    balanceRowKey,
+    applyReview,
+    revertReview,
     applyMonitorReview,
     revertMonitorReview,
     render:renderAll,
     selectMonitor:name => { survey.selectedMonitor = name; renderMonitorDetail(); },
+    selectGauge:name => { survey.selectedGauge = name; renderGaugeDetail(); },
+    selectBalance:key => { survey.selectedBalanceKey = key; renderBalanceReview(); },
   };
   renderAll();
 })();
