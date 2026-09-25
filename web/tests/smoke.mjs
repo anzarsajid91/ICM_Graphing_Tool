@@ -1223,14 +1223,15 @@ try{
   if(String(comparisonNoRainLayout.observedColour).toLowerCase()!=='#ff0000')throw new Error('Observed comparison trace should remain red, got '+JSON.stringify(comparisonNoRainLayout.observedColour));
   if(String(comparisonNoRainLayout.modelColour).toLowerCase()!=='#0000ff')throw new Error('First model plotted trace should use #0000ff, got '+JSON.stringify(comparisonNoRainLayout.modelColour));
   await page.waitForTimeout(1700);
-  const mappingRouteCalibration=await page.evaluate(()=>({
+  const unifiedRouteAnalysis=await page.evaluate(()=>({
     route:window.__ICM_PRECISION_WORKBENCH__?.route?.(),
-    pending:Boolean(window.__ICM_WORKBENCH__?.uiV2?.timeSeriesComparisonPending),
-    timer:Boolean(window.__ICM_WORKBENCH__?.uiV2?.timeSeriesComparisonTimer),
+    setupVisible:Boolean(document.querySelector('#pwDataSetupSurface')?.getClientRects().length),
+    chartVisible:Boolean(document.querySelector('#timeChart')?.getClientRects().length),
+    traceCount:(document.querySelector('#timeChart')?.data||[]).filter(t=>t.type!=='table').length,
     workerDetail:window.__ICM_WORKBENCH__?.worker?.detail||null,
   }));
-  if(mappingRouteCalibration.route?.workspace!=='data'||mappingRouteCalibration.route?.page!=='time-series'||mappingRouteCalibration.pending||mappingRouteCalibration.timer||mappingRouteCalibration.workerDetail==='compare_series'){
-    throw new Error('Automatic calibration must not consume the analysis worker while the user remains on Series Mapping: '+JSON.stringify(mappingRouteCalibration));
+  if(unifiedRouteAnalysis.route?.workspace!=='data'||unifiedRouteAnalysis.route?.page!=='time-series'||!unifiedRouteAnalysis.setupVisible||!unifiedRouteAnalysis.chartVisible||unifiedRouteAnalysis.traceCount!==2){
+    throw new Error('Unified Data / Time Series must keep interpretation controls and analysis on the same route without navigation side effects: '+JSON.stringify(unifiedRouteAnalysis));
   }
 
   stage='observed-only mapping with rainfall';
