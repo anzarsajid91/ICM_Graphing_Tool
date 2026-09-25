@@ -2185,8 +2185,9 @@ try{
   if(!report.includes('Audit appendix'))throw new Error('Report audit appendix missing');
   if(!report.includes('project_registry')||!report.includes('web-worker'))throw new Error('Report audit appendix is missing canonical project registry / worker execution provenance');
   if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Full time-period graph')||!report.includes('Project data context')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
-  const reportGraphIndex=report.indexOf('Full time-period graph'),reportSpillIndex=report.indexOf('Spill / EDM assessment'),reportScenarioIndex=report.indexOf('Scenario comparison');
-  if(!(reportGraphIndex>=0&&reportSpillIndex>reportGraphIndex&&reportScenarioIndex>reportSpillIndex))throw new Error('Assessment report must follow the supplied Station A review order: full-period graph, spill/EDM tables, then scenario diagnostics.');
+  const reportGraphIndex=report.indexOf('Full time-period graph'),reportSpillIndex=report.indexOf('Spill / EDM assessment'),reportComparisonIndex=report.indexOf('Observed vs modelled comparison');
+  if(!(reportGraphIndex>=0&&reportSpillIndex>reportGraphIndex&&reportComparisonIndex>reportSpillIndex))throw new Error('Assessment report must follow the supplied Station A review order: full-period graph, spill/EDM tables, then observed/modelled diagnostics.');
+  if(report.includes('<h2>Scenario comparison</h2>')||report.includes('<th>Scenario</th><th>Pairs</th><th>Pearson r</th>'))throw new Error('The Time Series scenario values table must not be duplicated in exported reports.');
   if(!report.includes('Observed / EDM hydraulic threshold')||!report.includes('Model hydraulic threshold'))throw new Error('Assessment report settings must identify the observed and model hydraulic threshold values explicitly.');
   if(report.includes('<h3>Graph statistics</h3>'))throw new Error('Assessment report should not duplicate graph statistics outside the reference-style figure.');
   if(!report.includes('Observed spills by month')||!report.includes('Model spills by month')||!report.includes('Observed vs modelled monthly spill comparison'))throw new Error('Assessment report is missing the reference-style monthly spill tables.');
