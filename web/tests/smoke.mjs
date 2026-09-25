@@ -1541,9 +1541,29 @@ try{
     pairs:window.__ICM_WORKBENCH__?.lastComparisonValidity?.population,
     rows:[...document.querySelectorAll('#scenarioBody tr')].map(row=>row.textContent),
   }));
-  if(!genericScatter.method.includes('generic numeric values')||!genericScatter.xTitle.includes('unit unresolved')||!genericScatter.yTitle.includes('unit unresolved')||genericScatter.rows.length!==1){
+  if(!genericScatter.method.includes('raw numeric comparison')||!genericScatter.xTitle.includes('unit unresolved')||!genericScatter.yTitle.includes('unit unresolved')||genericScatter.rows.length!==1){
     throw new Error('Generic Value↔Value scatter workflow failed: '+JSON.stringify(genericScatter));
   }
+
+  stage='known observed quantity with unresolved model scatter';
+  await precisionRoute('data','series-mapping');
+  await page.selectOption('#observedSelect',obsDepth);
+  await page.selectOption('#modelSelect',[genericModelValue]);
+  await page.selectOption('#rainSelect','');
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
+  await precisionRoute('graphs','comparison');
+  await page.click('#runCompareBtn');
+  await page.waitForFunction(()=>document.querySelector('#scatterChart')?.data?.some(t=>t.mode==='markers')&&document.querySelector('#comparisonMethodNote')?.textContent.includes('raw numeric comparison'),null,{timeout:60000});
+  const unresolvedCounterpartScatter=await page.evaluate(()=>({
+    xTitle:document.querySelector('#scatterChart')?.layout?.xaxis?.title?.text||'',
+    yTitle:document.querySelector('#scatterChart')?.layout?.yaxis?.title?.text||'',
+    rows:[...document.querySelectorAll('#scenarioBody tr')].map(row=>row.textContent),
+  }));
+  if(!unresolvedCounterpartScatter.xTitle.includes('value')||!unresolvedCounterpartScatter.xTitle.includes('unit unresolved')||!unresolvedCounterpartScatter.yTitle.includes('unit unresolved')||unresolvedCounterpartScatter.rows.length!==1){
+    throw new Error('Known observed ↔ unresolved model raw numeric scatter failed: '+JSON.stringify(unresolvedCounterpartScatter));
+  }
+
   await precisionRoute('data','series-mapping');
   await page.selectOption('#observedSelect',obsDepth);
   await page.selectOption('#modelSelect',[modelDepth]);
