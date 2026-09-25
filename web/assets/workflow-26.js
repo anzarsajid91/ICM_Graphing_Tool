@@ -237,6 +237,12 @@
     });
     actions.appendChild(monthlyButton);
 
+    const runStatus = $('completeSurveyStatus');
+    if (runStatus) {
+      runStatus.classList.add('w26-run-status');
+      $('surveyReviewReadiness')?.insertAdjacentElement('afterend', runStatus);
+    }
+
     const settingsBody = $('surveyAssessmentSettingsBody');
     const population = $('surveyPopulation')?.closest('label');
     const cutoff = $('surveyApplyFaultCutoff');
