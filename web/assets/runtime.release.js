@@ -1037,6 +1037,7 @@ function invalidateHealth(reason='Data Health inputs changed.'){
   state.healthResult=null;state.healthSignature=null;
   if(had&&$('healthBody'))$('healthBody').innerHTML='<tr><td colspan="13" class="audit-warn"><strong>Stale Data Health result cleared.</strong> '+esc(reason)+' Re-run FDV Check before relying on QA evidence.</td></tr>';
 }
+diagnostic.appliedRainCriteria=appliedRainCriteria;
 diagnostic.rainEventsFresh=rainEventsFresh;
 diagnostic.dwfFresh=dwfFresh;
 Object.defineProperty(diagnostic,'dwfResult',{get:()=>state.dwfResult});
