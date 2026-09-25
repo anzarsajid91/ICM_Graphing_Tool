@@ -1522,10 +1522,10 @@ try{
   await page.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready')),genericModelName,{timeout:60000});
   await precisionRoute('data','series-mapping');
   const genericObs=await optionValue('#observedSelect',genericObsName+' — Value');
-  const genericModel=await optionValue('#modelSelect',genericModelName+' — Value');
-  if(!genericObs||!genericModel)throw new Error('Generic Value series were not exposed for observed/modelled mapping.');
+  const genericModelValue=await optionValue('#modelSelect',genericModelName+' — Value');
+  if(!genericObs||!genericModelValue)throw new Error('Generic Value series were not exposed for observed/modelled mapping.');
   await page.selectOption('#observedSelect',genericObs);
-  await page.selectOption('#modelSelect',[genericModel]);
+  await page.selectOption('#modelSelect',[genericModelValue]);
   await page.selectOption('#rainSelect','');
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
