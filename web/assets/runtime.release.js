@@ -1018,7 +1018,7 @@ function comparisonQuantityMismatch(observed,model){
   if(!observed||!model)return null;
   const observedQuantity=String(seriesQuantity(observed.item,observed.col)||'').toLowerCase();
   const modelQuantity=String(seriesQuantity(model.item,model.col)||'').toLowerCase();
-  if(!observedQuantity||!modelQuantity)return 'Observed and modelled quantities must be explicitly classified before comparison. Use Series Mapping to classify any generic Value channel.';
+  if(!observedQuantity||!modelQuantity)return null;
   if(observedQuantity===modelQuantity)return null;
   const name=q=>q==='level'?'absolute Level':q.charAt(0).toUpperCase()+q.slice(1);
   return `Observed ${name(observedQuantity)} cannot be compared directly with modelled ${name(modelQuantity)}. Depth and absolute Level remain distinct. Map like-for-like series, or explicitly reclassify a generic Value channel only when its source meaning supports that classification.`;
@@ -1080,14 +1080,14 @@ function regressionLinePoints(metrics,pairs,log=false){
   if(!Number.isFinite(y0)||!Number.isFinite(y1)||(log&&(y0<=0||y1<=0)))return null;
   return {x:[lo,hi],y:[y0,y1]};
 }
-function comparisonUnit(result){return result?.observed_unit||result?.modelled_unit||'';}
-function comparisonQuantity(result){return result?.observed_quantity||result?.modelled_quantity||'value';}
+function comparisonUnit(result){return result?.comparison_unit||'';}
+function comparisonQuantity(result){return result?.generic_numeric_comparison?'value':(result?.observed_quantity||result?.modelled_quantity||'value');}
 async function renderComparisons(){
   const ok=state.comparisons.filter(x=>x.result),first=ok[0];
   if(!first){
     const issues=state.comparisons.map(x=>({name:`${x.model?.item?.displayName||'Model'} · ${x.model?.col||'series'}`,error:x.error||'Comparison returned no usable result.'}));
     $('metricGrid').innerHTML='<div class="pool-summary audit-bad"><strong>Comparison could not be calculated.</strong><br>'+issues.map(x=>esc(x.name)+': '+esc(x.error)).join('<br>')+'<br><small>Check quantity mapping, the shared analysis period, exclusions and the maximum interpolation gap. The error above is retained instead of hiding it behind a generic “no pairs” message.</small></div>';
-    $('scenarioBody').innerHTML=issues.map(x=>'<tr><td>'+esc(x.name)+'</td><td colspan="12" class="audit-bad">'+esc(x.error)+'</td></tr>').join('');
+    $('scenarioBody').innerHTML=issues.map(x=>'<tr><td>'+esc(x.name)+'</td><td colspan="13" class="audit-bad">'+esc(x.error)+'</td></tr>').join('');
     for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])Plotly.purge(id);
     return;
   }
@@ -1110,7 +1110,10 @@ async function renderComparisons(){
     metric('KGE 2009','kge_2009'),
   ].join('');
   const methodNote=$('comparisonMethodNote');
-  if(methodNote)methodNote.innerHTML='<strong>Pairing and statistics.</strong> '+esc(first.result.pairing_method||'Canonical paired support')+'. Each model scenario uses its own valid paired support unless a common-support option is explicitly selected. '+esc(first.result.metric_weighting||'Sample-weighted metrics')+'. Plot zoom is display-only and does not change the analysis period.';
+  if(methodNote){
+    const genericNote=first.result.generic_numeric_comparison?' One or both selected channels have an unresolved hydraulic quantity, so this is shown as a raw numeric comparison without asserting hydraulic quantity or units. Classify the unresolved series when dimensional interpretation is required.':'';
+    methodNote.innerHTML='<strong>Pairing and statistics.</strong> '+esc(first.result.pairing_method||'Canonical paired support')+'. Each model scenario uses its own valid paired support unless a common-support option is explicitly selected. '+esc(first.result.metric_weighting||'Sample-weighted metrics')+'. Blank analysis start/end means the complete common observed/modelled support is used.'+esc(genericNote)+' Plot zoom is display-only and does not change the analysis period.';
+  }
   diagnostic.lastComparisonValidity={status,coverage,population:log?'positive-only':'all valid pairs'};
 
   const scatter=[],allValues=[];
@@ -1151,10 +1154,10 @@ async function renderComparisons(){
   await Plotly.react('exceedanceChart',[{x:oe.map(x=>100*x.exceedance_fraction),y:oe.map(x=>x[okey]),name:'Observed',mode:'lines',line:{color:$('obsColor').value}},{x:me.map(x=>100*x.exceedance_fraction),y:me.map(x=>x[mkey]),name:'Modelled',mode:'lines',line:{color:state.modelColours[sourceKey(first.model.id,first.model.col)]||palette[0]}}],{template:'plotly_white',title:d.flow_diagnostics_available?'Flow duration — left-support time weighting':'Unavailable — flow inputs and unmasked support required',xaxis:{title:'Exceedance %'},yaxis:{title:'Value'},margin:{l:55,r:20,t:45,b:50}},plotConfig('engineering-graph'));
 
   $('scenarioBody').innerHTML=state.comparisons.map(x=>{
-    if(!x.result)return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td colspan="12" class="audit-bad">${esc(x.error||'Unavailable')}</td></tr>`;
-    const pop=scatterPopulation(x.result,log),q=pop.metrics||{},uq=comparisonUnit(x.result);
+    if(!x.result)return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td colspan="13" class="audit-bad">${esc(x.error||'Unavailable')}</td></tr>`;
+    const pop=scatterPopulation(x.result,false),q=x.result.metrics||pop.metrics||{},uq=comparisonUnit(x.result);
     const cell=(key,withUnit=false)=>{const p=metricPresentation(q,key,withUnit?uq:'');return `<span${p.reason?` title="${esc(p.reason)}"`:''}>${esc(p.text)}</span>`;};
-    return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${q.pairs??pop.pairs.length}</td><td>${cell('correlation')}</td><td>${cell('regression_r2')}</td><td>${cell('regression_slope')}</td><td>${cell('regression_intercept',true)}</td><td>${cell('rmse',true)}</td><td>${cell('mae',true)}</td><td>${cell('mean_bias',true)}</td><td>${cell('nse')}</td><td>${cell('kge_2009')}</td><td>${log?pop.removed_count:'—'}</td><td>${x.result.coverage_fraction==null?'Not available':fmt(Number(x.result.coverage_fraction)*100,1)+'%'}</td></tr>`;
+    return `<tr><td>${esc(x.model.item.displayName)} · ${esc(x.model.col)}</td><td>${q.pairs??pop.pairs.length}</td><td>${cell('obs_mean',true)}</td><td>${cell('sim_mean',true)}</td><td>${cell('obs_peak',true)}</td><td>${cell('sim_peak',true)}</td><td>${cell('correlation')}</td><td>${cell('regression_r2')}</td><td>${cell('rmse',true)}</td><td>${cell('mae',true)}</td><td>${cell('mean_bias',true)}</td><td>${cell('nse')}</td><td>${cell('kge_2009')}</td><td>${x.result.coverage_fraction==null?'Not available':fmt(Number(x.result.coverage_fraction)*100,1)+'%'}</td></tr>`;
   }).join('');
 }
 
@@ -2006,13 +2009,9 @@ async function downloadReport(){
   const w=workspaceObject();
   const selectedComparisons=selectedReportComparisons();
   const log=options.scatter_scale==='current'?$('scatterScale').value==='log':options.scatter_scale==='log';
-  const scenarioRows=selectedComparisons.map((x,i)=>{
-    const population=scatterPopulation(x.result,log),q=population.metrics||{},unit=comparisonUnit(x.result);
-    const uv=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),4)+(unit?' '+esc(unit):'');
-    return '<tr><td>Model '+(i+1)+' · '+esc(x.model.item.displayName)+' · '+esc(x.model.col)+'</td><td>'+(q.pairs??population.pairs.length)+'</td><td>'+fmt(q.correlation)+'</td><td>'+fmt(q.regression_r2)+'</td><td>'+fmt(q.regression_slope)+'</td><td>'+uv(q.regression_intercept)+'</td><td>'+uv(q.rmse)+'</td><td>'+uv(q.mae)+'</td><td>'+uv(q.mean_bias)+'</td><td>'+fmt(q.nse)+'</td><td>'+fmt(q.kge_2009)+'</td><td>'+(log?population.removed_count:'—')+'</td><td>'+esc(x.result.calculation_status||'—')+'</td><td>'+(x.result.coverage_fraction==null?'—':fmt(x.result.coverage_fraction*100,1)+'%')+'</td></tr>';
-  }).join('');
-  const populationLabel=log?'Positive observed/modelled pairs only (log₁₀ view; nonpositive values are filtered from this view, not altered).':'All finite authoritative paired values (linear view).';
-  const scenarioTable=scenarioRows?'<p class="muted">'+esc(populationLabel)+' Metrics are sample-weighted; bias is modelled minus observed. Regression is raw-scale M = intercept + slope × O.</p><div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Pairs</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Log filtered</th><th>Status</th><th>Valid support</th></tr></thead><tbody>'+scenarioRows+'</tbody></table></div>':'<p class="muted">No selected scenario comparison has a current result.</p>';
+  const comparisonPopulationNote=log
+    ?'Positive observed/modelled pairs only (log₁₀ view; nonpositive values are filtered from this view, not altered).'
+    :'All finite authoritative paired values (linear view).';
 
   let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints. Report section/scenario choices are explicit and stored in the workspace.</div>';
   body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
@@ -2028,7 +2027,7 @@ async function downloadReport(){
   }
 
   if(options.include_comparison){
-    body+='<h2>Scenario comparison</h2>'+scenarioTable;
+    body+='<h2>Observed vs modelled comparison</h2><p class="muted">'+esc(comparisonPopulationNote)+'</p>';
     body+=reportComparisonScatterFigure(selectedComparisons,log);
     const allCurrent=state.comparisons.filter(x=>x.result);
     const allSelected=selectedComparisons.length===allCurrent.length;

@@ -491,6 +491,15 @@
       reconcileThresholdContext('model',previousModelContext,thresholdContext(modelThresholdSelection())),
     ].filter(Boolean);
     const mappingChanged=previousMapping!==JSON.stringify(state.mapping);
+    if(mappingChanged){
+      state.comparisons=[];
+      state.comparisonSnapshot=null;
+      diagnostic.lastComparisonValidity=null;
+      if($('metricGrid'))$('metricGrid').innerHTML='';
+      if($('comparisonMethodNote'))$('comparisonMethodNote').innerHTML='';
+      if($('scenarioBody'))$('scenarioBody').innerHTML='';
+      for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])Plotly.purge(id);
+    }
     if(mappingChanged&&state.rating){
       state.rating=null;
       diagnostic.lastRating=null;

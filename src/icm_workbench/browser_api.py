@@ -401,12 +401,8 @@ def _comparison_metric_reasons(paired, metrics):
 
 def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]", obs_unit=None, model_unit=None):
     oq, mq = _comparison_quantity(obs_path, obs_col), _comparison_quantity(model_path, model_col)
-    if not oq or not mq:
-        raise ValueError(
-            "Comparison quantity could not be resolved for one or both selected series. "
-            "Use matching hydraulic channels (for example depth with depth, flow with flow)."
-        )
-    if oq != mq:
+    generic_numeric_comparison = oq is None or mq is None
+    if oq is not None and mq is not None and oq != mq:
         raise ValueError(
             f"Comparison requires matching declared quantities (or safely inferred quantities); "
             f"selected channels resolve to {oq!r} and {mq!r}. "
@@ -458,10 +454,20 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
         "coverage_fraction":coverage.get("coverage_fraction"),
         "coverage":coverage,
         "validity_model":"validity-v1",
-        "observed_quantity": oq,
-        "modelled_quantity": mq,
+        "observed_quantity": "value" if generic_numeric_comparison else oq,
+        "modelled_quantity": "value" if generic_numeric_comparison else mq,
+        "source_observed_quantity": oq,
+        "source_modelled_quantity": mq,
         "observed_unit": obs_contract.get("canonical_unit"),
         "modelled_unit": model_contract.get("canonical_unit"),
+        "comparison_unit": (
+            obs_contract.get("canonical_unit")
+            if not generic_numeric_comparison
+            and obs_contract.get("canonical_unit")
+            and obs_contract.get("canonical_unit") == model_contract.get("canonical_unit")
+            else None
+        ),
+        "generic_numeric_comparison": generic_numeric_comparison,
         "pairing_method": "observed timestamps with exact or bounded linear model interpolation; no extrapolation across disallowed gaps",
         "metric_weighting": "sample-weighted paired values",
     }
