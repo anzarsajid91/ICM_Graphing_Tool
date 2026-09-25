@@ -1898,6 +1898,7 @@ try{
 
   stage='professional FDV and rainfall assessment';
   await precisionRoute('survey','rainfall-response');
+  await page.locator('#surveyRainfallTechnical').evaluate(el=>{el.open=true;});
   const surveyDepth=await optionValue('#surveyDepthSelect','observed.csv — depth');
   const surveyVelocity=await optionValue('#surveyVelocitySelect','observed.csv — velocity');
   const surveyFlow=await optionValue('#surveyFlowSelect','observed.csv — flow');
@@ -1920,7 +1921,7 @@ try{
   if(!((await page.locator('#professionalSurveyMethod').textContent())||'').includes('18 h'))throw new Error('Professional assessment methodology is not exposed in the UI');
 
   stage='complete association-driven survey assessment';
-  await precisionRoute('survey','rainfall-response');
+  await precisionRoute('survey','fdv-check');
   await page.setInputFiles('#fileInput',[
     {name:'FM01.fdv',mimeType:'text/plain',buffer:surveyFdv('FM01',0.10,0.20,0.40)},
     {name:'FM02.fdv',mimeType:'text/plain',buffer:surveyFdv('FM02',0.10,0.20,0.40)},
