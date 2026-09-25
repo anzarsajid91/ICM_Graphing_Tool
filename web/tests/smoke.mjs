@@ -1533,7 +1533,7 @@ try{
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
   await precisionRoute('graphs','comparison');
   await page.click('#runCompareBtn');
-  await page.waitForFunction(()=>document.querySelector('#scatterChart')?.data?.some(t=>t.mode==='markers')&&document.querySelector('#metricGrid')?.textContent.includes('Pairs'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#scatterChart')?.data?.some(t=>t.mode==='markers')&&document.querySelector('#metricGrid')?.textContent.includes('Pairs')&&document.querySelectorAll('#scenarioBody tr').length===1,null,{timeout:60000});
   const genericScatter=await page.evaluate(()=>({
     method:document.querySelector('#comparisonMethodNote')?.textContent||'',
     xTitle:document.querySelector('#scatterChart')?.layout?.xaxis?.title?.text||'',
@@ -1554,7 +1554,7 @@ try{
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:60000});
   await precisionRoute('graphs','comparison');
   await page.click('#runCompareBtn');
-  await page.waitForFunction(()=>document.querySelector('#scatterChart')?.data?.some(t=>t.mode==='markers')&&document.querySelector('#comparisonMethodNote')?.textContent.includes('raw numeric comparison'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('#scatterChart')?.data?.some(t=>t.mode==='markers')&&document.querySelector('#comparisonMethodNote')?.textContent.includes('raw numeric comparison')&&document.querySelectorAll('#scenarioBody tr').length===1,null,{timeout:60000});
   const unresolvedCounterpartScatter=await page.evaluate(()=>({
     xTitle:document.querySelector('#scatterChart')?.layout?.xaxis?.title?.text||'',
     yTitle:document.querySelector('#scatterChart')?.layout?.yaxis?.title?.text||'',
