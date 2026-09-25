@@ -557,12 +557,28 @@ async function verifyIndividualSourceRemoval(){
     const removeControls=await probe.locator('#poolBody .source-remove-btn').count();
     if(removeControls!==2)throw new Error('Each ready source row must expose one compact remove control.');
     await rainRow.locator('.source-remove-btn').click();
-    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===1
-      &&!document.querySelector('#poolBody')?.textContent.includes('RemoveTest-RG01.R')
-      &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
-      &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===1
-      &&!(document.querySelector('#timeChart')?.data||[]).some(trace=>String(trace.name||'').includes('Rainfall')),
-      null,{timeout:60000});
+    try{
+      await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===1
+        &&!document.querySelector('#poolBody')?.textContent.includes('RemoveTest-RG01.R')
+        &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
+        &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===1
+        &&!(document.querySelector('#timeChart')?.data||[]).some(trace=>String(trace.name||'').includes('Rainfall')),
+        null,{timeout:60000});
+    }catch(error){
+      const debug=await probe.evaluate(()=>({
+        rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+        mapping:{...state.mapping,models:[...(state.mapping.models||[])]},
+        sourcePool:window.__ICM_WORKBENCH__?.sourcePool||null,
+        graphNames:(document.querySelector('#timeChart')?.data||[]).map(trace=>trace.name),
+        graphMode:window.__ICM_WORKBENCH__?.lastGraphMode||null,
+        graphRefreshing:window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing,
+        graphGeneration:window.__ICM_WORKBENCH__?.uiV2?.graphGeneration,
+        diagnosticErrors:(window.__ICM_WORKBENCH__?.errors||[]).slice(-8),
+        poolSummary:document.querySelector('#poolSummary')?.textContent||'',
+        mappingStatus:document.querySelector('#mappingStatus')?.textContent||'',
+      }));
+      throw new Error('Removing mapped rainfall did not settle to the expected source/graph state: '+JSON.stringify(debug)+' | probe errors: '+probeErrors.join(' | ')+' | original: '+String(error));
+    }
     const afterRain=await probe.evaluate(()=>({
       rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
       mapping:{...state.mapping,models:[...(state.mapping.models||[])]},
@@ -580,11 +596,27 @@ async function verifyIndividualSourceRemoval(){
     if(afterRain.graphNames.some(name=>String(name||'').includes('Rainfall')))throw new Error('Removed rainfall trace remained on the graph: '+JSON.stringify(afterRain.graphNames));
 
     await fdvRow.locator('.source-remove-btn').click();
-    await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0
-      &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
-      &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===0
-      &&!(document.querySelector('#timeChart')?.data||[]).length,
-      null,{timeout:60000});
+    try{
+      await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0
+        &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
+        &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===0
+        &&!(document.querySelector('#timeChart')?.data||[]).length,
+        null,{timeout:60000});
+    }catch(error){
+      const debug=await probe.evaluate(()=>({
+        rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+        mapping:{...state.mapping,models:[...(state.mapping.models||[])]},
+        sourcePool:window.__ICM_WORKBENCH__?.sourcePool||null,
+        registry:window.ICMProjectRegistry?.snapshot()?.sources?.length??null,
+        graphDataLength:(document.querySelector('#timeChart')?.data||[]).length,
+        graphNames:(document.querySelector('#timeChart')?.data||[]).map(trace=>trace.name),
+        graphRefreshing:window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing,
+        diagnosticErrors:(window.__ICM_WORKBENCH__?.errors||[]).slice(-8),
+        poolSummary:document.querySelector('#poolSummary')?.textContent||'',
+        mappingStatus:document.querySelector('#mappingStatus')?.textContent||'',
+      }));
+      throw new Error('Removing the final mapped FDV source did not settle to an empty graph/source state: '+JSON.stringify(debug)+' | probe errors: '+probeErrors.join(' | ')+' | original: '+String(error));
+    }
     const afterFdv=await probe.evaluate(()=>({
       mapping:{...state.mapping,models:[...(state.mapping.models||[])]},
       registry:window.ICMProjectRegistry?.snapshot()?.sources?.length??null,
@@ -601,6 +633,189 @@ async function verifyIndividualSourceRemoval(){
     if(probeErrors.length)throw new Error('Individual source-removal probe errors: '+probeErrors.join(' | '));
     return {afterRain,afterFdv,referenceFiles:['FM01.fdv','RG01.R']};
   }finally{await probe.close();}
+}
+
+
+async function verifyPlotlyEngineeringEnhancements(){
+  if(liveMode)return null;
+  const probe=await context.newPage(),probeErrors=[];
+  probe.on('pageerror',error=>probeErrors.push('pageerror: '+String(error)));
+  probe.on('console',message=>{if(message.type()==='error'&&!message.text().includes('favicon.ico'))probeErrors.push('console: '+message.text());});
+  try{
+    await probe.setViewportSize({width:1366,height:760});
+    await probe.goto(baseUrl+'?plotly_engineering='+Date.now(),{waitUntil:'domcontentloaded'});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+    const fdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv'));
+    const rain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG01.R'));
+    await probe.setInputFiles('#fileInput',[
+      {name:'Plotly-Observed-FM01.fdv',mimeType:'text/plain',buffer:fdv},
+      {name:'Plotly-Model-FM01.fdv',mimeType:'text/plain',buffer:Buffer.from(fdv)},
+      {name:'Plotly-RG01.R',mimeType:'text/plain',buffer:rain},
+    ]);
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(row=>/Plotly-(Observed-FM01|Model-FM01|RG01)/.test(row.textContent)&&row.textContent.includes('Ready')).length===3,null,{timeout:120000});
+    const nav=async(workspace,pageName)=>{
+      await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+      await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,pageName]);
+      await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},[workspace,pageName],{timeout:30000});
+    };
+    const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>options.find(o=>o.textContent.includes(text))?.value||'',needle);
+    await nav('data','series-mapping');
+    const observed=await option('#observedSelect','Plotly-Observed-FM01.fdv — depth');
+    const model=await option('#modelSelect','Plotly-Model-FM01.fdv — depth');
+    const rainfall=await option('#rainSelect','Plotly-RG01.R — rainfall');
+    if(!observed||!model||!rainfall)throw new Error('Plotly reference fixture did not expose expected FM01/RG01 mappings.');
+    await probe.selectOption('#observedSelect',observed);
+    await probe.selectOption('#modelSelect',[]);
+    await probe.selectOption('#rainSelect',rainfall);
+    await probe.click('#applyMappingBtn');
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&Array.isArray(window.__ICM_WORKBENCH__?.lastPanelOrder),null,{timeout:120000});
+    await nav('data','time-series');
+
+    const initial=await probe.evaluate(()=> {
+      const chart=document.querySelector('#timeChart');
+      const hydraulic=(chart?.data||[]).filter(t=>t.type!=='table'&&!/rainfall/i.test(String(t.name||'')));
+      return {
+        panelOrder:window.__ICM_WORKBENCH__?.lastPanelOrder||[],
+        graphMode:window.__ICM_WORKBENCH__?.lastGraphMode||null,
+        hydraulicNames:hydraulic.map(t=>t.name),
+        hydraulicColours:hydraulic.map(t=>String(t.line?.color||'').toLowerCase()),
+        legendGroups:hydraulic.map(t=>t.legendgroup||null),
+        hovermode:chart?.layout?.hovermode||null,
+        hoversubplots:chart?.layout?.hoversubplots||null,
+        scrollZoom:chart?._context?.scrollZoom,
+        displayModeBar:chart?._context?.displayModeBar,
+        exportOptions:chart?._context?.toImageButtonOptions||null,
+        customButtons:(chart?._context?.modeBarButtonsToAdd||[]).map(button=>button?.name||''),
+        cameraButtons:document.querySelectorAll('#timeChart .modebar-btn[data-title*="Download plot"]').length,
+        observedThresholdHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
+        observedThresholdDisabled:document.querySelector('#graphObsThreshold')?.disabled,
+      };
+    });
+    if(JSON.stringify(initial.panelOrder)!==JSON.stringify(['rainfall','flow','depth','velocity']))throw new Error('Reference FDV must render rainfall plus separate Flow/Depth/Velocity panels: '+JSON.stringify(initial));
+    if(initial.graphMode!=='fdv-multi-variable'||initial.hydraulicNames.length!==3||initial.hydraulicColours.some(x=>x!=='#ff0000'))throw new Error('Observed FM01 FDV channels must render as three pure-red hydraulic traces: '+JSON.stringify(initial));
+    if(new Set(initial.legendGroups).size!==1||initial.legendGroups[0]!=='observed')throw new Error('Observed FDV traces must share one legend group: '+JSON.stringify(initial.legendGroups));
+    if(initial.hovermode!=='x unified'||initial.hoversubplots!=='axis')throw new Error('FDV hover cursor must synchronize across stacked panels: '+JSON.stringify(initial));
+    if(initial.scrollZoom!==false||initial.displayModeBar===false||!initial.exportOptions||initial.cameraButtons<1)throw new Error('Time graph must disable wheel zoom while retaining native image export: '+JSON.stringify(initial));
+    for(const name of ['Use visible period for analysis','Fit Y axes to visible period','Add multiple exclusion periods'])if(!initial.customButtons.includes(name))throw new Error('Missing engineering modebar action '+name+': '+JSON.stringify(initial.customButtons));
+    if(initial.observedThresholdHidden||initial.observedThresholdDisabled)throw new Error('Observed-only FDV mapping must expose an enabled Depth/Level threshold control.');
+
+    const chartBox=await probe.locator('#timeChart').boundingBox();
+    if(chartBox){
+      await probe.evaluate(()=>{const chart=document.querySelector('#timeChart');window.scrollTo(0,Math.max(0,(chart?.getBoundingClientRect().top||0)+window.scrollY-90));});
+      const beforeWheel=await probe.evaluate(()=>window.scrollY);
+      const refreshedBox=await probe.locator('#timeChart').boundingBox();
+      await probe.mouse.move(refreshedBox.x+Math.min(400,refreshedBox.width/2),refreshedBox.y+Math.min(260,refreshedBox.height/2));
+      await probe.mouse.wheel(0,420);
+      await probe.waitForTimeout(120);
+      const afterWheel=await probe.evaluate(()=>window.scrollY);
+      if(!(afterWheel>beforeWheel))throw new Error('Mouse wheel over the Plotly canvas must scroll the page when scrollZoom is disabled: '+JSON.stringify({beforeWheel,afterWheel}));
+    }
+
+    const support=await probe.evaluate(()=> {
+      const row=(window.__ICM_WORKBENCH__.lastGraphStatistics||[]).find(x=>String(x.statistics?.quantity||'').toLowerCase()==='depth');
+      return row?{min:Number(row.statistics.minimum),max:Number(row.statistics.maximum)}:null;
+    });
+    if(!support||!Number.isFinite(support.min)||!Number.isFinite(support.max))throw new Error('FM01 depth support unavailable for threshold regression.');
+    const threshold=Number((support.min+(support.max-support.min)*0.65).toPrecision(10));
+    await probe.fill('#graphObsThreshold',String(threshold));
+    await probe.waitForFunction(value=>(document.querySelector('#timeChart')?.layout?.shapes||[]).some(s=>s.type==='line'&&Math.abs(Number(s.y0)-value)<1e-9),threshold,{timeout:60000});
+    await probe.click('#refreshGraphBtn');
+    await probe.waitForFunction(value=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&(document.querySelector('#timeChart')?.layout?.shapes||[]).some(s=>s.type==='line'&&Math.abs(Number(s.y0)-value)<1e-9),threshold,{timeout:120000});
+    await nav('spills','assessment');
+    await probe.click('#runSpillsBtn');
+    await probe.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in')&&Boolean(state.spills?.observed),null,{timeout:120000});
+    const observedOnly=await probe.evaluate(()=>({count:state.spills.observed?.total_spill_count,duration:state.spills.observed?.total_spill_duration_hours,model:Boolean(state.spills.model)}));
+    if(observedOnly.model||!Number.isFinite(Number(observedOnly.count))||!Number.isFinite(Number(observedOnly.duration)))throw new Error('Observed-only threshold must calculate spills without a model: '+JSON.stringify(observedOnly));
+
+    await nav('data','time-series');
+    const times=await probe.evaluate(()=> {
+      const trace=(document.querySelector('#timeChart')?.data||[]).find(t=>/Observed depth/i.test(String(t.name||'')));
+      return trace?.x?.length>=14?[trace.x.slice(2,5),trace.x.slice(9,12)]:null;
+    });
+    if(!times)throw new Error('FM01 reference trace did not contain enough timestamps for graphical exclusions.');
+    await probe.evaluate(ranges=>{
+      window.ICMGraph.setExclusionCapture(true);
+      window.ICMGraph.captureExclusionRange([ranges[0][0],ranges[0][ranges[0].length-1]]);
+      window.ICMGraph.captureExclusionRange([ranges[1][0],ranges[1][ranges[1].length-1]]);
+      window.ICMGraph.setExclusionCapture(false);
+    },times);
+    await probe.waitForFunction(()=>state.exclusions?.length===2&&state.exclusions.every(x=>x.reason==='Graph-selected exclusion'),null,{timeout:30000});
+    const exclusionState=await probe.evaluate(()=>state.exclusions.map(x=>({start:x.start,end:x.end,reason:x.reason,scope:x.scope})));
+    if(exclusionState.length!==2||exclusionState.some(x=>x.scope!=='both'||x.end<=x.start))throw new Error('Multiple graphical exclusions were not stored as independent valid periods: '+JSON.stringify(exclusionState));
+
+    const inspectResult=await probe.evaluate(()=> {
+      const chart=document.querySelector('#timeChart'),trace=(chart?.data||[]).find(t=>/Observed depth/i.test(String(t.name||'')));
+      if(!trace)return null;
+      window.ICMGraph.inspectPoint({points:[{x:trace.x[0],y:trace.y[0],fullData:trace}]});
+      return {text:document.querySelector('#v2PointInspectorValue')?.textContent||'',copyDisabled:document.querySelector('#v2PointInspectorCopy')?.disabled};
+    });
+    if(!inspectResult||inspectResult.copyDisabled||!inspectResult.text.includes('Observed depth'))throw new Error('Graph point inspector did not expose a copyable exact point: '+JSON.stringify(inspectResult));
+
+    const visible=await probe.evaluate(async()=> {
+      const chart=document.querySelector('#timeChart'),trace=(chart?.data||[]).find(t=>/Observed depth/i.test(String(t.name||'')));
+      const range=[trace.x[1],trace.x[Math.min(12,trace.x.length-1)]];
+      await Plotly.relayout(chart,{'xaxis.range':range});
+      return range;
+    });
+    await probe.waitForTimeout(350);
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false,null,{timeout:120000});
+    const actions=await probe.evaluate(()=>({fit:window.ICMGraph.fitVisibleY(),period:window.ICMGraph.useVisiblePeriod(),analysis:[document.querySelector('#analysisStart')?.value,document.querySelector('#analysisEnd')?.value],yRange:document.querySelector('#timeChart')?.layout?.yaxis2?.range||document.querySelector('#timeChart')?.layout?.yaxis?.range}));
+    if(!actions.fit||!actions.period||!actions.analysis[0]||!actions.analysis[1]||!Array.isArray(actions.yRange))throw new Error('Visible-period and Fit-Y graph actions failed: '+JSON.stringify({visible,actions}));
+
+    const persisted=await probe.evaluate(async()=> {
+      const chart=document.querySelector('#timeChart'),trace=(chart?.data||[]).find(t=>/Observed flow/i.test(String(t.name||'')));
+      const uid=trace?.uid;
+      const index=(chart?.data||[]).findIndex(t=>t.uid===uid);
+      if(index<0)return {uid:null};
+      await Plotly.restyle(chart,{visible:'legendonly'},[index]);
+      return {uid,range:[...(chart.layout?.xaxis?.range||[])],visible:chart.data[index].visible};
+    });
+    await probe.fill('#graphObsThreshold',String(threshold+0.001));
+    await probe.waitForTimeout(250);
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false,null,{timeout:120000});
+    const persistedAfter=await probe.evaluate(uid=> {
+      const chart=document.querySelector('#timeChart'),trace=(chart?.data||[]).find(t=>t.uid===uid);
+      return {visible:trace?.visible,range:[...(chart?.layout?.xaxis?.range||[])]};
+    },persisted.uid);
+    if(!persisted.uid||persisted.visible!=='legendonly'||persistedAfter.visible!=='legendonly'||persisted.range.length!==2||persistedAfter.range.length!==2||String(persisted.range[0])!==String(persistedAfter.range[0])||String(persisted.range[1])!==String(persistedAfter.range[1]))throw new Error('Threshold redraw must preserve user zoom and legend visibility: '+JSON.stringify({persisted,persistedAfter}));
+
+    await nav('data','series-mapping');
+    await probe.selectOption('#modelSelect',[model]);
+    await probe.click('#applyMappingBtn');
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&document.querySelector('#mappingStatus')?.textContent.includes('1 comparison scenario'),null,{timeout:120000});
+    await nav('data','time-series');
+    const modelState=await probe.evaluate(()=> {
+      const chart=document.querySelector('#timeChart'),trace=(chart?.data||[]).find(t=>String(t.name||'').startsWith('Model '));
+      return {colour:String(trace?.line?.color||'').toLowerCase(),group:trace?.legendgroup||null};
+    });
+    if(modelState.colour!=='#0000ff'||!String(modelState.group||'').startsWith('model:'))throw new Error('First model scenario must default to pure blue and use a scenario legend group: '+JSON.stringify(modelState));
+    await probe.fill('#graphModelThreshold',String(threshold+0.001));
+    await probe.fill('#graphObsThreshold',String(threshold+0.001));
+    await nav('spills','assessment');
+    await probe.click('#runSpillsBtn');
+    await probe.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in')&&Boolean(state.spills?.observed)&&Boolean(state.spills?.model),null,{timeout:120000});
+    const rag=await probe.evaluate(()=>({
+      applied:state.spillSnapshot?.config?.applied_exclusions||{},
+      green:[...document.querySelectorAll('#spillComparison .spill-rag-green')].map(x=>x.textContent),
+      cases:[
+        window.__ICM_WORKBENCH__.spillDeviationRag(100,105),
+        window.__ICM_WORKBENCH__.spillDeviationRag(100,105.01),
+        window.__ICM_WORKBENCH__.spillDeviationRag(100,110),
+        window.__ICM_WORKBENCH__.spillDeviationRag(100,110.01),
+        window.__ICM_WORKBENCH__.spillDeviationRag(0,0),
+        window.__ICM_WORKBENCH__.spillDeviationRag(0,1),
+      ],
+    }));
+    if((rag.applied.observed||[]).length!==2||(rag.applied.model||[]).length!==2)throw new Error('Both spill calculations must consume both graph-created exclusions: '+JSON.stringify(rag.applied));
+    if(rag.green.length<2)throw new Error('Identical FM01 observed/model results must produce Green count and duration RAG: '+JSON.stringify(rag.green));
+    const expected=['Green','Amber','Amber','Red','Green','Red'];
+    if(rag.cases.map(x=>x.rag).join('|')!==expected.join('|'))throw new Error('Spill RAG boundary criteria are incorrect: '+JSON.stringify(rag.cases));
+
+    if(probeErrors.length)throw new Error('Plotly/reference enhancement probe errors: '+probeErrors.join(' | '));
+    return {referenceFiles:['FM01.fdv','RG01.R'],initial,observedOnly,exclusionState,inspectResult,actions,persisted:{before:persisted,after:persistedAfter},modelState,rag};
+  }finally{
+    await probe.close();
+  }
 }
 
 async function waitReady(){
@@ -689,6 +904,13 @@ try{
     if(cold.previewEvidence?.engineStatus==='ready'||!(cold.timeToOutcomeMs<engineAfterSelection))throw new Error('Cold FastPath preview did not render before authoritative engine readiness: '+JSON.stringify(cold));
     if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM01 parsing: '+JSON.stringify(cold.finalEvidence));
   }
+  stage='individual source removal with supplied reference files';
+  performanceEvidence.individualSourceRemoval=await verifyIndividualSourceRemoval();
+  await writePerformanceEvidence();
+  stage='Plotly engineering interactions and spill RAG with supplied reference files';
+  performanceEvidence.plotlyEngineeringEnhancements=await verifyPlotlyEngineeringEnhancements();
+  await writePerformanceEvidence();
+
   if(!liveMode){
   stage='fresh CSV FastPath benchmarks';
   performanceEvidence.freshCsvImports=[];
@@ -725,9 +947,6 @@ try{
   await writePerformanceEvidence();
   stage='analysis-worker restart during pending FastPath import';
   performanceEvidence.pendingImportRestart=await verifyRestartDuringPendingImport();
-  await writePerformanceEvidence();
-  stage='individual source removal with supplied reference files';
-  performanceEvidence.individualSourceRemoval=await verifyIndividualSourceRemoval();
   await writePerformanceEvidence();
   stage='open application';
   const applicationNavigationStart=Date.now();
@@ -871,7 +1090,7 @@ try{
   const denseObserved=await optionValue('#observedSelect','dense-observed.csv — level');
   const rain=await optionValue('#rainSelect','rainfall.csv — rainfall');
   if(!denseObserved||!rain)throw new Error('Expected dense observed and rainfall series options');
-  if((await page.inputValue('#obsColor')).toLowerCase()!=='#d32f2f')throw new Error('Observed default colour should be reference red');
+  if((await page.inputValue('#obsColor')).toLowerCase()!=='#ff0000')throw new Error('Observed default colour should be reference red');
   await page.selectOption('#observedSelect',denseObserved);
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect','');
@@ -882,7 +1101,7 @@ try{
   if(!fullDensity||fullDensity.raw!==40000||fullDensity.shown>15000||fullDensity.native!==false)throw new Error(`Full adaptive density incorrect: ${JSON.stringify(fullDensity)}`);
   const observedOnlyLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart');return {traceCount:chart.data.filter(t=>t.type!=='table').length,hasTable:chart.data.some(t=>t.type==='table'),hasRainTrace:chart.data.some(t=>t.type!=='table'&&t.yaxis==='y2'),hasY2:Boolean(chart.layout.yaxis2),hydDomain:chart.layout.yaxis.domain,observedColour:chart.data.find(t=>t.type!=='table')?.line?.color};});
   if(observedOnlyLayout.traceCount!==1||!observedOnlyLayout.hasTable||observedOnlyLayout.hasRainTrace||observedOnlyLayout.hasY2||observedOnlyLayout.hydDomain[0]<.28||observedOnlyLayout.hydDomain[1]!==1)throw new Error(`Observed-only/no-rain graph layout incorrect: ${JSON.stringify(observedOnlyLayout)}`);
-  if(String(observedOnlyLayout.observedColour).toLowerCase()!=='#d32f2f')throw new Error('Observed plotted trace should be red, got '+JSON.stringify(observedOnlyLayout.observedColour));
+  if(String(observedOnlyLayout.observedColour).toLowerCase()!=='#ff0000')throw new Error('Observed plotted trace should be red, got '+JSON.stringify(observedOnlyLayout.observedColour));
 
   stage='same-series observed and comparison mapping without rainfall';
   await page.selectOption('#modelSelect',[denseObserved]);
@@ -891,8 +1110,8 @@ try{
   await page.waitForFunction(()=>document.querySelector('#timeChart')?.data?.filter(t=>t.type!=='table').length===2&&document.querySelector('#timeChart')?.data?.some(t=>t.type==='table'),null,{timeout:60000});
   const comparisonNoRainLayout=await page.evaluate(()=>{const chart=document.querySelector('#timeChart'),lines=chart.data.filter(t=>t.type!=='table');return {traceCount:lines.length,hasTable:chart.data.some(t=>t.type==='table'),hasRainTrace:lines.some(t=>t.yaxis==='y2'),hasY2:Boolean(chart.layout.yaxis2),hydDomain:chart.layout.yaxis.domain,observedColour:lines[0]?.line?.color,modelColour:lines[1]?.line?.color};});
   if(comparisonNoRainLayout.traceCount!==2||!comparisonNoRainLayout.hasTable||comparisonNoRainLayout.hasRainTrace||comparisonNoRainLayout.hasY2||comparisonNoRainLayout.hydDomain[0]<.28||comparisonNoRainLayout.hydDomain[1]!==1)throw new Error(`Observed+comparison/no-rain graph layout incorrect: ${JSON.stringify(comparisonNoRainLayout)}`);
-  if(String(comparisonNoRainLayout.observedColour).toLowerCase()!=='#d32f2f')throw new Error('Observed comparison trace should remain red, got '+JSON.stringify(comparisonNoRainLayout.observedColour));
-  if(String(comparisonNoRainLayout.modelColour).toLowerCase()!=='#5755d9')throw new Error('First model plotted trace should use #5755d9, got '+JSON.stringify(comparisonNoRainLayout.modelColour));
+  if(String(comparisonNoRainLayout.observedColour).toLowerCase()!=='#ff0000')throw new Error('Observed comparison trace should remain red, got '+JSON.stringify(comparisonNoRainLayout.observedColour));
+  if(String(comparisonNoRainLayout.modelColour).toLowerCase()!=='#0000ff')throw new Error('First model plotted trace should use #0000ff, got '+JSON.stringify(comparisonNoRainLayout.modelColour));
 
   stage='observed-only mapping with rainfall';
   await page.selectOption('#modelSelect',[]);
@@ -1099,7 +1318,7 @@ try{
   for(const id of ['#observedFlowColour','#observedDepthColour','#observedVelocityColour','#rainColor'])if(await page.locator(id).count()!==1)throw new Error('Per-series colour control missing: '+id);
   const modelColour=await page.inputValue('#modelColourControls .model-colour');
   const colourWidth=await page.locator('#modelColourControls .model-colour').evaluate(el=>el.getBoundingClientRect().width);
-  if(modelColour.toLowerCase()!=='#5755d9')throw new Error(`First model default colour should match the reference simulated blue, got ${modelColour}`);
+  if(modelColour.toLowerCase()!=='#0000ff')throw new Error(`First model default colour should match the reference simulated blue, got ${modelColour}`);
   if(colourWidth>90)throw new Error(`Model colour picker should be a compact swatch, width=${colourWidth}`);
   await clickTab('graph');
   await page.fill('#graphObsThreshold','1.0');
@@ -1584,7 +1803,7 @@ try{
   if(!fdvGraph.table||JSON.stringify(fdvGraph.table.header)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('FDV graph must contain the reference-style Plotly statistics band: '+JSON.stringify(fdvGraph.table));
   for(const row of ['Observed Flow','Observed Depth','Observed Velocity','Rainfall'])if(!fdvGraph.table.series.some(x=>x.includes(row)))throw new Error('FDV statistics row missing '+row+': '+JSON.stringify(fdvGraph.table.series));
   if(!fdvGraph.table.units.some(x=>/mm\/h/i.test(x)))throw new Error('Rainfall statistics must expose mm/h: '+JSON.stringify(fdvGraph.table.units));
-  if(fdvGraph.colours['Observed flow']?.toLowerCase()!=='#d32f2f'||fdvGraph.colours['Observed depth']?.toLowerCase()!=='#d32f2f'||fdvGraph.colours['Observed velocity']?.toLowerCase()!=='#d32f2f'||fdvGraph.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('FDV default colours do not match the observed-red reference convention: '+JSON.stringify(fdvGraph.colours));
+  if(fdvGraph.colours['Observed flow']?.toLowerCase()!=='#ff0000'||fdvGraph.colours['Observed depth']?.toLowerCase()!=='#ff0000'||fdvGraph.colours['Observed velocity']?.toLowerCase()!=='#ff0000'||fdvGraph.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('FDV default colours do not match the observed-red reference convention: '+JSON.stringify(fdvGraph.colours));
   if(!fdvGraph.externalStatsHidden)throw new Error('FDV statistics must not be duplicated outside the Plotly figure.');
   await precisionRoute('data','time-series');
   await captureEvidence('01b-fdv-stacked-graph');
@@ -1989,7 +2208,7 @@ try{
   if(!near(rv.minimum,.42)||!near(rv.maximum,1.48)||!near(rv.mean,.8804642627,1e-8))throw new Error('Reference FM01 velocity statistics mismatch: '+JSON.stringify(rv));
   if(!near(rr.minimum,0)||!near(rr.maximum,66)||!near(rr.mean,.1264818213,1e-8)||!near(rr.total,85,1e-6))throw new Error('Reference RG01 rainfall statistics/total mismatch: '+JSON.stringify(rr));
   if(JSON.stringify(referenceEvidence.order)!==JSON.stringify(['rainfall','flow','depth','velocity']))throw new Error('Reference FDV panel order mismatch: '+JSON.stringify(referenceEvidence.order));
-  if(referenceEvidence.colours['Observed flow']?.toLowerCase()!=='#d32f2f'||referenceEvidence.colours['Observed depth']?.toLowerCase()!=='#d32f2f'||referenceEvidence.colours['Observed velocity']?.toLowerCase()!=='#d32f2f'||referenceEvidence.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('Reference FDV colours mismatch: '+JSON.stringify(referenceEvidence.colours));
+  if(referenceEvidence.colours['Observed flow']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed depth']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed velocity']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('Reference FDV colours mismatch: '+JSON.stringify(referenceEvidence.colours));
   if(JSON.stringify(referenceEvidence.tableHeader)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('Reference Plotly statistics header mismatch: '+JSON.stringify(referenceEvidence.tableHeader));
   if(!referenceEvidence.tableTotals.some(x=>/85(?:\.0+)? mm/.test(x)))throw new Error('Reference rainfall total 85 mm missing from Plotly statistics: '+JSON.stringify(referenceEvidence.tableTotals));
   if(referenceEvidence.pointCounts?.observed?.raw!==20161||referenceEvidence.pointCounts?.rainfall?.raw!==20161)throw new Error('Reference full-period source counts mismatch: '+JSON.stringify(referenceEvidence.pointCounts));
