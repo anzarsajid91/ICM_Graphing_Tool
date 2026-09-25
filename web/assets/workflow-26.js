@@ -663,15 +663,30 @@
       }
     }
     for (const gauge of survey.batch?.network?.gauge_summary || []) {
-      const rag = normaliseRag(gauge.status);
-      if (rag === 'Amber' || rag === 'Red') {
-        actions.push({area:'Rainfall',subject:gauge.gauge,severity:rag,action:gauge.suggested_fault_cutoff ? 'Review gauge fault/cutoff evidence.' : 'Review coverage and network consistency evidence.'});
+      const state = reviewedGaugeState(gauge);
+      if (state.historical_review) {
+        actions.push({area:'Rainfall',subject:gauge.gauge,severity:'Amber',action:'Reconfirm retained gauge review because the calculated gauge assessment changed.'});
+      } else if (state.reviewed === 'Amber' || state.reviewed === 'Red') {
+        actions.push({
+          area:'Rainfall',
+          subject:gauge.gauge,
+          severity:state.reviewed,
+          action:state.review?.reason || (gauge.suggested_fault_cutoff ? 'Review gauge fault/cutoff evidence.' : 'Review coverage and network consistency evidence.')
+        });
       }
     }
-    for (const row of (survey.balance || survey.batch?.volume_balance)?.rows || []) {
-      const rag = normaliseRag(row.rag);
-      if (rag === 'Amber' || rag === 'Red') {
-        actions.push({area:'Volume balance',subject:row.downstream_monitor || 'Network path',severity:rag,action:row.recommendation || row.likely_source || 'Review upstream/downstream support and network context.'});
+    for (const row of balanceRows()) {
+      const state = reviewedBalanceState(row);
+      const path = (row.upstream_monitors || []).join(' + ')+' → '+String(row.downstream_monitor || '—');
+      if (state.historical_review) {
+        actions.push({area:'Volume balance',subject:path,severity:'Amber',action:'Reconfirm retained balance review because the calculated RAG changed.'});
+      } else if (state.reviewed === 'Amber' || state.reviewed === 'Red') {
+        actions.push({
+          area:'Volume balance',
+          subject:path,
+          severity:state.reviewed,
+          action:state.review?.reason || row.recommendation || row.likely_source || 'Review upstream/downstream support and network context.'
+        });
       }
     }
     return actions;
@@ -684,53 +699,93 @@
       root.innerHTML = '<div class="pool-summary">Monthly Review becomes available after Flow Survey Assessment is run.</div>';
       return;
     }
-    const monitors = survey.batch.monitors || [];
-    const counts = {Green:0,Amber:0,Red:0,Grey:0};
+    const monitorCounts = {Green:0,Amber:0,Red:0,Grey:0};
+    const gaugeCounts = {Green:0,Amber:0,Red:0,Grey:0};
+    const balanceCounts = {Green:0,Amber:0,Red:0,Grey:0};
     let historical = 0;
-    for (const monitor of monitors) {
+    for (const monitor of survey.batch.monitors || []) {
       const state = reviewedMonitorState(monitor);
-      counts[state.reviewed] += 1;
+      monitorCounts[state.reviewed] += 1;
+      if (state.historical_review) historical += 1;
+    }
+    for (const gauge of survey.batch.network?.gauge_summary || []) {
+      const state = reviewedGaugeState(gauge);
+      gaugeCounts[state.reviewed] += 1;
+      if (state.historical_review) historical += 1;
+    }
+    for (const row of balanceRows()) {
+      const state = reviewedBalanceState(row);
+      balanceCounts[state.reviewed] += 1;
       if (state.historical_review) historical += 1;
     }
     const network = survey.batch.network || {};
     const qualified = network.qualified_wapug_events?.length || 0;
-    const balance = survey.balance || survey.batch.volume_balance || {};
     const actions = monthlyActions();
     const actionRows = actions.map(item =>
       '<tr><td>'+esc(item.area)+'</td><td><strong>'+esc(item.subject)+'</strong></td><td>'+ragPill(item.severity)+'</td><td>'+esc(item.action)+'</td></tr>'
     ).join('');
     root.innerHTML =
       '<div class="w26-monthly-grid">'+
-        '<div><span>Monitor status</span><strong>'+counts.Green+' G · '+counts.Amber+' A · '+counts.Red+' R · '+counts.Grey+' Grey</strong></div>'+
+        '<div><span>Monitor status</span><strong>'+monitorCounts.Green+' G · '+monitorCounts.Amber+' A · '+monitorCounts.Red+' R · '+monitorCounts.Grey+' Grey</strong></div>'+
+        '<div><span>Rain gauges</span><strong>'+gaugeCounts.Green+' G · '+gaugeCounts.Amber+' A · '+gaugeCounts.Red+' R · '+gaugeCounts.Grey+' Grey</strong></div>'+
         '<div><span>Network WAPUG events</span><strong>'+qualified+'</strong></div>'+
-        '<div><span>Rain gauges</span><strong>'+Number(network.gauge_count || 0)+'</strong></div>'+
-        '<div><span>Volume balance</span><strong>'+Number(balance.summary?.Green || 0)+' G · '+Number(balance.summary?.Amber || 0)+' A · '+Number(balance.summary?.Red || 0)+' R</strong></div>'+
+        '<div><span>Volume balance</span><strong>'+balanceCounts.Green+' G · '+balanceCounts.Amber+' A · '+balanceCounts.Red+' R · '+balanceCounts.Grey+' Grey</strong></div>'+
         '<div><span>Review integrity</span><strong>'+(historical ? historical+' review'+(historical===1?'':'s')+' need reconfirmation' : 'Current')+'</strong></div>'+
       '</div>'+
-      '<div class="w26-section-head"><div><h4>Engineering action register</h4><p>Exceptions only. Final judgement remains traceable to the calculated evidence and any explicit engineer review.</p></div></div>'+
-      (actionRows ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Area</th><th>Subject</th><th>Severity</th><th>Action / rationale</th></tr></thead><tbody>'+actionRows+'</tbody></table></div>' : '<div class="w26-good-state">No Amber/Red monitor, rainfall or volume-balance exceptions in the current assessment.</div>');
+      '<div class="w26-section-head"><div><h4>Engineering action register</h4><p>Exceptions only. Reviewed outcomes drive this register; all calculated evidence remains available underneath.</p></div></div>'+
+      (actionRows ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Area</th><th>Subject</th><th>Severity</th><th>Action / rationale</th></tr></thead><tbody>'+actionRows+'</tbody></table></div>' : '<div class="w26-good-state">No Amber/Red monitor, rainfall or volume-balance exceptions in the current reported assessment.</div>');
   }
 
   function renderAll() {
     renderHeader();
     renderMonitorReview();
     renderRainfallReview();
+    renderBalanceReview();
     renderMonthlyReview();
   }
 
-  function reportHtml() {
-    if (!survey.batch && !Object.keys(survey.reviews || {}).length) return '';
-    const rows = (survey.batch?.monitors || []).map(monitor => {
-      const state = reviewedMonitorState(monitor);
+  function reviewAuditRows() {
+    const rows = [];
+    const seen = new Set();
+    const add = (kind, subject, label, state) => {
       const review = state.review;
+      const key = reviewKey(kind, subject);
+      seen.add(key);
       const final = state.review_current ? state.reviewed : state.calculated;
       const note = review
         ? (state.review_current ? review.reason || 'Engineer review recorded.' : 'Retained review is stale because the calculated result changed; calculated result reported until reconfirmed.')
         : 'No engineer override.';
-      return '<tr><td>'+esc(monitor.monitor)+'</td><td>'+esc(state.calculated)+'</td><td>'+esc(final)+'</td><td>'+esc(note)+'</td><td>'+esc(review?.reviewer || '—')+'</td><td>'+esc(review?.reviewed_at || '—')+'</td></tr>';
-    }).join('');
-    return '<h3>Engineer review / final assessment</h3><div class="note">Calculated results are retained separately from reviewed results. A review made against a different calculated status is reported as stale and does not silently supersede the new calculation.</div>'+
-      '<div class="table-wrap"><table><thead><tr><th>Monitor</th><th>Calculated</th><th>Reported</th><th>Engineering rationale / review state</th><th>Reviewer</th><th>Reviewed at</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      rows.push({kind,label,calculated:state.calculated,final,note,reviewer:review?.reviewer || '—',reviewed_at:review?.reviewed_at || '—'});
+    };
+    for (const monitor of survey.batch?.monitors || []) add('monitor',monitor.monitor,'Monitor · '+monitor.monitor,reviewedMonitorState(monitor));
+    for (const gauge of survey.batch?.network?.gauge_summary || []) add('gauge',gauge.gauge,'Rain gauge · '+gauge.gauge,reviewedGaugeState(gauge));
+    for (const row of balanceRows()) {
+      const key = balanceRowKey(row);
+      const path = (row.upstream_monitors || []).join(' + ')+' → '+String(row.downstream_monitor || '—');
+      add('balance',key,'Volume balance · '+String(row.week_ending || '—')+' · '+path,reviewedBalanceState(row));
+    }
+    for (const [key,review] of Object.entries(survey.reviews || {})) {
+      if (seen.has(key)) continue;
+      rows.push({
+        kind:review.kind || key.split(':')[0],
+        label:'Historical / unmatched · '+String(review.subject || key),
+        calculated:normaliseRag(review.calculated_status_at_review),
+        final:normaliseRag(review.reviewed_status),
+        note:'Review record retained for audit, but its subject is not present in the current calculated result. '+String(review.reason || ''),
+        reviewer:review.reviewer || '—',
+        reviewed_at:review.reviewed_at || '—',
+      });
+    }
+    return rows;
+  }
+
+  function reportHtml() {
+    if (!survey.batch && !Object.keys(survey.reviews || {}).length) return '';
+    const rows = reviewAuditRows().map(row =>
+      '<tr><td>'+esc(row.label)+'</td><td>'+esc(row.calculated)+'</td><td>'+esc(row.final)+'</td><td>'+esc(row.note)+'</td><td>'+esc(row.reviewer)+'</td><td>'+esc(row.reviewed_at)+'</td></tr>'
+    ).join('');
+    return '<h3>Engineer review / final assessment</h3><div class="note">Calculated results are retained separately from reviewed results for monitors, rain gauges and weekly volume-balance paths. Stale reviews never silently supersede a changed calculation.</div>'+
+      '<div class="table-wrap"><table><thead><tr><th>Assessment item</th><th>Calculated</th><th>Reported</th><th>Engineering rationale / review state</th><th>Reviewer</th><th>Reviewed at</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
 
   function installPersistence() {
