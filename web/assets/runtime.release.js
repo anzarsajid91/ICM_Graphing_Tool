@@ -964,13 +964,15 @@ async function drawTimeChart(){return window.ICMGraph?.draw();}
 function analysisBounds(){return {start:modelClock($('analysisStart').value)||null,end:modelClock($('analysisEnd').value)||null};}
 
 function appliedRainCriteria(){
-  const preset=$('rainCriteriaMode')?.value==='wapug';
+  const mode=$('rainCriteriaMode')?.value||'manual';
+  const over50=mode==='wapug',under50=mode==='wapug-under50',preset=over50||under50;
   return {
-    mode:preset?'wapug':'manual',
+    mode,
+    population_above_50k:over50?true:under50?false:null,
     minimum_intensity:preset?5:Number($('rainMinIntensity')?.value||5),
-    minimum_intensity_duration_min:preset?6:Number($('rainIntensityDuration')?.value||6),
+    minimum_intensity_duration_min:over50?6:under50?4:Number($('rainIntensityDuration')?.value||6),
     minimum_depth_mm:preset?5:Number($('rainTotalDepth')?.value||5),
-    minimum_event_duration_min:preset?60:Number($('rainEventDuration')?.value||60),
+    minimum_event_duration_min:over50?60:under50?30:Number($('rainEventDuration')?.value||60),
     dry_gap_min:preset?15:Number($('rainDryGap')?.value||15),
   };
 }
