@@ -529,26 +529,32 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true}={}){
     throw new Error('Quantity overrides are not available for sources with authoritative native quantity metadata.');
   }
   const requested=quantity?String(quantity).toLowerCase():null;
-  await engine.call('set_series_quantity',{path:mapped.item.virtualPath,column:mapped.col,quantity:requested});
+  const result=await engine.call('set_series_quantity',{path:mapped.item.virtualPath,column:mapped.col,quantity:requested});
   const metadata=mapped.item.parsed.metadata||(mapped.item.parsed.metadata={});
   const seriesMetadata=metadata.series_metadata||(metadata.series_metadata={});
   const details=seriesMetadata[mapped.col]||(seriesMetadata[mapped.col]={});
   const quantityByColumn=metadata.quantity_by_column||(metadata.quantity_by_column={});
-  if(requested){
-    state.seriesQuantityOverrides.set(key,requested);
-    details.quantity=requested;details.quantity_source='user';quantityByColumn[mapped.col]=requested;
-  }else{
-    state.seriesQuantityOverrides.delete(key);
-    if(details.quantity_source==='user'){delete details.quantity;delete details.quantity_source;}
-    quantityByColumn[mapped.col]=null;
-  }
+  if(requested)state.seriesQuantityOverrides.set(key,requested);
+  else state.seriesQuantityOverrides.delete(key);
+  details.quantity=result.quantity??null;
+  details.quantity_source=result.quantity_source||'unresolved';
+  if(result.inferred_quantity!==undefined)details.inferred_quantity=result.inferred_quantity;
+  if(result.original_unit!==undefined)details.original_unit=result.original_unit;
+  details.canonical_unit=result.canonical_unit??null;
+  details.conversion_factor=result.conversion_factor??null;
+  details.unit_status=result.unit_status||'unresolved';
+  quantityByColumn[mapped.col]=result.quantity??null;
   window.ICMProjectRegistry?.registerSource(mapped.item);
   if(refresh){
     renderSeriesSemanticsOverrides();
     autoSuggestAdvanced(allSeries());
+    const effective=result.quantity||'generic numeric';
+    const unit=result.canonical_unit||result.original_unit||'unit unresolved';
     $('mappingStatus').textContent=requested
-      ?'Generic series classified as '+requested+'. Apply mapping to refresh graphs and threshold controls.'
-      :'Generic series returned to unresolved numeric data. Apply mapping to refresh graphs and threshold controls.';
+      ?'Series classified as '+effective+' · '+unit+'. Apply mapping to refresh graphs and threshold controls.'
+      :(result.quantity
+        ?'Series returned to inferred '+effective+' · '+unit+'. Apply mapping to refresh graphs and threshold controls.'
+        :'Series returned to unresolved numeric data. Apply mapping to refresh graphs and threshold controls.');
   }
   return true;
 }
