@@ -837,7 +837,7 @@ async function removeSourceById(sourceId){
     state.rainEventResult=null;
     state.rainEventSignature=null;
     ++state.rainEventGeneration;
-    if($('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary">Rainfall source removed. Re-run Rainfall Check after selecting another source.</div>';
+    if($('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary">Rainfall source removed. Re-run the Time Series rainfall-event assessment after selecting another source.</div>';
     if($('rainEventBody'))$('rainEventBody').innerHTML='';
     if($('eventResponseBody'))$('eventResponseBody').innerHTML='';
   }
@@ -993,7 +993,7 @@ function invalidateRainEvents(reason='Rainfall-event inputs changed.'){
   const had=Boolean(state.rainEventResult||state.rainEventSignature||state.rainEvents.length);
   state.rainEventResult=null;state.rainEventSignature=null;state.rainEvents=[];
   if(had){
-    if($('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary audit-warn"><strong>Stale rainfall-event result cleared.</strong> '+esc(reason)+' Re-run Rainfall Check before relying on event bands or response diagnostics.</div>';
+    if($('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary audit-warn"><strong>Stale rainfall-event result cleared.</strong> '+esc(reason)+' Re-run the Time Series rainfall-event assessment before relying on event bands or response diagnostics.</div>';
     if($('rainEventBody'))$('rainEventBody').innerHTML='';
     if($('eventResponseBody'))$('eventResponseBody').innerHTML='';
     void drawTimeChart();
@@ -1697,7 +1697,7 @@ async function applyWorkspace(w){
   }
   state.rainEvents=[];
   state.rainEventResult=null;state.rainEventSignature=null;
-  if(w.rain_events?.events?.length&&$('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary">Workspace contained derived rainfall events. They were not reactivated automatically; re-run Rainfall Check against the reattached authoritative sources.</div>';
+  if(w.rain_events?.events?.length&&$('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary">Workspace contained derived rainfall events. They were not reactivated automatically; re-run the Time Series rainfall-event assessment against the reattached authoritative sources.</div>';
   const expected=(w.source_references||[]).length;
   const matched=(w.source_references||[]).filter(r=>[...state.files.values()].some(x=>x.hash===r.sha256)).length;
   $('workspaceStatus').textContent=`Restoring workspace… ${matched}/${expected} source fingerprint(s) matched; rebuilding mappings and graph.`;
