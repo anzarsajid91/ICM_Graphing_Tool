@@ -7,9 +7,7 @@ const ROUTES={
     label:'Data / Time Series',
     icon:'data',
     pages:{
-      sources:{label:'Sources',title:'Survey data sources',description:'Import, parse and audit survey, model and rainfall files in one local source pool.',root:()=>qs('.source-panel')},
-      'series-mapping':{label:'Series Mapping',title:'Series mapping',description:'Map observed, model, rainfall and optional hydraulic channels from the shared catalogue.',root:()=>qs('.mapping-panel')},
-      'time-series':{label:'Time Series',title:'Hydraulic time series',description:'Review native hydraulic traces with rainfall, exclusions, thresholds and auditable statistics.',tab:'graph',root:()=>$('tab-graph')}
+      'time-series':{label:'Time Series',title:'Data / Time Series',description:'Upload, interpret and assign local sources, then review hydraulic traces, thresholds, rainfall overlays and auditable statistics in one continuous workspace.',tab:'graph',root:()=>$('tab-graph')}
     }
   },
   spills:{
@@ -25,7 +23,7 @@ const ROUTES={
     icon:'survey',
     pages:{
       'fdv-check':{label:'FDV Check',title:'FDV check',description:'Data health, telemetry QA and whole-survey/weekly evidence with missing support reported as unknown.',tab:'data-health',root:()=>$('tab-data-health')},
-      'rainfall-check':{label:'Rainfall Check',title:'Rainfall check',description:'Rainfall QA, accumulation, event qualification and hydraulic-response evidence in one canonical workflow.',tab:'rain-events',root:()=>$('tab-rain-events')},
+      'rainfall-check':{label:'Rainfall Check',title:'Rainfall check',description:'Review Flow Survey gauge health, network WAPUG qualification and event evidence without depending on the standalone Time Series rainfall-event workflow.',tab:'data-health',root:()=>$('tab-data-health')},
       'volume-balance':{label:'Volume Balance',title:'Volume balance',description:'Assess upstream/downstream flow continuity on common valid temporal support with explicit assumptions.',tab:'data-health',root:()=>$('tab-data-health')}
     }
   },
@@ -48,6 +46,8 @@ const ROUTES={
   }
 };
 const ROUTE_ALIASES={
+  'data/sources':['data','time-series'],
+  'data/series-mapping':['data','time-series'],
   'verification/comparison':['graphs','comparison'],
   'verification/rating':['graphs','rating'],
   'verification/dwf':['graphs','dwf'],
@@ -59,7 +59,7 @@ const ROUTE_ALIASES={
   'survey/rainfall-response':['survey','rainfall-check'],
   'survey/flow-continuity':['survey','volume-balance'],
   'rainfall/gauges':['survey','rainfall-check'],
-  'rainfall/events':['survey','rainfall-check'],
+  'rainfall/events':['data','time-series'],
   'report/builder':['reports','report-generation'],
   'report/workspace':['reports','workspace']
 };
@@ -68,7 +68,7 @@ function canonicalRoute(workspace,page){
   const alias=ROUTE_ALIASES[workspace+'/'+page];
   return alias?{workspace:alias[0],page:alias[1]}:null;
 }
-let current={workspace:'data',page:'sources'};
+let current={workspace:'data',page:'time-series'};
 let docked=[];
 let syncingLegacy=false;
 let focusPreference=false;
@@ -112,6 +112,39 @@ function ensureSection(id,title,description){
   section=document.createElement('section');section.id=id;section.className='pw-page-surface';
   section.innerHTML='<div class="pw-surface-head"><div><h3>'+esc(title)+'</h3>'+(description?'<p>'+esc(description)+'</p>':'')+'</div></div>';
   return section;
+}
+function ensureDataTimeSeriesSurface(){
+  const graphPanel=qs('#tab-graph > .panel');
+  if(!graphPanel)return null;
+  let setup=$('pwDataSetupSurface');
+  if(!setup){
+    setup=document.createElement('section');
+    setup.id='pwDataSetupSurface';
+    setup.className='pw-page-surface pw-data-setup-surface';
+    setup.innerHTML='<div class="pw-surface-head"><div><h3>Data setup</h3><p>Upload, inspect and assign every source here. Automatic interpretation is a starting point; generic CSV quantities remain independently overridable.</p></div></div>';
+    const source=qs('.source-panel'),mapping=qs('.mapping-panel'),shared=$('sharedAnalysisPanel');
+    if(source){source.classList.add('pw-embedded-panel','pw-data-source-panel');setup.appendChild(source);}
+    if(mapping){mapping.classList.add('pw-embedded-panel','pw-data-mapping-panel');setup.appendChild(mapping);}
+    if(shared){shared.classList.add('pw-embedded-panel');setup.appendChild(shared);}
+    graphPanel.prepend(setup);
+  }
+  let events=$('pwTimeSeriesEventSurface');
+  if(!events){
+    const legacy=qs('#tab-rain-events > .panel');
+    if(legacy){
+      events=document.createElement('details');
+      events.id='pwTimeSeriesEventSurface';
+      events.className='pw-page-surface pw-timeseries-event-surface';
+      events.innerHTML='<summary><span><strong>Standalone rainfall-event overlay</strong><small>EDM / telemetry Time Series assessment · independent of Flow Survey Rainfall Check</small></span><span class="pw-disclosure-hint">WAPUG / manual</span></summary>';
+      legacy.classList.add('pw-embedded-panel');
+      const title=qs('.panel-head h2',legacy),copy=qs('.panel-head p',legacy);
+      if(title)title.textContent='Time Series WAPUG / manual rainfall events';
+      if(copy)copy.textContent='Detect events from the rainfall mapped in this Time Series workspace and overlay them through the hydraulic graph. These results are independent of Flow Survey Rainfall Check, while using the same validated event engine.';
+      events.appendChild(legacy);
+      graphPanel.appendChild(events);
+    }
+  }
+  return setup;
 }
 function healthSeverity(label){return ({red:4,amber:3,yellow:3,green:2,grey:1,gray:1}[String(label||'').trim().toLowerCase()]||0);}
 function refreshHealthSummary(){
@@ -193,17 +226,18 @@ function ensureReportSurfaces(){
   panel.append(builder,workspace);
 }
 function preparePageComposition(){
-  ensureDataHealthSurface();ensureSpillSurfaces();ensureReportSurfaces();
-  const rainfallPanel=qs('#tab-rain-events > .panel');
+  ensureDataTimeSeriesSurface();ensureDataHealthSurface();ensureSpillSurfaces();ensureReportSurfaces();
   const professional=qs('.survey-professional');
   const completeSurvey=$('completeSurveyPanel');
-  if(rainfallPanel&&professional&&!rainfallPanel.contains(professional))rainfallPanel.appendChild(professional);
-  if(rainfallPanel&&completeSurvey&&!rainfallPanel.contains(completeSurvey))rainfallPanel.appendChild(completeSurvey);
+  own($('pwDataSetupSurface'),['data/time-series']);
+  own($('pwTimeSeriesEventSurface'),['data/time-series']);
+  own($('surveyReviewHeader'),['survey/fdv-check','survey/rainfall-check','survey/volume-balance']);
   own($('surveyAssociationPanel'),['survey/fdv-check']);
   own(qs('#tab-data-health .tool-main-section'),['survey/fdv-check']);
   own($('pwDataHealthSummary'),['survey/fdv-check']);
+  own(completeSurvey,['survey/fdv-check']);
+  own($('surveyRainfallReview'),['survey/rainfall-check']);
   own(professional,['survey/rainfall-check']);
-  own(completeSurvey,['survey/rainfall-check']);
   own($('surveyBalancePanel'),['survey/volume-balance']);
   own(qs('#tab-compare > .panel'),['graphs/comparison','graphs/rating','graphs/dwf']);
   own(qs('#tab-compare > .panel > .panel-head'),['graphs/comparison']);
@@ -358,7 +392,7 @@ function wireLegacyNavigation(){
   const defaults={
     graph:['data','time-series'],
     'data-health':['survey','fdv-check'],
-    'rain-events':['survey','rainfall-check'],
+    'rain-events':['data','time-series'],
     compare:['graphs','comparison'],
     storage:['spills','storage'],
     spills:['spills','assessment'],
@@ -520,8 +554,8 @@ function wireContextUpdates(){
 }
 function mount(){
   identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();
-  const initial=parseHash()||{workspace:'data',page:'sources'};navigate(initial.workspace,initial.page,false);
-  window.__ICM_PRECISION_WORKBENCH__={version:5,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
+  const initial=parseHash()||{workspace:'data',page:'time-series'};navigate(initial.workspace,initial.page,false);
+  window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
 })();
