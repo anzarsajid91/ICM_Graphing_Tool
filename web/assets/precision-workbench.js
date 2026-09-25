@@ -413,6 +413,18 @@ function navigate(workspace,page,push=false){
   if(push){const h='#/'+workspace+'/'+page;if(location.hash!==h)history.pushState(null,'',h);}
   document.title=p.title+' · ICM Graphing Tool';
   resizeVisuals();
+  if(workspace==='graphs'&&page==='comparison')autoRunComparisonIfReady();
+}
+
+function autoRunComparisonIfReady(){
+  const observed=$('observedSelect')?.value||'';
+  const models=$('modelSelect')?.selectedOptions?.length||0;
+  const button=$('runCompareBtn');
+  const hasCurrent=Boolean(window.__ICM_WORKBENCH__?.lastComparisonValidity&&$('scatterChart')?.data?.length);
+  if(!observed||!models||!button||button.disabled||hasCurrent)return;
+  requestAnimationFrame(()=>setTimeout(()=>{
+    if(current.workspace==='graphs'&&current.page==='comparison'&&!button.disabled)button.click();
+  },0));
 }
 function isFocusRoute(){
   return FOCUS_ROUTES.has(current.workspace+'/'+current.page);
@@ -461,13 +473,14 @@ function refreshScope(){
   const observed=selectionLabel('observedSelect','Not mapped');
   const rain=selectionLabel('rainSelect','Not mapped');
   const models=$('modelSelect')?.selectedOptions?.length||0;
-  const start=$('analysisStart')?.value||'Selected data';
-  const end=$('analysisEnd')?.value||'full support';
+  const start=$('analysisStart')?.value||'';
+  const end=$('analysisEnd')?.value||'';
+  const period=start||end?(start||'data start')+' → '+(end||'data end'):'Full common series';
   const items=[
     ['Observed',observed],
     ['Models',models?String(models):'None'],
     ['Rain gauge',rain],
-    ['Period',start+' → '+end],
+    ['Period',period],
     ['Time basis','Source-defined']
   ];
   scope.innerHTML=items.map(([k,v])=>'<div class="pw-scope-item"><span>'+esc(k)+'</span><strong title="'+esc(v)+'">'+esc(v)+'</strong></div>').join('');
