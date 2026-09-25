@@ -413,18 +413,6 @@ function navigate(workspace,page,push=false){
   if(push){const h='#/'+workspace+'/'+page;if(location.hash!==h)history.pushState(null,'',h);}
   document.title=p.title+' · ICM Graphing Tool';
   resizeVisuals();
-  if(workspace==='graphs'&&page==='comparison')autoRunComparisonIfReady();
-}
-
-function autoRunComparisonIfReady(){
-  const observed=$('observedSelect')?.value||'';
-  const models=$('modelSelect')?.selectedOptions?.length||0;
-  const button=$('runCompareBtn');
-  const hasCurrent=Boolean(window.__ICM_WORKBENCH__?.lastComparisonValidity&&$('scatterChart')?.data?.length);
-  if(!observed||!models||!button||button.disabled||hasCurrent)return;
-  requestAnimationFrame(()=>setTimeout(()=>{
-    if(current.workspace==='graphs'&&current.page==='comparison'&&!button.disabled)button.click();
-  },0));
 }
 function isFocusRoute(){
   return FOCUS_ROUTES.has(current.workspace+'/'+current.page);
