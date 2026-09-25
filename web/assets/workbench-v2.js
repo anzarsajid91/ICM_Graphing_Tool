@@ -26,6 +26,7 @@
     lastInspectedPoint: null,
     timeSeriesComparisonSignature: null,
     timeSeriesComparisonPending: null,
+    timeSeriesComparisonTimer: null,
   };
   window.__ICM_WORKBENCH__.uiV2 = ui;
 
@@ -737,9 +738,12 @@
 
   function refreshTimeSeriesComparisonMetrics() {
     renderTimeSeriesComparisonMetrics();
+    if(ui.timeSeriesComparisonTimer){
+      clearTimeout(ui.timeSeriesComparisonTimer);
+      ui.timeSeriesComparisonTimer=null;
+    }
     if(!state.mapping.observed||!(state.mapping.models||[]).length){
       ui.timeSeriesComparisonSignature=null;
-      ui.timeSeriesComparisonPending=null;
       return;
     }
     const ensure=window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics;
@@ -753,14 +757,26 @@
     if(ui.timeSeriesComparisonSignature===signature&&ui.timeSeriesComparisonPending)return;
     ui.timeSeriesComparisonSignature=signature;
     const target=$('v2CalibrationMetricsBody');
-    if(target)target.innerHTML='<div class="v2-empty">Calculating calibration statistics…</div>';
-    ui.timeSeriesComparisonPending=Promise.resolve(ensure())
-      .then(()=>{if(signature===analysisSignature())renderTimeSeriesComparisonMetrics();})
-      .catch(err=>{
-        ui.timeSeriesComparisonSignature=null;
-        if(target)target.innerHTML='<div class="v2-empty">Calibration statistics unavailable: '+esc(String(err?.message||err))+'</div>';
-      })
-      .finally(()=>{ui.timeSeriesComparisonPending=null;});
+    if(target)target.innerHTML='<div class="v2-empty">Calibration statistics will calculate automatically after the graph settles…</div>';
+    // Keep the authoritative comparison automatic, but debounce it so quick
+    // mapping/graph changes are never queued behind an expensive comparison.
+    // Any new graph render clears this timer and replaces it with the latest
+    // mapping signature. Explicit Graphs/Comparison runs remain immediate.
+    ui.timeSeriesComparisonTimer=setTimeout(()=>{
+      ui.timeSeriesComparisonTimer=null;
+      if(signature!==analysisSignature()){
+        if(ui.timeSeriesComparisonSignature===signature)ui.timeSeriesComparisonSignature=null;
+        return;
+      }
+      if(target)target.innerHTML='<div class="v2-empty">Calculating calibration statistics…</div>';
+      ui.timeSeriesComparisonPending=Promise.resolve(ensure())
+        .then(()=>{if(signature===analysisSignature())renderTimeSeriesComparisonMetrics();})
+        .catch(err=>{
+          if(ui.timeSeriesComparisonSignature===signature)ui.timeSeriesComparisonSignature=null;
+          if(signature===analysisSignature()&&target)target.innerHTML='<div class="v2-empty">Calibration statistics unavailable: '+esc(String(err?.message||err))+'</div>';
+        })
+        .finally(()=>{ui.timeSeriesComparisonPending=null;});
+    },1500);
   }
   window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics=renderTimeSeriesComparisonMetrics;
 
