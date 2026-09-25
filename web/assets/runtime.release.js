@@ -1469,7 +1469,30 @@ async function renderEventResponses(expectedGeneration=state.rainEventGeneration
   if(expectedGeneration!==state.rainEventGeneration||!rainEventsFresh()||responseSignature!==currentSignature)throw new Error('Event-response inputs changed while calculation was running. The late result was discarded.');
   $('eventResponseBody').innerHTML=(r.rows||[]).map(x=>`<tr><td>${x.event}</td><td>${esc(x.rain_start)}</td><td>${fmt(x.rain_depth_mm,2)}</td><td>${fmt(x.observed_baseline,4)}</td><td>${fmt(x.observed_uplift,4)}</td><td>${fmt(x.modelled_uplift,4)}</td><td>${fmt(x.uplift_error_percent,1)}</td><td>${fmt(x.peak_lag_minutes,1)}</td></tr>`).join('');
 }
-function criteriaModeChanged(){const manual=$('rainCriteriaMode').value==='manual';for(const id of ['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'])$(id).disabled=!manual;}
+function criteriaModeChanged(){
+  const mode=$('rainCriteriaMode').value||'manual';
+  const fields={
+    rainMinIntensity:5,
+    rainIntensityDuration:mode==='wapug-under50'?4:6,
+    rainEventDuration:mode==='wapug-under50'?30:60,
+    rainTotalDepth:5,
+    rainDryGap:15,
+  };
+  const manual=mode==='manual';
+  for(const [id,presetValue] of Object.entries(fields)){
+    const el=$(id);if(!el)continue;
+    if(manual){
+      if(el.dataset.presetActive==='true'&&el.dataset.manualValue!=null)el.value=el.dataset.manualValue;
+      el.disabled=false;
+      delete el.dataset.presetActive;
+      continue;
+    }
+    if(el.dataset.presetActive!=='true')el.dataset.manualValue=el.value;
+    el.value=String(presetValue);
+    el.disabled=true;
+    el.dataset.presetActive='true';
+  }
+}
 async function runHealth(){
   const signature=healthInputSignature(),generation=++state.healthGeneration,rows=[];
   for(const item of state.files.values()){
@@ -1709,7 +1732,7 @@ async function applyWorkspace(w){
     const restoredScenarioKeys=ro.scenarios.map(findSeriesFromWorkspace).filter(Boolean);
     [...$('reportScenarioSelect').options].forEach(o=>o.selected=restoredScenarioKeys.includes(o.value));
   }
-  for(const [id,value] of Object.entries(w.rain_events?.manual||{})){if($(id))$(id).value=value;}
+  for(const [id,value] of Object.entries(w.rain_events?.manual||{})){if($(id)){$(id).value=value;$(id).dataset.manualValue=value;}}
   $('rainCriteriaMode').value=w.rain_events?.criteria_mode||'manual';
   criteriaModeChanged();
   for(const style of w.model_styles||[]){
