@@ -126,27 +126,65 @@ try{
 
   const reviewLayer=await page.evaluate(()=>{
     const survey=window.__ICM_WORKBENCH__.survey;
-    survey.batch={monitors:[{monitor:'SM-Overflow',status:'complete',rain_gauge:'RG01',diameter_mm:600,weekly:{weeks:[{week_ending:'2026-09-06',rag:'Red',decision_path:'Automated low-response flag'}]},event_response:{rows:[]},contracts:{}}],network:{gauge_count:1,gauge_summary:[],candidate_wapug_events:[],qualified_wapug_events:[]},volume_balance:{rows:[],summary:{Green:0,Amber:0,Red:0,Grey:0}},analysis_controls:{}};
+    survey.balance=null;
+    survey.reviews={};
+    const balanceRow={week_ending:'2026-09-06',downstream_monitor:'FM03',upstream_monitors:['FM01','FM02'],rag:'Red',balance_ratio:1.42,recommendation:'Investigate FM03 and upstream support.'};
+    survey.batch={
+      monitors:[{monitor:'SM-Overflow',status:'complete',rain_gauge:'RG01',diameter_mm:600,weekly:{weeks:[{week_ending:'2026-09-06',rag:'Red',decision_path:'Automated low-response flag'}]},event_response:{rows:[]},contracts:{}}],
+      network:{gauge_count:1,gauge_summary:[{gauge:'RG01',status:'Amber',operational_coverage_percent:88,event_strike_count:1,current_dynamic_status:'Review'}],candidate_wapug_events:[],qualified_wapug_events:[]},
+      volume_balance:{rows:[balanceRow],summary:{Green:0,Amber:0,Red:1,Grey:0}},
+      analysis_controls:{}
+    };
     window.__ICM_WORKBENCH__.workflow26.render();
-    let missingReason=false;
-    try{window.__ICM_WORKBENCH__.workflow26.applyMonitorReview('SM-Overflow','Green','','AS');}catch{missingReason=true;}
+
+    let monitorMissingReason=false,gaugeMissingReason=false;
+    try{window.__ICM_WORKBENCH__.workflow26.applyMonitorReview('SM-Overflow','Green','','AS');}catch{monitorMissingReason=true;}
+    try{window.__ICM_WORKBENCH__.workflow26.applyReview('gauge','RG01','Amber','Green','','AS');}catch{gaugeMissingReason=true;}
+
     window.__ICM_WORKBENCH__.workflow26.applyMonitorReview('SM-Overflow','Green','Monitor installed on overflow link; intermittent response is expected.','AS');
-    const current=window.__ICM_WORKBENCH__.workflow26.reviewedMonitorState(survey.batch.monitors[0]);
+    window.__ICM_WORKBENCH__.workflow26.applyReview('gauge','RG01','Amber','Green','Nearby gauges and site inspection confirm the logger remained representative.','AS');
+    const balanceKey=window.__ICM_WORKBENCH__.workflow26.balanceRowKey(balanceRow);
+    window.__ICM_WORKBENCH__.workflow26.applyReview('balance',balanceKey,'Red','Amber','Known lateral inflow explains part of the imbalance; retain investigation action.','AS');
+
+    const monitorCurrent=window.__ICM_WORKBENCH__.workflow26.reviewedMonitorState(survey.batch.monitors[0]);
+    const gaugeCurrent=window.__ICM_WORKBENCH__.workflow26.reviewedGaugeState(survey.batch.network.gauge_summary[0]);
+    const balanceCurrent=window.__ICM_WORKBENCH__.workflow26.reviewedBalanceState(balanceRow);
+
     survey.batch.monitors[0].weekly.weeks[0].rag='Amber';
+    survey.batch.network.gauge_summary[0].status='Green';
+    balanceRow.rag='Amber';
     window.__ICM_WORKBENCH__.workflow26.render();
-    const changed=window.__ICM_WORKBENCH__.workflow26.reviewedMonitorState(survey.batch.monitors[0]);
-    const retained={...survey.reviews['monitor:SM-Overflow']};
-    window.__ICM_WORKBENCH__.workflow26.revertMonitorReview('SM-Overflow');
+
+    const monitorChanged=window.__ICM_WORKBENCH__.workflow26.reviewedMonitorState(survey.batch.monitors[0]);
+    const gaugeChanged=window.__ICM_WORKBENCH__.workflow26.reviewedGaugeState(survey.batch.network.gauge_summary[0]);
+    const balanceChanged=window.__ICM_WORKBENCH__.workflow26.reviewedBalanceState(balanceRow);
+    const retained=JSON.parse(JSON.stringify(survey.reviews));
+
+    window.__ICM_WORKBENCH__.workflow26.revertReview('monitor','SM-Overflow');
+    window.__ICM_WORKBENCH__.workflow26.revertReview('gauge','RG01');
+    window.__ICM_WORKBENCH__.workflow26.revertReview('balance',balanceKey);
+
     return {
-      missingReason,
-      current,
-      changed,
-      retained,
+      monitorMissingReason,gaugeMissingReason,
+      monitorCurrent,gaugeCurrent,balanceCurrent,
+      monitorChanged,gaugeChanged,balanceChanged,retained,
       headerVisible:Boolean(document.querySelector('#surveyReviewHeader')?.getClientRects().length),
       monitorDetail:Boolean(document.querySelector('#surveyMonitorDetail')),
+      gaugeDetail:Boolean(document.querySelector('#surveyGaugeDetail')),
+      balanceDetail:Boolean(document.querySelector('#surveyBalanceReviewDetail')),
     };
   });
-  if(!reviewLayer.missingReason||!reviewLayer.current.review_current||reviewLayer.current.reviewed!=='Green'||reviewLayer.changed.review_current||reviewLayer.changed.reviewed!=='Amber'||!reviewLayer.retained.reason||!reviewLayer.headerVisible||!reviewLayer.monitorDetail)throw new Error('Engineer review / stale-review safeguards failed: '+JSON.stringify(reviewLayer));
+  if(
+    !reviewLayer.monitorMissingReason||!reviewLayer.gaugeMissingReason||
+    !reviewLayer.monitorCurrent.review_current||reviewLayer.monitorCurrent.reviewed!=='Green'||
+    !reviewLayer.gaugeCurrent.review_current||reviewLayer.gaugeCurrent.reviewed!=='Green'||
+    !reviewLayer.balanceCurrent.review_current||reviewLayer.balanceCurrent.reviewed!=='Amber'||
+    reviewLayer.monitorChanged.review_current||reviewLayer.monitorChanged.reviewed!=='Amber'||
+    reviewLayer.gaugeChanged.review_current||reviewLayer.gaugeChanged.reviewed!=='Green'||
+    reviewLayer.balanceChanged.review_current||reviewLayer.balanceChanged.reviewed!=='Amber'||
+    !reviewLayer.retained['monitor:SM-Overflow']?.reason||!reviewLayer.retained['gauge:RG01']?.reason||
+    !reviewLayer.headerVisible||!reviewLayer.monitorDetail||!reviewLayer.gaugeDetail||!reviewLayer.balanceDetail
+  )throw new Error('Engineer review / stale-review safeguards failed: '+JSON.stringify(reviewLayer));
 
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','rainfall-check',false));
   const rainfallSeparation=await page.evaluate(()=>{
