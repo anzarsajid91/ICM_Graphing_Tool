@@ -1951,6 +1951,24 @@ try{
   const completeSurvey=await page.evaluate(()=>window.__ICM_WORKBENCH__.survey?.batch);
   if(!completeSurvey||completeSurvey.monitors?.length!==3)throw new Error('Complete survey did not assess all association-workbook monitors: '+JSON.stringify(completeSurvey));
   if(!completeSurvey.source_policy?.association_workbook_authoritative)throw new Error('Association workbook precedence is not explicit in complete survey result');
+  await page.waitForFunction(()=>document.querySelectorAll('#completeSurveyMonitors tbody tr').length===3&&document.querySelector('#surveyReviewHeader')?.textContent.includes('Monitor assessment'),null,{timeout:30000});
+  const reviewFirstSurvey=await page.evaluate(()=>({
+    monitorRows:document.querySelectorAll('#completeSurveyMonitors tbody tr').length,
+    header:document.querySelector('#surveyReviewHeader')?.textContent||'',
+    monthly:document.querySelector('#surveyMonthlyReviewBody')?.textContent||'',
+    standaloneVisible:Boolean(document.querySelector('#pwTimeSeriesEventSurface')?.getClientRects().length),
+  }));
+  if(reviewFirstSurvey.monitorRows!==3||!reviewFirstSurvey.header.includes('fm_rg_assoc')||!reviewFirstSurvey.monthly.includes('Engineering action register')||reviewFirstSurvey.standaloneVisible)throw new Error('Review-first Flow Survey composition is incomplete after the authoritative batch: '+JSON.stringify(reviewFirstSurvey));
+  await precisionRoute('survey','rainfall-check');
+  await page.waitForFunction(()=>document.querySelectorAll('#surveyGaugeReview tbody tr').length>=2,null,{timeout:30000});
+  const flowSurveyRainReview=await page.evaluate(()=>({
+    summary:document.querySelector('#surveyRainfallSummary')?.textContent||'',
+    gauges:document.querySelectorAll('#surveyGaugeReview tbody tr').length,
+    events:document.querySelectorAll('#surveyEventReview tbody tr').length,
+    standaloneVisible:Boolean(document.querySelector('#pwTimeSeriesEventSurface')?.getClientRects().length),
+  }));
+  if(flowSurveyRainReview.gauges<2||!flowSurveyRainReview.summary.includes('gauges assessed')||flowSurveyRainReview.standaloneVisible)throw new Error('Flow Survey Rainfall Review is not populated independently from the standalone Time Series WAPUG surface: '+JSON.stringify(flowSurveyRainReview));
+  await precisionRoute('survey','fdv-check');
   const fm03Balance=(completeSurvey.volume_balance?.rows||[]).find(x=>x.downstream_monitor==='FM03');
   if(!fm03Balance||fm03Balance.rag!=='Green'||fm03Balance.legacy_fsat_status!=='OK')throw new Error('Expected FM03 downstream volume balance to reconcile Green/OK: '+JSON.stringify(fm03Balance));
   if(!((await page.locator('#surveyBalanceTable').textContent())||'').includes('Likely source / first check'))throw new Error('Volume-balance diagnostic recommendation column is missing');
