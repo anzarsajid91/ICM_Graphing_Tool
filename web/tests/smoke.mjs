@@ -1125,6 +1125,16 @@ try{
   if(comparisonNoRainLayout.traceCount!==2||!comparisonNoRainLayout.hasTable||comparisonNoRainLayout.hasRainTrace||comparisonNoRainLayout.hasY2||comparisonNoRainLayout.hydDomain[0]<.28||comparisonNoRainLayout.hydDomain[1]!==1)throw new Error(`Observed+comparison/no-rain graph layout incorrect: ${JSON.stringify(comparisonNoRainLayout)}`);
   if(String(comparisonNoRainLayout.observedColour).toLowerCase()!=='#ff0000')throw new Error('Observed comparison trace should remain red, got '+JSON.stringify(comparisonNoRainLayout.observedColour));
   if(String(comparisonNoRainLayout.modelColour).toLowerCase()!=='#0000ff')throw new Error('First model plotted trace should use #0000ff, got '+JSON.stringify(comparisonNoRainLayout.modelColour));
+  await page.waitForTimeout(1700);
+  const mappingRouteCalibration=await page.evaluate(()=>({
+    route:window.__ICM_PRECISION_WORKBENCH__?.route?.(),
+    pending:Boolean(window.__ICM_WORKBENCH__?.uiV2?.timeSeriesComparisonPending),
+    timer:Boolean(window.__ICM_WORKBENCH__?.uiV2?.timeSeriesComparisonTimer),
+    workerDetail:window.__ICM_WORKBENCH__?.worker?.detail||null,
+  }));
+  if(mappingRouteCalibration.route?.workspace!=='data'||mappingRouteCalibration.route?.page!=='series-mapping'||mappingRouteCalibration.pending||mappingRouteCalibration.timer||mappingRouteCalibration.workerDetail==='compare_series'){
+    throw new Error('Automatic calibration must not consume the analysis worker while the user remains on Series Mapping: '+JSON.stringify(mappingRouteCalibration));
+  }
 
   stage='observed-only mapping with rainfall';
   await page.selectOption('#modelSelect',[]);
@@ -1449,6 +1459,19 @@ try{
   await precisionRoute('data','time-series');
   await page.fill('#graphObsThreshold','1.0');
   await page.fill('#graphModelThreshold','1.1');
+  await page.waitForFunction(()=> {
+    const panel=document.querySelector('#v2CalibrationMetrics'),body=document.querySelector('#v2CalibrationMetricsBody');
+    return panel&&!panel.hidden&&body?.querySelector('tbody tr')&&state.comparisonSnapshot?.signature===analysisSignature();
+  },null,{timeout:60000});
+  const automaticCalibration=await page.evaluate(()=>({
+    route:window.__ICM_PRECISION_WORKBENCH__?.route?.(),
+    headers:[...document.querySelectorAll('#v2CalibrationMetrics thead th')].map(x=>x.textContent.trim()),
+    rows:[...document.querySelectorAll('#v2CalibrationMetrics tbody tr')].map(x=>x.textContent),
+    snapshot:state.comparisonSnapshot?.signature||null,
+  }));
+  if(automaticCalibration.route?.page!=='time-series'||automaticCalibration.rows.length!==1||!automaticCalibration.headers.includes('Regression R²')||!automaticCalibration.headers.includes('RMSE')||!automaticCalibration.headers.includes('NSE')){
+    throw new Error('Time Series route must calculate calibration statistics automatically without a Graphs action: '+JSON.stringify(automaticCalibration));
+  }
 
   stage='calibration comparison and diagnostics';
   await clickTab('compare');
