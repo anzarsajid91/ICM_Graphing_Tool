@@ -28,6 +28,7 @@
   window.__ICM_WORKBENCH__.uiV2 = ui;
 
   const nextPaint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const traceUid=(...parts)=>parts.map(part=>String(part??'').replace(/[^a-zA-Z0-9_-]+/g,'_')).join('__');
 
   const modebarIcons={
     period:{width:512,height:512,path:'M64 96h384v320H64zM128 64v96M384 64v96M128 256h256'},
@@ -806,17 +807,17 @@
           panelDomains.rainfall=[rainBottom,1];
           layout.yaxis={title:{text:'Rainfall (mm/h)',standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true,tickfont:{size:10,color:'#506272'},titlefont:{size:11,color:'#263746'}};
           layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
-          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:'rainfall:'+rainEntry.source.item.id+':'+rainEntry.source.col,legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:'y',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
+          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:'y',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
         }
         for(const quantity of canonical){
           const axis=axisByPanel[quantity];if(!axis)continue;
           for(const item of observedEntries.filter(x=>x.quantity===quantity)){
             const d=item.source.data;
-            traces.push({x:d.timestamp,y:d.value,name:`Observed ${quantity}`,uid:'observed:'+item.source.item.id+':'+item.source.col,legendgroup:'observed',type:traceType(d),mode:'lines',connectgaps:false,line:{color:colourFor(quantity),width:quantity==='depth'?1.8:1.5},yaxis:axis,hovertemplate:'%{x}<br>'+quantity.charAt(0).toUpperCase()+quantity.slice(1)+' %{y:.4g}<extra></extra>'});
+            traces.push({x:d.timestamp,y:d.value,name:`Observed ${quantity}`,uid:traceUid('observed',item.source.item.id,item.source.col),legendgroup:'observed',type:traceType(d),mode:'lines',connectgaps:false,line:{color:colourFor(quantity),width:quantity==='depth'?1.8:1.5},yaxis:axis,hovertemplate:'%{x}<br>'+quantity.charAt(0).toUpperCase()+quantity.slice(1)+' %{y:.4g}<extra></extra>'});
           }
           for(const item of modelEntries.filter(x=>x.quantity===quantity)){
             const d=item.source.data;
-            traces.push({x:d.timestamp,y:d.value,name:`Model ${item.index+1} · ${item.source.col}`,uid:'model:'+item.source.item.id+':'+item.source.col,legendgroup:'model:'+item.source.item.id,meta:item.source.item.displayName,type:traceType(d),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:1.6},yaxis:axis});
+            traces.push({x:d.timestamp,y:d.value,name:`Model ${item.index+1} · ${item.source.col}`,uid:traceUid('model',item.source.item.id,item.source.col),legendgroup:'model:'+item.source.item.id,meta:item.source.item.displayName,type:traceType(d),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:1.6},yaxis:axis});
           }
         }
         const observedThresholdSeries=observedThresholdSelection();
@@ -850,10 +851,10 @@
           ?{title:{text:'Rainfall (mm/h)',standoff:10},domain:[plotBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true}
           :{title:{text:hydraulicAxisTitle,standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zeroline:false,automargin:true};
         if(obs){
-          traces.push({x:obs.source.data.timestamp,y:obs.source.data.value,name:'Observed '+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):obs.source.col),uid:'observed:'+obs.source.item.id+':'+obs.source.col,legendgroup:'observed',type:traceType(obs.source.data),mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2.2},yaxis:'y'});
+          traces.push({x:obs.source.data.timestamp,y:obs.source.data.value,name:'Observed '+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):obs.source.col),uid:traceUid('observed',obs.source.item.id,obs.source.col),legendgroup:'observed',type:traceType(obs.source.data),mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2.2},yaxis:'y'});
         }
         for(const item of modelEntries){
-          traces.push({x:item.source.data.timestamp,y:item.source.data.value,name:`Simulated: ${item.source.col}`,uid:'model:'+item.source.item.id+':'+item.source.col,legendgroup:'model:'+item.source.item.id,meta:item.source.item.displayName,type:traceType(item.source.data),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:2},yaxis:'y'});
+          traces.push({x:item.source.data.timestamp,y:item.source.data.value,name:`Simulated: ${item.source.col}`,uid:traceUid('model',item.source.item.id,item.source.col),legendgroup:'model:'+item.source.item.id,meta:item.source.item.displayName,type:traceType(item.source.data),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:2},yaxis:'y'});
         }
         if(primary)layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:hydraulicTop,text:'<b>'+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):'Hydraulic')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
         if(rainEntry){
@@ -861,7 +862,7 @@
             layout.yaxis2={title:{text:'Rainfall (mm/h)',standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true};
           }
           layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
-          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:'rainfall:'+rainEntry.source.item.id+':'+rainEntry.source.col,legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:rainfallOnly?'y':'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
+          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:rainfallOnly?'y':'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
         }
         // ICM HYD exports commonly describe the vertical hydraulic series as
         // "level" rather than "depth". Both belong to the same threshold-bearing
