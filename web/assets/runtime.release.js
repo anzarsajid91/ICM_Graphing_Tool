@@ -2010,6 +2010,9 @@ async function downloadReport(){
   const w=workspaceObject();
   const selectedComparisons=selectedReportComparisons();
   const log=options.scatter_scale==='current'?$('scatterScale').value==='log':options.scatter_scale==='log';
+  const comparisonPopulationNote=log
+    ?'Positive observed/modelled pairs only (log₁₀ view; nonpositive values are filtered from this view, not altered).'
+    :'All finite authoritative paired values (linear view).';
 
   let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints. Report section/scenario choices are explicit and stored in the workspace.</div>';
   body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
@@ -2025,7 +2028,7 @@ async function downloadReport(){
   }
 
   if(options.include_comparison){
-    body+='<h2>Observed vs modelled comparison</h2>';
+    body+='<h2>Observed vs modelled comparison</h2><p class="muted">'+esc(comparisonPopulationNote)+'</p>';
     body+=reportComparisonScatterFigure(selectedComparisons,log);
     const allCurrent=state.comparisons.filter(x=>x.result);
     const allSelected=selectedComparisons.length===allCurrent.length;
