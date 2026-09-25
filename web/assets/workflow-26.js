@@ -528,28 +528,41 @@
       summary.innerHTML = '<div class="pool-summary">Run Flow Survey Assessment to calculate the network rainfall review.</div>';
       gaugesTarget.innerHTML = '';
       eventsTarget.innerHTML = '';
+      renderGaugeDetail();
       return;
     }
     const gauges = network.gauge_summary || [];
-    const green = gauges.filter(row => normaliseRag(row.status)==='Green').length;
-    const amber = gauges.filter(row => normaliseRag(row.status)==='Amber').length;
+    const reviewedCounts = {Green:0,Amber:0,Red:0,Grey:0};
+    let staleReviews = 0;
+    for (const gauge of gauges) {
+      const state = reviewedGaugeState(gauge);
+      reviewedCounts[state.reviewed] += 1;
+      if (state.historical_review) staleReviews += 1;
+    }
     const candidates = network.candidate_wapug_events || [];
     const qualified = network.qualified_wapug_events || [];
     summary.innerHTML =
       '<div class="summary-box w26-summary-box">'+
       '<div><strong>'+gauges.length+'</strong><span>gauges assessed</span></div>'+
-      '<div><strong>'+green+'</strong><span>Green</span></div>'+
-      '<div><strong>'+amber+'</strong><span>Amber / review</span></div>'+
+      '<div><strong>'+reviewedCounts.Green+'</strong><span>reported Green</span></div>'+
+      '<div><strong>'+reviewedCounts.Amber+'</strong><span>reported Amber</span></div>'+
       '<div><strong>'+candidates.length+'</strong><span>candidate WAPUG events</span></div>'+
       '<div><strong>'+qualified.length+'</strong><span>network-qualified</span></div>'+
-      '<div><strong>'+Number(network.non_uniform_day_count || 0)+'</strong><span>non-uniform days</span></div>'+
+      '<div><strong>'+(staleReviews ? staleReviews+' stale review'+(staleReviews===1?'':'s') : Number(network.non_uniform_day_count || 0))+'</strong><span>'+(staleReviews?'review integrity':'non-uniform days')+'</span></div>'+
       '</div>';
     gaugesTarget.innerHTML = gauges.length
-      ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Gauge</th><th>Operational coverage</th><th>Event strikes</th><th>Dynamic status</th><th>Fault / recovery</th><th>Status</th></tr></thead><tbody>'+
-        gauges.map(row => '<tr><td><strong>'+esc(row.gauge)+'</strong></td><td>'+fmt(row.operational_coverage_percent,1)+'%</td>'+
-        '<td>'+Number(row.event_strike_count || 0)+'</td><td>'+esc(row.current_dynamic_status || '—')+'</td>'+
-        '<td>'+esc(row.suggested_fault_cutoff ? 'Suggested cutoff '+row.suggested_fault_cutoff : row.recovery_date ? 'Recovered '+row.recovery_date : 'No cutoff evidence')+'</td>'+
-        '<td>'+ragPill(row.status)+'</td></tr>').join('')+'</tbody></table></div>'
+      ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Gauge</th><th>Operational coverage</th><th>Event strikes</th><th>Dynamic status</th><th>Fault / recovery</th><th>Calculated</th><th>Reviewed</th><th></th></tr></thead><tbody>'+
+        gauges.map(row => {
+          const state = reviewedGaugeState(row);
+          const reviewed = state.review
+            ? (state.review_current ? ragPill(state.reviewed,'Reviewed '+state.reviewed) : statusPill('Reconfirm','warn'))
+            : '<span class="w26-muted">Calculated result</span>';
+          return '<tr><td><strong>'+esc(row.gauge)+'</strong></td><td>'+fmt(row.operational_coverage_percent,1)+'%</td>'+
+            '<td>'+Number(row.event_strike_count || 0)+'</td><td>'+esc(row.current_dynamic_status || '—')+'</td>'+
+            '<td>'+esc(row.suggested_fault_cutoff ? 'Suggested cutoff '+row.suggested_fault_cutoff : row.recovery_date ? 'Recovered '+row.recovery_date : 'No cutoff evidence')+'</td>'+
+            '<td>'+ragPill(state.calculated)+'</td><td>'+reviewed+'</td>'+
+            '<td><button type="button" class="btn quiet w26-review-button" data-w26-gauge="'+esc(row.gauge)+'">Details / Review</button></td></tr>';
+        }).join('')+'</tbody></table></div>'
       : '<div class="pool-summary">No assessable rain gauges.</div>';
     eventsTarget.innerHTML = candidates.length
       ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Event</th><th>Start</th><th>End</th><th>Duration</th><th>Operational gauges</th><th>Mean depth</th><th>Spatial CV</th><th>Network WAPUG</th></tr></thead><tbody>'+
@@ -559,6 +572,84 @@
         '<td>'+(row.qualifies_network_wapug ? statusPill('Qualified','good') : statusPill('Not qualified','neutral'))+'</td></tr>').join('')+
         '</tbody></table></div>'
       : '<div class="pool-summary">No candidate WAPUG events in the current Flow Survey assessment.</div>';
+    if (!survey.selectedGauge || !gaugeByName(survey.selectedGauge)) survey.selectedGauge = gauges[0]?.gauge || null;
+    renderGaugeDetail();
+  }
+
+  function renderGaugeDetail() {
+    const root = $('surveyGaugeDetail');
+    if (!root) return;
+    const gauge = gaugeByName(survey.selectedGauge);
+    if (!gauge) {
+      root.innerHTML = '<div class="w26-empty-detail">Select a rain gauge to inspect evidence or record an engineer review.</div>';
+      return;
+    }
+    const state = reviewedGaugeState(gauge);
+    const evidence =
+      'Operational coverage '+fmt(gauge.operational_coverage_percent,1)+'% · '+
+      Number(gauge.event_strike_count || 0)+' event strike'+(Number(gauge.event_strike_count || 0)===1?'':'s')+
+      (gauge.current_dynamic_status ? ' · dynamic status '+String(gauge.current_dynamic_status) : '')+
+      (gauge.suggested_fault_cutoff ? ' · suggested cutoff '+String(gauge.suggested_fault_cutoff) : '');
+    root.innerHTML =
+      genericReviewFormHtml(
+        'gauge',
+        gauge.gauge,
+        state,
+        'Gauge '+gauge.gauge,
+        evidence+'. Override only the reported engineering assessment; fault evidence and WAPUG calculations remain unchanged.'
+      )+
+      '<details class="w26-technical-evidence"><summary>Gauge calculation evidence</summary><pre class="w26-contract-evidence">'+esc(JSON.stringify(gauge,null,2))+'</pre></details>';
+  }
+
+  function renderBalanceReview() {
+    const table = $('surveyBalanceReviewTable');
+    const detail = $('surveyBalanceReviewDetail');
+    if (!table || !detail) return;
+    const rows = balanceRows();
+    if (!rows.length) {
+      table.innerHTML = '<div class="pool-summary">No volume-balance rows are available for engineer review.</div>';
+      detail.innerHTML = '';
+      return;
+    }
+    table.innerHTML =
+      '<div class="table-wrap"><table class="data-table"><thead><tr><th>Week</th><th>Network path</th><th>Calculated</th><th>Reviewed</th><th>Calculated recommendation</th><th></th></tr></thead><tbody>'+
+      rows.map(row => {
+        const key = balanceRowKey(row);
+        const state = reviewedBalanceState(row);
+        const reviewed = state.review
+          ? (state.review_current ? ragPill(state.reviewed,'Reviewed '+state.reviewed) : statusPill('Reconfirm','warn'))
+          : '<span class="w26-muted">Calculated result</span>';
+        const path = (row.upstream_monitors || []).join(' + ')+' → '+String(row.downstream_monitor || '—');
+        return '<tr><td>'+esc(row.week_ending || '—')+'</td><td><strong>'+esc(path)+'</strong></td>'+
+          '<td>'+ragPill(state.calculated)+'</td><td>'+reviewed+'</td>'+
+          '<td>'+esc(row.recommendation || row.likely_source || '—')+'</td>'+
+          '<td><button type="button" class="btn quiet w26-review-button" data-w26-balance="'+esc(key)+'">Details / Review</button></td></tr>';
+      }).join('')+'</tbody></table></div>';
+    if (!survey.selectedBalanceKey || !balanceRowByKey(survey.selectedBalanceKey)) {
+      survey.selectedBalanceKey = balanceRowKey(rows[0]);
+    }
+    const row = balanceRowByKey(survey.selectedBalanceKey);
+    if (!row) {
+      detail.innerHTML = '';
+      return;
+    }
+    const state = reviewedBalanceState(row);
+    const path = (row.upstream_monitors || []).join(' + ')+' → '+String(row.downstream_monitor || '—');
+    const context = [
+      'Week '+String(row.week_ending || '—'),
+      row.balance_ratio == null ? null : 'ratio '+fmt(row.balance_ratio,3),
+      row.legacy_fsat_status ? 'legacy '+String(row.legacy_fsat_status) : null,
+      row.coverage_fraction == null ? null : 'coverage '+fmt(Number(row.coverage_fraction)*100,1)+'%',
+    ].filter(Boolean).join(' · ');
+    detail.innerHTML =
+      genericReviewFormHtml(
+        'balance',
+        balanceRowKey(row),
+        state,
+        'Balance path '+path,
+        context+'. Review changes only the reported RAG; volumes, common support, QA evidence and calculated recommendation remain immutable.'
+      )+
+      '<details class="w26-technical-evidence"><summary>Balance calculation evidence</summary><pre class="w26-contract-evidence">'+esc(JSON.stringify(row,null,2))+'</pre></details>';
   }
 
   function monthlyActions() {
