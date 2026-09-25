@@ -400,8 +400,9 @@ async function verifyStationAThresholdChain(){
   probe.on('console',m=>{if(m.type()==='error'&&!m.text().includes('favicon.ico'))probeErrors.push('console: '+m.text());});
   const nav=async(workspace,subpage)=>{
     await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+    const expected=routeAliases[workspace+'/'+subpage]||[workspace,subpage];
     await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,subpage]);
-    await probe.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},[workspace,subpage]);
+    await probe.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},expected);
   };
   try{
     await probe.goto(baseUrl+'?station_a_threshold='+Date.now(),{waitUntil:'domcontentloaded'});
@@ -539,8 +540,9 @@ async function verifyIndividualSourceRemoval(){
     await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(row=>/RemoveTest-(FM01|RG01)/.test(row.textContent)&&row.textContent.includes('Ready')).length===2,null,{timeout:120000});
     const probeRoute=async(workspace,subpage)=>{
       await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+      const expected=routeAliases[workspace+'/'+subpage]||[workspace,subpage];
       await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,subpage]);
-      await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},[workspace,subpage],{timeout:30000});
+      await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},expected,{timeout:30000});
     };
     await probeRoute('data','series-mapping');
     const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>options.find(o=>o.textContent.includes(text))?.value||'',needle);
@@ -661,8 +663,9 @@ async function verifyPlotlyEngineeringEnhancements(){
     await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(row=>/Plotly-(Observed-FM01|Model-FM01|RG01)/.test(row.textContent)&&row.textContent.includes('Ready')).length===3,null,{timeout:120000});
     const nav=async(workspace,pageName)=>{
       await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+      const expected=routeAliases[workspace+'/'+pageName]||[workspace,pageName];
       await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,pageName]);
-      await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},[workspace,pageName],{timeout:30000});
+      await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},expected,{timeout:30000});
     };
     const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>options.find(o=>o.textContent.includes(text))?.value||'',needle);
     await nav('data','series-mapping');
