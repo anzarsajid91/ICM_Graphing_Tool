@@ -7,6 +7,8 @@
 
   survey.reviews = survey.reviews && typeof survey.reviews === 'object' ? survey.reviews : {};
   survey.selectedMonitor = survey.selectedMonitor || null;
+  survey.selectedGauge = survey.selectedGauge || null;
+  survey.selectedBalanceKey = survey.selectedBalanceKey || null;
 
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -50,19 +52,21 @@
     return kind + ':' + String(id || '');
   }
 
-  function reviewForMonitor(name) {
-    return survey.reviews[reviewKey('monitor', name)] || null;
+  function reviewFor(kind, id) {
+    return survey.reviews[reviewKey(kind, id)] || null;
   }
 
   function reviewCurrent(review, calculated) {
     return Boolean(review && normaliseRag(review.calculated_status_at_review) === normaliseRag(calculated));
   }
 
-  function reviewedMonitorState(monitor) {
-    const calculated = calculatedMonitorStatus(monitor);
-    const review = reviewForMonitor(monitor?.monitor);
+  function reviewedState(kind, id, calculatedStatus) {
+    const calculated = normaliseRag(calculatedStatus);
+    const review = reviewFor(kind, id);
     const current = reviewCurrent(review, calculated);
     return {
+      kind,
+      id:String(id || ''),
       calculated,
       review,
       review_current: current,
@@ -71,18 +75,47 @@
     };
   }
 
-  function applyMonitorReview(name, reviewedStatus, reason='', reviewer='') {
-    const monitor = monitorByName(name);
-    if (!monitor) throw new Error('The selected monitor is not present in the current Flow Survey assessment.');
-    const calculated = calculatedMonitorStatus(monitor);
+  function reviewedMonitorState(monitor) {
+    return reviewedState('monitor', monitor?.monitor, calculatedMonitorStatus(monitor));
+  }
+
+  function gaugeByName(name) {
+    return (survey.batch?.network?.gauge_summary || []).find(row => String(row.gauge) === String(name)) || null;
+  }
+
+  function reviewedGaugeState(gauge) {
+    return reviewedState('gauge', gauge?.gauge, normaliseRag(gauge?.status));
+  }
+
+  function balanceRows() {
+    return (survey.balance || survey.batch?.volume_balance)?.rows || [];
+  }
+
+  function balanceRowKey(row) {
+    const week = String(row?.week_ending || '');
+    const downstream = String(row?.downstream_monitor || '');
+    const upstream = [...(row?.upstream_monitors || [])].map(String).sort().join(',');
+    return [week,downstream,upstream].join('|');
+  }
+
+  function balanceRowByKey(key) {
+    return balanceRows().find(row => balanceRowKey(row) === String(key)) || null;
+  }
+
+  function reviewedBalanceState(row) {
+    return reviewedState('balance', balanceRowKey(row), normaliseRag(row?.rag));
+  }
+
+  function applyReview(kind, id, calculatedStatus, reviewedStatus, reason='', reviewer='') {
+    const calculated = normaliseRag(calculatedStatus);
     const reviewed = normaliseRag(reviewedStatus || calculated);
     const cleanReason = String(reason || '').trim();
     if (reviewed !== calculated && !cleanReason) {
       throw new Error('Enter an engineering reason before superseding the calculated assessment.');
     }
-    survey.reviews[reviewKey('monitor', name)] = {
-      kind:'monitor',
-      subject:String(name),
+    survey.reviews[reviewKey(kind, id)] = {
+      kind:String(kind),
+      subject:String(id),
       calculated_status_at_review:calculated,
       reviewed_status:reviewed,
       reason:cleanReason,
@@ -91,12 +124,22 @@
       method:'engineer-review-v1',
     };
     renderAll();
-    return survey.reviews[reviewKey('monitor', name)];
+    return survey.reviews[reviewKey(kind, id)];
+  }
+
+  function revertReview(kind, id) {
+    delete survey.reviews[reviewKey(kind, id)];
+    renderAll();
+  }
+
+  function applyMonitorReview(name, reviewedStatus, reason='', reviewer='') {
+    const monitor = monitorByName(name);
+    if (!monitor) throw new Error('The selected monitor is not present in the current Flow Survey assessment.');
+    return applyReview('monitor', name, calculatedMonitorStatus(monitor), reviewedStatus, reason, reviewer);
   }
 
   function revertMonitorReview(name) {
-    delete survey.reviews[reviewKey('monitor', name)];
-    renderAll();
+    revertReview('monitor', name);
   }
 
   function surveyFresh(kind='complete') {
