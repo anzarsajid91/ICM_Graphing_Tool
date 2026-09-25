@@ -2010,13 +2010,6 @@ async function downloadReport(){
   const w=workspaceObject();
   const selectedComparisons=selectedReportComparisons();
   const log=options.scatter_scale==='current'?$('scatterScale').value==='log':options.scatter_scale==='log';
-  const scenarioRows=selectedComparisons.map((x,i)=>{
-    const population=scatterPopulation(x.result,log),q=population.metrics||{},unit=comparisonUnit(x.result);
-    const uv=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),4)+(unit?' '+esc(unit):'');
-    return '<tr><td>Model '+(i+1)+' · '+esc(x.model.item.displayName)+' · '+esc(x.model.col)+'</td><td>'+(q.pairs??population.pairs.length)+'</td><td>'+fmt(q.correlation)+'</td><td>'+fmt(q.regression_r2)+'</td><td>'+fmt(q.regression_slope)+'</td><td>'+uv(q.regression_intercept)+'</td><td>'+uv(q.rmse)+'</td><td>'+uv(q.mae)+'</td><td>'+uv(q.mean_bias)+'</td><td>'+fmt(q.nse)+'</td><td>'+fmt(q.kge_2009)+'</td><td>'+(log?population.removed_count:'—')+'</td><td>'+esc(x.result.calculation_status||'—')+'</td><td>'+(x.result.coverage_fraction==null?'—':fmt(x.result.coverage_fraction*100,1)+'%')+'</td></tr>';
-  }).join('');
-  const populationLabel=log?'Positive observed/modelled pairs only (log₁₀ view; nonpositive values are filtered from this view, not altered).':'All finite authoritative paired values (linear view).';
-  const scenarioTable=scenarioRows?'<p class="muted">'+esc(populationLabel)+' Metrics are sample-weighted; bias is modelled minus observed. Regression is raw-scale M = intercept + slope × O.</p><div class="table-wrap"><table><thead><tr><th>Scenario</th><th>Pairs</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Log filtered</th><th>Status</th><th>Valid support</th></tr></thead><tbody>'+scenarioRows+'</tbody></table></div>':'<p class="muted">No selected scenario comparison has a current result.</p>';
 
   let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints. Report section/scenario choices are explicit and stored in the workspace.</div>';
   body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
@@ -2032,7 +2025,7 @@ async function downloadReport(){
   }
 
   if(options.include_comparison){
-    body+='<h2>Scenario comparison</h2>'+scenarioTable;
+    body+='<h2>Observed vs modelled comparison</h2>';
     body+=reportComparisonScatterFigure(selectedComparisons,log);
     const allCurrent=state.comparisons.filter(x=>x.result);
     const allSelected=selectedComparisons.length===allCurrent.length;
