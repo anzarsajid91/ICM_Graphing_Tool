@@ -1018,8 +1018,7 @@ function comparisonQuantityMismatch(observed,model){
   if(!observed||!model)return null;
   const observedQuantity=String(seriesQuantity(observed.item,observed.col)||'').toLowerCase();
   const modelQuantity=String(seriesQuantity(model.item,model.col)||'').toLowerCase();
-  if(!observedQuantity&&!modelQuantity)return null;
-  if(!observedQuantity||!modelQuantity)return 'One selected series has an unresolved quantity while the other is classified. Classify the generic series to match the hydraulic channel before comparing it.';
+  if(!observedQuantity||!modelQuantity)return null;
   if(observedQuantity===modelQuantity)return null;
   const name=q=>q==='level'?'absolute Level':q.charAt(0).toUpperCase()+q.slice(1);
   return `Observed ${name(observedQuantity)} cannot be compared directly with modelled ${name(modelQuantity)}. Depth and absolute Level remain distinct. Map like-for-like series, or explicitly reclassify a generic Value channel only when its source meaning supports that classification.`;
@@ -1081,8 +1080,8 @@ function regressionLinePoints(metrics,pairs,log=false){
   if(!Number.isFinite(y0)||!Number.isFinite(y1)||(log&&(y0<=0||y1<=0)))return null;
   return {x:[lo,hi],y:[y0,y1]};
 }
-function comparisonUnit(result){return result?.observed_unit||result?.modelled_unit||'';}
-function comparisonQuantity(result){return result?.observed_quantity||result?.modelled_quantity||'value';}
+function comparisonUnit(result){return result?.comparison_unit||'';}
+function comparisonQuantity(result){return result?.generic_numeric_comparison?'value':(result?.observed_quantity||result?.modelled_quantity||'value');}
 async function renderComparisons(){
   const ok=state.comparisons.filter(x=>x.result),first=ok[0];
   if(!first){
@@ -1112,7 +1111,7 @@ async function renderComparisons(){
   ].join('');
   const methodNote=$('comparisonMethodNote');
   if(methodNote){
-    const genericNote=first.result.generic_numeric_comparison?' Both selected channels are generic numeric values, so the comparison is permitted without asserting a hydraulic quantity or unit; dimensional metric units remain unresolved.':'';
+    const genericNote=first.result.generic_numeric_comparison?' One or both selected channels have an unresolved hydraulic quantity, so this is shown as a raw numeric comparison without asserting hydraulic quantity or units. Classify the unresolved series when dimensional interpretation is required.':'';
     methodNote.innerHTML='<strong>Pairing and statistics.</strong> '+esc(first.result.pairing_method||'Canonical paired support')+'. Each model scenario uses its own valid paired support unless a common-support option is explicitly selected. '+esc(first.result.metric_weighting||'Sample-weighted metrics')+'. Blank analysis start/end means the complete common observed/modelled support is used.'+esc(genericNote)+' Plot zoom is display-only and does not change the analysis period.';
   }
   diagnostic.lastComparisonValidity={status,coverage,population:log?'positive-only':'all valid pairs'};
