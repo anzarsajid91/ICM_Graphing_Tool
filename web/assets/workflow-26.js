@@ -56,14 +56,23 @@
     return survey.reviews[reviewKey(kind, id)] || null;
   }
 
-  function reviewCurrent(review, calculated) {
-    return Boolean(review && normaliseRag(review.calculated_status_at_review) === normaliseRag(calculated));
+  function calculationSignatureFor(kind) {
+    if (kind === 'balance') return survey.balanceSignature || survey.batchSignature || null;
+    return survey.batchSignature || null;
+  }
+
+  function reviewCurrent(review, calculated, currentSignature=null) {
+    if (!review || normaliseRag(review.calculated_status_at_review) !== normaliseRag(calculated)) return false;
+    const reviewedSignature = review.calculation_signature_at_review || null;
+    if (reviewedSignature && currentSignature && reviewedSignature !== currentSignature) return false;
+    return true;
   }
 
   function reviewedState(kind, id, calculatedStatus) {
     const calculated = normaliseRag(calculatedStatus);
     const review = reviewFor(kind, id);
-    const current = reviewCurrent(review, calculated);
+    const signature = calculationSignatureFor(kind);
+    const current = reviewCurrent(review, calculated, signature);
     return {
       kind,
       id:String(id || ''),
@@ -118,6 +127,7 @@
       subject:String(id),
       calculated_status_at_review:calculated,
       reviewed_status:reviewed,
+      calculation_signature_at_review:calculationSignatureFor(kind),
       reason:cleanReason,
       reviewer:String(reviewer || '').trim() || null,
       reviewed_at:nowIso(),
@@ -801,7 +811,7 @@
         const value = coreWorkspaceObject(...args);
         value.survey = value.survey || {};
         value.survey.engineer_reviews = JSON.parse(JSON.stringify(survey.reviews || {}));
-        value.survey.review_schema_version = 1;
+        value.survey.review_schema_version = 2;
         return value;
       };
     }
