@@ -1105,6 +1105,64 @@ try{
   }));
   if(Object.values(clearedThresholds).some(Boolean))throw new Error('Clearing the source pool must invalidate source-bound hydraulic thresholds: '+JSON.stringify(clearedThresholds));
 
+  stage='observed and multiple model CSVs expose independent interpretation controls';
+  const inferredPayload=Buffer.from(
+    'timestamp,Level (m)\n'
+    +'2026-01-01T00:00:00,1.00\n'
+    +'2026-01-01T00:15:00,1.20\n'
+    +'2026-01-01T00:30:00,1.10\n',
+    'utf8'
+  );
+  await page.setInputFiles('#fileInput',[
+    {name:'interpret-observed.csv',mimeType:'text/csv',buffer:inferredPayload},
+    {name:'interpret-model-a.csv',mimeType:'text/csv',buffer:inferredPayload},
+    {name:'interpret-model-b.csv',mimeType:'text/csv',buffer:inferredPayload},
+  ]);
+  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===3&&
+    [...document.querySelectorAll('#poolBody tr')].every(row=>row.textContent.includes('Ready')),null,{timeout:60000});
+  await precisionRoute('data','series-mapping');
+  const interpretObserved=await optionValue('#observedSelect','interpret-observed.csv — Level (m)');
+  const interpretModelA=await optionValue('#modelSelect','interpret-model-a.csv — Level (m)');
+  const interpretModelB=await optionValue('#modelSelect','interpret-model-b.csv — Level (m)');
+  if(!interpretObserved||!interpretModelA||!interpretModelB)throw new Error('Observed/multiple-model inferred CSV series were not exposed for mapping.');
+  await page.selectOption('#observedSelect',interpretObserved);
+  await page.selectOption('#modelSelect',[interpretModelA,interpretModelB]);
+  await page.selectOption('#rainSelect','');
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select').length===3&&
+    [...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].some(row=>row.textContent.includes('Observed')&&row.textContent.includes('interpret-observed.csv'))&&
+    [...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].filter(row=>row.textContent.includes('Model')).length===2,null,{timeout:30000});
+  const inferredSelectors=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select')].map(select=>({
+    key:select.dataset.seriesQuantityKey,
+    value:select.value,
+    text:select.closest('.series-semantics-row')?.textContent||'',
+  })));
+  if(inferredSelectors.length!==3||inferredSelectors.some(row=>row.value!=='level')){
+    throw new Error('Name-inferred observed/model CSV series must each show an independent Level interpretation default: '+JSON.stringify(inferredSelectors));
+  }
+  await page.evaluate(key=>{
+    const select=[...document.querySelectorAll('#seriesSemanticsRows select')].find(node=>node.dataset.seriesQuantityKey===key);
+    if(!select)throw new Error('Observed interpretation selector missing.');
+    select.value='depth';
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+  },interpretObserved);
+  await page.waitForFunction(key=>{
+    const rows=[...document.querySelectorAll('#seriesSemanticsRows select')];
+    const observed=rows.find(node=>node.dataset.seriesQuantityKey===key);
+    return observed?.value==='depth'&&rows.filter(node=>node.dataset.seriesQuantityKey!==key).every(node=>node.value==='level');
+  },interpretObserved,{timeout:30000});
+  await page.evaluate(key=>{
+    const select=[...document.querySelectorAll('#seriesSemanticsRows select')].find(node=>node.dataset.seriesQuantityKey===key);
+    select.value='level';
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+  },interpretObserved);
+  await page.waitForFunction(()=>[...document.querySelectorAll('#seriesSemanticsRows select')].every(node=>node.value==='level'),null,{timeout:30000});
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&
+    (document.querySelector('#timeChart')?.data||[]).filter(trace=>String(trace.uid||'').startsWith('model__')).length===2,null,{timeout:60000});
+  await precisionRoute('data','sources');
+  await page.click('#clearPoolBtn');
+  await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0);
+
   stage='source pool and collapsed file list';
   const observedPath=path.join(root,'examples/demo/observed.csv');
   const modelPath=path.join(root,'examples/demo/model.csv');
