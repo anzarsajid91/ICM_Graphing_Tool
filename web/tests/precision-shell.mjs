@@ -43,11 +43,13 @@ try{
     const values=[...select.options].map(x=>x.value);
     select.value='wapug-under50';select.dispatchEvent(new Event('change',{bubbles:true}));
     const under=window.__ICM_WORKBENCH__.appliedRainCriteria?.();
+    const underVisible={streak:document.querySelector('#rainIntensityDuration').value,duration:document.querySelector('#rainEventDuration').value};
     select.value='wapug';select.dispatchEvent(new Event('change',{bubbles:true}));
     const over=window.__ICM_WORKBENCH__.appliedRainCriteria?.();
-    return {values,under,over};
+    const overVisible={streak:document.querySelector('#rainIntensityDuration').value,duration:document.querySelector('#rainEventDuration').value};
+    return {values,under,over,underVisible,overVisible};
   });
-  if(wapugPresets.values.join('|')!=='wapug|wapug-under50|manual'||wapugPresets.under?.minimum_intensity_duration_min!==4||wapugPresets.under?.minimum_event_duration_min!==30||wapugPresets.over?.minimum_intensity_duration_min!==6||wapugPresets.over?.minimum_event_duration_min!==60)throw new Error('Standalone WAPUG population presets are incorrect: '+JSON.stringify(wapugPresets));
+  if(wapugPresets.values.join('|')!=='wapug|wapug-under50|manual'||wapugPresets.under?.minimum_intensity_duration_min!==4||wapugPresets.under?.minimum_event_duration_min!==30||wapugPresets.over?.minimum_intensity_duration_min!==6||wapugPresets.over?.minimum_event_duration_min!==60||wapugPresets.underVisible.streak!=='4'||wapugPresets.underVisible.duration!=='30'||wapugPresets.overVisible.streak!=='6'||wapugPresets.overVisible.duration!=='60')throw new Error('Standalone WAPUG population presets are incorrect or visually inconsistent: '+JSON.stringify(wapugPresets));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation',false));
   const reportTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
   if(reportTabs[0]!=='Report Generation')throw new Error('Reports must land on Report Generation first: '+JSON.stringify(reportTabs));
