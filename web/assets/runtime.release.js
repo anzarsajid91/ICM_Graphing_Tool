@@ -547,8 +547,8 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true}={}){
     renderSeriesSemanticsOverrides();
     autoSuggestAdvanced(allSeries());
     $('mappingStatus').textContent=requested
-      ?'Series interpreted as '+requested+'. Apply mapping to refresh graphs and threshold controls.'
-      :'Series returned to unresolved numeric data. Apply mapping to refresh graphs and threshold controls.';
+      ?'Generic series classified as '+requested+'. Apply mapping to refresh graphs and threshold controls.'
+      :'Generic series returned to unresolved numeric data. Apply mapping to refresh graphs and threshold controls.';
   }
   return true;
 }
