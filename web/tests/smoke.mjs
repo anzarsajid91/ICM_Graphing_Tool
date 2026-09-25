@@ -54,7 +54,11 @@ async function clickTab(name){
     workspace:['reports','report-generation']
   };
   const next=routes[name];
-  if(next){await precisionRoute(next[0],next[1]);return;}
+  if(next){
+    await precisionRoute(next[0],next[1]);
+    if(name==='rain-events')await page.locator('#pwTimeSeriesEventSurface').evaluate(el=>{el.open=true;});
+    return;
+  }
   await page.locator(`[data-tab="${name}"]`).evaluate(el=>el.click());
 }
 async function downloadFrom(selector){const pending=page.waitForEvent('download');await page.click(selector);return pending;}
