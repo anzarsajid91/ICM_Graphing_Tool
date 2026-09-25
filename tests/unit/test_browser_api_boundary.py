@@ -73,3 +73,41 @@ def test_declared_series_quantity_cannot_be_silently_retyped(tmp_path):
     clear_cache()
     with pytest.raises(ValueError,match="already has declared quantity"):
         set_series_quantity(str(declared),"Depth (m)","flow")
+
+def test_generic_numeric_series_can_compare_without_quantity_classification(tmp_path):
+    import json
+    from icm_workbench.browser_api import compare_series, clear_cache
+
+    obs = tmp_path / "observed-generic.csv"
+    model = tmp_path / "model-generic.csv"
+    obs.write_text(
+        "Time,Value\n"
+        "01/01/2024 00:00,1.0\n"
+        "01/01/2024 00:15,2.0\n"
+        "01/01/2024 00:30,3.0\n",
+        encoding="utf-8",
+    )
+    model.write_text(
+        "Time,Value\n"
+        "01/01/2024 00:00,1.1\n"
+        "01/01/2024 00:15,1.9\n"
+        "01/01/2024 00:30,3.2\n",
+        encoding="utf-8",
+    )
+    clear_cache()
+    result = json.loads(
+        compare_series(
+            str(obs),
+            "Value",
+            str(model),
+            "Value",
+            max_gap_seconds=1800,
+        )
+    )
+    assert result["generic_numeric_comparison"] is True
+    assert result["observed_quantity"] == "value"
+    assert result["modelled_quantity"] == "value"
+    assert result["metrics"]["pairs"] == 3
+    assert result["metrics"]["rmse"] is not None
+    assert len(result["paired"]) == 3
+
