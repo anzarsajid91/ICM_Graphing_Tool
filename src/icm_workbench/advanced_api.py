@@ -199,10 +199,19 @@ def rating_sources_result(
         payload["exponent_difference"] = modelled["b"] - observed["b"]
     return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
 
-def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.0,minimum_intensity_duration_min=6.0,minimum_depth_mm=5.0,minimum_event_duration_min=60.0,dry_gap_min=15.0,exclusions_json="[]"):
+def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.0,minimum_intensity_duration_min=6.0,minimum_depth_mm=5.0,minimum_event_duration_min=60.0,dry_gap_min=15.0,exclusions_json="[]",start=None,end=None):
     parsed=python_bridge._load(path)
     frame=parsed.frame.copy()
     frame[column]=pd.to_numeric(frame[column],errors="coerce")*float(conversion_factor)
+    frame["timestamp"]=pd.to_datetime(frame["timestamp"],errors="coerce")
+    analysis_start=python_bridge._model_clock_timestamp(start)
+    analysis_end=python_bridge._model_clock_timestamp(end)
+    if analysis_start is not None and analysis_end is not None and analysis_end<=analysis_start:
+        raise ValueError("Analysis end must be after analysis start.")
+    if analysis_start is not None:
+        frame=frame.loc[frame["timestamp"]>=pd.Timestamp(analysis_start)].copy()
+    if analysis_end is not None:
+        frame=frame.loc[frame["timestamp"]<pd.Timestamp(analysis_end)].copy()
     metadata=getattr(parsed,"metadata",{}) or {}
     interval=metadata.get("interval_min")
     events=detect_rainfall_events(
@@ -231,6 +240,8 @@ def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.
             "rainfall_semantics":"intensity",
             "declared_interval_min":float(interval) if interval else None,
             "support_method":"actual elapsed intervals; final support only from declared interval",
+            "analysis_start":analysis_start,
+            "analysis_end_exclusive":analysis_end,
         }
     }),ensure_ascii=False)
 
