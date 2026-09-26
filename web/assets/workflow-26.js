@@ -986,8 +986,14 @@
     const rows = reviewAuditRows().map(row =>
       '<tr><td>'+esc(row.label)+'</td><td>'+esc(row.calculated)+'</td><td>'+esc(row.final)+'</td><td>'+esc(row.note)+'</td><td>'+esc(row.reviewer)+'</td><td>'+esc(row.reviewed_at)+'</td></tr>'
     ).join('');
+    const comments = (survey.batch?.monitors || []).map(monitor => {
+      const comment = monitorComment(monitor.monitor);
+      if (!comment?.text) return '';
+      return '<tr><td><strong>'+esc(monitor.monitor)+'</strong></td><td>'+esc(comment.text)+'</td><td>'+esc(comment.author || '—')+'</td><td>'+esc(comment.updated_at || '—')+'</td></tr>';
+    }).filter(Boolean).join('');
     return '<h3>Engineer review / final assessment</h3><div class="note">Calculated results are retained separately from reviewed results for monitors, rain gauges and weekly volume-balance paths. Stale reviews never silently supersede a changed calculation.</div>'+
-      '<div class="table-wrap"><table><thead><tr><th>Assessment item</th><th>Calculated</th><th>Reported</th><th>Engineering rationale / review state</th><th>Reviewer</th><th>Reviewed at</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      '<div class="table-wrap"><table><thead><tr><th>Assessment item</th><th>Calculated</th><th>Reported</th><th>Engineering rationale / review state</th><th>Reviewer</th><th>Reviewed at</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+      '<h3>Monitor engineering comments</h3>'+(comments ? '<div class="table-wrap"><table><thead><tr><th>Monitor</th><th>Comment</th><th>Author</th><th>Updated</th></tr></thead><tbody>'+comments+'</tbody></table></div>' : '<p class="muted">No monitor engineering comments recorded.</p>');
   }
 
   function installPersistence() {
@@ -997,7 +1003,8 @@
         const value = coreWorkspaceObject(...args);
         value.survey = value.survey || {};
         value.survey.engineer_reviews = JSON.parse(JSON.stringify(survey.reviews || {}));
-        value.survey.review_schema_version = 2;
+        value.survey.monitor_comments = JSON.parse(JSON.stringify(survey.monitorComments || {}));
+        value.survey.review_schema_version = 3;
         return value;
       };
     }
@@ -1007,6 +1014,9 @@
         const result = await coreApplyWorkspace(value);
         survey.reviews = value?.survey?.engineer_reviews && typeof value.survey.engineer_reviews === 'object'
           ? JSON.parse(JSON.stringify(value.survey.engineer_reviews))
+          : {};
+        survey.monitorComments = value?.survey?.monitor_comments && typeof value.survey.monitor_comments === 'object'
+          ? JSON.parse(JSON.stringify(value.survey.monitor_comments))
           : {};
         survey.selectedMonitor = null;
         survey.selectedGauge = null;
@@ -1021,7 +1031,7 @@
   installPersistence();
   wb.workflow26ReportHtml = reportHtml;
   wb.workflow26 = {
-    version:2,
+    version:3,
     calculatedMonitorStatus,
     reviewedMonitorState,
     reviewedGaugeState,
@@ -1031,6 +1041,11 @@
     revertReview,
     applyMonitorReview,
     revertMonitorReview,
+    monitorComment,
+    saveMonitorComment,
+    clearMonitorComment,
+    monthlyReportHtml,
+    exportMonthlyPdf,
     render:renderAll,
     selectMonitor:name => { survey.selectedMonitor = name; renderMonitorDetail(); },
     selectGauge:name => { survey.selectedGauge = name; renderGaugeDetail(); },
