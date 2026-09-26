@@ -847,6 +847,7 @@
       if (state.historical_review) historical += 1;
     }
     const network = survey.batch.network || {};
+    const candidates = network.candidate_wapug_events || [];
     const qualified = network.qualified_wapug_events?.length || 0;
     const actions = monthlyActions();
     const actionRows = actions.map(item =>
@@ -862,7 +863,7 @@
       '<div class="w26-monthly-grid">'+
         '<div><span>Monitor status</span><strong>'+monitorCounts.Green+' G · '+monitorCounts.Amber+' A · '+monitorCounts.Red+' R · '+monitorCounts.Grey+' Grey</strong></div>'+
         '<div><span>Rain gauges</span><strong>'+gaugeCounts.Green+' G · '+gaugeCounts.Amber+' A · '+gaugeCounts.Red+' R · '+gaugeCounts.Grey+' Grey</strong></div>'+
-        '<div><span>Network WAPUG events</span><strong>'+qualified+'</strong></div>'+
+        '<div><span>Network WAPUG events</span><strong>'+candidates.length+' candidate'+(candidates.length===1?'':'s')+' · '+qualified+' qualified</strong></div>'+
         '<div><span>Volume balance</span><strong>'+balanceCounts.Green+' G · '+balanceCounts.Amber+' A · '+balanceCounts.Red+' R · '+balanceCounts.Grey+' Grey</strong></div>'+
         '<div><span>Review integrity</span><strong>'+(historical ? historical+' review'+(historical===1?'':'s')+' need reconfirmation' : 'Current')+'</strong></div>'+
       '</div>'+
@@ -915,11 +916,20 @@
         '<td>'+esc(state.calculated)+'</td><td>'+esc(state.reviewed)+'</td></tr>';
     }).join('');
 
+    const candidateEvents = network.candidate_wapug_events || [];
     const qualifiedEvents = network.qualified_wapug_events || [];
-    const eventRows = qualifiedEvents.map(event =>
-      '<tr><td>'+esc(event.event || '—')+'</td><td>'+esc(event.start || '—')+'</td><td>'+esc(event.end || '—')+'</td>'+
-      '<td>'+fmt(event.mean_depth_mm,2)+' mm</td><td>'+fmt(event.spatial_cv_percent,1)+'%</td><td>'+Number(event.operational_gauges || 0)+'</td></tr>'
-    ).join('');
+    const minGauges = Number(network.criteria?.minimum_operational_gauges || 2);
+    const cvLimit = Number(network.criteria?.spatial_cv_limit_percent || 40);
+    const eventRows = candidateEvents.map(event => {
+      let decision = 'Qualified';
+      if (!event.qualifies_network_wapug) {
+        if (Number(event.operational_gauges || 0) < minGauges) decision = 'Not qualified — fewer than '+minGauges+' operational gauges';
+        else if (event.spatial_cv_percent != null && Number(event.spatial_cv_percent) > cvLimit) decision = 'Not qualified — spatial CV '+fmt(event.spatial_cv_percent,1)+'% > '+fmt(cvLimit,1)+'%';
+        else decision = 'Not qualified — network quality criteria not met';
+      }
+      return '<tr><td>'+esc(event.event || '—')+'</td><td>'+esc(event.start || '—')+'</td><td>'+esc(event.end || '—')+'</td>'+
+        '<td>'+fmt(event.mean_depth_mm,2)+' mm</td><td>'+fmt(event.spatial_cv_percent,1)+'%</td><td>'+Number(event.operational_gauges || 0)+'</td><td>'+esc(decision)+'</td></tr>';
+    }).join('');
 
     const balanceRowsHtml = balanceRows().map(row => {
       const state = reviewedBalanceState(row);
@@ -946,11 +956,11 @@
       '<h2>Assessment overview</h2>'+
       '<div class="report-grid">'+
         '<div class="card"><h3>Period</h3><p>'+esc(surveyPeriodText())+'</p></div>'+
-        '<div class="card"><h3>Survey context</h3><p>'+Number(monitors.length)+' monitor(s) · '+Number(network.gauge_count || 0)+' rain gauge(s) · '+Number(qualifiedEvents.length)+' network-qualified WAPUG event(s)</p></div>'+
+        '<div class="card"><h3>Survey context</h3><p>'+Number(monitors.length)+' monitor(s) · '+Number(network.gauge_count || 0)+' rain gauge(s) · '+Number(candidateEvents.length)+' WAPUG candidate(s) · '+Number(qualifiedEvents.length)+' network-qualified</p></div>'+
       '</div>'+
       '<h2>Monitor assessment</h2><div class="table-wrap"><table><thead><tr><th>Monitor</th><th>Rain gauge</th><th>Diameter</th><th>Calculated</th><th>Reported</th><th>Weeks</th><th>Events</th><th>Override rationale</th><th>Engineering comment</th></tr></thead><tbody>'+monitorRows+'</tbody></table></div>'+
       '<h2>Rainfall assessment</h2>'+(gaugeRows ? '<div class="table-wrap"><table><thead><tr><th>Gauge</th><th>Coverage</th><th>Event strikes</th><th>Dynamic status</th><th>Calculated</th><th>Reported</th></tr></thead><tbody>'+gaugeRows+'</tbody></table></div>' : '<p class="muted">No gauge assessment rows.</p>')+
-      '<h3>Network-qualified WAPUG events</h3>'+(eventRows ? '<div class="table-wrap"><table><thead><tr><th>Event</th><th>Start</th><th>End</th><th>Mean depth</th><th>Spatial CV</th><th>Operational gauges</th></tr></thead><tbody>'+eventRows+'</tbody></table></div>' : '<p class="muted">No network-qualified WAPUG events.</p>')+
+      '<h3>WAPUG event suitability</h3>'+(eventRows ? '<div class="table-wrap"><table><thead><tr><th>Event</th><th>Start</th><th>End</th><th>Mean depth</th><th>Spatial CV</th><th>Operational gauges</th><th>Network suitability</th></tr></thead><tbody>'+eventRows+'</tbody></table></div>' : '<p class="muted">No candidate WAPUG events in the current Flow Survey assessment.</p>')+
       '<h2>Volume balance</h2>'+(balanceRowsHtml ? '<div class="table-wrap"><table><thead><tr><th>Week</th><th>Network path</th><th>Calculated</th><th>Reported</th><th>Ratio</th><th>Likely source</th><th>Recommendation</th></tr></thead><tbody>'+balanceRowsHtml+'</tbody></table></div>' : '<p class="muted">No volume-balance relationships available.</p>')+
       '<h2>Engineering action register</h2>'+(actionRows ? '<div class="table-wrap"><table><thead><tr><th>Area</th><th>Subject</th><th>Severity</th><th>Action / rationale</th></tr></thead><tbody>'+actionRows+'</tbody></table></div>' : '<p class="muted">No Amber/Red exceptions in the current reported assessment.</p>')+
       '<h2>Monitor engineering comments</h2>'+(commentRows ? '<div class="table-wrap"><table><thead><tr><th>Monitor</th><th>Reported status</th><th>Comment</th><th>Author</th><th>Updated</th></tr></thead><tbody>'+commentRows+'</tbody></table></div>' : '<p class="muted">No monitor comments recorded.</p>')+
