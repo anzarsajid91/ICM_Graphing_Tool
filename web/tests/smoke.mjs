@@ -925,6 +925,117 @@ function surveyRainfallR(){
   const values=Array.from({length:200},(_,i)=>i<20?12:0);
   return Buffer.from(`*CSTART\n2601050000 2601050640 2\n*CEND\n${values.join(' ')}\n`,'utf8');
 }
+async function verifyRealFlowSurveyReference(){
+  if(liveMode)return null;
+  const probe=await context.newPage();
+  const probeErrors=[];
+  probe.on('pageerror',e=>probeErrors.push('pageerror: '+String(e)));
+  probe.on('console',m=>{if(m.type()==='error'&&!m.text().includes('favicon.ico'))probeErrors.push('console: '+m.text());});
+  const nav=async(workspace,subpage)=>{
+    await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+    const expected=routeAliases[workspace+'/'+subpage]||[workspace,subpage];
+    await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,subpage]);
+    await probe.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},expected);
+  };
+  try{
+    await probe.goto(baseUrl+'?real_flow_survey='+Date.now(),{waitUntil:'domcontentloaded'});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+    await nav('survey','fdv-check');
+
+    const ref=path.join(root,'reference/current-tool/sample-data');
+    const monitorNames=['FM01','FM02','FM02A','FM03','FM04','FM05','FM06','FM07','FM08'];
+    const gaugeNames=['RG01','RG02','RG03','RG04'];
+    const sourcePaths=[
+      ...monitorNames.map(name=>path.join(ref,'fdv',name+'.fdv')),
+      ...gaugeNames.map(name=>path.join(ref,'rainfall',name+'.R')),
+    ];
+    await probe.setInputFiles('#fileInput',sourcePaths);
+    await probe.waitForFunction(
+      names=>{
+        const rows=[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent||'');
+        return names.every(name=>rows.some(text=>text.includes(name)&&text.includes('Ready')));
+      },
+      [...monitorNames.map(x=>x+'.fdv'),...gaugeNames.map(x=>x+'.R')],
+      {timeout:240000}
+    );
+    await probe.setInputFiles('#assocFileInput',path.join(ref,'rainfall','fm_rg_assoc.xlsx'));
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__.survey?.association?.records?.length===9,null,{timeout:90000});
+    await probe.waitForFunction(()=>document.querySelector('#surveyAssociationSummary')?.textContent.includes('9/9'),null,{timeout:90000});
+    await probe.locator('#surveyAssessmentSettings').evaluate(el=>{el.open=true;});
+    await probe.selectOption('#surveyPopulation','over50');
+
+    const started=Date.now();
+    await probe.click('#runCompleteSurveyBtn');
+    await probe.waitForFunction(
+      ()=>document.querySelector('#completeSurveyStatus')?.textContent.includes('Complete survey assessment calculated'),
+      null,
+      {timeout:600000}
+    );
+    const assessmentMs=Date.now()-started;
+    await probe.waitForFunction(()=>document.querySelectorAll('#completeSurveyMonitors tbody tr').length===9,null,{timeout:60000});
+
+    const evidence=await probe.evaluate(()=>{
+      const survey=window.__ICM_WORKBENCH__.survey;
+      const batch=survey?.batch;
+      const workflow=window.__ICM_WORKBENCH__.workflow26;
+      const monitors=batch?.monitors||[];
+      const calculated=monitors.map(m=>({monitor:m.monitor,status:workflow.calculatedMonitorStatus(m)}));
+      const nonGreen=calculated.filter(x=>x.status==='Amber'||x.status==='Red');
+      const candidates=batch?.network?.candidate_wapug_events||[];
+      const qualified=batch?.network?.qualified_wapug_events||[];
+      const volumeRows=batch?.volume_balance?.rows||[];
+      workflow.saveMonitorComment('FM01','Reference workflow comment: tidal/pumping influence can be recorded independently of the automated score.','CI');
+      const monthlyHtml=workflow.monthlyReportHtml();
+      return {
+        monitor_count:monitors.length,
+        gauge_count:batch?.network?.gauge_count||0,
+        candidate_count:candidates.length,
+        qualified_count:qualified.length,
+        candidate_cv:candidates[0]?.spatial_cv_percent??null,
+        volume_rows:volumeRows.length,
+        volume_non_green:volumeRows.filter(x=>['Amber','Red'].includes(String(x.rag))).length,
+        calculated,
+        monthly_non_green:nonGreen.length,
+        monthly_text:document.querySelector('#surveyMonthlyReviewBody')?.textContent||'',
+        rainfall_text:document.querySelector('#surveyRainfallSummary')?.textContent||'',
+        comment:survey?.monitorComments?.FM01||null,
+        report_has_comment:monthlyHtml.includes('Reference workflow comment: tidal/pumping influence'),
+        report_has_rejection:monthlyHtml.includes('Not qualified')&&monthlyHtml.includes('spatial CV'),
+        association_authoritative:Boolean(batch?.source_policy?.association_workbook_authoritative),
+      };
+    });
+
+    if(evidence.monitor_count!==9||evidence.gauge_count!==4||!evidence.association_authoritative){
+      throw new Error('Real reference Flow Survey did not preserve the authoritative 9-monitor/4-gauge context: '+JSON.stringify(evidence));
+    }
+    if(evidence.candidate_count!==1||evidence.qualified_count!==0||!(Number(evidence.candidate_cv)>40)){
+      throw new Error('Real reference WAPUG network suitability differs from the independently validated reference outcome: '+JSON.stringify(evidence));
+    }
+    if(evidence.volume_rows!==15||evidence.volume_non_green!==5){
+      throw new Error('Real reference weekly volume-balance outcome differs from engineering validation: '+JSON.stringify(evidence));
+    }
+    if(evidence.monthly_non_green!==2){
+      throw new Error('Boundary-week-aware monthly monitor synthesis should retain exactly two Amber/Red monitors in the supplied reference month: '+JSON.stringify(evidence));
+    }
+    if(!evidence.monthly_text.includes('1 candidate')||!evidence.monthly_text.includes('0 qualified')||!evidence.monthly_text.includes('not assessed')){
+      throw new Error('Monthly Review does not explain the real WAPUG candidate/qualification outcome: '+JSON.stringify(evidence));
+    }
+    if(!evidence.report_has_comment||!evidence.report_has_rejection||evidence.comment?.author!=='CI'){
+      throw new Error('Update 27 comment/PDF-report evidence is missing from the real reference journey: '+JSON.stringify(evidence));
+    }
+    if(probeErrors.length)throw new Error('Real Flow Survey reference browser errors: '+probeErrors.join(' | '));
+    const dir=process.env.ICM_EVIDENCE_DIR;
+    if(dir){
+      await fs.mkdir(dir,{recursive:true});
+      await fs.writeFile(path.join(dir,'real-flow-survey-reference.json'),JSON.stringify({...evidence,assessment_ms:assessmentMs},null,2));
+      await probe.screenshot({path:path.join(dir,'real-flow-survey-reference.png'),fullPage:true});
+    }
+    return {...evidence,assessment_ms:assessmentMs,referenceFiles:[...monitorNames.map(x=>x+'.fdv'),...gaugeNames.map(x=>x+'.R'),'fm_rg_assoc.xlsx']};
+  }finally{
+    await probe.close();
+  }
+}
+
 let cachedAssociationWorkbook=null;
 async function associationWorkbook({variant=false}={}){
   if(!variant&&cachedAssociationWorkbook)return {name:'fm_rg_assoc.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(cachedAssociationWorkbook)};
@@ -992,6 +1103,10 @@ try{
   }
   stage='Station A threshold control-to-report chain';
   performanceEvidence.stationAThresholdChain=await verifyStationAThresholdChain();
+  await writePerformanceEvidence();
+
+  stage='real reference Flow Survey end-to-end journey';
+  performanceEvidence.realFlowSurveyReference=await verifyRealFlowSurveyReference();
   await writePerformanceEvidence();
 
     stage='FastPath failure falls back to authoritative import';
