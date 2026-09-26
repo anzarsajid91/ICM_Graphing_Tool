@@ -1,5 +1,8 @@
+import json
 import numpy as np
 import pandas as pd
+
+from icm_workbench import advanced_api
 
 from icm_workbench.analysis.survey_assessment import (
     monitor_weekly_assessment,
@@ -282,3 +285,47 @@ def test_rainfall_scoped_exclusion_does_not_reduce_hydraulic_coverage():
     assert result["analysis_controls"]["hydraulic_exclusion_count"] == 0
     assert result["analysis_controls"]["rainfall_exclusion_count"] == 1
     assert result["analysis_controls"]["scoped_exclusions"] is True
+
+
+def test_standalone_rainfall_events_respect_selected_analysis_period(tmp_path):
+    values = np.zeros(1441, dtype=float)
+    values[0:10] = 12.0
+    values[720:730] = 12.0
+    source = tmp_path / "RG-period.R"
+    source.write_text(
+        "*CSTART\n2601010000 2601030000 2\n*CEND\n"
+        + " ".join(str(float(v)) for v in values)
+        + "\n",
+        encoding="utf-8",
+    )
+
+    full = json.loads(
+        advanced_api.rainfall_event_scaled(
+            str(source),
+            "rainfall",
+            minimum_intensity=5.0,
+            minimum_intensity_duration_min=4.0,
+            minimum_depth_mm=1.0,
+            minimum_event_duration_min=10.0,
+            dry_gap_min=15.0,
+        )
+    )
+    bounded = json.loads(
+        advanced_api.rainfall_event_scaled(
+            str(source),
+            "rainfall",
+            minimum_intensity=5.0,
+            minimum_intensity_duration_min=4.0,
+            minimum_depth_mm=1.0,
+            minimum_event_duration_min=10.0,
+            dry_gap_min=15.0,
+            start="2026-01-02T00:00:00",
+            end="2026-01-03T00:00:00",
+        )
+    )
+
+    assert full["count"] == 2
+    assert bounded["count"] == 1
+    assert bounded["events"][0]["start"].startswith("2026-01-02")
+    assert bounded["criteria"]["analysis_start"].startswith("2026-01-02")
+    assert bounded["criteria"]["analysis_end_exclusive"].startswith("2026-01-03")
