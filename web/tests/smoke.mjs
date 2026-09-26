@@ -1938,6 +1938,7 @@ try{
   await page.selectOption('#surveyDepthUnit','m');
   await page.selectOption('#surveyVelocityUnit','m/s');
   await page.selectOption('#surveyFlowUnit','m3/s');
+  await page.locator('#surveyAssessmentSettings').evaluate(el=>{el.open=true;});
   await page.selectOption('#surveyPopulation','under50');
   await page.click('#runProfessionalSurveyBtn');
   await page.waitForFunction(()=>document.querySelector('#professionalSurveyStatus')?.textContent.includes('Assessment complete'),null,{timeout:90000});
@@ -1961,6 +1962,7 @@ try{
     return ['FM01.fdv','FM02.fdv','FM03.fdv','RG01.r','RG02.r'].every(name=>rows.some(text=>text.includes(name)&&text.includes('Ready')));
   },null,{timeout:90000});
   await page.waitForFunction(()=>document.querySelector('#surveyAssociationSummary')?.textContent.includes('3/3'),null,{timeout:60000});
+  await page.locator('#surveyAssessmentSettings').evaluate(el=>{el.open=true;});
   await page.selectOption('#surveyPopulation','under50');
   await page.click('#runCompleteSurveyBtn');
   await page.waitForFunction(()=>document.querySelector('#completeSurveyStatus')?.textContent.includes('Complete survey assessment calculated'),null,{timeout:120000});
