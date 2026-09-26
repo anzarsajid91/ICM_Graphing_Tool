@@ -1085,11 +1085,14 @@ function comparisonQuantityMismatch(observed,model){
 }
 let comparisonCalculation=null;
 let comparisonCancellationGeneration=0;
+let backgroundComparisonInterruptPromise=null;
 
 async function restoreAnalysisWorkerAfterBackgroundInterrupt(reason='Interactive graph request'){
+  if(backgroundComparisonInterruptPromise)return backgroundComparisonInterruptPromise;
   if(!comparisonCalculation?.background)return false;
   const interrupted=comparisonCalculation;
   interrupted.cancelled=true;
+  comparisonCalculation=null;
   comparisonCancellationGeneration+=1;
   const readyItems=[...state.files.values()].filter(item=>item.status==='ready'&&item.file);
   diagnostic.backgroundComparisonInterrupts=Number(diagnostic.backgroundComparisonInterrupts||0)+1;
@@ -1099,22 +1102,28 @@ async function restoreAnalysisWorkerAfterBackgroundInterrupt(reason='Interactive
     ready_file_count:readyItems.length,
     time:new Date().toISOString()
   };
-  const restartPromise=engine.restart(readyItems);
-  engineBootPromise=restartPromise;
-  await restartPromise;
-  // Quantity reinterpretation is held in the authoritative Python cache as
-  // well as JS metadata. A worker restart must faithfully restore those
-  // engineer-assigned semantics before any graph/statistics request proceeds.
-  for(const [key,quantity] of state.seriesQuantityOverrides.entries()){
-    const mapped=mappingObject(key);
-    if(!mapped||!quantity)continue;
-    await engine.call('set_series_quantity',{
-      path:mapped.item.virtualPath,
-      column:mapped.col,
-      quantity:String(quantity).toLowerCase()
-    });
-  }
-  return true;
+  const work=(async()=>{
+    const restartPromise=engine.restart(readyItems);
+    engineBootPromise=restartPromise;
+    await restartPromise;
+    // Quantity reinterpretation is held in the authoritative Python cache as
+    // well as JS metadata. A worker restart must faithfully restore those
+    // engineer-assigned semantics before any graph/statistics request proceeds.
+    for(const [key,quantity] of state.seriesQuantityOverrides.entries()){
+      const mapped=mappingObject(key);
+      if(!mapped||!quantity)continue;
+      await engine.call('set_series_quantity',{
+        path:mapped.item.virtualPath,
+        column:mapped.col,
+        quantity:String(quantity).toLowerCase()
+      });
+    }
+    return true;
+  })();
+  backgroundComparisonInterruptPromise=work.finally(()=>{
+    if(backgroundComparisonInterruptPromise)backgroundComparisonInterruptPromise=null;
+  });
+  return backgroundComparisonInterruptPromise;
 }
 window.__ICM_WORKBENCH__.interruptBackgroundComparison=restoreAnalysisWorkerAfterBackgroundInterrupt;
 
