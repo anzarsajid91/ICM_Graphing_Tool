@@ -113,7 +113,13 @@ def parse_tabular_csv(path):
             out[c]=cleaned
             unit_status="unresolved"
         series_meta[c]={
+            # Generic/tabular CSV semantics are name-inferred defaults, not an
+            # authoritative declaration. Keep that provenance explicit so the
+            # browser can let an engineer reinterpret each series independently
+            # while native structured formats remain protected.
             "quantity":quantity,
+            "inferred_quantity":quantity,
+            "quantity_source":"inferred" if quantity else "unresolved",
             "original_unit":original_unit,
             "canonical_unit":canonical,
             "conversion_factor":factor,

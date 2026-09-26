@@ -22,11 +22,13 @@ page.on('requestfailed',r=>failedRequests.push(`${r.method()} ${r.url()} :: ${r.
 
 async function optionValue(selector,needle){return page.locator(`${selector} option`).evaluateAll((opts,n)=>opts.find(x=>x.textContent.includes(n))?.value||'',needle);}
 const routeAliases={
+  'data/sources':['data','time-series'],
+  'data/series-mapping':['data','time-series'],
   'verification/comparison':['graphs','comparison'],
   'verification/rating':['graphs','rating'],
   'verification/dwf':['graphs','dwf'],
   'verification/storage':['spills','storage'],
-  'rainfall/events':['survey','rainfall-check'],
+  'rainfall/events':['data','time-series'],
   'survey/data-health':['survey','fdv-check'],
   'survey/rainfall-response':['survey','rainfall-check'],
   'survey/flow-continuity':['survey','volume-balance'],
@@ -45,14 +47,18 @@ async function clickTab(name){
   const routes={
     graph:['data','time-series'],
     compare:['graphs','comparison'],
-    'rain-events':['survey','rainfall-check'],
+    'rain-events':['data','time-series'],
     'data-health':['survey','fdv-check'],
     spills:['spills','assessment'],
     storage:['spills','storage'],
     workspace:['reports','report-generation']
   };
   const next=routes[name];
-  if(next){await precisionRoute(next[0],next[1]);return;}
+  if(next){
+    await precisionRoute(next[0],next[1]);
+    if(name==='rain-events')await page.locator('#pwTimeSeriesEventSurface').evaluate(el=>{el.open=true;});
+    return;
+  }
   await page.locator(`[data-tab="${name}"]`).evaluate(el=>el.click());
 }
 async function downloadFrom(selector){const pending=page.waitForEvent('download');await page.click(selector);return pending;}
@@ -394,8 +400,9 @@ async function verifyStationAThresholdChain(){
   probe.on('console',m=>{if(m.type()==='error'&&!m.text().includes('favicon.ico'))probeErrors.push('console: '+m.text());});
   const nav=async(workspace,subpage)=>{
     await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+    const expected=routeAliases[workspace+'/'+subpage]||[workspace,subpage];
     await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,subpage]);
-    await probe.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},[workspace,subpage]);
+    await probe.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},expected);
   };
   try{
     await probe.goto(baseUrl+'?station_a_threshold='+Date.now(),{waitUntil:'domcontentloaded'});
@@ -463,6 +470,46 @@ async function verifyStationAThresholdChain(){
     }
     const graphContext=(await probe.locator('#graphObsThresholdContext').textContent())||'';
     if(!new RegExp(support.quantity,'i').test(graphContext)||!/\bm\b/i.test(graphContext)||!/\bAD\b/i.test(graphContext))throw new Error('Station A graph threshold context must identify Level, unit and absolute datum: '+graphContext);
+
+    // Standalone EDM/Time Series WAPUG is deliberately independent from Flow Survey.
+    await probe.locator('#pwTimeSeriesEventSurface').evaluate(el=>{el.open=true;});
+    await probe.selectOption('#rainCriteriaMode','wapug');
+    await probe.click('#runRainEventsBtn');
+    await probe.waitForFunction(()=>state.rainEvents?.length>0&&document.querySelector('#rainEventSummary')?.textContent.includes('qualifying events'),null,{timeout:240000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false,null,{timeout:120000});
+    const stationWapug=await probe.evaluate(()=>{
+      const criteria=window.__ICM_WORKBENCH__?.appliedRainCriteria?.();
+      const chart=document.querySelector('#timeChart');
+      const rects=(chart?.layout?.shapes||[]).filter(s=>s.type==='rect'&&s.xref==='x'&&s.yref==='paper');
+      const labels=(chart?.layout?.annotations||[]).filter(a=>/^E\d+/.test(String(a.text||'')));
+      const hydraulicDomain=chart?.layout?.yaxis?.domain||[];
+      const rainfallDomain=chart?.layout?.yaxis2?.domain||chart?.layout?.yaxis?.domain||[];
+      const hydraulicBottom=Number(hydraulicDomain[0]);
+      const rainfallTop=Number(rainfallDomain[1]);
+      return {
+        route:window.__ICM_PRECISION_WORKBENCH__?.route?.(),
+        criteria,
+        count:state.rainEvents?.length||0,
+        overlayRects:rects.length,
+        overlayLabels:labels.length,
+        hydraulicDomain,
+        rainfallDomain,
+        spansPanels:rects.length>0&&Number.isFinite(hydraulicBottom)&&Number.isFinite(rainfallTop)&&rects.every(s=>Number(s.y0)<=hydraulicBottom+1e-9&&Number(s.y1)>=rainfallTop-1e-9),
+        avoidsStatisticsTable:rects.length>0&&rects.every(s=>Number(s.y0)>=0.20),
+        flowSurveyBatch:Boolean(window.__ICM_WORKBENCH__?.survey?.batch),
+      };
+    });
+    if(
+      stationWapug.route?.workspace!=='data'||stationWapug.route?.page!=='time-series'||
+      stationWapug.criteria?.minimum_intensity!==5||
+      stationWapug.criteria?.minimum_intensity_duration_min!==6||
+      stationWapug.criteria?.minimum_depth_mm!==5||
+      stationWapug.criteria?.minimum_event_duration_min!==60||
+      stationWapug.criteria?.dry_gap_min!==15||
+      stationWapug.count<1||stationWapug.overlayRects<stationWapug.count||!stationWapug.spansPanels||!stationWapug.avoidsStatisticsTable||
+      stationWapug.flowSurveyBatch
+    )throw new Error('Station A standalone WAPUG overlay is not independent/correct: '+JSON.stringify(stationWapug));
+
     await nav('spills','assessment');
     const controlValue=Number(await probe.inputValue('#obsThreshold'));
     if(Math.abs(controlValue-threshold)>1e-9)throw new Error('Station A threshold changed between Time Series and Spills: '+JSON.stringify({threshold,controlValue}));
@@ -533,8 +580,9 @@ async function verifyIndividualSourceRemoval(){
     await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(row=>/RemoveTest-(FM01|RG01)/.test(row.textContent)&&row.textContent.includes('Ready')).length===2,null,{timeout:120000});
     const probeRoute=async(workspace,subpage)=>{
       await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+      const expected=routeAliases[workspace+'/'+subpage]||[workspace,subpage];
       await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,subpage]);
-      await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},[workspace,subpage],{timeout:30000});
+      await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},expected,{timeout:30000});
     };
     await probeRoute('data','series-mapping');
     const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>options.find(o=>o.textContent.includes(text))?.value||'',needle);
@@ -655,8 +703,9 @@ async function verifyPlotlyEngineeringEnhancements(){
     await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(row=>/Plotly-(Observed-FM01|Model-FM01|RG01)/.test(row.textContent)&&row.textContent.includes('Ready')).length===3,null,{timeout:120000});
     const nav=async(workspace,pageName)=>{
       await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+      const expected=routeAliases[workspace+'/'+pageName]||[workspace,pageName];
       await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,pageName]);
-      await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},[workspace,pageName],{timeout:30000});
+      await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},expected,{timeout:30000});
     };
     const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>options.find(o=>o.textContent.includes(text))?.value||'',needle);
     await nav('data','series-mapping');
@@ -883,6 +932,118 @@ function surveyRainfallR(){
   const values=Array.from({length:200},(_,i)=>i<20?12:0);
   return Buffer.from(`*CSTART\n2601050000 2601050640 2\n*CEND\n${values.join(' ')}\n`,'utf8');
 }
+async function verifyRealFlowSurveyReference(){
+  if(liveMode)return null;
+  const probe=await context.newPage();
+  const probeErrors=[];
+  probe.on('pageerror',e=>probeErrors.push('pageerror: '+String(e)));
+  probe.on('console',m=>{if(m.type()==='error'&&!m.text().includes('favicon.ico'))probeErrors.push('console: '+m.text());});
+  const nav=async(workspace,subpage)=>{
+    await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+    const expected=routeAliases[workspace+'/'+subpage]||[workspace,subpage];
+    await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,subpage]);
+    await probe.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},expected);
+  };
+  try{
+    await probe.goto(baseUrl+'?real_flow_survey='+Date.now(),{waitUntil:'domcontentloaded'});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+    await nav('survey','fdv-check');
+
+    const ref=path.join(root,'reference/current-tool/sample-data');
+    const monitorNames=['FM01','FM02','FM02A','FM03','FM04','FM05','FM06','FM07','FM08'];
+    const gaugeNames=['RG01','RG02','RG03','RG04'];
+    const sourcePaths=[
+      ...monitorNames.map(name=>path.join(ref,'fdv',name+'.fdv')),
+      ...gaugeNames.map(name=>path.join(ref,'rainfall',name+'.R')),
+    ];
+    await probe.setInputFiles('#fileInput',sourcePaths);
+    await probe.waitForFunction(
+      names=>{
+        const rows=[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent||'');
+        return names.every(name=>rows.some(text=>text.includes(name)&&text.includes('Ready')));
+      },
+      [...monitorNames.map(x=>x+'.fdv'),...gaugeNames.map(x=>x+'.R')],
+      {timeout:240000}
+    );
+    await probe.setInputFiles('#assocFileInput',path.join(ref,'rainfall','fm_rg_assoc.xlsx'));
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__.survey?.association?.records?.length===9,null,{timeout:90000});
+    await probe.waitForFunction(()=>document.querySelector('#surveyAssociationSummary')?.textContent.includes('9/9'),null,{timeout:90000});
+    await probe.locator('#surveyAssessmentSettings').evaluate(el=>{el.open=true;});
+    await probe.selectOption('#surveyPopulation','over50');
+
+    const started=Date.now();
+    await probe.click('#runCompleteSurveyBtn');
+    await probe.waitForFunction(
+      ()=>document.querySelector('#completeSurveyStatus')?.textContent.includes('Complete survey assessment calculated'),
+      null,
+      {timeout:600000}
+    );
+    const assessmentMs=Date.now()-started;
+    await probe.waitForFunction(()=>document.querySelectorAll('#completeSurveyMonitors tbody tr').length===9,null,{timeout:60000});
+
+    const evidence=await probe.evaluate(()=>{
+      const survey=window.__ICM_WORKBENCH__.survey;
+      const batch=survey?.batch;
+      const workflow=window.__ICM_WORKBENCH__.workflow26;
+      const monitors=batch?.monitors||[];
+      const calculated=monitors.map(m=>({monitor:m.monitor,status:workflow.calculatedMonitorStatus(m)}));
+      const nonGreen=calculated.filter(x=>x.status==='Amber'||x.status==='Red');
+      const candidates=batch?.network?.candidate_wapug_events||[];
+      const qualified=batch?.network?.qualified_wapug_events||[];
+      const volumeRows=batch?.volume_balance?.rows||[];
+      workflow.saveMonitorComment('FM01','Reference workflow comment: tidal/pumping influence can be recorded independently of the automated score.','CI');
+      const monthlyHtml=workflow.monthlyReportHtml();
+      return {
+        monitor_count:monitors.length,
+        gauge_count:batch?.network?.gauge_count||0,
+        candidate_count:candidates.length,
+        qualified_count:qualified.length,
+        candidate_cv:candidates[0]?.spatial_cv_percent??null,
+        volume_rows:volumeRows.length,
+        volume_non_green:volumeRows.filter(x=>['Amber','Red'].includes(String(x.rag))).length,
+        calculated,
+        monthly_non_green:nonGreen.length,
+        monthly_text:document.querySelector('#surveyMonthlyReviewBody')?.textContent||'',
+        rainfall_text:document.querySelector('#surveyRainfallSummary')?.textContent||'',
+        comment:survey?.monitorComments?.FM01||null,
+        report_has_comment:monthlyHtml.includes('Reference workflow comment: tidal/pumping influence'),
+        report_has_rejection:monthlyHtml.includes('Not qualified')&&monthlyHtml.includes('spatial CV'),
+        association_authoritative:Boolean(batch?.source_policy?.association_workbook_authoritative),
+        batch_performance:batch?.performance||null,
+      };
+    });
+
+    if(evidence.monitor_count!==9||evidence.gauge_count!==4||!evidence.association_authoritative){
+      throw new Error('Real reference Flow Survey did not preserve the authoritative 9-monitor/4-gauge context: '+JSON.stringify(evidence));
+    }
+    if(evidence.candidate_count!==1||evidence.qualified_count!==0||!(Number(evidence.candidate_cv)>40)){
+      throw new Error('Real reference WAPUG network suitability differs from the independently validated reference outcome: '+JSON.stringify(evidence));
+    }
+    if(evidence.volume_rows!==15||evidence.volume_non_green!==5){
+      throw new Error('Real reference weekly volume-balance outcome differs from engineering validation: '+JSON.stringify(evidence));
+    }
+    if(evidence.monthly_non_green!==2){
+      throw new Error('Boundary-week-aware monthly monitor synthesis should retain exactly two Amber/Red monitors in the supplied reference month: '+JSON.stringify(evidence));
+    }
+    if(!evidence.monthly_text.includes('1 candidate')||!evidence.monthly_text.includes('0 qualified')||!evidence.monthly_text.includes('not assessed')){
+      throw new Error('Monthly Review does not explain the real WAPUG candidate/qualification outcome: '+JSON.stringify(evidence));
+    }
+    if(!evidence.report_has_comment||!evidence.report_has_rejection||evidence.comment?.author!=='CI'){
+      throw new Error('Update 27 comment/PDF-report evidence is missing from the real reference journey: '+JSON.stringify(evidence));
+    }
+    if(probeErrors.length)throw new Error('Real Flow Survey reference browser errors: '+probeErrors.join(' | '));
+    const dir=process.env.ICM_EVIDENCE_DIR;
+    if(dir){
+      await fs.mkdir(dir,{recursive:true});
+      await fs.writeFile(path.join(dir,'real-flow-survey-reference.json'),JSON.stringify({...evidence,assessment_ms:assessmentMs},null,2));
+      await probe.screenshot({path:path.join(dir,'real-flow-survey-reference.png'),fullPage:true});
+    }
+    return {...evidence,assessment_ms:assessmentMs,referenceFiles:[...monitorNames.map(x=>x+'.fdv'),...gaugeNames.map(x=>x+'.R'),'fm_rg_assoc.xlsx']};
+  }finally{
+    await probe.close();
+  }
+}
+
 let cachedAssociationWorkbook=null;
 async function associationWorkbook({variant=false}={}){
   if(!variant&&cachedAssociationWorkbook)return {name:'fm_rg_assoc.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(cachedAssociationWorkbook)};
@@ -913,7 +1074,7 @@ try{
   if(!liveMode){
     const cold=performanceEvidence.coldImport,engineAfterSelection=Number(cold.engineReadyFromNavigationMs)-Number(cold.selectionAtFromNavigationMs);
     if(cold.selectionOutcome!=='graph'||cold.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Cold FastPath preview did not render: '+JSON.stringify(cold));
-    if(cold.previewEvidence?.route?.workspace!=='data'||cold.previewEvidence?.route?.page!=='sources')throw new Error('Cold FastPath preview must not take navigation away from Data / Sources: '+JSON.stringify(cold.previewEvidence?.route));
+    if(cold.previewEvidence?.route?.workspace!=='data'||cold.previewEvidence?.route?.page!=='time-series')throw new Error('Cold FastPath preview must not take navigation away from Data / Time Series: '+JSON.stringify(cold.previewEvidence?.route));
     if(cold.previewEvidence?.engineStatus==='ready'||!(cold.timeToOutcomeMs<engineAfterSelection))throw new Error('Cold FastPath preview did not render before authoritative engine readiness: '+JSON.stringify(cold));
     if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM01 parsing: '+JSON.stringify(cold.finalEvidence));
   }
@@ -938,7 +1099,7 @@ try{
     await writePerformanceEvidence();
     const engineAfterSelection=Number(measured.engineReadyFromNavigationMs)-Number(measured.selectionAtFromNavigationMs);
     if(measured.selectionOutcome!=='graph'||measured.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Fresh CSV FastPath preview did not render: '+JSON.stringify(measured));
-    if(measured.previewEvidence?.route?.workspace!=='data'||measured.previewEvidence?.route?.page!=='sources')throw new Error('Fresh FastPath preview must prepare the graph without changing the user-selected Data / Sources page: '+JSON.stringify(measured.previewEvidence?.route));
+    if(measured.previewEvidence?.route?.workspace!=='data'||measured.previewEvidence?.route?.page!=='time-series')throw new Error('Fresh FastPath preview must prepare the graph without changing the user-selected Data / Time Series page: '+JSON.stringify(measured.previewEvidence?.route));
     if(measured.previewEvidence?.engineStatus==='ready'||!(measured.timeToOutcomeMs<engineAfterSelection))throw new Error('Fresh CSV preview did not render before authoritative engine readiness: '+JSON.stringify(measured));
     if(measured.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Fresh CSV FastPath preview did not reconcile exactly: '+JSON.stringify(measured));
     if(measured.archiveMember){
@@ -950,6 +1111,10 @@ try{
   }
   stage='Station A threshold control-to-report chain';
   performanceEvidence.stationAThresholdChain=await verifyStationAThresholdChain();
+  await writePerformanceEvidence();
+
+  stage='real reference Flow Survey end-to-end journey';
+  performanceEvidence.realFlowSurveyReference=await verifyRealFlowSurveyReference();
   await writePerformanceEvidence();
 
     stage='FastPath failure falls back to authoritative import';
@@ -1214,14 +1379,15 @@ try{
   if(String(comparisonNoRainLayout.observedColour).toLowerCase()!=='#ff0000')throw new Error('Observed comparison trace should remain red, got '+JSON.stringify(comparisonNoRainLayout.observedColour));
   if(String(comparisonNoRainLayout.modelColour).toLowerCase()!=='#0000ff')throw new Error('First model plotted trace should use #0000ff, got '+JSON.stringify(comparisonNoRainLayout.modelColour));
   await page.waitForTimeout(1700);
-  const mappingRouteCalibration=await page.evaluate(()=>({
+  const unifiedRouteAnalysis=await page.evaluate(()=>({
     route:window.__ICM_PRECISION_WORKBENCH__?.route?.(),
-    pending:Boolean(window.__ICM_WORKBENCH__?.uiV2?.timeSeriesComparisonPending),
-    timer:Boolean(window.__ICM_WORKBENCH__?.uiV2?.timeSeriesComparisonTimer),
+    setupVisible:Boolean(document.querySelector('#pwDataSetupSurface')?.getClientRects().length),
+    chartVisible:Boolean(document.querySelector('#timeChart')?.getClientRects().length),
+    traceCount:(document.querySelector('#timeChart')?.data||[]).filter(t=>t.type!=='table').length,
     workerDetail:window.__ICM_WORKBENCH__?.worker?.detail||null,
   }));
-  if(mappingRouteCalibration.route?.workspace!=='data'||mappingRouteCalibration.route?.page!=='series-mapping'||mappingRouteCalibration.pending||mappingRouteCalibration.timer||mappingRouteCalibration.workerDetail==='compare_series'){
-    throw new Error('Automatic calibration must not consume the analysis worker while the user remains on Series Mapping: '+JSON.stringify(mappingRouteCalibration));
+  if(unifiedRouteAnalysis.route?.workspace!=='data'||unifiedRouteAnalysis.route?.page!=='time-series'||!unifiedRouteAnalysis.setupVisible||!unifiedRouteAnalysis.chartVisible||unifiedRouteAnalysis.traceCount!==2){
+    throw new Error('Unified Data / Time Series must keep interpretation controls and analysis on the same route without navigation side effects: '+JSON.stringify(unifiedRouteAnalysis));
   }
 
   stage='observed-only mapping with rainfall';
@@ -1230,6 +1396,29 @@ try{
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('0 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall mapped'));
   await page.waitForFunction(()=>Boolean(document.querySelector('#timeChart')?.layout?.yaxis2),null,{timeout:60000});
+  const observedRainMapping=await page.evaluate(()=>{
+    const chart=document.querySelector('#timeChart');
+    const lines=(chart?.data||[]).filter(t=>t.type!=='table');
+    const pointCounts=window.__ICM_WORKBENCH__?.lastGraphPointCounts||{};
+    return{
+      modelSelections:[...document.querySelector('#modelSelect').selectedOptions].map(o=>o.value),
+      rainSelection:document.querySelector('#rainSelect')?.value||'',
+      lineNames:lines.map(t=>t.name),
+      axes:lines.map(t=>t.yaxis||'y'),
+      pointCountKeys:Object.keys(pointCounts),
+      panelOrder:window.__ICM_WORKBENCH__?.lastPanelOrder||[],
+      handoffSkip:window.__ICM_WORKBENCH__?.fastpathHandoffSkipped||null,
+    };
+  });
+  if(
+    observedRainMapping.modelSelections.length||
+    !observedRainMapping.rainSelection||
+    observedRainMapping.pointCountKeys.some(key=>/^model_/i.test(key))||
+    !observedRainMapping.pointCountKeys.includes('rainfall')||
+    !observedRainMapping.panelOrder.includes('rainfall')
+  ){
+    throw new Error('Late FastPath validation must not restore a cleared model or discard the rainfall assignment/rendered panel: '+JSON.stringify(observedRainMapping));
+  }
 
   stage='rainfall-only mapping';
   await page.selectOption('#observedSelect','');
@@ -1838,6 +2027,11 @@ try{
   await page.waitForFunction(()=>document.querySelector('#rainEventSummary')?.textContent.includes('qualifying events'),null,{timeout:60000});
   if(await page.locator('#rainEventBody tr').count()<1)throw new Error('Manual rainfall criteria should identify the demo event');
   if(await page.evaluate(()=>window.__ICM_WORKBENCH__.rainEventsFresh?.())!==true)throw new Error('Fresh rainfall-event result was not bound to source/criteria/exclusion dependencies.');
+  await page.fill('#analysisStart','2026-01-05T00:04');
+  await page.locator('#analysisStart').dispatchEvent('change');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.rainEventsFresh?.()===false&&state.rainEvents.length===0&&document.querySelector('#rainEventSummary')?.textContent.includes('analysis period'));
+  await page.fill('#analysisStart','');
+  await page.locator('#analysisStart').dispatchEvent('change');
   await page.fill('#rainMinIntensity','1.1');
   await page.locator('#rainMinIntensity').dispatchEvent('change');
   await page.waitForFunction(()=>document.querySelector('#rainEventSummary')?.textContent.includes('Stale rainfall-event result cleared.')&&window.__ICM_WORKBENCH__.rainEventsFresh?.()===false&&state.rainEvents.length===0);
@@ -1892,6 +2086,7 @@ try{
 
   stage='professional FDV and rainfall assessment';
   await precisionRoute('survey','rainfall-response');
+  await page.locator('#surveyRainfallTechnical').evaluate(el=>{el.open=true;});
   const surveyDepth=await optionValue('#surveyDepthSelect','observed.csv — depth');
   const surveyVelocity=await optionValue('#surveyVelocitySelect','observed.csv — velocity');
   const surveyFlow=await optionValue('#surveyFlowSelect','observed.csv — flow');
@@ -1904,6 +2099,7 @@ try{
   await page.selectOption('#surveyDepthUnit','m');
   await page.selectOption('#surveyVelocityUnit','m/s');
   await page.selectOption('#surveyFlowUnit','m3/s');
+  await page.locator('#surveyAssessmentSettings').evaluate(el=>{el.open=true;});
   await page.selectOption('#surveyPopulation','under50');
   await page.click('#runProfessionalSurveyBtn');
   await page.waitForFunction(()=>document.querySelector('#professionalSurveyStatus')?.textContent.includes('Assessment complete'),null,{timeout:90000});
@@ -1914,7 +2110,7 @@ try{
   if(!((await page.locator('#professionalSurveyMethod').textContent())||'').includes('18 h'))throw new Error('Professional assessment methodology is not exposed in the UI');
 
   stage='complete association-driven survey assessment';
-  await precisionRoute('survey','rainfall-response');
+  await precisionRoute('survey','fdv-check');
   await page.setInputFiles('#fileInput',[
     {name:'FM01.fdv',mimeType:'text/plain',buffer:surveyFdv('FM01',0.10,0.20,0.40)},
     {name:'FM02.fdv',mimeType:'text/plain',buffer:surveyFdv('FM02',0.10,0.20,0.40)},
@@ -1927,6 +2123,7 @@ try{
     return ['FM01.fdv','FM02.fdv','FM03.fdv','RG01.r','RG02.r'].every(name=>rows.some(text=>text.includes(name)&&text.includes('Ready')));
   },null,{timeout:90000});
   await page.waitForFunction(()=>document.querySelector('#surveyAssociationSummary')?.textContent.includes('3/3'),null,{timeout:60000});
+  await page.locator('#surveyAssessmentSettings').evaluate(el=>{el.open=true;});
   await page.selectOption('#surveyPopulation','under50');
   await page.click('#runCompleteSurveyBtn');
   await page.waitForFunction(()=>document.querySelector('#completeSurveyStatus')?.textContent.includes('Complete survey assessment calculated'),null,{timeout:120000});
@@ -1941,6 +2138,24 @@ try{
   const completeSurvey=await page.evaluate(()=>window.__ICM_WORKBENCH__.survey?.batch);
   if(!completeSurvey||completeSurvey.monitors?.length!==3)throw new Error('Complete survey did not assess all association-workbook monitors: '+JSON.stringify(completeSurvey));
   if(!completeSurvey.source_policy?.association_workbook_authoritative)throw new Error('Association workbook precedence is not explicit in complete survey result');
+  await page.waitForFunction(()=>document.querySelectorAll('#completeSurveyMonitors tbody tr').length===3&&document.querySelector('#surveyReviewHeader')?.textContent.includes('Monitor assessment'),null,{timeout:30000});
+  const reviewFirstSurvey=await page.evaluate(()=>({
+    monitorRows:document.querySelectorAll('#completeSurveyMonitors tbody tr').length,
+    header:document.querySelector('#surveyReviewHeader')?.textContent||'',
+    monthly:document.querySelector('#surveyMonthlyReviewBody')?.textContent||'',
+    standaloneVisible:Boolean(document.querySelector('#pwTimeSeriesEventSurface')?.getClientRects().length),
+  }));
+  if(reviewFirstSurvey.monitorRows!==3||!reviewFirstSurvey.header.includes('fm_rg_assoc')||!reviewFirstSurvey.monthly.includes('Engineering action register')||reviewFirstSurvey.standaloneVisible)throw new Error('Review-first Flow Survey composition is incomplete after the authoritative batch: '+JSON.stringify(reviewFirstSurvey));
+  await precisionRoute('survey','rainfall-check');
+  await page.waitForFunction(()=>document.querySelectorAll('#surveyGaugeReview tbody tr').length>=2,null,{timeout:30000});
+  const flowSurveyRainReview=await page.evaluate(()=>({
+    summary:document.querySelector('#surveyRainfallSummary')?.textContent||'',
+    gauges:document.querySelectorAll('#surveyGaugeReview tbody tr').length,
+    events:document.querySelectorAll('#surveyEventReview tbody tr').length,
+    standaloneVisible:Boolean(document.querySelector('#pwTimeSeriesEventSurface')?.getClientRects().length),
+  }));
+  if(flowSurveyRainReview.gauges<2||!flowSurveyRainReview.summary.includes('gauges assessed')||flowSurveyRainReview.standaloneVisible)throw new Error('Flow Survey Rainfall Review is not populated independently from the standalone Time Series WAPUG surface: '+JSON.stringify(flowSurveyRainReview));
+  await precisionRoute('survey','fdv-check');
   const fm03Balance=(completeSurvey.volume_balance?.rows||[]).find(x=>x.downstream_monitor==='FM03');
   if(!fm03Balance||fm03Balance.rag!=='Green'||fm03Balance.legacy_fsat_status!=='OK')throw new Error('Expected FM03 downstream volume balance to reconcile Green/OK: '+JSON.stringify(fm03Balance));
   if(!((await page.locator('#surveyBalanceTable').textContent())||'').includes('Likely source / first check'))throw new Error('Volume-balance diagnostic recommendation column is missing');
@@ -2229,7 +2444,7 @@ try{
   await page.setInputFiles('#workspaceInput',{name:'workspace-missing-source.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(missingWorkspace))});
   await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('Workspace loaded with unresolved sources.'),null,{timeout:60000});
   const reattachGuidance=(await page.locator('#workspaceStatus').textContent())||'';
-  if(!reattachGuidance.includes('Reattach missing or changed files in Data / Sources')||!reattachGuidance.includes('Not run or Stale'))throw new Error('Missing/changed workspace sources lack actionable reattachment/staleness guidance: '+reattachGuidance);
+  if(!reattachGuidance.includes('Reattach missing or changed files in Data / Time Series')||!reattachGuidance.includes('Not run or Stale'))throw new Error('Missing/changed workspace sources lack actionable reattachment/staleness guidance: '+reattachGuidance);
 
   const beforeUnsupported=await page.evaluate(()=>({mapping:JSON.stringify(state.mapping),files:state.files.size}));
   await page.setInputFiles('#workspaceInput',{name:'unsupported-workspace-v99.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({schema_version:99,navigation:{workspace:'data',page:'sources'}}))});
@@ -2287,6 +2502,7 @@ try{
   // legacy single-monitor assessment and the association-driven complete survey
   // so report assertions exercise fresh, auditable results.
   await precisionRoute('survey','rainfall-response');
+  await page.locator('#surveyRainfallTechnical').evaluate(el=>{el.open=true;});
   await page.click('#runProfessionalSurveyBtn');
   await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.lastProfessionalSurvey),null,{timeout:120000});
   await page.click('#runCompleteSurveyBtn');

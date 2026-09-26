@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import numpy as np
 import pandas as pd
 
@@ -199,10 +200,19 @@ def rating_sources_result(
         payload["exponent_difference"] = modelled["b"] - observed["b"]
     return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
 
-def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.0,minimum_intensity_duration_min=6.0,minimum_depth_mm=5.0,minimum_event_duration_min=60.0,dry_gap_min=15.0,exclusions_json="[]"):
+def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.0,minimum_intensity_duration_min=6.0,minimum_depth_mm=5.0,minimum_event_duration_min=60.0,dry_gap_min=15.0,exclusions_json="[]",start=None,end=None):
     parsed=python_bridge._load(path)
     frame=parsed.frame.copy()
     frame[column]=pd.to_numeric(frame[column],errors="coerce")*float(conversion_factor)
+    frame["timestamp"]=pd.to_datetime(frame["timestamp"],errors="coerce")
+    analysis_start=python_bridge._model_clock_timestamp(start)
+    analysis_end=python_bridge._model_clock_timestamp(end)
+    if analysis_start is not None and analysis_end is not None and analysis_end<=analysis_start:
+        raise ValueError("Analysis end must be after analysis start.")
+    if analysis_start is not None:
+        frame=frame.loc[frame["timestamp"]>=pd.Timestamp(analysis_start)].copy()
+    if analysis_end is not None:
+        frame=frame.loc[frame["timestamp"]<pd.Timestamp(analysis_end)].copy()
     metadata=getattr(parsed,"metadata",{}) or {}
     interval=metadata.get("interval_min")
     events=detect_rainfall_events(
@@ -231,6 +241,8 @@ def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.
             "rainfall_semantics":"intensity",
             "declared_interval_min":float(interval) if interval else None,
             "support_method":"actual elapsed intervals; final support only from declared interval",
+            "analysis_start":analysis_start,
+            "analysis_end_exclusive":analysis_end,
         }
     }),ensure_ascii=False)
 
@@ -251,11 +263,13 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
 
     metadata=getattr(parsed,"metadata",{}) or {}
     interval=metadata.get("interval_min")
+    rain_gap_seconds=python_bridge._rain_support_gap_seconds(parsed)
     result=rainfall_accumulation(
         x,
         column,
         semantics="intensity",
         declared_interval_minutes=float(interval) if interval else None,
+        max_gap_seconds=rain_gap_seconds,
     )
     seg=result["segments"]
     running=0.0
@@ -301,7 +315,8 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
         "interval_min":float(interval) if interval else None,
         "start":pd.Timestamp(x["timestamp"].iloc[0]).isoformat(),
         "end":pd.Timestamp(x["timestamp"].iloc[-1]).isoformat(),
-        "integration_method":"actual-support interval-average intensity × elapsed time; declared interval used only for final support",
+        "integration_method":"actual-support interval-average intensity × elapsed time; gaps above the defensible source-support limit are unknown; declared interval used only for final support",
+        "max_gap_seconds":rain_gap_seconds,
     }
     return json.dumps(python_bridge._jsonable(payload),ensure_ascii=False)
 
@@ -904,6 +919,13 @@ def professional_survey_batch_result(
     )
     analysis_start = python_bridge._model_clock_timestamp(start)
     analysis_end = python_bridge._model_clock_timestamp(end)
+    batch_started = time.perf_counter()
+    performance = {
+        "rain_source_load_seconds": 0.0,
+        "network_rainfall_seconds": 0.0,
+        "monitor_seconds": {},
+        "volume_balance_seconds": 0.0,
+    }
 
     cache_key = (
         str(association_json),
@@ -926,6 +948,7 @@ def professional_survey_batch_result(
     gauges = {}
     rain_lookup = {}
     rain_issues = []
+    rain_load_started = time.perf_counter()
     for source in rain_sources:
         name = str(source.get("name") or source.get("gauge") or "").strip()
         path = source.get("path")
@@ -945,11 +968,18 @@ def professional_survey_batch_result(
             rain_lookup[_survey_name_token(name)] = (frame, column, interval)
         except Exception as exc:
             rain_issues.append({"gauge": name, "reason": str(exc)})
+    performance["rain_source_load_seconds"] = float(
+        time.perf_counter() - rain_load_started
+    )
 
+    network_started = time.perf_counter()
     network = network_rainfall_assessment(
         gauges,
         population_above_50k=bool(population_above_50k),
         apply_fault_cutoff=bool(apply_fault_cutoff),
+    )
+    performance["network_rainfall_seconds"] = float(
+        time.perf_counter() - network_started
     )
 
     source_by_monitor = {
@@ -966,6 +996,12 @@ def professional_survey_batch_result(
     volume_flows = {}
 
     for monitor, assoc in assoc_by_monitor.items():
+        monitor_started = time.perf_counter()
+        monitor_perf = {
+            "hydraulic_bundle_seconds": 0.0,
+            "weekly_assessment_seconds": 0.0,
+            "event_response_seconds": 0.0,
+        }
         source = source_by_monitor.get(monitor)
         if not source:
             monitor_rows.append({
@@ -976,11 +1012,15 @@ def professional_survey_batch_result(
                 "diameter_mm": assoc.get("diameter_mm"),
             })
             continue
+        hydraulic_started = time.perf_counter()
         try:
             hydraulic, contracts = _survey_hydraulic_bundle(source)
         except Exception as exc:
             hydraulic = None
             contracts = {"source": {"unit_status": "error", "reason": str(exc)}}
+        monitor_perf["hydraulic_bundle_seconds"] = float(
+            time.perf_counter() - hydraulic_started
+        )
 
         if hydraulic is None or hydraulic.empty:
             monitor_rows.append({
@@ -1009,6 +1049,7 @@ def professional_survey_batch_result(
             continue
         rain_frame, rain_col, rain_interval = rain_spec
 
+        weekly_started = time.perf_counter()
         weekly = monitor_weekly_assessment(
             hydraulic,
             rain_frame,
@@ -1023,6 +1064,9 @@ def professional_survey_batch_result(
             analysis_end=analysis_end,
             exclusions=hydraulic_exclusions,
             rain_exclusions=rainfall_exclusions,
+        )
+        monitor_perf["weekly_assessment_seconds"] = float(
+            time.perf_counter() - weekly_started
         )
         if analysis_start or analysis_end:
             filtered = []
@@ -1040,6 +1084,7 @@ def professional_survey_batch_result(
                 "end": analysis_end,
             }
 
+        event_started = time.perf_counter()
         event_response = fsat_event_response_assessment(
             hydraulic,
             rain_frame,
@@ -1056,6 +1101,13 @@ def professional_survey_batch_result(
             exclusions=hydraulic_exclusions,
             rain_exclusions=rainfall_exclusions,
         )
+        monitor_perf["event_response_seconds"] = float(
+            time.perf_counter() - event_started
+        )
+        monitor_perf["total_seconds"] = float(
+            time.perf_counter() - monitor_started
+        )
+        performance["monitor_seconds"][monitor] = monitor_perf
 
         monitor_rows.append({
             "monitor": monitor,
@@ -1068,6 +1120,7 @@ def professional_survey_batch_result(
             "contracts": contracts,
         })
 
+    volume_started = time.perf_counter()
     volume = survey_volume_balance(
         volume_flows,
         associations,
@@ -1082,6 +1135,9 @@ def professional_survey_batch_result(
         "reason": "No mapped flow channels available for volume balance.",
         "method": "weekly-volume-balance-v2",
     }
+    performance["volume_balance_seconds"] = float(
+        time.perf_counter() - volume_started
+    )
 
     weekly_lookup = {}
     for monitor_result in monitor_rows:
@@ -1149,6 +1205,10 @@ def professional_survey_batch_result(
             "scoped_exclusions": True,
             "max_gap_seconds": float(max_gap_seconds),
             "amber_tolerance_percent": float(amber_tolerance_percent),
+        },
+        "performance": {
+            **performance,
+            "total_seconds": float(time.perf_counter() - batch_started),
         },
         "source_policy": {
             "association_workbook_authoritative": True,

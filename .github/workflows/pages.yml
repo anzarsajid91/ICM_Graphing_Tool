@@ -8,6 +8,7 @@ on:
       - 'src/icm_workbench/**'
       - 'tests/**'
       - 'scripts/build_pages.py'
+      - 'scripts/reference_workflow_simulation.py'
       - '.github/workflows/pages.yml'
       - '.github/workflows/live-pages-verification.yml'
   pull_request:
@@ -17,6 +18,7 @@ on:
       - 'src/icm_workbench/**'
       - 'tests/**'
       - 'scripts/build_pages.py'
+      - 'scripts/reference_workflow_simulation.py'
       - '.github/workflows/pages.yml'
       - '.github/workflows/live-pages-verification.yml'
   workflow_dispatch:
@@ -45,6 +47,20 @@ jobs:
         run: python -m pip install -e . pytest
       - name: Run Python regression suite
         run: python -m pytest
+      - name: Simulate real-world EDM and Flow Survey reference workflows
+        run: |
+          mkdir -p /tmp/icm-reference-workflow
+          python scripts/reference_workflow_simulation.py \
+            --json /tmp/icm-reference-workflow/reference-workflow.json \
+            --markdown /tmp/icm-reference-workflow/reference-workflow.md
+      - name: Retain real-world engineering workflow evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-world-workflow-evidence-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: /tmp/icm-reference-workflow/
       - name: Validate release browser source
         run: |
           node --check web/assets/runtime.release.js
@@ -57,6 +73,7 @@ jobs:
           node --check web/assets/workbench-v2-domfix.js
           node --check web/assets/workbench-v3.js
           node --check web/assets/workbench-survey.js
+          node --check web/assets/workflow-26.js
           node --check web/assets/precision-workbench.js
           node --check web/tests/smoke.mjs
           node --check web/tests/precision-shell.mjs
@@ -69,7 +86,7 @@ jobs:
           node web/tests/fastpath-unit.mjs
           node web/tests/fastpath-reference.mjs
           node web/tests/fastpath-equivalence.mjs
-          python -m py_compile web/python_bridge.py web/advanced_bridge.py src/icm_workbench/browser_api.py src/icm_workbench/advanced_api.py scripts/build_pages.py scripts/validate_representative_exports.py scripts/fastpath_authoritative_contract.py
+          python -m py_compile web/python_bridge.py web/advanced_bridge.py src/icm_workbench/browser_api.py src/icm_workbench/advanced_api.py scripts/build_pages.py scripts/validate_representative_exports.py scripts/reference_workflow_simulation.py scripts/fastpath_authoritative_contract.py
       - name: Verify deterministic Pages package manifest and UX staging
         run: |
           python scripts/build_pages.py
@@ -91,6 +108,7 @@ jobs:
               'assets/app.css',
               'assets/workbench-v2.css',
               'assets/workbench-survey.css',
+              'assets/workflow-26.css',
               'assets/precision-workbench.css',
               'assets/domain-registry.js',
               'assets/runtime.js',
@@ -99,6 +117,7 @@ jobs:
               'assets/workbench-v2-domfix.js',
               'assets/workbench-v3.js',
               'assets/workbench-survey.js',
+              'assets/workflow-26.js',
               'assets/precision-workbench.js',
           ]
           for asset in versioned:

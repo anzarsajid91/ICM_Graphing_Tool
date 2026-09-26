@@ -82,6 +82,10 @@ function seriesQuantityIsAuthoritative(item,col){
 }
 function seriesUnit(item,col){
   const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
+  // Preserve an incompatible original source unit for provenance, but never
+  // present it as the valid engineering unit after cross-dimension
+  // reinterpretation. Dimensional calculations remain withheld until resolved.
+  if(String(detail.unit_status||'').toLowerCase()==='unresolved'&&!detail.canonical_unit)return null;
   return detail.canonical_unit||metadata.canonical_unit||detail.original_unit||metadata.original_unit||null;
 }
 function seriesReference(item,col){
@@ -529,26 +533,32 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true}={}){
     throw new Error('Quantity overrides are not available for sources with authoritative native quantity metadata.');
   }
   const requested=quantity?String(quantity).toLowerCase():null;
-  await engine.call('set_series_quantity',{path:mapped.item.virtualPath,column:mapped.col,quantity:requested});
+  const result=await engine.call('set_series_quantity',{path:mapped.item.virtualPath,column:mapped.col,quantity:requested});
   const metadata=mapped.item.parsed.metadata||(mapped.item.parsed.metadata={});
   const seriesMetadata=metadata.series_metadata||(metadata.series_metadata={});
   const details=seriesMetadata[mapped.col]||(seriesMetadata[mapped.col]={});
   const quantityByColumn=metadata.quantity_by_column||(metadata.quantity_by_column={});
-  if(requested){
-    state.seriesQuantityOverrides.set(key,requested);
-    details.quantity=requested;details.quantity_source='user';quantityByColumn[mapped.col]=requested;
-  }else{
-    state.seriesQuantityOverrides.delete(key);
-    if(details.quantity_source==='user'){delete details.quantity;delete details.quantity_source;}
-    quantityByColumn[mapped.col]=null;
-  }
+  if(requested)state.seriesQuantityOverrides.set(key,requested);
+  else state.seriesQuantityOverrides.delete(key);
+  details.quantity=result.quantity??null;
+  details.quantity_source=result.quantity_source||'unresolved';
+  if(result.inferred_quantity!==undefined)details.inferred_quantity=result.inferred_quantity;
+  if(result.original_unit!==undefined)details.original_unit=result.original_unit;
+  details.canonical_unit=result.canonical_unit??null;
+  details.conversion_factor=result.conversion_factor??null;
+  details.unit_status=result.unit_status||'unresolved';
+  quantityByColumn[mapped.col]=result.quantity??null;
   window.ICMProjectRegistry?.registerSource(mapped.item);
   if(refresh){
     renderSeriesSemanticsOverrides();
     autoSuggestAdvanced(allSeries());
+    const effective=result.quantity||'generic numeric';
+    const unit=result.unit_status==='unresolved'?'unit unresolved':(result.canonical_unit||result.original_unit||'unit unresolved');
     $('mappingStatus').textContent=requested
-      ?'Generic series classified as '+requested+'. Apply mapping to refresh graphs and threshold controls.'
-      :'Generic series returned to unresolved numeric data. Apply mapping to refresh graphs and threshold controls.';
+      ?'Series classified as '+effective+' · '+unit+'. Apply mapping to refresh graphs and threshold controls.'
+      :(result.quantity
+        ?'Series returned to inferred '+effective+' · '+unit+'. Apply mapping to refresh graphs and threshold controls.'
+        :'Series returned to unresolved numeric data. Apply mapping to refresh graphs and threshold controls.');
   }
   return true;
 }
@@ -596,11 +606,33 @@ async function handoffFastPath(item){
     models:[...(state.mapping.models||[])],
     rain:state.mapping.rain||''
   };
+  const pendingMapping={
+    observed:$('observedSelect')?.value||'',
+    models:[...($('modelSelect')?.selectedOptions||[])].map(option=>option.value),
+    rain:$('rainSelect')?.value||''
+  };
+  const sameMappingSelection=(left,right)=>
+    left.observed===right.observed&&
+    left.rain===right.rain&&
+    left.models.length===right.models.length&&
+    left.models.every((value,index)=>value===right.models[index]);
   const preserveAppliedMapping=Boolean(appliedMapping.observed||appliedMapping.rain||appliedMapping.models.length);
   if(preserveAppliedMapping){
-    if([...$('observedSelect').options].some(o=>o.value===appliedMapping.observed))$('observedSelect').value=appliedMapping.observed;
-    [...$('modelSelect').options].forEach(o=>o.selected=appliedMapping.models.includes(o.value));
-    if([...$('rainSelect').options].some(o=>o.value===appliedMapping.rain))$('rainSelect').value=appliedMapping.rain;
+    // A late FastPath validation must never overwrite assignment controls that
+    // the engineer has changed since the last Apply Mapping action. When the
+    // controls differ from the applied state, retain those pending edits and
+    // leave the current graph untouched until the user applies them.
+    if(!sameMappingSelection(pendingMapping,appliedMapping)){
+      diagnostic.fastpathHandoffSkipped={
+        reason:'pending-mapping-edits',
+        source:item.displayName,
+        applied:JSON.parse(JSON.stringify(appliedMapping)),
+        pending:JSON.parse(JSON.stringify(pendingMapping)),
+        time:new Date().toISOString()
+      };
+      if(window.ICMFastPath&&window.ICMFastPath.clear)window.ICMFastPath.clear();
+      return;
+    }
     if(window.ICMGraph&&window.ICMGraph.applyMapping)await window.ICMGraph.applyMapping();
     if(window.ICMFastPath&&window.ICMFastPath.clear)window.ICMFastPath.clear();
     return;
@@ -837,7 +869,7 @@ async function removeSourceById(sourceId){
     state.rainEventResult=null;
     state.rainEventSignature=null;
     ++state.rainEventGeneration;
-    if($('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary">Rainfall source removed. Re-run Rainfall Check after selecting another source.</div>';
+    if($('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary">Rainfall source removed. Re-run the Time Series rainfall-event assessment after selecting another source.</div>';
     if($('rainEventBody'))$('rainEventBody').innerHTML='';
     if($('eventResponseBody'))$('eventResponseBody').innerHTML='';
   }
@@ -964,13 +996,15 @@ async function drawTimeChart(){return window.ICMGraph?.draw();}
 function analysisBounds(){return {start:modelClock($('analysisStart').value)||null,end:modelClock($('analysisEnd').value)||null};}
 
 function appliedRainCriteria(){
-  const preset=$('rainCriteriaMode')?.value==='wapug';
+  const mode=$('rainCriteriaMode')?.value||'manual';
+  const over50=mode==='wapug',under50=mode==='wapug-under50',preset=over50||under50;
   return {
-    mode:preset?'wapug':'manual',
+    mode,
+    population_above_50k:over50?true:under50?false:null,
     minimum_intensity:preset?5:Number($('rainMinIntensity')?.value||5),
-    minimum_intensity_duration_min:preset?6:Number($('rainIntensityDuration')?.value||6),
+    minimum_intensity_duration_min:over50?6:under50?4:Number($('rainIntensityDuration')?.value||6),
     minimum_depth_mm:preset?5:Number($('rainTotalDepth')?.value||5),
-    minimum_event_duration_min:preset?60:Number($('rainEventDuration')?.value||60),
+    minimum_event_duration_min:over50?60:under50?30:Number($('rainEventDuration')?.value||60),
     dry_gap_min:preset?15:Number($('rainDryGap')?.value||15),
   };
 }
@@ -979,6 +1013,7 @@ function rainEventInputSignature(){
     rain:workspaceSeries(state.mapping.rain),
     conversion_factor:Number($('rainFactor')?.value||1),
     criteria:appliedRainCriteria(),
+    analysis:analysisBounds(),
     exclusions:exclusionPayload(false,'rainfall'),
     time_basis:'model clock/unspecified',
   });
@@ -991,7 +1026,7 @@ function invalidateRainEvents(reason='Rainfall-event inputs changed.'){
   const had=Boolean(state.rainEventResult||state.rainEventSignature||state.rainEvents.length);
   state.rainEventResult=null;state.rainEventSignature=null;state.rainEvents=[];
   if(had){
-    if($('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary audit-warn"><strong>Stale rainfall-event result cleared.</strong> '+esc(reason)+' Re-run Rainfall Check before relying on event bands or response diagnostics.</div>';
+    if($('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary audit-warn"><strong>Stale rainfall-event result cleared.</strong> '+esc(reason)+' Re-run the Time Series rainfall-event assessment before relying on event bands or response diagnostics.</div>';
     if($('rainEventBody'))$('rainEventBody').innerHTML='';
     if($('eventResponseBody'))$('eventResponseBody').innerHTML='';
     void drawTimeChart();
@@ -1035,6 +1070,7 @@ function invalidateHealth(reason='Data Health inputs changed.'){
   state.healthResult=null;state.healthSignature=null;
   if(had&&$('healthBody'))$('healthBody').innerHTML='<tr><td colspan="13" class="audit-warn"><strong>Stale Data Health result cleared.</strong> '+esc(reason)+' Re-run FDV Check before relying on QA evidence.</td></tr>';
 }
+diagnostic.appliedRainCriteria=appliedRainCriteria;
 diagnostic.rainEventsFresh=rainEventsFresh;
 diagnostic.dwfFresh=dwfFresh;
 Object.defineProperty(diagnostic,'dwfResult',{get:()=>state.dwfResult});
@@ -1049,7 +1085,50 @@ function comparisonQuantityMismatch(observed,model){
   return `Observed ${name(observedQuantity)} cannot be compared directly with modelled ${name(modelQuantity)}. Depth and absolute Level remain distinct. Map like-for-like series, or explicitly reclassify a generic Value channel only when its source meaning supports that classification.`;
 }
 let comparisonCalculation=null;
-async function ensureComparisonResults(){
+let comparisonCancellationGeneration=0;
+let backgroundComparisonInterruptPromise=null;
+
+async function restoreAnalysisWorkerAfterBackgroundInterrupt(reason='Interactive graph request'){
+  if(backgroundComparisonInterruptPromise)return backgroundComparisonInterruptPromise;
+  if(!comparisonCalculation?.background)return false;
+  const interrupted=comparisonCalculation;
+  interrupted.cancelled=true;
+  comparisonCalculation=null;
+  comparisonCancellationGeneration+=1;
+  const readyItems=[...state.files.values()].filter(item=>item.status==='ready'&&item.file);
+  diagnostic.backgroundComparisonInterrupts=Number(diagnostic.backgroundComparisonInterrupts||0)+1;
+  diagnostic.lastBackgroundComparisonInterrupt={
+    reason:String(reason||'Interactive graph request'),
+    signature:interrupted.signature||null,
+    ready_file_count:readyItems.length,
+    time:new Date().toISOString()
+  };
+  const work=(async()=>{
+    const restartPromise=engine.restart(readyItems);
+    engineBootPromise=restartPromise;
+    await restartPromise;
+    // Quantity reinterpretation is held in the authoritative Python cache as
+    // well as JS metadata. A worker restart must faithfully restore those
+    // engineer-assigned semantics before any graph/statistics request proceeds.
+    for(const [key,quantity] of state.seriesQuantityOverrides.entries()){
+      const mapped=mappingObject(key);
+      if(!mapped||!quantity)continue;
+      await engine.call('set_series_quantity',{
+        path:mapped.item.virtualPath,
+        column:mapped.col,
+        quantity:String(quantity).toLowerCase()
+      });
+    }
+    return true;
+  })();
+  backgroundComparisonInterruptPromise=work.finally(()=>{
+    if(backgroundComparisonInterruptPromise)backgroundComparisonInterruptPromise=null;
+  });
+  return backgroundComparisonInterruptPromise;
+}
+window.__ICM_WORKBENCH__.interruptBackgroundComparison=restoreAnalysisWorkerAfterBackgroundInterrupt;
+
+async function ensureComparisonResults({background=false}={}){
   const obs=mappingObject(state.mapping.observed),models=currentModels();
   if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');
   const signature=analysisSignature();
@@ -1059,26 +1138,32 @@ async function ensureComparisonResults(){
     return;
   }
   const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),config=workspaceObject();
+  const cancellationGeneration=comparisonCancellationGeneration;
   const promise=(async()=>{
     const results=[];
     for(const m of models){
+      if(cancellationGeneration!==comparisonCancellationGeneration)throw new Error('Background comparison superseded by an interactive graph request.');
       const mismatch=comparisonQuantityMismatch(obs,m);
       if(mismatch){results.push({model:m,error:mismatch});continue;}
       try{
-        results.push({model:m,result:await engine.call('compare_series',{
+        const result=await engine.call('compare_series',{
           obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,
           max_gap_seconds:gap,offset_minutes:offset,...bounds,
           exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])
-        })});
+        });
+        if(cancellationGeneration!==comparisonCancellationGeneration)throw new Error('Background comparison superseded by an interactive graph request.');
+        results.push({model:m,result});
       }catch(err){
+        if(cancellationGeneration!==comparisonCancellationGeneration)throw err;
         results.push({model:m,error:conciseErrorMessage(err)});
       }
     }
+    if(cancellationGeneration!==comparisonCancellationGeneration)throw new Error('Background comparison superseded by an interactive graph request.');
     if(signature!==analysisSignature())throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');
     state.comparisons=results;
     state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(results.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};
   })();
-  comparisonCalculation={signature,promise};
+  comparisonCalculation={signature,promise,background:Boolean(background),cancellationGeneration};
   try{
     await promise;
   }finally{
@@ -1086,7 +1171,7 @@ async function ensureComparisonResults(){
   }
 }
 async function runCompare(){
-  await ensureComparisonResults();
+  await ensureComparisonResults({background:false});
   await renderComparisons();
   window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
 }
@@ -1097,7 +1182,7 @@ async function ensureTimeSeriesComparisonMetrics(){
     window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
     return;
   }
-  await ensureComparisonResults();
+  await ensureComparisonResults({background:true});
   window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
 }
 window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics=ensureTimeSeriesComparisonMetrics;
@@ -1219,7 +1304,7 @@ async function renderComparisons(){
   window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
 }
 
-function useGraphZoom(){const r=$('timeChart')?.layout?.xaxis?.range;if(r?.length===2){$('analysisStart').value=toLocalInput(r[0]);$('analysisEnd').value=toLocalInput(r[1]);}}
+function useGraphZoom(){const r=$('timeChart')?.layout?.xaxis?.range;if(r?.length===2){$('analysisStart').value=toLocalInput(r[0]);$('analysisEnd').value=toLocalInput(r[1]);$('analysisStart').dispatchEvent(new Event('change',{bubbles:true}));$('analysisEnd').dispatchEvent(new Event('change',{bubbles:true}));}}
 
 function storageInputSignature(){
   const levelKey=$('storageLevelSelect')?.value||'',flowKey=$('storageFlowSelect')?.value||'';
@@ -1438,7 +1523,7 @@ function renderExclusions(){
 
 async function runRainEvents(){
   const rain=mappingObject(state.mapping.rain);if(!rain)throw new Error('Map a rainfall series first.');
-  const criteria=appliedRainCriteria(),signature=rainEventInputSignature(),generation=++state.rainEventGeneration;
+  const criteria=appliedRainCriteria(),bounds=analysisBounds(),signature=rainEventInputSignature(),generation=++state.rainEventGeneration;
   const r=await engine.call('rainfall_event_scaled',{
     path:rain.item.virtualPath,column:rain.col,
     conversion_factor:Number($('rainFactor').value||1),
@@ -1447,11 +1532,16 @@ async function runRainEvents(){
     minimum_depth_mm:criteria.minimum_depth_mm,
     minimum_event_duration_min:criteria.minimum_event_duration_min,
     dry_gap_min:criteria.dry_gap_min,
-    exclusions_json:JSON.stringify(exclusionPayload(true,'rainfall'))
+    exclusions_json:JSON.stringify(exclusionPayload(true,'rainfall')),
+    start:bounds.start,
+    end:bounds.end
   },'advanced_bridge');
   if(generation!==state.rainEventGeneration||signature!==rainEventInputSignature())throw new Error('Rainfall-event inputs changed while calculation was running. The late result was discarded.');
   state.rainEventResult=r;state.rainEventSignature=signature;state.rainEvents=r.events||[];
-  $('rainEventSummary').innerHTML=`<div class="summary-box"><div><strong>${r.count}</strong><span>qualifying events</span></div><div><strong>${fmt(r.criteria.minimum_intensity,2)}</strong><span>minimum intensity</span></div><div><strong>${fmt(r.criteria.minimum_depth_mm,2)} mm</strong><span>minimum depth</span></div><div><strong>${fmt(r.criteria.dry_gap_min,1)} min</strong><span>dry gap</span></div></div>`;
+  const periodText=(r.criteria.analysis_start||r.criteria.analysis_end_exclusive)
+    ? '<div class="pool-summary"><strong>Assessment period:</strong> '+esc(r.criteria.analysis_start||'source start')+' to '+esc(r.criteria.analysis_end_exclusive||'source end')+' (end exclusive).</div>'
+    : '';
+  $('rainEventSummary').innerHTML=`<div class="summary-box"><div><strong>${r.count}</strong><span>qualifying events</span></div><div><strong>${fmt(r.criteria.minimum_intensity,2)}</strong><span>minimum intensity</span></div><div><strong>${fmt(r.criteria.minimum_depth_mm,2)} mm</strong><span>minimum depth</span></div><div><strong>${fmt(r.criteria.dry_gap_min,1)} min</strong><span>dry gap</span></div></div>`+periodText;
   $('rainEventBody').innerHTML=state.rainEvents.map(e=>`<tr><td>${e.event}</td><td>${esc(e.start)}</td><td>${esc(e.end)}</td><td>${fmt(e.duration_min,1)}</td><td>${fmt(e.total_depth_mm,3)}</td><td>${fmt(e.peak_intensity,3)}</td><td>${fmt(e.intensity_streak_min,1)}</td></tr>`).join('');
   await drawTimeChart();
   await renderEventResponses(generation,signature);
@@ -1466,7 +1556,30 @@ async function renderEventResponses(expectedGeneration=state.rainEventGeneration
   if(expectedGeneration!==state.rainEventGeneration||!rainEventsFresh()||responseSignature!==currentSignature)throw new Error('Event-response inputs changed while calculation was running. The late result was discarded.');
   $('eventResponseBody').innerHTML=(r.rows||[]).map(x=>`<tr><td>${x.event}</td><td>${esc(x.rain_start)}</td><td>${fmt(x.rain_depth_mm,2)}</td><td>${fmt(x.observed_baseline,4)}</td><td>${fmt(x.observed_uplift,4)}</td><td>${fmt(x.modelled_uplift,4)}</td><td>${fmt(x.uplift_error_percent,1)}</td><td>${fmt(x.peak_lag_minutes,1)}</td></tr>`).join('');
 }
-function criteriaModeChanged(){const manual=$('rainCriteriaMode').value==='manual';for(const id of ['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'])$(id).disabled=!manual;}
+function criteriaModeChanged(){
+  const mode=$('rainCriteriaMode').value||'manual';
+  const fields={
+    rainMinIntensity:5,
+    rainIntensityDuration:mode==='wapug-under50'?4:6,
+    rainEventDuration:mode==='wapug-under50'?30:60,
+    rainTotalDepth:5,
+    rainDryGap:15,
+  };
+  const manual=mode==='manual';
+  for(const [id,presetValue] of Object.entries(fields)){
+    const el=$(id);if(!el)continue;
+    if(manual){
+      if(el.dataset.presetActive==='true'&&el.dataset.manualValue!=null)el.value=el.dataset.manualValue;
+      el.disabled=false;
+      delete el.dataset.presetActive;
+      continue;
+    }
+    if(el.dataset.presetActive!=='true')el.dataset.manualValue=el.value;
+    el.value=String(presetValue);
+    el.disabled=true;
+    el.dataset.presetActive='true';
+  }
+}
 async function runHealth(){
   const signature=healthInputSignature(),generation=++state.healthGeneration,rows=[];
   for(const item of state.files.values()){
@@ -1694,7 +1807,7 @@ async function applyWorkspace(w){
   }
   state.rainEvents=[];
   state.rainEventResult=null;state.rainEventSignature=null;
-  if(w.rain_events?.events?.length&&$('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary">Workspace contained derived rainfall events. They were not reactivated automatically; re-run Rainfall Check against the reattached authoritative sources.</div>';
+  if(w.rain_events?.events?.length&&$('rainEventSummary'))$('rainEventSummary').innerHTML='<div class="pool-summary">Workspace contained derived rainfall events. They were not reactivated automatically; re-run the Time Series rainfall-event assessment against the reattached authoritative sources.</div>';
   const expected=(w.source_references||[]).length;
   const matched=(w.source_references||[]).filter(r=>[...state.files.values()].some(x=>x.hash===r.sha256)).length;
   $('workspaceStatus').textContent=`Restoring workspace… ${matched}/${expected} source fingerprint(s) matched; rebuilding mappings and graph.`;
@@ -1706,7 +1819,7 @@ async function applyWorkspace(w){
     const restoredScenarioKeys=ro.scenarios.map(findSeriesFromWorkspace).filter(Boolean);
     [...$('reportScenarioSelect').options].forEach(o=>o.selected=restoredScenarioKeys.includes(o.value));
   }
-  for(const [id,value] of Object.entries(w.rain_events?.manual||{})){if($(id))$(id).value=value;}
+  for(const [id,value] of Object.entries(w.rain_events?.manual||{})){if($(id)){$(id).value=value;$(id).dataset.manualValue=value;}}
   $('rainCriteriaMode').value=w.rain_events?.criteria_mode||'manual';
   criteriaModeChanged();
   for(const style of w.model_styles||[]){
@@ -2239,11 +2352,11 @@ function wireEvents(){
   $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;advancedSelectionTouched.clear();state.exclusions=[];state.exclusionHistory=[];state.modelColours={};state.seriesQuantityOverrides.clear();for(const id of ['obsThreshold','modelThreshold','graphObsThreshold','graphModelThreshold'])if($(id))$(id).value='';diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);void importGuard(async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=files.length+' dropped file'+(files.length===1?'':'s')+' detected · preparing import…';await ingestFiles(files);});});
   eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('applyMappingBtn').addEventListener('click',()=>{state.rating=null;});$('observedSelect').addEventListener('change',()=>{renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('modelSelect').addEventListener('change',()=>{renderModelColourControls();renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('rainSelect').addEventListener('change',renderSeriesSemanticsOverrides);eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
-  eventGuard('runCompareBtn','metricGrid',runCompare);$('scatterScale').addEventListener('change',()=>{if(state.comparisons.length)void guarded('metricGrid',renderComparisons);});$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';});eventGuard('runRatingBtn','ratingSummary',runRating);for(const id of ['ratingObsDepth','ratingObsDepthUnit','ratingObsFlow','ratingObsFlowUnit','ratingModelDepth','ratingModelDepthUnit','ratingModelFlow','ratingModelFlowUnit'])$(id)?.addEventListener('change',()=>{if(id==='ratingObsFlow'||id==='ratingModelFlow')advancedSelectionTouched.add(id);state.rating=null;});eventGuard('runDwfBtn','dwfSummary',runDwf);
+  eventGuard('runCompareBtn','metricGrid',runCompare);$('scatterScale').addEventListener('change',()=>{if(state.comparisons.length)void guarded('metricGrid',renderComparisons);});$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';$('analysisStart').dispatchEvent(new Event('change',{bubbles:true}));$('analysisEnd').dispatchEvent(new Event('change',{bubbles:true}));});eventGuard('runRatingBtn','ratingSummary',runRating);for(const id of ['ratingObsDepth','ratingObsDepthUnit','ratingObsFlow','ratingObsFlowUnit','ratingModelDepth','ratingModelDepthUnit','ratingModelFlow','ratingModelFlowUnit'])$(id)?.addEventListener('change',()=>{if(id==='ratingObsFlow'||id==='ratingModelFlow')advancedSelectionTouched.add(id);state.rating=null;});eventGuard('runDwfBtn','dwfSummary',runDwf);
   $('rainCriteriaMode').addEventListener('change',criteriaModeChanged);eventGuard('runRainEventsBtn','rainEventSummary',runRainEvents);eventGuard('runHealthBtn','healthBody',runHealth);
   document.addEventListener('change',event=>{
     const id=event.target?.id||'';
-    if(['rainCriteriaMode','rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap','rainFactor','rainSelect'].includes(id)||event.target?.closest?.('#exclusionRows'))invalidateRainEvents('Rainfall source, conversion, criteria or exclusion context changed.');
+    if(['rainCriteriaMode','rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap','rainFactor','rainSelect','analysisStart','analysisEnd'].includes(id)||event.target?.closest?.('#exclusionRows'))invalidateRainEvents('Rainfall source, conversion, criteria, analysis period or exclusion context changed.');
     if(['dwfFlowSelect','dwfFlowUnit','rainSelect','rainFactor','dwfDryDay','dwfBaselineDays','dwfAdpHours','analysisStart','analysisEnd'].includes(id)||event.target?.closest?.('#exclusionRows'))invalidateDwf('DWF source, unit, analysis period, exclusion or qualification criteria changed.');
     if(id==='gapInput')invalidateHealth('Maximum gap criterion changed.');
   },true);

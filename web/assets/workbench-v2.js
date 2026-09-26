@@ -470,10 +470,10 @@
     setEnabled('model',Boolean(modelContext));
     if($('graphObsThresholdContext'))$('graphObsThresholdContext').textContent=observedContext
       ?thresholdContextText(observedContext)
-      :(observedUnresolved?'Generic numeric observed series · assign Depth or Level in Series Mapping to enable a hydraulic threshold.':thresholdContextText(null));
+      :(observedUnresolved?'Generic numeric observed series · assign Depth or Level in Data Setup to enable a hydraulic threshold.':thresholdContextText(null));
     if($('graphModelThresholdContext'))$('graphModelThresholdContext').textContent=modelContext
       ?thresholdContextText(modelContext)
-      :(modelUnresolved?'Generic numeric model series · assign Depth or Level in Series Mapping to enable a hydraulic threshold.':thresholdContextText(null));
+      :(modelUnresolved?'Generic numeric model series · assign Depth or Level in Data Setup to enable a hydraulic threshold.':thresholdContextText(null));
     ui.thresholdContexts={observed:observedContext,model:modelContext};
   }
   function updateThresholdRangeStatus(observedEntries,modelEntries){
@@ -583,6 +583,10 @@
       if(showModel)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:modelAxis,y0:model,y1:model,line:{color:$('threshold2Color').value,width:2,dash:'dash'},layer:'above'});
     }
     if($('showEventOverlay').checked){
+      // WAPUG event bands bridge the inverted rainfall and hydraulic plotting
+      // panels, but deliberately stop above the statistics table. plotBottom is
+      // the lower edge of the hydraulic data domain for both FDV and non-FDV
+      // layouts; y1=1 reaches the top of the rainfall panel.
       for(const e of state.rainEvents)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:overlayBottom,y1:1,fillcolor:$('rainEventColor').value,opacity:.08,line:{width:0},layer:'below'});
     }
     return shapes;
@@ -835,6 +839,11 @@
     const generation=++ui.graphGeneration;
     cancelTimeSeriesComparisonTimer(true);
     ui.graphRefreshing=true;
+    const interruptBackground=window.__ICM_WORKBENCH__?.interruptBackgroundComparison;
+    if(typeof interruptBackground==='function'){
+      await interruptBackground('Interactive time-series graph refresh');
+      if(generation!==ui.graphGeneration)return;
+    }
     const pointCounts={};
     try{
       let observedSources=observedGraphSeries();

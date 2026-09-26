@@ -36,7 +36,7 @@ def test_cumulative_rainfall_integrates_full_interval_series_before_display_samp
     assert result["interval_min"] == pytest.approx(2.0)
     assert result["final_total_mm"] == pytest.approx(1.4)
     assert result["complete"] is True
-    assert result["integration_method"] == "actual-support interval-average intensity × elapsed time; declared interval used only for final support"
+    assert result["integration_method"] == "actual-support interval-average intensity × elapsed time; gaps above the defensible source-support limit are unknown; declared interval used only for final support"
 
 
 def test_cumulative_rainfall_flags_sentinel_intervals_as_partial(tmp_path):
@@ -59,3 +59,25 @@ def test_series_data_exposes_native_statistics_and_rain_total(tmp_path):
     assert stats["maximum"]==12
     assert stats["total"]==pytest.approx(0.7)
     assert stats["total_unit"]=="mm"
+
+
+def test_cumulative_rainfall_treats_long_generic_csv_gaps_as_unknown_support(tmp_path):
+    source=tmp_path/"rainfall.csv"
+    source.write_text(
+        "timestamp,rainfall\n"
+        "2026-01-01T00:00:00,6\n"
+        "2026-01-01T00:02:00,6\n"
+        "2026-01-01T00:20:00,6\n"
+        "2026-01-01T00:22:00,6\n",
+        encoding="utf-8",
+    )
+    result=json.loads(advanced_bridge.cumulative_rainfall_series(str(source)))
+
+    # Median source timestep is 2 min, so the 18 min discontinuity is unknown
+    # support rather than 1.8 mm of invented continuous rainfall.
+    assert result["max_gap_seconds"]==pytest.approx(180.0)
+    assert result["final_total_mm"]==pytest.approx(0.4)
+    assert result["unknown_seconds"]==pytest.approx(18*60)
+    assert result["complete"] is False
+    assert result["calculation_status"]=="partial"
+    assert None in result["value"]
