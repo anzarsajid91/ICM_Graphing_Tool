@@ -820,6 +820,12 @@
     const actionRows = actions.map(item =>
       '<tr><td>'+esc(item.area)+'</td><td><strong>'+esc(item.subject)+'</strong></td><td>'+ragPill(item.severity)+'</td><td>'+esc(item.action)+'</td></tr>'
     ).join('');
+    const commentRows = (survey.batch.monitors || []).map(monitor => {
+      const comment = monitorComment(monitor.monitor);
+      if (!comment?.text) return '';
+      const state = reviewedMonitorState(monitor);
+      return '<tr><td><strong>'+esc(monitor.monitor)+'</strong></td><td>'+ragPill(state.reviewed)+'</td><td>'+esc(comment.text)+'</td><td>'+esc(comment.author || '—')+'</td><td>'+esc(comment.updated_at ? new Date(comment.updated_at).toLocaleString() : '—')+'</td></tr>';
+    }).filter(Boolean).join('');
     root.innerHTML =
       '<div class="w26-monthly-grid">'+
         '<div><span>Monitor status</span><strong>'+monitorCounts.Green+' G · '+monitorCounts.Amber+' A · '+monitorCounts.Red+' R · '+monitorCounts.Grey+' Grey</strong></div>'+
@@ -829,7 +835,9 @@
         '<div><span>Review integrity</span><strong>'+(historical ? historical+' review'+(historical===1?'':'s')+' need reconfirmation' : 'Current')+'</strong></div>'+
       '</div>'+
       '<div class="w26-section-head"><div><h4>Engineering action register</h4><p>Exceptions only. Reviewed outcomes drive this register; all calculated evidence remains available underneath.</p></div></div>'+
-      (actionRows ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Area</th><th>Subject</th><th>Severity</th><th>Action / rationale</th></tr></thead><tbody>'+actionRows+'</tbody></table></div>' : '<div class="w26-good-state">No Amber/Red monitor, rainfall or volume-balance exceptions in the current reported assessment.</div>');
+      (actionRows ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Area</th><th>Subject</th><th>Severity</th><th>Action / rationale</th></tr></thead><tbody>'+actionRows+'</tbody></table></div>' : '<div class="w26-good-state">No Amber/Red monitor, rainfall or volume-balance exceptions in the current reported assessment.</div>')+
+      '<div class="w26-section-head"><div><h4>Monitor engineering comments</h4><p>Context recorded by the engineer independently of automated scoring.</p></div></div>'+
+      (commentRows ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Monitor</th><th>Reported status</th><th>Comment</th><th>Author</th><th>Updated</th></tr></thead><tbody>'+commentRows+'</tbody></table></div>' : '<div class="pool-summary">No monitor comments recorded for this assessment.</div>');
   }
 
   function renderAll() {
