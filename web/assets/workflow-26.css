@@ -74,3 +74,8 @@
   .w26-readiness,.w26-settings-grid,.w26-summary-box,.w26-monthly-grid{grid-template-columns:1fr}
   .pw-data-setup-surface .panel-head{align-items:flex-start}
 }
+
+.w27-comment-indicator{display:inline-flex;align-items:center;border-radius:999px;padding:2px 7px;background:#eef4fb;color:#315b9b;font-size:11px;font-weight:650;white-space:nowrap}
+.w27-comment-section{grid-column:1/-1;background:#fbfcfe}
+.w27-comment-section textarea{min-height:86px;resize:vertical}
+#surveyMonthlyPdfBtn::after{content:"";display:inline-block}
