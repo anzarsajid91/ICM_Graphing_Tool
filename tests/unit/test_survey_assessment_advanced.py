@@ -5,10 +5,93 @@ import pandas as pd
 from icm_workbench import advanced_api
 
 from icm_workbench.analysis.survey_assessment import (
+    _cross_corr_positive_lag,
     monitor_weekly_assessment,
     network_rainfall_assessment,
     wapug_population_preset,
 )
+
+
+def _legacy_cross_corr_positive_lag(
+    rain_increment,
+    response,
+    dt_minutes,
+    max_lag_hours,
+):
+    a = pd.to_numeric(pd.Series(rain_increment), errors="coerce").reset_index(drop=True)
+    b = pd.to_numeric(pd.Series(response), errors="coerce").reset_index(drop=True)
+    max_steps = int(
+        round(max_lag_hours * 60.0 / max(float(dt_minutes), 1e-6))
+    )
+    best_corr = -np.inf
+    best_lag = 0
+    for lag in range(max_steps + 1):
+        aa = a.iloc[:-lag] if lag else a
+        bb = b.iloc[lag:] if lag else b
+        valid = aa.notna().to_numpy() & bb.notna().to_numpy()
+        if int(valid.sum()) < 5:
+            continue
+        av = aa.to_numpy(dtype=float)[valid]
+        bv = bb.to_numpy(dtype=float)[valid]
+        if np.std(av) <= 1e-12 or np.std(bv) <= 1e-12:
+            continue
+        corr = float(np.corrcoef(av, bv)[0, 1])
+        if np.isfinite(corr) and corr > best_corr:
+            best_corr = corr
+            best_lag = lag
+    if best_corr == -np.inf:
+        return None, None
+    return float(best_corr), float(best_lag * dt_minutes)
+
+
+def test_fft_positive_lag_correlation_matches_legacy_with_missing_values():
+    rng = np.random.default_rng(260926)
+    rain = rng.normal(size=512)
+    response = np.full(512, np.nan)
+    response[7:] = 1.8 * rain[:-7] + rng.normal(scale=0.03, size=505)
+    rain[::37] = np.nan
+    response[13::41] = np.nan
+
+    expected = _legacy_cross_corr_positive_lag(
+        rain, response, 2.0, 1.0
+    )
+    actual = _cross_corr_positive_lag(
+        pd.Series(rain), pd.Series(response), 2.0, 1.0
+    )
+
+    assert actual[1] == expected[1] == 14.0
+    assert np.isclose(actual[0], expected[0], atol=1e-12, rtol=1e-12)
+
+
+def test_fft_positive_lag_correlation_matches_legacy_for_random_series():
+    rng = np.random.default_rng(91)
+    rain = rng.normal(size=431)
+    response = rng.normal(size=431)
+    rain[[3, 47, 213]] = np.nan
+    response[[12, 47, 399]] = np.nan
+
+    expected = _legacy_cross_corr_positive_lag(
+        rain, response, 3.0, 2.0
+    )
+    actual = _cross_corr_positive_lag(
+        pd.Series(rain), pd.Series(response), 3.0, 2.0
+    )
+
+    assert actual[1] == expected[1]
+    assert np.isclose(actual[0], expected[0], atol=1e-12, rtol=1e-12)
+
+
+def test_fft_positive_lag_correlation_preserves_earliest_tie_and_uniform_guard():
+    repeating = np.tile([0.0, 1.0], 120)
+    corr, lag = _cross_corr_positive_lag(
+        pd.Series(repeating), pd.Series(repeating), 2.0, 1.0
+    )
+    assert np.isclose(corr, 1.0)
+    assert lag == 0.0
+
+    assert _cross_corr_positive_lag(
+        pd.Series(repeating), pd.Series(np.ones_like(repeating)), 2.0, 1.0
+    ) == (None, None)
 
 
 def _minute_gauge(start="2026-01-05 00:00", minutes=260, bad=False):
