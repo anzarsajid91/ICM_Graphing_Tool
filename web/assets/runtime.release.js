@@ -1084,7 +1084,41 @@ function comparisonQuantityMismatch(observed,model){
   return `Observed ${name(observedQuantity)} cannot be compared directly with modelled ${name(modelQuantity)}. Depth and absolute Level remain distinct. Map like-for-like series, or explicitly reclassify a generic Value channel only when its source meaning supports that classification.`;
 }
 let comparisonCalculation=null;
-async function ensureComparisonResults(){
+let comparisonCancellationGeneration=0;
+
+async function restoreAnalysisWorkerAfterBackgroundInterrupt(reason='Interactive graph request'){
+  if(!comparisonCalculation?.background)return false;
+  const interrupted=comparisonCalculation;
+  interrupted.cancelled=true;
+  comparisonCancellationGeneration+=1;
+  const readyItems=[...state.files.values()].filter(item=>item.status==='ready'&&item.file);
+  diagnostic.backgroundComparisonInterrupts=Number(diagnostic.backgroundComparisonInterrupts||0)+1;
+  diagnostic.lastBackgroundComparisonInterrupt={
+    reason:String(reason||'Interactive graph request'),
+    signature:interrupted.signature||null,
+    ready_file_count:readyItems.length,
+    time:new Date().toISOString()
+  };
+  const restartPromise=engine.restart(readyItems);
+  engineBootPromise=restartPromise;
+  await restartPromise;
+  // Quantity reinterpretation is held in the authoritative Python cache as
+  // well as JS metadata. A worker restart must faithfully restore those
+  // engineer-assigned semantics before any graph/statistics request proceeds.
+  for(const [key,quantity] of state.seriesQuantityOverrides.entries()){
+    const mapped=mappingObject(key);
+    if(!mapped||!quantity)continue;
+    await engine.call('set_series_quantity',{
+      path:mapped.item.virtualPath,
+      column:mapped.col,
+      quantity:String(quantity).toLowerCase()
+    });
+  }
+  return true;
+}
+window.__ICM_WORKBENCH__.interruptBackgroundComparison=restoreAnalysisWorkerAfterBackgroundInterrupt;
+
+async function ensureComparisonResults({background=false}={}){
   const obs=mappingObject(state.mapping.observed),models=currentModels();
   if(!obs||!models.length)throw new Error('Apply an observed and at least one modelled series first.');
   const signature=analysisSignature();
@@ -1094,26 +1128,32 @@ async function ensureComparisonResults(){
     return;
   }
   const gap=Number($('gapInput').value||900),offset=Number($('offsetInput').value||0),bounds=analysisBounds(),config=workspaceObject();
+  const cancellationGeneration=comparisonCancellationGeneration;
   const promise=(async()=>{
     const results=[];
     for(const m of models){
+      if(cancellationGeneration!==comparisonCancellationGeneration)throw new Error('Background comparison superseded by an interactive graph request.');
       const mismatch=comparisonQuantityMismatch(obs,m);
       if(mismatch){results.push({model:m,error:mismatch});continue;}
       try{
-        results.push({model:m,result:await engine.call('compare_series',{
+        const result=await engine.call('compare_series',{
           obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,
           max_gap_seconds:gap,offset_minutes:offset,...bounds,
           exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])
-        })});
+        });
+        if(cancellationGeneration!==comparisonCancellationGeneration)throw new Error('Background comparison superseded by an interactive graph request.');
+        results.push({model:m,result});
       }catch(err){
+        if(cancellationGeneration!==comparisonCancellationGeneration)throw err;
         results.push({model:m,error:conciseErrorMessage(err)});
       }
     }
+    if(cancellationGeneration!==comparisonCancellationGeneration)throw new Error('Background comparison superseded by an interactive graph request.');
     if(signature!==analysisSignature())throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');
     state.comparisons=results;
     state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(results.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};
   })();
-  comparisonCalculation={signature,promise};
+  comparisonCalculation={signature,promise,background:Boolean(background),cancellationGeneration};
   try{
     await promise;
   }finally{
@@ -1121,7 +1161,7 @@ async function ensureComparisonResults(){
   }
 }
 async function runCompare(){
-  await ensureComparisonResults();
+  await ensureComparisonResults({background:false});
   await renderComparisons();
   window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
 }
@@ -1132,7 +1172,7 @@ async function ensureTimeSeriesComparisonMetrics(){
     window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
     return;
   }
-  await ensureComparisonResults();
+  await ensureComparisonResults({background:true});
   window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
 }
 window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics=ensureTimeSeriesComparisonMetrics;
