@@ -2019,6 +2019,11 @@ try{
   await page.waitForFunction(()=>document.querySelector('#rainEventSummary')?.textContent.includes('qualifying events'),null,{timeout:60000});
   if(await page.locator('#rainEventBody tr').count()<1)throw new Error('Manual rainfall criteria should identify the demo event');
   if(await page.evaluate(()=>window.__ICM_WORKBENCH__.rainEventsFresh?.())!==true)throw new Error('Fresh rainfall-event result was not bound to source/criteria/exclusion dependencies.');
+  await page.fill('#analysisStart','2026-01-05T00:04');
+  await page.locator('#analysisStart').dispatchEvent('change');
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.rainEventsFresh?.()===false&&state.rainEvents.length===0&&document.querySelector('#rainEventSummary')?.textContent.includes('analysis period'));
+  await page.fill('#analysisStart','');
+  await page.locator('#analysisStart').dispatchEvent('change');
   await page.fill('#rainMinIntensity','1.1');
   await page.locator('#rainMinIntensity').dispatchEvent('change');
   await page.waitForFunction(()=>document.querySelector('#rainEventSummary')?.textContent.includes('Stale rainfall-event result cleared.')&&window.__ICM_WORKBENCH__.rainEventsFresh?.()===false&&state.rainEvents.length===0);
