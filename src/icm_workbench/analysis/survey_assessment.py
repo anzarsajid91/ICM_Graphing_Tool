@@ -758,10 +758,26 @@ def _cross_corr_positive_lag(
     dt_minutes: float,
     max_lag_hours: float = MAX_LAG_HOURS,
 ) -> tuple[float | None, float | None]:
-    a = pd.to_numeric(
-        rain_increment, errors="coerce"
-    ).reset_index(drop=True)
-    b = pd.to_numeric(response, errors="coerce").reset_index(drop=True)
+    """Return the strongest Pearson correlation for non-negative response lag.
+
+    The original implementation rebuilt pandas slices and called np.corrcoef
+    for every candidate lag. At 2-minute survey resolution and an 18-hour lag
+    window that can mean 541 full passes per channel, per wet week. In Pyodide
+    this dominates a multi-monitor Flow Survey assessment.
+
+    This implementation evaluates the same pairwise-finite Pearson terms for all
+    positive lags with FFT cross-correlations. The winning/near-tied candidates
+    are then recomputed with the original direct np.corrcoef calculation so FFT
+    rounding cannot change the selected engineering lag.
+    """
+    a = pd.to_numeric(rain_increment, errors="coerce").to_numpy(dtype=float)
+    b = pd.to_numeric(response, errors="coerce").to_numpy(dtype=float)
+    if a.size != b.size:
+        raise ValueError("Rainfall and response series must have equal length.")
+    n = int(a.size)
+    if n < 5:
+        return None, None
+
     max_steps = int(
         round(
             max_lag_hours
@@ -769,22 +785,103 @@ def _cross_corr_positive_lag(
             / max(float(dt_minutes), 1e-6)
         )
     )
+    max_steps = min(max(0, max_steps), n - 1)
+    lags = np.arange(max_steps + 1, dtype=int)
+    positions = (n - 1) - lags
+
+    finite_a = np.isfinite(a)
+    finite_b = np.isfinite(b)
+    mask_a = finite_a.astype(float)
+    mask_b = finite_b.astype(float)
+    a0 = np.where(finite_a, a, 0.0)
+    b0 = np.where(finite_b, b, 0.0)
+    a2 = a0 * a0
+    b2 = b0 * b0
+
+    full_size = 2 * n - 1
+    fft_size = 1 << max(0, (full_size - 1).bit_length())
+
+    fa = np.fft.rfft(a0, fft_size)
+    fma = np.fft.rfft(mask_a, fft_size)
+    fa2 = np.fft.rfft(a2, fft_size)
+    fb_rev = np.fft.rfft(b0[::-1], fft_size)
+    fmb_rev = np.fft.rfft(mask_b[::-1], fft_size)
+    fb2_rev = np.fft.rfft(b2[::-1], fft_size)
+
+    def cross_values(left_fft, right_fft):
+        values = np.fft.irfft(
+            left_fft * right_fft, fft_size
+        )[:full_size]
+        return values[positions]
+
+    counts = np.rint(
+        np.clip(cross_values(fma, fmb_rev), 0.0, None)
+    ).astype(int)
+    sum_a = cross_values(fa, fmb_rev)
+    sum_b = cross_values(fma, fb_rev)
+    sum_a2 = cross_values(fa2, fmb_rev)
+    sum_b2 = cross_values(fma, fb2_rev)
+    sum_ab = cross_values(fa, fb_rev)
+
+    enough = counts >= 5
+    safe_count = np.where(enough, counts, 1).astype(float)
+    variance_a = np.maximum(
+        0.0, sum_a2 - (sum_a * sum_a) / safe_count
+    )
+    variance_b = np.maximum(
+        0.0, sum_b2 - (sum_b * sum_b) / safe_count
+    )
+    std_a = np.sqrt(variance_a / safe_count)
+    std_b = np.sqrt(variance_b / safe_count)
+    denominator = np.sqrt(variance_a * variance_b)
+
+    usable = (
+        enough
+        & (std_a > 1e-12)
+        & (std_b > 1e-12)
+        & (denominator > 0.0)
+    )
+    correlations = np.full(max_steps + 1, np.nan, dtype=float)
+    correlations[usable] = (
+        sum_ab[usable]
+        - (sum_a[usable] * sum_b[usable]) / safe_count[usable]
+    ) / denominator[usable]
+    correlations[usable] = np.clip(
+        correlations[usable], -1.0, 1.0
+    )
+
+    finite_candidates = np.flatnonzero(np.isfinite(correlations))
+    if finite_candidates.size == 0:
+        return None, None
+
+    approximate_best = float(
+        np.nanmax(correlations[finite_candidates])
+    )
+    # Recheck near ties with the original direct calculation. This preserves
+    # deterministic earliest-lag behaviour where correlations are effectively
+    # equal while keeping the expensive direct work to a tiny candidate set.
+    candidate_lags = finite_candidates[
+        correlations[finite_candidates] >= approximate_best - 1e-8
+    ]
+
     best_corr = -np.inf
     best_lag = 0
-    for lag in range(max_steps + 1):
-        aa = a.iloc[:-lag] if lag else a
-        bb = b.iloc[lag:] if lag else b
-        valid = aa.notna().to_numpy() & bb.notna().to_numpy()
+    for lag in candidate_lags:
+        lag = int(lag)
+        aa = a[:-lag] if lag else a
+        bb = b[lag:] if lag else b
+        valid = np.isfinite(aa) & np.isfinite(bb)
         if int(valid.sum()) < 5:
             continue
-        av = aa.to_numpy(dtype=float)[valid]
-        bv = bb.to_numpy(dtype=float)[valid]
+        av = aa[valid]
+        bv = bb[valid]
         if np.std(av) <= 1e-12 or np.std(bv) <= 1e-12:
             continue
         corr = float(np.corrcoef(av, bv)[0, 1])
         if np.isfinite(corr) and corr > best_corr:
             best_corr = corr
             best_lag = lag
+
     if best_corr == -np.inf:
         return None, None
     return float(best_corr), float(best_lag * dt_minutes)
