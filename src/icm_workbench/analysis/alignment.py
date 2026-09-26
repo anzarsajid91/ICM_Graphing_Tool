@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from .exclusions import interval_excluded_seconds, normalise_exclusions
@@ -144,25 +145,36 @@ def time_coverage(
     valid_seconds = 0.0
     missing_seconds = 0.0
     unknown_seconds = 0.0
-    for i in range(len(x) - 1):
-        t0 = pd.Timestamp(x.iloc[i]["timestamp"])
-        t1 = pd.Timestamp(x.iloc[i + 1]["timestamp"])
+    timestamps = x["timestamp"].to_numpy(dtype="datetime64[ns]")
+    values = pd.to_numeric(x[value_col], errors="coerce").to_numpy(dtype=float)
+    if not exclusions and len(timestamps)>1:
+        # The ordinary, unexcluded case needs no per-timestep pandas objects.
+        # Clip each support interval against the requested analysis window.
+        t=timestamps.astype("int64")
+        duration=(t[1:]-t[:-1])/1e9
+        clipped=(np.minimum(t[1:], e.value)-np.maximum(t[:-1], s.value))/1e9
+        clipped=np.maximum(clipped, 0.0)
+        positive=duration>0
+        good=positive&(duration<=float(max_gap_seconds))&np.isfinite(values[:-1])&np.isfinite(values[1:])
+        valid_seconds=float(clipped[good].sum())
+        missing_seconds=float(clipped[positive&(duration<=float(max_gap_seconds))&~(np.isfinite(values[:-1])&np.isfinite(values[1:]))].sum())
+        unknown_seconds=float(clipped[positive&(duration>float(max_gap_seconds))].sum())
+    for i in range(0 if exclusions else len(x)-1, len(x) - 1):
+        t0 = pd.Timestamp(timestamps[i])
+        t1 = pd.Timestamp(timestamps[i + 1])
         dt = float((t1 - t0).total_seconds())
         if dt <= 0:
             continue
         a, b = max(t0, s), min(t1, e)
         if b <= a:
             continue
-        retained = float(
-            sum(
-                (q - p).total_seconds()
-                for p, q in _subtract_interval(a, b, exclusions)
-            )
-        )
+        retained = (float((b - a).total_seconds()) if not exclusions else float(
+            sum((q - p).total_seconds() for p, q in _subtract_interval(a, b, exclusions))
+        ))
         if retained <= 0:
             continue
-        v0 = x.iloc[i][value_col]
-        v1 = x.iloc[i + 1][value_col]
+        v0 = values[i]
+        v1 = values[i + 1]
         if dt > float(max_gap_seconds):
             unknown_seconds += retained
         elif pd.isna(v0) or pd.isna(v1):
