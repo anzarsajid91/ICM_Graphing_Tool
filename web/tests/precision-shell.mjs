@@ -133,7 +133,13 @@ try{
     const balanceRow={week_ending:'2026-09-06',downstream_monitor:'FM03',upstream_monitors:['FM01','FM02'],rag:'Red',balance_ratio:1.42,recommendation:'Investigate FM03 and upstream support.'};
     survey.batch={
       monitors:[{monitor:'SM-Overflow',status:'complete',rain_gauge:'RG01',diameter_mm:600,weekly:{weeks:[{week_ending:'2026-09-06',rag:'Red',decision_path:'Automated low-response flag'}]},event_response:{rows:[]},contracts:{}}],
-      network:{gauge_count:1,gauge_summary:[{gauge:'RG01',status:'Amber',operational_coverage_percent:88,event_strike_count:1,current_dynamic_status:'Review'}],candidate_wapug_events:[],qualified_wapug_events:[]},
+      network:{
+        gauge_count:1,
+        criteria:{minimum_operational_gauges:1,spatial_cv_limit_percent:40},
+        gauge_summary:[{gauge:'RG01',status:'Amber',operational_coverage_percent:88,event_strike_count:1,current_dynamic_status:'Review'}],
+        candidate_wapug_events:[{event:1,start:'2026-09-05T12:00:00',end:'2026-09-05T14:00:00',mean_depth_mm:8.2,spatial_cv_percent:52,operational_gauges:1,qualifies_network_wapug:false}],
+        qualified_wapug_events:[]
+      },
       volume_balance:{rows:[balanceRow],summary:{Green:0,Amber:0,Red:1,Grey:0}},
       analysis_controls:{}
     };
@@ -191,6 +197,7 @@ try{
       monitorMissingReason,gaugeMissingReason,
       savedComment,workspaceComment,boundaryMonthlyStatus,
       monthlyCommentIncluded:monthlyHtml.includes('Tidal impact noted; pumping influence noted.'),
+      monthlyWapugRejectionIncluded:monthlyHtml.includes('Not qualified')&&monthlyHtml.includes('spatial CV')&&monthlyHtml.includes('52'),
       monthlyPdfButton:Boolean(document.querySelector('#surveyMonthlyPdfBtn')),
       monitorCurrent,gaugeCurrent,balanceCurrent,
       monitorSignatureChanged,gaugeSignatureChanged,balanceSignatureChanged,
@@ -206,7 +213,7 @@ try{
     reviewLayer.savedComment?.text!=='Tidal impact noted; pumping influence noted.'||
     reviewLayer.workspaceComment?.text!=='Tidal impact noted; pumping influence noted.'||
     reviewLayer.boundaryMonthlyStatus!=='Green'||
-    !reviewLayer.monthlyCommentIncluded||!reviewLayer.monthlyPdfButton||
+    !reviewLayer.monthlyCommentIncluded||!reviewLayer.monthlyWapugRejectionIncluded||!reviewLayer.monthlyPdfButton||
     !reviewLayer.monitorCurrent.review_current||reviewLayer.monitorCurrent.reviewed!=='Green'||
     !reviewLayer.gaugeCurrent.review_current||reviewLayer.gaugeCurrent.reviewed!=='Green'||
     !reviewLayer.balanceCurrent.review_current||reviewLayer.balanceCurrent.reviewed!=='Amber'||
