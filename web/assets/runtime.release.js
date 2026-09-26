@@ -606,11 +606,33 @@ async function handoffFastPath(item){
     models:[...(state.mapping.models||[])],
     rain:state.mapping.rain||''
   };
+  const pendingMapping={
+    observed:$('observedSelect')?.value||'',
+    models:[...($('modelSelect')?.selectedOptions||[])].map(option=>option.value),
+    rain:$('rainSelect')?.value||''
+  };
+  const sameMappingSelection=(left,right)=>
+    left.observed===right.observed&&
+    left.rain===right.rain&&
+    left.models.length===right.models.length&&
+    left.models.every((value,index)=>value===right.models[index]);
   const preserveAppliedMapping=Boolean(appliedMapping.observed||appliedMapping.rain||appliedMapping.models.length);
   if(preserveAppliedMapping){
-    if([...$('observedSelect').options].some(o=>o.value===appliedMapping.observed))$('observedSelect').value=appliedMapping.observed;
-    [...$('modelSelect').options].forEach(o=>o.selected=appliedMapping.models.includes(o.value));
-    if([...$('rainSelect').options].some(o=>o.value===appliedMapping.rain))$('rainSelect').value=appliedMapping.rain;
+    // A late FastPath validation must never overwrite assignment controls that
+    // the engineer has changed since the last Apply Mapping action. When the
+    // controls differ from the applied state, retain those pending edits and
+    // leave the current graph untouched until the user applies them.
+    if(!sameMappingSelection(pendingMapping,appliedMapping)){
+      diagnostic.fastpathHandoffSkipped={
+        reason:'pending-mapping-edits',
+        source:item.displayName,
+        applied:JSON.parse(JSON.stringify(appliedMapping)),
+        pending:JSON.parse(JSON.stringify(pendingMapping)),
+        time:new Date().toISOString()
+      };
+      if(window.ICMFastPath&&window.ICMFastPath.clear)window.ICMFastPath.clear();
+      return;
+    }
     if(window.ICMGraph&&window.ICMGraph.applyMapping)await window.ICMGraph.applyMapping();
     if(window.ICMFastPath&&window.ICMFastPath.clear)window.ICMFastPath.clear();
     return;
