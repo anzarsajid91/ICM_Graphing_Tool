@@ -251,11 +251,13 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
 
     metadata=getattr(parsed,"metadata",{}) or {}
     interval=metadata.get("interval_min")
+    rain_gap_seconds=python_bridge._rain_support_gap_seconds(parsed)
     result=rainfall_accumulation(
         x,
         column,
         semantics="intensity",
         declared_interval_minutes=float(interval) if interval else None,
+        max_gap_seconds=rain_gap_seconds,
     )
     seg=result["segments"]
     running=0.0
@@ -301,7 +303,8 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
         "interval_min":float(interval) if interval else None,
         "start":pd.Timestamp(x["timestamp"].iloc[0]).isoformat(),
         "end":pd.Timestamp(x["timestamp"].iloc[-1]).isoformat(),
-        "integration_method":"actual-support interval-average intensity × elapsed time; declared interval used only for final support",
+        "integration_method":"actual-support interval-average intensity × elapsed time; gaps above the defensible source-support limit are unknown; declared interval used only for final support",
+        "max_gap_seconds":rain_gap_seconds,
     }
     return json.dumps(python_bridge._jsonable(payload),ensure_ascii=False)
 
