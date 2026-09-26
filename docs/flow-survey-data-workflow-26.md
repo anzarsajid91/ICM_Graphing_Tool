@@ -1,6 +1,6 @@
-# Flow Survey + Data / Time Series — 26-point implementation contract
+# Flow Survey + Data / Time Series — 27-point implementation contract
 
-This document is the authoritative implementation scope agreed on 26 September 2026. When the project refers to the “original request” for this redesign, it means all 26 items below together.
+This document is the authoritative implementation scope agreed on 26 September 2026. When the project refers to the “original request” for this redesign, it means all 27 items below together.
 
 1. Keep Flow Survey tabs: FDV Check, Rainfall Check, Volume Balance.
 2. Use a review-first Flow Survey UX: conclusions and exceptions before technical detail.
@@ -28,6 +28,7 @@ This document is the authoritative implementation scope agreed on 26 September 2
 24. Reuse validated analytical engines; do not unnecessarily rewrite FDV/rainfall/WAPUG/Event Response/volume-balance methods.
 25. Apply the UX hierarchy: conclusion → exception → evidence → calculation detail.
 26. Merge Data Upload + Data Assignment into Data / Time Series as one Upload → Interpret/Assign → Graph → Analyse workflow, while explicitly preserving and regression-testing every existing Time Series capability.
+27. Add per-monitor engineering comments independent of score/override rationale (for example tidal impact or pumping influence), persist them in the workspace, carry them into Monthly Review and final reporting, and provide a print-optimised Monthly Flow Survey report with an Export Monthly PDF action using the browser-local Save as PDF workflow.
 
 ## Protected Time Series behaviour under item 26
 
