@@ -482,13 +482,20 @@ async function verifyStationAThresholdChain(){
       const chart=document.querySelector('#timeChart');
       const rects=(chart?.layout?.shapes||[]).filter(s=>s.type==='rect'&&s.xref==='x'&&s.yref==='paper');
       const labels=(chart?.layout?.annotations||[]).filter(a=>/^E\d+/.test(String(a.text||'')));
+      const hydraulicDomain=chart?.layout?.yaxis?.domain||[];
+      const rainfallDomain=chart?.layout?.yaxis2?.domain||chart?.layout?.yaxis?.domain||[];
+      const hydraulicBottom=Number(hydraulicDomain[0]);
+      const rainfallTop=Number(rainfallDomain[1]);
       return {
         route:window.__ICM_PRECISION_WORKBENCH__?.route?.(),
         criteria,
         count:state.rainEvents?.length||0,
         overlayRects:rects.length,
         overlayLabels:labels.length,
-        spansPanels:rects.length>0&&rects.every(s=>Number(s.y1)===1&&Number(s.y0)<=0.001),
+        hydraulicDomain,
+        rainfallDomain,
+        spansPanels:rects.length>0&&Number.isFinite(hydraulicBottom)&&Number.isFinite(rainfallTop)&&rects.every(s=>Number(s.y0)<=hydraulicBottom+1e-9&&Number(s.y1)>=rainfallTop-1e-9),
+        avoidsStatisticsTable:rects.length>0&&rects.every(s=>Number(s.y0)>=0.20),
         flowSurveyBatch:Boolean(window.__ICM_WORKBENCH__?.survey?.batch),
       };
     });
@@ -499,7 +506,7 @@ async function verifyStationAThresholdChain(){
       stationWapug.criteria?.minimum_depth_mm!==5||
       stationWapug.criteria?.minimum_event_duration_min!==60||
       stationWapug.criteria?.dry_gap_min!==15||
-      stationWapug.count<1||stationWapug.overlayRects<stationWapug.count||!stationWapug.spansPanels||
+      stationWapug.count<1||stationWapug.overlayRects<stationWapug.count||!stationWapug.spansPanels||!stationWapug.avoidsStatisticsTable||
       stationWapug.flowSurveyBatch
     )throw new Error('Station A standalone WAPUG overlay is not independent/correct: '+JSON.stringify(stationWapug));
 
