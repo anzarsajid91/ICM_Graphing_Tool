@@ -423,6 +423,26 @@
         revertMonitorReview(revert.dataset.monitor);
         return;
       }
+      const commentSave = event.target.closest('#surveyMonitorCommentSave');
+      if (commentSave) {
+        const error = $('surveyMonitorCommentError');
+        try {
+          saveMonitorComment(
+            commentSave.dataset.monitor,
+            $('surveyMonitorComment')?.value || '',
+            $('surveyMonitorCommentAuthor')?.value || ''
+          );
+          if (error) error.textContent = '';
+        } catch (err) {
+          if (error) error.textContent = String(err?.message || err);
+        }
+        return;
+      }
+      const commentClear = event.target.closest('#surveyMonitorCommentClear');
+      if (commentClear) {
+        clearMonitorComment(commentClear.dataset.monitor);
+        return;
+      }
       const genericSave = event.target.closest('[data-w26-review-apply]');
       if (genericSave) {
         const form = genericSave.closest('.w26-inline-review');
