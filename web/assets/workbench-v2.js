@@ -583,7 +583,11 @@
       if(showModel)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:modelAxis,y0:model,y1:model,line:{color:$('threshold2Color').value,width:2,dash:'dash'},layer:'above'});
     }
     if($('showEventOverlay').checked){
-      for(const e of state.rainEvents)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:overlayBottom,y1:1,fillcolor:$('rainEventColor').value,opacity:.08,line:{width:0},layer:'below'});
+      // WAPUG event bands deliberately span the full Plotly paper so the same
+      // highlighted event visually links the inverted rainfall panel to the
+      // hydraulic response panel. The band stays below traces/tables, so the
+      // statistics table remains legible while the event context is continuous.
+      for(const e of state.rainEvents)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:$('rainEventColor').value,opacity:.08,line:{width:0},layer:'below'});
     }
     return shapes;
   }
