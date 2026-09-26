@@ -72,11 +72,24 @@
     renderAll();
   }
 
+  function isBoundaryShortWeek(row) {
+    const start = new Date(row?.start || '');
+    const end = new Date(row?.end || '');
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return false;
+    return (end.getTime() - start.getTime()) <= 3 * 86400000;
+  }
+
   function calculatedMonitorStatus(monitor) {
     if (!monitor || monitor.status !== 'complete') return 'Grey';
     const weeks = monitor.weekly?.weeks || [];
     if (!weeks.length) return 'Grey';
-    return worstRag(weeks.map(row => row.rag));
+    // Boundary fragments are still shown in the weekly evidence, but they do
+    // not dictate a month-long RAG when substantive (>3 day) weeks exist.
+    // If the monitor has only short support, preserve that evidence rather
+    // than silently upgrading an incomplete survey.
+    const substantive = weeks.filter(row => !isBoundaryShortWeek(row));
+    const assessmentWeeks = substantive.length ? substantive : weeks;
+    return worstRag(assessmentWeeks.map(row => row.rag));
   }
 
   function reviewKey(kind, id) {
@@ -215,7 +228,13 @@
     const events = monitor.event_response?.rows || [];
     const failures = events.filter(row => row.min_depth_pass === false || row.response_ratio_pass === false).length;
     const state = reviewedMonitorState(monitor);
-    return {weeks,counts,events,failures,state};
+    const substantiveWeeks = weeks.filter(row => !isBoundaryShortWeek(row));
+    return {
+      weeks,counts,events,failures,state,
+      substantiveWeeks:substantiveWeeks.length,
+      boundaryWeeks:weeks.length-substantiveWeeks.length,
+      monthlyBasis:substantiveWeeks.length ? 'substantive weeks (>3 days)' : 'all available weeks (limited support)',
+    };
   }
 
   function genericReviewFormHtml(kind, id, state, title, context='') {
@@ -582,7 +601,7 @@
       '<option value="'+rag+'" '+(normaliseRag(selected)===rag?'selected':'')+'>'+rag+'</option>'
     ).join('');
     root.innerHTML =
-      '<div class="w26-detail-head"><div><span class="w26-eyebrow">Monitor detail</span><h4>'+esc(monitor.monitor)+'</h4><p>'+esc(monitor.rain_gauge || 'No mapped RG')+(monitor.diameter_mm!=null?' · '+fmt(monitor.diameter_mm,0)+' mm':'')+'</p></div>'+
+      '<div class="w26-detail-head"><div><span class="w26-eyebrow">Monitor detail</span><h4>'+esc(monitor.monitor)+'</h4><p>'+esc(monitor.rain_gauge || 'No mapped RG')+(monitor.diameter_mm!=null?' · '+fmt(monitor.diameter_mm,0)+' mm':'')+' · Monthly RAG from '+esc(summary.monthlyBasis)+(summary.boundaryWeeks?' · '+summary.boundaryWeeks+' boundary week'+(summary.boundaryWeeks===1?'':'s')+' retained as evidence':'')+'</p></div>'+
       '<div class="w26-detail-status"><span>Calculated '+ragPill(state.calculated)+'</span><span>Current reported '+ragPill(state.reviewed)+'</span></div></div>'+
       (mismatch ? '<div class="w26-review-warning"><strong>Review needs reconfirmation.</strong> The calculated result is now '+esc(state.calculated)+' but the retained review was made against '+esc(review.calculated_status_at_review)+'. Until reconfirmed, the calculated result remains the current reported assessment.</div>' : '')+
       '<div class="w26-detail-grid">'+
@@ -750,6 +769,19 @@
 
   function monthlyActions() {
     const actions = [];
+    const network = survey.batch?.network || {};
+    const candidates = network.candidate_wapug_events || [];
+    const qualified = network.qualified_wapug_events || [];
+    if (survey.batch && qualified.length === 0) {
+      actions.push({
+        area:'Event suitability',
+        subject:'Network rainfall',
+        severity:'Amber',
+        action:candidates.length
+          ? candidates.length+' WAPUG candidate event(s) were assessed but none met the network spatial/coverage criteria. Event Response is not assessed for this period; review Rainfall Check evidence or extend the monitoring period.'
+          : 'No WAPUG candidate events were available. Event Response is not assessed for this period; extend the monitoring period if wet-weather verification is required.'
+      });
+    }
     for (const monitor of survey.batch?.monitors || []) {
       const state = reviewedMonitorState(monitor);
       if (state.historical_review) {
