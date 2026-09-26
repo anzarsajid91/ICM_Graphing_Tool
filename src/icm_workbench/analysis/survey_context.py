@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from icm_workbench.analysis.integration import integrate_series
+from icm_workbench.analysis.validity import validity_summary
 
 
 _HEADER_ALIASES = {
@@ -424,6 +425,156 @@ def _inside_exclusion(stamp: pd.Timestamp, exclusions: list[Any]) -> bool:
     return False
 
 
+def _integrate_instantaneous_no_exclusions(
+    frame: pd.DataFrame,
+    value_col: str,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    *,
+    max_gap_seconds: float,
+) -> dict[str, Any]:
+    """Vectorised equivalent of integrate_series for the no-exclusion case.
+
+    Volume Balance only needs instantaneous signed integration. Keeping this
+    fast path local avoids changing the general integration engine while
+    preserving its exact interval clipping, linear boundary interpolation,
+    gap classification, uncovered support and calculation-status contract.
+    """
+    s, e = pd.Timestamp(start), pd.Timestamp(end)
+    if e <= s:
+        raise ValueError("end must be after start")
+    requested_seconds = float((e - s).total_seconds())
+
+    if frame is None or frame.empty or len(frame) < 2:
+        validity = validity_summary(
+            requested_seconds=requested_seconds,
+            valid_seconds=0.0,
+            excluded_seconds=0.0,
+            unknown_seconds=0.0,
+            uncovered_seconds=requested_seconds,
+        )
+        return {
+            "integral": 0.0,
+            "requested_seconds": requested_seconds,
+            "valid_seconds": 0.0,
+            "excluded_seconds": 0.0,
+            "gap_seconds": 0.0,
+            "uncovered_seconds": requested_seconds,
+            "coverage_fraction": validity["coverage_fraction"],
+            "status": validity["calculation_status"],
+            "validity": validity,
+            "semantics": "instantaneous",
+        }
+
+    ts = pd.to_datetime(frame["timestamp"], errors="coerce").to_numpy(
+        dtype="datetime64[ns]"
+    )
+    values = pd.to_numeric(frame[value_col], errors="coerce").to_numpy(
+        dtype=float
+    )
+    t0 = ts[:-1]
+    t1 = ts[1:]
+    v0 = values[:-1]
+    v1 = values[1:]
+
+    nat = np.datetime64("NaT", "ns")
+    valid_ts = (~np.isnat(t0)) & (~np.isnat(t1))
+    t0_ns = t0.astype("int64", copy=False)
+    t1_ns = t1.astype("int64", copy=False)
+    s_ns = np.datetime64(s.to_datetime64(), "ns").astype("int64")
+    e_ns = np.datetime64(e.to_datetime64(), "ns").astype("int64")
+
+    dt_ns = t1_ns - t0_ns
+    positive_dt = valid_ts & (dt_ns > 0)
+    a_ns = np.maximum(t0_ns, s_ns)
+    b_ns = np.minimum(t1_ns, e_ns)
+    support_ns = np.maximum(0, b_ns - a_ns)
+    intersects = positive_dt & (support_ns > 0)
+
+    seconds_per_ns = 1e-9
+    support_seconds = support_ns.astype(np.float64) * seconds_per_ns
+    dt_seconds = dt_ns.astype(np.float64) * seconds_per_ns
+
+    invalid_pair = intersects & (
+        (dt_seconds > float(max_gap_seconds))
+        | ~np.isfinite(v0)
+        | ~np.isfinite(v1)
+    )
+    valid_pair = intersects & ~invalid_pair
+
+    gap_seconds = float(np.sum(support_seconds[invalid_pair]))
+    valid_seconds = float(np.sum(support_seconds[valid_pair]))
+    total = 0.0
+    if bool(np.any(valid_pair)):
+        dt_valid_ns = dt_ns[valid_pair].astype(np.float64)
+        fp = (
+            (a_ns[valid_pair] - t0_ns[valid_pair]).astype(np.float64)
+            / dt_valid_ns
+        )
+        fq = (
+            (b_ns[valid_pair] - t0_ns[valid_pair]).astype(np.float64)
+            / dt_valid_ns
+        )
+        vv0 = v0[valid_pair]
+        vv1 = v1[valid_pair]
+        vp = vv0 + (vv1 - vv0) * fp
+        vq = vv0 + (vv1 - vv0) * fq
+        total = float(
+            np.sum((vp + vq) * 0.5 * support_seconds[valid_pair])
+        )
+
+    uncovered_seconds = max(
+        0.0, requested_seconds - valid_seconds - gap_seconds
+    )
+    validity = validity_summary(
+        requested_seconds=requested_seconds,
+        valid_seconds=valid_seconds,
+        excluded_seconds=0.0,
+        unknown_seconds=gap_seconds,
+        uncovered_seconds=uncovered_seconds,
+    )
+    return {
+        "integral": total,
+        "requested_seconds": requested_seconds,
+        "valid_seconds": valid_seconds,
+        "excluded_seconds": 0.0,
+        "gap_seconds": gap_seconds,
+        "uncovered_seconds": uncovered_seconds,
+        "coverage_fraction": validity["coverage_fraction"],
+        "status": validity["calculation_status"],
+        "validity": validity,
+        "semantics": "instantaneous",
+    }
+
+
+def _integration_support_window(
+    frame: pd.DataFrame,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> pd.DataFrame:
+    """Return only rows that can contribute support to [start, end).
+
+    integrate_series evaluates adjacent timestamp pairs. Therefore one sample
+    immediately before the requested start and the first sample at/after the
+    requested end are sufficient to preserve all boundary interpolation and
+    support/gap semantics; every more distant pair has zero intersection with
+    the requested week.
+    """
+    if frame is None or frame.empty or len(frame) <= 2:
+        return frame
+    ts = pd.to_datetime(frame["timestamp"], errors="coerce").to_numpy(
+        dtype="datetime64[ns]"
+    )
+    start64 = np.datetime64(pd.Timestamp(start).to_datetime64(), "ns")
+    end64 = np.datetime64(pd.Timestamp(end).to_datetime64(), "ns")
+    left = max(0, int(np.searchsorted(ts, start64, side="left")) - 1)
+    right_index = int(np.searchsorted(ts, end64, side="left"))
+    right = min(len(frame), right_index + 1)
+    if right <= left:
+        right = min(len(frame), left + 2)
+    return frame.iloc[left:right]
+
+
 def _legacy_signed_volume(
     frame: pd.DataFrame,
     start: pd.Timestamp,
@@ -574,14 +725,27 @@ def survey_volume_balance(
             legacy_volume, zero_issue, n_valid = _legacy_signed_volume(
                 frame, week_start, week_end, exclusions
             )
-            result = integrate_series(
-                frame,
-                "flow",
-                week_start,
-                week_end,
-                semantics="instantaneous",
-                max_gap_seconds=float(max_gap_seconds),
-                exclusions=exclusions,
+            support_frame = _integration_support_window(
+                frame, week_start, week_end
+            )
+            result = (
+                _integrate_instantaneous_no_exclusions(
+                    support_frame,
+                    "flow",
+                    week_start,
+                    week_end,
+                    max_gap_seconds=float(max_gap_seconds),
+                )
+                if not exclusions
+                else integrate_series(
+                    support_frame,
+                    "flow",
+                    week_start,
+                    week_end,
+                    semantics="instantaneous",
+                    max_gap_seconds=float(max_gap_seconds),
+                    exclusions=exclusions,
+                )
             )
             volume = float(result["integral"]) if result.get("valid_seconds", 0.0) > 0 else None
             rec = {

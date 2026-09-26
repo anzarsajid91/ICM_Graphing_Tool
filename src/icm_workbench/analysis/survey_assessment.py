@@ -522,11 +522,12 @@ def network_rainfall_assessment(
             )
         dyn = dynamic_summary.get(name, {})
         cutoff = suggested_cutoff.get(name)
+        operational_coverage = float(operational / max(1, days))
         status = (
             "Amber"
             if cutoff is not None
             or dyn.get("current_dynamic_status") == "Faulty"
-            or operational < days
+            or operational_coverage < OPERATIONAL_COVERAGE_FRACTION
             else "Green"
         )
         gauge_summary.append(
@@ -534,9 +535,7 @@ def network_rainfall_assessment(
                 "gauge": name,
                 "days_assessed": days,
                 "operational_days": operational,
-                "operational_coverage_percent": 100.0
-                * operational
-                / max(1, days),
+                "operational_coverage_percent": 100.0 * operational_coverage,
                 "event_strike_count": int(
                     sum(
                         1
@@ -724,33 +723,48 @@ def _diurnal_baseline(
 def _longest_flatline_minutes(
     values: pd.Series, timestamps: pd.Series, tolerance: float
 ) -> float:
+    """Return the longest contiguous near-constant run duration in minutes.
+
+    This is intentionally equivalent to the original pair-by-pair scan, but
+    uses NumPy arrays rather than pandas .iloc inside a Python loop. The helper
+    is called repeatedly for each weekly channel and event-response window, so
+    the vectorised form materially reduces Pyodide execution time without
+    changing the flatline engineering criterion.
+    """
     vals = pd.to_numeric(values, errors="coerce").to_numpy(dtype=float)
+    if vals.size < 2:
+        return 0.0
+
     ts = pd.to_datetime(timestamps, errors="coerce")
-    longest = 0.0
-    run_start: int | None = None
-    for i in range(1, len(vals)):
-        same = (
-            np.isfinite(vals[i - 1])
-            and np.isfinite(vals[i])
-            and abs(vals[i] - vals[i - 1]) <= tolerance
-            and pd.notna(ts.iloc[i - 1])
-            and pd.notna(ts.iloc[i])
-        )
-        if same:
-            if run_start is None:
-                run_start = i - 1
-            longest = max(
-                longest,
-                float(
-                    (
-                        ts.iloc[i] - ts.iloc[run_start]
-                    ).total_seconds()
-                    / 60.0
-                ),
-            )
-        else:
-            run_start = None
-    return longest
+    ts_ns = ts.to_numpy(dtype="datetime64[ns]").astype("int64", copy=False)
+    nat = np.iinfo(np.int64).min
+    valid_ts = ts_ns != nat
+    finite = np.isfinite(vals)
+    same = (
+        finite[:-1]
+        & finite[1:]
+        & valid_ts[:-1]
+        & valid_ts[1:]
+        & (np.abs(vals[1:] - vals[:-1]) <= float(tolerance))
+    )
+    if not bool(np.any(same)):
+        return 0.0
+
+    # A True run from pair index a..b means the constant-value point run spans
+    # timestamps a..b+1, matching the former run_start=i-1 implementation.
+    padded = np.concatenate(
+        ([False], same.astype(bool, copy=False), [False])
+    )
+    changes = np.flatnonzero(padded[1:] != padded[:-1])
+    starts = changes[0::2]
+    ends = changes[1::2]  # point index at the end of each True pair run
+    durations = (
+        ts_ns[ends] - ts_ns[starts]
+    ).astype(np.float64) / 60_000_000_000.0
+    finite_duration = durations[np.isfinite(durations)]
+    if finite_duration.size == 0:
+        return 0.0
+    return float(max(0.0, np.max(finite_duration)))
 
 
 def _cross_corr_positive_lag(
@@ -759,10 +773,26 @@ def _cross_corr_positive_lag(
     dt_minutes: float,
     max_lag_hours: float = MAX_LAG_HOURS,
 ) -> tuple[float | None, float | None]:
-    a = pd.to_numeric(
-        rain_increment, errors="coerce"
-    ).reset_index(drop=True)
-    b = pd.to_numeric(response, errors="coerce").reset_index(drop=True)
+    """Return the strongest Pearson correlation for non-negative response lag.
+
+    The original implementation rebuilt pandas slices and called np.corrcoef
+    for every candidate lag. At 2-minute survey resolution and an 18-hour lag
+    window that can mean 541 full passes per channel, per wet week. In Pyodide
+    this dominates a multi-monitor Flow Survey assessment.
+
+    This implementation evaluates the same pairwise-finite Pearson terms for all
+    positive lags with FFT cross-correlations. The winning/near-tied candidates
+    are then recomputed with the original direct np.corrcoef calculation so FFT
+    rounding cannot change the selected engineering lag.
+    """
+    a = pd.to_numeric(rain_increment, errors="coerce").to_numpy(dtype=float)
+    b = pd.to_numeric(response, errors="coerce").to_numpy(dtype=float)
+    if a.size != b.size:
+        raise ValueError("Rainfall and response series must have equal length.")
+    n = int(a.size)
+    if n < 5:
+        return None, None
+
     max_steps = int(
         round(
             max_lag_hours
@@ -770,22 +800,103 @@ def _cross_corr_positive_lag(
             / max(float(dt_minutes), 1e-6)
         )
     )
+    max_steps = min(max(0, max_steps), n - 1)
+    lags = np.arange(max_steps + 1, dtype=int)
+    positions = (n - 1) - lags
+
+    finite_a = np.isfinite(a)
+    finite_b = np.isfinite(b)
+    mask_a = finite_a.astype(float)
+    mask_b = finite_b.astype(float)
+    a0 = np.where(finite_a, a, 0.0)
+    b0 = np.where(finite_b, b, 0.0)
+    a2 = a0 * a0
+    b2 = b0 * b0
+
+    full_size = 2 * n - 1
+    fft_size = 1 << max(0, (full_size - 1).bit_length())
+
+    fa = np.fft.rfft(a0, fft_size)
+    fma = np.fft.rfft(mask_a, fft_size)
+    fa2 = np.fft.rfft(a2, fft_size)
+    fb_rev = np.fft.rfft(b0[::-1], fft_size)
+    fmb_rev = np.fft.rfft(mask_b[::-1], fft_size)
+    fb2_rev = np.fft.rfft(b2[::-1], fft_size)
+
+    def cross_values(left_fft, right_fft):
+        values = np.fft.irfft(
+            left_fft * right_fft, fft_size
+        )[:full_size]
+        return values[positions]
+
+    counts = np.rint(
+        np.clip(cross_values(fma, fmb_rev), 0.0, None)
+    ).astype(int)
+    sum_a = cross_values(fa, fmb_rev)
+    sum_b = cross_values(fma, fb_rev)
+    sum_a2 = cross_values(fa2, fmb_rev)
+    sum_b2 = cross_values(fma, fb2_rev)
+    sum_ab = cross_values(fa, fb_rev)
+
+    enough = counts >= 5
+    safe_count = np.where(enough, counts, 1).astype(float)
+    variance_a = np.maximum(
+        0.0, sum_a2 - (sum_a * sum_a) / safe_count
+    )
+    variance_b = np.maximum(
+        0.0, sum_b2 - (sum_b * sum_b) / safe_count
+    )
+    std_a = np.sqrt(variance_a / safe_count)
+    std_b = np.sqrt(variance_b / safe_count)
+    denominator = np.sqrt(variance_a * variance_b)
+
+    usable = (
+        enough
+        & (std_a > 1e-12)
+        & (std_b > 1e-12)
+        & (denominator > 0.0)
+    )
+    correlations = np.full(max_steps + 1, np.nan, dtype=float)
+    correlations[usable] = (
+        sum_ab[usable]
+        - (sum_a[usable] * sum_b[usable]) / safe_count[usable]
+    ) / denominator[usable]
+    correlations[usable] = np.clip(
+        correlations[usable], -1.0, 1.0
+    )
+
+    finite_candidates = np.flatnonzero(np.isfinite(correlations))
+    if finite_candidates.size == 0:
+        return None, None
+
+    approximate_best = float(
+        np.nanmax(correlations[finite_candidates])
+    )
+    # Recheck near ties with the original direct calculation. This preserves
+    # deterministic earliest-lag behaviour where correlations are effectively
+    # equal while keeping the expensive direct work to a tiny candidate set.
+    candidate_lags = finite_candidates[
+        correlations[finite_candidates] >= approximate_best - 1e-8
+    ]
+
     best_corr = -np.inf
     best_lag = 0
-    for lag in range(max_steps + 1):
-        aa = a.iloc[:-lag] if lag else a
-        bb = b.iloc[lag:] if lag else b
-        valid = aa.notna().to_numpy() & bb.notna().to_numpy()
+    for lag in candidate_lags:
+        lag = int(lag)
+        aa = a[:-lag] if lag else a
+        bb = b[lag:] if lag else b
+        valid = np.isfinite(aa) & np.isfinite(bb)
         if int(valid.sum()) < 5:
             continue
-        av = aa.to_numpy(dtype=float)[valid]
-        bv = bb.to_numpy(dtype=float)[valid]
+        av = aa[valid]
+        bv = bb[valid]
         if np.std(av) <= 1e-12 or np.std(bv) <= 1e-12:
             continue
         corr = float(np.corrcoef(av, bv)[0, 1])
         if np.isfinite(corr) and corr > best_corr:
             best_corr = corr
             best_lag = lag
+
     if best_corr == -np.inf:
         return None, None
     return float(best_corr), float(best_lag * dt_minutes)
@@ -945,9 +1056,13 @@ def _event_linkage(
     *,
     quantity: str,
     use_residual: bool,
+    segmented_events: list[tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp]] | None = None,
+    week_flatline_minutes: float | None = None,
 ) -> dict[str, Any]:
-    events = _segment_rain_events(
-        rain_increment, timestamps, dt_minutes
+    events = (
+        list(segmented_events)
+        if segmented_events is not None
+        else _segment_rain_events(rain_increment, timestamps, dt_minutes)
     )
     if not events:
         return {
@@ -972,10 +1087,14 @@ def _event_linkage(
         if quantity == "depth"
         else (1e-3 if quantity == "velocity" else 1e-6)
     )
-    flat = _longest_flatline_minutes(
-        raw.reset_index(drop=True),
-        pd.Series(ts).reset_index(drop=True),
-        tolerance,
+    flat = (
+        float(week_flatline_minutes)
+        if week_flatline_minutes is not None
+        else _longest_flatline_minutes(
+            raw.reset_index(drop=True),
+            pd.Series(ts).reset_index(drop=True),
+            tolerance,
+        )
     )
     if flat >= WEEK_FLATLINE_SUPPRESS_MIN:
         return {
@@ -1377,6 +1496,11 @@ def monitor_weekly_assessment(
         scores: dict[str, int] = {}
         methods: dict[str, str] = {}
         responsive: dict[str, bool] = {}
+        week_rain_events = _segment_rain_events(
+            pd.to_numeric(g["_rain_increment"], errors="coerce"),
+            g["timestamp"],
+            dt_minutes,
+        )
 
         for quantity, (col, active_eps) in channel_meta.items():
             raw = pd.to_numeric(g[col], errors="coerce")
@@ -1447,6 +1571,8 @@ def monitor_weekly_assessment(
                 dt_minutes,
                 quantity=quantity,
                 use_residual=use_residual,
+                segmented_events=week_rain_events,
+                week_flatline_minutes=flatline[quantity],
             )
             responsive[quantity] = bool(
                 linkage[quantity].get("events", 0)

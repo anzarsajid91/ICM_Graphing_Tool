@@ -65,14 +65,70 @@ def test_generic_series_quantity_can_be_explicitly_classified_without_guessing_u
     assert cleared["quantity"] is None
 
 
-def test_declared_series_quantity_cannot_be_silently_retyped(tmp_path):
+def test_inferred_tabular_quantity_can_be_retyped_without_stale_unit_scaling(tmp_path):
+    import json
+    import pytest
+    from icm_workbench.browser_api import clear_cache, parse_source, series_data, set_series_quantity
+
+    inferred=tmp_path/"flow.csv"
+    inferred.write_text(
+        "timestamp,Flow (L/s)\n"
+        "2026-01-01T00:00:00,1000\n"
+        "2026-01-01T00:01:00,2000\n",
+        encoding="utf-8",
+    )
+    clear_cache()
+    initial=json.loads(parse_source(str(inferred)))
+    meta=initial["metadata"]["series_metadata"]["Flow (L/s)"]
+    assert meta["quantity_source"]=="inferred"
+    assert meta["canonical_unit"]=="m³/s"
+    assert json.loads(series_data(str(inferred),"Flow (L/s)"))["value"]==pytest.approx([1.0,2.0])
+
+    depth=json.loads(set_series_quantity(str(inferred),"Flow (L/s)","depth"))
+    assert depth["quantity"]=="depth"
+    assert depth["unit_status"]=="unresolved"
+    assert depth["canonical_unit"] is None
+    # The old L/s→m³/s factor must be reversed when L/s is no longer a flow unit.
+    assert json.loads(series_data(str(inferred),"Flow (L/s)"))["value"]==pytest.approx([1000.0,2000.0])
+
+    flow=json.loads(set_series_quantity(str(inferred),"Flow (L/s)","flow"))
+    assert flow["canonical_unit"]=="m³/s"
+    assert flow["conversion_factor"]==pytest.approx(0.001)
+    assert json.loads(series_data(str(inferred),"Flow (L/s)"))["value"]==pytest.approx([1.0,2.0])
+
+
+def test_clearing_user_override_restores_tabular_inference(tmp_path):
+    import json
+    from icm_workbench.browser_api import clear_cache, parse_source, set_series_quantity
+
+    inferred=tmp_path/"levels.csv"
+    inferred.write_text("timestamp,Level (m)\n2026-01-01T00:00:00,1.2\n",encoding="utf-8")
+    clear_cache()
+    changed=json.loads(set_series_quantity(str(inferred),"Level (m)","depth"))
+    assert changed["quantity"]=="depth"
+    restored=json.loads(set_series_quantity(str(inferred),"Level (m)",None))
+    assert restored["quantity"]=="level"
+    assert restored["quantity_source"]=="inferred"
+    after=json.loads(parse_source(str(inferred)))
+    assert after["metadata"]["series_metadata"]["Level (m)"]["quantity"]=="level"
+    assert after["metadata"]["series_metadata"]["Level (m)"]["quantity_source"]=="inferred"
+
+
+def test_native_declared_series_quantity_cannot_be_silently_retyped(tmp_path):
     import pytest
     from icm_workbench.browser_api import clear_cache, set_series_quantity
-    declared=tmp_path/"depth.csv"
-    declared.write_text("timestamp,Depth (m)\n2026-01-01T00:00:00,1\n",encoding="utf-8")
+
+    declared=tmp_path/"Depth.csv"
+    declared.write_text(
+        "!Version=1,Type=HYD\n"
+        "UserSettings,U_LEVEL,m AD\n"
+        "P_DATETIME,Value\n"
+        "2026-01-01T00:00:00,1.0\n",
+        encoding="utf-8",
+    )
     clear_cache()
     with pytest.raises(ValueError,match="already has declared quantity"):
-        set_series_quantity(str(declared),"Depth (m)","flow")
+        set_series_quantity(str(declared),"value","flow")
 
 def test_generic_numeric_series_can_compare_without_quantity_classification(tmp_path):
     import json

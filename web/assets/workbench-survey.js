@@ -732,7 +732,8 @@
       ).join('');
       html += '<div class="table-wrap"><table><thead><tr><th>Week</th><th>Downstream</th><th>Upstream</th><th>Downstream m³</th><th>Upstream m³</th><th>Ratio</th><th>Legacy</th><th>RAG</th><th>First check</th><th>QA evidence</th><th>Recommendation</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
     }
-    return html;
+    const reviewHtml = window.__ICM_WORKBENCH__.workflow26ReportHtml?.() || '';
+    return html + reviewHtml;
   }
 
   function addCollapseControl(container, header, label='section') {
@@ -876,7 +877,7 @@
         if (status) {
           const matched=Number(restored&&restored.matched||0),expected=Number(restored&&restored.expected||0);
           status.textContent=matched<expected
-            ?'Workspace loaded with unresolved sources. '+matched+'/'+expected+' source fingerprint(s) matched. Reattach missing or changed files in Data / Sources; derived results remain Not run or Stale until dependencies are verified and recalculated.'
+            ?'Workspace loaded with unresolved sources. '+matched+'/'+expected+' source fingerprint(s) matched. Reattach missing or changed files in Data / Time Series; derived results remain Not run or Stale until dependencies are verified and recalculated.'
             :'Workspace loaded. '+matched+'/'+expected+' source fingerprint(s) matched the current pool; derived calculations must be rerun before report export.';
         }
         renderReportPreflight();
