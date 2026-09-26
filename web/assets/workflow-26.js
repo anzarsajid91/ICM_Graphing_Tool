@@ -6,6 +6,7 @@
   if (!survey) return;
 
   survey.reviews = survey.reviews && typeof survey.reviews === 'object' ? survey.reviews : {};
+  survey.monitorComments = survey.monitorComments && typeof survey.monitorComments === 'object' ? survey.monitorComments : {};
   survey.selectedMonitor = survey.selectedMonitor || null;
   survey.selectedGauge = survey.selectedGauge || null;
   survey.selectedBalanceKey = survey.selectedBalanceKey || null;
@@ -39,6 +40,36 @@
 
   function monitorByName(name) {
     return (survey.batch?.monitors || []).find(row => String(row.monitor) === String(name)) || null;
+  }
+
+  function monitorComment(name) {
+    return survey.monitorComments[String(name || '')] || null;
+  }
+
+  function saveMonitorComment(name, text='', author='') {
+    const monitor = monitorByName(name);
+    if (!monitor) throw new Error('The selected monitor is not present in the current Flow Survey assessment.');
+    const clean = String(text || '').trim();
+    if (!clean) {
+      delete survey.monitorComments[String(name)];
+      renderAll();
+      return null;
+    }
+    const previous = monitorComment(name);
+    survey.monitorComments[String(name)] = {
+      monitor:String(name),
+      text:clean,
+      author:String(author || '').trim() || previous?.author || null,
+      updated_at:nowIso(),
+      method:'engineer-comment-v1',
+    };
+    renderAll();
+    return survey.monitorComments[String(name)];
+  }
+
+  function clearMonitorComment(name) {
+    delete survey.monitorComments[String(name || '')];
+    renderAll();
   }
 
   function calculatedMonitorStatus(monitor) {
@@ -246,6 +277,22 @@
       }
     });
     actions.appendChild(monthlyButton);
+
+    const pdfButton = document.createElement('button');
+    pdfButton.type = 'button';
+    pdfButton.className = 'btn';
+    pdfButton.id = 'surveyMonthlyPdfBtn';
+    pdfButton.textContent = 'Export Monthly PDF';
+    pdfButton.title = 'Opens the browser print dialog with an A4 monthly assessment; choose Save as PDF.';
+    pdfButton.addEventListener('click', () => {
+      try {
+        exportMonthlyPdf();
+      } catch (err) {
+        const status = $('completeSurveyStatus');
+        if (status) status.textContent = String(err?.message || err);
+      }
+    });
+    actions.appendChild(pdfButton);
 
     const runStatus = $('completeSurveyStatus');
     if (runStatus) {
