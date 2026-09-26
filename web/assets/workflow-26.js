@@ -506,6 +506,8 @@
         ragPill('Amber','A '+s.counts.Amber)+' '+
         ragPill('Red','R '+s.counts.Red)+'</span>';
       const eventText = s.events.length ? (s.failures ? s.failures+' flagged / '+s.events.length : s.events.length+' reviewed') : 'No qualified rows';
+      const comment = monitorComment(monitor.monitor);
+      const commentText = comment ? '<span class="w27-comment-indicator" title="'+esc(comment.text)+'">Comment added</span>' : '<span class="w26-muted">—</span>';
       return '<tr>'+
         '<td><strong>'+esc(monitor.monitor)+'</strong><small>'+esc(monitor.status || '—')+'</small></td>'+
         '<td>'+esc(monitor.rain_gauge || '—')+'</td>'+
@@ -514,12 +516,13 @@
         '<td>'+esc(eventText)+'</td>'+
         '<td>'+ragPill(state.calculated)+'</td>'+
         '<td>'+reviewText+'</td>'+
+        '<td>'+commentText+'</td>'+
         '<td><button type="button" class="btn quiet w26-review-button" data-w26-monitor="'+esc(monitor.monitor)+'">Details / Review</button></td>'+
         '</tr>';
     }).join('');
     target.innerHTML =
       '<div class="survey-table-wrap"><table class="data-table survey-table w26-monitor-table"><thead><tr>'+
-      '<th>Monitor</th><th>Mapped RG</th><th>Diameter</th><th>Weekly assessment</th><th>Event response</th><th>Calculated</th><th>Reviewed</th><th></th>'+
+      '<th>Monitor</th><th>Mapped RG</th><th>Diameter</th><th>Weekly assessment</th><th>Event response</th><th>Calculated</th><th>Reviewed</th><th>Comment</th><th></th>'+
       '</tr></thead><tbody>'+rows+'</tbody></table></div>';
     if (!survey.selectedMonitor || !monitorByName(survey.selectedMonitor)) {
       survey.selectedMonitor = monitors[0]?.monitor || null;
@@ -538,6 +541,7 @@
     const summary = monitorSummary(monitor);
     const state = summary.state;
     const review = state.review;
+    const comment = monitorComment(monitor.monitor);
     const mismatch = Boolean(review && !state.review_current);
     const selected = review?.reviewed_status || state.calculated;
     const weeks = summary.weeks.map(row =>
@@ -573,6 +577,15 @@
             '<div id="surveyReviewError" class="w26-review-error" role="alert"></div>'+
             '<div class="actions left"><button type="button" class="btn" id="surveyReviewApply" data-monitor="'+esc(monitor.monitor)+'">Apply Engineer Review</button>'+
             (review ? '<button type="button" class="btn" id="surveyReviewRevert" data-monitor="'+esc(monitor.monitor)+'">Revert to Calculated</button>' : '')+'</div>'+
+          '</div></section>'+
+        '<section class="w27-comment-section"><div class="w26-section-head"><div><h5>Engineering comments</h5><p>Record site context without changing the automated score. These comments flow into Monthly Review and the monthly PDF.</p></div></div>'+
+          '<div class="w26-review-form">'+
+            '<label class="w26-review-reason">Monitor comment<textarea id="surveyMonitorComment" rows="4" placeholder="e.g. Tidal impact noted; pumping influence noted; overflow-link behaviour is expected.">'+esc(comment?.text || '')+'</textarea></label>'+
+            '<label>Author (optional)<input id="surveyMonitorCommentAuthor" value="'+esc(comment?.author || review?.reviewer || '')+'" placeholder="Name / initials"></label>'+
+            '<div class="w26-review-meta">'+(comment ? 'Updated '+esc(new Date(comment.updated_at).toLocaleString()) : 'No engineering comment recorded.')+'</div>'+
+            '<div id="surveyMonitorCommentError" class="w26-review-error" role="alert"></div>'+
+            '<div class="actions left"><button type="button" class="btn" id="surveyMonitorCommentSave" data-monitor="'+esc(monitor.monitor)+'">Save Comment</button>'+
+            (comment ? '<button type="button" class="btn quiet" id="surveyMonitorCommentClear" data-monitor="'+esc(monitor.monitor)+'">Clear Comment</button>' : '')+'</div>'+
           '</div></section>'+
       '</div>'+
       '<details class="w26-technical-evidence"><summary>Event Response &amp; technical evidence</summary>'+
