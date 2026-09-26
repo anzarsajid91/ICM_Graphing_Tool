@@ -424,6 +424,34 @@ def _inside_exclusion(stamp: pd.Timestamp, exclusions: list[Any]) -> bool:
     return False
 
 
+def _integration_support_window(
+    frame: pd.DataFrame,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> pd.DataFrame:
+    """Return only rows that can contribute support to [start, end).
+
+    integrate_series evaluates adjacent timestamp pairs. Therefore one sample
+    immediately before the requested start and the first sample at/after the
+    requested end are sufficient to preserve all boundary interpolation and
+    support/gap semantics; every more distant pair has zero intersection with
+    the requested week.
+    """
+    if frame is None or frame.empty or len(frame) <= 2:
+        return frame
+    ts = pd.to_datetime(frame["timestamp"], errors="coerce").to_numpy(
+        dtype="datetime64[ns]"
+    )
+    start64 = np.datetime64(pd.Timestamp(start).to_datetime64(), "ns")
+    end64 = np.datetime64(pd.Timestamp(end).to_datetime64(), "ns")
+    left = max(0, int(np.searchsorted(ts, start64, side="left")) - 1)
+    right_index = int(np.searchsorted(ts, end64, side="left"))
+    right = min(len(frame), right_index + 1)
+    if right <= left:
+        right = min(len(frame), left + 2)
+    return frame.iloc[left:right]
+
+
 def _legacy_signed_volume(
     frame: pd.DataFrame,
     start: pd.Timestamp,
@@ -574,8 +602,11 @@ def survey_volume_balance(
             legacy_volume, zero_issue, n_valid = _legacy_signed_volume(
                 frame, week_start, week_end, exclusions
             )
+            support_frame = _integration_support_window(
+                frame, week_start, week_end
+            )
             result = integrate_series(
-                frame,
+                support_frame,
                 "flow",
                 week_start,
                 week_end,
