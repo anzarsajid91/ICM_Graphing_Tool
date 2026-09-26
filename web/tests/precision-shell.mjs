@@ -155,6 +155,14 @@ try{
     const balanceKey=window.__ICM_WORKBENCH__.workflow26.balanceRowKey(balanceRow);
     window.__ICM_WORKBENCH__.workflow26.applyReview('balance',balanceKey,'Red','Amber','Known lateral inflow explains part of the imbalance; retain investigation action.','AS');
 
+    const boundaryMonthlyStatus=window.__ICM_WORKBENCH__.workflow26.calculatedMonitorStatus({
+      monitor:'Boundary-Test',
+      status:'complete',
+      weekly:{weeks:[
+        {start:'2026-02-01T00:00:00',end:'2026-02-01T23:58:00',rag:'Amber'},
+        {start:'2026-02-02T00:00:00',end:'2026-02-08T23:58:00',rag:'Green'}
+      ]}
+    });
     const monitorCurrent=window.__ICM_WORKBENCH__.workflow26.reviewedMonitorState(survey.batch.monitors[0]);
     const gaugeCurrent=window.__ICM_WORKBENCH__.workflow26.reviewedGaugeState(survey.batch.network.gauge_summary[0]);
     const balanceCurrent=window.__ICM_WORKBENCH__.workflow26.reviewedBalanceState(balanceRow);
@@ -181,7 +189,7 @@ try{
 
     return {
       monitorMissingReason,gaugeMissingReason,
-      savedComment,workspaceComment,
+      savedComment,workspaceComment,boundaryMonthlyStatus,
       monthlyCommentIncluded:monthlyHtml.includes('Tidal impact noted; pumping influence noted.'),
       monthlyPdfButton:Boolean(document.querySelector('#surveyMonthlyPdfBtn')),
       monitorCurrent,gaugeCurrent,balanceCurrent,
@@ -197,6 +205,7 @@ try{
     !reviewLayer.monitorMissingReason||!reviewLayer.gaugeMissingReason||
     reviewLayer.savedComment?.text!=='Tidal impact noted; pumping influence noted.'||
     reviewLayer.workspaceComment?.text!=='Tidal impact noted; pumping influence noted.'||
+    reviewLayer.boundaryMonthlyStatus!=='Green'||
     !reviewLayer.monthlyCommentIncluded||!reviewLayer.monthlyPdfButton||
     !reviewLayer.monitorCurrent.review_current||reviewLayer.monitorCurrent.reviewed!=='Green'||
     !reviewLayer.gaugeCurrent.review_current||reviewLayer.gaugeCurrent.reviewed!=='Green'||
