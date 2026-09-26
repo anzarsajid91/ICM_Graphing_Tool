@@ -470,10 +470,10 @@
     setEnabled('model',Boolean(modelContext));
     if($('graphObsThresholdContext'))$('graphObsThresholdContext').textContent=observedContext
       ?thresholdContextText(observedContext)
-      :(observedUnresolved?'Generic numeric observed series · assign Depth or Level in Series Mapping to enable a hydraulic threshold.':thresholdContextText(null));
+      :(observedUnresolved?'Generic numeric observed series · assign Depth or Level in Data Setup to enable a hydraulic threshold.':thresholdContextText(null));
     if($('graphModelThresholdContext'))$('graphModelThresholdContext').textContent=modelContext
       ?thresholdContextText(modelContext)
-      :(modelUnresolved?'Generic numeric model series · assign Depth or Level in Series Mapping to enable a hydraulic threshold.':thresholdContextText(null));
+      :(modelUnresolved?'Generic numeric model series · assign Depth or Level in Data Setup to enable a hydraulic threshold.':thresholdContextText(null));
     ui.thresholdContexts={observed:observedContext,model:modelContext};
   }
   function updateThresholdRangeStatus(observedEntries,modelEntries){
