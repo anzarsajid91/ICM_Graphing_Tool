@@ -835,6 +835,11 @@
     const generation=++ui.graphGeneration;
     cancelTimeSeriesComparisonTimer(true);
     ui.graphRefreshing=true;
+    const interruptBackground=window.__ICM_WORKBENCH__?.interruptBackgroundComparison;
+    if(typeof interruptBackground==='function'){
+      await interruptBackground('Interactive time-series graph refresh');
+      if(generation!==ui.graphGeneration)return;
+    }
     const pointCounts={};
     try{
       let observedSources=observedGraphSeries();
