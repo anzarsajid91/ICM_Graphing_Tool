@@ -470,6 +470,39 @@ async function verifyStationAThresholdChain(){
     }
     const graphContext=(await probe.locator('#graphObsThresholdContext').textContent())||'';
     if(!new RegExp(support.quantity,'i').test(graphContext)||!/\bm\b/i.test(graphContext)||!/\bAD\b/i.test(graphContext))throw new Error('Station A graph threshold context must identify Level, unit and absolute datum: '+graphContext);
+
+    // Standalone EDM/Time Series WAPUG is deliberately independent from Flow Survey.
+    await probe.locator('#pwTimeSeriesEventSurface').evaluate(el=>{el.open=true;});
+    await probe.selectOption('#rainCriteriaMode','wapug');
+    await probe.click('#runRainEventsBtn');
+    await probe.waitForFunction(()=>state.rainEvents?.length>0&&document.querySelector('#rainEventSummary')?.textContent.includes('qualifying events'),null,{timeout:240000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false,null,{timeout:120000});
+    const stationWapug=await probe.evaluate(()=>{
+      const criteria=window.__ICM_WORKBENCH__?.appliedRainCriteria?.();
+      const chart=document.querySelector('#timeChart');
+      const rects=(chart?.layout?.shapes||[]).filter(s=>s.type==='rect'&&s.xref==='x'&&s.yref==='paper');
+      const labels=(chart?.layout?.annotations||[]).filter(a=>/^E\d+/.test(String(a.text||'')));
+      return {
+        route:window.__ICM_PRECISION_WORKBENCH__?.route?.(),
+        criteria,
+        count:state.rainEvents?.length||0,
+        overlayRects:rects.length,
+        overlayLabels:labels.length,
+        spansPanels:rects.length>0&&rects.every(s=>Number(s.y1)===1&&Number(s.y0)<=0.001),
+        flowSurveyBatch:Boolean(window.__ICM_WORKBENCH__?.survey?.batch),
+      };
+    });
+    if(
+      stationWapug.route?.workspace!=='data'||stationWapug.route?.page!=='time-series'||
+      stationWapug.criteria?.minimum_intensity!==5||
+      stationWapug.criteria?.minimum_intensity_duration_min!==6||
+      stationWapug.criteria?.minimum_depth_mm!==5||
+      stationWapug.criteria?.minimum_event_duration_min!==60||
+      stationWapug.criteria?.dry_gap_min!==15||
+      stationWapug.count<1||stationWapug.overlayRects<stationWapug.count||!stationWapug.spansPanels||
+      stationWapug.flowSurveyBatch
+    )throw new Error('Station A standalone WAPUG overlay is not independent/correct: '+JSON.stringify(stationWapug));
+
     await nav('spills','assessment');
     const controlValue=Number(await probe.inputValue('#obsThreshold'));
     if(Math.abs(controlValue-threshold)>1e-9)throw new Error('Station A threshold changed between Time Series and Spills: '+JSON.stringify({threshold,controlValue}));
