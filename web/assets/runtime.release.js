@@ -497,10 +497,14 @@ function genericSeriesSemanticsRows(){
     if(!mapped)continue;
     const declared=declaredSeriesQuantity(mapped.item,mapped.col);
     const overridden=state.seriesQuantityOverrides.has(key);
+    // Keep generic sources independently editable before mapping; show native
+    // declarations when assigned, without filling the setup with every unused
+    // FDV channel in a whole-survey upload.
+    if(seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden&&roleFor(key)==='Available series')continue;
     seen.add(key);
     rows.push({role:roleFor(key),key,mapped,quantity:String(state.seriesQuantityOverrides.get(key)||declared||'').toLowerCase(),locked:seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden});
   }
-  return rows;
+  return rows.sort((a,b)=>(a.role==='Available series')-(b.role==='Available series'));
 }
 function renderSeriesSemanticsOverrides(){
   const panel=$('seriesSemanticsPanel'),target=$('seriesSemanticsRows');
