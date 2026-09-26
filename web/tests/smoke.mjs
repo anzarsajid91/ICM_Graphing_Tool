@@ -1240,15 +1240,28 @@ try{
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('0 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall mapped'));
   await page.waitForFunction(()=>Boolean(document.querySelector('#timeChart')?.layout?.yaxis2),null,{timeout:60000});
-  const observedRainMapping=await page.evaluate(()=>({
-    modelSelections:[...document.querySelector('#modelSelect').selectedOptions].map(o=>o.value),
-    appliedModels:[...(window.__ICM_WORKBENCH__?.mapping?.models||[])],
-    rainSelection:document.querySelector('#rainSelect')?.value||'',
-    appliedRain:window.__ICM_WORKBENCH__?.mapping?.rain||'',
-    handoffSkip:window.__ICM_WORKBENCH__?.fastpathHandoffSkipped||null,
-  }));
-  if(observedRainMapping.modelSelections.length||observedRainMapping.appliedModels.length||!observedRainMapping.rainSelection||observedRainMapping.rainSelection!==observedRainMapping.appliedRain){
-    throw new Error('Late FastPath validation must not restore a cleared model or discard a pending/applied rainfall assignment: '+JSON.stringify(observedRainMapping));
+  const observedRainMapping=await page.evaluate(()=>{
+    const chart=document.querySelector('#timeChart');
+    const lines=(chart?.data||[]).filter(t=>t.type!=='table');
+    const pointCounts=window.__ICM_WORKBENCH__?.lastGraphPointCounts||{};
+    return{
+      modelSelections:[...document.querySelector('#modelSelect').selectedOptions].map(o=>o.value),
+      rainSelection:document.querySelector('#rainSelect')?.value||'',
+      lineNames:lines.map(t=>t.name),
+      axes:lines.map(t=>t.yaxis||'y'),
+      pointCountKeys:Object.keys(pointCounts),
+      panelOrder:window.__ICM_WORKBENCH__?.lastPanelOrder||[],
+      handoffSkip:window.__ICM_WORKBENCH__?.fastpathHandoffSkipped||null,
+    };
+  });
+  if(
+    observedRainMapping.modelSelections.length||
+    !observedRainMapping.rainSelection||
+    observedRainMapping.pointCountKeys.some(key=>/^model_/i.test(key))||
+    !observedRainMapping.pointCountKeys.includes('rainfall')||
+    !observedRainMapping.panelOrder.includes('rainfall')
+  ){
+    throw new Error('Late FastPath validation must not restore a cleared model or discard the rainfall assignment/rendered panel: '+JSON.stringify(observedRainMapping));
   }
 
   stage='rainfall-only mapping';
