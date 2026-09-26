@@ -522,11 +522,12 @@ def network_rainfall_assessment(
             )
         dyn = dynamic_summary.get(name, {})
         cutoff = suggested_cutoff.get(name)
+        operational_coverage = float(operational / max(1, days))
         status = (
             "Amber"
             if cutoff is not None
             or dyn.get("current_dynamic_status") == "Faulty"
-            or operational < days
+            or operational_coverage < OPERATIONAL_COVERAGE_FRACTION
             else "Green"
         )
         gauge_summary.append(
@@ -534,9 +535,7 @@ def network_rainfall_assessment(
                 "gauge": name,
                 "days_assessed": days,
                 "operational_days": operational,
-                "operational_coverage_percent": 100.0
-                * operational
-                / max(1, days),
+                "operational_coverage_percent": 100.0 * operational_coverage,
                 "event_strike_count": int(
                     sum(
                         1
