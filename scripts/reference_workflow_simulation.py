@@ -17,7 +17,7 @@ from icm_workbench import advanced_api
 from icm_workbench.analysis.rainfall import rainfall_accumulation
 from icm_workbench.analysis.survey_assessment import network_rainfall_assessment
 from icm_workbench.analysis.survey_context import normalise_association_table
-from icm_workbench.browser_api import clear_cache, spill_result
+from icm_workbench.browser_api import _rain_support_gap_seconds, clear_cache, spill_result
 from icm_workbench.parsers import parse_file
 
 
@@ -173,8 +173,10 @@ def _event_level_response(level_frame: pd.DataFrame, level_col: str, events: lis
     rows = []
     for event in events:
         t0, t1 = pd.Timestamp(event["start"]), pd.Timestamp(event["end"])
-        pre = s.loc[max(s.index.min(), t0 - pd.Timedelta(hours=1)):t0].dropna()
-        post = s.loc[t0:min(s.index.max(), t1 + pd.Timedelta(hours=18))].dropna()
+        series_start = pd.Timestamp(s.index.min())
+        series_end = pd.Timestamp(s.index.max())
+        pre = s.loc[max(series_start, t0 - pd.Timedelta(hours=1)):t0].dropna()
+        post = s.loc[t0:min(series_end, t1 + pd.Timedelta(hours=18))].dropna()
         if pre.empty or post.empty:
             continue
         baseline = float(pre.median())
@@ -214,11 +216,13 @@ def _edm_workflow() -> dict[str, Any]:
 
     rain_meta = rain.metadata or {}
     rain_interval = rain_meta.get("interval_min")
+    rain_gap_seconds = _rain_support_gap_seconds(rain)
     accumulation = rainfall_accumulation(
         rain.frame[["timestamp", rain_col]].copy(),
         rain_col,
         semantics="intensity",
         declared_interval_minutes=float(rain_interval) if rain_interval else None,
+        max_gap_seconds=rain_gap_seconds,
     )
 
     wapug_over = json.loads(advanced_api.rainfall_event_scaled(
@@ -265,7 +269,7 @@ def _edm_workflow() -> dict[str, Any]:
             and (edm.metadata or {}).get("quantity") == "level"
             and (edm.metadata or {}).get("canonical_unit") == "m"
         ),
-        "rainfall_total_reconciles_reference": bool(total_mm is not None and 2700.0 <= float(total_mm) <= 3050.0),
+        "rainfall_total_reconciles_reference": bool(total_mm is not None and abs(float(total_mm) - 2880.854) <= 1.0),
         "population_presets_produce_events": bool((wapug_over.get("count") or 0) > 0 and (wapug_under.get("count") or 0) > 0),
         "under50_not_more_restrictive": bool((wapug_under.get("count") or 0) >= (wapug_over.get("count") or 0)),
         "threshold_inside_observed_level_range": bool(level_min <= float(threshold) <= level_max),
@@ -314,6 +318,9 @@ def _edm_workflow() -> dict[str, Any]:
             "total_depth_mm": total_mm,
             "calculation_status": accumulation.get("status"),
             "coverage_fraction": accumulation.get("coverage_fraction"),
+            "unknown_seconds": accumulation.get("unknown_seconds"),
+            "max_gap_seconds": rain_gap_seconds,
+            "reference_total_mm": 2880.854,
         },
         "wapug": {
             "over_50k": {"criteria": wapug_over.get("criteria"), "event_count": wapug_over.get("count")},
