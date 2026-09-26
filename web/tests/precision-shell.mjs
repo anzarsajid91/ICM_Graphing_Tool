@@ -144,6 +144,13 @@ try{
     try{window.__ICM_WORKBENCH__.workflow26.applyReview('gauge','RG01','Amber','Green','','AS');}catch{gaugeMissingReason=true;}
 
     window.__ICM_WORKBENCH__.workflow26.applyMonitorReview('SM-Overflow','Green','Monitor installed on overflow link; intermittent response is expected.','AS');
+    window.__ICM_WORKBENCH__.workflow26.saveMonitorComment('SM-Overflow','Tidal impact noted; pumping influence noted.','AS');
+    const savedComment=window.__ICM_WORKBENCH__.workflow26.monitorComment('SM-Overflow');
+    const originalSignature=survey.batchSignature;
+    survey.batchSignature=window.__ICM_WORKBENCH__.surveyDependencySignature('complete');
+    const monthlyHtml=window.__ICM_WORKBENCH__.workflow26.monthlyReportHtml();
+    const workspaceComment=workspaceObject()?.survey?.monitor_comments?.['SM-Overflow']||null;
+    survey.batchSignature=originalSignature;
     window.__ICM_WORKBENCH__.workflow26.applyReview('gauge','RG01','Amber','Green','Nearby gauges and site inspection confirm the logger remained representative.','AS');
     const balanceKey=window.__ICM_WORKBENCH__.workflow26.balanceRowKey(balanceRow);
     window.__ICM_WORKBENCH__.workflow26.applyReview('balance',balanceKey,'Red','Amber','Known lateral inflow explains part of the imbalance; retain investigation action.','AS');
@@ -174,6 +181,9 @@ try{
 
     return {
       monitorMissingReason,gaugeMissingReason,
+      savedComment,workspaceComment,
+      monthlyCommentIncluded:monthlyHtml.includes('Tidal impact noted; pumping influence noted.'),
+      monthlyPdfButton:Boolean(document.querySelector('#surveyMonthlyPdfBtn')),
       monitorCurrent,gaugeCurrent,balanceCurrent,
       monitorSignatureChanged,gaugeSignatureChanged,balanceSignatureChanged,
       monitorChanged,gaugeChanged,balanceChanged,retained,
@@ -185,6 +195,9 @@ try{
   });
   if(
     !reviewLayer.monitorMissingReason||!reviewLayer.gaugeMissingReason||
+    reviewLayer.savedComment?.text!=='Tidal impact noted; pumping influence noted.'||
+    reviewLayer.workspaceComment?.text!=='Tidal impact noted; pumping influence noted.'||
+    !reviewLayer.monthlyCommentIncluded||!reviewLayer.monthlyPdfButton||
     !reviewLayer.monitorCurrent.review_current||reviewLayer.monitorCurrent.reviewed!=='Green'||
     !reviewLayer.gaugeCurrent.review_current||reviewLayer.gaugeCurrent.reviewed!=='Green'||
     !reviewLayer.balanceCurrent.review_current||reviewLayer.balanceCurrent.reviewed!=='Amber'||
