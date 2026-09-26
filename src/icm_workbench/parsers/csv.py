@@ -26,7 +26,17 @@ def _read_text(path):
         return data.decode("cp1252"),"cp1252"
 
 def _head(path,lines=100):
-    text,_=_read_text(path)
+    # Header detection must not decode an entire 60 MB model export four times.
+    with Path(path).open('rb') as source:
+        sample=source.read(65536)
+    if sample.startswith((b'\xff\xfe',b'\xfe\xff')):
+        text=sample.decode('utf-16',errors='ignore')
+    elif sample.startswith(b'\xef\xbb\xbf'):
+        text=sample.decode('utf-8-sig',errors='ignore')
+    elif sample[:4096].count(b'\x00')>=max(2,len(sample[:4096])//8):
+        text=sample.decode('utf-16be' if sample[:4096:2].count(0)>sample[1:4096:2].count(0) else 'utf-16le',errors='ignore')
+    else:
+        text=sample.decode('utf-8',errors='replace')
     return "\n".join(text.splitlines()[:lines])
 def is_icm_hyd_csv(path):
     text=_head(path).lower();return "p_datetime" in text and ("type=hyd" in text or "u_level" in text or "u_flow" in text or "u_velocity" in text)
@@ -38,6 +48,24 @@ def _parse_timestamps(values):
     group by its explicit lexical shape instead.
     """
     raw=pd.Series(values,dtype="string").str.strip()
+    sample=raw.dropna().head(256)
+    # ICM model exports can have over a million timestamps with one consistent
+    # UK layout. Exact-format parsing is vectorised; pandas' format='mixed'
+    # otherwise falls back to much slower per-value interpretation.
+    known_formats=(
+        (r'^\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}$','%d/%m/%Y %H:%M:%S'),
+        (r'^\d{2}/\d{2}/\d{4} \d{2}:\d{2}$','%d/%m/%Y %H:%M'),
+        (r'^\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2}$','%d-%m-%Y %H:%M:%S'),
+        (r'^\d{2}-\d{2}-\d{4} \d{2}:\d{2}$','%d-%m-%Y %H:%M'),
+    )
+    if len(sample)>=8:
+        for pattern,date_format in known_formats:
+            if sample.str.match(pattern).mean()<.98:continue
+            parsed=pd.to_datetime(raw,format=date_format,errors='coerce')
+            unusual=parsed.isna()&raw.notna()
+            if unusual.any():
+                parsed.loc[unusual]=pd.to_datetime(raw.loc[unusual],errors='coerce',format='mixed',dayfirst=True).to_numpy()
+            return parsed
     year_first=raw.str.match(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[T\s]|$)",na=False)
     out=pd.Series(pd.NaT,index=raw.index,dtype="datetime64[ns]")
     if year_first.any():
@@ -93,8 +121,33 @@ def parse_icm_hyd_csv(path):
     return ParsedData(frame,"icm_hyd_p_datetime_csv",metadata,{**audit,"malformed_rows":malformed,"duplicate_timestamps":int(frame.timestamp.duplicated().sum()),"rows":len(frame)})
 def parse_tabular_csv(path):
     try:
-        text,source_encoding=_read_text(path)
-        df=pd.read_csv(io.StringIO(text),sep=None,engine="python")
+        path=Path(path)
+        if path.stat().st_size>2_000_000:
+            # Simple, large logger/model exports benefit substantially from
+            # pandas' compiled CSV parser and avoid an extra full-text copy.
+            sample=_head(path,8)
+            try:
+                dialect=csv.Sniffer().sniff(sample,delimiters=',;\t|')
+            except csv.Error:
+                dialect=None
+            with path.open('rb') as source: prefix=source.read(4096)
+            source_encoding=('utf-16' if prefix.startswith((b'\xff\xfe',b'\xfe\xff')) else
+                             'utf-8-sig' if prefix.startswith(b'\xef\xbb\xbf') else
+                             'utf-16be' if prefix[::2].count(0)>len(prefix)//8 else
+                             'utf-16le' if prefix[1::2].count(0)>len(prefix)//8 else 'utf-8')
+            if dialect:
+                try:
+                    df=pd.read_csv(path,sep=dialect.delimiter,engine='c',encoding=source_encoding)
+                except UnicodeDecodeError:
+                    source_encoding='cp1252';df=pd.read_csv(path,sep=dialect.delimiter,engine='c',encoding=source_encoding)
+                except pd.errors.ParserError:
+                    dialect=None
+            if not dialect:
+                text,source_encoding=_read_text(path)
+                df=pd.read_csv(io.StringIO(text),sep=None,engine="python")
+        else:
+            text,source_encoding=_read_text(path)
+            df=pd.read_csv(io.StringIO(text),sep=None,engine="python")
     except Exception as exc:raise ValueError(f"Could not parse tabular CSV: {exc}") from exc
     df.columns=[str(c).strip() for c in df.columns]; tc=detect_time_column(df)
     if not tc:raise ValueError(f"Could not detect a timestamp column. Columns={list(df.columns)}")

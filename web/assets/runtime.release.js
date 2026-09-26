@@ -497,9 +497,8 @@ function genericSeriesSemanticsRows(){
     if(!mapped)continue;
     const declared=declaredSeriesQuantity(mapped.item,mapped.col);
     const overridden=state.seriesQuantityOverrides.has(key);
-    if(seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden)continue;
     seen.add(key);
-    rows.push({role:roleFor(key),key,mapped,quantity:state.seriesQuantityOverrides.get(key)||declared||''});
+    rows.push({role:roleFor(key),key,mapped,quantity:String(state.seriesQuantityOverrides.get(key)||declared||'').toLowerCase(),locked:seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden});
   }
   return rows;
 }
@@ -519,7 +518,9 @@ function renderSeriesSemanticsOverrides(){
   ];
   target.innerHTML=rows.map(row=>{
     const source=seriesLabel(row.mapped.item,row.mapped.col);
-    return '<div class="series-semantics-row"><div class="series-semantics-source"><strong>'+esc(row.role)+'</strong> · '+esc(source)+'</div><label>Interpret Value as<select data-series-quantity-key="'+esc(row.key)+'">'+options.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label></div>';
+    const declaredChoice=options.find(([value])=>value===row.quantity)||[row.quantity,row.quantity||'Declared quantity'];
+    const choices=row.locked?[declaredChoice]:options;
+    return '<div class="series-semantics-row"><div class="series-semantics-source"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity. Reinterpretation requires editing the source metadata and its units.">Declared by source</small>':'')+'</div><label>Interpret Value as<select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label></div>';
   }).join('');
   target.querySelectorAll('[data-series-quantity-key]').forEach(select=>select.addEventListener('change',()=>{
     void guarded('mappingStatus',()=>applySeriesQuantityOverride(select.dataset.seriesQuantityKey,select.value||null));
@@ -1201,12 +1202,17 @@ function scatterPopulation(result,log=false){
     removed_count:log?Number(result?.positive_removed_count||Math.max(0,raw.length-pairs.length)):0,
   };
 }
+function finiteBounds(values,{positive=false}={}){
+  let lo=Infinity,hi=-Infinity;
+  for(const value of values){const n=Number(value);if(!Number.isFinite(n)||(positive&&n<=0))continue;lo=Math.min(lo,n);hi=Math.max(hi,n);}
+  return [lo,hi];
+}
 function regressionLinePoints(metrics,pairs,log=false){
   const slope=Number(metrics?.regression_slope),intercept=Number(metrics?.regression_intercept);
   if(!Number.isFinite(slope)||!Number.isFinite(intercept)||pairs.length<2)return null;
   const xs=pairs.map(x=>Number(x.obs)).filter(x=>Number.isFinite(x)&&(log?x>0:true));
   if(xs.length<2)return null;
-  let lo=Math.min(...xs),hi=Math.max(...xs);
+  let [lo,hi]=finiteBounds(xs,{positive:log});
   if(!(hi>lo))return null;
   if(log){
     const yLo=intercept+slope*lo,yHi=intercept+slope*hi;
@@ -1258,12 +1264,14 @@ async function renderComparisons(){
   }
   diagnostic.lastComparisonValidity={status,coverage,population:log?'positive-only':'all valid pairs'};
 
-  const scatter=[],allValues=[];
+  const scatter=[];let lo=Infinity,hi=-Infinity;
   ok.forEach((entry,i)=>{
     const population=scatterPopulation(entry.result,log),pairs=population.pairs,metrics=population.metrics||{};
     const key=sourceKey(entry.model.item.id,entry.model.col),colour=state.modelColours[key]||palette[i%palette.length];
     const scenario=`${entry.model.item.displayName} · ${entry.model.col}`;
-    allValues.push(...pairs.flatMap(x=>[Number(x.obs),Number(x.sim)]));
+    for(const pair of pairs){
+      for(const value of [pair.obs,pair.sim]){const n=Number(value);if(Number.isFinite(n)&&(!log||n>0)){lo=Math.min(lo,n);hi=Math.max(hi,n);}}
+    }
     scatter.push({
       x:pairs.map(x=>x.obs),y:pairs.map(x=>x.sim),mode:'markers',name:scenario,
       marker:{size:6,opacity:.48,color:colour},
@@ -1273,7 +1281,6 @@ async function renderComparisons(){
     const fit=regressionLinePoints(metrics,pairs,log);
     if(fit)scatter.push({x:fit.x,y:fit.y,mode:'lines',name:`${scenario} fit`,line:{color:colour,width:2},hoverinfo:'skip'});
   });
-  const finite=allValues.filter(Number.isFinite).filter(x=>!log||x>0),lo=Math.min(...finite),hi=Math.max(...finite);
   if(Number.isFinite(lo)&&Number.isFinite(hi)&&hi>lo)scatter.push({x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1 agreement',line:{dash:'dash',color:'#667085',width:1.6},hoverinfo:'skip'});
   const quantity=comparisonQuantity(first.result),unitSuffix=unit?` (${unit})`:'',axisUnitSuffix=` (${unit||'unit unresolved'})`,bounds=analysisBounds();
   const period=bounds.start||bounds.end?` · ${bounds.start||'data start'} → ${bounds.end||'data end'}`:' · full common support';
@@ -1402,7 +1409,8 @@ async function runRating(){
     const points=(depth.paired||[]).map(x=>({x:Number(x.obs),y:Number(x.sim)})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
     if(points.length<2)throw new Error('Depth/level comparison has fewer than 2 bounded valid pairs in the selected analysis period.');
     const metrics=depth.metrics||{},slope=Number(metrics.regression_slope),intercept=Number(metrics.regression_intercept);
-    const xs=points.map(p=>p.x),ys=points.map(p=>p.y),lo=Math.min(...xs,...ys),hi=Math.max(...xs,...ys);
+    const xs=points.map(p=>p.x),ys=points.map(p=>p.y);
+    const [obsLo,obsHi]=finiteBounds(xs),[simLo,simHi]=finiteBounds(ys),lo=Math.min(obsLo,simLo),hi=Math.max(obsHi,simHi);
     const fitAvailable=Number.isFinite(slope)&&Number.isFinite(intercept);
     const unit=depth.observed_unit||seriesUnit(od.item,od.col)||'';
     $('ratingSummary').innerHTML=`<div class="summary-box"><div><strong>${fmt(points.length,0)}</strong><span>Valid paired points</span></div><div><strong>${fmt(metrics.rmse,4)}${unit?' '+esc(unit):''}</strong><span>RMSE</span></div><div><strong>${fmt(metrics.mean_bias,4)}${unit?' '+esc(unit):''}</strong><span>Mean error (model − observed)</span></div><div><strong>${fmt(metrics.regression_r2,4)}</strong><span>Regression R²</span></div><div><strong>${fitAvailable?'Hmodel = '+fmt(intercept,4)+' + '+fmt(slope,4)+' Hobs':'Unavailable'}</strong><span>Authoritative Python least-squares fit</span></div></div><div class="pool-summary">Depth/level agreement fit from canonical bounded pairs. Add observed and model flow selections to switch to the empirical Q–H rating diagnostic.</div>`;
@@ -2004,21 +2012,21 @@ function selectedReportComparisons(){
 }
 function reportComparisonScatterFigure(entries,log=false){
   if(!entries?.length)return '<p class="muted">No selected comparison scenario has a current authoritative result.</p>';
-  const traces=[],values=[];
+  const traces=[];let lo=Infinity,hi=-Infinity;
   entries.forEach((entry,i)=>{
     const population=scatterPopulation(entry.result,log),pairs=population.pairs,metrics=population.metrics||{};
     const key=sourceKey(entry.model.item.id,entry.model.col),colour=state.modelColours[key]||palette[i%palette.length];
     const scenario=entry.model.item.displayName+' · '+entry.model.col;
-    values.push(...pairs.flatMap(x=>[Number(x.obs),Number(x.sim)]));
+    for(const pair of pairs){
+      for(const value of [pair.obs,pair.sim]){const n=Number(value);if(Number.isFinite(n)&&(!log||n>0)){lo=Math.min(lo,n);hi=Math.max(hi,n);}}
+    }
     traces.push({x:pairs.map(x=>x.obs),y:pairs.map(x=>x.sim),mode:'markers',name:scenario,marker:{size:6,opacity:.5,color:colour},
       customdata:pairs.map(x=>[x.timestamp,x.obs,x.sim]),
       hovertemplate:'<b>'+esc(scenario)+'</b><br>%{customdata[0]}<br>Observed: %{customdata[1]:.5g}<br>Modelled: %{customdata[2]:.5g}<extra></extra>'});
     const fit=regressionLinePoints(metrics,pairs,log);
     if(fit)traces.push({x:fit.x,y:fit.y,mode:'lines',name:scenario+' fit',line:{color:colour,width:2,dash:'dash'},hoverinfo:'skip'});
   });
-  const finite=values.filter(v=>Number.isFinite(v)&&(!log||v>0));
-  if(finite.length){
-    const lo=Math.min(...finite),hi=Math.max(...finite);
+  if(Number.isFinite(lo)&&Number.isFinite(hi)){
     if(hi>lo)traces.push({x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1 agreement',line:{color:'#64748b',width:1.5,dash:'dot'},hoverinfo:'skip'});
   }
   const first=entries[0].result,quantity=comparisonQuantity(first),unit=comparisonUnit(first);
@@ -2209,7 +2217,7 @@ async function downloadReport(){
   const options=reportOptions();
   assertFreshResults(options);
   if(!state.mapping.observed&&!(state.mapping.models||[]).length&&!state.mapping.rain)throw new Error('Apply at least one observed, modelled or rainfall mapping before exporting the report.');
-  await drawTimeChart();
+  if(!$('timeChart')?.data?.length)await drawTimeChart();
   const reportSignature=analysisSignature(),period=reportAnalysisPeriod();
   let timeFigure='';
   if(options.include_time_series){
@@ -2307,13 +2315,20 @@ async function downloadFourPeriod(){
   if(!state.mapping.observed&&!(state.mapping.models||[]).length&&!state.mapping.rain)throw new Error('Apply at least one observed, modelled or rainfall mapping before exporting.');
   const year=Number($('reportYear').value);
   if(!Number.isInteger(year)||year<1900||year>9998)throw new Error('Enter a valid report year.');
+  $('workspaceStatus').textContent='Preparing four-period export…';
+  await window.__ICM_WORKBENCH__.interruptBackgroundComparison?.('Four-period report export');
   const periods=[['Complete year',year+'-01-01T00:00:00',(year+1)+'-01-01T00:00:00'],['January – April',year+'-01-01T00:00:00',year+'-05-01T00:00:00'],['May – August',year+'-05-01T00:00:00',year+'-09-01T00:00:00'],['September – December',year+'-09-01T00:00:00',(year+1)+'-01-01T00:00:00']];
-  await drawTimeChart();
+  // The export reads canonical series directly for each period. Repainting the
+  // interactive graph first competes for the same analysis worker and can
+  // restart a pending comparison without changing the exported data.
+  if(!$('timeChart')?.data?.length)await drawTimeChart();
   const shapes=JSON.parse(JSON.stringify($('timeChart').layout?.shapes||[]));
   const thresholdTraces=JSON.parse(JSON.stringify(($('timeChart').data||[]).filter(t=>t.line?.dash==='dash'&&t.x?.every(x=>x==null))));
   const signature=analysisSignature();
   let body='';
   for(let i=0;i<periods.length;i++){
+    $('workspaceStatus').textContent='Preparing '+periods[i][0]+' ('+(i+1)+'/4)…';
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
     const [title,a,b]=periods[i],result=await reportTraces([a,b]);
     result.traces.push(...thresholdTraces);
     const layout=hydraulicGraphLayout({...result,range:[a,b],title:year+' — '+title,shapes});

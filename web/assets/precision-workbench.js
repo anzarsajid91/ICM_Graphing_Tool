@@ -73,7 +73,6 @@ let docked=[];
 let syncingLegacy=false;
 let focusPreference=false;
 let railCollapsed=false;
-const FOCUS_ROUTES=new Set(['data/time-series','graphs/comparison','survey/rainfall-check']);
 try{
   const saved=sessionStorage.getItem('icm-pw-focus-canvas');
   if(saved==='on'||saved==='off')focusPreference=saved==='on';
@@ -135,7 +134,8 @@ function ensureDataTimeSeriesSurface(){
       events=document.createElement('details');
       events.id='pwTimeSeriesEventSurface';
       events.className='pw-page-surface pw-timeseries-event-surface';
-      events.innerHTML='<summary><span><strong>Standalone rainfall-event overlay</strong><small>EDM / telemetry Time Series assessment · independent of Flow Survey Rainfall Check</small></span><span class="pw-disclosure-hint">WAPUG / manual</span></summary>';
+      events.innerHTML='<summary><span><strong>Rainfall events on Time Series</strong><small>WAPUG presets or manual event criteria</small></span><span class="pw-disclosure-hint">Settings and overlay</span></summary>';
+      events.open=true;
       legacy.classList.add('pw-embedded-panel');
       const title=qs('.panel-head h2',legacy),copy=qs('.panel-head p',legacy);
       if(title)title.textContent='Time Series WAPUG / manual rainfall events';
@@ -173,10 +173,10 @@ function ensureDataHealthSurface(){
   const body=$('healthBody');if(!body)return null;
   const raw=body.closest('.table-wrap');if(!raw)return null;
   const host=raw.parentElement;
-  const section=ensureSection('pwDataHealthSummary','Monitor / source triage','Summary uses the most severe existing row RAG and minimum existing row coverage; it does not recalculate QA.');
+  const section=ensureSection('pwDataHealthSummary','FDV data health','Coverage and source quality by monitor.');
   section.classList.add('pw-data-health-summary');
   const head=qs('.pw-surface-head',section),run=$('runHealthBtn');if(run){run.classList.remove('primary');run.textContent='Run data health assessment';head.appendChild(run);}
-  const empty=document.createElement('div');empty.id='pwHealthSummaryEmpty';empty.className='pw-empty-state';empty.textContent='Run Data Health to populate monitor/source triage.';
+  const empty=document.createElement('div');empty.id='pwHealthSummaryEmpty';empty.className='pw-empty-state';empty.textContent='Run data health to review source coverage and quality.';
   const wrap=document.createElement('div');wrap.className='table-wrap pw-summary-table-wrap';wrap.innerHTML='<table class="data-table pw-summary-table"><thead><tr><th>Monitor / source</th><th>Minimum coverage</th><th>Finding severity</th><th>Affected quantity</th><th>Next action</th></tr></thead><tbody id="pwHealthSummaryBody"></tbody></table>';
   const details=document.createElement('details');details.id='pwDataHealthDetails';details.className='pw-evidence-details';details.innerHTML='<summary>Channel / week evidence</summary><p>Full native assessment records remain available for audit and export.</p>';
   details.appendChild(raw);section.append(empty,wrap,details);host.prepend(section);
@@ -306,8 +306,14 @@ function buildShell(){
     applyRailState();resizeVisuals();
   });
   applyRailState();
-  $('pwInspectorToggle')?.addEventListener('click',()=>inspector.classList.add('is-open'));
-  $('pwInspectorClose')?.addEventListener('click',()=>inspector.classList.remove('is-open'));
+  $('pwInspectorToggle')?.addEventListener('click',()=>{
+    document.body.classList.remove('pw-inspector-collapsed');
+    inspector.classList.add('is-open');resizeVisuals();
+  });
+  $('pwInspectorClose')?.addEventListener('click',()=>{
+    inspector.classList.remove('is-open');
+    document.body.classList.add('pw-inspector-collapsed');resizeVisuals();
+  });
   $('pwFocusToggle')?.addEventListener('click',()=>{
     const next=!document.body.classList.contains('pw-focus-canvas');
     focusPreference=next;
@@ -442,7 +448,8 @@ function navigate(workspace,page,push=false){
   const sn=$('pwSecondaryNav');sn.innerHTML='';
   Object.entries(spec.pages).forEach(([key,entry])=>{const b=document.createElement('button');b.type='button';b.dataset.page=key;b.textContent=entry.label;b.setAttribute('aria-current',key===page?'page':'false');b.addEventListener('click',()=>navigate(workspace,key,true));sn.appendChild(b);});
   inspectorContext(p);refreshScope();renderAssets();
-  qs('.pw-rail')?.classList.remove('is-open');qs('.pw-inspector')?.classList.remove('is-open');
+  // A route change must preserve the layout chosen by the engineer.
+  qs('.pw-rail')?.classList.remove('is-open');
   applyFocusCanvas(false);
   if(push){const h='#/'+workspace+'/'+page;if(location.hash!==h)history.pushState(null,'',h);}
   document.title=p.title+' · ICM Graphing Tool';
@@ -450,7 +457,7 @@ function navigate(workspace,page,push=false){
   window.dispatchEvent(new CustomEvent('icm:route-changed',{detail:{workspace,page}}));
 }
 function isFocusRoute(){
-  return FOCUS_ROUTES.has(current.workspace+'/'+current.page);
+  return true;
 }
 function resizeVisuals(){
   requestAnimationFrame(()=>{
@@ -471,7 +478,7 @@ function applyFocusCanvas(userInitiated=false){
   const eligible=isFocusRoute(),desktop=matchMedia('(min-width:901px)').matches;
   // Keep the full labelled navigation visible by default on every route.
   // Focus canvas remains an explicit opt-in for users who want maximum graph width.
-  const active=eligible&&desktop&&focusPreference===true;
+  const active=desktop&&focusPreference===true;
   document.body.classList.toggle('pw-focus-canvas',active);
   const button=$('pwFocusToggle');
   if(button){
