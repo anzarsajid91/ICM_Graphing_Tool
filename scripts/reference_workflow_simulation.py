@@ -341,6 +341,65 @@ def _edm_workflow() -> dict[str, Any]:
     }
 
 
+def _week_is_boundary_short(row: dict[str, Any]) -> bool:
+    try:
+        start = pd.Timestamp(row.get("start"))
+        end = pd.Timestamp(row.get("end"))
+    except Exception:
+        return False
+    if pd.isna(start) or pd.isna(end):
+        return False
+    return float((end - start).total_seconds()) <= 3.0 * 86400.0
+
+
+def _monthly_monitor_rag(weeks: list[dict[str, Any]]) -> tuple[str, int, int]:
+    rank = {"Grey": 0, "Green": 1, "Amber": 2, "Red": 3}
+    substantive = [row for row in weeks if not _week_is_boundary_short(row)]
+    evidence = substantive if substantive else weeks
+    rag = max(
+        (str(row.get("rag") or "Grey") for row in evidence),
+        key=lambda value: rank.get(value, -1),
+        default="Grey",
+    )
+    return rag, len(substantive), len(weeks) - len(substantive)
+
+
+def _network_candidate_summary(result: dict[str, Any]) -> dict[str, Any]:
+    rows = result.get("candidate_wapug_events") or []
+    reasons = Counter()
+    classified = True
+    cvs: list[float] = []
+    for row in rows:
+        operational = int(row.get("operational_gauges") or 0)
+        cv = row.get("spatial_cv_percent")
+        cv_value = float(cv) if cv is not None and math.isfinite(float(cv)) else None
+        if cv_value is not None:
+            cvs.append(cv_value)
+        expected = bool(operational >= 2 and cv_value is not None and cv_value <= 40.0)
+        actual = bool(row.get("qualifies_network_wapug"))
+        classified = classified and expected == actual
+        if actual:
+            reasons["qualified"] += 1
+        elif operational < 2:
+            reasons["fewer_than_2_operational_gauges"] += 1
+        elif cv_value is None:
+            reasons["spatial_cv_unavailable"] += 1
+        elif cv_value > 40.0:
+            reasons["spatial_cv_above_40_percent"] += 1
+        else:
+            reasons["other"] += 1
+    return {
+        "candidate_count": len(rows),
+        "qualified_count": sum(1 for row in rows if row.get("qualifies_network_wapug")),
+        "classification_consistent": bool(classified),
+        "rejection_or_qualification_counts": dict(reasons),
+        "minimum_spatial_cv_percent": min(cvs) if cvs else None,
+        "median_spatial_cv_percent": median(cvs) if cvs else None,
+        "maximum_spatial_cv_percent": max(cvs) if cvs else None,
+        "events": rows,
+    }
+
+
 def _flow_survey_workflow() -> dict[str, Any]:
     assoc_path = SAMPLE / "rainfall" / "fm_rg_assoc.xlsx"
     headers, raw_rows = _xlsx_first_sheet(assoc_path)
@@ -379,6 +438,8 @@ def _flow_survey_workflow() -> dict[str, Any]:
 
     network_over = network_rainfall_assessment(gauges, population_above_50k=True, apply_fault_cutoff=False)
     network_under = network_rainfall_assessment(gauges, population_above_50k=False, apply_fault_cutoff=False)
+    network_over_summary = _network_candidate_summary(network_over)
+    network_under_summary = _network_candidate_summary(network_under)
 
     batch = json.loads(advanced_api.professional_survey_batch_result(
         association_json=json.dumps(associations),
@@ -404,6 +465,7 @@ def _flow_survey_workflow() -> dict[str, Any]:
             key=lambda rag: {"Grey": 0, "Green": 1, "Amber": 2, "Red": 3}.get(rag, -1),
             default="Grey",
         )
+        monthly_rag, substantive_weeks, boundary_weeks = _monthly_monitor_rag(weeks)
         events = (row.get("event_response") or {}).get("rows") or []
         event_flags = sum(
             1 for event in events
@@ -417,6 +479,10 @@ def _flow_survey_workflow() -> dict[str, Any]:
             "week_count": len(weeks),
             "weekly_rag": dict(rag_counts),
             "worst_rag": worst,
+            "monthly_rag": monthly_rag,
+            "substantive_week_count": substantive_weeks,
+            "boundary_week_count": boundary_weeks,
+            "weekly_rows": weeks,
             "event_response_rows": len(events),
             "event_response_flagged": event_flags,
             "reason": row.get("reason"),
@@ -436,7 +502,14 @@ def _flow_survey_workflow() -> dict[str, Any]:
         "association_workbook_parsed": bool(associations),
         "fdv_sources_match_authoritative_monitors": bool(monitor_sources),
         "all_four_reference_gauges_loaded": bool((batch.get("network") or {}).get("gauge_count") == 4),
-        "network_wapug_events_available": bool(len(qualified) > 0),
+        "network_wapug_classification_defensible": bool(
+            network_over_summary["candidate_count"] > 0
+            and network_over_summary["classification_consistent"]
+        ),
+        "event_response_matches_network_qualification": bool(
+            len(qualified) > 0
+            or all(m["event_response_rows"] == 0 for m in monitor_summary)
+        ),
         "complete_monitor_assessments_available": bool(len(complete_monitors) > 0),
         "raw_sources_remain_immutable": bool((batch.get("source_policy") or {}).get("raw_sources_mutated") is False),
         "workbook_precedence_retained": bool((batch.get("source_policy") or {}).get("association_workbook_authoritative") is True),
@@ -453,10 +526,18 @@ def _flow_survey_workflow() -> dict[str, Any]:
         observations.append(
             f"{len(unavailable)} workbook monitor(s) are partial/unavailable in the supplied reference set; the UI must surface this as readiness evidence rather than silently dropping them."
         )
-    red_amber = [m for m in monitor_summary if m["worst_rag"] in {"Red", "Amber"}]
+    red_amber_worst = [m for m in monitor_summary if m["worst_rag"] in {"Red", "Amber"}]
+    red_amber_monthly = [m for m in monitor_summary if m["monthly_rag"] in {"Red", "Amber"}]
     observations.append(
-        f"{len(red_amber)}/{len(monitor_summary)} assessed workbook monitor rows have an Amber/Red worst weekly result, giving realistic exceptions for engineer review rather than an all-green demonstration dataset."
+        f"{len(red_amber_worst)}/{len(monitor_summary)} monitors contain at least one Amber/Red weekly result, but only {len(red_amber_monthly)}/{len(monitor_summary)} remain Amber/Red after boundary-week-aware monthly synthesis."
     )
+    if network_over_summary["qualified_count"] == 0:
+        reasons = network_over_summary["rejection_or_qualification_counts"]
+        observations.append(
+            "No >50k network WAPUG event qualifies in the reference month. "
+            f"Candidate count={network_over_summary['candidate_count']}; rejection evidence={reasons}. "
+            "Event Response should therefore be reported as not assessed/no suitable network event, not as a monitor failure."
+        )
     if any(m["event_response_flagged"] for m in monitor_summary):
         observations.append(
             "Event Response produces monitor-level flags on the real FDV/rainfall data; these need drill-down evidence and should not be collapsed into a single unexplained RAG."
@@ -489,6 +570,8 @@ def _flow_survey_workflow() -> dict[str, Any]:
             "gauge_summary": gauge_summary,
             "over_50k_qualified_event_count": len(network_over.get("qualified_wapug_events") or []),
             "under_or_equal_50k_qualified_event_count": len(network_under.get("qualified_wapug_events") or []),
+            "over_50k_candidate_summary": network_over_summary,
+            "under_or_equal_50k_candidate_summary": network_under_summary,
             "criteria_over_50k": network_over.get("criteria"),
             "criteria_under_or_equal_50k": network_under.get("criteria"),
         },
