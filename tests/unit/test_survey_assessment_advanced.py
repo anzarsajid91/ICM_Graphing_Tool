@@ -44,6 +44,24 @@ def test_population_wapug_duration_preset_changes_network_qualification():
     assert large["qualified_wapug_event_count"] == 0
 
 
+
+
+def test_gauge_summary_stays_green_when_monthly_operational_coverage_exceeds_threshold():
+    ts = pd.date_range("2026-02-01 00:00", periods=28 * 24 + 12, freq="1h")
+    values = np.zeros(len(ts), dtype=float)
+    # Add a representative wet spell to two otherwise complete gauges.
+    values[5 * 24 : 5 * 24 + 8] = 8.0
+    gauges = {
+        "RG1": (pd.DataFrame({"timestamp": ts, "rainfall": values}), "rainfall", 60.0),
+        "RG2": (pd.DataFrame({"timestamp": ts, "rainfall": values}), "rainfall", 60.0),
+    }
+    result = network_rainfall_assessment(gauges, population_above_50k=True)
+    for row in result["gauge_summary"]:
+        assert row["operational_coverage_percent"] >= 90.0
+        assert row["current_dynamic_status"] != "Faulty"
+        assert row["status"] == "Green"
+
+
 def test_two_strike_fault_cutoff_is_auditable_and_only_applied_when_requested():
     gauges = {
         "RG-good-1": _minute_gauge(),
