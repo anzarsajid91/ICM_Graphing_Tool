@@ -6,10 +6,89 @@ from icm_workbench import advanced_api
 
 from icm_workbench.analysis.survey_assessment import (
     _cross_corr_positive_lag,
+    _longest_flatline_minutes,
     monitor_weekly_assessment,
     network_rainfall_assessment,
     wapug_population_preset,
 )
+
+
+def _legacy_longest_flatline_minutes(values, timestamps, tolerance):
+    vals = pd.to_numeric(pd.Series(values), errors="coerce").to_numpy(dtype=float)
+    ts = pd.to_datetime(pd.Series(timestamps), errors="coerce")
+    longest = 0.0
+    run_start = None
+    for i in range(1, len(vals)):
+        same = (
+            np.isfinite(vals[i - 1])
+            and np.isfinite(vals[i])
+            and abs(vals[i] - vals[i - 1]) <= tolerance
+            and pd.notna(ts.iloc[i - 1])
+            and pd.notna(ts.iloc[i])
+        )
+        if same:
+            if run_start is None:
+                run_start = i - 1
+            longest = max(
+                longest,
+                float((ts.iloc[i] - ts.iloc[run_start]).total_seconds() / 60.0),
+            )
+        else:
+            run_start = None
+    return longest
+
+
+def test_vectorized_flatline_matches_legacy_for_missing_irregular_and_tolerance_cases():
+    cases = [
+        (
+            [1.0, 1.0, 1.0, 2.0, 2.00005, 2.00009, np.nan, 3.0, 3.0],
+            pd.to_datetime([
+                "2026-02-01 00:00", "2026-02-01 00:02", "2026-02-01 00:04",
+                "2026-02-01 00:09", "2026-02-01 00:11", "2026-02-01 00:14",
+                "2026-02-01 00:16", "2026-02-01 00:20", "2026-02-01 00:27",
+            ]),
+            1e-4,
+        ),
+        (
+            [0.4, 0.4, 0.4, 0.4],
+            pd.to_datetime([
+                "2026-02-01 00:00", "2026-02-01 00:01",
+                None, "2026-02-01 00:05",
+            ]),
+            1e-6,
+        ),
+        (
+            [1.0, 1.01, 1.02, 1.03],
+            pd.date_range("2026-02-01", periods=4, freq="2min"),
+            1e-4,
+        ),
+        (
+            [5.0],
+            pd.to_datetime(["2026-02-01 00:00"]),
+            1e-4,
+        ),
+    ]
+    for values, timestamps, tolerance in cases:
+        expected = _legacy_longest_flatline_minutes(values, timestamps, tolerance)
+        actual = _longest_flatline_minutes(
+            pd.Series(values), pd.Series(timestamps), tolerance
+        )
+        assert np.isclose(actual, expected, atol=0.0, rtol=0.0)
+
+
+def test_vectorized_flatline_matches_legacy_for_random_runs():
+    rng = np.random.default_rng(260926)
+    values = rng.normal(size=5000)
+    values[200:900] = 1.2345
+    values[1700:2250] = 2.0
+    values[1800] = np.nan
+    timestamps = pd.Series(pd.date_range("2026-02-01", periods=len(values), freq="2min"))
+    timestamps.iloc[3100] = pd.NaT
+    expected = _legacy_longest_flatline_minutes(values, timestamps, 1e-8)
+    actual = _longest_flatline_minutes(
+        pd.Series(values), timestamps, 1e-8
+    )
+    assert actual == expected
 
 
 def _legacy_cross_corr_positive_lag(
