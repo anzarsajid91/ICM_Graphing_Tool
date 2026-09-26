@@ -532,6 +532,11 @@
       renderMonitorDetail();
       return;
     }
+    const networkCandidates = survey.batch?.network?.candidate_wapug_events || [];
+    const networkQualified = survey.batch?.network?.qualified_wapug_events || [];
+    const noQualifiedEventText = networkCandidates.length
+      ? 'Not assessed — no network-qualified WAPUG event'
+      : 'Not assessed — no WAPUG candidate event';
     const rows = monitors.map(monitor => {
       const s = monitorSummary(monitor);
       const state = s.state;
@@ -544,7 +549,7 @@
         ragPill('Green','G '+s.counts.Green)+' '+
         ragPill('Amber','A '+s.counts.Amber)+' '+
         ragPill('Red','R '+s.counts.Red)+'</span>';
-      const eventText = s.events.length ? (s.failures ? s.failures+' flagged / '+s.events.length : s.events.length+' reviewed') : 'No qualified rows';
+      const eventText = s.events.length ? (s.failures ? s.failures+' flagged / '+s.events.length : s.events.length+' reviewed') : noQualifiedEventText;
       const comment = monitorComment(monitor.monitor);
       const commentText = comment ? '<span class="w27-comment-indicator" title="'+esc(comment.text)+'">Comment added</span>' : '<span class="w26-muted">—</span>';
       return '<tr>'+
@@ -588,6 +593,13 @@
       '<td>'+fmt(row.depth_score,0)+'</td><td>'+fmt(row.velocity_score,0)+'</td><td>'+fmt(row.flow_score,0)+'</td>'+
       '<td>'+esc(row.decision_path || '—')+'</td></tr>'
     ).join('');
+    const networkCandidates = survey.batch?.network?.candidate_wapug_events || [];
+    const networkQualified = survey.batch?.network?.qualified_wapug_events || [];
+    const noEventEvidence = networkQualified.length
+      ? 'No Event Response rows for this monitor despite a network-qualified event; inspect technical evidence.'
+      : (networkCandidates.length
+        ? 'Event Response not assessed because no candidate event met the network WAPUG suitability criteria.'
+        : 'Event Response not assessed because no WAPUG candidate event was detected.');
     const events = summary.events.map(row =>
       '<tr><td>'+esc(row.event || '—')+'</td><td>'+esc(row.event_start || '—')+'</td>'+
       '<td>'+esc(row.depth_velocity_response || '—')+'</td>'+
@@ -628,7 +640,7 @@
           '</div></section>'+
       '</div>'+
       '<details class="w26-technical-evidence"><summary>Event Response &amp; technical evidence</summary>'+
-        '<div class="table-wrap"><table class="data-table"><thead><tr><th>Event</th><th>Start</th><th>D/V response</th><th>Depth @ Qpeak</th><th>Min D</th><th>Response ratio</th><th>R</th><th>Comments</th></tr></thead><tbody>'+(events || '<tr><td colspan="8">No qualified Event Response rows.</td></tr>')+'</tbody></table></div>'+
+        '<div class="table-wrap"><table class="data-table"><thead><tr><th>Event</th><th>Start</th><th>D/V response</th><th>Depth @ Qpeak</th><th>Min D</th><th>Response ratio</th><th>R</th><th>Comments</th></tr></thead><tbody>'+(events || '<tr><td colspan="8">'+esc(noEventEvidence)+'</td></tr>')+'</tbody></table></div>'+
         '<pre class="w26-contract-evidence">'+esc(JSON.stringify(monitor.contracts || {},null,2))+'</pre>'+
       '</details>';
   }
@@ -859,7 +871,11 @@
       const state = reviewedMonitorState(monitor);
       return '<tr><td><strong>'+esc(monitor.monitor)+'</strong></td><td>'+ragPill(state.reviewed)+'</td><td>'+esc(comment.text)+'</td><td>'+esc(comment.author || '—')+'</td><td>'+esc(comment.updated_at ? new Date(comment.updated_at).toLocaleString() : '—')+'</td></tr>';
     }).filter(Boolean).join('');
+    const rainfallSuitabilityNote = candidates.length && !qualified
+      ? '<div class="w26-review-warning"><strong>Event Response not assessed from network rainfall.</strong> '+candidates.length+' WAPUG candidate event'+(candidates.length===1?' was':'s were')+' identified, but none met the network suitability criteria. This is rainfall/network-quality evidence, not a monitor-response failure.</div>'
+      : '';
     root.innerHTML =
+      rainfallSuitabilityNote+
       '<div class="w26-monthly-grid">'+
         '<div><span>Monitor status</span><strong>'+monitorCounts.Green+' G · '+monitorCounts.Amber+' A · '+monitorCounts.Red+' R · '+monitorCounts.Grey+' Grey</strong></div>'+
         '<div><span>Rain gauges</span><strong>'+gaugeCounts.Green+' G · '+gaugeCounts.Amber+' A · '+gaugeCounts.Red+' R · '+gaugeCounts.Grey+' Grey</strong></div>'+
