@@ -622,15 +622,15 @@ def _markdown(result: dict[str, Any]) -> str:
     lines += ["", "## 2. Flow Survey workflow", ""]
     lines += [
         f"- Authoritative fm_rg_assoc rows: {survey['association']['record_count']}; matched FDV sources: {survey['association']['matched_fdv_source_count']}.",
-        f"- Rain gauges: {survey['rainfall']['gauge_count']}; network-qualified WAPUG events >50k: {survey['rainfall']['over_50k_qualified_event_count']}; <=50k sensitivity: {survey['rainfall']['under_or_equal_50k_qualified_event_count']}.",
+        f"- Rain gauges: {survey['rainfall']['gauge_count']}; >50k WAPUG candidates: {survey['rainfall']['over_50k_candidate_summary']['candidate_count']}; network-qualified: {survey['rainfall']['over_50k_qualified_event_count']}; <=50k sensitivity qualified: {survey['rainfall']['under_or_equal_50k_qualified_event_count']}.",
         f"- Volume-balance rows: {survey['volume_balance']['row_count']}; non-Green rows: {survey['volume_balance']['non_green_row_count']}.",
         "",
-        "| Monitor | Status | RG | Worst weekly | Weeks | Event rows | Flagged event rows |",
-        "|---|---|---|---|---:|---:|---:|",
+        "| Monitor | Status | RG | Worst weekly | Monthly synthesized | Full weeks | Boundary weeks | Event rows | Flagged event rows |",
+        "|---|---|---|---|---|---:|---:|---:|---:|",
     ]
     for row in survey["monitors"]:
         lines.append(
-            f"| {row['monitor']} | {row['status']} | {row.get('rain_gauge') or '-'} | {row['worst_rag']} | {row['week_count']} | {row['event_response_rows']} | {row['event_response_flagged']} |"
+            f"| {row['monitor']} | {row['status']} | {row.get('rain_gauge') or '-'} | {row['worst_rag']} | {row['monthly_rag']} | {row['substantive_week_count']} | {row['boundary_week_count']} | {row['event_response_rows']} | {row['event_response_flagged']} |"
         )
     lines += ["", "Engineering observations:"]
     lines.extend(f"- {x}" for x in survey["engineering_observations"])
