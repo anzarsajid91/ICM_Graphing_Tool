@@ -14,6 +14,7 @@ from xml.etree import ElementTree as ET
 import pandas as pd
 
 from icm_workbench import advanced_api
+from icm_workbench.analysis import detect_rainfall_events
 from icm_workbench.analysis.rainfall import rainfall_accumulation
 from icm_workbench.analysis.survey_assessment import network_rainfall_assessment
 from icm_workbench.analysis.survey_context import normalise_association_table
@@ -217,30 +218,57 @@ def _edm_workflow() -> dict[str, Any]:
     rain_meta = rain.metadata or {}
     rain_interval = rain_meta.get("interval_min")
     rain_gap_seconds = _rain_support_gap_seconds(rain)
+
+    # Historical Station A reports cover calendar years 2022-2024. The source
+    # rainfall file deliberately extends before and after that period, so the
+    # engineering reconciliation must be performed on the report window rather
+    # than on the whole convenience file.
+    assessment_start = pd.Timestamp("2022-01-01 00:00:00")
+    assessment_end = pd.Timestamp("2025-01-01 00:00:00")
+    rain_window = rain.frame[["timestamp", rain_col]].copy()
+    rain_window["timestamp"] = pd.to_datetime(rain_window["timestamp"], errors="coerce")
+    rain_window = rain_window.loc[
+        (rain_window["timestamp"] >= assessment_start)
+        & (rain_window["timestamp"] < assessment_end)
+    ].copy()
+
     accumulation = rainfall_accumulation(
-        rain.frame[["timestamp", rain_col]].copy(),
+        rain_window,
         rain_col,
         semantics="intensity",
         declared_interval_minutes=float(rain_interval) if rain_interval else None,
         max_gap_seconds=rain_gap_seconds,
     )
 
-    wapug_over = json.loads(advanced_api.rainfall_event_scaled(
-        str(rain_path), rain_col,
-        minimum_intensity=5.0,
-        minimum_intensity_duration_min=6.0,
-        minimum_depth_mm=5.0,
-        minimum_event_duration_min=60.0,
-        dry_gap_min=15.0,
-    ))
-    wapug_under = json.loads(advanced_api.rainfall_event_scaled(
-        str(rain_path), rain_col,
-        minimum_intensity=5.0,
-        minimum_intensity_duration_min=4.0,
-        minimum_depth_mm=5.0,
-        minimum_event_duration_min=30.0,
-        dry_gap_min=15.0,
-    ))
+    def wapug_events(intensity_duration_min: float, event_duration_min: float) -> dict[str, Any]:
+        events = detect_rainfall_events(
+            rain_window,
+            intensity_col=rain_col,
+            minimum_intensity=5.0,
+            minimum_intensity_duration_min=float(intensity_duration_min),
+            minimum_depth_mm=5.0,
+            minimum_event_duration_min=float(event_duration_min),
+            dry_gap_min=15.0,
+            semantics="intensity",
+            declared_interval_minutes=float(rain_interval) if rain_interval else None,
+            max_gap_seconds=rain_gap_seconds,
+        )
+        return {
+            "events": events,
+            "count": len(events),
+            "criteria": {
+                "minimum_intensity": 5.0,
+                "minimum_intensity_duration_min": float(intensity_duration_min),
+                "minimum_depth_mm": 5.0,
+                "minimum_event_duration_min": float(event_duration_min),
+                "dry_gap_min": 15.0,
+                "assessment_start": assessment_start,
+                "assessment_end_exclusive": assessment_end,
+            },
+        }
+
+    wapug_over = wapug_events(6.0, 60.0)
+    wapug_under = wapug_events(4.0, 30.0)
 
     response = _event_level_response(edm.frame, level_col, wapug_over.get("events") or [])
 
@@ -311,6 +339,7 @@ def _edm_workflow() -> dict[str, Any]:
         "rainfall": {
             "path": str(rain_path.relative_to(ROOT)),
             "rows": int(len(rain.frame)),
+            "assessment_rows": int(len(rain_window)),
             "column": rain_col,
             "source_unit_status": ((rain.metadata or {}).get("series_metadata") or {}).get(rain_col, {}).get("unit_status"),
             "explicit_simulation_semantics": "mm/h intensity, based on the supplied historical report/reference contract",
@@ -321,6 +350,10 @@ def _edm_workflow() -> dict[str, Any]:
             "unknown_seconds": accumulation.get("unknown_seconds"),
             "max_gap_seconds": rain_gap_seconds,
             "reference_total_mm": 2880.854,
+            "assessment_start": assessment_start,
+            "assessment_end_exclusive": assessment_end,
+            "source_start": str(pd.to_datetime(rain.frame["timestamp"], errors="coerce").min()),
+            "source_end": str(pd.to_datetime(rain.frame["timestamp"], errors="coerce").max()),
         },
         "wapug": {
             "over_50k": {"criteria": wapug_over.get("criteria"), "event_count": wapug_over.get("count")},
