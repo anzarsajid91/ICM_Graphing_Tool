@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import numpy as np
 import pandas as pd
 
@@ -918,6 +919,13 @@ def professional_survey_batch_result(
     )
     analysis_start = python_bridge._model_clock_timestamp(start)
     analysis_end = python_bridge._model_clock_timestamp(end)
+    batch_started = time.perf_counter()
+    performance = {
+        "rain_source_load_seconds": 0.0,
+        "network_rainfall_seconds": 0.0,
+        "monitor_seconds": {},
+        "volume_balance_seconds": 0.0,
+    }
 
     cache_key = (
         str(association_json),
@@ -940,6 +948,7 @@ def professional_survey_batch_result(
     gauges = {}
     rain_lookup = {}
     rain_issues = []
+    rain_load_started = time.perf_counter()
     for source in rain_sources:
         name = str(source.get("name") or source.get("gauge") or "").strip()
         path = source.get("path")
@@ -959,11 +968,18 @@ def professional_survey_batch_result(
             rain_lookup[_survey_name_token(name)] = (frame, column, interval)
         except Exception as exc:
             rain_issues.append({"gauge": name, "reason": str(exc)})
+    performance["rain_source_load_seconds"] = float(
+        time.perf_counter() - rain_load_started
+    )
 
+    network_started = time.perf_counter()
     network = network_rainfall_assessment(
         gauges,
         population_above_50k=bool(population_above_50k),
         apply_fault_cutoff=bool(apply_fault_cutoff),
+    )
+    performance["network_rainfall_seconds"] = float(
+        time.perf_counter() - network_started
     )
 
     source_by_monitor = {
@@ -980,6 +996,12 @@ def professional_survey_batch_result(
     volume_flows = {}
 
     for monitor, assoc in assoc_by_monitor.items():
+        monitor_started = time.perf_counter()
+        monitor_perf = {
+            "hydraulic_bundle_seconds": 0.0,
+            "weekly_assessment_seconds": 0.0,
+            "event_response_seconds": 0.0,
+        }
         source = source_by_monitor.get(monitor)
         if not source:
             monitor_rows.append({
@@ -990,11 +1012,15 @@ def professional_survey_batch_result(
                 "diameter_mm": assoc.get("diameter_mm"),
             })
             continue
+        hydraulic_started = time.perf_counter()
         try:
             hydraulic, contracts = _survey_hydraulic_bundle(source)
         except Exception as exc:
             hydraulic = None
             contracts = {"source": {"unit_status": "error", "reason": str(exc)}}
+        monitor_perf["hydraulic_bundle_seconds"] = float(
+            time.perf_counter() - hydraulic_started
+        )
 
         if hydraulic is None or hydraulic.empty:
             monitor_rows.append({
@@ -1023,6 +1049,7 @@ def professional_survey_batch_result(
             continue
         rain_frame, rain_col, rain_interval = rain_spec
 
+        weekly_started = time.perf_counter()
         weekly = monitor_weekly_assessment(
             hydraulic,
             rain_frame,
@@ -1037,6 +1064,9 @@ def professional_survey_batch_result(
             analysis_end=analysis_end,
             exclusions=hydraulic_exclusions,
             rain_exclusions=rainfall_exclusions,
+        )
+        monitor_perf["weekly_assessment_seconds"] = float(
+            time.perf_counter() - weekly_started
         )
         if analysis_start or analysis_end:
             filtered = []
@@ -1054,6 +1084,7 @@ def professional_survey_batch_result(
                 "end": analysis_end,
             }
 
+        event_started = time.perf_counter()
         event_response = fsat_event_response_assessment(
             hydraulic,
             rain_frame,
@@ -1070,6 +1101,13 @@ def professional_survey_batch_result(
             exclusions=hydraulic_exclusions,
             rain_exclusions=rainfall_exclusions,
         )
+        monitor_perf["event_response_seconds"] = float(
+            time.perf_counter() - event_started
+        )
+        monitor_perf["total_seconds"] = float(
+            time.perf_counter() - monitor_started
+        )
+        performance["monitor_seconds"][monitor] = monitor_perf
 
         monitor_rows.append({
             "monitor": monitor,
@@ -1082,6 +1120,7 @@ def professional_survey_batch_result(
             "contracts": contracts,
         })
 
+    volume_started = time.perf_counter()
     volume = survey_volume_balance(
         volume_flows,
         associations,
@@ -1096,6 +1135,9 @@ def professional_survey_batch_result(
         "reason": "No mapped flow channels available for volume balance.",
         "method": "weekly-volume-balance-v2",
     }
+    performance["volume_balance_seconds"] = float(
+        time.perf_counter() - volume_started
+    )
 
     weekly_lookup = {}
     for monitor_result in monitor_rows:
@@ -1163,6 +1205,10 @@ def professional_survey_batch_result(
             "scoped_exclusions": True,
             "max_gap_seconds": float(max_gap_seconds),
             "amber_tolerance_percent": float(amber_tolerance_percent),
+        },
+        "performance": {
+            **performance,
+            "total_seconds": float(time.perf_counter() - batch_started),
         },
         "source_policy": {
             "association_workbook_authoritative": True,
