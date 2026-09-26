@@ -1476,6 +1476,12 @@ try{
   await page.waitForFunction(()=>!document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(false));
   await page.waitForFunction(()=>!document.body.classList.contains('pw-focus-canvas')&&document.querySelector('.pw-rail')?.getBoundingClientRect().width>=180,null,{timeout:10000});
+  // Closing the inspector is now a persistent user choice across layout and
+  // route changes. Reopen it explicitly before editing docked graph controls.
+  if(!await page.locator('#graphObsThreshold').isVisible()){
+    await page.click('#pwInspectorToggle');
+    await page.waitForFunction(()=>document.querySelector('#graphObsThreshold')?.getBoundingClientRect().width>0);
+  }
   const levelThresholdControls=await page.evaluate(()=>({
     observedHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="observed"]')?.hidden,
     modelHidden:document.querySelector('#v2GraphToolbar [data-threshold-role="model"]')?.hidden
