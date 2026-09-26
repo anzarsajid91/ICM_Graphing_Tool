@@ -723,33 +723,48 @@ def _diurnal_baseline(
 def _longest_flatline_minutes(
     values: pd.Series, timestamps: pd.Series, tolerance: float
 ) -> float:
+    """Return the longest contiguous near-constant run duration in minutes.
+
+    This is intentionally equivalent to the original pair-by-pair scan, but
+    uses NumPy arrays rather than pandas .iloc inside a Python loop. The helper
+    is called repeatedly for each weekly channel and event-response window, so
+    the vectorised form materially reduces Pyodide execution time without
+    changing the flatline engineering criterion.
+    """
     vals = pd.to_numeric(values, errors="coerce").to_numpy(dtype=float)
+    if vals.size < 2:
+        return 0.0
+
     ts = pd.to_datetime(timestamps, errors="coerce")
-    longest = 0.0
-    run_start: int | None = None
-    for i in range(1, len(vals)):
-        same = (
-            np.isfinite(vals[i - 1])
-            and np.isfinite(vals[i])
-            and abs(vals[i] - vals[i - 1]) <= tolerance
-            and pd.notna(ts.iloc[i - 1])
-            and pd.notna(ts.iloc[i])
-        )
-        if same:
-            if run_start is None:
-                run_start = i - 1
-            longest = max(
-                longest,
-                float(
-                    (
-                        ts.iloc[i] - ts.iloc[run_start]
-                    ).total_seconds()
-                    / 60.0
-                ),
-            )
-        else:
-            run_start = None
-    return longest
+    ts_ns = ts.to_numpy(dtype="datetime64[ns]").astype("int64", copy=False)
+    nat = np.iinfo(np.int64).min
+    valid_ts = ts_ns != nat
+    finite = np.isfinite(vals)
+    same = (
+        finite[:-1]
+        & finite[1:]
+        & valid_ts[:-1]
+        & valid_ts[1:]
+        & (np.abs(vals[1:] - vals[:-1]) <= float(tolerance))
+    )
+    if not bool(np.any(same)):
+        return 0.0
+
+    # A True run from pair index a..b means the constant-value point run spans
+    # timestamps a..b+1, matching the former run_start=i-1 implementation.
+    padded = np.concatenate(
+        ([False], same.astype(bool, copy=False), [False])
+    )
+    changes = np.flatnonzero(padded[1:] != padded[:-1])
+    starts = changes[0::2]
+    ends = changes[1::2]  # point index at the end of each True pair run
+    durations = (
+        ts_ns[ends] - ts_ns[starts]
+    ).astype(np.float64) / 60_000_000_000.0
+    finite_duration = durations[np.isfinite(durations)]
+    if finite_duration.size == 0:
+        return 0.0
+    return float(max(0.0, np.max(finite_duration)))
 
 
 def _cross_corr_positive_lag(
