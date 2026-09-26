@@ -629,6 +629,7 @@ def _flow_survey_workflow() -> dict[str, Any]:
         "checks": checks,
         "engineering_observations": observations,
         "source_policy": batch.get("source_policy"),
+        "performance": batch.get("performance") or {},
     }
 
 
@@ -657,6 +658,7 @@ def _markdown(result: dict[str, Any]) -> str:
         f"- Authoritative fm_rg_assoc rows: {survey['association']['record_count']}; matched FDV sources: {survey['association']['matched_fdv_source_count']}.",
         f"- Rain gauges: {survey['rainfall']['gauge_count']}; >50k WAPUG candidates: {survey['rainfall']['over_50k_candidate_summary']['candidate_count']}; network-qualified: {survey['rainfall']['over_50k_qualified_event_count']}; <=50k sensitivity qualified: {survey['rainfall']['under_or_equal_50k_qualified_event_count']}.",
         f"- Volume-balance rows: {survey['volume_balance']['row_count']}; non-Green rows: {survey['volume_balance']['non_green_row_count']}.",
+        f"- Native Flow Survey batch time: {float((survey.get('performance') or {}).get('total_seconds') or 0.0):.2f} s.",
         "",
         "| Monitor | Status | RG | Worst weekly | Monthly synthesized | Full weeks | Boundary weeks | Event rows | Flagged event rows |",
         "|---|---|---|---|---|---:|---:|---:|---:|",
