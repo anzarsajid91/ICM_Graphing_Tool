@@ -5,6 +5,7 @@ import pandas as pd
 
 from icm_workbench.analysis.integration import integrate_series
 from icm_workbench.analysis.survey_context import (
+    _integrate_instantaneous_no_exclusions,
     _integration_support_window,
     classify_volume_balance,
     fsat_event_response_assessment,
@@ -125,6 +126,92 @@ def test_weekly_integration_support_window_preserves_authoritative_integral_and_
     assert sliced["status"] == full["status"]
     assert window["timestamp"].min() == pd.Timestamp("2026-02-02 00:00")
     assert window["timestamp"].max() == pd.Timestamp("2026-02-09 00:02")
+
+
+def test_fast_no_exclusion_volume_integral_matches_authoritative_integrator():
+    rng = np.random.default_rng(260926)
+    timestamps = [pd.Timestamp("2026-02-01 23:57")]
+    for step in rng.integers(60, 480, size=300):
+        timestamps.append(timestamps[-1] + pd.Timedelta(seconds=int(step)))
+    values = rng.normal(loc=0.4, scale=0.15, size=len(timestamps))
+    values[[11, 89, 190]] = np.nan
+    frame = pd.DataFrame({"timestamp": timestamps, "flow": values})
+
+    for start, end, max_gap in [
+        (
+            pd.Timestamp("2026-02-02 00:01:13"),
+            pd.Timestamp("2026-02-02 07:42:19"),
+            900.0,
+        ),
+        (
+            pd.Timestamp("2026-02-01 23:50"),
+            pd.Timestamp("2026-02-02 01:05"),
+            180.0,
+        ),
+        (
+            pd.Timestamp("2026-02-02 12:00"),
+            pd.Timestamp("2026-02-03 12:00"),
+            900.0,
+        ),
+    ]:
+        support = _integration_support_window(frame, start, end)
+        expected = integrate_series(
+            support,
+            "flow",
+            start,
+            end,
+            semantics="instantaneous",
+            max_gap_seconds=max_gap,
+            exclusions=[],
+        )
+        actual = _integrate_instantaneous_no_exclusions(
+            support,
+            "flow",
+            start,
+            end,
+            max_gap_seconds=max_gap,
+        )
+        for key in (
+            "integral",
+            "requested_seconds",
+            "valid_seconds",
+            "excluded_seconds",
+            "gap_seconds",
+            "uncovered_seconds",
+        ):
+            assert np.isclose(
+                float(actual[key]), float(expected[key]),
+                atol=1e-8, rtol=1e-12,
+            ), (key, actual[key], expected[key])
+        assert actual["coverage_fraction"] == expected["coverage_fraction"]
+        assert actual["status"] == expected["status"]
+
+
+def test_fast_no_exclusion_volume_integral_preserves_boundary_interpolation():
+    frame = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                [
+                    "2026-02-01 23:58",
+                    "2026-02-02 00:02",
+                    "2026-02-02 00:06",
+                ]
+            ),
+            "flow": [0.0, 4.0, 8.0],
+        }
+    )
+    start = pd.Timestamp("2026-02-02 00:00")
+    end = pd.Timestamp("2026-02-02 00:04")
+    expected = integrate_series(
+        frame, "flow", start, end,
+        semantics="instantaneous", max_gap_seconds=900.0,
+    )
+    actual = _integrate_instantaneous_no_exclusions(
+        frame, "flow", start, end, max_gap_seconds=900.0
+    )
+    assert np.isclose(actual["integral"], expected["integral"])
+    assert np.isclose(actual["integral"], 4.0 * 240.0)
+    assert actual["status"] == expected["status"] == "complete"
 
 
 def test_weekly_integration_support_window_handles_domain_outside_source():
