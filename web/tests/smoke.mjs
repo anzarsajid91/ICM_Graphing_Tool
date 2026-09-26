@@ -1009,6 +1009,7 @@ async function verifyRealFlowSurveyReference(){
         report_has_comment:monthlyHtml.includes('Reference workflow comment: tidal/pumping influence'),
         report_has_rejection:monthlyHtml.includes('Not qualified')&&monthlyHtml.includes('spatial CV'),
         association_authoritative:Boolean(batch?.source_policy?.association_workbook_authoritative),
+        batch_performance:batch?.performance||null,
       };
     });
 
