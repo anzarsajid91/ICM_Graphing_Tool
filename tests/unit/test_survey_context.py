@@ -3,7 +3,9 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+from icm_workbench.analysis.integration import integrate_series
 from icm_workbench.analysis.survey_context import (
+    _integration_support_window,
     classify_volume_balance,
     fsat_event_response_assessment,
     merge_authoritative_associations,
@@ -61,6 +63,80 @@ def test_fm_rg_assoc_duplicate_self_and_unknown_upstream_are_audited():
     assert any("Conflicting duplicate" in x for x in messages)
     assert any("cannot reference itself" in x for x in messages)
     assert any("FM99" in x for x in messages)
+
+
+def test_weekly_integration_support_window_preserves_authoritative_integral_and_validity():
+    ts = pd.to_datetime([
+        "2026-02-01 23:58",
+        "2026-02-02 00:00",
+        "2026-02-02 00:02",
+        "2026-02-02 00:04",
+        "2026-02-02 00:20",  # deliberate >15 min gap
+        "2026-02-08 23:58",
+        "2026-02-09 00:00",
+        "2026-02-09 00:02",
+    ])
+    frame = pd.DataFrame(
+        {
+            "timestamp": ts,
+            "flow": [0.4, 0.5, 0.6, np.nan, 0.8, 0.7, 0.6, 0.5],
+        }
+    )
+    start = pd.Timestamp("2026-02-02 00:01")
+    end = pd.Timestamp("2026-02-09 00:01")
+    exclusions = [
+        ExclusionPeriod(
+            start=datetime(2026, 2, 8, 23, 57),
+            end=datetime(2026, 2, 8, 23, 59),
+            reason="maintenance",
+        )
+    ]
+
+    full = integrate_series(
+        frame,
+        "flow",
+        start,
+        end,
+        semantics="instantaneous",
+        max_gap_seconds=900.0,
+        exclusions=exclusions,
+    )
+    window = _integration_support_window(frame, start, end)
+    sliced = integrate_series(
+        window,
+        "flow",
+        start,
+        end,
+        semantics="instantaneous",
+        max_gap_seconds=900.0,
+        exclusions=exclusions,
+    )
+
+    for key in (
+        "integral",
+        "requested_seconds",
+        "valid_seconds",
+        "excluded_seconds",
+        "gap_seconds",
+        "uncovered_seconds",
+        "coverage_fraction",
+    ):
+        assert np.isclose(float(sliced[key]), float(full[key]), equal_nan=True)
+    assert sliced["status"] == full["status"]
+    assert window["timestamp"].min() == pd.Timestamp("2026-02-02 00:00")
+    assert window["timestamp"].max() == pd.Timestamp("2026-02-09 00:02")
+
+
+def test_weekly_integration_support_window_handles_domain_outside_source():
+    frame = _constant_flow("2026-02-02 00:00", [1.0, 1.0, 1.0], freq="2min")
+    start = pd.Timestamp("2026-01-25")
+    end = pd.Timestamp("2026-01-26")
+    window = _integration_support_window(frame, start, end)
+    full = integrate_series(frame, "flow", start, end)
+    sliced = integrate_series(window, "flow", start, end)
+    assert sliced["integral"] == full["integral"] == 0.0
+    assert sliced["valid_seconds"] == full["valid_seconds"] == 0.0
+    assert sliced["uncovered_seconds"] == full["uncovered_seconds"]
 
 
 def test_volume_balance_rag_thresholds_are_explicit():
