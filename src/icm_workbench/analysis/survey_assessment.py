@@ -1056,9 +1056,13 @@ def _event_linkage(
     *,
     quantity: str,
     use_residual: bool,
+    segmented_events: list[tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp]] | None = None,
+    week_flatline_minutes: float | None = None,
 ) -> dict[str, Any]:
-    events = _segment_rain_events(
-        rain_increment, timestamps, dt_minutes
+    events = (
+        list(segmented_events)
+        if segmented_events is not None
+        else _segment_rain_events(rain_increment, timestamps, dt_minutes)
     )
     if not events:
         return {
@@ -1083,10 +1087,14 @@ def _event_linkage(
         if quantity == "depth"
         else (1e-3 if quantity == "velocity" else 1e-6)
     )
-    flat = _longest_flatline_minutes(
-        raw.reset_index(drop=True),
-        pd.Series(ts).reset_index(drop=True),
-        tolerance,
+    flat = (
+        float(week_flatline_minutes)
+        if week_flatline_minutes is not None
+        else _longest_flatline_minutes(
+            raw.reset_index(drop=True),
+            pd.Series(ts).reset_index(drop=True),
+            tolerance,
+        )
     )
     if flat >= WEEK_FLATLINE_SUPPRESS_MIN:
         return {
@@ -1488,6 +1496,11 @@ def monitor_weekly_assessment(
         scores: dict[str, int] = {}
         methods: dict[str, str] = {}
         responsive: dict[str, bool] = {}
+        week_rain_events = _segment_rain_events(
+            pd.to_numeric(g["_rain_increment"], errors="coerce"),
+            g["timestamp"],
+            dt_minutes,
+        )
 
         for quantity, (col, active_eps) in channel_meta.items():
             raw = pd.to_numeric(g[col], errors="coerce")
@@ -1558,6 +1571,8 @@ def monitor_weekly_assessment(
                 dt_minutes,
                 quantity=quantity,
                 use_residual=use_residual,
+                segmented_events=week_rain_events,
+                week_flatline_minutes=flatline[quantity],
             )
             responsive[quantity] = bool(
                 linkage[quantity].get("events", 0)
