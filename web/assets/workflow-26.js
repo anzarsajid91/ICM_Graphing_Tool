@@ -848,6 +848,104 @@
     renderMonthlyReview();
   }
 
+  function monthlyReportHtml() {
+    if (!survey.batch) throw new Error('Run Flow Survey Assessment before exporting the monthly report.');
+    if (!surveyFresh('complete')) throw new Error('Flow Survey results are stale. Re-run the assessment before exporting the monthly PDF.');
+    if (survey.balance && !surveyFresh('balance')) throw new Error('Volume-balance results are stale. Recalculate before exporting the monthly PDF.');
+
+    const monitors = survey.batch.monitors || [];
+    const network = survey.batch.network || {};
+    const monitorRows = monitors.map(monitor => {
+      const state = reviewedMonitorState(monitor);
+      const comment = monitorComment(monitor.monitor);
+      const review = state.review;
+      const weekly = monitor.weekly?.weeks || [];
+      const eventRows = monitor.event_response?.rows || [];
+      return '<tr>'+
+        '<td><strong>'+esc(monitor.monitor)+'</strong></td>'+
+        '<td>'+esc(monitor.rain_gauge || '—')+'</td>'+
+        '<td>'+(monitor.diameter_mm == null ? '—' : fmt(monitor.diameter_mm,0)+' mm')+'</td>'+
+        '<td>'+esc(state.calculated)+'</td>'+
+        '<td>'+esc(state.reviewed)+'</td>'+
+        '<td>'+weekly.length+'</td>'+
+        '<td>'+eventRows.length+'</td>'+
+        '<td>'+esc(review?.reason || '—')+'</td>'+
+        '<td>'+esc(comment?.text || '—')+'</td>'+
+        '</tr>';
+    }).join('');
+
+    const gaugeRows = (network.gauge_summary || []).map(gauge => {
+      const state = reviewedGaugeState(gauge);
+      return '<tr><td><strong>'+esc(gauge.gauge)+'</strong></td>'+
+        '<td>'+fmt(gauge.operational_coverage_percent,1)+'%</td>'+
+        '<td>'+Number(gauge.event_strike_count || 0)+'</td>'+
+        '<td>'+esc(gauge.current_dynamic_status || '—')+'</td>'+
+        '<td>'+esc(state.calculated)+'</td><td>'+esc(state.reviewed)+'</td></tr>';
+    }).join('');
+
+    const qualifiedEvents = network.qualified_wapug_events || [];
+    const eventRows = qualifiedEvents.map(event =>
+      '<tr><td>'+esc(event.event || '—')+'</td><td>'+esc(event.start || '—')+'</td><td>'+esc(event.end || '—')+'</td>'+
+      '<td>'+fmt(event.mean_depth_mm,2)+' mm</td><td>'+fmt(event.spatial_cv_percent,1)+'%</td><td>'+Number(event.operational_gauges || 0)+'</td></tr>'
+    ).join('');
+
+    const balanceRowsHtml = balanceRows().map(row => {
+      const state = reviewedBalanceState(row);
+      const path = (row.upstream_monitors || []).join(' + ')+' → '+String(row.downstream_monitor || '—');
+      return '<tr><td>'+esc(row.week_ending || '—')+'</td><td>'+esc(path)+'</td><td>'+esc(state.calculated)+'</td><td>'+esc(state.reviewed)+'</td>'+
+        '<td>'+fmt(row.balance_ratio,3)+'</td><td>'+esc(row.likely_source || '—')+'</td><td>'+esc(row.recommendation || '—')+'</td></tr>';
+    }).join('');
+
+    const actions = monthlyActions();
+    const actionRows = actions.map(item =>
+      '<tr><td>'+esc(item.area)+'</td><td><strong>'+esc(item.subject)+'</strong></td><td>'+esc(item.severity)+'</td><td>'+esc(item.action)+'</td></tr>'
+    ).join('');
+
+    const commentRows = monitors.map(monitor => {
+      const comment = monitorComment(monitor.monitor);
+      if (!comment?.text) return '';
+      const state = reviewedMonitorState(monitor);
+      return '<tr><td><strong>'+esc(monitor.monitor)+'</strong></td><td>'+esc(state.reviewed)+'</td><td>'+esc(comment.text)+'</td>'+
+        '<td>'+esc(comment.author || '—')+'</td><td>'+esc(comment.updated_at || '—')+'</td></tr>';
+    }).filter(Boolean).join('');
+
+    const body =
+      '<div class="note"><strong>Monthly engineering assessment.</strong> Automated calculations remain preserved separately from engineer-reviewed outcomes. Monitor comments capture contextual observations such as tidal or pumping influence without changing the calculated score.</div>'+
+      '<h2>Assessment overview</h2>'+
+      '<div class="report-grid">'+
+        '<div class="card"><h3>Period</h3><p>'+esc(surveyPeriodText())+'</p></div>'+
+        '<div class="card"><h3>Survey context</h3><p>'+Number(monitors.length)+' monitor(s) · '+Number(network.gauge_count || 0)+' rain gauge(s) · '+Number(qualifiedEvents.length)+' network-qualified WAPUG event(s)</p></div>'+
+      '</div>'+
+      '<h2>Monitor assessment</h2><div class="table-wrap"><table><thead><tr><th>Monitor</th><th>Rain gauge</th><th>Diameter</th><th>Calculated</th><th>Reported</th><th>Weeks</th><th>Events</th><th>Override rationale</th><th>Engineering comment</th></tr></thead><tbody>'+monitorRows+'</tbody></table></div>'+
+      '<h2>Rainfall assessment</h2>'+(gaugeRows ? '<div class="table-wrap"><table><thead><tr><th>Gauge</th><th>Coverage</th><th>Event strikes</th><th>Dynamic status</th><th>Calculated</th><th>Reported</th></tr></thead><tbody>'+gaugeRows+'</tbody></table></div>' : '<p class="muted">No gauge assessment rows.</p>')+
+      '<h3>Network-qualified WAPUG events</h3>'+(eventRows ? '<div class="table-wrap"><table><thead><tr><th>Event</th><th>Start</th><th>End</th><th>Mean depth</th><th>Spatial CV</th><th>Operational gauges</th></tr></thead><tbody>'+eventRows+'</tbody></table></div>' : '<p class="muted">No network-qualified WAPUG events.</p>')+
+      '<h2>Volume balance</h2>'+(balanceRowsHtml ? '<div class="table-wrap"><table><thead><tr><th>Week</th><th>Network path</th><th>Calculated</th><th>Reported</th><th>Ratio</th><th>Likely source</th><th>Recommendation</th></tr></thead><tbody>'+balanceRowsHtml+'</tbody></table></div>' : '<p class="muted">No volume-balance relationships available.</p>')+
+      '<h2>Engineering action register</h2>'+(actionRows ? '<div class="table-wrap"><table><thead><tr><th>Area</th><th>Subject</th><th>Severity</th><th>Action / rationale</th></tr></thead><tbody>'+actionRows+'</tbody></table></div>' : '<p class="muted">No Amber/Red exceptions in the current reported assessment.</p>')+
+      '<h2>Monitor engineering comments</h2>'+(commentRows ? '<div class="table-wrap"><table><thead><tr><th>Monitor</th><th>Reported status</th><th>Comment</th><th>Author</th><th>Updated</th></tr></thead><tbody>'+commentRows+'</tbody></table></div>' : '<p class="muted">No monitor comments recorded.</p>')+
+      '<h2>Audit note</h2><p class="muted">This monthly output is intended as a concise engineering hand-off. Detailed weekly calculations, Event Response evidence, raw gauge evidence, exclusions and source provenance remain available in the workbench/full HTML report.</p>';
+
+    if (typeof reportShell === 'function') {
+      return reportShell('ICM Graphing Tool — Monthly Flow Survey Assessment', surveyPeriodText(), body, true);
+    }
+    return '<!doctype html><html><head><meta charset="utf-8"><title>Monthly Flow Survey Assessment</title></head><body>'+body+'</body></html>';
+  }
+
+  function exportMonthlyPdf() {
+    const html = monthlyReportHtml();
+    const printable = html.replace(
+      '</body>',
+      '<script>window.addEventListener("load",function(){setTimeout(function(){window.focus();window.print();},250);});<\/script></body>'
+    );
+    const win = window.open('', '_blank');
+    if (!win) throw new Error('The browser blocked the monthly PDF window. Allow pop-ups for this site and retry.');
+    win.document.open();
+    win.document.write(printable);
+    win.document.close();
+    const status = $('completeSurveyStatus');
+    if (status) status.textContent = 'Monthly assessment opened in the print dialog. Choose Save as PDF to create the file for Copilot/report hand-off.';
+    return true;
+  }
+
   function reviewAuditRows() {
     const rows = [];
     const seen = new Set();
