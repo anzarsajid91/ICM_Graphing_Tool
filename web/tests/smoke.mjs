@@ -89,7 +89,12 @@ async function measureColdReferenceImport(){
     const selectedAt=Date.now();
     await probe.setInputFiles('#fileInput',{name:'Cold-FM01.fdv',mimeType:'text/plain',buffer});
     const outcome=await Promise.race([
-      probe.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
+      probe.waitForFunction(()=>{
+        const chart=document.querySelector('#timeChart');
+        return window.__ICM_WORKBENCH__?.lastGraphMode==='fastpath-preview'&&
+          Boolean(window.__ICM_WORKBENCH__?.fastpathPreview?.sourceId)&&
+          (chart?.data||[]).some(trace=>Array.isArray(trace.y)&&trace.y.some(Number.isFinite));
+      },null,{timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
       probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM01.fdv')&&row.textContent.includes('Error')),null,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt}))
     ]);
     const previewEvidence=await probe.evaluate(()=>({
@@ -131,7 +136,12 @@ async function measureFreshFastPathImport({dataset,relativePath,sourcePath,input
     const selectedAt=Date.now();
     await probe.setInputFiles('#fileInput',usePathUpload?resolvedPath:{name:inputName,mimeType,buffer});
     const outcome=await Promise.race([
-      probe.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
+      probe.waitForFunction(()=>{
+        const chart=document.querySelector('#timeChart');
+        return window.__ICM_WORKBENCH__?.lastGraphMode==='fastpath-preview'&&
+          Boolean(window.__ICM_WORKBENCH__?.fastpathPreview?.sourceId)&&
+          (chart?.data||[]).some(trace=>Array.isArray(trace.y)&&trace.y.some(Number.isFinite));
+      },null,{timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
       probe.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Error')),inputName,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt}))
     ]);
     const previewEvidence=await probe.evaluate(name=>({
