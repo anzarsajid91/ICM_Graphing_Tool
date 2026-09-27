@@ -75,4 +75,8 @@ assert(clippedLogFit.x[0]>1.5&&clippedLogFit.x[1]===4);
 assert(clippedLogFit.y.every(v=>v>0));
 const unavailableLogFit=run(`regressionLinePoints({regression_slope:-1,regression_intercept:-1},[{obs:1,sim:1},{obs:4,sim:5}],true)`);
 assert.equal(unavailableLogFit,null);
+const largeBounds=run(`finiteBounds(Array.from({length:160000},(_,i)=>i===119999?250000:i%11))`);
+assert.deepEqual(Array.from(largeBounds),[0,250000]);
+const largeFit=run(`regressionLinePoints({regression_slope:1,regression_intercept:0},Array.from({length:160000},(_,i)=>({obs:i,sim:i})),false)`);
+assert.deepEqual(Array.from(largeFit.x),[0,159999]);
 console.log('Scatter regressions passed: log population is positive-only and raw-scale fitted lines clip only their nonpositive portion.');
