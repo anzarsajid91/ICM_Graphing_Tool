@@ -557,8 +557,11 @@
       column: source.col,
       max_points: displayPointBudget(range),
       max_gap_seconds:Number($('gapInput').value||900),
-      start: range?.[0] || null,
-      end: range?.[1] || null,
+      // Plotly formats the model-clock axis as ISO UTC strings during zoom.
+      // The source series use naive model-clock timestamps; preserve the axis
+      // wall clock when requesting a display slice from the strict worker API.
+      start: range?.[0] ? modelClock(range[0]) : null,
+      end: range?.[1] ? modelClock(range[1]) : null,
       exclusions_json:JSON.stringify(exclusionPayload(true,role,key)),
     };
     // Always ask the authoritative worker for the requested visible window.
