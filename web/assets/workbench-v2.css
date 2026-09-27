@@ -38,7 +38,8 @@ body{background:var(--v2-bg);color:var(--v2-ink);font-size:13px}
 .global-operation-track>span.indeterminate{animation:v2progress 1.15s ease-in-out infinite}
 @keyframes v2progress{0%{transform:translateX(-120%)}50%{transform:translateX(120%)}100%{transform:translateX(300%)}}
 body.operation-busy{cursor:wait}
-.global-operation-card{pointer-events:auto}
+.global-operation-card{pointer-events:none}
+.global-operation-card button,.global-operation-card summary{pointer-events:auto}
 #comparisonBasisNotice{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-top:10px;padding:10px;border-left:3px solid #b1c5d8;background:#f7fafc}
 #comparisonBasisNotice label{display:inline-flex;align-items:flex-start;gap:6px;max-width:460px;font-size:11px;line-height:1.4}
 #comparisonBasisNotice input[type=checkbox]{width:15px;min-width:15px;height:15px;min-height:15px;margin:0}
