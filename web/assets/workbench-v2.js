@@ -480,11 +480,18 @@
     const apply=(role,context,value,entries)=>{
       const target=$(role==='observed'?'graphObsThresholdContext':'graphModelThresholdContext');
       if(!target||!context)return;
-      const values=entries.filter(x=>isThresholdQuantity(x.quantity)).flatMap(x=>x.source?.data?.value||[]).map(Number).filter(Number.isFinite);
       let text=thresholdContextText(context);
-      if(value!==null&&values.length){
-        const min=Math.min(...values),max=Math.max(...values),unit=context.unit?' '+context.unit:'';
-        if(value<min||value>max)text+=' · configured '+fmt(value,4)+unit+' is outside plotted support '+fmt(min,4)+'–'+fmt(max,4)+unit+'; threshold remains configured.';
+      if(value!==null){
+        let min=Infinity,max=-Infinity;
+        for(const entry of entries){
+          if(!isThresholdQuantity(entry.quantity))continue;
+          for(const raw of entry.source?.data?.value||[]){
+            if(raw==null||!Number.isFinite(Number(raw)))continue;
+            min=Math.min(min,Number(raw));max=Math.max(max,Number(raw));
+          }
+        }
+        const unit=context.unit?' '+context.unit:'';
+        if(Number.isFinite(min)&&(value<min||value>max))text+=' · configured '+fmt(value,4)+unit+' is outside plotted support '+fmt(min,4)+'–'+fmt(max,4)+unit+'; threshold remains configured.';
       }
       target.textContent=text;
     };
@@ -603,8 +610,10 @@
   function rainfallMaximum(values) {
     const configured = nullableNumber($('rainAxisMax').value);
     if (configured !== null && configured > 0) return configured;
-    const finite = values.filter(v => v !== null && Number.isFinite(Number(v))).map(Number);
-    const peak = finite.length ? Math.max(...finite) : 0;
+    // Large zoom windows can contain over 120,000 points. Spreading that array
+    // into Math.max exceeds browser argument limits and aborts the graph redraw.
+    let peak=0;
+    for(const value of values){if(value!==null&&Number.isFinite(Number(value)))peak=Math.max(peak,Number(value));}
     return peak > 0 ? peak * 1.12 : 1;
   }
 
@@ -725,7 +734,7 @@
     const rows=comparisons.map(entry=>{
       const scenario=entry.model?.item?.displayName||'Model';
       const column=entry.model?.col||'series';
-      if(!entry.result)return '<tr><td><strong>'+esc(scenario)+'</strong><br><small>'+esc(column)+'</small></td><td colspan="9">Not available</td></tr>';
+      if(!entry.result)return '<tr><td><strong>'+esc(scenario)+'</strong><br><small>'+esc(column)+'</small></td><td colspan="9">'+esc(entry.error||'No valid paired data')+'</td></tr>';
       const q=entry.result.metrics||{},unit=entry.result.comparison_unit||'';
       return '<tr><td><strong>'+esc(scenario)+'</strong><br><small>'+esc(column)+'</small></td>'+
         '<td>'+metric(q,'regression_r2')+'</td>'+
@@ -818,11 +827,11 @@
         })
         .finally(()=>{
           if(ui.timeSeriesComparisonPending===pending)ui.timeSeriesComparisonPending=null;
-          if(!failed&&timeSeriesRouteActive()&&(generation!==ui.timeSeriesComparisonGeneration||signature!==analysisSignature())){
+          if(timeSeriesRouteActive()&&(generation!==ui.timeSeriesComparisonGeneration||signature!==analysisSignature())){
             refreshTimeSeriesComparisonMetrics();
           }
         });
-    },2500);
+    },500);
   }
   window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics=renderTimeSeriesComparisonMetrics;
   window.addEventListener('icm:route-changed',event=>{
@@ -1054,6 +1063,13 @@
       });
       layout.uirevision='icm-reference-plot-v2:'+graphIdentity;
       layout.legend={...(layout.legend||{}),uirevision:layout.uirevision};
+      // Preserve the user's X zoom and legend choices, but recalculate the
+      // inverted rainfall axis for each visible window. Plotly otherwise keeps
+      // an earlier Y range because the graph-level uirevision is unchanged.
+      if(rainEntry){
+        const rainAxis=multiPanelMode||!observedEntries.length&&!modelEntries.length?'yaxis':'yaxis2';
+        if(layout[rainAxis])layout[rainAxis].uirevision=layout.uirevision+':rain:'+JSON.stringify(displayRange)+':'+rainfallMaximum(rainEntry.values);
+      }
       const chartNode=$('timeChart');
       if(chartNode&&chartNode.__v2GraphIdentity===graphIdentity&&Array.isArray(chartNode.data)){
         const previousVisibility=new Map(
@@ -1283,6 +1299,13 @@
     const gap = Number($('gapInput').value || 900);
     state.spills = {};
     const started = performance.now();
+
+    // Spill assessment is an explicit action. Do not leave it queued behind a
+    // lower-priority automatic comparison of every observed/modelled pair.
+    if(window.__ICM_WORKBENCH__.interruptBackgroundComparison){
+      setOperationStatus('Preparing spill calculation…','running');
+      await window.__ICM_WORKBENCH__.interruptBackgroundComparison('Spill calculation');
+    }
 
     if (observed && observedThreshold !== null) {
       setOperationStatus('Calculating observed EDM spills…', 'running');
