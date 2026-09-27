@@ -364,6 +364,7 @@ def spill_assessment(df, value_col, threshold, *, start=None, end=None, max_gap_
         row.update(requested_hours=coverage["analysis_seconds"]/3600,
                    valid_hours=valid/3600, unknown_hours=coverage["unknown_seconds"]/3600,
                    excluded_hours=coverage["excluded_seconds"]/3600,
+                   analysis_start=ys.isoformat(), analysis_end=ye.isoformat(),
                    eligible_coverage=coverage["coverage_fraction"],
                    requested_coverage=valid/coverage["analysis_seconds"],
                    count_status=status)

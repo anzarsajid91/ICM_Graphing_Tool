@@ -15,10 +15,12 @@ class FakeWorker {
     this.listeners={message:[],error:[]};
     this.ready=false;
     this.failNext=false;
+    this.started=[];
   }
   addEventListener(type,fn){(this.listeners[type]||(this.listeners[type]=[])).push(fn);}
   _emit(type,data){for(const fn of this.listeners[type]||[])fn({data,...data});}
   postMessage(message){
+    if(message.type==='call')this.started.push(message.args.start);
     setTimeout(()=>{
       if(this.failNext){
         this.failNext=false;
@@ -66,6 +68,19 @@ await vm.runInContext(`(async()=>{
   engine.worker.failNext=true;
   try{await engine.call('series_data',{start:'failed'});}catch(err){window.expectedFailure=String(err.message||err);}
   window.recovered=await engine.call('series_data',{start:'recovered'});
+  const first=engine.call('series_data',{start:'first'});
+  const background=engine.call('series_data',{start:'background'},'python_bridge','background');
+  const urgent=engine.call('series_data',{start:'urgent'});
+  window.beforePriority=engine.queueSnapshot();
+  engine.prioritise(window.beforePriority.waiting.find(job=>job.label==='series_data'&&job.priority===0).id);
+  await Promise.all([first,background,urgent]);
+  window.priorityOrder=engine.worker.started.slice(-3);
+  const running=engine.call('series_data',{start:'running'});
+  const cancelled=engine.call('series_data',{start:'never'}).catch(error=>String(error.message));
+  engine.cancelQueued(engine.queueSnapshot().waiting[0].id);
+  window.cancelledQueue=await cancelled;
+  await running;
+  window.queueAfterCancel=engine.queueSnapshot();
   const stalledFastPath=new BrowserFastPathEngine(10);
   try{await stalledFastPath.parse({file:{name:'stalled.csv'}},new ArrayBuffer(8));}
   catch(err){window.fastPathTimeout=String(err.message||err);}
@@ -90,6 +105,10 @@ assert.equal(sandbox.window.queueResults[0].start,'00:00');
 assert.equal(sandbox.window.queueResults[1].start,'10:00');
 assert.match(sandbox.window.expectedFailure,/expected/);
 assert.equal(sandbox.window.recovered.start,'recovered');
+assert.equal(sandbox.window.beforePriority.waiting.length,2);
+assert.deepEqual(Array.from(sandbox.window.priorityOrder),['first','background','urgent']);
+assert.match(sandbox.window.cancelledQueue,/Queued analysis cancelled/);
+assert.equal(sandbox.window.queueAfterCancel.waiting.length,0);
 assert.match(sandbox.window.fastPathTimeout,/timed out/i);
 assert.match(sandbox.window.fastPathDisabled,/timed out/i);
 assert.equal(sandbox.window.observedMasks.length,1);
