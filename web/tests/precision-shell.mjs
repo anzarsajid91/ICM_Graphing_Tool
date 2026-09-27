@@ -90,12 +90,14 @@ try{
   await page.waitForFunction(()=>!document.body.classList.contains('pw-focus-canvas'));
   const railExpanded=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
   if(railExpanded<180)throw new Error('Standard layout did not restore labelled navigation width: '+railExpanded);
+  await page.evaluate(()=>window.scrollTo(0,0));
   await page.click('#pwRailToggle');
   const railCollapsed=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
   if(!(railCollapsed<railExpanded))throw new Error('Rail collapse control did not reduce navigation width: '+JSON.stringify({railExpanded,railCollapsed}));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const railAfterRoute=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
   if(Math.abs(railAfterRoute-railCollapsed)>2)throw new Error('Route change mutated the user-selected rail collapse state: '+JSON.stringify({railCollapsed,railAfterRoute}));
+  await page.evaluate(()=>window.scrollTo(0,0));
   await page.click('#pwRailToggle');
   const inspectorContainment=await page.evaluate(()=>{
     const inspector=document.querySelector('#pwInspector'),toolbar=document.querySelector('#v2GraphToolbar');

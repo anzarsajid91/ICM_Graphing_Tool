@@ -549,7 +549,7 @@
     $('mappingStatus').textContent = mappingSummary;
   }
 
-  async function v2SeriesFor(key, range=null) {
+  async function v2SeriesFor(key, range=null, role='observed') {
     const source = mappingObject(key);
     if (!source) return null;
     const args = {
@@ -557,8 +557,12 @@
       column: source.col,
       max_points: displayPointBudget(range),
       max_gap_seconds:Number($('gapInput').value||900),
-      start: range?.[0] || null,
-      end: range?.[1] || null,
+      // Plotly formats the model-clock axis as ISO UTC strings during zoom.
+      // The source series use naive model-clock timestamps; preserve the axis
+      // wall clock when requesting a display slice from the strict worker API.
+      start: range?.[0] ? modelClock(range[0]) : null,
+      end: range?.[1] ? modelClock(range[1]) : null,
+      exclusions_json:JSON.stringify(exclusionPayload(true,role,key)),
     };
     // Always ask the authoritative worker for the requested visible window.
     // Caching full display slices here can silently defeat native-resolution
@@ -696,12 +700,12 @@
     return prefix+(label?' — '+label:'');
   }
 
-  function renderGraphStatistics(rows,displayRange=null) {
+  function renderGraphStatistics(rows,displayRange=null,rawRows=[]) {
     const target=$('graphStatistics');
     if(target){
-      target.hidden=true;
-      target.setAttribute('aria-hidden','true');
-      target.innerHTML='';
+      target.hidden=!rawRows.length;
+      target.setAttribute('aria-hidden',rawRows.length?'false':'true');
+      target.innerHTML=rawRows.length?'<details><summary>Raw source statistics (before exclusions)</summary>'+graphStatisticsHtml(rawRows)+'</details>':'';
     }
     const scaled=(row,key)=>{const value=row.statistics?.[key];return value==null?null:Number(value)*(row.factor||1);};
     const rain=rows.find(row=>String(row.statistics?.quantity||row.role).toLowerCase()==='rainfall');
@@ -865,7 +869,7 @@
       const canonical=['flow','depth','level','velocity'];
 
       for(let observedIndex=0;observedIndex<observedSources.length;observedIndex+=1){
-        const source=observedSources[observedIndex],obs=await v2SeriesFor(source.key,range);
+        const source=observedSources[observedIndex],obs=await v2SeriesFor(source.key,range,'observed');
         if(!obs||generation!==ui.graphGeneration)return;
         const quantity=String(seriesQuantity(obs.item,obs.col)||source.quantity||selectedQuantity||'value').toLowerCase();
         pointCounts[observedIndex===0?'observed':`observed_${quantity||observedIndex+1}`]={
@@ -876,7 +880,7 @@
 
       let modelIndex=0;
       for(const key of state.mapping.models){
-        const model=await v2SeriesFor(key,range);
+        const model=await v2SeriesFor(key,range,'model');
         if(!model||generation!==ui.graphGeneration)return;
         let quantity=String(seriesQuantity(model.item,model.col)||'').toLowerCase();
         if(fdvMode&&!canonical.includes(quantity)&&canonical.includes(selectedQuantity))quantity=selectedQuantity;
@@ -889,7 +893,7 @@
 
       let rainEntry=null;
       if(state.mapping.rain){
-        const rain=await v2SeriesFor(state.mapping.rain,range);
+        const rain=await v2SeriesFor(state.mapping.rain,range,'rain');
         if(rain&&generation===ui.graphGeneration){
           const factor=Number($('rainFactor').value||1);
           rainEntry={source:rain,factor,values:rain.data.value.map(v=>v==null?null:Number(v)*factor)};
@@ -901,11 +905,14 @@
 
       const panelQuantities=new Set([...observedEntries,...modelEntries].map(x=>String(x.quantity||'').toLowerCase()).filter(q=>canonical.includes(q)));
       const multiPanelMode=fdvMode||panelQuantities.size>1;
-      const statisticRows=[];
-      const addStat=(role,entry,factor=1)=>statisticRows.push({
-        role,compact_label:compactGraphRole(role,entry.item,entry.col),
-        label:seriesLabel(entry.item,entry.col),statistics:entry.data.statistics,factor
-      });
+      const statisticRows=[],rawStatisticRows=[];
+      const addStat=(role,entry,factor=1)=>{
+        const label=compactGraphRole(role,entry.item,entry.col);
+        if(entry.data.assessment_statistics){
+          rawStatisticRows.push({role,compact_label:label+' · raw',label:seriesLabel(entry.item,entry.col),statistics:entry.data.statistics,factor});
+          statisticRows.push({role,compact_label:label+' · assessed',label:seriesLabel(entry.item,entry.col),statistics:entry.data.assessment_statistics,factor});
+        }else statisticRows.push({role,compact_label:label,label:seriesLabel(entry.item,entry.col),statistics:entry.data.statistics,factor});
+      };
       if(multiPanelMode){
         for(const quantity of canonical){
           for(const item of observedEntries.filter(x=>x.quantity===quantity))addStat('Observed',item.source);
@@ -1097,7 +1104,7 @@
       window.__ICM_WORKBENCH__.lastGraphRange=range;
       window.__ICM_WORKBENCH__.lastGraphMode=fdvMode?'fdv-multi-variable':multiPanelMode?'multi-quantity':'single-series';
       window.__ICM_WORKBENCH__.lastPanelOrder=panelOrder;
-      renderGraphStatistics(statisticRows,displayRange);
+      renderGraphStatistics(statisticRows,displayRange,rawStatisticRows);
       updateThresholdRangeStatus(observedEntries,modelEntries);
       refreshTimeSeriesComparisonMetrics();
       const density=$('graphDensity');
@@ -1205,10 +1212,22 @@
   }
   function spillComparisonSupport(observed,model,{requireMask=true}={}){
     if(!observed||!model)return {comparable:false,reason:'Both observed and modelled results are required.'};
+    if(!$('timeBasisConfirmed')?.checked)return {comparable:false,reason:'Confirm that observed and modelled sources share a model-clock time basis under Assign & interpret series.'};
+    const observedSource=mappingObject(state.mapping.observed),modelSource=mappingObject($('spillModelSelect')?.value);
+    if(observedSource&&modelSource&&seriesQuantity(observedSource.item,observedSource.col)==='level'&&seriesQuantity(modelSource.item,modelSource.col)==='level'){
+      const a=seriesReference(observedSource.item,observedSource.col),b=seriesReference(modelSource.item,modelSource.col);
+      if(a&&b&&String(a).toLowerCase()!==String(b).toLowerCase())return {comparable:false,reason:'Absolute Level sources declare different vertical datums.'};
+      if((!a||!b||!seriesUnit(observedSource.item,observedSource.col)||!seriesUnit(modelSource.item,modelSource.col))&&!$('levelDatumConfirmed')?.checked)return {comparable:false,reason:'Confirm a common vertical unit and datum under Assign & interpret series.'};
+    }
     const observedStatus=String(observed.count_status||observed.status||'').toLowerCase();
     const modelStatus=String(model.count_status||model.status||'').toLowerCase();
     if(observedStatus==='unavailable'||modelStatus==='unavailable'){
       return {comparable:false,reason:'One or both spill results are unavailable.'};
+    }
+    if(observed.analysis_start&&model.analysis_start&&(
+      modelClock(observed.analysis_start)!==modelClock(model.analysis_start)||
+      modelClock(observed.analysis_end)!==modelClock(model.analysis_end))){
+      return {comparable:false,reason:'Observed and modelled assessment periods differ; select a common period.'};
     }
     const a=spillSupport(observed),b=spillSupport(model),toleranceHours=1/3600;
     if((Number(a?.unknown)||0)>toleranceHours||(Number(b?.unknown)||0)>toleranceHours){
@@ -1235,6 +1254,12 @@
   }
   window.__ICM_WORKBENCH__.spillDeviationRag=spillDeviationRag;
   window.__ICM_WORKBENCH__.spillComparisonSupport=spillComparisonSupport;
+  for(const id of ['timeBasisConfirmed','levelDatumConfirmed'])$(id)?.addEventListener('change',()=>{
+    state.comparisonSnapshot=null;state.comparisons=[];
+    state.spillSnapshot=null;
+    if(state.spills.observed||state.spills.model)renderSpillsV2();
+    refreshTimeSeriesComparisonMetrics();
+  });
 
   function annualComparison() {
     const observed = state.spills.observed;
@@ -1251,7 +1276,15 @@
     const years = [...new Set([...om.keys(),...mm.keys()])].sort((a,b)=>a-b);
     if (!years.length) return summary+'<div class="v2-empty">No annual spill results.</div>';
     const rows=years.map(year=>{
-      const o=om.get(year),m=mm.get(year),support=spillComparisonSupport(o,m,{requireMask:false});
+      const o=om.get(year),m=mm.get(year);
+      const yearStart=`${year}-01-01T00:00:00`,yearEnd=`${year+1}-01-01T00:00:00`;
+      const yearMask=result=>spillExclusionMask(result).map(([start,end])=>[
+        start<yearStart?yearStart:start,end>yearEnd?yearEnd:end
+      ]).filter(([start,end])=>start<end);
+      const support=spillComparisonSupport(o,m,{requireMask:false});
+      if(support.comparable&&JSON.stringify(yearMask(observed))!==JSON.stringify(yearMask(model))){
+        support.comparable=false;support.reason='Observed and modelled exclusion masks differ in this year.';
+      }
       const count=support.comparable?spillDeviationRag(o?.spill_count,m?.spill_count):null;
       const duration=support.comparable?spillDeviationRag(o?.duration_hours,m?.duration_hours):null;
       return `<tr><td>${year}</td><td>${fmt(o?.spill_count,0)}</td><td>${fmt(m?.spill_count,0)}</td><td>${support.comparable?esc(count.label):'—'}</td><td>${spillRagCell(count)}</td><td>${fmt(o?.duration_hours,2)}</td><td>${fmt(m?.duration_hours,2)}</td><td>${support.comparable?esc(duration.label):'—'}</td><td>${spillRagCell(duration)}</td><td title="${esc(support.reason)}">${support.comparable?'Matched':'Not comparable'}</td></tr>`;

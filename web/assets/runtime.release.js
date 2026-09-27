@@ -21,6 +21,9 @@ const diagnostic = {
 window.__ICM_WORKBENCH__ = diagnostic;
 diagnostic.sourcePoolRevision = 0;
 function notifySourcePoolChanged(reason='changed'){
+  for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
+    const input=$(id);if(input)input.checked=false;
+  }
   const detail={
     reason,
     revision:++diagnostic.sourcePoolRevision,
@@ -156,9 +159,15 @@ function ensureOperationOverlay(){
   root.hidden=true;
   root.setAttribute('role','status');
   root.setAttribute('aria-live','polite');
-  root.innerHTML='<div class="global-operation-card"><span class="global-operation-spinner" aria-hidden="true"></span><div class="global-operation-copy"><strong id="globalOperationTitle">Processing…</strong><span id="globalOperationDetail">Please wait while the current operation completes.</span><div class="global-operation-track"><span id="globalOperationBar"></span></div></div><button type="button" class="btn quiet global-operation-cancel" id="globalOperationCancel">Cancel</button></div>';
+  root.innerHTML='<div class="global-operation-card"><span class="global-operation-spinner" aria-hidden="true"></span><div class="global-operation-copy"><strong id="globalOperationTitle">Processing…</strong><span id="globalOperationDetail">Please wait while the current operation completes.</span><div class="global-operation-track"><span id="globalOperationBar"></span></div><details class="operation-tasks"><summary>Process queue</summary><div id="operationQueue" role="list"></div></details></div><button type="button" class="btn quiet global-operation-cancel" id="globalOperationCancel">Cancel running</button></div>';
   document.body.appendChild(root);
   root.querySelector('#globalOperationCancel')?.addEventListener('click',()=>cancelCurrentOperation());
+  root.querySelector('#operationQueue')?.addEventListener('click',event=>{
+    const button=event.target.closest('[data-prioritise-job]');
+    if(button)engine.prioritise(button.dataset.prioritiseJob);
+    const cancel=event.target.closest('[data-cancel-job]');
+    if(cancel)engine.cancelQueued(cancel.dataset.cancelJob);
+  });
   return root;
 }
 function operationUpdate(title,progress=null,detail='Please wait before starting another operation.'){
@@ -187,6 +196,7 @@ function operationBegin(target){
 function operationEnd(){
   operationDepth=Math.max(0,operationDepth-1);
   if(operationDepth)return;
+  if(engine?.active){operationUpdate('Running '+engine.active.label,null,'Open Process queue to see waiting work.');return;}
   const root=document.getElementById('globalOperation');
   if(root)root.hidden=true;
   document.body.classList.remove('operation-busy');
@@ -285,6 +295,43 @@ class BrowserPythonEngine {
     this.sequence=0;
     this.pending=new Map();
     this.booting=null;
+    this.queue=[];
+    this.active=null;
+  }
+  queueSnapshot(){return {running:this.active?{id:this.active.id,label:this.active.label}:null,waiting:this.queue.map(job=>({id:job.id,label:job.label,priority:job.priority}))};}
+  _independent(job){return job?.message?.type==='call'&&!['parse_source','set_series_quantity','clear_cache','drop_cache'].includes(job.message.name);}
+  _renderQueue(){
+    diagnostic.processQueue=this.queueSnapshot();
+    if(this.active&&operationDepth===0&&typeof document.createElement==='function')operationUpdate('Running '+this.active.label,null,'Open Process queue to prioritise waiting work.');
+    if(!this.active&&!this.queue.length&&operationDepth===0){
+      const root=document.getElementById('globalOperation');if(root)root.hidden=true;
+      document.body?.classList?.remove('operation-busy');
+    }
+    const el=document.getElementById('operationQueue');
+    if(el)el.innerHTML=(this.active?'<div role="listitem">Running: '+esc(this.active.label)+'</div>':'')+
+      this.queue.map(job=>'<div role="listitem">Waiting: '+esc(job.label)+
+        (this._independent(job)?' <button type="button" class="btn quiet" data-prioritise-job="'+esc(job.id)+'">Run next</button> <button type="button" class="btn quiet" data-cancel-job="'+esc(job.id)+'">Cancel</button>':' · required preparation')+'</div>').join('')||'<div>No pending calculations.</div>';
+  }
+  prioritise(id){
+    const job=this.queue.find(item=>item.id===id);
+    if(!this._independent(job)||this.queue.some(item=>item!==job&&!this._independent(item)))return false;
+    job.priority=100;
+    this.queue.sort((a,b)=>b.priority-a.priority||a.order-b.order);
+    this._renderQueue();return true;
+  }
+  cancelQueued(id){
+    const index=this.queue.findIndex(job=>job.id===id);
+    if(index<0||!this._independent(this.queue[index]))return false;
+    const [job]=this.queue.splice(index,1);
+    this.pending.delete(id);
+    job.reject(new Error('Queued analysis cancelled.'));
+    this._renderQueue();return true;
+  }
+  _dispatch(){
+    if(this.active||!this.queue.length||!this.worker)return;
+    const job=this.queue.shift();this.active=job;this._renderQueue();
+    try{this.worker.postMessage(job.message,job.transfer);}
+    catch(error){this.pending.delete(job.id);this.active=null;job.reject(error);this._renderQueue();this._dispatch();}
   }
   _spawn(){
     if(typeof Worker!=='function')throw new Error('Web Workers are not available in this browser.');
@@ -295,6 +342,7 @@ class BrowserPythonEngine {
       diagnostic.errors.push({time:new Date().toISOString(),target:'analysis-worker',message});
       for(const [,entry] of this.pending)entry.reject(new Error(message));
       this.pending.clear();
+      this.queue=[];this.active=null;this._renderQueue();
       this.ready=false;
     });
   }
@@ -310,16 +358,19 @@ class BrowserPythonEngine {
     const entry=this.pending.get(message.id);
     if(!entry)return;
     this.pending.delete(message.id);
+    if(this.active?.id===message.id)this.active=null;
     if(message.ok)entry.resolve(message.result);
     else entry.reject(new Error(message.error||'Python analysis worker operation failed.'));
+    this._renderQueue();this._dispatch();
   }
-  _request(type,payload={},transfer=[]){
+  _request(type,payload={},transfer=[],priority=20,label=type){
     if(!this.worker)throw new Error('Python analysis worker has not started.');
     const id=`analysis-${++this.sequence}`;
     return new Promise((resolve,reject)=>{
       this.pending.set(id,{resolve,reject,type});
-      try{this.worker.postMessage({id,type,...payload},transfer);}
-      catch(error){this.pending.delete(id);reject(error);}
+      this.queue.push({id,message:{id,type,...payload},transfer,priority,label,order:this.sequence,reject});
+      this.queue.sort((a,b)=>b.priority-a.priority||a.order-b.order);
+      this._renderQueue();this._dispatch();
     });
   }
   async boot(){
@@ -349,10 +400,10 @@ class BrowserPythonEngine {
     if(!this.ready)return true;
     return this._request('removeFile',{path:String(path||'')});
   }
-  async call(name,args={},module='python_bridge'){
+  async call(name,args={},module='python_bridge',priority='normal'){
     if(!this.ready)throw new Error('Reference Python worker is not ready.');
     if(!['python_bridge','advanced_bridge'].includes(module))throw new Error('Unsupported browser bridge.');
-    return this._request('call',{name,args,module});
+    return this._request('call',{name,args,module},[],priority==='background'?0:20,name);
   }
   async clear(){if(this.ready)return this._request('clear');return true;}
   async restart(items=[]){
@@ -372,6 +423,7 @@ class BrowserPythonEngine {
     this.booting=null;
     for(const [,entry] of this.pending)entry.reject(new Error(reason));
     this.pending.clear();
+    this.queue=[];this.active=null;this._renderQueue();
   }
 }
 const engine=new BrowserPythonEngine();
@@ -659,8 +711,10 @@ async function handoffFastPath(item){
   if(window.ICMFastPath&&window.ICMFastPath.clear)window.ICMFastPath.clear();
 }
 async function importGuard(fn){
+  operationBegin('poolSummary');
   try{return await fn();}
   catch(err){showError('poolSummary',err&&err.message||err);return null;}
+  finally{operationEnd();}
 }
 
 async function ingestFiles(files){
@@ -673,6 +727,7 @@ async function ingestFiles(files){
   const pending=[];
   $('poolSummary').textContent='Reading '+list.length+' source file'+(list.length===1?'':'s')+'…';
   for(let index=0;index<list.length;index+=1){
+    operationUpdate('Preparing sources',Math.round(index/list.length*45),`${index+1}/${list.length}: reading and previewing ${list[index].name}`);
     if(!importIsCurrent())return;
     const file=list[index],displayName=file.webkitRelativePath||file._relativePath||file.name;
     if([...state.files.values()].some(x=>x.displayName===displayName&&x.file.size===file.size&&x.file.lastModified===file.lastModified))continue;
@@ -709,11 +764,9 @@ async function ingestFiles(files){
           diagnostic.fastpathWarnings.push({time:new Date().toISOString(),file:displayName,message:String(previewError&&previewError.message||previewError)});
         }
       }
-      item.hash=await hashPromise;
-      if(!itemIsCurrent(item))return;
       if(item.preview&&item.preview.eligible){
         item.status='preview-ready';
-        if(list.length===1&&!batchPreviewShown&&window.ICMFastPath&&window.ICMFastPath.renderPreview){
+        if(!batchPreviewShown&&window.ICMFastPath&&window.ICMFastPath.renderPreview){
           batchPreviewShown=true;
           diagnostic.fastpathActiveSourceId=item.id;
           // Prepare the first useful graph immediately, but keep route selection under
@@ -726,6 +779,10 @@ async function ingestFiles(files){
         item.status='waiting-engine';
         if(item.preview&&item.preview.error)item.previewWarning=item.preview.error;
       }
+      // A full-file SHA-256 is required for provenance, but preview painting
+      // does not depend on it. Complete the digest before authoritative handoff.
+      item.hash=await hashPromise;
+      if(!itemIsCurrent(item))return;
       pending.push(item);recordFastPath(item);renderPool();
     }catch(err){
       if(!itemIsCurrent(item))return;
@@ -756,6 +813,7 @@ async function ingestFiles(files){
 
   for(let index=0;index<pending.length;index+=1){
     const item=pending[index];
+    operationUpdate('Validating sources',45+Math.round(index/pending.length*55),`${index+1}/${pending.length}: ${item.displayName}`);
     if(!itemIsCurrent(item))continue;
     if(item.status==='error')continue;
     item.status='validating';renderPool();await operationPaint();
@@ -1082,8 +1140,14 @@ Object.defineProperty(diagnostic,'dwfResult',{get:()=>state.dwfResult});
 diagnostic.healthFresh=healthFresh;
 function comparisonQuantityMismatch(observed,model){
   if(!observed||!model)return null;
+  if(!$('timeBasisConfirmed')?.checked)return 'Confirm a common model-clock time basis under Assign & interpret series before calculating paired statistics.';
   const observedQuantity=String(seriesQuantity(observed.item,observed.col)||'').toLowerCase();
   const modelQuantity=String(seriesQuantity(model.item,model.col)||'').toLowerCase();
+  if(observedQuantity==='level'&&modelQuantity==='level'){
+    const a=seriesReference(observed.item,observed.col),b=seriesReference(model.item,model.col);
+    if(a&&b&&String(a).toLowerCase()!==String(b).toLowerCase())return 'Observed and modelled absolute Levels declare different vertical datums. Convert them to the same datum before comparing.';
+    if((!a||!b||!seriesUnit(observed.item,observed.col)||!seriesUnit(model.item,model.col))&&!$('levelDatumConfirmed')?.checked)return 'Confirm a common vertical unit and datum under Assign & interpret series before comparing absolute Levels.';
+  }
   if(!observedQuantity||!modelQuantity)return null;
   if(observedQuantity===modelQuantity)return null;
   const name=q=>q==='level'?'absolute Level':q.charAt(0).toUpperCase()+q.slice(1);
@@ -1155,7 +1219,7 @@ async function ensureComparisonResults({background=false}={}){
           obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:m.item.virtualPath,model_col:m.col,
           max_gap_seconds:gap,offset_minutes:offset,...bounds,
           exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',sourceKey(m.id,m.col))])
-        });
+        },'python_bridge',background?'background':'normal');
         if(cancellationGeneration!==comparisonCancellationGeneration)throw new Error('Background comparison superseded by an interactive graph request.');
         results.push({model:m,result});
       }catch(err){
@@ -1502,7 +1566,7 @@ async function runDwf(){
 
 function syncExclusionsFromEditor(){
   const root=$('exclusionRows');
-  if(!root)return;
+  if(!root||typeof root.querySelectorAll!=='function')return;
   root.querySelectorAll('.ex-row').forEach(row=>{
     const entry=state.exclusions.find(x=>x.id===row.dataset.id);
     if(!entry)return;
@@ -1529,7 +1593,7 @@ function addExclusionRow(value={}){state.exclusions.push({id:crypto.randomUUID()
 function renderExclusions(){
   const scopes=[['both','Observed + models'],['observed','Observed / EDM'],['model','All mapped models'],['rainfall','Rainfall'],...state.mapping.models.map(key=>{const m=mappingObject(key);return [key,seriesLabel(m.item,m.col)];})];
   $('exclusionRows').innerHTML=state.exclusions.length?state.exclusions.map(e=>`<div class="ex-row" data-id="${esc(e.id)}"><label>Enabled<input type="checkbox" data-field="enabled" ${e.enabled!==false?'checked':''}></label><label>Start<input type="datetime-local" step="1" data-field="start" value="${esc(modelClock(e.start))}"></label><label>End<input type="datetime-local" step="1" data-field="end" value="${esc(modelClock(e.end))}"></label><label>Scope<select data-field="scope">${scopes.map(([v,n])=>`<option value="${esc(v)}" ${(e.scope||'both')===v?'selected':''}>${esc(n)}</option>`).join('')}</select></label><label>Reason<input type="text" data-field="reason" value="${esc(e.reason)}"></label><button class="btn quiet remove-ex" data-id="${esc(e.id)}">Remove</button></div>`).join(''):'<div class="pool-summary">No exclusion periods.</div>';
-  document.querySelectorAll('.ex-row input,.ex-row select').forEach(inp=>inp.addEventListener('change',()=>{const e=state.exclusions.find(x=>x.id===inp.closest('.ex-row').dataset.id);if(e){state.exclusionHistory??=[];state.exclusionHistory.push({...e,changed_at:new Date().toISOString()});e[inp.dataset.field]=inp.type==='checkbox'?inp.checked:inp.value;}void drawTimeChart();}));
+  document.querySelectorAll('.ex-row input,.ex-row select').forEach(inp=>inp.addEventListener('change',()=>{const e=state.exclusions.find(x=>x.id===inp.closest('.ex-row').dataset.id);if(e){state.exclusionHistory??=[];state.exclusionHistory.push({...e,changed_at:new Date().toISOString()});e[inp.dataset.field]=inp.type==='checkbox'?inp.checked:inp.value;}try{exclusionPayload(true);}catch{return;}void drawTimeChart().catch(err=>showError('mappingStatus',err?.message||err));}));
   document.querySelectorAll('.remove-ex').forEach(b=>b.addEventListener('click',()=>{state.deletedExclusions??=[];state.deletedExclusions.push(state.exclusions.find(x=>x.id===b.dataset.id));state.exclusions=state.exclusions.filter(x=>x.id!==b.dataset.id);renderExclusions();void drawTimeChart();}));
 }
 
@@ -1722,7 +1786,7 @@ function thresholdWorkspaceSeries(role){
   const model=mappingObject(key);
   return model&&['depth','level'].includes(String(seriesQuantity(model.item,model.col)||'').toLowerCase())?workspaceSeries(key):null;
 }
-function workspaceObject(strictExclusions=true){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:'model clock/unspecified',saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity})).filter(x=>x.series&&x.quantity),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#ff0000',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#ff0000'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
+function workspaceObject(strictExclusions=true){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:$('timeBasisConfirmed')?.checked?'model clock/engineer-confirmed':'model clock/unspecified',time_basis_confirmed:Boolean($('timeBasisConfirmed')?.checked),level_datum_confirmed:Boolean($('levelDatumConfirmed')?.checked),saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity})).filter(x=>x.series&&x.quantity),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#ff0000',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#ff0000'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
 function downloadBlob(name,content,type='application/octet-stream'){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 function downloadWorkspace(){downloadBlob(`icm-workbench-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(workspaceObject(),null,2),'application/json');$('workspaceStatus').textContent='Workspace downloaded. Raw files were not embedded.';}
 function findSeriesFromWorkspace(ref){
@@ -1749,6 +1813,8 @@ function findSeriesFromWorkspace(ref){
 }
 async function applyWorkspace(w){
   w=migrateBrowserWorkspace(w);
+  const stamped=[w.analysis?.analysis_start,w.analysis?.analysis_end,...(w.exclusions||[]).flatMap(row=>[row.start,row.end])].filter(Boolean);
+  if(stamped.some(value=>/(?:Z|[+-]\d{2}:?\d{2})$/i.test(String(value))))throw new Error('Workspace contains timezone-aware assessment bounds. Convert them explicitly to the common model-clock time basis before importing.');
   ++state.rainEventGeneration;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;
   ++state.dwfGeneration;state.dwfResult=null;state.dwfSignature=null;
   ++state.healthGeneration;state.healthResult=null;state.healthSignature=null;
@@ -1770,6 +1836,8 @@ async function applyWorkspace(w){
   [...$('modelSelect').options].forEach(o=>o.selected=state.mapping.models.includes(o.value));
   $('rainSelect').value=state.mapping.rain;
   const a=w.analysis||{};
+  if($('timeBasisConfirmed'))$('timeBasisConfirmed').checked=Boolean(w.time_basis_confirmed);
+  if($('levelDatumConfirmed'))$('levelDatumConfirmed').checked=Boolean(w.level_datum_confirmed);
   $('gapInput').value=a.max_gap_seconds??900;
   $('obsThreshold').value=a.observed_threshold??'';
   $('modelThreshold').value=a.model_threshold??'';
@@ -1864,7 +1932,7 @@ function analysisSignature(){
     issues:registry.issues||[],
     associationSource:registry.associationSource||null,
   };
-  return JSON.stringify({mapping:w.mapping,analysis:w.analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual,time_basis:w.time_basis,project_context:projectContext});
+  return JSON.stringify({mapping:w.mapping,analysis:w.analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual,time_basis:w.time_basis,level_datum_confirmed:w.level_datum_confirmed,project_context:projectContext});
 }
 function assertFreshResults(options=null){
   const sig=analysisSignature();
@@ -1947,7 +2015,8 @@ function hydraulicGraphLayout({fdvMode=false,quantities=[],statistics=[],hasRain
 function graphStatisticsHtml(rows){
   if(!rows?.length)return '<p class="muted">No graph statistics available.</p>';
   const value=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),4);
-  return '<p class="muted graph-statistics-note">Native source statistics for the displayed period. Average is the arithmetic sample mean; time-weighted mean and totals use valid interval support. Totals are partial where coverage is incomplete. Exclusions are shown on the graph but are not applied to these raw statistics.</p><div class="table-wrap"><table class="graph-stats-compact data-table"><thead><tr><th>Series</th><th>Unit</th><th>Minimum</th><th>Maximum</th><th>Average</th><th>Time-weighted mean</th><th>Total (valid support)</th><th>Valid support</th><th>Status</th></tr></thead><tbody>'+rows.map(row=>{
+  const hasAssessed=rows.some(row=>String(row.statistics?.basis||'').startsWith('assessment;'));
+  return '<p class="muted graph-statistics-note">Native source statistics for the displayed period. Average is the arithmetic sample mean; time-weighted mean and totals use valid interval support. Totals are partial where coverage is incomplete. '+(hasAssessed?'Assessment rows clip applicable exclusions at their exact interval boundaries; raw rows retain the original source.':'These raw statistics do not apply graph exclusions.')+'</p><div class="table-wrap"><table class="graph-stats-compact data-table"><thead><tr><th>Series</th><th>Unit</th><th>Minimum</th><th>Maximum</th><th>Average</th><th>Time-weighted mean</th><th>Total (valid support)</th><th>Valid support</th><th>Status</th></tr></thead><tbody>'+rows.map(row=>{
     const s=row.statistics||{},factor=row.factor??1,scale=v=>v==null?v:Number(v)*factor;
     const label=row.compact_label||row.role||'Series';
     return '<tr><td><strong>'+esc(label)+'</strong><br><small>'+esc(row.label||'')+'</small></td><td>'+esc(s.unit||'Unresolved')+'</td><td>'+value(scale(s.minimum))+'</td><td>'+value(scale(s.maximum))+'</td><td>'+value(scale(s.mean))+'</td><td>'+value(scale(s.time_weighted_mean))+'</td><td>'+value(scale(s.total))+(s.total!=null?' '+esc(s.total_unit||''):'')+'</td><td>'+value(Number(s.valid_support_seconds||0)/3600)+' h'+(s.coverage_fraction==null?'':' · '+fmt(s.coverage_fraction*100,1)+'%')+'</td><td>'+esc(s.status||'unavailable')+(s.unit?'':' · units unresolved')+'</td></tr>';
@@ -2153,18 +2222,25 @@ function reportSpillCountMatrix(result){
 }
 function reportMonthlySpillComparison(observed,modelled){
   if(!observed||!modelled)return '<p class="muted">Calculate both observed and modelled spills to compare monthly counts.</p>';
-  if(observed.count_status!=='definitive'||modelled.count_status!=='definitive'){
-    return '<div class="note"><strong>Monthly comparison withheld.</strong> One or both count domains are provisional because of excluded or unknown support. Resolve the support issue before interpreting count differences.</div>';
-  }
   const om=new Map((observed.monthly_counts||[]).map(x=>[`${Number(x.year)}-${Number(x.month)}`,Number(x.spill_count||0)]));
   const mm=new Map((modelled.monthly_counts||[]).map(x=>[`${Number(x.year)}-${Number(x.month)}`,Number(x.spill_count||0)]));
-  const years=[...new Set([...(observed.yearly_summary||[]).map(x=>Number(x.year)),...(modelled.yearly_summary||[]).map(x=>Number(x.year))])].sort((a,b)=>a-b);
+  const oy=new Map((observed.yearly_summary||[]).map(x=>[Number(x.year),x]));
+  const my=new Map((modelled.yearly_summary||[]).map(x=>[Number(x.year),x]));
+  const years=[...oy.keys()].filter(year=>my.has(year)).sort((a,b)=>a-b);
   const rows=[];
   for(const year of years)for(let month=1;month<=12;month++){
+    const left=oy.get(year),right=my.get(year);
+    const wholeYear=modelClock(left.analysis_start)===`${year}-01-01T00:00:00`&&modelClock(left.analysis_end)===`${year+1}-01-01T00:00:00`;
+    const aligned=wholeYear&&modelClock(left.analysis_start)===modelClock(right.analysis_start)&&modelClock(left.analysis_end)===modelClock(right.analysis_end)&&
+      left.count_status==='definitive'&&right.count_status==='definitive'&&
+      Math.abs(Number(left.valid_hours)-Number(right.valid_hours))<1/3600&&
+      Math.abs(Number(left.requested_hours)-Number(right.requested_hours))<1/3600;
+    if(!aligned)continue;
     const o=om.get(`${year}-${month}`)||0,m=mm.get(`${year}-${month}`)||0,d=m-o;
     const assessment=d===0?'Matching':d<0?'Under-predicting':'Over-predicting';
     rows.push('<tr><td>'+year+'</td><td>'+REPORT_MONTHS[month-1]+'</td><td>'+o+'</td><td>'+m+'</td><td>'+d+'</td><td>'+assessment+'</td></tr>');
   }
+  if(!rows.length)return '<div class="note"><strong>Monthly comparison withheld.</strong> No common complete calendar year has aligned observed and modelled support.</div>';
   return '<div class="table-wrap"><table><thead><tr><th>Year</th><th>Month</th><th>Observed spills</th><th>Modelled spills</th><th>Difference</th><th>Assessment</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>';
 }
 function chartHasReportData(id){
@@ -2298,7 +2374,8 @@ async function reportTraces(period){
   for(const entry of entries){
     const source=mappingObject(entry.key);if(!source)continue;
     const d=await engine.call('series_data',{path:source.item.virtualPath,column:source.col,max_points:30000,
-      start:period[0],end:period[1],end_exclusive:true,max_gap_seconds:Number($('gapInput').value||900)});
+      start:period[0],end:period[1],end_exclusive:true,max_gap_seconds:Number($('gapInput').value||900),
+      exclusions_json:JSON.stringify(exclusionPayload(true,entry.observed?'observed':entry.role==='Rainfall'?'rain':'model',entry.key))});
     const quantity=String(seriesQuantity(source.item,source.col)||'').toLowerCase();
     if(quantity&&!quantities.includes(quantity))quantities.push(quantity);
     const rain=entry.role==='Rainfall',factor=rain?Number($('rainFactor').value||1):1;
@@ -2308,8 +2385,10 @@ async function reportTraces(period){
       type:rain?'bar':'scatter',mode:rain?undefined:'lines',connectgaps:false,
       yaxis:rain?'y2':axisFor(quantity),line:rain?undefined:{color:traceColour,width:1.5},
       marker:rain?{color:traceColour}:undefined,opacity:rain?.72:1});
-    statistics.push({role:entry.role,compact_label:compactGraphRole(entry.role,source.item,source.col),
-      label:seriesLabel(source.item,source.col),statistics:d.statistics,factor,reference:seriesReference(source.item,source.col)||null});
+    const label=compactGraphRole(entry.role,source.item,source.col),reference=seriesReference(source.item,source.col)||null;
+    if(d.assessment_statistics)statistics.push({role:entry.role,compact_label:label+' · raw',label:seriesLabel(source.item,source.col),statistics:d.statistics,factor,reference});
+    statistics.push({role:entry.role,compact_label:label+(d.assessment_statistics?' · assessed':''),
+      label:seriesLabel(source.item,source.col),statistics:d.assessment_statistics||d.statistics,factor,reference});
     if(rain){hasRain=true;rainMax=values.reduce((m,v)=>v==null?m:Math.max(m,v*1.12),1);}
   }
   return {traces,statistics,quantities,fdvMode,hasRain,rainMax};

@@ -35,6 +35,7 @@
         <label>Rainfall series<select id="rainSelect"><option value="">None</option></select></label>
         <label>Maximum interpolation gap<input id="gapInput" type="number" min="1" step="60" value="900" /><small>seconds; default 15 min.</small></label>
       </div>
+      <div class="mapping-status" id="comparisonBasisNotice"><strong>Comparison basis</strong> · <label><input id="timeBasisConfirmed" type="checkbox" /> I confirm the sources use the same model-clock time basis, including any daylight-saving transition.</label> <label><input id="levelDatumConfirmed" type="checkbox" /> I confirm absolute Level series and thresholds share a vertical unit and datum where the sources do not declare both.</label></div>
       <div class="series-semantics-panel" id="seriesSemanticsPanel" hidden>
         <div class="series-semantics-copy"><strong>Generic series interpretation</strong><span>Every user-interpretable tabular series in the loaded source pool is listed independently without guessing hydraulic meaning. Name-inferred CSV quantities are shown as defaults but remain independently overridable; native FDV, rainfall and ICM HYD semantics stay protected.</span></div>
         <div class="series-semantics-rows" id="seriesSemanticsRows"></div>

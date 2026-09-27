@@ -89,7 +89,12 @@ async function measureColdReferenceImport(){
     const selectedAt=Date.now();
     await probe.setInputFiles('#fileInput',{name:'Cold-FM01.fdv',mimeType:'text/plain',buffer});
     const outcome=await Promise.race([
-      probe.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
+      probe.waitForFunction(()=>{
+        const chart=document.querySelector('#timeChart');
+        return window.__ICM_WORKBENCH__?.lastGraphMode==='fastpath-preview'&&
+          Boolean(window.__ICM_WORKBENCH__?.fastpathPreview?.sourceId)&&
+          (chart?.data||[]).some(trace=>Array.isArray(trace.y)&&trace.y.some(Number.isFinite));
+      },null,{timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
       probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM01.fdv')&&row.textContent.includes('Error')),null,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt}))
     ]);
     const previewEvidence=await probe.evaluate(()=>({
@@ -131,7 +136,12 @@ async function measureFreshFastPathImport({dataset,relativePath,sourcePath,input
     const selectedAt=Date.now();
     await probe.setInputFiles('#fileInput',usePathUpload?resolvedPath:{name:inputName,mimeType,buffer});
     const outcome=await Promise.race([
-      probe.waitForSelector('#timeChart .main-svg',{state:'attached',timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
+      probe.waitForFunction(()=>{
+        const chart=document.querySelector('#timeChart');
+        return window.__ICM_WORKBENCH__?.lastGraphMode==='fastpath-preview'&&
+          Boolean(window.__ICM_WORKBENCH__?.fastpathPreview?.sourceId)&&
+          (chart?.data||[]).some(trace=>Array.isArray(trace.y)&&trace.y.some(Number.isFinite));
+      },null,{timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
       probe.waitForFunction(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Error')),inputName,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt}))
     ]);
     const previewEvidence=await probe.evaluate(name=>({
@@ -693,6 +703,12 @@ async function verifyPlotlyEngineeringEnhancements(){
     await probe.setViewportSize({width:1366,height:760});
     await probe.goto(baseUrl+'?plotly_engineering='+Date.now(),{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+    await probe.evaluate(()=>{
+      const confirm=()=>{for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
+        const input=document.getElementById(id);input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
+      }};
+      window.addEventListener('icm:source-pool-changed',confirm);confirm();
+    });
     const fdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv'));
     const rain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG01.R'));
     await probe.setInputFiles('#fileInput',[
@@ -1131,6 +1147,12 @@ try{
   await page.goto(baseUrl+(liveMode?`?live_verify=${Date.now()}`:''),{waitUntil:'domcontentloaded'});
   performanceEvidence.applicationDomReadyMs=Date.now()-applicationNavigationStart;
   await waitReady();
+  await page.evaluate(()=>{
+    const confirm=()=>{for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
+      const input=document.getElementById(id);input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
+    }};
+    window.addEventListener('icm:source-pool-changed',confirm);confirm();
+  });
   performanceEvidence.applicationEngineReadyMs=Date.now()-applicationNavigationStart;
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
@@ -2351,7 +2373,7 @@ try{
   const workspaceDownload=await downloadFrom('#downloadWorkspaceBtn');
   const workspacePath=await workspaceDownload.path();
   const workspace=JSON.parse(await fs.readFile(workspacePath,'utf8'));
-  if(workspace.schema_version!==3||workspace.time_basis!=='model clock/unspecified')throw new Error(`Unexpected workspace schema/time basis: ${JSON.stringify(workspace)}`);
+  if(workspace.schema_version!==3||workspace.time_basis!=='model clock/engineer-confirmed'||!workspace.level_datum_confirmed)throw new Error(`Unexpected workspace schema/time basis: ${JSON.stringify(workspace)}`);
   if(workspace.report_options?.scatter_scale!=='current'||workspace.report_options?.include_time_series!==true||workspace.report_options?.include_spills_storage!==true||workspace.report_options?.include_comparison!==true||workspace.report_options?.include_survey!==true||!workspace.report_options?.scenarios?.length)throw new Error('Workspace did not persist report section/scatter/scenario options: '+JSON.stringify(workspace.report_options));
   if(workspace.exclusions?.[0]?.start!=='2026-01-01T00:08')throw new Error(`Exclusion wall clock shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);
   if(workspace.exclusions?.[0]?.end!=='2026-01-01T00:10')throw new Error(`Exclusion end shifted in Asia/Kolkata: ${JSON.stringify(workspace.exclusions)}`);

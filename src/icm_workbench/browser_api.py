@@ -72,7 +72,7 @@ def _model_clock_timestamp(value):
         return None
     ts = pd.Timestamp(value)
     if ts.tzinfo is not None:
-        ts = ts.tz_localize(None)
+        raise ValueError("Timezone-aware bounds require an explicit conversion to the confirmed model-clock time basis; a timezone offset cannot be discarded.")
     return ts
 
 
@@ -298,7 +298,7 @@ def _display_indices(values, max_points):
     return idx
 
 
-def series_data(path, column=None, max_points=5000, start=None, end=None, max_gap_seconds=900.0, end_exclusive=False):
+def series_data(path, column=None, max_points=5000, start=None, end=None, max_gap_seconds=900.0, end_exclusive=False, exclusions_json="[]"):
     parsed=_load(path);x, col = _prepared_series(path, column)
     timestamps = x["timestamp"].to_numpy(dtype="datetime64[ns]")
     lo = 0
@@ -329,6 +329,8 @@ def series_data(path, column=None, max_points=5000, start=None, end=None, max_ga
         plot_t.append(pd.Timestamp(stamp).isoformat())
         plot_v.append(None if pd.isna(value) else float(value))
     statistics = _graph_statistics(path, col, x, view, start_ts, end_ts, max_gap_seconds)
+    exclusions = _exclusions(exclusions_json)
+    assessed = _graph_statistics(path, col, x, view, start_ts, end_ts, max_gap_seconds, exclusions=exclusions) if exclusions else None
     payload = {
         "column": str(col),
         "timestamp": plot_t,
@@ -341,21 +343,29 @@ def series_data(path, column=None, max_points=5000, start=None, end=None, max_ga
         "requested_start": None if start_ts is None else start_ts.isoformat(),
         "requested_end": None if end_ts is None else end_ts.isoformat(),
         "statistics":_jsonable(statistics),
+        "assessment_statistics":_jsonable(assessed),
     }
     return json.dumps(payload, ensure_ascii=False)
 
 
-def _graph_statistics(path, col, source, view, start, end, max_gap_seconds):
+def _graph_statistics(path, col, source, view, start, end, max_gap_seconds, exclusions=()):
     """Raw native-sample summaries and clipped interval support, never display data.
 
     Sample extrema/mean use the selected samples. Time-weighted mean and totals
     use valid source intervals clipped to the requested bounds, including
     interpolation at hydraulic boundaries. Rainfall uses left-held intensity.
-    Exclusions remain visible annotations; these are explicitly raw statistics.
+    When exclusions are supplied, interval contributions are clipped at both
+    boundaries; sample extrema use only samples outside the exclusion mask.
     """
     contract = _series_contract(path, str(col))
     quantity, unit = contract["quantity"], contract["canonical_unit"]
     values = view[col].to_numpy(dtype=float)
+    if exclusions and not view.empty:
+        stamps=view.timestamp.to_numpy(dtype="datetime64[ns]").astype(np.int64)/1e9
+        keep=np.ones(len(values),dtype=bool)
+        for exc in exclusions:
+            keep &= ~((stamps>=pd.Timestamp(exc.start).value/1e9)&(stamps<pd.Timestamp(exc.end).value/1e9))
+        values=values[keep]
     finite = values[np.isfinite(values)]
     result = dict(quantity=quantity or str(col), unit=unit,
                   valid_count=int(len(finite)), missing_count=int((~np.isfinite(values)).sum()),
@@ -366,7 +376,7 @@ def _graph_statistics(path, col, source, view, start, end, max_gap_seconds):
                   time_weighted_mean=None, total=None, total_unit=None,
                   valid_support_seconds=0.0, requested_seconds=0.0,
                   coverage_fraction=None, status="unavailable", unit_status=contract["unit_status"],
-                  basis="raw source; exclusions are not applied")
+                  basis="assessment; exclusions applied" if exclusions else "raw source; exclusions are not applied")
     if source.empty:
         return result
     t = source.timestamp.to_numpy(dtype="datetime64[ns]").astype(np.int64) / 1e9
@@ -383,6 +393,15 @@ def _graph_statistics(path, col, source, view, start, end, max_gap_seconds):
     a = float(start.value / 1e9) if start is not None else float(t[0])
     b = float(end.value / 1e9) if end is not None else float(right[-1] if len(right) else t[-1])
     requested = max(0.0, b - a)
+    if exclusions:
+        union=[]
+        for exc in sorted(exclusions,key=lambda x:x.start):
+            lo=max(a,pd.Timestamp(exc.start).value/1e9)
+            hi=min(b,pd.Timestamp(exc.end).value/1e9)
+            if hi<=lo:continue
+            if union and lo<=union[-1][1]:union[-1]=(union[-1][0],max(hi,union[-1][1]))
+            else:union.append((lo,hi))
+        requested-=sum(hi-lo for lo,hi in union)
     duration = right - left
     l, r = np.maximum(left, a), np.minimum(right, b)
     valid = (r > l) & (duration > 0) & (duration <= float(max_gap_seconds)) & np.isfinite(first)
@@ -390,20 +409,34 @@ def _graph_statistics(path, col, source, view, start, end, max_gap_seconds):
         valid &= np.isfinite(last)
     else:
         valid &= first >= 0
-    seconds = (r - l)[valid]
+    segments=[(l[valid],r[valid])]
+    for exc in exclusions:
+        es=pd.Timestamp(exc.start).value/1e9;ee=pd.Timestamp(exc.end).value/1e9
+        fragments=[]
+        for p,q in segments:
+            before=np.minimum(q,es);after=np.maximum(p,ee)
+            keep_before=before>p;keep_after=q>after
+            if keep_before.any():fragments.append((p[keep_before],before[keep_before]))
+            if keep_after.any():fragments.append((after[keep_after],q[keep_after]))
+        segments=fragments
+    seconds=np.concatenate([q-p for p,q in segments]) if segments else np.empty(0)
     support = float(seconds.sum())
     coverage = support / requested if requested > 0 else None
     result.update(valid_support_seconds=support, requested_seconds=requested,
                   coverage_fraction=coverage,
                   status="unavailable" if support <= 0 else "complete" if coverage is not None and coverage >= 1-1e-9 else "partial")
     if support > 0:
-        if rainfall:
-            integral = float((first[valid] * seconds).sum())
-        else:
-            slope = (last[valid] - first[valid]) / duration[valid]
-            vl = first[valid] + slope * (l[valid] - left[valid])
-            vr = first[valid] + slope * (r[valid] - left[valid])
-            integral = float(((vl + vr) * .5 * seconds).sum())
+        integral=0.0
+        for p,q in segments:
+            # Each fragment was filtered independently; map its original interval
+            # using the source support arrays retained alongside the fragment.
+            indices=np.searchsorted(left,p,side="right")-1
+            indices=np.clip(indices,0,len(left)-1)
+            if rainfall:integral+=float((first[indices]*(q-p)).sum())
+            else:
+                slope=(last[indices]-first[indices])/duration[indices]
+                vp=first[indices]+slope*(p-left[indices]);vq=first[indices]+slope*(q-left[indices])
+                integral+=float(((vp+vq)*.5*(q-p)).sum())
         result["time_weighted_mean"] = integral / support
         if quantity == "flow" and unit == "m³/s":
             result.update(total=integral, total_unit="m³")
@@ -497,6 +530,14 @@ def _comparison_metric_reasons(paired, metrics):
 
 def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900.0, offset_minutes=0.0, start=None, end=None, exclusions_json="[]", obs_unit=None, model_unit=None):
     oq, mq = _comparison_quantity(obs_path, obs_col), _comparison_quantity(model_path, model_col)
+    if oq == mq == "level":
+        def datum(path, column):
+            metadata=getattr(_load(path),"metadata",{}) or {}
+            detail=(metadata.get("channels") or {}).get(column) or (metadata.get("series_metadata") or {}).get(column) or {}
+            return detail.get("vertical_reference") or detail.get("datum") or metadata.get("vertical_reference") or metadata.get("datum")
+        observed_datum,model_datum=datum(obs_path,obs_col),datum(model_path,model_col)
+        if observed_datum and model_datum and str(observed_datum).lower()!=str(model_datum).lower():
+            raise ValueError("Absolute Level comparison requires the same vertical datum; convert the sources before assessing calibration.")
     generic_numeric_comparison = oq is None or mq is None
     if oq is not None and mq is not None and oq != mq:
         raise ValueError(
