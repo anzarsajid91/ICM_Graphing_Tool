@@ -7,6 +7,7 @@ const state = {
   healthResult: null, healthSignature: null, healthGeneration: 0,
   seriesQuantityOverrides: new Map(),
   seriesUnitOverrides: new Map(),
+  seriesSemanticsModelOrder: [],
 };
 const diagnostic = {
   status: 'booting', errors: [],
@@ -555,10 +556,17 @@ function preferAdvanced(id,all,predicate){
   if(series)select.value=series.key;
 }
 
+function orderedSelectedModelKeys(){
+  const selected=[...($('modelSelect')?.selectedOptions||[])].map(option=>option.value).filter(Boolean);
+  const selectedSet=new Set(selected);
+  state.seriesSemanticsModelOrder=(state.seriesSemanticsModelOrder||[]).filter(key=>selectedSet.has(key));
+  for(const key of selected)if(!state.seriesSemanticsModelOrder.includes(key))state.seriesSemanticsModelOrder.push(key);
+  return [...state.seriesSemanticsModelOrder];
+}
 function genericSeriesSemanticsRows(){
   const rows=[],seen=new Set();
   const observedKey=$('observedSelect')?.value||'';
-  const modelKeys=[...($('modelSelect')?.selectedOptions||[])].map(option=>option.value).filter(Boolean);
+  const modelKeys=orderedSelectedModelKeys();
   const selectedKeys=[observedKey,...modelKeys].filter(Boolean);
   const roleFor=key=>{
     const roles=[];
@@ -947,6 +955,7 @@ async function removeSourceById(sourceId){
   for(const key of Object.keys(state.modelColours||{}))if(sourceKeyBelongsTo(key,sourceId))delete state.modelColours[key];
   if(observedRemoved)state.mapping.observed='';
   if(removedModelKeys.length)state.mapping.models=state.mapping.models.filter(key=>!sourceKeyBelongsTo(key,sourceId));
+  state.seriesSemanticsModelOrder=(state.seriesSemanticsModelOrder||[]).filter(key=>!sourceKeyBelongsTo(key,sourceId));
   if(rainfallRemoved)state.mapping.rain='';
 
   if(diagnostic.fastpathActiveSourceId===sourceId){
@@ -1043,10 +1052,11 @@ function renderPool(){
   document.querySelectorAll('[data-source-remove]').forEach(button=>button.addEventListener('click',()=>void guarded('poolSummary',()=>removeSourceById(button.dataset.sourceRemove))));
 }
 function renderSeriesOptions(){
-  const all=allSeries(),obs=$('observedSelect'),mod=$('modelSelect'),rain=$('rainSelect'),prevMods=[...mod.selectedOptions].map(o=>o.value);
+  const all=allSeries(),obs=$('observedSelect'),mod=$('modelSelect'),rain=$('rainSelect'),prevMods=orderedSelectedModelKeys();
   setOptions(obs,all);
   mod.innerHTML=all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');
   [...mod.options].forEach(o=>o.selected=prevMods.includes(o.value));
+  orderedSelectedModelKeys();
   setOptions(rain,all,{none:true});
   const quantity=s=>String(s.quantity||seriesQuantity(s.item,s.col)||'').toLowerCase();
   const vertical=all.filter(s=>['depth','level'].includes(quantity(s)));
@@ -1070,7 +1080,7 @@ function autoSuggestMappings(all){
 }
 function prefer(select,all,predicate){if(select.value)return;const s=all.find(predicate);if(s)select.value=s.key;}
 function autoSuggestAdvanced(all){
-  const obs=mappingObject($('observedSelect').value),model=mappingObject([...$('modelSelect').selectedOptions][0]?.value||'');
+  const obs=mappingObject($('observedSelect').value),model=mappingObject(orderedSelectedModelKeys()[0]||'');
   const q=(s,name)=>String(s.quantity||seriesQuantity(s.item,s.col)||'').toLowerCase()===name;
   const vertical=s=>q(s,'depth')||q(s,'level');
   const obsVertical=obs&&['depth','level'].includes(String(seriesQuantity(obs.item,obs.col)||'').toLowerCase())?String(seriesQuantity(obs.item,obs.col)).toLowerCase():null;
@@ -1084,7 +1094,7 @@ function autoSuggestAdvanced(all){
   prefer($('storageLevelSelect'),all,s=>(!model||s.item.id===model.item.id)&&vertical(s));
 }
 function renderModelColourControls(){
-  const models=[...$('modelSelect').selectedOptions].map(o=>mappingObject(o.value)).filter(Boolean);
+  const models=orderedSelectedModelKeys().map(mappingObject).filter(Boolean);
   const scenarioIndex=new Map();
   for(const model of models)if(!scenarioIndex.has(model.item.id))scenarioIndex.set(model.item.id,scenarioIndex.size);
   $('modelColourControls').innerHTML=models.map((m,i)=>{
@@ -1892,6 +1902,7 @@ async function applyWorkspace(w){
   renderSeriesOptions();
   state.mapping.observed=findSeriesFromWorkspace(w.mapping?.observed);
   state.mapping.models=(w.mapping?.models||[]).map(findSeriesFromWorkspace).filter(Boolean);
+  state.seriesSemanticsModelOrder=[...state.mapping.models];
   state.mapping.rain=findSeriesFromWorkspace(w.mapping?.rain);
   $('observedSelect').value=state.mapping.observed;
   [...$('modelSelect').options].forEach(o=>o.selected=state.mapping.models.includes(o.value));
@@ -2508,9 +2519,9 @@ async function chooseFolder(){if('showDirectoryPicker'in window){try{const handl
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
-  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;advancedSelectionTouched.clear();state.exclusions=[];state.exclusionHistory=[];state.modelColours={};state.seriesQuantityOverrides.clear();for(const id of ['obsThreshold','modelThreshold','graphObsThreshold','graphModelThreshold'])if($(id))$(id).value='';diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
+  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;advancedSelectionTouched.clear();state.exclusions=[];state.exclusionHistory=[];state.modelColours={};state.seriesQuantityOverrides.clear();state.seriesUnitOverrides.clear();state.seriesSemanticsModelOrder=[];for(const id of ['obsThreshold','modelThreshold','graphObsThreshold','graphModelThreshold'])if($(id))$(id).value='';diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);void importGuard(async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=files.length+' dropped file'+(files.length===1?'':'s')+' detected · preparing import…';await ingestFiles(files);});});
-  eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('applyMappingBtn').addEventListener('click',()=>{state.rating=null;});$('observedSelect').addEventListener('change',()=>{renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('modelSelect').addEventListener('change',()=>{renderModelColourControls();renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('rainSelect').addEventListener('change',renderSeriesSemanticsOverrides);eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
+  eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('applyMappingBtn').addEventListener('click',()=>{state.rating=null;});$('observedSelect').addEventListener('change',()=>{renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('modelSelect').addEventListener('change',()=>{orderedSelectedModelKeys();renderModelColourControls();renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('rainSelect').addEventListener('change',renderSeriesSemanticsOverrides);eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
   eventGuard('runCompareBtn','metricGrid',runCompare);$('scatterScale').addEventListener('change',()=>{if(state.comparisons.length)void guarded('metricGrid',renderComparisons);});$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';$('analysisStart').dispatchEvent(new Event('change',{bubbles:true}));$('analysisEnd').dispatchEvent(new Event('change',{bubbles:true}));});eventGuard('runRatingBtn','ratingSummary',runRating);for(const id of ['ratingObsDepth','ratingObsDepthUnit','ratingObsFlow','ratingObsFlowUnit','ratingModelDepth','ratingModelDepthUnit','ratingModelFlow','ratingModelFlowUnit'])$(id)?.addEventListener('change',()=>{if(id==='ratingObsFlow'||id==='ratingModelFlow')advancedSelectionTouched.add(id);state.rating=null;});eventGuard('runDwfBtn','dwfSummary',runDwf);
   $('rainCriteriaMode').addEventListener('change',criteriaModeChanged);eventGuard('runRainEventsBtn','rainEventSummary',runRainEvents);eventGuard('runHealthBtn','healthBody',runHealth);
   document.addEventListener('change',event=>{
