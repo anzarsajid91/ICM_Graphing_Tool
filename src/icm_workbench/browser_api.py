@@ -134,34 +134,74 @@ def set_series_quantity(path, column, quantity=None, unit=None):
         tabular_editable and existing_source is None
     )
     if existing and not editable_source:
-        if requested == existing and unit is None:
-            return json.dumps(
-                _jsonable(
-                    {
-                        "column": column,
-                        "quantity": existing,
-                        "unit": details.get("canonical_unit")
-                        or metadata.get("canonical_unit")
-                        or details.get("original_unit")
-                        or metadata.get("original_unit"),
-                        "canonical_unit": details.get("canonical_unit")
-                        or metadata.get("canonical_unit"),
-                        "original_unit": details.get("original_unit")
-                        or metadata.get("original_unit"),
-                        "conversion_factor": details.get("conversion_factor")
-                        if details.get("conversion_factor") is not None
-                        else metadata.get("conversion_factor"),
-                        "unit_status": details.get("unit_status")
-                        or metadata.get("unit_status")
-                        or "resolved",
-                        "quantity_source": existing_source or "declared",
-                    }
-                ),
-                ensure_ascii=False,
+        if requested not in (None, existing):
+            raise ValueError(
+                f"Series {column!r} already has declared quantity {existing!r}; "
+                "user quantity overrides are only allowed for inferred or unresolved generic series."
             )
-        raise ValueError(
-            f"Series {column!r} already has declared quantity {existing!r}; "
-            "user quantity overrides are only allowed for inferred or unresolved generic series."
+
+        # Native/structured sources keep their declared quantity and canonical
+        # numeric values authoritative. The engineer may still choose any
+        # dimensionally compatible presentation unit for graphs/tables.
+        source_unit = (
+            details.get("detected_unit")
+            or details.get("original_unit")
+            or metadata.get("original_unit")
+        )
+        canonical = details.get("canonical_unit") or metadata.get("canonical_unit")
+        conversion_factor = (
+            details.get("conversion_factor")
+            if details.get("conversion_factor") is not None
+            else metadata.get("conversion_factor")
+        )
+        unit_status = (
+            details.get("unit_status")
+            or metadata.get("unit_status")
+            or ("resolved" if canonical or source_unit else "unresolved")
+        )
+        selected_unit = details.get("user_unit")
+        if unit is not None:
+            selected_unit = str(unit).strip() or None
+            if selected_unit:
+                selected_canonical, _ = canonical_unit(existing, selected_unit)
+                if selected_canonical is None:
+                    raise ValueError(f"Unsupported unit {selected_unit!r} for {existing}.")
+                if canonical and selected_canonical != canonical:
+                    raise ValueError(
+                        f"Unit {selected_unit!r} is incompatible with declared "
+                        f"{existing!r} series canonical unit {canonical!r}."
+                    )
+
+        display_unit = selected_unit or source_unit or canonical
+        details["quantity"] = existing
+        details["quantity_source"] = existing_source or "declared"
+        details["detected_unit"] = source_unit
+        details["original_unit"] = source_unit
+        details["user_unit"] = selected_unit
+        details["display_unit"] = display_unit
+        details["canonical_unit"] = canonical
+        details["conversion_factor"] = conversion_factor
+        details["unit_status"] = unit_status
+        quantity_by_column[column] = existing
+
+        return json.dumps(
+            _jsonable(
+                {
+                    "column": column,
+                    "quantity": existing,
+                    "requested_quantity": requested,
+                    "unit": display_unit,
+                    "display_unit": display_unit,
+                    "canonical_unit": canonical,
+                    "original_unit": source_unit,
+                    "detected_unit": source_unit,
+                    "user_unit": selected_unit,
+                    "conversion_factor": conversion_factor,
+                    "unit_status": unit_status,
+                    "quantity_source": existing_source or "declared",
+                }
+            ),
+            ensure_ascii=False,
         )
 
     # Keep the parser's original inference so clearing a user override restores
