@@ -1335,6 +1335,10 @@ try{
     return Math.abs(first-1.58)<1e-9&&String(chart?.layout?.yaxis?.title?.text||'').includes('(mm)');
   },null,{timeout:60000});
   if(await genericUnit.inputValue()!=='mm')throw new Error('Selected unit was not retained independently.');
+  const genericUnitProvenance=(await genericUnit.locator('xpath=ancestor::div[contains(@class,"series-semantics-row")]').textContent())||'';
+  if(!genericUnitProvenance.includes('Assigned by user')||genericUnitProvenance.includes('Source mm')){
+    throw new Error('Unitless generic data must distinguish user-assigned units from source provenance: '+genericUnitProvenance);
+  }
 
   stage='multiple generic model files expose independent interpretation controls';
   await precisionRoute('data','series-mapping');
