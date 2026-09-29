@@ -504,7 +504,7 @@
     const previousObservedContext=thresholdContext(observedThresholdSelection(state.mapping.observed));
     const previousModelContext=thresholdContext(modelThresholdSelection(state.mapping.models));
     state.mapping.observed = $('observedSelect').value;
-    state.mapping.models = [...$('modelSelect').selectedOptions].map(o => o.value);
+    state.mapping.models = orderedSelectedModelKeys();
     state.mapping.rain = $('rainSelect').value;
     const thresholdMessages=[
       reconcileThresholdContext('observed',previousObservedContext,thresholdContext(observedThresholdSelection())),
