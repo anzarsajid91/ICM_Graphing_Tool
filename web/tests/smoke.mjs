@@ -466,6 +466,13 @@ async function verifyStationAThresholdChain(){
       select.value='mm';select.dispatchEvent(new Event('change',{bubbles:true}));
     },selected.observed);
     await probe.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · mm'),null,{timeout:30000});
+    const stationQuantityLock=await probe.evaluate(key=>{
+      const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key);
+      return {value:select?.value||'',options:select?[...select.options].map(option=>option.value):[]};
+    },selected.observed);
+    if(stationQuantityLock.value!=='level'||JSON.stringify(stationQuantityLock.options)!==JSON.stringify(['level'])){
+      throw new Error('Changing a declared-series display unit must not unlock quantity reinterpretation: '+JSON.stringify(stationQuantityLock));
+    }
     await probe.click('#applyMappingBtn');
     await probe.waitForFunction(()=>document.querySelector('#timeChart')?.data?.length>0&&window.__ICM_WORKBENCH__?.lastGraphStatistics?.length>0,null,{timeout:120000});
     await nav('data','time-series');
@@ -487,6 +494,10 @@ async function verifyStationAThresholdChain(){
     }
     const stationWorkspaceUnit=await probe.evaluate(key=>{
       const w=workspaceObject(false);
+      if((w.series_quantity_overrides||[]).some(entry=>{
+        const ref=entry.series||{},mapped=mappingObject(key);
+        return mapped&&ref.sha256===mapped.item.hash&&ref.column===mapped.col;
+      }))throw new Error('Declared Station A quantity was incorrectly persisted as a user quantity override.');
       const row=(w.series_unit_overrides||[]).find(entry=>{
         const ref=entry.series||{};
         const mapped=mappingObject(key);
