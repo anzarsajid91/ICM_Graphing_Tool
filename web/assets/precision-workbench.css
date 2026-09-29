@@ -345,7 +345,7 @@ body.precision-workbench{
 .series-semantics-copy span{font-size:12px;line-height:18px;color:var(--pw-muted);max-width:920px}
 .series-semantics-rows{display:grid;gap:8px}
 .series-semantics-row{
-  display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,260px);gap:12px;align-items:end
+  display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,260px) minmax(150px,200px);gap:12px;align-items:end
 }
 .series-semantics-row .series-semantics-source{min-width:0;font-size:12px;color:var(--pw-muted);overflow-wrap:anywhere}
 .series-semantics-row label{margin:0}

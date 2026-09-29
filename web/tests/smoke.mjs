@@ -1224,7 +1224,7 @@ try{
   await page.selectOption('#observedSelect','');
   await page.selectOption('#modelSelect',[genericModel]);
   await page.selectOption('#rainSelect','');
-  await page.waitForFunction(()=>document.querySelector('#seriesSemanticsPanel')?.hidden===false&&document.querySelectorAll('#seriesSemanticsRows select').length===1);
+  await page.waitForFunction(()=>document.querySelector('#seriesSemanticsPanel')?.hidden===false&&document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===1);
   const genericSemanticsText=(await page.locator('#seriesSemanticsPanel').textContent())||'';
   if(!genericSemanticsText.includes('without guessing hydraulic meaning'))throw new Error('Generic CSV mapping must make the no-guessing contract explicit.');
   await page.click('#applyMappingBtn');
@@ -1238,7 +1238,7 @@ try{
   }));
   if(genericThresholdState.hidden||!genericThresholdState.disabled||!genericThresholdState.context.includes('assign Depth or Level')||!genericThresholdState.hasModel)throw new Error('Generic model series must graph successfully while keeping the hydraulic threshold disabled pending explicit classification: '+JSON.stringify(genericThresholdState));
   await precisionRoute('data','series-mapping');
-  await page.selectOption('#seriesSemanticsRows select','level');
+  await page.selectOption('#seriesSemanticsRows select[data-series-quantity-key]','level');
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level'),null,{timeout:30000});
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&!document.querySelector('#applyMappingBtn')?.disabled,null,{timeout:60000});
@@ -1252,27 +1252,36 @@ try{
   await page.fill('#graphModelThreshold','2.0');
   await page.waitForFunction(()=>{const chart=document.querySelector('#timeChart');return (chart?.layout?.shapes||[]).some(s=>s.type==='line'&&s.yref==='y'&&Math.abs(Number(s.y0)-2.0)<1e-9);},null,{timeout:60000});
 
+  await precisionRoute('data','series-mapping');
+  const genericUnit=page.locator('#seriesSemanticsRows select[data-series-unit-key]');
+  if(!(await genericUnit.locator('option').allTextContents()).includes('mm'))throw new Error('Level interpretation must offer matching source units.');
+  await genericUnit.selectOption('mm');
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · m'),null,{timeout:30000});
+  await page.click('#applyMappingBtn');
+  await page.waitForFunction(()=>Math.abs(Number((document.querySelector('#timeChart')?.data||[]).find(t=>/^Simulated:/.test(String(t.name||'')))?.y?.[0])-0.00158)<1e-9,null,{timeout:60000});
+  if(await genericUnit.inputValue()!=='mm')throw new Error('Selected source unit was not retained independently.');
+
   stage='multiple generic model files expose independent interpretation controls';
   await precisionRoute('data','series-mapping');
   await page.setInputFiles('#fileInput',{name:'generic-model-2.csv',mimeType:'text/csv',buffer:genericPayload});
   await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('generic-model-2.csv')&&row.textContent.includes('Ready')),null,{timeout:60000});
   const genericModel2=await optionValue('#modelSelect','generic-model-2.csv — Value');
   if(!genericModel2)throw new Error('Second generic model file was not exposed as a mappable numeric series.');
-  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select').length===2,null,{timeout:30000});
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===2,null,{timeout:30000});
   const genericRowsBeforeSecondMapping=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].map(row=>row.textContent));
   if(!genericRowsBeforeSecondMapping.some(text=>text.includes('generic-model.csv — Value'))||!genericRowsBeforeSecondMapping.some(text=>text.includes('generic-model-2.csv — Value'))){
     throw new Error('Every loaded generic source must receive its own interpretation control before mapping: '+JSON.stringify(genericRowsBeforeSecondMapping));
   }
   await page.selectOption('#modelSelect',[genericModel,genericModel2]);
-  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select').length===2&&[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].every(row=>row.textContent.includes('Model')));
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===2&&[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].every(row=>row.textContent.includes('Model')));
   await page.evaluate(key=>{
-    const select=[...document.querySelectorAll('#seriesSemanticsRows select')].find(node=>node.dataset.seriesQuantityKey===key);
+    const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key);
     if(!select)throw new Error('Second generic model interpretation selector is missing.');
     select.value='level';
     select.dispatchEvent(new Event('change',{bubbles:true}));
   },genericModel2);
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level'),null,{timeout:30000});
-  const independentSemantics=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select')].map(select=>({key:select.dataset.seriesQuantityKey,value:select.value})));
+  const independentSemantics=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].map(select=>({key:select.dataset.seriesQuantityKey,value:select.value})));
   if(independentSemantics.length!==2||independentSemantics.some(row=>row.value!=='level')){
     throw new Error('Generic model interpretation must remain independent for every loaded file: '+JSON.stringify(independentSemantics));
   }
@@ -1315,10 +1324,10 @@ try{
   await page.selectOption('#observedSelect',interpretObserved);
   await page.selectOption('#modelSelect',[interpretModelA,interpretModelB]);
   await page.selectOption('#rainSelect','');
-  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select').length===3&&
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===3&&
     [...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].some(row=>row.textContent.includes('Observed')&&row.textContent.includes('interpret-observed.csv'))&&
     [...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].filter(row=>row.textContent.includes('Model')).length===2,null,{timeout:30000});
-  const inferredSelectors=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select')].map(select=>({
+  const inferredSelectors=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].map(select=>({
     key:select.dataset.seriesQuantityKey,
     value:select.value,
     text:select.closest('.series-semantics-row')?.textContent||'',
@@ -1326,23 +1335,27 @@ try{
   if(inferredSelectors.length!==3||inferredSelectors.some(row=>row.value!=='level')){
     throw new Error('Name-inferred observed/model CSV series must each show an independent Level interpretation default: '+JSON.stringify(inferredSelectors));
   }
+  const detectedUnits=await page.locator('#seriesSemanticsRows select[data-series-unit-key]').evaluateAll(nodes=>nodes.map(node=>({value:node.value,label:node.closest('label')?.textContent||''})));
+  if(detectedUnits.length!==3||detectedUnits.some(row=>row.value!=='m'||!row.label.includes('Column header'))){
+    throw new Error('Explicit header units must be preselected and attributed for each independent series: '+JSON.stringify(detectedUnits));
+  }
   await page.evaluate(key=>{
-    const select=[...document.querySelectorAll('#seriesSemanticsRows select')].find(node=>node.dataset.seriesQuantityKey===key);
+    const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key);
     if(!select)throw new Error('Observed interpretation selector missing.');
     select.value='depth';
     select.dispatchEvent(new Event('change',{bubbles:true}));
   },interpretObserved);
   await page.waitForFunction(key=>{
-    const rows=[...document.querySelectorAll('#seriesSemanticsRows select')];
+    const rows=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')];
     const observed=rows.find(node=>node.dataset.seriesQuantityKey===key);
     return observed?.value==='depth'&&rows.filter(node=>node.dataset.seriesQuantityKey!==key).every(node=>node.value==='level');
   },interpretObserved,{timeout:30000});
   await page.evaluate(key=>{
-    const select=[...document.querySelectorAll('#seriesSemanticsRows select')].find(node=>node.dataset.seriesQuantityKey===key);
+    const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key);
     select.value='level';
     select.dispatchEvent(new Event('change',{bubbles:true}));
   },interpretObserved);
-  await page.waitForFunction(()=>[...document.querySelectorAll('#seriesSemanticsRows select')].every(node=>node.value==='level'),null,{timeout:30000});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].every(node=>node.value==='level'),null,{timeout:30000});
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&
     (document.querySelector('#timeChart')?.data||[]).filter(trace=>String(trace.uid||'').startsWith('model__')).length===2,null,{timeout:60000});
@@ -1535,9 +1548,10 @@ try{
     };
   });
   if(levelThresholdPresentation.thresholdLegend.length!==1||levelThresholdPresentation.thresholdShapes.length!==1||levelThresholdPresentation.thresholdShapes[0].dash!=='dash')throw new Error('Observed level threshold must be visible as one dashed line on the hydraulic level axis: '+JSON.stringify(levelThresholdPresentation));
-  const graphLayout=await page.evaluate(()=>({hyd:document.querySelector('#timeChart').layout.yaxis.domain,rain:document.querySelector('#timeChart').layout.yaxis2.domain,rainRange:document.querySelector('#timeChart').layout.yaxis2.range}));
+  const graphLayout=await page.evaluate(()=>({hyd:document.querySelector('#timeChart').layout.yaxis.domain,rain:document.querySelector('#timeChart').layout.yaxis2.domain,rainRange:document.querySelector('#timeChart').layout.yaxis2.range,rainGrid:document.querySelector('#timeChart').layout.yaxis2.showgrid,rainLine:document.querySelector('#timeChart').layout.yaxis2.showline}));
   if(!(graphLayout.hyd[1]<graphLayout.rain[0]&&(graphLayout.rain[0]-graphLayout.hyd[1])>=.04))throw new Error(`Rainfall and hydraulic panels are not independently separated: ${JSON.stringify(graphLayout)}`);
   if(!(graphLayout.rainRange[0]>graphLayout.rainRange[1]))throw new Error(`Rainfall axis should be reversed top-down: ${JSON.stringify(graphLayout.rainRange)}`);
+  if(!graphLayout.rainGrid||!graphLayout.rainLine)throw new Error('Rainfall panel must show grid and axis lines: '+JSON.stringify(graphLayout));
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphStatistics?.length===2&&document.querySelector('#timeChart')?.data?.some(t=>t.type==='table'),null,{timeout:60000});
   const graphStatsPresentation=await page.evaluate(()=>{
     const chart=document.querySelector('#timeChart'),table=chart.data.find(t=>t.type==='table');

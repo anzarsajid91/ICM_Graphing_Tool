@@ -84,6 +84,7 @@ def test_inferred_tabular_quantity_can_be_retyped_without_stale_unit_scaling(tmp
     assert meta["canonical_unit"]=="m³/s"
     assert json.loads(series_data(str(inferred),"Flow (L/s)"))["value"]==pytest.approx([1.0,2.0])
 
+
     depth=json.loads(set_series_quantity(str(inferred),"Flow (L/s)","depth"))
     assert depth["quantity"]=="depth"
     assert depth["unit_status"]=="unresolved"
@@ -95,6 +96,49 @@ def test_inferred_tabular_quantity_can_be_retyped_without_stale_unit_scaling(tmp
     assert flow["canonical_unit"]=="m³/s"
     assert flow["conversion_factor"]==pytest.approx(0.001)
     assert json.loads(series_data(str(inferred),"Flow (L/s)"))["value"]==pytest.approx([1.0,2.0])
+
+
+def test_user_unit_interpretation_rescales_raw_values_and_preserves_detected_unit(tmp_path):
+    import json
+    import pytest
+    from icm_workbench.browser_api import clear_cache, parse_source, series_data, set_series_quantity
+
+    source=tmp_path/"observed.csv"
+    source.write_text("timestamp,Value\n2026-01-01T00:00:00,1000\n", encoding="utf-8")
+    clear_cache()
+    first=json.loads(set_series_quantity(str(source),"Value","flow",unit="L/s"))
+    assert first["canonical_unit"]=="m³/s"
+    assert first["detected_unit"] is None
+    assert first["user_unit"]=="L/s"
+    assert json.loads(series_data(str(source),"Value"))["value"]==pytest.approx([1.0])
+
+    second=json.loads(set_series_quantity(str(source),"Value","flow",unit="m³/s"))
+    assert second["conversion_factor"]==1
+    assert json.loads(series_data(str(source),"Value"))["value"]==pytest.approx([1000.0])
+    assert json.loads(parse_source(str(source)))["metadata"]["series_metadata"]["Value"]["detected_unit"] is None
+
+    with pytest.raises(ValueError,match="Unsupported unit"):
+        set_series_quantity(str(source),"Value","flow",unit="mm")
+    assert json.loads(series_data(str(source),"Value"))["value"]==pytest.approx([1000.0])
+
+    unresolved=json.loads(set_series_quantity(str(source),"Value","depth"))
+    assert unresolved["unit_status"]=="unresolved"
+    assert unresolved["user_unit"] is None
+    assert json.loads(series_data(str(source),"Value"))["value"]==pytest.approx([1000.0])
+
+
+
+def test_filename_unit_is_not_assumed_for_unlabelled_values(tmp_path):
+    import json
+    from icm_workbench.browser_api import clear_cache, parse_source
+
+    source=tmp_path/"flow_Lps.csv"
+    source.write_text("timestamp,Flow\n2026-01-01T00:00:00,1000\n",encoding="utf-8")
+    clear_cache()
+    detail=json.loads(parse_source(str(source)))["metadata"]["series_metadata"]["Flow"]
+    assert detail["original_unit"] is None
+    assert detail["unit_status"]=="unresolved"
+    assert detail["unit_source"]=="unresolved"
 
 
 def test_clearing_user_override_restores_tabular_inference(tmp_path):
@@ -206,4 +250,3 @@ def test_known_observed_and_unresolved_model_can_compare_as_raw_numeric_values(t
     assert result["comparison_unit"] is None
     assert result["metrics"]["pairs"] == 3
     assert len(result["paired"]) == 3
-

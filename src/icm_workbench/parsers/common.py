@@ -95,7 +95,7 @@ def detect_unit(text,quantity=None):
         ("mm_hr","mm/h"),("m_s","m/s"),("mps","m/s"),
     ]
     for suffix,label in suffixes:
-        if n.endswith(suffix):candidates.append(label)
+        if n==suffix or n.endswith('_'+suffix):candidates.append(label)
     if quantity in {"depth","level"}:
         if re.search(r"(?i)(?:^|[\(\[\s_])mm(?:$|[\)\]\s_])",raw):candidates.append("mm")
         elif re.search(r"(?i)(?:^|[\(\[\s_])m(?:$|[\)\]\s_])",raw):candidates.append("m")
