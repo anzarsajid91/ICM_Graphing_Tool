@@ -1360,7 +1360,6 @@ try{
     select.dispatchEvent(new Event('change',{bubbles:true}));
   },interpretObserved);
   await page.waitForFunction(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].every(node=>node.value==='level'),null,{timeout:30000});
-  const observedUnit=page.locator('#seriesSemanticsRows select[data-series-unit-key]').filter({has:page.locator('option[value="mm"]')}).first();
   await page.evaluate(key=>{
     const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]')].find(node=>node.dataset.seriesUnitKey===key);
     if(!select)throw new Error('Observed unit selector missing.');
