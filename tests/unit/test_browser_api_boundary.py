@@ -127,6 +127,32 @@ def test_user_unit_interpretation_rescales_raw_values_and_preserves_detected_uni
     assert json.loads(series_data(str(source),"Value"))["value"]==pytest.approx([1000.0])
 
 
+def test_reliable_detected_unit_is_preserved_when_display_unit_changes(tmp_path):
+    import json
+    import pytest
+    from icm_workbench.browser_api import clear_cache, parse_source, series_data, set_series_quantity
+
+    source=tmp_path/"observed-level.csv"
+    source.write_text(
+        "timestamp,Level (m)\n"
+        "2026-01-01T00:00:00,1.2\n",
+        encoding="utf-8",
+    )
+    clear_cache()
+    initial=json.loads(parse_source(str(source)))
+    assert initial["metadata"]["series_metadata"]["Level (m)"]["original_unit"]=="m"
+    changed=json.loads(set_series_quantity(str(source),"Level (m)","level",unit="mm"))
+    assert changed["detected_unit"]=="m"
+    assert changed["original_unit"]=="m"
+    assert changed["user_unit"]=="mm"
+    assert changed["display_unit"]=="mm"
+    assert changed["canonical_unit"]=="m"
+    assert changed["conversion_factor"]==pytest.approx(1.0)
+    # Reliable source values remain canonical metres internally; the browser
+    # converts them to the selected display unit for plotting.
+    assert json.loads(series_data(str(source),"Level (m)"))["value"]==pytest.approx([1.2])
+
+
 
 def test_filename_unit_is_not_assumed_for_unlabelled_values(tmp_path):
     import json
