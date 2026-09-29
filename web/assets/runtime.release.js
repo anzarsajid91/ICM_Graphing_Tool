@@ -86,11 +86,35 @@ function seriesQuantityIsAuthoritative(item,col){
 }
 function seriesUnit(item,col){
   const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
-  // Preserve an incompatible original source unit for provenance, but never
-  // present it as the valid engineering unit after cross-dimension
-  // reinterpretation. Dimensional calculations remain withheld until resolved.
+  // Canonical engineering unit used by calculations and the Python worker.
   if(String(detail.unit_status||'').toLowerCase()==='unresolved'&&!detail.canonical_unit)return null;
   return detail.canonical_unit||metadata.canonical_unit||detail.original_unit||metadata.original_unit||null;
+}
+function unitToCanonicalFactor(quantity,unit){
+  const q=String(quantity||'').toLowerCase();
+  const u=String(unit||'').trim().toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
+  if((q==='depth'||q==='level')&&u==='m')return 1;
+  if((q==='depth'||q==='level')&&u==='mm')return .001;
+  if(q==='flow'&&['m3/s','m3s'].includes(u))return 1;
+  if(q==='flow'&&['l/s','ls','lps'].includes(u))return .001;
+  if(q==='flow'&&['ml/d','mld'].includes(u))return 1000/86400;
+  if(q==='flow'&&['m3/d','m3d'].includes(u))return 1/86400;
+  if(q==='velocity'&&['m/s','ms','mps'].includes(u))return 1;
+  if(q==='rainfall'&&['mm/h','mmh'].includes(u))return 1;
+  return null;
+}
+function seriesDisplayUnit(item,col){
+  const key=item?.id?sourceKey(item.id,col):'';
+  const detail=seriesMetadata(item,col);
+  const detected=detail.detected_unit||(detail.unit_source==='column_header'?detail.original_unit:null);
+  return (key&&state.seriesUnitOverrides.get(key))||detail.display_unit||detected||seriesUnit(item,col)||null;
+}
+function canonicalToDisplayFactor(quantity,unit){
+  const factor=unitToCanonicalFactor(quantity,unit);
+  return factor==null||!Number.isFinite(Number(factor))||Number(factor)===0?1:1/Number(factor);
+}
+function seriesDisplayFactor(item,col){
+  return canonicalToDisplayFactor(seriesQuantity(item,col),seriesDisplayUnit(item,col));
 }
 function seriesReference(item,col){
   const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
@@ -534,30 +558,35 @@ function preferAdvanced(id,all,predicate){
 function genericSeriesSemanticsRows(){
   const rows=[],seen=new Set();
   const observedKey=$('observedSelect')?.value||'';
-  const modelKeys=new Set([...($('modelSelect')?.selectedOptions||[])].map(option=>option.value));
-  const rainfallKey=$('rainSelect')?.value||'';
+  const modelKeys=[...($('modelSelect')?.selectedOptions||[])].map(option=>option.value).filter(Boolean);
+  const selectedKeys=[observedKey,...modelKeys].filter(Boolean);
   const roleFor=key=>{
     const roles=[];
     if(key===observedKey)roles.push('Observed');
-    if(modelKeys.has(key))roles.push('Model');
-    if(key===rainfallKey)roles.push('Rainfall');
-    return roles.length?roles.join(' + '):'Available series';
+    if(modelKeys.includes(key))roles.push('Model');
+    return roles.join(' + ');
   };
-  for(const series of allSeries()){
-    const key=series.key||sourceKey(series.item.id,series.col);
+  for(const key of selectedKeys){
     if(!key||seen.has(key))continue;
     const mapped=mappingObject(key);
     if(!mapped)continue;
     const declared=declaredSeriesQuantity(mapped.item,mapped.col);
     const overridden=state.seriesQuantityOverrides.has(key);
-    // Keep generic sources independently editable before mapping; show native
-    // declarations when assigned, without filling the setup with every unused
-    // FDV channel in a whole-survey upload.
-    if(seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden&&roleFor(key)==='Available series')continue;
+    const details=seriesMetadata(mapped.item,mapped.col);
+    const detected=details.detected_unit||(details.unit_source==='column_header'?details.original_unit:null);
+    const selectedUnit=state.seriesUnitOverrides.get(key)||detected||details.original_unit||'';
     seen.add(key);
-    rows.push({role:roleFor(key),key,mapped,quantity:String(state.seriesQuantityOverrides.get(key)||declared||'').toLowerCase(),unit:state.seriesUnitOverrides.get(key)||seriesMetadata(mapped.item,mapped.col).original_unit||'',unitSource:state.seriesUnitOverrides.has(key)?'User selected':seriesMetadata(mapped.item,mapped.col).unit_source==='column_header'?'Column header':'',locked:seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden});
+    rows.push({
+      role:roleFor(key),key,mapped,
+      quantity:String(state.seriesQuantityOverrides.get(key)||declared||'').toLowerCase(),
+      unit:selectedUnit,
+      unitSource:state.seriesUnitOverrides.has(key)
+        ?(detected?'Display unit · source '+detected:'Assigned by user')
+        :(detected?'Detected from column':''),
+      locked:seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden
+    });
   }
-  return rows.sort((a,b)=>(a.role==='Available series')-(b.role==='Available series'));
+  return rows;
 }
 function renderSeriesSemanticsOverrides(){
   const panel=$('seriesSemanticsPanel'),target=$('seriesSemanticsRows');
@@ -582,7 +611,7 @@ function renderSeriesSemanticsOverrides(){
     const unitKey=value=>String(value||'').toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
     const current=row.locked?row.unit:(available.find(value=>unitKey(value)===unitKey(row.unit))||'');
     const unitChoices=row.locked?(row.unit?[row.unit]:[]):available;
-    return '<div class="series-semantics-row"><div class="series-semantics-source"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity and unit.">Declared by source</small>':'')+'</div><label>Interpret Value as<select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label>Source unit'+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'<select data-series-unit-key="'+esc(row.key)+'" aria-label="Source unit — '+esc(source)+'"'+(row.locked||!available.length?' disabled':'')+'><option value="">'+(row.locked?'Unresolved':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
+    return '<div class="series-semantics-row"><div class="series-semantics-source"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity and unit.">Declared by source</small>':'')+'</div><label>Interpret Value as<select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label>Unit'+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'<select data-series-unit-key="'+esc(row.key)+'" aria-label="Unit — '+esc(source)+'"'+(row.locked||!available.length?' disabled':'')+'><option value="">'+(row.locked?'Unresolved':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
   }).join('');
   target.querySelectorAll('[data-series-quantity-key]').forEach(select=>select.addEventListener('change',()=>{
     void guarded('mappingStatus',()=>applySeriesQuantityOverride(select.dataset.seriesQuantityKey,select.value||null));
@@ -615,7 +644,8 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true,unit=null}
   if(result.original_unit!==undefined)details.original_unit=result.original_unit;
   if(result.detected_unit!==undefined)details.detected_unit=result.detected_unit;
   details.user_unit=result.user_unit||null;
-  details.unit_source=result.user_unit?'user':(result.detected_unit?'column_header':'unresolved');
+  details.display_unit=result.display_unit||result.user_unit||result.detected_unit||result.canonical_unit||null;
+  details.unit_source=result.detected_unit?'column_header':(result.user_unit?'user':'unresolved');
   details.canonical_unit=result.canonical_unit??null;
   details.conversion_factor=result.conversion_factor??null;
   details.unit_status=result.unit_status||'unresolved';
@@ -625,7 +655,7 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true,unit=null}
     renderSeriesSemanticsOverrides();
     autoSuggestAdvanced(allSeries());
     const effective=result.quantity||'generic numeric';
-    const unit=result.unit_status==='unresolved'?'unit unresolved':(result.canonical_unit||result.original_unit||'unit unresolved');
+    const unit=result.unit_status==='unresolved'?'unit unresolved':(result.display_unit||result.user_unit||result.detected_unit||result.canonical_unit||result.original_unit||'unit unresolved');
     $('mappingStatus').textContent=requested
       ?'Series classified as '+effective+' · '+unit+'. Apply mapping to refresh graphs and threshold controls.'
       :(result.quantity
