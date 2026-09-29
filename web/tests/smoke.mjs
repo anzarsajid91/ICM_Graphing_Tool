@@ -485,6 +485,16 @@ async function verifyStationAThresholdChain(){
        !Number.isFinite(stationMmDisplay.plottedMin)||Math.abs(stationMmDisplay.plottedMin-stationMmDisplay.canonicalMin*1000)>1e-6){
       throw new Error('Station A metre-to-millimetre display conversion is incorrect: '+JSON.stringify(stationMmDisplay));
     }
+    const stationWorkspaceUnit=await probe.evaluate(key=>{
+      const w=workspaceObject(false);
+      const row=(w.series_unit_overrides||[]).find(entry=>{
+        const ref=entry.series||{};
+        const mapped=mappingObject(key);
+        return mapped&&ref.sha256===mapped.item.hash&&ref.column===mapped.col;
+      });
+      return row?.unit||null;
+    },selected.observed);
+    if(stationWorkspaceUnit!=='mm')throw new Error('Station A display-unit override was not persisted into the workspace: '+String(stationWorkspaceUnit));
 
     await nav('data','series-mapping');
     await probe.evaluate(key=>{
