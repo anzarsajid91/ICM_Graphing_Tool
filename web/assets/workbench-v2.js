@@ -896,7 +896,7 @@
         const rain=await v2SeriesFor(state.mapping.rain,range,'rain');
         if(rain&&generation===ui.graphGeneration){
           const factor=Number($('rainFactor').value||1);
-          rainEntry={source:rain,factor,values:rain.data.value.map(v=>v==null?null:Number(v)*factor)};
+          rainEntry={source:rain,factor,unit:seriesUnit(rain.item,rain.col)||null,values:rain.data.value.map(v=>v==null?null:Number(v)*factor)};
           pointCounts.rainfall={
             raw:rain.data.raw_count,shown:rain.data.display_count,native:rain.data.native_resolution,topology:rain.data.topology_exceeds_budget
           };
@@ -933,6 +933,7 @@
       const modelThreshold=nullableNumber($('modelThreshold').value);
       const statsDomain=[0,.20],statsTop=.20,plotBottom=.285,axisPosition=.27;
       const rainBottom=.865,hydraulicTop=rainEntry?.805:1;
+      const rainfallAxisTitle=rainEntry?.unit?'Rainfall ('+rainEntry.unit+')':'Rainfall (unit unresolved)';
       let traces=[],layout,panelOrder=[];
 
       const commonLayout={
@@ -978,9 +979,9 @@
         if(rainEntry){
           axisByPanel.rainfall='y';
           panelDomains.rainfall=[rainBottom,1];
-          layout.yaxis={title:{text:'Rainfall (mm/h)',standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true,tickfont:{size:10,color:'#506272'},titlefont:{size:11,color:'#263746'}};
+          layout.yaxis={title:{text:rainfallAxisTitle,standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:true,gridcolor:'#edf2f6',showline:true,linecolor:'#a8b7c4',linewidth:1,ticks:'outside',tickcolor:'#a8b7c4',zeroline:false,automargin:true,tickfont:{size:10,color:'#506272'},titlefont:{size:11,color:'#263746'}};
           layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
-          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:'y',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
+          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:'y',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} '+(rainEntry.unit||'unit unresolved')+'<extra></extra>'});
         }
         for(const quantity of canonical){
           const axis=axisByPanel[quantity];if(!axis)continue;
@@ -1021,7 +1022,7 @@
         const quantityTitle=quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):(primary?.source?.col||'Value');
         const hydraulicAxisTitle=quantityTitle+(primaryUnit?' ('+primaryUnit+')':'')+(quantity==='level'&&primaryReference?' · '+primaryReference:'');
         layout.yaxis=rainfallOnly
-          ?{title:{text:'Rainfall (mm/h)',standoff:10},domain:[plotBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true}
+          ?{title:{text:rainfallAxisTitle,standoff:10},domain:[plotBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:true,gridcolor:'#edf2f6',showline:true,linecolor:'#a8b7c4',linewidth:1,ticks:'outside',tickcolor:'#a8b7c4',zeroline:false,automargin:true}
           :{title:{text:hydraulicAxisTitle,standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zeroline:false,automargin:true};
         if(obs){
           traces.push({x:obs.source.data.timestamp,y:obs.source.data.value,name:'Observed '+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):obs.source.col),uid:traceUid('observed',obs.source.item.id,obs.source.col),legendgroup:'observed',type:traceType(obs.source.data),mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2.2},yaxis:'y'});
@@ -1032,10 +1033,10 @@
         if(primary)layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:hydraulicTop,text:'<b>'+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):'Hydraulic')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
         if(rainEntry){
           if(!rainfallOnly){
-            layout.yaxis2={title:{text:'Rainfall (mm/h)',standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:false,zeroline:false,automargin:true};
+            layout.yaxis2={title:{text:rainfallAxisTitle,standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:true,gridcolor:'#edf2f6',showline:true,linecolor:'#a8b7c4',linewidth:1,ticks:'outside',tickcolor:'#a8b7c4',zeroline:false,automargin:true};
           }
           layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
-          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:rainfallOnly?'y':'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} mm/h<extra></extra>'});
+          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:rainfallOnly?'y':'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} '+(rainEntry.unit||'unit unresolved')+'<extra></extra>'});
         }
         // ICM HYD exports commonly describe the vertical hydraulic series as
         // "level" rather than "depth". Both belong to the same threshold-bearing

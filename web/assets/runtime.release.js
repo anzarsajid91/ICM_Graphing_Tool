@@ -6,6 +6,7 @@ const state = {
   dwfResult: null, dwfSignature: null, dwfGeneration: 0,
   healthResult: null, healthSignature: null, healthGeneration: 0,
   seriesQuantityOverrides: new Map(),
+  seriesUnitOverrides: new Map(),
 };
 const diagnostic = {
   status: 'booting', errors: [],
@@ -554,7 +555,7 @@ function genericSeriesSemanticsRows(){
     // FDV channel in a whole-survey upload.
     if(seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden&&roleFor(key)==='Available series')continue;
     seen.add(key);
-    rows.push({role:roleFor(key),key,mapped,quantity:String(state.seriesQuantityOverrides.get(key)||declared||'').toLowerCase(),locked:seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden});
+    rows.push({role:roleFor(key),key,mapped,quantity:String(state.seriesQuantityOverrides.get(key)||declared||'').toLowerCase(),unit:state.seriesUnitOverrides.get(key)||seriesMetadata(mapped.item,mapped.col).original_unit||'',unitSource:state.seriesUnitOverrides.has(key)?'User selected':seriesMetadata(mapped.item,mapped.col).unit_source==='column_header'?'Column header':'',locked:seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden});
   }
   return rows.sort((a,b)=>(a.role==='Available series')-(b.role==='Available series'));
 }
@@ -572,17 +573,26 @@ function renderSeriesSemanticsOverrides(){
     ['velocity','Velocity'],
     ['rainfall','Rainfall'],
   ];
+  const units={level:['m','mm'],depth:['m','mm'],flow:['m³/s','L/s','Ml/d','m³/d'],velocity:['m/s'],rainfall:['mm/h']};
   target.innerHTML=rows.map(row=>{
     const source=seriesLabel(row.mapped.item,row.mapped.col);
     const declaredChoice=options.find(([value])=>value===row.quantity)||[row.quantity,row.quantity||'Declared quantity'];
     const choices=row.locked?[declaredChoice]:options;
-    return '<div class="series-semantics-row"><div class="series-semantics-source"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity. Reinterpretation requires editing the source metadata and its units.">Declared by source</small>':'')+'</div><label>Interpret Value as<select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label></div>';
+    const available=units[row.quantity]||[];
+    const unitKey=value=>String(value||'').toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
+    const current=row.locked?row.unit:(available.find(value=>unitKey(value)===unitKey(row.unit))||'');
+    const unitChoices=row.locked?(row.unit?[row.unit]:[]):available;
+    return '<div class="series-semantics-row"><div class="series-semantics-source"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity and unit.">Declared by source</small>':'')+'</div><label>Interpret Value as<select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label>Source unit'+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'<select data-series-unit-key="'+esc(row.key)+'" aria-label="Source unit — '+esc(source)+'"'+(row.locked||!available.length?' disabled':'')+'><option value="">'+(row.locked?'Unresolved':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
   }).join('');
   target.querySelectorAll('[data-series-quantity-key]').forEach(select=>select.addEventListener('change',()=>{
     void guarded('mappingStatus',()=>applySeriesQuantityOverride(select.dataset.seriesQuantityKey,select.value||null));
   }));
+  target.querySelectorAll('[data-series-unit-key]').forEach(select=>select.addEventListener('change',()=>{
+    const key=select.dataset.seriesUnitKey;
+    void guarded('mappingStatus',()=>applySeriesQuantityOverride(key,seriesQuantity(mappingObject(key).item,mappingObject(key).col),{unit:select.value}));
+  }));
 }
-async function applySeriesQuantityOverride(key,quantity,{refresh=true}={}){
+async function applySeriesQuantityOverride(key,quantity,{refresh=true,unit=null}={}){
   const mapped=mappingObject(key);
   if(!mapped)throw new Error('The selected generic series is no longer available.');
   const declared=declaredSeriesQuantity(mapped.item,mapped.col);
@@ -590,17 +600,22 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true}={}){
     throw new Error('Quantity overrides are not available for sources with authoritative native quantity metadata.');
   }
   const requested=quantity?String(quantity).toLowerCase():null;
-  const result=await engine.call('set_series_quantity',{path:mapped.item.virtualPath,column:mapped.col,quantity:requested});
+  const result=await engine.call('set_series_quantity',{path:mapped.item.virtualPath,column:mapped.col,quantity:requested,unit});
   const metadata=mapped.item.parsed.metadata||(mapped.item.parsed.metadata={});
   const seriesMetadata=metadata.series_metadata||(metadata.series_metadata={});
   const details=seriesMetadata[mapped.col]||(seriesMetadata[mapped.col]={});
   const quantityByColumn=metadata.quantity_by_column||(metadata.quantity_by_column={});
   if(requested)state.seriesQuantityOverrides.set(key,requested);
   else state.seriesQuantityOverrides.delete(key);
+  if(result.user_unit)state.seriesUnitOverrides.set(key,result.user_unit);
+  else state.seriesUnitOverrides.delete(key);
   details.quantity=result.quantity??null;
   details.quantity_source=result.quantity_source||'unresolved';
   if(result.inferred_quantity!==undefined)details.inferred_quantity=result.inferred_quantity;
   if(result.original_unit!==undefined)details.original_unit=result.original_unit;
+  if(result.detected_unit!==undefined)details.detected_unit=result.detected_unit;
+  details.user_unit=result.user_unit||null;
+  details.unit_source=result.user_unit?'user':(result.detected_unit?'column_header':'unresolved');
   details.canonical_unit=result.canonical_unit??null;
   details.conversion_factor=result.conversion_factor??null;
   details.unit_status=result.unit_status||'unresolved';
@@ -898,6 +913,7 @@ async function removeSourceById(sourceId){
   state.files.delete(sourceId);
   window.ICMProjectRegistry?.removeSource(sourceId);
   for(const key of [...state.seriesQuantityOverrides.keys()])if(sourceKeyBelongsTo(key,sourceId))state.seriesQuantityOverrides.delete(key);
+  for(const key of [...state.seriesUnitOverrides.keys()])if(sourceKeyBelongsTo(key,sourceId))state.seriesUnitOverrides.delete(key);
   for(const key of Object.keys(state.modelColours||{}))if(sourceKeyBelongsTo(key,sourceId))delete state.modelColours[key];
   if(observedRemoved)state.mapping.observed='';
   if(removedModelKeys.length)state.mapping.models=state.mapping.models.filter(key=>!sourceKeyBelongsTo(key,sourceId));
@@ -1099,6 +1115,7 @@ function dwfInputSignature(){
   const flowKey=$('dwfFlowSelect')?.value||'';
   return JSON.stringify({
     flow:workspaceSeries(flowKey),
+    interpreted_units:[...state.seriesUnitOverrides.entries()].sort(),
     flow_unit_override:$('dwfFlowUnit')?.value||null,
     rain:workspaceSeries(state.mapping.rain),
     rain_factor:Number($('rainFactor')?.value||1),
@@ -1185,8 +1202,14 @@ async function restoreAnalysisWorkerAfterBackgroundInterrupt(reason='Interactive
       await engine.call('set_series_quantity',{
         path:mapped.item.virtualPath,
         column:mapped.col,
-        quantity:String(quantity).toLowerCase()
+        quantity:String(quantity).toLowerCase(),
+        unit:state.seriesUnitOverrides.get(key)||null
       });
+    }
+    for(const [key,unit] of state.seriesUnitOverrides.entries()){
+      if(state.seriesQuantityOverrides.has(key))continue;
+      const mapped=mappingObject(key);
+      if(mapped)await engine.call('set_series_quantity',{path:mapped.item.virtualPath,column:mapped.col,quantity:seriesQuantity(mapped.item,mapped.col),unit});
     }
     return true;
   })();
@@ -1786,7 +1809,7 @@ function thresholdWorkspaceSeries(role){
   const model=mappingObject(key);
   return model&&['depth','level'].includes(String(seriesQuantity(model.item,model.col)||'').toLowerCase())?workspaceSeries(key):null;
 }
-function workspaceObject(strictExclusions=true){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:$('timeBasisConfirmed')?.checked?'model clock/engineer-confirmed':'model clock/unspecified',time_basis_confirmed:Boolean($('timeBasisConfirmed')?.checked),level_datum_confirmed:Boolean($('levelDatumConfirmed')?.checked),saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity})).filter(x=>x.series&&x.quantity),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#ff0000',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#ff0000'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
+function workspaceObject(strictExclusions=true){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:$('timeBasisConfirmed')?.checked?'model clock/engineer-confirmed':'model clock/unspecified',time_basis_confirmed:Boolean($('timeBasisConfirmed')?.checked),level_datum_confirmed:Boolean($('levelDatumConfirmed')?.checked),saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity,unit:state.seriesUnitOverrides.get(key)||null})).filter(x=>x.series&&x.quantity),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#ff0000',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#ff0000'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
 function downloadBlob(name,content,type='application/octet-stream'){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 function downloadWorkspace(){downloadBlob(`icm-workbench-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(workspaceObject(),null,2),'application/json');$('workspaceStatus').textContent='Workspace downloaded. Raw files were not embedded.';}
 function findSeriesFromWorkspace(ref){
@@ -1824,9 +1847,17 @@ async function applyWorkspace(w){
   if($('ratingSummary'))$('ratingSummary').innerHTML='<div class="pool-summary">Workspace restored. Recalculate the fitted relationship for the restored inputs.</div>';
   renderSeriesOptions();
   state.seriesQuantityOverrides.clear();
+  state.seriesUnitOverrides.clear();
   for(const entry of w.series_quantity_overrides||[]){
     const key=findSeriesFromWorkspace(entry?.series);
-    if(key&&entry?.quantity)await applySeriesQuantityOverride(key,entry.quantity,{refresh:false});
+    if(key&&entry?.quantity)await applySeriesQuantityOverride(key,entry.quantity,{refresh:false,unit:entry.unit||null});
+  }
+  for(const entry of w.series_unit_overrides||[]){
+    const key=findSeriesFromWorkspace(entry?.series);
+    if(key&&entry?.unit&&!state.seriesQuantityOverrides.has(key)){
+      const mapped=mappingObject(key);
+      await applySeriesQuantityOverride(key,seriesQuantity(mapped.item,mapped.col),{refresh:false,unit:entry.unit});
+    }
   }
   renderSeriesOptions();
   state.mapping.observed=findSeriesFromWorkspace(w.mapping?.observed);
@@ -1932,7 +1963,7 @@ function analysisSignature(){
     issues:registry.issues||[],
     associationSource:registry.associationSource||null,
   };
-  return JSON.stringify({mapping:w.mapping,analysis:w.analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual,time_basis:w.time_basis,level_datum_confirmed:w.level_datum_confirmed,project_context:projectContext});
+  return JSON.stringify({mapping:w.mapping,series_quantity_overrides:w.series_quantity_overrides,analysis:w.analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual,time_basis:w.time_basis,level_datum_confirmed:w.level_datum_confirmed,project_context:projectContext});
 }
 function assertFreshResults(options=null){
   const sig=analysisSignature();

@@ -94,7 +94,7 @@ def parse_source(path):
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
 
-def set_series_quantity(path, column, quantity=None):
+def set_series_quantity(path, column, quantity=None, unit=None):
     """Set user interpretation for editable generic/tabular series.
 
     Tabular CSV quantity names are parser-inferred defaults and may be
@@ -134,7 +134,7 @@ def set_series_quantity(path, column, quantity=None):
         tabular_editable and existing_source is None
     )
     if existing and not editable_source:
-        if requested == existing:
+        if requested == existing and unit is None:
             return json.dumps(
                 _jsonable(
                     {
@@ -191,7 +191,23 @@ def set_series_quantity(path, column, quantity=None):
     # inferred. Recover original source values before applying a new semantic
     # contract; this makes repeated Flow↔Depth↔Level reclassification stable.
     original_values = values / current_factor if current_factor is not None else values
-    original_unit = details.get("original_unit")
+    # The detected source unit is immutable provenance. A user choice describes
+    # the raw values, not the already scaled values held in the parse cache.
+    if "detected_unit" not in details:
+        details["detected_unit"] = details.get("original_unit")
+    detected_unit = details["detected_unit"]
+    selected_unit = details.get("user_unit")
+    if requested is None and unit is None:
+        selected_unit = None
+    if unit is not None:
+        selected_unit = str(unit).strip() or None
+        if selected_unit and not target_quantity:
+            raise ValueError("Choose a quantity before interpreting its unit.")
+        if selected_unit and canonical_unit(target_quantity, selected_unit)[0] is None:
+            raise ValueError(f"Unsupported unit {selected_unit!r} for {target_quantity}.")
+    if selected_unit and canonical_unit(target_quantity, selected_unit)[0] is None:
+        selected_unit = None
+    original_unit = selected_unit or detected_unit
     if target_quantity and original_unit:
         canonical, factor = canonical_unit(target_quantity, original_unit)
     else:
@@ -207,6 +223,8 @@ def set_series_quantity(path, column, quantity=None):
         unit_status = "unresolved"
 
     details["quantity"] = target_quantity
+    details["user_unit"] = selected_unit
+    details["original_unit"] = original_unit
     details["quantity_source"] = "user" if requested is not None else (
         "inferred" if target_quantity else "unresolved"
     )
@@ -233,6 +251,8 @@ def set_series_quantity(path, column, quantity=None):
                 "unit": canonical or original_unit,
                 "canonical_unit": canonical,
                 "original_unit": original_unit,
+                "detected_unit": detected_unit,
+                "user_unit": selected_unit,
                 "conversion_factor": factor,
                 "unit_status": unit_status,
                 "quantity_source": details["quantity_source"],
