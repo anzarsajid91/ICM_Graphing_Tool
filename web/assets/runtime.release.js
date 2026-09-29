@@ -582,17 +582,21 @@ function genericSeriesSemanticsRows(){
     const declared=declaredSeriesQuantity(mapped.item,mapped.col);
     const overridden=state.seriesQuantityOverrides.has(key);
     const details=seriesMetadata(mapped.item,mapped.col);
-    const detected=details.detected_unit||(details.unit_source==='column_header'?details.original_unit:null);
-    const selectedUnit=state.seriesUnitOverrides.get(key)||detected||details.original_unit||'';
+    const metadata=mapped.item?.parsed?.metadata||{};
+    const locked=seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden;
+    const sourceUnit=details.detected_unit||details.original_unit||(locked?metadata.original_unit:null)||
+      (locked?seriesUnit(mapped.item,mapped.col):null);
+    const selectedUnit=state.seriesUnitOverrides.get(key)||details.display_unit||sourceUnit||'';
     seen.add(key);
     rows.push({
       role:roleFor(key),key,mapped,
       quantity:String(state.seriesQuantityOverrides.get(key)||declared||'').toLowerCase(),
       unit:selectedUnit,
-      unitSource:state.seriesUnitOverrides.has(key)
-        ?(detected?'Display unit · source '+detected:'Assigned by user')
-        :(detected?'Detected from column':''),
-      locked:seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden
+      sourceUnit:sourceUnit||'',
+      unitSource:sourceUnit
+        ?(locked?'Source '+sourceUnit:(details.unit_source==='column_header'?'Detected '+sourceUnit:'Source '+sourceUnit))
+        :(state.seriesUnitOverrides.has(key)?'Assigned by user':''),
+      locked
     });
   }
   return rows;
@@ -618,9 +622,9 @@ function renderSeriesSemanticsOverrides(){
     const choices=row.locked?[declaredChoice]:options;
     const available=units[row.quantity]||[];
     const unitKey=value=>String(value||'').toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
-    const current=row.locked?row.unit:(available.find(value=>unitKey(value)===unitKey(row.unit))||'');
-    const unitChoices=row.locked?(row.unit?[row.unit]:[]):available;
-    return '<div class="series-semantics-row"><div class="series-semantics-source"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity and unit.">Declared by source</small>':'')+'</div><label>Interpret Value as<select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label>Unit'+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'<select data-series-unit-key="'+esc(row.key)+'" aria-label="Unit — '+esc(source)+'"'+(row.locked||!available.length?' disabled':'')+'><option value="">'+(row.locked?'Unresolved':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
+    const current=available.find(value=>unitKey(value)===unitKey(row.unit))||'';
+    const unitChoices=available;
+    return '<div class="series-semantics-row"><div class="series-semantics-source"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity. Quantity reinterpretation is protected; compatible display units remain selectable.">Quantity declared by source</small>':'')+'</div><label>Interpret Value as<select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label>Unit'+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'<select data-series-unit-key="'+esc(row.key)+'" aria-label="Unit — '+esc(source)+'"'+(!available.length?' disabled':'')+'><option value="">'+(row.sourceUnit?'Use source unit':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
   }).join('');
   target.querySelectorAll('[data-series-quantity-key]').forEach(select=>select.addEventListener('change',()=>{
     void guarded('mappingStatus',()=>applySeriesQuantityOverride(select.dataset.seriesQuantityKey,select.value||null));
