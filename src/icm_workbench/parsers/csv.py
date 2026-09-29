@@ -157,7 +157,10 @@ def parse_tabular_csv(path):
     for c in value_cols:
         quantity=infer_quantity(c) or infer_quantity(path.stem)
         cleaned,audits[c]=clean_numeric(df[c]); quantities[c]=quantity
-        original_unit=detect_unit(c,quantity) or detect_unit(path.stem,quantity)
+        # A filename can describe a site or export convention rather than the
+        # numeric column. Only an explicit unit in that column is strong enough
+        # to scale values on import. Otherwise the engineer must assign it.
+        original_unit=detect_unit(c,quantity)
         canonical,factor=canonical_unit(quantity,original_unit) if quantity and original_unit else (None,None)
         if canonical is not None and factor is not None:
             out[c]=cleaned*float(factor)
@@ -174,6 +177,7 @@ def parse_tabular_csv(path):
             "inferred_quantity":quantity,
             "quantity_source":"inferred" if quantity else "unresolved",
             "original_unit":original_unit,
+            "unit_source":"column_header" if original_unit else "unresolved",
             "canonical_unit":canonical,
             "conversion_factor":factor,
             "unit_status":unit_status,
