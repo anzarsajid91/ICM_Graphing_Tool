@@ -1226,7 +1226,7 @@ try{
   await page.selectOption('#rainSelect','');
   await page.waitForFunction(()=>document.querySelector('#seriesSemanticsPanel')?.hidden===false&&document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===1);
   const genericSemanticsText=(await page.locator('#seriesSemanticsPanel').textContent())||'';
-  if(!genericSemanticsText.includes('without guessing hydraulic meaning'))throw new Error('Generic CSV mapping must make the no-guessing contract explicit.');
+  if(!genericSemanticsText.includes('Only selected Observed / Modelled series')||!genericSemanticsText.includes('without guessing'))throw new Error('Mapped-series panel must state the selected-only and no-guessing contracts explicitly.');
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&!document.querySelector('#applyMappingBtn')?.disabled,null,{timeout:60000});
   await precisionRoute('data','time-series');
