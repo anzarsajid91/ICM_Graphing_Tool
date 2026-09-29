@@ -1256,10 +1256,14 @@ try{
   const genericUnit=page.locator('#seriesSemanticsRows select[data-series-unit-key]');
   if(!(await genericUnit.locator('option').allTextContents()).includes('mm'))throw new Error('Level interpretation must offer matching source units.');
   await genericUnit.selectOption('mm');
-  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · m'),null,{timeout:30000});
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · mm'),null,{timeout:30000});
   await page.click('#applyMappingBtn');
-  await page.waitForFunction(()=>Math.abs(Number((document.querySelector('#timeChart')?.data||[]).find(t=>/^Simulated:/.test(String(t.name||'')))?.y?.[0])-0.00158)<1e-9,null,{timeout:60000});
-  if(await genericUnit.inputValue()!=='mm')throw new Error('Selected source unit was not retained independently.');
+  await page.waitForFunction(()=>{
+    const chart=document.querySelector('#timeChart');
+    const first=Number((chart?.data||[]).find(t=>/^Simulated:/.test(String(t.name||'')))?.y?.[0]);
+    return Math.abs(first-1.58)<1e-9&&String(chart?.layout?.yaxis?.title?.text||'').includes('(mm)');
+  },null,{timeout:60000});
+  if(await genericUnit.inputValue()!=='mm')throw new Error('Selected unit was not retained independently.');
 
   stage='multiple generic model files expose independent interpretation controls';
   await precisionRoute('data','series-mapping');
@@ -1267,10 +1271,10 @@ try{
   await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('generic-model-2.csv')&&row.textContent.includes('Ready')),null,{timeout:60000});
   const genericModel2=await optionValue('#modelSelect','generic-model-2.csv — Value');
   if(!genericModel2)throw new Error('Second generic model file was not exposed as a mappable numeric series.');
-  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===2,null,{timeout:30000});
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===1,null,{timeout:30000});
   const genericRowsBeforeSecondMapping=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].map(row=>row.textContent));
-  if(!genericRowsBeforeSecondMapping.some(text=>text.includes('generic-model.csv — Value'))||!genericRowsBeforeSecondMapping.some(text=>text.includes('generic-model-2.csv — Value'))){
-    throw new Error('Every loaded generic source must receive its own interpretation control before mapping: '+JSON.stringify(genericRowsBeforeSecondMapping));
+  if(genericRowsBeforeSecondMapping.length!==1||!genericRowsBeforeSecondMapping[0].includes('generic-model.csv — Value')||genericRowsBeforeSecondMapping[0].includes('generic-model-2.csv')){
+    throw new Error('Unselected source must not consume interpretation-panel space: '+JSON.stringify(genericRowsBeforeSecondMapping));
   }
   await page.selectOption('#modelSelect',[genericModel,genericModel2]);
   await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===2&&[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].every(row=>row.textContent.includes('Model')));
@@ -1356,9 +1360,21 @@ try{
     select.dispatchEvent(new Event('change',{bubbles:true}));
   },interpretObserved);
   await page.waitForFunction(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].every(node=>node.value==='level'),null,{timeout:30000});
+  const observedUnit=page.locator('#seriesSemanticsRows select[data-series-unit-key]').filter({has:page.locator('option[value="mm"]')}).first();
+  await page.evaluate(key=>{
+    const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]')].find(node=>node.dataset.seriesUnitKey===key);
+    if(!select)throw new Error('Observed unit selector missing.');
+    select.value='mm';
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+  },interpretObserved);
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · mm'),null,{timeout:30000});
   await page.click('#applyMappingBtn');
-  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&
-    (document.querySelector('#timeChart')?.data||[]).filter(trace=>String(trace.uid||'').startsWith('model__')).length===2,null,{timeout:60000});
+  await page.waitForFunction(()=>{
+    const chart=document.querySelector('#timeChart');
+    const observed=(chart?.data||[]).find(trace=>String(trace.uid||'').startsWith('observed__'));
+    const models=(chart?.data||[]).filter(trace=>String(trace.uid||'').startsWith('model__'));
+    return String(chart?.layout?.yaxis?.title?.text||'').includes('(mm)')&&Math.abs(Number(observed?.y?.[0])-1000)<1e-9&&models.length===2&&models.every(trace=>Math.abs(Number(trace.y?.[0])-1000)<1e-9);
+  },null,{timeout:60000});
   await precisionRoute('data','sources');
   await page.click('#clearPoolBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0);
