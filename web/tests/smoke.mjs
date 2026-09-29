@@ -450,10 +450,10 @@ async function verifyStationAThresholdChain(){
     const stationDetectedUnit=await probe.evaluate(key=>{
       const row=[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].find(node=>node.querySelector('[data-series-unit-key]')?.dataset.seriesUnitKey===key);
       const select=row?.querySelector('[data-series-unit-key]');
-      return {value:select?.value||'',text:row?.textContent||''};
+      return {value:select?.value||'',text:row?.textContent||'',disabled:Boolean(select?.disabled)};
     },selected.observed);
-    if(stationDetectedUnit.value!=='m'||!stationDetectedUnit.text.includes('Detected from column')){
-      throw new Error('Station A reference unit was not presented as a reliable detected metre unit: '+JSON.stringify(stationDetectedUnit));
+    if(stationDetectedUnit.value!=='m'||!stationDetectedUnit.text.includes('Source m')||stationDetectedUnit.disabled){
+      throw new Error('Station A reference unit was not presented as an editable display unit with reliable metre provenance: '+JSON.stringify(stationDetectedUnit));
     }
     const stationEvidenceDir=process.env.ICM_EVIDENCE_DIR;
     if(stationEvidenceDir){
