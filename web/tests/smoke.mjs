@@ -1372,6 +1372,79 @@ try{
   if(JSON.stringify(observedModelOrder)!==JSON.stringify([interpretObserved,interpretModelA,interpretModelB])){
     throw new Error('Interpretation rows must remain Observed, Model 1, Model 2: '+JSON.stringify(observedModelOrder));
   }
+
+  // Visual acceptance for the compact mapping controls. The Observed native
+  // select and custom Model picker deliberately share one chevron treatment,
+  // control height, border radius and border colour. Three interpretation rows
+  // must remain compact without clipping or horizontal page overflow.
+  await page.setViewportSize({width:1440,height:900});
+  const mappingVisual=await page.evaluate(()=>{
+    const observed=document.querySelector('#observedSelect');
+    const trigger=document.querySelector('#modelPickerTrigger');
+    const panel=document.querySelector('#seriesSemanticsPanel');
+    const rows=[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')];
+    const rowSelects=[...document.querySelectorAll('#seriesSemanticsRows select')];
+    const observedStyle=getComputedStyle(observed);
+    const triggerStyle=getComputedStyle(trigger);
+    const triggerArrow=getComputedStyle(trigger,'::after');
+    return {
+      overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+      observedHeight:observed?.getBoundingClientRect().height||0,
+      triggerHeight:trigger?.getBoundingClientRect().height||0,
+      observedRadius:observedStyle.borderRadius,
+      triggerRadius:triggerStyle.borderRadius,
+      observedBorder:observedStyle.borderColor,
+      triggerBorder:triggerStyle.borderColor,
+      observedArrow:observedStyle.backgroundImage,
+      triggerArrow:triggerArrow.backgroundImage,
+      triggerArrowSize:triggerArrow.backgroundSize,
+      panelHeight:panel?.getBoundingClientRect().height||0,
+      rowHeights:rows.map(row=>row.getBoundingClientRect().height),
+      selectHeights:rowSelects.map(select=>select.getBoundingClientRect().height),
+      roles:rows.map(row=>row.querySelector('.series-semantics-source strong')?.textContent?.trim()||''),
+    };
+  });
+  if(mappingVisual.overflow>1)throw new Error('Series mapping introduced document overflow at 1440px: '+JSON.stringify(mappingVisual));
+  if(Math.abs(mappingVisual.observedHeight-mappingVisual.triggerHeight)>2||mappingVisual.observedRadius!==mappingVisual.triggerRadius||mappingVisual.observedBorder!==mappingVisual.triggerBorder){
+    throw new Error('Observed and Modelled selectors are not visually aligned: '+JSON.stringify(mappingVisual));
+  }
+  if(!mappingVisual.observedArrow.includes('svg')||mappingVisual.observedArrow!==mappingVisual.triggerArrow||mappingVisual.triggerArrowSize!=='12px 8px'){
+    throw new Error('Observed and Modelled selectors must use the same controlled chevron: '+JSON.stringify(mappingVisual));
+  }
+  if(mappingVisual.panelHeight>235||mappingVisual.rowHeights.some(height=>height>58)||mappingVisual.selectHeights.some(height=>height<30||height>36)){
+    throw new Error('Compact interpretation rows are outside the professional density envelope: '+JSON.stringify(mappingVisual));
+  }
+  if(JSON.stringify(mappingVisual.roles)!==JSON.stringify(['Observed','Model 1','Model 2'])){
+    throw new Error('Interpretation role labels are not presented in stable professional order: '+JSON.stringify(mappingVisual.roles));
+  }
+  await captureEvidence('00-series-mapping-1440x900');
+
+  await page.click('#modelPickerTrigger');
+  await page.waitForFunction(()=>document.querySelector('#modelPickerTrigger')?.getAttribute('aria-expanded')==='true'&&!document.querySelector('#modelPickerPopover')?.hidden);
+  const openPickerVisual=await page.evaluate(()=>{
+    const pop=document.querySelector('#modelPickerPopover')?.getBoundingClientRect();
+    const transform=getComputedStyle(document.querySelector('#modelPickerTrigger'),'::after').transform;
+    return {left:pop?.left,right:pop?.right,top:pop?.top,bottom:pop?.bottom,width:pop?.width,viewport:innerWidth,transform};
+  });
+  if(openPickerVisual.left<0||openPickerVisual.right>openPickerVisual.viewport+1||!openPickerVisual.width||openPickerVisual.transform==='none'){
+    throw new Error('Model selector popover/chevron is visually invalid: '+JSON.stringify(openPickerVisual));
+  }
+  await captureEvidence('00a-model-picker-open-1440x900');
+  await page.click('#modelPickerTrigger');
+
+  await page.setViewportSize({width:1024,height:768});
+  const constrainedMapping=await page.evaluate(()=>({
+    overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+    panelWidth:document.querySelector('#seriesSemanticsPanel')?.getBoundingClientRect().width||0,
+    viewport:document.documentElement.clientWidth,
+    rowHeights:[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].map(row=>row.getBoundingClientRect().height),
+  }));
+  if(constrainedMapping.overflow>1||constrainedMapping.panelWidth>constrainedMapping.viewport+1||constrainedMapping.rowHeights.some(height=>height>62)){
+    throw new Error('Compact mapping panel is not contained at 1024px: '+JSON.stringify(constrainedMapping));
+  }
+  await captureEvidence('00b-series-mapping-1024x768');
+  await page.setViewportSize({width:1440,height:1000});
+
   const inferredSelectors=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].map(select=>({
     key:select.dataset.seriesQuantityKey,
     value:select.value,
