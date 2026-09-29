@@ -584,14 +584,18 @@
     const model = nullableNumber($('modelThreshold').value);
     const observedAxis=options.observedAxis||targetAxis||null;
     const modelAxis=options.modelAxis||targetAxis||null;
-    const showObserved=Boolean(observedAxis)&&options.showObserved===true&&$('showGraphObsThreshold')?.checked!==false&&obs!==null;
-    const showModel=Boolean(modelAxis)&&options.showModel===true&&$('showGraphModelThreshold')?.checked!==false&&model!==null;
-    const coincident=showObserved&&showModel&&observedAxis===modelAxis&&Math.abs(Number(obs)-Number(model))<=1e-12;
+    const observedFactor=Number(options.observedFactor||1);
+    const modelFactor=Number(options.modelFactor||1);
+    const displayObs=obs===null?null:Number(obs)*observedFactor;
+    const displayModel=model===null?null:Number(model)*modelFactor;
+    const showObserved=Boolean(observedAxis)&&options.showObserved===true&&$('showGraphObsThreshold')?.checked!==false&&displayObs!==null;
+    const showModel=Boolean(modelAxis)&&options.showModel===true&&$('showGraphModelThreshold')?.checked!==false&&displayModel!==null;
+    const coincident=showObserved&&showModel&&observedAxis===modelAxis&&Math.abs(Number(displayObs)-Number(displayModel))<=1e-12;
     if(coincident){
-      shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:observedAxis,y0:obs,y1:obs,line:{color:$('threshold1Color').value,width:2,dash:'dash'},layer:'above'});
+      shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:observedAxis,y0:displayObs,y1:displayObs,line:{color:$('threshold1Color').value,width:2,dash:'dash'},layer:'above'});
     }else{
-      if(showObserved)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:observedAxis,y0:obs,y1:obs,line:{color:$('threshold1Color').value,width:2,dash:'dash'},layer:'above'});
-      if(showModel)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:modelAxis,y0:model,y1:model,line:{color:$('threshold2Color').value,width:2,dash:'dash'},layer:'above'});
+      if(showObserved)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:observedAxis,y0:displayObs,y1:displayObs,line:{color:$('threshold1Color').value,width:2,dash:'dash'},layer:'above'});
+      if(showModel)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:modelAxis,y0:displayModel,y1:displayModel,line:{color:$('threshold2Color').value,width:2,dash:'dash'},layer:'above'});
     }
     if($('showEventOverlay').checked){
       // WAPUG event bands bridge the inverted rainfall and hydraulic plotting
@@ -644,12 +648,12 @@
   }
 
   function graphStatisticRow(row) {
-    const s=row.statistics||{},factor=row.factor||1;
+    const s=row.statistics||{},factor=row.factor||1,totalFactor=row.totalFactor??factor;
     const scale=v=>v==null?v:Number(v)*factor;
     const quantity=String(s.quantity||'').toLowerCase();
-    const unit=s.unit||(quantity==='rainfall'?'mm/h':quantity==='flow'?'m³/s':quantity==='depth'?'m':quantity==='velocity'?'m/s':'—');
+    const unit=row.unit||s.unit||(quantity==='rainfall'?'mm/h':quantity==='flow'?'m³/s':quantity==='depth'?'m':quantity==='velocity'?'m/s':'—');
     const value=v=>v==null||!Number.isFinite(Number(v))?'—':fmt(Number(v),3);
-    const total=scale(s.total);
+    const total=s.total==null?s.total:Number(s.total)*totalFactor;
     const totalText=total==null?'—':value(total)+(s.total_unit?' '+s.total_unit:'');
     return {
       series:row.compact_label||row.role||'Series',
@@ -707,7 +711,7 @@
       target.setAttribute('aria-hidden',rawRows.length?'false':'true');
       target.innerHTML=rawRows.length?'<details><summary>Raw source statistics (before exclusions)</summary>'+graphStatisticsHtml(rawRows)+'</details>':'';
     }
-    const scaled=(row,key)=>{const value=row.statistics?.[key];return value==null?null:Number(value)*(row.factor||1);};
+    const scaled=(row,key)=>{const value=row.statistics?.[key];if(value==null)return null;const factor=key==='total'?(row.totalFactor??row.factor??1):(row.factor||1);return Number(value)*factor;};
     const rain=rows.find(row=>String(row.statistics?.quantity||row.role).toLowerCase()==='rainfall');
     const flow=rows.find(row=>String(row.role).startsWith('Observed')&&String(row.statistics?.quantity||'').toLowerCase()==='flow')||
       rows.find(row=>String(row.statistics?.quantity||'').toLowerCase()==='flow');
@@ -905,24 +909,33 @@
 
       const panelQuantities=new Set([...observedEntries,...modelEntries].map(x=>String(x.quantity||'').toLowerCase()).filter(q=>canonical.includes(q)));
       const multiPanelMode=fdvMode||panelQuantities.size>1;
+      const displayUnitForQuantity=quantity=>{
+        const representative=observedEntries.find(x=>x.quantity===quantity)?.source||modelEntries.find(x=>x.quantity===quantity)?.source;
+        return representative?seriesDisplayUnit(representative.item,representative.col):null;
+      };
+      const displayFactorForQuantity=quantity=>canonicalToDisplayFactor(quantity,displayUnitForQuantity(quantity));
+      const scaledValues=(values,factor)=>factor===1?values:values.map(value=>value==null?null:Number(value)*factor);
       const statisticRows=[],rawStatisticRows=[];
-      const addStat=(role,entry,factor=1)=>{
+      const addStat=(role,entry,factor=1,unit=null,totalFactor=1)=>{
         const label=compactGraphRole(role,entry.item,entry.col);
         if(entry.data.assessment_statistics){
-          rawStatisticRows.push({role,compact_label:label+' · raw',label:seriesLabel(entry.item,entry.col),statistics:entry.data.statistics,factor});
-          statisticRows.push({role,compact_label:label+' · assessed',label:seriesLabel(entry.item,entry.col),statistics:entry.data.assessment_statistics,factor});
-        }else statisticRows.push({role,compact_label:label,label:seriesLabel(entry.item,entry.col),statistics:entry.data.statistics,factor});
+          rawStatisticRows.push({role,compact_label:label+' · raw',label:seriesLabel(entry.item,entry.col),statistics:entry.data.statistics,factor,unit,totalFactor});
+          statisticRows.push({role,compact_label:label+' · assessed',label:seriesLabel(entry.item,entry.col),statistics:entry.data.assessment_statistics,factor,unit,totalFactor});
+        }else statisticRows.push({role,compact_label:label,label:seriesLabel(entry.item,entry.col),statistics:entry.data.statistics,factor,unit,totalFactor});
       };
       if(multiPanelMode){
         for(const quantity of canonical){
-          for(const item of observedEntries.filter(x=>x.quantity===quantity))addStat('Observed',item.source);
-          for(const item of modelEntries.filter(x=>x.quantity===quantity))addStat(`Model ${item.index+1}`,item.source);
+          const factor=displayFactorForQuantity(quantity),unit=displayUnitForQuantity(quantity);
+          for(const item of observedEntries.filter(x=>x.quantity===quantity))addStat('Observed',item.source,factor,unit,1);
+          for(const item of modelEntries.filter(x=>x.quantity===quantity))addStat(`Model ${item.index+1}`,item.source,factor,unit,1);
         }
-        if(rainEntry)addStat('Rainfall',rainEntry.source,rainEntry.factor);
+        if(rainEntry)addStat('Rainfall',rainEntry.source,rainEntry.factor,rainEntry.unit,rainEntry.factor);
       }else{
-        for(const item of observedEntries)addStat('Observed',item.source);
-        for(const item of modelEntries)addStat(`Model ${item.index+1}`,item.source);
-        if(rainEntry)addStat('Rainfall',rainEntry.source,rainEntry.factor);
+        const quantity=String((observedEntries[0]||modelEntries[0])?.quantity||'').toLowerCase();
+        const factor=displayFactorForQuantity(quantity),unit=displayUnitForQuantity(quantity);
+        for(const item of observedEntries)addStat('Observed',item.source,factor,unit,1);
+        for(const item of modelEntries)addStat(`Model ${item.index+1}`,item.source,factor,unit,1);
+        if(rainEntry)addStat('Rainfall',rainEntry.source,rainEntry.factor,rainEntry.unit,rainEntry.factor);
       }
 
       const plottedRange=plottedTimestampRange(observedEntries,modelEntries,rainEntry);
@@ -966,7 +979,7 @@
           const n=(rainEntry?2:1)+index,axisKey=n===1?'yaxis':`yaxis${n}`,axisRef=n===1?'y':`y${n}`;
           axisByPanel[panel]=axisRef;panelDomains[panel]=[bottom,top];
           const representative=observedEntries.find(x=>x.quantity===panel)?.source||modelEntries.find(x=>x.quantity===panel)?.source;
-          const unit=representative?seriesUnit(representative.item,representative.col):null;
+          const unit=displayUnitForQuantity(panel)|| (representative?seriesUnit(representative.item,representative.col):null);
           const reference=representative&&panel==='level'?seriesReference(representative.item,representative.col):null;
           const label={flow:'Flow',depth:'Depth',level:'Level',velocity:'Velocity'}[panel]||panel;
           const defaultUnit={flow:'m³/s',depth:'m',level:'m',velocity:'m/s'}[panel]||'';
@@ -985,13 +998,14 @@
         }
         for(const quantity of canonical){
           const axis=axisByPanel[quantity];if(!axis)continue;
+          const factor=displayFactorForQuantity(quantity),unit=displayUnitForQuantity(quantity)||'';
           for(const item of observedEntries.filter(x=>x.quantity===quantity)){
             const d=item.source.data;
-            traces.push({x:d.timestamp,y:d.value,name:`Observed ${quantity}`,uid:traceUid('observed',item.source.item.id,item.source.col),legendgroup:'observed',type:traceType(d),mode:'lines',connectgaps:false,line:{color:colourFor(quantity),width:quantity==='depth'?1.8:1.5},yaxis:axis,hovertemplate:'%{x}<br>'+quantity.charAt(0).toUpperCase()+quantity.slice(1)+' %{y:.4g}<extra></extra>'});
+            traces.push({x:d.timestamp,y:scaledValues(d.value,factor),name:`Observed ${quantity}`,uid:traceUid('observed',item.source.item.id,item.source.col),legendgroup:'observed',type:traceType(d),mode:'lines',connectgaps:false,line:{color:colourFor(quantity),width:quantity==='depth'?1.8:1.5},yaxis:axis,hovertemplate:'%{x}<br>'+quantity.charAt(0).toUpperCase()+quantity.slice(1)+' %{y:.4g} '+unit+'<extra></extra>'});
           }
           for(const item of modelEntries.filter(x=>x.quantity===quantity)){
             const d=item.source.data;
-            traces.push({x:d.timestamp,y:d.value,name:`Model ${item.index+1} · ${item.source.col}`,uid:traceUid('model',item.source.item.id,item.source.col),legendgroup:'model:'+item.source.item.id,meta:item.source.item.displayName,type:traceType(d),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:1.6},yaxis:axis});
+            traces.push({x:d.timestamp,y:scaledValues(d.value,factor),name:`Model ${item.index+1} · ${item.source.col}`,uid:traceUid('model',item.source.item.id,item.source.col),legendgroup:'model:'+item.source.item.id,meta:item.source.item.displayName,type:traceType(d),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:1.6},yaxis:axis,hovertemplate:'%{x}<br>'+quantity.charAt(0).toUpperCase()+quantity.slice(1)+' %{y:.4g} '+unit+'<extra></extra>'});
           }
         }
         const observedThresholdSeries=observedThresholdSelection();
@@ -1003,7 +1017,7 @@
         const showObserved=Boolean(observedThresholdAxis&&$('showGraphObsThreshold')?.checked!==false&&observedThreshold!==null);
         const showModel=Boolean(modelThresholdAxis&&$('showGraphModelThreshold')?.checked!==false&&modelThreshold!==null);
         const coincident=showObserved&&showModel&&observedThresholdAxis===modelThresholdAxis&&Math.abs(Number(observedThreshold)-Number(modelThreshold))<=1e-12;
-        layout.shapes=[...panelDecorations,...v2GraphShapes(null,{observedAxis:observedThresholdAxis,modelAxis:modelThresholdAxis,showObserved,showModel,plotBottom})];
+        layout.shapes=[...panelDecorations,...v2GraphShapes(null,{observedAxis:observedThresholdAxis,modelAxis:modelThresholdAxis,showObserved,showModel,plotBottom,observedFactor:displayFactorForQuantity(observedThresholdQuantity),modelFactor:displayFactorForQuantity(modelThresholdQuantity)})];
         if(coincident)traces.push({x:[null],y:[null],mode:'lines',name:'Observed + model '+observedThresholdQuantity+' threshold',hoverinfo:'skip',showlegend:true,yaxis:observedThresholdAxis,line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
         else{
           if(showObserved)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold1Label').value||'Observed / EDM depth / level threshold',hoverinfo:'skip',showlegend:true,yaxis:observedThresholdAxis,line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
@@ -1017,7 +1031,8 @@
         panelOrder=rainfallOnly?['rainfall']:[...(rainEntry?['rainfall']:[]),quantity||'hydraulic'];
         layout={...commonLayout,height:Number(options.height)||(rainfallOnly?720:850),bargap:0};
         const hydDomain=[plotBottom,hydraulicTop];
-        const primaryUnit=primary?seriesUnit(primary.source.item,primary.source.col):null;
+        const primaryUnit=primary?(displayUnitForQuantity(quantity)||seriesUnit(primary.source.item,primary.source.col)):null;
+        const primaryDisplayFactor=displayFactorForQuantity(quantity);
         const primaryReference=primary?seriesReference(primary.source.item,primary.source.col):null;
         const quantityTitle=quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):(primary?.source?.col||'Value');
         const hydraulicAxisTitle=quantityTitle+(primaryUnit?' ('+primaryUnit+')':'')+(quantity==='level'&&primaryReference?' · '+primaryReference:'');
@@ -1025,10 +1040,10 @@
           ?{title:{text:rainfallAxisTitle,standoff:10},domain:[plotBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:true,gridcolor:'#edf2f6',showline:true,linecolor:'#a8b7c4',linewidth:1,ticks:'outside',tickcolor:'#a8b7c4',zeroline:false,automargin:true}
           :{title:{text:hydraulicAxisTitle,standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zeroline:false,automargin:true};
         if(obs){
-          traces.push({x:obs.source.data.timestamp,y:obs.source.data.value,name:'Observed '+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):obs.source.col),uid:traceUid('observed',obs.source.item.id,obs.source.col),legendgroup:'observed',type:traceType(obs.source.data),mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2.2},yaxis:'y'});
+          traces.push({x:obs.source.data.timestamp,y:scaledValues(obs.source.data.value,primaryDisplayFactor),name:'Observed '+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):obs.source.col),uid:traceUid('observed',obs.source.item.id,obs.source.col),legendgroup:'observed',type:traceType(obs.source.data),mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2.2},yaxis:'y',hovertemplate:'%{x}<br>%{y:.4g} '+(primaryUnit||'')+'<extra></extra>'});
         }
         for(const item of modelEntries){
-          traces.push({x:item.source.data.timestamp,y:item.source.data.value,name:`Simulated: ${item.source.col}`,uid:traceUid('model',item.source.item.id,item.source.col),legendgroup:'model:'+item.source.item.id,meta:item.source.item.displayName,type:traceType(item.source.data),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:2},yaxis:'y'});
+          traces.push({x:item.source.data.timestamp,y:scaledValues(item.source.data.value,primaryDisplayFactor),name:`Simulated: ${item.source.col}`,uid:traceUid('model',item.source.item.id,item.source.col),legendgroup:'model:'+item.source.item.id,meta:item.source.item.displayName,type:traceType(item.source.data),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:2},yaxis:'y',hovertemplate:'%{x}<br>%{y:.4g} '+(primaryUnit||'')+'<extra></extra>'});
         }
         if(primary)layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:hydraulicTop,text:'<b>'+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):'Hydraulic')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
         if(rainEntry){
@@ -1049,7 +1064,7 @@
         const showModel=hasDepthModel&&$('showGraphModelThreshold')?.checked!==false&&modelThreshold!==null;
         const coincident=showObserved&&showModel&&Math.abs(Number(observedThreshold)-Number(modelThreshold))<=1e-12;
         const thresholdQuantityLabel=quantity==='level'?'level':'depth';
-        layout.shapes=v2GraphShapes(singleDepth?'y':null,{showObserved,showModel,plotBottom});
+        layout.shapes=v2GraphShapes(singleDepth?'y':null,{showObserved,showModel,plotBottom,observedFactor:primaryDisplayFactor,modelFactor:primaryDisplayFactor});
         if(coincident)traces.push({x:[null],y:[null],mode:'lines',name:`Observed + model ${thresholdQuantityLabel} threshold`,hoverinfo:'skip',showlegend:true,yaxis:'y',line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
         else{
           if(showObserved)traces.push({x:[null],y:[null],mode:'lines',name:$('threshold1Label').value||'Observed / EDM depth / level threshold',hoverinfo:'skip',showlegend:true,yaxis:'y',line:{color:$('threshold1Color').value,width:2.5,dash:'dash'}});
