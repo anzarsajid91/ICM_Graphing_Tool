@@ -2916,7 +2916,18 @@ try{
       colours:Object.fromEntries(chart.data.filter(t=>t.type!=='table'&&t.name).map(t=>[t.name,t.line?.color||null])),
       tableHeader:(table?.header?.values||[]).map(v=>String(v).replace(/<[^>]+>/g,'')),
       tableSeries:(table?.cells?.values?.[0]||[]).map(String),
+      tableUnits:(table?.cells?.values?.[1]||[]).map(String),
       tableTotals:(table?.cells?.values?.[5]||[]).map(String),
+      axisTitles:[
+        chart.layout.yaxis?.title?.text||'',
+        chart.layout.yaxis2?.title?.text||'',
+        chart.layout.yaxis3?.title?.text||'',
+        chart.layout.yaxis4?.title?.text||'',
+      ],
+      traceMins:Object.fromEntries((chart.data||[]).filter(t=>t.type!=='table'&&Array.isArray(t.y)).map(t=>{
+        const finite=t.y.map(Number).filter(Number.isFinite);
+        return [String(t.name||''),finite.length?Math.min(...finite):null];
+      })),
       xRange:chart.layout.xaxis?.range,
     };
   });
@@ -2930,6 +2941,17 @@ try{
   if(JSON.stringify(referenceEvidence.order)!==JSON.stringify(['rainfall','flow','depth','velocity']))throw new Error('Reference FDV panel order mismatch: '+JSON.stringify(referenceEvidence.order));
   if(referenceEvidence.colours['Observed flow']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed depth']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed velocity']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('Reference FDV colours mismatch: '+JSON.stringify(referenceEvidence.colours));
   if(JSON.stringify(referenceEvidence.tableHeader)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('Reference Plotly statistics header mismatch: '+JSON.stringify(referenceEvidence.tableHeader));
+  if(!referenceEvidence.tableUnits.includes('L/s')||!referenceEvidence.tableUnits.includes('mm')||!referenceEvidence.tableUnits.includes('m/s')){
+    throw new Error('Reference FDV statistics must default to the source/display units selected in the mapping UI: '+JSON.stringify(referenceEvidence.tableUnits));
+  }
+  if(!referenceEvidence.axisTitles.some(x=>/Flow \(L\/s\)/.test(x))||
+     !referenceEvidence.axisTitles.some(x=>/Depth \(mm\)/.test(x))||
+     !referenceEvidence.axisTitles.some(x=>/Velocity \(m\/s\)/.test(x))){
+    throw new Error('Reference FDV graph axes do not reflect the selected source/display units: '+JSON.stringify(referenceEvidence.axisTitles));
+  }
+  if(!near(referenceEvidence.traceMins['Observed flow'],39)||!near(referenceEvidence.traceMins['Observed depth'],113)||!near(referenceEvidence.traceMins['Observed velocity'],.42)){
+    throw new Error('Reference FDV plotted values were not converted to their selected display units: '+JSON.stringify(referenceEvidence.traceMins));
+  }
   if(!referenceEvidence.tableTotals.some(x=>/85(?:\.0+)? mm/.test(x)))throw new Error('Reference rainfall total 85 mm missing from Plotly statistics: '+JSON.stringify(referenceEvidence.tableTotals));
   if(referenceEvidence.pointCounts?.observed?.raw!==20161||referenceEvidence.pointCounts?.rainfall?.raw!==20161)throw new Error('Reference full-period source counts mismatch: '+JSON.stringify(referenceEvidence.pointCounts));
   if(!String(referenceEvidence.xRange?.[0]||'').startsWith('2026-02-01')||!String(referenceEvidence.xRange?.[1]||'').startsWith('2026-03-01'))throw new Error('Reference graph support mismatch: '+JSON.stringify(referenceEvidence.xRange));
