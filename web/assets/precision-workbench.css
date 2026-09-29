@@ -142,9 +142,9 @@ body.precision-workbench{
 .precision-workbench input:not([type="checkbox"]):not([type="color"]),
 .precision-workbench select,.precision-workbench textarea{padding:8px 8px}
 .precision-workbench select:not([multiple]){
-  appearance:none;-webkit-appearance:none;padding-right:30px;
+  appearance:none;-webkit-appearance:none;padding-right:32px;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M2 2l4 4 4-4' fill='none' stroke='%23677883' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;background-position:right 10px center;background-size:12px 8px
+  background-repeat:no-repeat;background-position:right 12px center;background-size:12px 8px
 }
 .precision-workbench label{color:#344651;font-size:13px;line-height:20px;font-weight:600}
 .precision-workbench label small{color:var(--pw-muted);font-size:12px;line-height:16px;font-weight:400}
@@ -207,9 +207,9 @@ body.precision-workbench{
   .pw-has-inspector .pw-inspector-drawer-close{border:0;background:transparent;cursor:pointer;font-size:20px;line-height:1}
 }
 .pw-scenario-picker{display:grid;gap:8px;position:relative;min-width:0}
-.pw-model-picker-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;border:1px solid var(--pw-border-strong);background:#fff;border-radius:6px;padding:8px 10px;color:var(--pw-text);cursor:pointer;font-weight:550}
+.pw-model-picker-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;border:1px solid var(--pw-border-strong);background:#fff;border-radius:6px;padding:8px 12px;color:var(--pw-text);cursor:pointer;font-weight:550}
 .pw-model-picker-trigger:after{
-  content:"";width:12px;height:8px;flex:0 0 12px;margin-left:10px;
+  content:"";width:12px;height:8px;flex:0 0 12px;margin-left:8px;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M2 2l4 4 4-4' fill='none' stroke='%23677883' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:center;background-size:12px 8px;transition:transform .14s ease
 }
@@ -346,10 +346,10 @@ body.precision-workbench{
 
 
 .series-semantics-panel{
-  margin-top:8px;padding:8px 10px;border:1px solid var(--pw-border);border-radius:8px;background:var(--pw-surface-soft)
+  margin-top:8px;padding:8px 12px;border:1px solid var(--pw-border);border-radius:8px;background:var(--pw-surface-soft)
 }
 .series-semantics-panel[hidden]{display:none!important}
-.series-semantics-copy{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;margin-bottom:5px}
+.series-semantics-copy{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px}
 .series-semantics-copy strong{font-size:12px;color:var(--pw-text)}
 .series-semantics-copy span{font-size:11px;line-height:16px;color:var(--pw-muted);max-width:920px}
 .series-semantics-rows{display:grid;gap:4px}
@@ -359,7 +359,7 @@ body.precision-workbench{
 .series-semantics-row .series-semantics-source{min-width:0;font-size:12px;line-height:16px;color:var(--pw-muted);overflow-wrap:anywhere}
 .series-semantics-row label{margin:0;font-size:12px;line-height:16px}
 .series-semantics-row label small{font-size:10.5px;line-height:14px}
-.series-semantics-row select{min-height:32px;padding-top:5px;padding-bottom:5px;font-size:12px}
+.series-semantics-row select{min-height:32px;padding-top:4px;padding-bottom:4px;font-size:12px}
 @media(max-width:720px){.series-semantics-row{grid-template-columns:1fr}}
 
 
