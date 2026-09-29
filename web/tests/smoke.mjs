@@ -1278,6 +1278,24 @@ try{
   }
   await page.selectOption('#modelSelect',[genericModel,genericModel2]);
   await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===2&&[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].every(row=>row.textContent.includes('Model')));
+  const interpretationOrder=()=>page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].map(node=>node.dataset.seriesQuantityKey));
+  let stableOrder=await interpretationOrder();
+  if(JSON.stringify(stableOrder)!==JSON.stringify([genericModel,genericModel2]))throw new Error('Initial model interpretation rows did not preserve selection order: '+JSON.stringify(stableOrder));
+  await page.evaluate(key=>{
+    const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]')].find(node=>node.dataset.seriesUnitKey===key);
+    if(!select)throw new Error('First generic model unit selector is missing.');
+    select.value='m';
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+  },genericModel);
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · m'),null,{timeout:30000});
+  stableOrder=await interpretationOrder();
+  if(JSON.stringify(stableOrder)!==JSON.stringify([genericModel,genericModel2]))throw new Error('Changing a unit reordered interpretation rows: '+JSON.stringify(stableOrder));
+  await page.evaluate(key=>{
+    const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]')].find(node=>node.dataset.seriesUnitKey===key);
+    select.value='mm';
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+  },genericModel);
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · mm'),null,{timeout:30000});
   await page.evaluate(key=>{
     const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key);
     if(!select)throw new Error('Second generic model interpretation selector is missing.');
@@ -1289,6 +1307,25 @@ try{
   if(independentSemantics.length!==2||independentSemantics.some(row=>row.value!=='level')){
     throw new Error('Generic model interpretation must remain independent for every loaded file: '+JSON.stringify(independentSemantics));
   }
+  stableOrder=await interpretationOrder();
+  if(JSON.stringify(stableOrder)!==JSON.stringify([genericModel,genericModel2]))throw new Error('Changing Interpret Value as reordered model rows: '+JSON.stringify(stableOrder));
+
+  // Removing a selected model removes its row; selecting it again appends it at
+  // the bottom instead of reconstructing the list from DOM option order.
+  await page.selectOption('#modelSelect',[genericModel2]);
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===1,null,{timeout:30000});
+  await page.selectOption('#modelSelect',[genericModel,genericModel2]);
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===2,null,{timeout:30000});
+  stableOrder=await interpretationOrder();
+  if(JSON.stringify(stableOrder)!==JSON.stringify([genericModel2,genericModel]))throw new Error('Re-selected model must append after retained models: '+JSON.stringify(stableOrder));
+  // Restore the original order for the remainder of this workflow.
+  await page.selectOption('#modelSelect',[genericModel]);
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===1,null,{timeout:30000});
+  await page.selectOption('#modelSelect',[genericModel,genericModel2]);
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===2,null,{timeout:30000});
+  stableOrder=await interpretationOrder();
+  if(JSON.stringify(stableOrder)!==JSON.stringify([genericModel,genericModel2]))throw new Error('Restored model selection order is unstable: '+JSON.stringify(stableOrder));
+
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&!document.querySelector('#applyMappingBtn')?.disabled,null,{timeout:60000});
   await precisionRoute('data','time-series');
@@ -1331,6 +1368,10 @@ try{
   await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===3&&
     [...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].some(row=>row.textContent.includes('Observed')&&row.textContent.includes('interpret-observed.csv'))&&
     [...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].filter(row=>row.textContent.includes('Model')).length===2,null,{timeout:30000});
+  const observedModelOrder=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].map(node=>node.dataset.seriesQuantityKey));
+  if(JSON.stringify(observedModelOrder)!==JSON.stringify([interpretObserved,interpretModelA,interpretModelB])){
+    throw new Error('Interpretation rows must remain Observed, Model 1, Model 2: '+JSON.stringify(observedModelOrder));
+  }
   const inferredSelectors=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].map(select=>({
     key:select.dataset.seriesQuantityKey,
     value:select.value,
