@@ -1490,6 +1490,19 @@ try{
     throw new Error('Model selector popover/chevron is visually invalid: '+JSON.stringify(openPickerVisual));
   }
   await captureEvidence('00a-model-picker-open-1440x900');
+  const pickerAccessibility=await page.evaluate(()=>({
+    canonicalTabIndex:document.querySelector('#modelSelect')?.tabIndex,
+    canonicalAriaHidden:document.querySelector('#modelSelect')?.getAttribute('aria-hidden'),
+    controls:document.querySelector('#modelPickerTrigger')?.getAttribute('aria-controls'),
+    focusedTag:document.activeElement?.tagName,
+  }));
+  if(pickerAccessibility.canonicalTabIndex!==-1||pickerAccessibility.canonicalAriaHidden!=='true'||pickerAccessibility.controls!=='modelPickerPopover'){
+    throw new Error('Model picker canonical/select accessibility contract is incomplete: '+JSON.stringify(pickerAccessibility));
+  }
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>document.querySelector('#modelPickerPopover')?.hidden&&document.querySelector('#modelPickerTrigger')?.getAttribute('aria-expanded')==='false'&&document.activeElement===document.querySelector('#modelPickerTrigger'));
+  await page.click('#modelPickerTrigger');
+  await page.waitForFunction(()=>document.querySelector('#modelPickerTrigger')?.getAttribute('aria-expanded')==='true');
   await page.click('#modelPickerTrigger');
 
   await page.setViewportSize({width:1024,height:768});
