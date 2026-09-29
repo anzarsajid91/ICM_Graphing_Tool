@@ -675,7 +675,8 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true,unit=null}
   if(result.detected_unit!==undefined)details.detected_unit=result.detected_unit;
   details.user_unit=result.user_unit||null;
   details.display_unit=result.display_unit||result.user_unit||result.detected_unit||result.canonical_unit||null;
-  details.unit_source=result.detected_unit?'column_header':(result.user_unit?'user':'unresolved');
+  const authoritativeUnit=seriesQuantityIsAuthoritative(mapped.item,mapped.col);
+  details.unit_source=result.detected_unit?(authoritativeUnit?'declared':'column_header'):(result.user_unit?'user':'unresolved');
   details.canonical_unit=result.canonical_unit??null;
   details.conversion_factor=result.conversion_factor??null;
   details.unit_status=result.unit_status||'unresolved';
