@@ -442,6 +442,56 @@ async function verifyStationAThresholdChain(){
     await probe.selectOption('#observedSelect',selected.observed);
     await probe.selectOption('#modelSelect',[]);
     await probe.selectOption('#rainSelect',selected.rain);
+    await probe.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]').length===1,null,{timeout:30000});
+
+    // Real Station A acceptance for display-unit selection: preserve the
+    // detected metre source unit, display the graph in millimetres, then return
+    // to metres without altering canonical source values.
+    const stationDetectedUnit=await probe.evaluate(key=>{
+      const row=[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].find(node=>node.querySelector('[data-series-unit-key]')?.dataset.seriesUnitKey===key);
+      const select=row?.querySelector('[data-series-unit-key]');
+      return {value:select?.value||'',text:row?.textContent||''};
+    },selected.observed);
+    if(stationDetectedUnit.value!=='m'||!stationDetectedUnit.text.includes('Detected from column')){
+      throw new Error('Station A reference unit was not presented as a reliable detected metre unit: '+JSON.stringify(stationDetectedUnit));
+    }
+    const stationEvidenceDir=process.env.ICM_EVIDENCE_DIR;
+    if(stationEvidenceDir){
+      await fs.mkdir(stationEvidenceDir,{recursive:true});
+      await probe.setViewportSize({width:1440,height:900});
+      await probe.screenshot({path:path.join(stationEvidenceDir,'station-a-series-mapping.png'),fullPage:true});
+    }
+    await probe.evaluate(key=>{
+      const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]')].find(node=>node.dataset.seriesUnitKey===key);
+      select.value='mm';select.dispatchEvent(new Event('change',{bubbles:true}));
+    },selected.observed);
+    await probe.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · mm'),null,{timeout:30000});
+    await probe.click('#applyMappingBtn');
+    await probe.waitForFunction(()=>document.querySelector('#timeChart')?.data?.length>0&&window.__ICM_WORKBENCH__?.lastGraphStatistics?.length>0,null,{timeout:120000});
+    await nav('data','time-series');
+    const stationMmDisplay=await probe.evaluate(()=>{
+      const chart=document.querySelector('#timeChart');
+      const row=(window.__ICM_WORKBENCH__.lastGraphStatistics||[]).find(x=>['depth','level'].includes(String(x.statistics?.quantity||'').toLowerCase()));
+      const trace=(chart?.data||[]).find(t=>String(t.uid||'').startsWith('observed__'));
+      const finite=(trace?.y||[]).map(Number).filter(Number.isFinite);
+      return {
+        axis:chart?.layout?.yaxis?.title?.text||'',
+        factor:Number(row?.factor||1),
+        plottedMin:finite.length?Math.min(...finite):null,
+        canonicalMin:Number(row?.statistics?.minimum),
+      };
+    });
+    if(!/Level/i.test(stationMmDisplay.axis)||!/\(mm\)/i.test(stationMmDisplay.axis)||Math.abs(stationMmDisplay.factor-1000)>1e-9||
+       !Number.isFinite(stationMmDisplay.plottedMin)||Math.abs(stationMmDisplay.plottedMin-stationMmDisplay.canonicalMin*1000)>1e-6){
+      throw new Error('Station A metre-to-millimetre display conversion is incorrect: '+JSON.stringify(stationMmDisplay));
+    }
+
+    await nav('data','series-mapping');
+    await probe.evaluate(key=>{
+      const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]')].find(node=>node.dataset.seriesUnitKey===key);
+      select.value='m';select.dispatchEvent(new Event('change',{bubbles:true}));
+    },selected.observed);
+    await probe.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · m'),null,{timeout:30000});
     await probe.click('#applyMappingBtn');
     await probe.waitForFunction(()=>document.querySelector('#timeChart')?.data?.length>0&&window.__ICM_WORKBENCH__?.lastGraphStatistics?.length>0,null,{timeout:120000});
     await nav('data','time-series');
