@@ -571,7 +571,8 @@ function genericSeriesSemanticsRows(){
   const roleFor=key=>{
     const roles=[];
     if(key===observedKey)roles.push('Observed');
-    if(modelKeys.includes(key))roles.push('Model');
+    const modelIndex=modelKeys.indexOf(key);
+    if(modelIndex>=0)roles.push('Model '+(modelIndex+1));
     return roles.join(' + ');
   };
   for(const key of selectedKeys){
