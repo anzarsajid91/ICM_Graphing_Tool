@@ -2796,9 +2796,18 @@ try{
   });
   await page.waitForFunction(expected=>document.querySelectorAll('#poolBody tr').length===expected,beforeDrop+2,{timeout:90000});
   await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].slice(-2).every(row=>row.textContent.includes('Ready')),null,{timeout:90000});
-  await page.waitForFunction(()=>document.querySelector('#globalOperation')?.hidden===true&&!document.body.classList.contains('operation-busy'),null,{timeout:10000});
-  const operationUi=await page.evaluate(()=>({exists:Boolean(document.querySelector('#globalOperation')),hidden:document.querySelector('#globalOperation')?.hidden,bodyBusy:document.body.classList.contains('operation-busy')}));
-  if(!operationUi.exists||operationUi.hidden!==true||operationUi.bodyBusy)throw new Error('Global operation indicator did not return to an idle state: '+JSON.stringify(operationUi));
+  // Import completion does not imply that the independently scheduled
+  // cumulative .R calculation has finished. Its visible process queue is a
+  // valid busy state; the import overlay must no longer claim to be running.
+  await page.waitForFunction(()=>{
+    const root=document.querySelector('#globalOperation');
+    const active=window.__ICM_WORKBENCH__?.processQueue?.running;
+    const title=document.querySelector('#globalOperationTitle')?.textContent||'';
+    return root?.hidden===true&&!document.body.classList.contains('operation-busy')||
+      Boolean(active?.label==='cumulative_rainfall_series'&&!root?.hidden&&title==='Running '+active.label);
+  },null,{timeout:30000});
+  const operationUi=await page.evaluate(()=>({exists:Boolean(document.querySelector('#globalOperation')),hidden:document.querySelector('#globalOperation')?.hidden,bodyBusy:document.body.classList.contains('operation-busy'),running:window.__ICM_WORKBENCH__?.processQueue?.running||null,title:document.querySelector('#globalOperationTitle')?.textContent||''}));
+  if(!operationUi.exists||(!operationUi.hidden&&(!operationUi.bodyBusy||operationUi.title!=='Running '+operationUi.running?.label)))throw new Error('Global operation indicator did not reflect the remaining process queue: '+JSON.stringify(operationUi));
   const sourceEventEvidence=await page.evaluate(()=>({
     events:window.__sourcePoolEventEvidence,
     professional:Boolean(window.__ICM_WORKBENCH__.lastProfessionalSurvey),
