@@ -104,11 +104,28 @@ function unitToCanonicalFactor(quantity,unit){
   if(q==='rainfall'&&['mm/h','mmh'].includes(u))return 1;
   return null;
 }
+function normaliseDisplayUnit(quantity,unit){
+  const q=String(quantity||'').toLowerCase();
+  const u=String(unit||'').trim().toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
+  if((q==='depth'||q==='level')&&u==='m')return 'm';
+  if((q==='depth'||q==='level')&&u==='mm')return 'mm';
+  if(q==='flow'&&['m3/s','m3s'].includes(u))return 'm³/s';
+  if(q==='flow'&&['l/s','ls','lps'].includes(u))return 'L/s';
+  if(q==='flow'&&['ml/d','mld'].includes(u))return 'Ml/d';
+  if(q==='flow'&&['m3/d','m3d'].includes(u))return 'm³/d';
+  if(q==='velocity'&&['m/s','ms','mps'].includes(u))return 'm/s';
+  if(q==='rainfall'&&['mm/h','mmh'].includes(u))return 'mm/h';
+  return unit||null;
+}
 function seriesDisplayUnit(item,col){
   const key=item?.id?sourceKey(item.id,col):'';
-  const detail=seriesMetadata(item,col);
-  const detected=detail.detected_unit||(detail.unit_source==='column_header'?detail.original_unit:null);
-  return (key&&state.seriesUnitOverrides.get(key))||detail.display_unit||detected||seriesUnit(item,col)||null;
+  const detail=seriesMetadata(item,col),metadata=item?.parsed?.metadata||{};
+  const quantity=seriesQuantity(item,col);
+  const authoritative=seriesQuantityIsAuthoritative(item,col);
+  const sourceUnit=detail.detected_unit||(detail.unit_source==='column_header'?detail.original_unit:null)||
+    (authoritative?(detail.original_unit||metadata.original_unit):null);
+  const selected=(key&&state.seriesUnitOverrides.get(key))||detail.display_unit||sourceUnit||seriesUnit(item,col)||null;
+  return normaliseDisplayUnit(quantity,selected);
 }
 function canonicalToDisplayFactor(quantity,unit){
   const factor=unitToCanonicalFactor(quantity,unit);
