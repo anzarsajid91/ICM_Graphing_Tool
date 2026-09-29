@@ -601,9 +601,13 @@ function genericSeriesSemanticsRows(){
     const details=seriesMetadata(mapped.item,mapped.col);
     const metadata=mapped.item?.parsed?.metadata||{};
     const locked=seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden;
-    const sourceUnit=details.detected_unit||details.original_unit||(locked?metadata.original_unit:null)||
+    const unitSourceType=String(details.unit_source||'').toLowerCase();
+    const sourceUnit=details.detected_unit||
+      (['column_header','declared'].includes(unitSourceType)?details.original_unit:null)||
+      (locked?metadata.original_unit:null)||
       (locked?seriesUnit(mapped.item,mapped.col):null);
     const selectedUnit=state.seriesUnitOverrides.get(key)||details.display_unit||sourceUnit||'';
+    const userAssignedUnit=Boolean(state.seriesUnitOverrides.has(key)||details.user_unit);
     seen.add(key);
     rows.push({
       role:roleFor(key),key,mapped,
@@ -611,8 +615,8 @@ function genericSeriesSemanticsRows(){
       unit:selectedUnit,
       sourceUnit:sourceUnit||'',
       unitSource:sourceUnit
-        ?(locked?'Source '+sourceUnit:(details.unit_source==='column_header'?'Detected '+sourceUnit:'Source '+sourceUnit))
-        :(state.seriesUnitOverrides.has(key)?'Assigned by user':''),
+        ?(locked?'Source '+sourceUnit:(unitSourceType==='column_header'?'Detected '+sourceUnit:'Source '+sourceUnit))
+        :(userAssignedUnit?'Assigned by user':''),
       locked
     });
   }
