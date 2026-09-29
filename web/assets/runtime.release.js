@@ -659,12 +659,13 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true,unit=null}
     throw new Error('Quantity overrides are not available for sources with authoritative native quantity metadata.');
   }
   const requested=quantity?String(quantity).toLowerCase():null;
+  const quantityWasAuthoritative=seriesQuantityIsAuthoritative(mapped.item,mapped.col);
   const result=await engine.call('set_series_quantity',{path:mapped.item.virtualPath,column:mapped.col,quantity:requested,unit});
   const metadata=mapped.item.parsed.metadata||(mapped.item.parsed.metadata={});
   const seriesMetadata=metadata.series_metadata||(metadata.series_metadata={});
   const details=seriesMetadata[mapped.col]||(seriesMetadata[mapped.col]={});
   const quantityByColumn=metadata.quantity_by_column||(metadata.quantity_by_column={});
-  if(requested)state.seriesQuantityOverrides.set(key,requested);
+  if(requested&&!quantityWasAuthoritative)state.seriesQuantityOverrides.set(key,requested);
   else state.seriesQuantityOverrides.delete(key);
   if(result.user_unit)state.seriesUnitOverrides.set(key,result.user_unit);
   else state.seriesUnitOverrides.delete(key);
