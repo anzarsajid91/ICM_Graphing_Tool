@@ -185,8 +185,9 @@ def test_clearing_user_override_restores_tabular_inference(tmp_path):
 
 
 def test_native_declared_series_quantity_cannot_be_silently_retyped(tmp_path):
+    import json
     import pytest
-    from icm_workbench.browser_api import clear_cache, set_series_quantity
+    from icm_workbench.browser_api import clear_cache, series_data, set_series_quantity
 
     declared=tmp_path/"Depth.csv"
     declared.write_text(
@@ -197,6 +198,16 @@ def test_native_declared_series_quantity_cannot_be_silently_retyped(tmp_path):
         encoding="utf-8",
     )
     clear_cache()
+
+    display=json.loads(set_series_quantity(str(declared),"value","level",unit="mm"))
+    assert display["quantity"]=="level"
+    assert display["canonical_unit"]=="m"
+    assert display["original_unit"]=="m"
+    assert display["user_unit"]=="mm"
+    assert display["display_unit"]=="mm"
+    # Native values remain canonical metres internally; only presentation changes.
+    assert json.loads(series_data(str(declared),"value"))["value"]==pytest.approx([1.0])
+
     with pytest.raises(ValueError,match="already has declared quantity"):
         set_series_quantity(str(declared),"value","flow")
 
