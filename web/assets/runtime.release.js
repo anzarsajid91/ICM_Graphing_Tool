@@ -106,12 +106,16 @@ function unitToCanonicalFactor(quantity,unit){
 }
 function normaliseDisplayUnit(quantity,unit){
   const q=String(quantity||'').toLowerCase();
-  const u=String(unit||'').trim().toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
+  const raw=String(unit||'').trim().toLowerCase().replace(/³/g,'3');
+  const aliases={millimetre:'mm',millimetres:'mm',millimeter:'mm',millimeters:'mm'};
+  const u=aliases[raw]||raw.replace(/per/g,'/').replace(/·/g,'').replace(/\s/g,'')
+    .replace(/seconds?|sec/g,'s').replace(/hours?|hr/g,'h').replace(/days?/g,'d')
+    .replace(/litres?|liters?/g,'l').replace(/metres?|meters?/g,'m');
   if((q==='depth'||q==='level')&&['m','m_ad','mad','maod'].includes(u))return 'm';
   if((q==='depth'||q==='level')&&['mm','millimetre','millimetres','millimeter','millimeters'].includes(u))return 'mm';
   if(q==='flow'&&['m3/s','m3s','cumec','cumecs'].includes(u))return 'm³/s';
   if(q==='flow'&&['l/s','ls','lps'].includes(u))return 'L/s';
-  if(q==='flow'&&['ml/d','mld','megalitre/d','megalitres/d','megaliter/d','megaliters/d'].includes(u))return 'Ml/d';
+  if(q==='flow'&&['ml/d','mld','megal/d'].includes(u))return 'Ml/d';
   if(q==='flow'&&['m3/d','m3d'].includes(u))return 'm³/d';
   if(q==='velocity'&&['m/s','ms','mps'].includes(u))return 'm/s';
   if(q==='rainfall'&&['mm/h','mmh'].includes(u))return 'mm/h';

@@ -66,6 +66,8 @@ for(const [quantity,unit,display,factor] of [
   ['flow','cumecs','m³/s',1],
   ['flow','megalitres/d','Ml/d',86.4],
   ['flow','L/s','L/s',1000],
+  ['flow','litres per sec','L/s',1000],
+  ['velocity','metres per sec','m/s',1],
   ['flow','m³/d','m³/d',86400],
 ]){
   assert.equal(vm.runInContext(`normaliseDisplayUnit(${JSON.stringify(quantity)},${JSON.stringify(unit)})`,sandbox),display);
