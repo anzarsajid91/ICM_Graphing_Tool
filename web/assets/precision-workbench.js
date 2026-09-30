@@ -325,10 +325,12 @@ function buildShell(){
 function createScenarioChecklist(){
   const select=$('modelSelect');if(!select||$('pwScenarioPicker'))return;
   select.classList.add('pw-canonical-select');
+  select.tabIndex=-1;
+  select.setAttribute('aria-hidden','true');
   const oldSmall=select.nextElementSibling?.tagName==='SMALL'?select.nextElementSibling:null;
   if(oldSmall)oldSmall.hidden=true;
   const wrap=document.createElement('div');wrap.id='pwScenarioPicker';wrap.className='pw-scenario-picker';
-  wrap.innerHTML='<button id="modelPickerTrigger" class="pw-model-picker-trigger" type="button" aria-haspopup="true" aria-expanded="false">No models</button><div id="modelPickerPopover" class="pw-model-picker-popover" hidden><input class="pw-model-search" type="search" placeholder="Search model series…" aria-label="Search model series"><div class="pw-model-picker-actions"><button type="button" data-action="all">Select all</button><button type="button" data-action="none">Deselect all</button></div><div class="pw-scenario-list" role="group" aria-label="Model scenarios"></div></div><div class="pw-scenario-count">No models selected.</div>';
+  wrap.innerHTML='<button id="modelPickerTrigger" class="pw-model-picker-trigger" type="button" aria-haspopup="true" aria-controls="modelPickerPopover" aria-expanded="false">No models</button><div id="modelPickerPopover" class="pw-model-picker-popover" hidden><input class="pw-model-search" type="search" placeholder="Search model series…" aria-label="Search model series"><div class="pw-model-picker-actions"><button type="button" data-action="all">Select all</button><button type="button" data-action="none">Deselect all</button></div><div class="pw-scenario-list" role="group" aria-label="Model scenarios"></div></div><div class="pw-scenario-count">No models selected.</div>';
   select.insertAdjacentElement('afterend',wrap);
   const trigger=$('modelPickerTrigger'),popover=$('modelPickerPopover'),search=qs('input[type="search"]',popover),list=qs('.pw-scenario-list',popover),count=qs('.pw-scenario-count',wrap);
   const updateCount=()=>{
@@ -347,6 +349,13 @@ function createScenarioChecklist(){
     updateCount();
   };
   trigger.addEventListener('click',()=>{const next=popover.hidden;popover.hidden=!next;trigger.setAttribute('aria-expanded',next?'true':'false');if(next){render();search.focus();}});
+  popover.addEventListener('keydown',event=>{
+    if(event.key!=='Escape')return;
+    event.preventDefault();
+    popover.hidden=true;
+    trigger.setAttribute('aria-expanded','false');
+    trigger.focus();
+  });
   search.addEventListener('input',render);
   qsa('[data-action]',popover).forEach(btn=>btn.addEventListener('click',()=>{
     const choose=btn.dataset.action==='all';[...select.options].forEach(o=>{if(o.value)o.selected=choose;});
