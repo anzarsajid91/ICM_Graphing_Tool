@@ -166,12 +166,16 @@ def set_series_quantity(path, column, quantity=None, unit=None):
                 selected_canonical, _ = canonical_unit(existing, selected_unit)
                 if selected_canonical is None:
                     raise ValueError(f"Unsupported unit {selected_unit!r} for {existing}.")
-                if canonical and selected_canonical != canonical:
+                if existing != "rainfall" and canonical and selected_canonical != canonical:
                     raise ValueError(
                         f"Unit {selected_unit!r} is incompatible with declared "
                         f"{existing!r} series canonical unit {canonical!r}."
                     )
 
+        if existing == "rainfall":
+            # Assign the unit to unchanged values, retaining source provenance.
+            canonical, conversion_factor = canonical_unit(existing, selected_unit or source_unit)
+            unit_status = "resolved" if canonical else "unresolved"
         display_unit = selected_unit or source_unit or canonical
         details["quantity"] = existing
         details["quantity_source"] = existing_source or "declared"
@@ -256,7 +260,8 @@ def set_series_quantity(path, column, quantity=None, unit=None):
         else (None, None)
     )
     detected_compatible = detected_canonical[0] is not None
-    source_unit = detected_unit if detected_compatible else selected_unit
+    source_unit = (selected_unit if target_quantity == "rainfall" and selected_unit
+                   else detected_unit if detected_compatible else selected_unit)
     if target_quantity and source_unit:
         canonical, factor = canonical_unit(target_quantity, source_unit)
     else:
