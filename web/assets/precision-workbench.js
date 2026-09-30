@@ -186,9 +186,19 @@ function ensureDataHealthSurface(){
 function ensureSpillSurfaces(){
   const panel=qs('#tab-spills .panel');if(!panel||$('pwSpillThresholdSurface'))return;
   const threshold=ensureSection('pwSpillThresholdSurface','Thresholds and exclusions','Define assessment thresholds and auditable exclusion periods before calculating spills.');
-  const result=ensureSection('pwSpillResultsSurface','Spill assessment evidence','Current observed/model counts, durations, coverage and physical intervals.');
+  const result=ensureSection('pwSpillResultsSurface','Spill assessment evidence','Yearly summaries and compact monthly count / duration comparisons.');
   const thresholdHead=qs('.pw-surface-head',threshold),run=$('runSpillsBtn');if(run){run.textContent='Calculate spills';run.classList.add('primary');thresholdHead.appendChild(run);}
   const map=qs('#tab-spills .mapping-grid.compact'),exclude=$('exclusionRows')?.closest('.subpanel');if(map)threshold.appendChild(map);if(exclude)threshold.appendChild(exclude);
+  const basis=document.createElement('div');basis.className='spill-local-basis';
+  for(const [id,text] of [['timeBasisConfirmed','Sources share the same model-clock time basis'],['levelDatumConfirmed','Absolute levels share a unit and datum (if undeclared)']]){
+    const original=$(id);if(!original)continue;
+    const label=document.createElement('label'),input=document.createElement('input');
+    input.type='checkbox';input.id='spill-'+id;input.checked=original.checked;
+    input.addEventListener('change',()=>{original.checked=input.checked;original.dispatchEvent(new Event('change',{bubbles:true}));});
+    original.addEventListener('change',()=>{input.checked=original.checked;});
+    label.append(input,document.createTextNode(text));basis.appendChild(label);
+  }
+  threshold.appendChild(basis);
   const resultNodes=[];
   const two=qs('#tab-spills .two-col');if(two)resultNodes.push(two);
   const cmp=$('spillComparison');if(cmp){const h=cmp.previousElementSibling;if(h?.matches('h3'))resultNodes.push(h);resultNodes.push(cmp);}

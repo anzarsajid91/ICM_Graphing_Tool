@@ -79,6 +79,7 @@ jobs:
           node --check web/tests/precision-shell.mjs
           node --check web/tests/baseline-comparison.mjs
           node web/tests/graph-report-unit.mjs
+          node web/tests/spill-evidence-unit.mjs
           node web/tests/runtime-unit.mjs
           node web/tests/domain-registry-unit.mjs
           node --check web/tests/fastpath-unit.mjs

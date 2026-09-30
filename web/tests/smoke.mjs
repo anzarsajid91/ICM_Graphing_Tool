@@ -938,6 +938,9 @@ async function verifyPlotlyEngineeringEnhancements(){
     const rag=await probe.evaluate(()=>({
       applied:state.spillSnapshot?.config?.applied_exclusions||{},
       green:[...document.querySelectorAll('#spillComparison .spill-rag-green')].map(x=>x.textContent),
+      annualHeaders:[...document.querySelectorAll('#spillComparison .spill-annual-compare th')].map(x=>x.textContent),
+      monthlyGrids:document.querySelectorAll('#spillComparison .spill-month-grid').length,
+      summaryCards:document.querySelectorAll('#obsSpillSummary .summary-box,#modelSpillSummary .summary-box').length,
       cases:[
         window.__ICM_WORKBENCH__.spillDeviationRag(100,105),
         window.__ICM_WORKBENCH__.spillDeviationRag(100,105.01),
@@ -960,6 +963,7 @@ async function verifyPlotlyEngineeringEnhancements(){
       },
     }));
     if((rag.applied.observed||[]).length!==2||(rag.applied.model||[]).length!==2)throw new Error('Both spill calculations must consume both graph-created exclusions: '+JSON.stringify(rag.applied));
+    if(rag.annualHeaders.length!==7||rag.annualHeaders.some(x=>/deviation/i.test(x))||rag.monthlyGrids!==2||rag.summaryCards!==0)throw new Error('Compact spill evidence layout failed: '+JSON.stringify(rag));
     if(rag.green.length<2)throw new Error('Identical FM01 observed/model results must produce Green count and duration RAG: '+JSON.stringify(rag.green));
     const expected=['Green','Amber','Amber','Red','Green','Red'];
     if(rag.cases.map(x=>x.rag).join('|')!==expected.join('|'))throw new Error('Spill RAG boundary criteria are incorrect: '+JSON.stringify(rag.cases));
