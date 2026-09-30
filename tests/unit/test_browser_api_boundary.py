@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import pytest
 from pathlib import Path
 
 from icm_workbench import browser_api, advanced_api
@@ -310,3 +311,42 @@ def test_flow_display_units_preserve_detected_values_and_integrated_volume(tmp_p
         assert data['value'] == pytest.approx([1., 1.])
         assert data['statistics']['total'] == pytest.approx(3600.)
         assert data['statistics']['total_unit'] == 'm³'
+
+
+@pytest.mark.parametrize("header", ["Rainfall", "Rainfall (mm)", "Rainfall (mm/h)"])
+def test_rainfall_assignment_does_not_convert_values(tmp_path, header):
+    import json
+    from icm_workbench.browser_api import clear_cache, parse_source, series_data, set_series_quantity
+    source = tmp_path / "rainfall.csv"
+    source.write_text(f"timestamp,{header}\n2026-01-01T00:00:00,2.5\n2026-01-01T00:15:00,8\n")
+    clear_cache()
+    parse_source(str(source))
+    before = json.loads(series_data(str(source), header))["value"]
+    assigned = json.loads(set_series_quantity(str(source), header, "rainfall", unit="mm/h"))
+    assert assigned["canonical_unit"] == "mm/h"
+    assert assigned["conversion_factor"] == 1
+    assert json.loads(series_data(str(source), header))["value"] == before == [2.5, 8.0]
+    cleared = json.loads(set_series_quantity(str(source), header, "rainfall", unit=""))
+    assert json.loads(series_data(str(source), header))["value"] == before
+    if header == "Rainfall (mm)":
+        assert cleared["canonical_unit"] == "mm"
+    elif header == "Rainfall":
+        assert cleared["unit_status"] == "unresolved"
+
+
+def test_declared_rainfall_assignment_and_reset_preserve_values(tmp_path):
+    import json
+    from icm_workbench.browser_api import clear_cache, parse_source, series_data, set_series_quantity
+    source = tmp_path / "RG01.R"
+    source.write_bytes((Path(__file__).parents[2] / "reference/current-tool/sample-data/rainfall/RG01.R").read_bytes())
+    clear_cache()
+    parsed = json.loads(parse_source(str(source)))
+    column = parsed["columns"][0]
+    before = json.loads(series_data(str(source), column))["value"]
+    assigned = json.loads(set_series_quantity(str(source), column, "rainfall", unit="mm"))
+    assert assigned["canonical_unit"] == "mm"
+    assert assigned["detected_unit"] == parsed["metadata"]["original_unit"]
+    assert json.loads(series_data(str(source), column))["value"] == before
+    reset = json.loads(set_series_quantity(str(source), column, "rainfall", unit=""))
+    assert reset["canonical_unit"] == "mm/h"
+    assert json.loads(series_data(str(source), column))["value"] == before
