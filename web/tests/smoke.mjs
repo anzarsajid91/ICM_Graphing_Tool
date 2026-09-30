@@ -1189,10 +1189,13 @@ try{
     const measured=await measureFreshFastPathImport(spec);
     performanceEvidence.freshCsvImports.push(measured);
     await writePerformanceEvidence();
-    const engineAfterSelection=Number(measured.engineReadyFromNavigationMs)-Number(measured.selectionAtFromNavigationMs);
     if(measured.selectionOutcome!=='graph'||measured.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Fresh CSV FastPath preview did not render: '+JSON.stringify(measured));
     if(measured.previewEvidence?.route?.workspace!=='data'||measured.previewEvidence?.route?.page!=='time-series')throw new Error('Fresh FastPath preview must prepare the graph without changing the user-selected Data / Time Series page: '+JSON.stringify(measured.previewEvidence?.route));
-    if(measured.previewEvidence?.engineStatus==='ready'||!(measured.timeToOutcomeMs<engineAfterSelection))throw new Error('Fresh CSV preview did not render before authoritative engine readiness: '+JSON.stringify(measured));
+    // Engine boot is independent of per-file parsing: a large CSV can show
+    // its preview after Python has booted and still precede validation by
+    // seconds. Compare source milestones measured on the same browser clock.
+    const record=measured.finalEvidence?.record;
+    if(!Number.isFinite(record?.t4)||!Number.isFinite(record?.t6)||!(record.t4<record.t6))throw new Error('Fresh CSV preview did not render before authoritative source readiness: '+JSON.stringify(measured));
     if(measured.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Fresh CSV FastPath preview did not reconcile exactly: '+JSON.stringify(measured));
     if(measured.archiveMember){
       const previewColumns=(measured.previewEvidence?.preview?.series||[]).map(x=>String(x.column||''));
