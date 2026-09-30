@@ -37,7 +37,7 @@
       </div>
       <div class="mapping-status" id="comparisonBasisNotice"><strong>Comparison basis</strong> · <label><input id="timeBasisConfirmed" type="checkbox" /> I confirm the sources use the same model-clock time basis, including any daylight-saving transition.</label> <label><input id="levelDatumConfirmed" type="checkbox" /> I confirm absolute Level series and thresholds share a vertical unit and datum where the sources do not declare both.</label></div>
       <div class="series-semantics-panel" id="seriesSemanticsPanel" hidden>
-        <div class="series-semantics-copy"><strong>Generic series interpretation</strong><span>Every user-interpretable tabular series in the loaded source pool is listed independently without guessing hydraulic meaning. Name-inferred CSV quantities are shown as defaults but remain independently overridable; native FDV, rainfall and ICM HYD semantics stay protected.</span></div>
+        <div class="series-semantics-copy"><strong>Selected series interpretation</strong><span>Only selected Observed / Modelled series are shown. Reliable detected units are preselected; changing Unit converts the graph display. If no reliable unit exists, your choice assigns the raw values' unit without guessing.</span></div>
         <div class="series-semantics-rows" id="seriesSemanticsRows"></div>
       </div>
       <div class="mapping-status" id="mappingStatus">Map at least one observed and one modelled series.</div>

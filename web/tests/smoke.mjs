@@ -442,8 +442,79 @@ async function verifyStationAThresholdChain(){
     await probe.selectOption('#observedSelect',selected.observed);
     await probe.selectOption('#modelSelect',[]);
     await probe.selectOption('#rainSelect',selected.rain);
+    await probe.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]').length===1,null,{timeout:30000});
+
+    // Real Station A acceptance for display-unit selection: preserve the
+    // detected metre source unit, display the graph in millimetres, then return
+    // to metres without altering canonical source values.
+    const stationDetectedUnit=await probe.evaluate(key=>{
+      const row=[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].find(node=>node.querySelector('[data-series-unit-key]')?.dataset.seriesUnitKey===key);
+      const select=row?.querySelector('[data-series-unit-key]');
+      return {value:select?.value||'',text:row?.textContent||'',disabled:Boolean(select?.disabled)};
+    },selected.observed);
+    if(stationDetectedUnit.value!=='m'||!stationDetectedUnit.text.includes('Source m')||stationDetectedUnit.disabled){
+      throw new Error('Station A reference unit was not presented as an editable display unit with reliable metre provenance: '+JSON.stringify(stationDetectedUnit));
+    }
+    const stationEvidenceDir=process.env.ICM_EVIDENCE_DIR;
+    if(stationEvidenceDir){
+      await fs.mkdir(stationEvidenceDir,{recursive:true});
+      await probe.setViewportSize({width:1440,height:900});
+      await probe.screenshot({path:path.join(stationEvidenceDir,'station-a-series-mapping.png'),fullPage:true});
+    }
+    await probe.evaluate(key=>{
+      const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]')].find(node=>node.dataset.seriesUnitKey===key);
+      select.value='mm';select.dispatchEvent(new Event('change',{bubbles:true}));
+    },selected.observed);
+    await probe.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · mm'),null,{timeout:30000});
+    const stationQuantityLock=await probe.evaluate(key=>{
+      const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key);
+      return {value:select?.value||'',options:select?[...select.options].map(option=>option.value):[]};
+    },selected.observed);
+    if(stationQuantityLock.value!=='level'||JSON.stringify(stationQuantityLock.options)!==JSON.stringify(['level'])){
+      throw new Error('Changing a declared-series display unit must not unlock quantity reinterpretation: '+JSON.stringify(stationQuantityLock));
+    }
     await probe.click('#applyMappingBtn');
-    await probe.waitForFunction(()=>document.querySelector('#timeChart')?.data?.length>0&&window.__ICM_WORKBENCH__?.lastGraphStatistics?.length>0,null,{timeout:120000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&document.querySelector('#mappingStatus')?.textContent.startsWith('Observed:')&&document.querySelector('#timeChart')?.data?.length>0&&window.__ICM_WORKBENCH__?.lastGraphStatistics?.length>0,null,{timeout:120000});
+    await nav('data','time-series');
+    const stationMmDisplay=await probe.evaluate(()=>{
+      const chart=document.querySelector('#timeChart');
+      const row=(window.__ICM_WORKBENCH__.lastGraphStatistics||[]).find(x=>['depth','level'].includes(String(x.statistics?.quantity||'').toLowerCase()));
+      const trace=(chart?.data||[]).find(t=>String(t.uid||'').startsWith('observed__'));
+      const finite=(trace?.y||[]).map(Number).filter(Number.isFinite);
+      return {
+        axis:chart?.layout?.yaxis?.title?.text||'',
+        factor:Number(row?.factor||1),
+        plottedMin:finite.length?Math.min(...finite):null,
+        canonicalMin:Number(row?.statistics?.minimum),
+      };
+    });
+    if(!/Level/i.test(stationMmDisplay.axis)||!/\(mm\)/i.test(stationMmDisplay.axis)||Math.abs(stationMmDisplay.factor-1000)>1e-9||
+       !Number.isFinite(stationMmDisplay.plottedMin)||Math.abs(stationMmDisplay.plottedMin-stationMmDisplay.canonicalMin*1000)>1e-6){
+      throw new Error('Station A metre-to-millimetre display conversion is incorrect: '+JSON.stringify(stationMmDisplay));
+    }
+    const stationWorkspaceUnit=await probe.evaluate(key=>{
+      const w=workspaceObject(false);
+      if((w.series_quantity_overrides||[]).some(entry=>{
+        const ref=entry.series||{},mapped=mappingObject(key);
+        return mapped&&ref.sha256===mapped.item.hash&&ref.column===mapped.col;
+      }))throw new Error('Declared Station A quantity was incorrectly persisted as a user quantity override.');
+      const row=(w.series_unit_overrides||[]).find(entry=>{
+        const ref=entry.series||{};
+        const mapped=mappingObject(key);
+        return mapped&&ref.sha256===mapped.item.hash&&ref.column===mapped.col;
+      });
+      return row?.unit||null;
+    },selected.observed);
+    if(stationWorkspaceUnit!=='mm')throw new Error('Station A display-unit override was not persisted into the workspace: '+String(stationWorkspaceUnit));
+
+    await nav('data','series-mapping');
+    await probe.evaluate(key=>{
+      const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]')].find(node=>node.dataset.seriesUnitKey===key);
+      select.value='m';select.dispatchEvent(new Event('change',{bubbles:true}));
+    },selected.observed);
+    await probe.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · m'),null,{timeout:30000});
+    await probe.click('#applyMappingBtn');
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&document.querySelector('#mappingStatus')?.textContent.startsWith('Observed:')&&document.querySelector('#timeChart')?.data?.length>0&&window.__ICM_WORKBENCH__?.lastGraphStatistics?.length>0,null,{timeout:120000});
     await nav('data','time-series');
     const support=await probe.evaluate(()=>{
       const row=(window.__ICM_WORKBENCH__.lastGraphStatistics||[]).find(x=>['depth','level'].includes(String(x.statistics?.quantity||'').toLowerCase()));
@@ -778,18 +849,23 @@ async function verifyPlotlyEngineeringEnhancements(){
 
     const support=await probe.evaluate(()=> {
       const row=(window.__ICM_WORKBENCH__.lastGraphStatistics||[]).find(x=>String(x.statistics?.quantity||'').toLowerCase()==='depth');
-      return row?{min:Number(row.statistics.minimum),max:Number(row.statistics.maximum)}:null;
+      return row?{min:Number(row.statistics.minimum),max:Number(row.statistics.maximum),factor:row.factor,unit:row.unit}:null;
     });
     if(!support||!Number.isFinite(support.min)||!Number.isFinite(support.max))throw new Error('FM01 depth support unavailable for threshold regression.');
+    if(support.factor!==1000||support.unit!=='mm')throw new Error('FM01 depth must display in source millimetres while statistics remain canonical: '+JSON.stringify(support));
     const threshold=Number((support.min+(support.max-support.min)*0.65).toPrecision(10));
+    // Threshold inputs/calculations are explicitly in canonical metres; only
+    // the Plotly shape is converted onto the selected millimetre axis.
+    const displayThreshold=threshold*support.factor;
     await probe.fill('#graphObsThreshold',String(threshold));
-    await probe.waitForFunction(value=>(document.querySelector('#timeChart')?.layout?.shapes||[]).some(s=>s.type==='line'&&Math.abs(Number(s.y0)-value)<1e-9),threshold,{timeout:60000});
+    await probe.waitForFunction(value=>(document.querySelector('#timeChart')?.layout?.shapes||[]).some(s=>s.type==='line'&&Math.abs(Number(s.y0)-value)<1e-9),displayThreshold,{timeout:60000});
     await probe.click('#refreshGraphBtn');
-    await probe.waitForFunction(value=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&(document.querySelector('#timeChart')?.layout?.shapes||[]).some(s=>s.type==='line'&&Math.abs(Number(s.y0)-value)<1e-9),threshold,{timeout:120000});
+    await probe.waitForFunction(value=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&(document.querySelector('#timeChart')?.layout?.shapes||[]).some(s=>s.type==='line'&&Math.abs(Number(s.y0)-value)<1e-9),displayThreshold,{timeout:120000});
     await nav('spills','assessment');
     await probe.click('#runSpillsBtn');
     await probe.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in')&&Boolean(state.spills?.observed),null,{timeout:120000});
-    const observedOnly=await probe.evaluate(()=>({count:state.spills.observed?.total_spill_count,duration:state.spills.observed?.total_spill_duration_hours,model:Boolean(state.spills.model)}));
+    const observedOnly=await probe.evaluate(()=>({count:state.spills.observed?.total_spill_count,duration:state.spills.observed?.total_spill_duration_hours,model:Boolean(state.spills.model),threshold:state.spillSnapshot?.config?.analysis?.observed_threshold}));
+    if(Math.abs(Number(observedOnly.threshold)-threshold)>1e-12)throw new Error('Spill calculations must retain the canonical metre threshold: '+JSON.stringify(observedOnly));
     if(observedOnly.model||!Number.isFinite(Number(observedOnly.count))||!Number.isFinite(Number(observedOnly.duration)))throw new Error('Observed-only threshold must calculate spills without a model: '+JSON.stringify(observedOnly));
 
     await nav('data','time-series');
@@ -946,7 +1022,7 @@ function surveyRatingFdv(monitor,count=200){
 }
 function surveyRainfallR(){
   const values=Array.from({length:200},(_,i)=>i<20?12:0);
-  return Buffer.from(`*CSTART\n2601050000 2601050640 2\n*CEND\n${values.join(' ')}\n`,'utf8');
+  return Buffer.from(`**FIELD: 1,RAINFALL\n**UNITS: 1,mm/h\n**CONSTANTS: 3,START,END,INTERVAL\n*CSTART\n2601050000 2601050640 2\n*CEND\n${values.join(' ')}\n`,'utf8');
 }
 async function verifyRealFlowSurveyReference(){
   if(liveMode)return null;
@@ -1113,10 +1189,13 @@ try{
     const measured=await measureFreshFastPathImport(spec);
     performanceEvidence.freshCsvImports.push(measured);
     await writePerformanceEvidence();
-    const engineAfterSelection=Number(measured.engineReadyFromNavigationMs)-Number(measured.selectionAtFromNavigationMs);
     if(measured.selectionOutcome!=='graph'||measured.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Fresh CSV FastPath preview did not render: '+JSON.stringify(measured));
     if(measured.previewEvidence?.route?.workspace!=='data'||measured.previewEvidence?.route?.page!=='time-series')throw new Error('Fresh FastPath preview must prepare the graph without changing the user-selected Data / Time Series page: '+JSON.stringify(measured.previewEvidence?.route));
-    if(measured.previewEvidence?.engineStatus==='ready'||!(measured.timeToOutcomeMs<engineAfterSelection))throw new Error('Fresh CSV preview did not render before authoritative engine readiness: '+JSON.stringify(measured));
+    // Engine boot is independent of per-file parsing: a large CSV can show
+    // its preview after Python has booted and still precede validation by
+    // seconds. Compare source milestones measured on the same browser clock.
+    const record=measured.finalEvidence?.record;
+    if(!Number.isFinite(record?.t4)||!Number.isFinite(record?.t6)||!(record.t4<record.t6))throw new Error('Fresh CSV preview did not render before authoritative source readiness: '+JSON.stringify(measured));
     if(measured.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Fresh CSV FastPath preview did not reconcile exactly: '+JSON.stringify(measured));
     if(measured.archiveMember){
       const previewColumns=(measured.previewEvidence?.preview?.series||[]).map(x=>String(x.column||''));
@@ -1226,7 +1305,7 @@ try{
   await page.selectOption('#rainSelect','');
   await page.waitForFunction(()=>document.querySelector('#seriesSemanticsPanel')?.hidden===false&&document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===1);
   const genericSemanticsText=(await page.locator('#seriesSemanticsPanel').textContent())||'';
-  if(!genericSemanticsText.includes('without guessing hydraulic meaning'))throw new Error('Generic CSV mapping must make the no-guessing contract explicit.');
+  if(!genericSemanticsText.includes('Only selected Observed / Modelled series')||!genericSemanticsText.includes('without guessing'))throw new Error('Mapped-series panel must state the selected-only and no-guessing contracts explicitly.');
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&!document.querySelector('#applyMappingBtn')?.disabled,null,{timeout:60000});
   await precisionRoute('data','time-series');
@@ -1256,10 +1335,18 @@ try{
   const genericUnit=page.locator('#seriesSemanticsRows select[data-series-unit-key]');
   if(!(await genericUnit.locator('option').allTextContents()).includes('mm'))throw new Error('Level interpretation must offer matching source units.');
   await genericUnit.selectOption('mm');
-  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · m'),null,{timeout:30000});
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · mm'),null,{timeout:30000});
   await page.click('#applyMappingBtn');
-  await page.waitForFunction(()=>Math.abs(Number((document.querySelector('#timeChart')?.data||[]).find(t=>/^Simulated:/.test(String(t.name||'')))?.y?.[0])-0.00158)<1e-9,null,{timeout:60000});
-  if(await genericUnit.inputValue()!=='mm')throw new Error('Selected source unit was not retained independently.');
+  await page.waitForFunction(()=>{
+    const chart=document.querySelector('#timeChart');
+    const first=Number((chart?.data||[]).find(t=>/^Simulated:/.test(String(t.name||'')))?.y?.[0]);
+    return Math.abs(first-1.58)<1e-9&&String(chart?.layout?.yaxis?.title?.text||'').includes('(mm)');
+  },null,{timeout:60000});
+  if(await genericUnit.inputValue()!=='mm')throw new Error('Selected unit was not retained independently.');
+  const genericUnitProvenance=await genericUnit.evaluate(el=>el.closest('.series-semantics-row')?.textContent||'');
+  if(!genericUnitProvenance.includes('Assigned by user')||genericUnitProvenance.includes('Source mm')){
+    throw new Error('Unitless generic data must distinguish user-assigned units from source provenance: '+genericUnitProvenance);
+  }
 
   stage='multiple generic model files expose independent interpretation controls';
   await precisionRoute('data','series-mapping');
@@ -1267,24 +1354,64 @@ try{
   await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('generic-model-2.csv')&&row.textContent.includes('Ready')),null,{timeout:60000});
   const genericModel2=await optionValue('#modelSelect','generic-model-2.csv — Value');
   if(!genericModel2)throw new Error('Second generic model file was not exposed as a mappable numeric series.');
-  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===2,null,{timeout:30000});
+  // Imports may suggest an Observed mapping. This is deliberately a model-only
+  // selection-order test; establish that role explicitly before counting rows.
+  await page.selectOption('#observedSelect','');
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===1,null,{timeout:30000});
   const genericRowsBeforeSecondMapping=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].map(row=>row.textContent));
-  if(!genericRowsBeforeSecondMapping.some(text=>text.includes('generic-model.csv — Value'))||!genericRowsBeforeSecondMapping.some(text=>text.includes('generic-model-2.csv — Value'))){
-    throw new Error('Every loaded generic source must receive its own interpretation control before mapping: '+JSON.stringify(genericRowsBeforeSecondMapping));
+  if(genericRowsBeforeSecondMapping.length!==1||!genericRowsBeforeSecondMapping[0].includes('generic-model.csv — Value')||genericRowsBeforeSecondMapping[0].includes('generic-model-2.csv')){
+    throw new Error('Unselected source must not consume interpretation-panel space: '+JSON.stringify(genericRowsBeforeSecondMapping));
   }
   await page.selectOption('#modelSelect',[genericModel,genericModel2]);
   await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===2&&[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].every(row=>row.textContent.includes('Model')));
+  const interpretationOrder=()=>page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].map(node=>node.dataset.seriesQuantityKey));
+  let stableOrder=await interpretationOrder();
+  if(JSON.stringify(stableOrder)!==JSON.stringify([genericModel,genericModel2]))throw new Error('Initial model interpretation rows did not preserve selection order: '+JSON.stringify(stableOrder));
+  await page.evaluate(key=>{
+    const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]')].find(node=>node.dataset.seriesUnitKey===key);
+    if(!select)throw new Error('First generic model unit selector is missing.');
+    select.value='m';
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+  },genericModel);
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · m'),null,{timeout:30000});
+  stableOrder=await interpretationOrder();
+  if(JSON.stringify(stableOrder)!==JSON.stringify([genericModel,genericModel2]))throw new Error('Changing a unit reordered interpretation rows: '+JSON.stringify(stableOrder));
+  await page.evaluate(key=>{
+    const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]')].find(node=>node.dataset.seriesUnitKey===key);
+    select.value='mm';
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+  },genericModel);
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · mm'),null,{timeout:30000});
   await page.evaluate(key=>{
     const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key);
     if(!select)throw new Error('Second generic model interpretation selector is missing.');
     select.value='level';
     select.dispatchEvent(new Event('change',{bubbles:true}));
   },genericModel2);
-  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level'),null,{timeout:30000});
+  await page.waitForFunction(key=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key)?.value==='level',genericModel2,{timeout:30000});
   const independentSemantics=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].map(select=>({key:select.dataset.seriesQuantityKey,value:select.value})));
   if(independentSemantics.length!==2||independentSemantics.some(row=>row.value!=='level')){
     throw new Error('Generic model interpretation must remain independent for every loaded file: '+JSON.stringify(independentSemantics));
   }
+  stableOrder=await interpretationOrder();
+  if(JSON.stringify(stableOrder)!==JSON.stringify([genericModel,genericModel2]))throw new Error('Changing Interpret Value as reordered model rows: '+JSON.stringify(stableOrder));
+
+  // Removing a selected model removes its row; selecting it again appends it at
+  // the bottom instead of reconstructing the list from DOM option order.
+  await page.selectOption('#modelSelect',[genericModel2]);
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===1,null,{timeout:30000});
+  await page.selectOption('#modelSelect',[genericModel,genericModel2]);
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===2,null,{timeout:30000});
+  stableOrder=await interpretationOrder();
+  if(JSON.stringify(stableOrder)!==JSON.stringify([genericModel2,genericModel]))throw new Error('Re-selected model must append after retained models: '+JSON.stringify(stableOrder));
+  // Restore the original order for the remainder of this workflow.
+  await page.selectOption('#modelSelect',[genericModel]);
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===1,null,{timeout:30000});
+  await page.selectOption('#modelSelect',[genericModel,genericModel2]);
+  await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===2,null,{timeout:30000});
+  stableOrder=await interpretationOrder();
+  if(JSON.stringify(stableOrder)!==JSON.stringify([genericModel,genericModel2]))throw new Error('Restored model selection order is unstable: '+JSON.stringify(stableOrder));
+
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&!document.querySelector('#applyMappingBtn')?.disabled,null,{timeout:60000});
   await precisionRoute('data','time-series');
@@ -1327,6 +1454,99 @@ try{
   await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===3&&
     [...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].some(row=>row.textContent.includes('Observed')&&row.textContent.includes('interpret-observed.csv'))&&
     [...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].filter(row=>row.textContent.includes('Model')).length===2,null,{timeout:30000});
+  const observedModelOrder=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].map(node=>node.dataset.seriesQuantityKey));
+  if(JSON.stringify(observedModelOrder)!==JSON.stringify([interpretObserved,interpretModelA,interpretModelB])){
+    throw new Error('Interpretation rows must remain Observed, Model 1, Model 2: '+JSON.stringify(observedModelOrder));
+  }
+
+  // Visual acceptance for the compact mapping controls. The Observed native
+  // select and custom Model picker deliberately share one chevron treatment,
+  // control height, border radius and border colour. Three interpretation rows
+  // must remain compact without clipping or horizontal page overflow.
+  await page.setViewportSize({width:1440,height:900});
+  const mappingVisual=await page.evaluate(()=>{
+    const observed=document.querySelector('#observedSelect');
+    const trigger=document.querySelector('#modelPickerTrigger');
+    const panel=document.querySelector('#seriesSemanticsPanel');
+    const rows=[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')];
+    const rowSelects=[...document.querySelectorAll('#seriesSemanticsRows select')];
+    const observedStyle=getComputedStyle(observed);
+    const triggerStyle=getComputedStyle(trigger);
+    const triggerArrow=getComputedStyle(trigger,'::after');
+    return {
+      overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+      observedHeight:observed?.getBoundingClientRect().height||0,
+      triggerHeight:trigger?.getBoundingClientRect().height||0,
+      observedRadius:observedStyle.borderRadius,
+      triggerRadius:triggerStyle.borderRadius,
+      observedBorder:observedStyle.borderColor,
+      triggerBorder:triggerStyle.borderColor,
+      observedArrow:observedStyle.backgroundImage,
+      triggerArrow:triggerArrow.backgroundImage,
+      triggerArrowSize:triggerArrow.backgroundSize,
+      panelHeight:panel?.getBoundingClientRect().height||0,
+      rowHeights:rows.map(row=>row.getBoundingClientRect().height),
+      selectHeights:rowSelects.map(select=>select.getBoundingClientRect().height),
+      roles:rows.map(row=>row.querySelector('.series-semantics-source strong')?.textContent?.trim()||''),
+    };
+  });
+  if(mappingVisual.overflow>1)throw new Error('Series mapping introduced document overflow at 1440px: '+JSON.stringify(mappingVisual));
+  if(Math.abs(mappingVisual.observedHeight-mappingVisual.triggerHeight)>2||mappingVisual.observedRadius!==mappingVisual.triggerRadius||mappingVisual.observedBorder!==mappingVisual.triggerBorder){
+    throw new Error('Observed and Modelled selectors are not visually aligned: '+JSON.stringify(mappingVisual));
+  }
+  if(!mappingVisual.observedArrow.includes('svg')||mappingVisual.observedArrow!==mappingVisual.triggerArrow||mappingVisual.triggerArrowSize!=='12px 8px'){
+    throw new Error('Observed and Modelled selectors must use the same controlled chevron: '+JSON.stringify(mappingVisual));
+  }
+  if(mappingVisual.panelHeight>235||mappingVisual.rowHeights.some(height=>height>58)||mappingVisual.selectHeights.some(height=>height<30||height>36)){
+    throw new Error('Compact interpretation rows are outside the professional density envelope: '+JSON.stringify(mappingVisual));
+  }
+  if(JSON.stringify(mappingVisual.roles)!==JSON.stringify(['Observed','Model 1','Model 2'])){
+    throw new Error('Interpretation role labels are not presented in stable professional order: '+JSON.stringify(mappingVisual.roles));
+  }
+  await captureEvidence('00-series-mapping-1440x900');
+
+  await page.click('#modelPickerTrigger');
+  await page.waitForFunction(()=>document.querySelector('#modelPickerTrigger')?.getAttribute('aria-expanded')==='true'&&!document.querySelector('#modelPickerPopover')?.hidden);
+  const openPickerVisual=await page.evaluate(()=>{
+    const pop=document.querySelector('#modelPickerPopover')?.getBoundingClientRect();
+    const transform=getComputedStyle(document.querySelector('#modelPickerTrigger'),'::after').transform;
+    return {left:pop?.left,right:pop?.right,top:pop?.top,bottom:pop?.bottom,width:pop?.width,viewport:innerWidth,transform};
+  });
+  if(openPickerVisual.left<0||openPickerVisual.right>openPickerVisual.viewport+1||!openPickerVisual.width||openPickerVisual.transform==='none'){
+    throw new Error('Model selector popover/chevron is visually invalid: '+JSON.stringify(openPickerVisual));
+  }
+  await captureEvidence('00a-model-picker-open-1440x900');
+  const pickerAccessibility=await page.evaluate(()=>({
+    canonicalTabIndex:document.querySelector('#modelSelect')?.tabIndex,
+    canonicalAriaHidden:document.querySelector('#modelSelect')?.getAttribute('aria-hidden'),
+    controls:document.querySelector('#modelPickerTrigger')?.getAttribute('aria-controls'),
+    focusedTag:document.activeElement?.tagName,
+  }));
+  if(pickerAccessibility.canonicalTabIndex!==-1||pickerAccessibility.canonicalAriaHidden!=='true'||pickerAccessibility.controls!=='modelPickerPopover'){
+    throw new Error('Model picker canonical/select accessibility contract is incomplete: '+JSON.stringify(pickerAccessibility));
+  }
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>document.querySelector('#modelPickerPopover')?.hidden&&document.querySelector('#modelPickerTrigger')?.getAttribute('aria-expanded')==='false'&&document.activeElement===document.querySelector('#modelPickerTrigger'));
+  await page.click('#modelPickerTrigger');
+  await page.waitForFunction(()=>document.querySelector('#modelPickerTrigger')?.getAttribute('aria-expanded')==='true');
+  await page.click('#modelPickerTrigger');
+
+  await page.setViewportSize({width:1024,height:768});
+  // Plotly's responsive resize is asynchronous; inspect containment only once
+  // the existing graph has adapted to the new viewport.
+  await page.waitForFunction(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1,null,{timeout:10000});
+  const constrainedMapping=await page.evaluate(()=>({
+    overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+    panelWidth:document.querySelector('#seriesSemanticsPanel')?.getBoundingClientRect().width||0,
+    viewport:document.documentElement.clientWidth,
+    rowHeights:[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].map(row=>row.getBoundingClientRect().height),
+  }));
+  if(constrainedMapping.overflow>1||constrainedMapping.panelWidth>constrainedMapping.viewport+1||constrainedMapping.rowHeights.some(height=>height>62)){
+    throw new Error('Compact mapping panel is not contained at 1024px: '+JSON.stringify(constrainedMapping));
+  }
+  await captureEvidence('00b-series-mapping-1024x768');
+  await page.setViewportSize({width:1440,height:1000});
+
   const inferredSelectors=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].map(select=>({
     key:select.dataset.seriesQuantityKey,
     value:select.value,
@@ -1336,29 +1556,42 @@ try{
     throw new Error('Name-inferred observed/model CSV series must each show an independent Level interpretation default: '+JSON.stringify(inferredSelectors));
   }
   const detectedUnits=await page.locator('#seriesSemanticsRows select[data-series-unit-key]').evaluateAll(nodes=>nodes.map(node=>({value:node.value,label:node.closest('label')?.textContent||''})));
-  if(detectedUnits.length!==3||detectedUnits.some(row=>row.value!=='m'||!row.label.includes('Column header'))){
+  if(detectedUnits.length!==3||detectedUnits.some(row=>row.value!=='m'||!row.label.includes('Detected m'))){
     throw new Error('Explicit header units must be preselected and attributed for each independent series: '+JSON.stringify(detectedUnits));
   }
-  await page.evaluate(key=>{
+  const interpretationBusy=await page.evaluate(key=>{
     const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key);
     if(!select)throw new Error('Observed interpretation selector missing.');
     select.value='depth';
     select.dispatchEvent(new Event('change',{bubbles:true}));
+    return [...select.closest('.series-semantics-row').querySelectorAll('select')].every(node=>node.disabled);
   },interpretObserved);
+  if(!interpretationBusy)throw new Error('Quantity and unit controls must prevent overlapping changes while this row is being updated.');
   await page.waitForFunction(key=>{
     const rows=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')];
     const observed=rows.find(node=>node.dataset.seriesQuantityKey===key);
-    return observed?.value==='depth'&&rows.filter(node=>node.dataset.seriesQuantityKey!==key).every(node=>node.value==='level');
+    return document.querySelector('#mappingStatus')?.textContent.includes('classified as depth')&&observed?.value==='depth'&&rows.filter(node=>node.dataset.seriesQuantityKey!==key).every(node=>node.value==='level');
   },interpretObserved,{timeout:30000});
   await page.evaluate(key=>{
     const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key);
     select.value='level';
     select.dispatchEvent(new Event('change',{bubbles:true}));
   },interpretObserved);
-  await page.waitForFunction(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].every(node=>node.value==='level'),null,{timeout:30000});
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level')&&[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].every(node=>node.value==='level'),null,{timeout:30000});
+  await page.evaluate(key=>{
+    const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]')].find(node=>node.dataset.seriesUnitKey===key);
+    if(!select)throw new Error('Observed unit selector missing.');
+    select.value='mm';
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+  },interpretObserved);
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · mm'),null,{timeout:30000});
   await page.click('#applyMappingBtn');
-  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&
-    (document.querySelector('#timeChart')?.data||[]).filter(trace=>String(trace.uid||'').startsWith('model__')).length===2,null,{timeout:60000});
+  await page.waitForFunction(()=>{
+    const chart=document.querySelector('#timeChart');
+    const observed=(chart?.data||[]).find(trace=>String(trace.uid||'').startsWith('observed__'));
+    const models=(chart?.data||[]).filter(trace=>String(trace.uid||'').startsWith('model__'));
+    return String(chart?.layout?.yaxis?.title?.text||'').includes('(mm)')&&Math.abs(Number(observed?.y?.[0])-1000)<1e-9&&models.length===2&&models.every(trace=>Math.abs(Number(trace.y?.[0])-1000)<1e-9);
+  },null,{timeout:60000});
   await precisionRoute('data','sources');
   await page.click('#clearPoolBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0);
@@ -2343,10 +2576,15 @@ try{
   await page.selectOption('#spillModelSelect',modelDepth);
   await page.fill('#obsThreshold','1.0');
   await page.fill('#modelThreshold','1.0');
-  await page.click('#addExclusionBtn');
-  await page.fill('.ex-row [data-field="start"]','2026-01-01T00:08');
-  await page.fill('.ex-row [data-field="end"]','2026-01-01T00:10');
-  await page.fill('.ex-row [data-field="reason"]','Automated acceptance-test exclusion');
+  // Install the complete fixture in one browser task, so a pending threshold
+  // redraw cannot evaluate a half-entered exclusion between separate RPCs.
+  await page.evaluate(()=>{
+    document.querySelector('#addExclusionBtn').click();
+    for(const [field,value] of [['start','2026-01-01T00:08'],['end','2026-01-01T00:10'],['reason','Automated acceptance-test exclusion']]){
+      const input=document.querySelector('.ex-row [data-field="'+field+'"]');
+      input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+  });
   await page.click('#runSpillsBtn');
   await page.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in'),null,{timeout:60000});
   await page.waitForFunction(()=>!document.body.classList.contains('operation-busy'),null,{timeout:10000});
@@ -2727,7 +2965,18 @@ try{
       colours:Object.fromEntries(chart.data.filter(t=>t.type!=='table'&&t.name).map(t=>[t.name,t.line?.color||null])),
       tableHeader:(table?.header?.values||[]).map(v=>String(v).replace(/<[^>]+>/g,'')),
       tableSeries:(table?.cells?.values?.[0]||[]).map(String),
+      tableUnits:(table?.cells?.values?.[1]||[]).map(String),
       tableTotals:(table?.cells?.values?.[5]||[]).map(String),
+      axisTitles:[
+        chart.layout.yaxis?.title?.text||'',
+        chart.layout.yaxis2?.title?.text||'',
+        chart.layout.yaxis3?.title?.text||'',
+        chart.layout.yaxis4?.title?.text||'',
+      ],
+      traceMins:Object.fromEntries((chart.data||[]).filter(t=>t.type!=='table'&&Array.isArray(t.y)).map(t=>{
+        const finite=t.y.map(Number).filter(Number.isFinite);
+        return [String(t.name||''),finite.length?Math.min(...finite):null];
+      })),
       xRange:chart.layout.xaxis?.range,
     };
   });
@@ -2741,6 +2990,17 @@ try{
   if(JSON.stringify(referenceEvidence.order)!==JSON.stringify(['rainfall','flow','depth','velocity']))throw new Error('Reference FDV panel order mismatch: '+JSON.stringify(referenceEvidence.order));
   if(referenceEvidence.colours['Observed flow']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed depth']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed velocity']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('Reference FDV colours mismatch: '+JSON.stringify(referenceEvidence.colours));
   if(JSON.stringify(referenceEvidence.tableHeader)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('Reference Plotly statistics header mismatch: '+JSON.stringify(referenceEvidence.tableHeader));
+  if(!referenceEvidence.tableUnits.includes('L/s')||!referenceEvidence.tableUnits.includes('mm')||!referenceEvidence.tableUnits.includes('m/s')){
+    throw new Error('Reference FDV statistics must default to the source/display units selected in the mapping UI: '+JSON.stringify(referenceEvidence.tableUnits));
+  }
+  if(!referenceEvidence.axisTitles.some(x=>/Flow \(L\/s\)/.test(x))||
+     !referenceEvidence.axisTitles.some(x=>/Depth \(mm\)/.test(x))||
+     !referenceEvidence.axisTitles.some(x=>/Velocity \(m\/s\)/.test(x))){
+    throw new Error('Reference FDV graph axes do not reflect the selected source/display units: '+JSON.stringify(referenceEvidence.axisTitles));
+  }
+  if(!near(referenceEvidence.traceMins['Observed flow'],39)||!near(referenceEvidence.traceMins['Observed depth'],113)||!near(referenceEvidence.traceMins['Observed velocity'],.42)){
+    throw new Error('Reference FDV plotted values were not converted to their selected display units: '+JSON.stringify(referenceEvidence.traceMins));
+  }
   if(!referenceEvidence.tableTotals.some(x=>/85(?:\.0+)? mm/.test(x)))throw new Error('Reference rainfall total 85 mm missing from Plotly statistics: '+JSON.stringify(referenceEvidence.tableTotals));
   if(referenceEvidence.pointCounts?.observed?.raw!==20161||referenceEvidence.pointCounts?.rainfall?.raw!==20161)throw new Error('Reference full-period source counts mismatch: '+JSON.stringify(referenceEvidence.pointCounts));
   if(!String(referenceEvidence.xRange?.[0]||'').startsWith('2026-02-01')||!String(referenceEvidence.xRange?.[1]||'').startsWith('2026-03-01'))throw new Error('Reference graph support mismatch: '+JSON.stringify(referenceEvidence.xRange));

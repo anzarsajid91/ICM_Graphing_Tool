@@ -7,6 +7,8 @@ const state = {
   healthResult: null, healthSignature: null, healthGeneration: 0,
   seriesQuantityOverrides: new Map(),
   seriesUnitOverrides: new Map(),
+  seriesSemanticsModelOrder: [],
+  seriesSemanticsPending: new Set(),
 };
 const diagnostic = {
   status: 'booting', errors: [],
@@ -86,11 +88,56 @@ function seriesQuantityIsAuthoritative(item,col){
 }
 function seriesUnit(item,col){
   const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
-  // Preserve an incompatible original source unit for provenance, but never
-  // present it as the valid engineering unit after cross-dimension
-  // reinterpretation. Dimensional calculations remain withheld until resolved.
+  // Canonical engineering unit used by calculations and the Python worker.
   if(String(detail.unit_status||'').toLowerCase()==='unresolved'&&!detail.canonical_unit)return null;
   return detail.canonical_unit||metadata.canonical_unit||detail.original_unit||metadata.original_unit||null;
+}
+function unitToCanonicalFactor(quantity,unit){
+  const q=String(quantity||'').toLowerCase();
+  const u=String(normaliseDisplayUnit(quantity,unit)||'').trim().toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
+  if((q==='depth'||q==='level')&&u==='m')return 1;
+  if((q==='depth'||q==='level')&&u==='mm')return .001;
+  if(q==='flow'&&['m3/s','m3s'].includes(u))return 1;
+  if(q==='flow'&&['l/s','ls','lps'].includes(u))return .001;
+  if(q==='flow'&&['ml/d','mld'].includes(u))return 1000/86400;
+  if(q==='flow'&&['m3/d','m3d'].includes(u))return 1/86400;
+  if(q==='velocity'&&['m/s','ms','mps'].includes(u))return 1;
+  if(q==='rainfall'&&['mm/h','mmh'].includes(u))return 1;
+  return null;
+}
+function normaliseDisplayUnit(quantity,unit){
+  const q=String(quantity||'').toLowerCase();
+  const raw=String(unit||'').trim().toLowerCase().replace(/³/g,'3');
+  const aliases={millimetre:'mm',millimetres:'mm',millimeter:'mm',millimeters:'mm'};
+  const u=aliases[raw]||raw.replace(/per/g,'/').replace(/·/g,'').replace(/\s/g,'')
+    .replace(/seconds?|sec/g,'s').replace(/hours?|hr/g,'h').replace(/days?/g,'d')
+    .replace(/litres?|liters?/g,'l').replace(/metres?|meters?/g,'m');
+  if((q==='depth'||q==='level')&&['m','m_ad','mad','maod'].includes(u))return 'm';
+  if((q==='depth'||q==='level')&&['mm','millimetre','millimetres','millimeter','millimeters'].includes(u))return 'mm';
+  if(q==='flow'&&['m3/s','m3s','cumec','cumecs'].includes(u))return 'm³/s';
+  if(q==='flow'&&['l/s','ls','lps'].includes(u))return 'L/s';
+  if(q==='flow'&&['ml/d','mld','megal/d'].includes(u))return 'Ml/d';
+  if(q==='flow'&&['m3/d','m3d'].includes(u))return 'm³/d';
+  if(q==='velocity'&&['m/s','ms','mps'].includes(u))return 'm/s';
+  if(q==='rainfall'&&['mm/h','mmh'].includes(u))return 'mm/h';
+  return unit||null;
+}
+function seriesDisplayUnit(item,col){
+  const key=item?.id?sourceKey(item.id,col):'';
+  const detail=seriesMetadata(item,col),metadata=item?.parsed?.metadata||{};
+  const quantity=seriesQuantity(item,col);
+  const authoritative=seriesQuantityIsAuthoritative(item,col);
+  const sourceUnit=detail.detected_unit||(detail.unit_source==='column_header'?detail.original_unit:null)||
+    (authoritative?(detail.original_unit||metadata.original_unit):null);
+  const selected=(key&&state.seriesUnitOverrides.get(key))||detail.display_unit||sourceUnit||seriesUnit(item,col)||null;
+  return normaliseDisplayUnit(quantity,selected);
+}
+function canonicalToDisplayFactor(quantity,unit){
+  const factor=unitToCanonicalFactor(quantity,unit);
+  return factor==null||!Number.isFinite(Number(factor))||Number(factor)===0?1:1/Number(factor);
+}
+function seriesDisplayFactor(item,col){
+  return canonicalToDisplayFactor(seriesQuantity(item,col),seriesDisplayUnit(item,col));
 }
 function seriesReference(item,col){
   const metadata=item?.parsed?.metadata||{}, detail=seriesMetadata(item,col);
@@ -531,33 +578,54 @@ function preferAdvanced(id,all,predicate){
   if(series)select.value=series.key;
 }
 
+function orderedSelectedModelKeys(){
+  const selected=[...($('modelSelect')?.selectedOptions||[])].map(option=>option.value).filter(Boolean);
+  const selectedSet=new Set(selected);
+  state.seriesSemanticsModelOrder=(state.seriesSemanticsModelOrder||[]).filter(key=>selectedSet.has(key));
+  for(const key of selected)if(!state.seriesSemanticsModelOrder.includes(key))state.seriesSemanticsModelOrder.push(key);
+  return [...state.seriesSemanticsModelOrder];
+}
 function genericSeriesSemanticsRows(){
   const rows=[],seen=new Set();
   const observedKey=$('observedSelect')?.value||'';
-  const modelKeys=new Set([...($('modelSelect')?.selectedOptions||[])].map(option=>option.value));
-  const rainfallKey=$('rainSelect')?.value||'';
+  const modelKeys=orderedSelectedModelKeys();
+  const selectedKeys=[observedKey,...modelKeys].filter(Boolean);
   const roleFor=key=>{
     const roles=[];
     if(key===observedKey)roles.push('Observed');
-    if(modelKeys.has(key))roles.push('Model');
-    if(key===rainfallKey)roles.push('Rainfall');
-    return roles.length?roles.join(' + '):'Available series';
+    const modelIndex=modelKeys.indexOf(key);
+    if(modelIndex>=0)roles.push('Model '+(modelIndex+1));
+    return roles.join(' + ');
   };
-  for(const series of allSeries()){
-    const key=series.key||sourceKey(series.item.id,series.col);
+  for(const key of selectedKeys){
     if(!key||seen.has(key))continue;
     const mapped=mappingObject(key);
     if(!mapped)continue;
     const declared=declaredSeriesQuantity(mapped.item,mapped.col);
     const overridden=state.seriesQuantityOverrides.has(key);
-    // Keep generic sources independently editable before mapping; show native
-    // declarations when assigned, without filling the setup with every unused
-    // FDV channel in a whole-survey upload.
-    if(seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden&&roleFor(key)==='Available series')continue;
+    const details=seriesMetadata(mapped.item,mapped.col);
+    const metadata=mapped.item?.parsed?.metadata||{};
+    const locked=seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden;
+    const unitSourceType=String(details.unit_source||'').toLowerCase();
+    const sourceUnit=details.detected_unit||
+      (['column_header','declared'].includes(unitSourceType)?details.original_unit:null)||
+      (locked?metadata.original_unit:null)||
+      (locked?seriesUnit(mapped.item,mapped.col):null);
+    const selectedUnit=state.seriesUnitOverrides.get(key)||details.display_unit||sourceUnit||'';
+    const userAssignedUnit=Boolean(state.seriesUnitOverrides.has(key)||details.user_unit);
     seen.add(key);
-    rows.push({role:roleFor(key),key,mapped,quantity:String(state.seriesQuantityOverrides.get(key)||declared||'').toLowerCase(),unit:state.seriesUnitOverrides.get(key)||seriesMetadata(mapped.item,mapped.col).original_unit||'',unitSource:state.seriesUnitOverrides.has(key)?'User selected':seriesMetadata(mapped.item,mapped.col).unit_source==='column_header'?'Column header':'',locked:seriesQuantityIsAuthoritative(mapped.item,mapped.col)&&!overridden});
+    rows.push({
+      role:roleFor(key),key,mapped,
+      quantity:String(state.seriesQuantityOverrides.get(key)||declared||'').toLowerCase(),
+      unit:selectedUnit,
+      sourceUnit:sourceUnit||'',
+      unitSource:sourceUnit
+        ?(locked?'Source '+sourceUnit:(unitSourceType==='column_header'?'Detected '+sourceUnit:'Source '+sourceUnit))
+        :(userAssignedUnit?'Assigned by user':''),
+      locked
+    });
   }
-  return rows.sort((a,b)=>(a.role==='Available series')-(b.role==='Available series'));
+  return rows;
 }
 function renderSeriesSemanticsOverrides(){
   const panel=$('seriesSemanticsPanel'),target=$('seriesSemanticsRows');
@@ -580,17 +648,30 @@ function renderSeriesSemanticsOverrides(){
     const choices=row.locked?[declaredChoice]:options;
     const available=units[row.quantity]||[];
     const unitKey=value=>String(value||'').toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
-    const current=row.locked?row.unit:(available.find(value=>unitKey(value)===unitKey(row.unit))||'');
-    const unitChoices=row.locked?(row.unit?[row.unit]:[]):available;
-    return '<div class="series-semantics-row"><div class="series-semantics-source"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity and unit.">Declared by source</small>':'')+'</div><label>Interpret Value as<select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label>Source unit'+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'<select data-series-unit-key="'+esc(row.key)+'" aria-label="Source unit — '+esc(source)+'"'+(row.locked||!available.length?' disabled':'')+'><option value="">'+(row.locked?'Unresolved':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
+    const current=available.find(value=>unitKey(value)===unitKey(normaliseDisplayUnit(row.quantity,row.unit)))||'';
+    const unitChoices=available;
+    return '<div class="series-semantics-row"><div class="series-semantics-source" title="'+esc(source)+'"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity. Quantity reinterpretation is protected; compatible display units remain selectable.">Quantity declared by source</small>':'')+'</div><label><span class="series-semantics-quantity-label">Interpret Value as</span><select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label><span class="series-semantics-unit-label">Unit'+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'</span><select data-series-unit-key="'+esc(row.key)+'" aria-label="Unit — '+esc(source)+'"'+(!available.length?' disabled':'')+'><option value="">'+(row.sourceUnit?'Use source unit':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
   }).join('');
   target.querySelectorAll('[data-series-quantity-key]').forEach(select=>select.addEventListener('change',()=>{
-    void guarded('mappingStatus',()=>applySeriesQuantityOverride(select.dataset.seriesQuantityKey,select.value||null));
+    void applySeriesSemanticsChange(select.dataset.seriesQuantityKey,select.value||null);
   }));
   target.querySelectorAll('[data-series-unit-key]').forEach(select=>select.addEventListener('change',()=>{
     const key=select.dataset.seriesUnitKey;
-    void guarded('mappingStatus',()=>applySeriesQuantityOverride(key,seriesQuantity(mappingObject(key).item,mappingObject(key).col),{unit:select.value}));
+    void applySeriesSemanticsChange(key,seriesQuantity(mappingObject(key).item,mappingObject(key).col),{unit:select.value});
   }));
+  target.querySelectorAll('[data-series-quantity-key],[data-series-unit-key]').forEach(select=>{
+    const key=select.dataset.seriesQuantityKey||select.dataset.seriesUnitKey;
+    if(state.seriesSemanticsPending.has(key))select.disabled=true;
+  });
+}
+async function applySeriesSemanticsChange(key,quantity,options={}){
+  if(state.seriesSemanticsPending.has(key))return;
+  state.seriesSemanticsPending.add(key);
+  document.querySelectorAll('#seriesSemanticsRows [data-series-quantity-key],#seriesSemanticsRows [data-series-unit-key]').forEach(select=>{
+    if((select.dataset.seriesQuantityKey||select.dataset.seriesUnitKey)===key)select.disabled=true;
+  });
+  try{return await guarded('mappingStatus',()=>applySeriesQuantityOverride(key,quantity,options));}
+  finally{state.seriesSemanticsPending.delete(key);renderSeriesSemanticsOverrides();}
 }
 async function applySeriesQuantityOverride(key,quantity,{refresh=true,unit=null}={}){
   const mapped=mappingObject(key);
@@ -600,12 +681,13 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true,unit=null}
     throw new Error('Quantity overrides are not available for sources with authoritative native quantity metadata.');
   }
   const requested=quantity?String(quantity).toLowerCase():null;
+  const quantityWasAuthoritative=seriesQuantityIsAuthoritative(mapped.item,mapped.col);
   const result=await engine.call('set_series_quantity',{path:mapped.item.virtualPath,column:mapped.col,quantity:requested,unit});
   const metadata=mapped.item.parsed.metadata||(mapped.item.parsed.metadata={});
   const seriesMetadata=metadata.series_metadata||(metadata.series_metadata={});
   const details=seriesMetadata[mapped.col]||(seriesMetadata[mapped.col]={});
   const quantityByColumn=metadata.quantity_by_column||(metadata.quantity_by_column={});
-  if(requested)state.seriesQuantityOverrides.set(key,requested);
+  if(requested&&!quantityWasAuthoritative)state.seriesQuantityOverrides.set(key,requested);
   else state.seriesQuantityOverrides.delete(key);
   if(result.user_unit)state.seriesUnitOverrides.set(key,result.user_unit);
   else state.seriesUnitOverrides.delete(key);
@@ -615,7 +697,9 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true,unit=null}
   if(result.original_unit!==undefined)details.original_unit=result.original_unit;
   if(result.detected_unit!==undefined)details.detected_unit=result.detected_unit;
   details.user_unit=result.user_unit||null;
-  details.unit_source=result.user_unit?'user':(result.detected_unit?'column_header':'unresolved');
+  details.display_unit=result.display_unit||result.user_unit||result.detected_unit||result.canonical_unit||null;
+  const authoritativeUnit=seriesQuantityIsAuthoritative(mapped.item,mapped.col);
+  details.unit_source=result.detected_unit?(authoritativeUnit?'declared':'column_header'):(result.user_unit?'user':'unresolved');
   details.canonical_unit=result.canonical_unit??null;
   details.conversion_factor=result.conversion_factor??null;
   details.unit_status=result.unit_status||'unresolved';
@@ -625,7 +709,7 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true,unit=null}
     renderSeriesSemanticsOverrides();
     autoSuggestAdvanced(allSeries());
     const effective=result.quantity||'generic numeric';
-    const unit=result.unit_status==='unresolved'?'unit unresolved':(result.canonical_unit||result.original_unit||'unit unresolved');
+    const unit=result.unit_status==='unresolved'?'unit unresolved':(result.display_unit||result.user_unit||result.detected_unit||result.canonical_unit||result.original_unit||'unit unresolved');
     $('mappingStatus').textContent=requested
       ?'Series classified as '+effective+' · '+unit+'. Apply mapping to refresh graphs and threshold controls.'
       :(result.quantity
@@ -917,6 +1001,7 @@ async function removeSourceById(sourceId){
   for(const key of Object.keys(state.modelColours||{}))if(sourceKeyBelongsTo(key,sourceId))delete state.modelColours[key];
   if(observedRemoved)state.mapping.observed='';
   if(removedModelKeys.length)state.mapping.models=state.mapping.models.filter(key=>!sourceKeyBelongsTo(key,sourceId));
+  state.seriesSemanticsModelOrder=(state.seriesSemanticsModelOrder||[]).filter(key=>!sourceKeyBelongsTo(key,sourceId));
   if(rainfallRemoved)state.mapping.rain='';
 
   if(diagnostic.fastpathActiveSourceId===sourceId){
@@ -1013,10 +1098,11 @@ function renderPool(){
   document.querySelectorAll('[data-source-remove]').forEach(button=>button.addEventListener('click',()=>void guarded('poolSummary',()=>removeSourceById(button.dataset.sourceRemove))));
 }
 function renderSeriesOptions(){
-  const all=allSeries(),obs=$('observedSelect'),mod=$('modelSelect'),rain=$('rainSelect'),prevMods=[...mod.selectedOptions].map(o=>o.value);
+  const all=allSeries(),obs=$('observedSelect'),mod=$('modelSelect'),rain=$('rainSelect'),prevMods=orderedSelectedModelKeys();
   setOptions(obs,all);
   mod.innerHTML=all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');
   [...mod.options].forEach(o=>o.selected=prevMods.includes(o.value));
+  orderedSelectedModelKeys();
   setOptions(rain,all,{none:true});
   const quantity=s=>String(s.quantity||seriesQuantity(s.item,s.col)||'').toLowerCase();
   const vertical=all.filter(s=>['depth','level'].includes(quantity(s)));
@@ -1040,7 +1126,7 @@ function autoSuggestMappings(all){
 }
 function prefer(select,all,predicate){if(select.value)return;const s=all.find(predicate);if(s)select.value=s.key;}
 function autoSuggestAdvanced(all){
-  const obs=mappingObject($('observedSelect').value),model=mappingObject([...$('modelSelect').selectedOptions][0]?.value||'');
+  const obs=mappingObject($('observedSelect').value),model=mappingObject(orderedSelectedModelKeys()[0]||'');
   const q=(s,name)=>String(s.quantity||seriesQuantity(s.item,s.col)||'').toLowerCase()===name;
   const vertical=s=>q(s,'depth')||q(s,'level');
   const obsVertical=obs&&['depth','level'].includes(String(seriesQuantity(obs.item,obs.col)||'').toLowerCase())?String(seriesQuantity(obs.item,obs.col)).toLowerCase():null;
@@ -1054,7 +1140,7 @@ function autoSuggestAdvanced(all){
   prefer($('storageLevelSelect'),all,s=>(!model||s.item.id===model.item.id)&&vertical(s));
 }
 function renderModelColourControls(){
-  const models=[...$('modelSelect').selectedOptions].map(o=>mappingObject(o.value)).filter(Boolean);
+  const models=orderedSelectedModelKeys().map(mappingObject).filter(Boolean);
   const scenarioIndex=new Map();
   for(const model of models)if(!scenarioIndex.has(model.item.id))scenarioIndex.set(model.item.id,scenarioIndex.size);
   $('modelColourControls').innerHTML=models.map((m,i)=>{
@@ -1809,7 +1895,7 @@ function thresholdWorkspaceSeries(role){
   const model=mappingObject(key);
   return model&&['depth','level'].includes(String(seriesQuantity(model.item,model.col)||'').toLowerCase())?workspaceSeries(key):null;
 }
-function workspaceObject(strictExclusions=true){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:$('timeBasisConfirmed')?.checked?'model clock/engineer-confirmed':'model clock/unspecified',time_basis_confirmed:Boolean($('timeBasisConfirmed')?.checked),level_datum_confirmed:Boolean($('levelDatumConfirmed')?.checked),saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity,unit:state.seriesUnitOverrides.get(key)||null})).filter(x=>x.series&&x.quantity),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#ff0000',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#ff0000'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
+function workspaceObject(strictExclusions=true){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:$('timeBasisConfirmed')?.checked?'model clock/engineer-confirmed':'model clock/unspecified',time_basis_confirmed:Boolean($('timeBasisConfirmed')?.checked),level_datum_confirmed:Boolean($('levelDatumConfirmed')?.checked),saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity,unit:state.seriesUnitOverrides.get(key)||null})).filter(x=>x.series&&x.quantity),series_unit_overrides:[...state.seriesUnitOverrides.entries()].map(([key,unit])=>({series:workspaceSeries(key),unit})).filter(x=>x.series&&x.unit),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#ff0000',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#ff0000'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
 function downloadBlob(name,content,type='application/octet-stream'){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 function downloadWorkspace(){downloadBlob(`icm-workbench-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(workspaceObject(),null,2),'application/json');$('workspaceStatus').textContent='Workspace downloaded. Raw files were not embedded.';}
 function findSeriesFromWorkspace(ref){
@@ -1862,6 +1948,7 @@ async function applyWorkspace(w){
   renderSeriesOptions();
   state.mapping.observed=findSeriesFromWorkspace(w.mapping?.observed);
   state.mapping.models=(w.mapping?.models||[]).map(findSeriesFromWorkspace).filter(Boolean);
+  state.seriesSemanticsModelOrder=[...state.mapping.models];
   state.mapping.rain=findSeriesFromWorkspace(w.mapping?.rain);
   $('observedSelect').value=state.mapping.observed;
   [...$('modelSelect').options].forEach(o=>o.selected=state.mapping.models.includes(o.value));
@@ -2478,9 +2565,9 @@ async function chooseFolder(){if('showDirectoryPicker'in window){try{const handl
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
-  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;advancedSelectionTouched.clear();state.exclusions=[];state.exclusionHistory=[];state.modelColours={};state.seriesQuantityOverrides.clear();for(const id of ['obsThreshold','modelThreshold','graphObsThreshold','graphModelThreshold'])if($(id))$(id).value='';diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
+  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;advancedSelectionTouched.clear();state.exclusions=[];state.exclusionHistory=[];state.modelColours={};state.seriesQuantityOverrides.clear();state.seriesUnitOverrides.clear();state.seriesSemanticsModelOrder=[];for(const id of ['obsThreshold','modelThreshold','graphObsThreshold','graphModelThreshold'])if($(id))$(id).value='';diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);void importGuard(async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=files.length+' dropped file'+(files.length===1?'':'s')+' detected · preparing import…';await ingestFiles(files);});});
-  eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('applyMappingBtn').addEventListener('click',()=>{state.rating=null;});$('observedSelect').addEventListener('change',()=>{renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('modelSelect').addEventListener('change',()=>{renderModelColourControls();renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('rainSelect').addEventListener('change',renderSeriesSemanticsOverrides);eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
+  eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('applyMappingBtn').addEventListener('click',()=>{state.rating=null;});$('observedSelect').addEventListener('change',()=>{renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('modelSelect').addEventListener('change',()=>{orderedSelectedModelKeys();renderModelColourControls();renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('rainSelect').addEventListener('change',renderSeriesSemanticsOverrides);eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
   eventGuard('runCompareBtn','metricGrid',runCompare);$('scatterScale').addEventListener('change',()=>{if(state.comparisons.length)void guarded('metricGrid',renderComparisons);});$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';$('analysisStart').dispatchEvent(new Event('change',{bubbles:true}));$('analysisEnd').dispatchEvent(new Event('change',{bubbles:true}));});eventGuard('runRatingBtn','ratingSummary',runRating);for(const id of ['ratingObsDepth','ratingObsDepthUnit','ratingObsFlow','ratingObsFlowUnit','ratingModelDepth','ratingModelDepthUnit','ratingModelFlow','ratingModelFlowUnit'])$(id)?.addEventListener('change',()=>{if(id==='ratingObsFlow'||id==='ratingModelFlow')advancedSelectionTouched.add(id);state.rating=null;});eventGuard('runDwfBtn','dwfSummary',runDwf);
   $('rainCriteriaMode').addEventListener('change',criteriaModeChanged);eventGuard('runRainEventsBtn','rainEventSummary',runRainEvents);eventGuard('runHealthBtn','healthBody',runHealth);
   document.addEventListener('change',event=>{
