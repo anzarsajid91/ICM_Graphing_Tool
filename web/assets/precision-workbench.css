@@ -149,6 +149,9 @@ body.precision-workbench{
 .precision-workbench label{color:#344651;font-size:13px;line-height:20px;font-weight:600}
 .precision-workbench label small{color:var(--pw-muted);font-size:12px;line-height:16px;font-weight:400}
 .precision-workbench .mapping-grid{gap:12px}
+.precision-workbench .mapping-panel>.mapping-grid{grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr))}
+.precision-workbench .two-col{min-width:0;max-width:100%}
+.precision-workbench .two-col>*{min-width:0;max-width:100%}
 .precision-workbench .dropzone{border:1px dashed #9fb5c1;background:#f8fbfc;border-radius:7px}
 .precision-workbench .dropzone.drag{border-color:var(--pw-teal);background:#edf9f9}
 .precision-workbench .table-wrap{max-width:100%;overflow:auto;border:1px solid var(--pw-border);border-radius:7px}
@@ -227,7 +230,7 @@ body.precision-workbench{
 .precision-workbench #modelSelect.pw-canonical-select{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}
 [hidden]{display:none!important}
 .pw-legacy-framing{display:none!important}
-.pw-page-surface{display:grid;gap:16px;min-width:0}
+.pw-page-surface{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;min-width:0}
 .pw-page-surface+.pw-page-surface{margin-top:16px}
 .pw-surface-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
 .pw-surface-head h3{margin:0}
@@ -305,7 +308,7 @@ body.precision-workbench{
 
 @media(max-width:1260px){
   :root{--pw-inspector:260px;--pw-gap:16px}
-  .pw-workarea{grid-template-columns:minmax(0,1fr)}
+  .pw-workarea,.pw-has-inspector .pw-workarea{grid-template-columns:minmax(0,1fr)}
   .pw-inspector{position:fixed;z-index:80;right:0;top:0;height:100vh;max-height:none;width:min(360px,92vw);border-radius:0;transform:translateX(102%);transition:transform .18s ease;box-shadow:-12px 0 32px rgba(18,39,54,.18)}
   .pw-inspector.is-open{transform:translateX(0)}
   .pw-inspector-toggle:not([hidden]){display:inline-flex}
@@ -349,17 +352,21 @@ body.precision-workbench{
   margin-top:8px;padding:8px 12px;border:1px solid var(--pw-border);border-radius:8px;background:var(--pw-surface-soft)
 }
 .series-semantics-panel[hidden]{display:none!important}
-.series-semantics-copy{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px}
-.series-semantics-copy strong{font-size:12px;color:var(--pw-text)}
-.series-semantics-copy span{font-size:11px;line-height:16px;color:var(--pw-muted);max-width:920px}
+.series-semantics-copy{display:block;margin-bottom:4px}
+.series-semantics-copy strong{display:block;font-size:12px;line-height:16px;color:var(--pw-text)}
+.series-semantics-copy span{display:block;font-size:11px;line-height:16px;color:var(--pw-muted);max-width:920px}
 .series-semantics-rows{display:grid;gap:4px}
 .series-semantics-row{
-  display:grid;grid-template-columns:minmax(180px,1fr) minmax(155px,220px) minmax(125px,180px);gap:8px;align-items:end
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(110px,.7fr) minmax(100px,.6fr);gap:8px;align-items:end
 }
-.series-semantics-row .series-semantics-source{min-width:0;font-size:12px;line-height:16px;color:var(--pw-muted);overflow-wrap:anywhere}
+.series-semantics-row .series-semantics-source{min-width:0;font-size:12px;line-height:16px;color:var(--pw-muted);overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .series-semantics-row label{margin:0;font-size:12px;line-height:16px}
+.precision-workbench .series-semantics-row label{gap:4px;min-width:0}
 .series-semantics-row label small{font-size:10.5px;line-height:14px}
+.series-semantics-unit-label,.series-semantics-quantity-label{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.series-semantics-unit-label small{display:inline;margin:0}
 .series-semantics-row select{min-height:32px;padding-top:4px;padding-bottom:4px;font-size:12px}
+.precision-workbench .series-semantics-row select{min-width:0;max-width:100%;width:100%}
 @media(max-width:720px){.series-semantics-row{grid-template-columns:1fr}}
 
 

@@ -8,6 +8,7 @@ const state = {
   seriesQuantityOverrides: new Map(),
   seriesUnitOverrides: new Map(),
   seriesSemanticsModelOrder: [],
+  seriesSemanticsPending: new Set(),
 };
 const diagnostic = {
   status: 'booting', errors: [],
@@ -649,15 +650,28 @@ function renderSeriesSemanticsOverrides(){
     const unitKey=value=>String(value||'').toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
     const current=available.find(value=>unitKey(value)===unitKey(normaliseDisplayUnit(row.quantity,row.unit)))||'';
     const unitChoices=available;
-    return '<div class="series-semantics-row"><div class="series-semantics-source"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity. Quantity reinterpretation is protected; compatible display units remain selectable.">Quantity declared by source</small>':'')+'</div><label>Interpret Value as<select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label>Unit'+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'<select data-series-unit-key="'+esc(row.key)+'" aria-label="Unit — '+esc(source)+'"'+(!available.length?' disabled':'')+'><option value="">'+(row.sourceUnit?'Use source unit':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
+    return '<div class="series-semantics-row"><div class="series-semantics-source" title="'+esc(source)+'"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity. Quantity reinterpretation is protected; compatible display units remain selectable.">Quantity declared by source</small>':'')+'</div><label><span class="series-semantics-quantity-label">Interpret Value as</span><select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label><span class="series-semantics-unit-label">Unit'+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'</span><select data-series-unit-key="'+esc(row.key)+'" aria-label="Unit — '+esc(source)+'"'+(!available.length?' disabled':'')+'><option value="">'+(row.sourceUnit?'Use source unit':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
   }).join('');
   target.querySelectorAll('[data-series-quantity-key]').forEach(select=>select.addEventListener('change',()=>{
-    void guarded('mappingStatus',()=>applySeriesQuantityOverride(select.dataset.seriesQuantityKey,select.value||null));
+    void applySeriesSemanticsChange(select.dataset.seriesQuantityKey,select.value||null);
   }));
   target.querySelectorAll('[data-series-unit-key]').forEach(select=>select.addEventListener('change',()=>{
     const key=select.dataset.seriesUnitKey;
-    void guarded('mappingStatus',()=>applySeriesQuantityOverride(key,seriesQuantity(mappingObject(key).item,mappingObject(key).col),{unit:select.value}));
+    void applySeriesSemanticsChange(key,seriesQuantity(mappingObject(key).item,mappingObject(key).col),{unit:select.value});
   }));
+  target.querySelectorAll('[data-series-quantity-key],[data-series-unit-key]').forEach(select=>{
+    const key=select.dataset.seriesQuantityKey||select.dataset.seriesUnitKey;
+    if(state.seriesSemanticsPending.has(key))select.disabled=true;
+  });
+}
+async function applySeriesSemanticsChange(key,quantity,options={}){
+  if(state.seriesSemanticsPending.has(key))return;
+  state.seriesSemanticsPending.add(key);
+  document.querySelectorAll('#seriesSemanticsRows [data-series-quantity-key],#seriesSemanticsRows [data-series-unit-key]').forEach(select=>{
+    if((select.dataset.seriesQuantityKey||select.dataset.seriesUnitKey)===key)select.disabled=true;
+  });
+  try{return await guarded('mappingStatus',()=>applySeriesQuantityOverride(key,quantity,options));}
+  finally{state.seriesSemanticsPending.delete(key);renderSeriesSemanticsOverrides();}
 }
 async function applySeriesQuantityOverride(key,quantity,{refresh=true,unit=null}={}){
   const mapped=mappingObject(key);

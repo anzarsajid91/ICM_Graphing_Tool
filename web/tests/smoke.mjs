@@ -1022,7 +1022,7 @@ function surveyRatingFdv(monitor,count=200){
 }
 function surveyRainfallR(){
   const values=Array.from({length:200},(_,i)=>i<20?12:0);
-  return Buffer.from(`*CSTART\n2601050000 2601050640 2\n*CEND\n${values.join(' ')}\n`,'utf8');
+  return Buffer.from(`**FIELD: 1,RAINFALL\n**UNITS: 1,mm/h\n**CONSTANTS: 3,START,END,INTERVAL\n*CSTART\n2601050000 2601050640 2\n*CEND\n${values.join(' ')}\n`,'utf8');
 }
 async function verifyRealFlowSurveyReference(){
   if(liveMode)return null;
@@ -1343,7 +1343,7 @@ try{
     return Math.abs(first-1.58)<1e-9&&String(chart?.layout?.yaxis?.title?.text||'').includes('(mm)');
   },null,{timeout:60000});
   if(await genericUnit.inputValue()!=='mm')throw new Error('Selected unit was not retained independently.');
-  const genericUnitProvenance=(await genericUnit.locator('xpath=ancestor::div[contains(@class,"series-semantics-row")]').textContent())||'';
+  const genericUnitProvenance=await genericUnit.evaluate(el=>el.closest('.series-semantics-row')?.textContent||'');
   if(!genericUnitProvenance.includes('Assigned by user')||genericUnitProvenance.includes('Source mm')){
     throw new Error('Unitless generic data must distinguish user-assigned units from source provenance: '+genericUnitProvenance);
   }
@@ -1354,6 +1354,9 @@ try{
   await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('generic-model-2.csv')&&row.textContent.includes('Ready')),null,{timeout:60000});
   const genericModel2=await optionValue('#modelSelect','generic-model-2.csv — Value');
   if(!genericModel2)throw new Error('Second generic model file was not exposed as a mappable numeric series.');
+  // Imports may suggest an Observed mapping. This is deliberately a model-only
+  // selection-order test; establish that role explicitly before counting rows.
+  await page.selectOption('#observedSelect','');
   await page.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===1,null,{timeout:30000});
   const genericRowsBeforeSecondMapping=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].map(row=>row.textContent));
   if(genericRowsBeforeSecondMapping.length!==1||!genericRowsBeforeSecondMapping[0].includes('generic-model.csv — Value')||genericRowsBeforeSecondMapping[0].includes('generic-model-2.csv')){
@@ -1385,7 +1388,7 @@ try{
     select.value='level';
     select.dispatchEvent(new Event('change',{bubbles:true}));
   },genericModel2);
-  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level'),null,{timeout:30000});
+  await page.waitForFunction(key=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key)?.value==='level',genericModel2,{timeout:30000});
   const independentSemantics=await page.evaluate(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].map(select=>({key:select.dataset.seriesQuantityKey,value:select.value})));
   if(independentSemantics.length!==2||independentSemantics.some(row=>row.value!=='level')){
     throw new Error('Generic model interpretation must remain independent for every loaded file: '+JSON.stringify(independentSemantics));
@@ -1529,6 +1532,9 @@ try{
   await page.click('#modelPickerTrigger');
 
   await page.setViewportSize({width:1024,height:768});
+  // Plotly's responsive resize is asynchronous; inspect containment only once
+  // the existing graph has adapted to the new viewport.
+  await page.waitForFunction(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1,null,{timeout:10000});
   const constrainedMapping=await page.evaluate(()=>({
     overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
     panelWidth:document.querySelector('#seriesSemanticsPanel')?.getBoundingClientRect().width||0,
@@ -1553,23 +1559,25 @@ try{
   if(detectedUnits.length!==3||detectedUnits.some(row=>row.value!=='m'||!row.label.includes('Detected m'))){
     throw new Error('Explicit header units must be preselected and attributed for each independent series: '+JSON.stringify(detectedUnits));
   }
-  await page.evaluate(key=>{
+  const interpretationBusy=await page.evaluate(key=>{
     const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key);
     if(!select)throw new Error('Observed interpretation selector missing.');
     select.value='depth';
     select.dispatchEvent(new Event('change',{bubbles:true}));
+    return [...select.closest('.series-semantics-row').querySelectorAll('select')].every(node=>node.disabled);
   },interpretObserved);
+  if(!interpretationBusy)throw new Error('Quantity and unit controls must prevent overlapping changes while this row is being updated.');
   await page.waitForFunction(key=>{
     const rows=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')];
     const observed=rows.find(node=>node.dataset.seriesQuantityKey===key);
-    return observed?.value==='depth'&&rows.filter(node=>node.dataset.seriesQuantityKey!==key).every(node=>node.value==='level');
+    return document.querySelector('#mappingStatus')?.textContent.includes('classified as depth')&&observed?.value==='depth'&&rows.filter(node=>node.dataset.seriesQuantityKey!==key).every(node=>node.value==='level');
   },interpretObserved,{timeout:30000});
   await page.evaluate(key=>{
     const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].find(node=>node.dataset.seriesQuantityKey===key);
     select.value='level';
     select.dispatchEvent(new Event('change',{bubbles:true}));
   },interpretObserved);
-  await page.waitForFunction(()=>[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].every(node=>node.value==='level'),null,{timeout:30000});
+  await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level')&&[...document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]')].every(node=>node.value==='level'),null,{timeout:30000});
   await page.evaluate(key=>{
     const select=[...document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]')].find(node=>node.dataset.seriesUnitKey===key);
     if(!select)throw new Error('Observed unit selector missing.');
@@ -2568,10 +2576,15 @@ try{
   await page.selectOption('#spillModelSelect',modelDepth);
   await page.fill('#obsThreshold','1.0');
   await page.fill('#modelThreshold','1.0');
-  await page.click('#addExclusionBtn');
-  await page.fill('.ex-row [data-field="start"]','2026-01-01T00:08');
-  await page.fill('.ex-row [data-field="end"]','2026-01-01T00:10');
-  await page.fill('.ex-row [data-field="reason"]','Automated acceptance-test exclusion');
+  // Install the complete fixture in one browser task, so a pending threshold
+  // redraw cannot evaluate a half-entered exclusion between separate RPCs.
+  await page.evaluate(()=>{
+    document.querySelector('#addExclusionBtn').click();
+    for(const [field,value] of [['start','2026-01-01T00:08'],['end','2026-01-01T00:10'],['reason','Automated acceptance-test exclusion']]){
+      const input=document.querySelector('.ex-row [data-field="'+field+'"]');
+      input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+  });
   await page.click('#runSpillsBtn');
   await page.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in'),null,{timeout:60000});
   await page.waitForFunction(()=>!document.body.classList.contains('operation-busy'),null,{timeout:10000});
