@@ -117,7 +117,7 @@ details.subpanel[open]>summary{margin-bottom:12px}
 .v2-monthly-detail summary{cursor:pointer;color:#526b80;font-size:11px;font-weight:600}
 .v2-monthly-detail .table-wrap{margin-top:7px}
 .v2-empty{padding:14px;border:1px dashed #d4dee6;border-radius:6px;color:#718393;background:#fbfcfd;font-size:11.5px}
-.spill-annual-compare .data-table{min-width:1180px}
+.spill-annual-compare .data-table{min-width:620px}
 .spill-compare-summary strong{font-size:13px}
 .spill-rag{display:inline-flex;align-items:center;justify-content:center;min-width:92px;padding:3px 7px;border-radius:999px;font-size:10.5px;font-weight:750;line-height:1.25}
 .spill-rag-green{background:#eaf7ef;color:#22603d;border:1px solid #c7e5d2}
@@ -183,3 +183,32 @@ footer{max-width:1600px;padding:0 26px}
 
 .global-operation-cancel{pointer-events:auto;align-self:center;padding:6px 9px;font-size:10.5px}
 .global-operation-cancel:disabled{opacity:.55;cursor:wait}
+
+#pwSpillResultsSurface .two-col{grid-template-columns:1fr}
+.spill-year-summary .data-table{min-width:0}
+.spill-month-grid .data-table{min-width:720px;table-layout:fixed;font-size:11px}
+.spill-month-grid th:first-child{width:125px}
+.spill-month-grid td,.spill-month-grid th{padding:6px 4px;text-align:center;letter-spacing:0;text-transform:none}
+.spill-month-grid th:first-child{text-align:left}
+.spill-month-grid small{display:block;font-size:9px}
+.spill-month-green{background:#eaf7ef;color:#22603d}
+.spill-month-amber{background:#fff6df;color:#7b5b0c}
+.spill-month-red{background:#fff0ef;color:#8b3430}
+
+.spill-local-basis{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:8px}
+.spill-local-basis label{display:flex;flex-direction:row;align-items:center;font-size:11px;font-weight:400}
+.spill-local-basis input{width:auto;min-height:0}
+#pwSpillResultsSurface .spill-year-summary .data-table{min-width:0}
+#pwSpillResultsSurface .spill-annual-compare .data-table{min-width:620px}
+#pwSpillResultsSurface .data-table th,#pwSpillResultsSurface .data-table td{padding:6px 8px;font-size:11px;line-height:17px}
+#pwSpillResultsSurface .spill-month-grid .data-table th,#pwSpillResultsSurface .spill-month-grid .data-table td{padding:6px 4px}
+#pwSpillResultsSurface h4{margin:12px 0 6px;font-size:12px}
+@media(max-width:650px){
+  #tab-spills .panel-head{flex-wrap:wrap}
+  #tab-spills .panel-head .actions{flex-wrap:wrap;justify-content:flex-start}
+  #tab-spills .pw-surface-head{flex-wrap:wrap}
+}
+@media(max-width:650px){
+  #tab-spills .subhead{flex-wrap:wrap}
+  #tab-spills .subhead .btn{margin-left:0}
+}

@@ -373,12 +373,43 @@ def spill_assessment(df, value_col, threshold, *, start=None, end=None, max_gap_
             row["duration_hours"] = None
         yearly_rows.append(row)
     yearly = pd.DataFrame(yearly_rows)
+    # Keep zero-spill months distinct from months with no assessable data.
+    # Slice with bracketing samples so threshold interpolation at month edges
+    # matches the whole-series calculation without rescanning it for each month.
+    monthly_rows = []
+    if physical.get("analysis_start") is not None and physical.get("analysis_end") is not None:
+        frame = df[["timestamp", value_col]].copy()
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
+        frame = frame.dropna(subset=["timestamp"]).sort_values("timestamp").drop_duplicates("timestamp", keep="last")
+        stamps = frame["timestamp"]
+        count_map = {(int(r.year), int(r.month)): int(r.spill_count) for r in counts.itertuples()}
+        duration_map = {(int(r.year), int(r.month)): float(r.duration_hours) for r in durations.itertuples()}
+        cursor, stop = pd.Timestamp(physical["analysis_start"]), pd.Timestamp(physical["analysis_end"])
+        while cursor < stop:
+            edge = min(stop, (cursor.to_period("M") + 1).start_time)
+            left = max(0, int(stamps.searchsorted(cursor, side="left")) - 1)
+            right = min(len(frame), int(stamps.searchsorted(edge, side="right")) + 1)
+            coverage = detect_spill_intervals(frame.iloc[left:right], value_col, threshold,
+                                             start=cursor, end=edge, max_gap_seconds=max_gap_seconds,
+                                             exclusions=exclusions)
+            status = count_status(coverage)
+            key = (cursor.year, cursor.month)
+            monthly_rows.append(dict(year=cursor.year, month=cursor.month,
+                spill_count=None if status == "unavailable" else count_map.get(key, 0),
+                duration_hours=None if status == "unavailable" else duration_map.get(key, 0.0),
+                analysis_start=cursor.isoformat(), analysis_end=edge.isoformat(),
+                requested_hours=(edge-cursor).total_seconds()/3600,
+                valid_hours=coverage.get("valid_seconds", 0.0)/3600,
+                unknown_hours=coverage["unknown_seconds"]/3600,
+                excluded_hours=coverage["excluded_seconds"]/3600, count_status=status))
+            cursor = edge
     return {
         **physical,
         "counting_windows": counting,
         "monthly_counts": counts,
         "monthly_durations": durations,
         "yearly_summary": yearly,
+        "monthly_summary": pd.DataFrame(monthly_rows),
         "total_spill_count": None if physical["status"] == "unavailable" else (int(counting["spills"].sum()) if not counting.empty else 0),
         "total_spill_duration_hours": float(sum(e["duration_seconds"] for e in physical["events"]) / 3600.0),
         "count_status": count_status(physical),

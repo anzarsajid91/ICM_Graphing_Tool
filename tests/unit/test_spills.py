@@ -63,3 +63,29 @@ def test_large_vectorised_series_preserves_event_counting_semantics():
     assert len(result["events"])==2
     assert result["total_spill_count"]==2
     assert result["count_status"]=="definitive"
+
+
+def test_monthly_summary_keeps_zero_unknown_and_boundary_duration_distinct():
+    ts = pd.date_range('2026-01-31 23:00', '2026-02-01 01:00', freq='15min')
+    frame = pd.DataFrame({'timestamp': ts, 'level': 2.0})
+    result = spill_assessment(frame, 'level', 1, max_gap_seconds=900,
+                              start='2026-01-01', end='2026-03-01')
+    rows = result['monthly_summary']
+    assert list(rows.month) == [1, 2]
+    assert list(rows.duration_hours) == pytest.approx([1, 1])
+    assert rows.duration_hours.sum() == pytest.approx(result['total_spill_duration_hours'])
+    assert rows.spill_count.sum() == result['total_spill_count']
+    assert list(rows.valid_hours) == pytest.approx([1, 1])
+    assert all(rows.unknown_hours > 0)
+    assert all(rows.count_status == 'partial/unknown-gap')
+
+
+def test_monthly_summary_includes_dry_and_unavailable_months():
+    frame = pd.DataFrame({'timestamp': pd.date_range('2026-01-01', '2026-02-01', freq='h'), 'level': 0.0})
+    result = spill_assessment(frame, 'level', 1, max_gap_seconds=3600, end='2026-03-01')
+    jan, feb = result['monthly_summary'].to_dict('records')
+    assert jan['spill_count'] == 0 and jan['duration_hours'] == 0
+    assert jan['count_status'] == 'definitive'
+    assert pd.isna(feb['spill_count']) and pd.isna(feb['duration_hours'])
+    assert feb['count_status'] == 'unavailable'
+    assert feb['unknown_hours'] == 28*24
