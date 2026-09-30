@@ -589,12 +589,14 @@ function genericSeriesSemanticsRows(){
   const rows=[],seen=new Set();
   const observedKey=$('observedSelect')?.value||'';
   const modelKeys=orderedSelectedModelKeys();
-  const selectedKeys=[observedKey,...modelKeys].filter(Boolean);
+  const rainKey=$('rainSelect')?.value||'';
+  const selectedKeys=[observedKey,...modelKeys,rainKey].filter(Boolean);
   const roleFor=key=>{
     const roles=[];
     if(key===observedKey)roles.push('Observed');
     const modelIndex=modelKeys.indexOf(key);
     if(modelIndex>=0)roles.push('Model '+(modelIndex+1));
+    if(key===rainKey)roles.push('Rainfall');
     return roles.join(' + ');
   };
   for(const key of selectedKeys){
@@ -616,7 +618,7 @@ function genericSeriesSemanticsRows(){
     seen.add(key);
     rows.push({
       role:roleFor(key),key,mapped,
-      quantity:String(state.seriesQuantityOverrides.get(key)||declared||'').toLowerCase(),
+      quantity:String(state.seriesQuantityOverrides.get(key)||declared||(key===rainKey?'rainfall':'')).toLowerCase(),
       unit:selectedUnit,
       sourceUnit:sourceUnit||'',
       unitSource:sourceUnit
@@ -648,16 +650,20 @@ function renderSeriesSemanticsOverrides(){
     const choices=row.locked?[declaredChoice]:options;
     const available=units[row.quantity]||[];
     const unitKey=value=>String(value||'').toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
-    const current=available.find(value=>unitKey(value)===unitKey(normaliseDisplayUnit(row.quantity,row.unit)))||'';
-    const unitChoices=available;
-    return '<div class="series-semantics-row"><div class="series-semantics-source" title="'+esc(source)+'"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity. Quantity reinterpretation is protected; compatible display units remain selectable.">Quantity declared by source</small>':'')+'</div><label><span class="series-semantics-quantity-label">Interpret Value as</span><select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label><span class="series-semantics-unit-label">Unit'+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'</span><select data-series-unit-key="'+esc(row.key)+'" aria-label="Unit — '+esc(source)+'"'+(!available.length?' disabled':'')+'><option value="">'+(row.sourceUnit?'Use source unit':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
+    const sourceChoice=normaliseDisplayUnit(row.quantity,row.sourceUnit);
+    const unitChoices=row.quantity==='rainfall'&&sourceChoice&&!available.includes(sourceChoice)
+      ?[sourceChoice,...available]:available;
+    const current=unitChoices.find(value=>unitKey(value)===unitKey(normaliseDisplayUnit(row.quantity,row.unit)))||'';
+    return '<div class="series-semantics-row"'+(row.quantity==='rainfall'?' title="Rainfall units are assigned only. No rainfall unit conversion is applied."':'')+'><div class="series-semantics-source" title="'+esc(source)+'"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.quantity==='rainfall'?' <small>No rainfall unit conversion is applied.</small>':'')+(row.locked?' <small title="Native source metadata declares this quantity. Quantity reinterpretation is protected; compatible display units remain selectable.">Quantity declared by source</small>':'')+'</div><label><span class="series-semantics-quantity-label">Interpret Value as</span><select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label><span class="series-semantics-unit-label">Unit'+(row.quantity==='rainfall'?' <small>(assignment only; no conversion)</small>':'')+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'</span><select data-series-unit-key="'+esc(row.key)+'" aria-label="Unit — '+esc(source)+'"'+(!available.length?' disabled':'')+'><option value="">'+(row.sourceUnit?'Use source unit':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
   }).join('');
   target.querySelectorAll('[data-series-quantity-key]').forEach(select=>select.addEventListener('change',()=>{
     void applySeriesSemanticsChange(select.dataset.seriesQuantityKey,select.value||null);
   }));
   target.querySelectorAll('[data-series-unit-key]').forEach(select=>select.addEventListener('change',()=>{
     const key=select.dataset.seriesUnitKey;
-    void applySeriesSemanticsChange(key,seriesQuantity(mappingObject(key).item,mappingObject(key).col),{unit:select.value});
+    const mapped=mappingObject(key);
+    const quantity=seriesQuantity(mapped.item,mapped.col)||(key===$('rainSelect')?.value?'rainfall':null);
+    void applySeriesSemanticsChange(key,quantity,{unit:select.value});
   }));
   target.querySelectorAll('[data-series-quantity-key],[data-series-unit-key]').forEach(select=>{
     const key=select.dataset.seriesQuantityKey||select.dataset.seriesUnitKey;

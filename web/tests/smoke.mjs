@@ -442,7 +442,22 @@ async function verifyStationAThresholdChain(){
     await probe.selectOption('#observedSelect',selected.observed);
     await probe.selectOption('#modelSelect',[]);
     await probe.selectOption('#rainSelect',selected.rain);
-    await probe.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]').length===1,null,{timeout:30000});
+    await probe.waitForFunction(()=>document.querySelectorAll('#seriesSemanticsRows select[data-series-unit-key]').length===2,null,{timeout:30000});
+
+    const stationRainBefore=await probe.evaluate(async key=>{
+      const mapped=mappingObject(key);
+      return engine.call('series_data',{path:mapped.item.virtualPath,column:mapped.col,max_points:30});
+    },selected.rain);
+    await probe.evaluate(key=>{
+      const select=[...document.querySelectorAll('#seriesSemanticsRows [data-series-unit-key]')].find(x=>x.dataset.seriesUnitKey===key);
+      select.value='mm/h';select.dispatchEvent(new Event('change',{bubbles:true}));
+    },selected.rain);
+    await probe.waitForFunction(key=>state.seriesUnitOverrides.get(key)==='mm/h'&&!state.seriesSemanticsPending.has(key),selected.rain,{timeout:30000});
+    const stationRainAfter=await probe.evaluate(async key=>{
+      const mapped=mappingObject(key),row=[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].find(x=>x.querySelector('[data-series-unit-key]')?.dataset.seriesUnitKey===key);
+      return {data:await engine.call('series_data',{path:mapped.item.virtualPath,column:mapped.col,max_points:30}),unit:seriesUnit(mapped.item,mapped.col),note:row.textContent};
+    },selected.rain);
+    if(JSON.stringify(stationRainBefore.value)!==JSON.stringify(stationRainAfter.data.value)||stationRainAfter.unit!=='mm/h'||!stationRainAfter.note.includes('No rainfall unit conversion is applied.'))throw new Error('Station A rainfall assignment must preserve numeric values and show the no-conversion note.');
 
     // Real Station A acceptance for display-unit selection: preserve the
     // detected metre source unit, display the graph in millimetres, then return
@@ -1309,7 +1324,7 @@ try{
   await page.selectOption('#rainSelect','');
   await page.waitForFunction(()=>document.querySelector('#seriesSemanticsPanel')?.hidden===false&&document.querySelectorAll('#seriesSemanticsRows select[data-series-quantity-key]').length===1);
   const genericSemanticsText=(await page.locator('#seriesSemanticsPanel').textContent())||'';
-  if(!genericSemanticsText.includes('Only selected Observed / Modelled series')||!genericSemanticsText.includes('without guessing'))throw new Error('Mapped-series panel must state the selected-only and no-guessing contracts explicitly.');
+  if(!genericSemanticsText.includes('Selected Observed, Modelled and Rainfall series')||!genericSemanticsText.includes('unknown units are assigned to raw values')||!genericSemanticsText.includes('no rainfall unit conversion is applied'))throw new Error('Mapped-series panel must state the selected-only and no-guessing contracts explicitly.');
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&!document.querySelector('#applyMappingBtn')?.disabled,null,{timeout:60000});
   await precisionRoute('data','time-series');
