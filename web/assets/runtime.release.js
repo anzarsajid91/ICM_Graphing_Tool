@@ -93,7 +93,7 @@ function seriesUnit(item,col){
 }
 function unitToCanonicalFactor(quantity,unit){
   const q=String(quantity||'').toLowerCase();
-  const u=String(unit||'').trim().toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
+  const u=String(normaliseDisplayUnit(quantity,unit)||'').trim().toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
   if((q==='depth'||q==='level')&&u==='m')return 1;
   if((q==='depth'||q==='level')&&u==='mm')return .001;
   if(q==='flow'&&['m3/s','m3s'].includes(u))return 1;
@@ -107,11 +107,11 @@ function unitToCanonicalFactor(quantity,unit){
 function normaliseDisplayUnit(quantity,unit){
   const q=String(quantity||'').toLowerCase();
   const u=String(unit||'').trim().toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
-  if((q==='depth'||q==='level')&&u==='m')return 'm';
-  if((q==='depth'||q==='level')&&u==='mm')return 'mm';
-  if(q==='flow'&&['m3/s','m3s'].includes(u))return 'm³/s';
+  if((q==='depth'||q==='level')&&['m','m_ad','mad','maod'].includes(u))return 'm';
+  if((q==='depth'||q==='level')&&['mm','millimetre','millimetres','millimeter','millimeters'].includes(u))return 'mm';
+  if(q==='flow'&&['m3/s','m3s','cumec','cumecs'].includes(u))return 'm³/s';
   if(q==='flow'&&['l/s','ls','lps'].includes(u))return 'L/s';
-  if(q==='flow'&&['ml/d','mld'].includes(u))return 'Ml/d';
+  if(q==='flow'&&['ml/d','mld','megalitre/d','megalitres/d','megaliter/d','megaliters/d'].includes(u))return 'Ml/d';
   if(q==='flow'&&['m3/d','m3d'].includes(u))return 'm³/d';
   if(q==='velocity'&&['m/s','ms','mps'].includes(u))return 'm/s';
   if(q==='rainfall'&&['mm/h','mmh'].includes(u))return 'mm/h';
@@ -643,7 +643,7 @@ function renderSeriesSemanticsOverrides(){
     const choices=row.locked?[declaredChoice]:options;
     const available=units[row.quantity]||[];
     const unitKey=value=>String(value||'').toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
-    const current=available.find(value=>unitKey(value)===unitKey(row.unit))||'';
+    const current=available.find(value=>unitKey(value)===unitKey(normaliseDisplayUnit(row.quantity,row.unit)))||'';
     const unitChoices=available;
     return '<div class="series-semantics-row"><div class="series-semantics-source"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.locked?' <small title="Native source metadata declares this quantity. Quantity reinterpretation is protected; compatible display units remain selectable.">Quantity declared by source</small>':'')+'</div><label>Interpret Value as<select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label>Unit'+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'<select data-series-unit-key="'+esc(row.key)+'" aria-label="Unit — '+esc(source)+'"'+(!available.length?' disabled':'')+'><option value="">'+(row.sourceUnit?'Use source unit':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
   }).join('');

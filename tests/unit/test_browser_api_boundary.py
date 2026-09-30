@@ -287,3 +287,26 @@ def test_known_observed_and_unresolved_model_can_compare_as_raw_numeric_values(t
     assert result["comparison_unit"] is None
     assert result["metrics"]["pairs"] == 3
     assert len(result["paired"]) == 3
+
+
+def test_flow_display_units_preserve_detected_values_and_integrated_volume(tmp_path):
+    import json
+    import pytest
+    from icm_workbench.browser_api import clear_cache, series_data, set_series_quantity
+
+    source = tmp_path / 'flow-display.csv'
+    source.write_text(
+        'timestamp,Flow (L/s)\n'
+        '2026-01-01T00:00:00,1000\n'
+        '2026-01-01T01:00:00,1000\n', encoding='utf-8'
+    )
+    clear_cache()
+    for unit in ['m³/s', 'Ml/d', 'm³/d', 'L/s', 'm³/s']:
+        result = json.loads(set_series_quantity(str(source), 'Flow (L/s)', 'flow', unit=unit))
+        data = json.loads(series_data(str(source), 'Flow (L/s)', max_gap_seconds=3600))
+        assert result['detected_unit'] == 'L/s'
+        assert result['display_unit'] == unit
+        assert result['conversion_factor'] == pytest.approx(.001)
+        assert data['value'] == pytest.approx([1., 1.])
+        assert data['statistics']['total'] == pytest.approx(3600.)
+        assert data['statistics']['total_unit'] == 'm³'

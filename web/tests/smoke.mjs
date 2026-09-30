@@ -474,7 +474,7 @@ async function verifyStationAThresholdChain(){
       throw new Error('Changing a declared-series display unit must not unlock quantity reinterpretation: '+JSON.stringify(stationQuantityLock));
     }
     await probe.click('#applyMappingBtn');
-    await probe.waitForFunction(()=>document.querySelector('#timeChart')?.data?.length>0&&window.__ICM_WORKBENCH__?.lastGraphStatistics?.length>0,null,{timeout:120000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&document.querySelector('#mappingStatus')?.textContent.startsWith('Observed:')&&document.querySelector('#timeChart')?.data?.length>0&&window.__ICM_WORKBENCH__?.lastGraphStatistics?.length>0,null,{timeout:120000});
     await nav('data','time-series');
     const stationMmDisplay=await probe.evaluate(()=>{
       const chart=document.querySelector('#timeChart');
@@ -514,7 +514,7 @@ async function verifyStationAThresholdChain(){
     },selected.observed);
     await probe.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('classified as level · m'),null,{timeout:30000});
     await probe.click('#applyMappingBtn');
-    await probe.waitForFunction(()=>document.querySelector('#timeChart')?.data?.length>0&&window.__ICM_WORKBENCH__?.lastGraphStatistics?.length>0,null,{timeout:120000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&document.querySelector('#mappingStatus')?.textContent.startsWith('Observed:')&&document.querySelector('#timeChart')?.data?.length>0&&window.__ICM_WORKBENCH__?.lastGraphStatistics?.length>0,null,{timeout:120000});
     await nav('data','time-series');
     const support=await probe.evaluate(()=>{
       const row=(window.__ICM_WORKBENCH__.lastGraphStatistics||[]).find(x=>['depth','level'].includes(String(x.statistics?.quantity||'').toLowerCase()));
@@ -849,18 +849,23 @@ async function verifyPlotlyEngineeringEnhancements(){
 
     const support=await probe.evaluate(()=> {
       const row=(window.__ICM_WORKBENCH__.lastGraphStatistics||[]).find(x=>String(x.statistics?.quantity||'').toLowerCase()==='depth');
-      return row?{min:Number(row.statistics.minimum),max:Number(row.statistics.maximum)}:null;
+      return row?{min:Number(row.statistics.minimum),max:Number(row.statistics.maximum),factor:row.factor,unit:row.unit}:null;
     });
     if(!support||!Number.isFinite(support.min)||!Number.isFinite(support.max))throw new Error('FM01 depth support unavailable for threshold regression.');
+    if(support.factor!==1000||support.unit!=='mm')throw new Error('FM01 depth must display in source millimetres while statistics remain canonical: '+JSON.stringify(support));
     const threshold=Number((support.min+(support.max-support.min)*0.65).toPrecision(10));
+    // Threshold inputs/calculations are explicitly in canonical metres; only
+    // the Plotly shape is converted onto the selected millimetre axis.
+    const displayThreshold=threshold*support.factor;
     await probe.fill('#graphObsThreshold',String(threshold));
-    await probe.waitForFunction(value=>(document.querySelector('#timeChart')?.layout?.shapes||[]).some(s=>s.type==='line'&&Math.abs(Number(s.y0)-value)<1e-9),threshold,{timeout:60000});
+    await probe.waitForFunction(value=>(document.querySelector('#timeChart')?.layout?.shapes||[]).some(s=>s.type==='line'&&Math.abs(Number(s.y0)-value)<1e-9),displayThreshold,{timeout:60000});
     await probe.click('#refreshGraphBtn');
-    await probe.waitForFunction(value=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&(document.querySelector('#timeChart')?.layout?.shapes||[]).some(s=>s.type==='line'&&Math.abs(Number(s.y0)-value)<1e-9),threshold,{timeout:120000});
+    await probe.waitForFunction(value=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&(document.querySelector('#timeChart')?.layout?.shapes||[]).some(s=>s.type==='line'&&Math.abs(Number(s.y0)-value)<1e-9),displayThreshold,{timeout:120000});
     await nav('spills','assessment');
     await probe.click('#runSpillsBtn');
     await probe.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in')&&Boolean(state.spills?.observed),null,{timeout:120000});
-    const observedOnly=await probe.evaluate(()=>({count:state.spills.observed?.total_spill_count,duration:state.spills.observed?.total_spill_duration_hours,model:Boolean(state.spills.model)}));
+    const observedOnly=await probe.evaluate(()=>({count:state.spills.observed?.total_spill_count,duration:state.spills.observed?.total_spill_duration_hours,model:Boolean(state.spills.model),threshold:state.spillSnapshot?.config?.analysis?.observed_threshold}));
+    if(Math.abs(Number(observedOnly.threshold)-threshold)>1e-12)throw new Error('Spill calculations must retain the canonical metre threshold: '+JSON.stringify(observedOnly));
     if(observedOnly.model||!Number.isFinite(Number(observedOnly.count))||!Number.isFinite(Number(observedOnly.duration)))throw new Error('Observed-only threshold must calculate spills without a model: '+JSON.stringify(observedOnly));
 
     await nav('data','time-series');
@@ -1542,7 +1547,7 @@ try{
     throw new Error('Name-inferred observed/model CSV series must each show an independent Level interpretation default: '+JSON.stringify(inferredSelectors));
   }
   const detectedUnits=await page.locator('#seriesSemanticsRows select[data-series-unit-key]').evaluateAll(nodes=>nodes.map(node=>({value:node.value,label:node.closest('label')?.textContent||''})));
-  if(detectedUnits.length!==3||detectedUnits.some(row=>row.value!=='m'||!row.label.includes('Column header'))){
+  if(detectedUnits.length!==3||detectedUnits.some(row=>row.value!=='m'||!row.label.includes('Detected m'))){
     throw new Error('Explicit header units must be preselected and attributed for each independent series: '+JSON.stringify(detectedUnits));
   }
   await page.evaluate(key=>{

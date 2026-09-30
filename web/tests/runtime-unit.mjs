@@ -57,6 +57,22 @@ const sandbox={
 vm.createContext(sandbox);
 vm.runInContext(source,sandbox);
 
+// Every unit spelling accepted by the parser must select the correct display
+// unit and inverse scale; otherwise reliable header units can be misplotted.
+for(const [quantity,unit,display,factor] of [
+  ['depth','millimetres','mm',1000],
+  ['level','millimeters','mm',1000],
+  ['level','m AD','m',1],
+  ['flow','cumecs','m³/s',1],
+  ['flow','megalitres/d','Ml/d',86.4],
+  ['flow','L/s','L/s',1000],
+  ['flow','m³/d','m³/d',86400],
+]){
+  assert.equal(vm.runInContext(`normaliseDisplayUnit(${JSON.stringify(quantity)},${JSON.stringify(unit)})`,sandbox),display);
+  const actual=vm.runInContext(`canonicalToDisplayFactor(${JSON.stringify(quantity)},${JSON.stringify(unit)})`,sandbox);
+  assert(Math.abs(actual-factor)<1e-10,`${quantity} ${unit}: ${actual} != ${factor}`);
+}
+
 await vm.runInContext(`(async()=>{
   const boot=await engine.boot();
   window.bootInfo=boot;
