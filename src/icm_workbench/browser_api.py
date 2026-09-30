@@ -985,6 +985,7 @@ def spill_result(path, column, threshold, exclusions_json="[]", max_gap_seconds=
     payload["monthly_counts"] = _records(result.get("monthly_counts"))
     payload["monthly_durations"] = _records(result.get("monthly_durations"))
     payload["yearly_summary"] = _records(result.get("yearly_summary"))
+    payload["monthly_summary"] = _records(result.get("monthly_summary"))
     payload["events"] = [_jsonable(e) for e in result.get("events", [])]
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 

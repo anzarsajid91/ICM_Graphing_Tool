@@ -1195,17 +1195,37 @@
     return result?.yearly_summary || [];
   }
 
+  const spillMonths=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function spillMonthlyGrid(results,field,comparison=false){
+    const years=[...new Set(results.flatMap(([,r])=>(r?.monthly_summary||[]).map(x=>Number(x.year))))].sort((a,b)=>a-b);
+    if(!years.length)return '<div class="v2-empty">No assessed months.</div>';
+    const rows=years.flatMap(year=>results.map(([label,result])=>{
+      const months=new Map((result?.monthly_summary||[]).filter(x=>Number(x.year)===year).map(x=>[Number(x.month),x]));
+      return `<tr><th scope="row">${year} · ${esc(label)}</th>${spillMonths.map((_,i)=>{
+        const row=months.get(i+1),value=row?.[field];
+        let title=row?String(row.count_status||''):'Outside assessment period',rag=null;
+        if(comparison){
+          const other=(results[0][1]?.monthly_summary||[]).find(x=>Number(x.year)===year&&Number(x.month)===i+1);
+          const model=(results[1][1]?.monthly_summary||[]).find(x=>Number(x.year)===year&&Number(x.month)===i+1);
+          const support=spillPeriodSupport(other,model,results[0][1],results[1][1]);
+          title=support.reason;
+          if(label==='Modelled'&&support.comparable)rag=spillDeviationRag(other?.[field],model?.[field]);
+        }
+        return `<td class="${rag?.rag?'spill-month-'+rag.rag.toLowerCase():''}" title="${esc(title)}">${row&&value!=null?fmt(value,field==='spill_count'?0:2):'—'}${rag?.rag?`<small>${esc(rag.rag)}</small>`:''}</td>`;
+      }).join('')}</tr>`;
+    })).join('');
+    return '<div class="table-wrap spill-month-grid"><table class="data-table"><thead><tr><th>Year / series</th>'+spillMonths.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
   function annualTable(result) {
     if (!result) return '<div class="v2-empty">Not calculated for this dataset.</div>';
-    const rows = annualRows(result);
-    const annual = rows.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Year</th><th>12/24 spill count</th><th>Spill duration (hr)</th><th>Valid h</th><th>Unknown h</th><th>Excluded h</th><th>Requested h</th><th>Status</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${x.year}</td><td>${fmt(x.spill_count,0)}</td><td>${fmt(x.duration_hours,2)}</td><td>${fmt(x.valid_hours,2)}</td><td>${fmt(x.unknown_hours,2)}</td><td>${fmt(x.excluded_hours,2)}</td><td>${fmt(x.requested_hours,2)}</td><td>${esc(x.count_status)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="v2-empty">No assessed calendar years.</div>';
-    const monthly = monthlyTable(result);
-    return `<div class="v2-yearly-title"><h4>Yearly spill summary</h4><span>${esc(result.count_status||result.status||'')}</span></div>${annual}<details class="v2-monthly-detail"><summary>Monthly detail</summary>${monthly}</details>`;
+    const rows=annualRows(result);
+    const annual=rows.length?'<div class="table-wrap spill-year-summary"><table class="data-table"><thead><tr><th>Year</th><th>12/24 count</th><th>Duration (h)</th></tr></thead><tbody>'+rows.map(x=>`<tr title="${esc(x.count_status||'')}"><td>${x.year}</td><td>${fmt(x.spill_count,0)}</td><td>${fmt(x.duration_hours,2)}</td></tr>`).join('')+'</tbody></table></div>':'<div class="v2-empty">No assessed calendar years.</div>';
+    return '<div class="v2-yearly-title"><h4>Yearly spill summary</h4></div>'+annual+'<details class="v2-monthly-detail"><summary>Monthly detail</summary><h4>12/24 spill count</h4>'+spillMonthlyGrid([['Count',result]],'spill_count')+'<h4>Spill duration (h)</h4>'+spillMonthlyGrid([['Duration',result]],'duration_hours')+'</details>';
   }
 
   function spillDeviationRag(observed,model){
     const o=Number(observed),m=Number(model);
-    if(!Number.isFinite(o)||!Number.isFinite(m)||o<0||m<0)return {deviation:null,rag:null,label:'Not comparable'};
+    if(observed==null||model==null||!Number.isFinite(o)||!Number.isFinite(m)||o<0||m<0)return {deviation:null,rag:null,label:'Not comparable'};
     if(o===0&&m===0)return {deviation:0,rag:'Green',label:'0.0%'};
     if(o===0)return {deviation:Infinity,rag:'Red',label:'∞'};
     const deviation=Math.abs(m-o)/Math.abs(o)*100;
@@ -1215,10 +1235,10 @@
   function spillSupport(result){
     if(!result)return null;
     const hours=(hourKey,secondKey)=>{
-      const h=Number(result?.[hourKey]);if(Number.isFinite(h))return h;
-      const s=Number(result?.[secondKey]);return Number.isFinite(s)?s/3600:null;
+      const h=result?.[hourKey];if(h!=null&&Number.isFinite(Number(h)))return Number(h);
+      const s=result?.[secondKey];return s!=null&&Number.isFinite(Number(s))?Number(s)/3600:null;
     };
-    return {valid:hours('valid_hours','valid_seconds'),unknown:hours('unknown_hours','unknown_seconds'),excluded:hours('excluded_hours','excluded_seconds'),requested:hours('requested_hours','requested_seconds')};
+    return {valid:hours('valid_hours','valid_seconds'),unknown:hours('unknown_hours','unknown_seconds'),excluded:hours('excluded_hours','excluded_seconds'),requested:hours('requested_hours','analysis_seconds')};
   }
   function spillExclusionMask(result){
     return (result?.exclusion_audit||[])
@@ -1264,9 +1284,9 @@
       ?{comparable:true,reason:'Observed and modelled use the same deliberate exclusion mask; deviations are compared on matched assessable support.'}
       :{comparable:true,reason:'Observed and modelled assessment support is aligned.'};
   }
-  function spillRagCell(result){
-    if(!result?.rag)return '<span class="spill-rag-na">Not comparable</span>';
-    return '<span class="spill-rag spill-rag-'+result.rag.toLowerCase()+'">'+esc(result.rag)+' · '+esc(result.label)+'</span>';
+  function spillRagCell(result,reason='Both series need aligned assessable support.'){
+    if(!result?.rag)return '<span class="spill-rag-na" title="'+esc(reason)+'">Not comparable</span>';
+    return '<span class="spill-rag spill-rag-'+result.rag.toLowerCase()+'">'+esc(result.rag)+'</span>';
   }
   window.__ICM_WORKBENCH__.spillDeviationRag=spillDeviationRag;
   window.__ICM_WORKBENCH__.spillComparisonSupport=spillComparisonSupport;
@@ -1283,34 +1303,36 @@
     if (observed && !model) return '<div class="v2-empty">A model result is optional. Select and calculate a model only when an observed/model comparison is required.</div>';
     if (!observed && model) return '<div class="v2-empty">Model-only spill assessment is shown. Add and calculate an observed Depth / Level series when an observed/model comparison is required.</div>';
     if (!observed && !model) return '<div class="v2-empty">No spill result has been calculated.</div>';
-    const overallSupport=spillComparisonSupport(observed,model);
-    const overallCount=overallSupport.comparable?spillDeviationRag(observed.total_spill_count,model.total_spill_count):null;
-    const overallDuration=overallSupport.comparable?spillDeviationRag(observed.total_spill_duration_hours,model.total_spill_duration_hours):null;
-    const summary='<div class="summary-box spill-compare-summary"><div><strong>'+spillRagCell(overallCount)+'</strong><span>Overall spill-count deviation</span></div><div><strong>'+spillRagCell(overallDuration)+'</strong><span>Overall duration deviation</span></div><div><strong>'+(overallSupport.comparable?'Comparable':'Withheld')+'</strong><span>'+esc(overallSupport.reason)+'</span></div></div>';
-    const om = new Map(annualRows(observed).map(x=>[Number(x.year),x]));
-    const mm = new Map(annualRows(model).map(x=>[Number(x.year),x]));
-    const years = [...new Set([...om.keys(),...mm.keys()])].sort((a,b)=>a-b);
-    if (!years.length) return summary+'<div class="v2-empty">No annual spill results.</div>';
+    const om=new Map(annualRows(observed).map(x=>[Number(x.year),x]));
+    const mm=new Map(annualRows(model).map(x=>[Number(x.year),x]));
+    const years=[...new Set([...om.keys(),...mm.keys()])].sort((a,b)=>a-b);
     const rows=years.map(year=>{
-      const o=om.get(year),m=mm.get(year);
-      const yearStart=`${year}-01-01T00:00:00`,yearEnd=`${year+1}-01-01T00:00:00`;
-      const yearMask=result=>spillExclusionMask(result).map(([start,end])=>[
-        start<yearStart?yearStart:start,end>yearEnd?yearEnd:end
-      ]).filter(([start,end])=>start<end);
-      const support=spillComparisonSupport(o,m,{requireMask:false});
-      if(support.comparable&&JSON.stringify(yearMask(observed))!==JSON.stringify(yearMask(model))){
-        support.comparable=false;support.reason='Observed and modelled exclusion masks differ in this year.';
-      }
+      const o=om.get(year),m=mm.get(year),support=spillPeriodSupport(o,m,observed,model);
       const count=support.comparable?spillDeviationRag(o?.spill_count,m?.spill_count):null;
       const duration=support.comparable?spillDeviationRag(o?.duration_hours,m?.duration_hours):null;
-      return `<tr><td>${year}</td><td>${fmt(o?.spill_count,0)}</td><td>${fmt(m?.spill_count,0)}</td><td>${support.comparable?esc(count.label):'—'}</td><td>${spillRagCell(count)}</td><td>${fmt(o?.duration_hours,2)}</td><td>${fmt(m?.duration_hours,2)}</td><td>${support.comparable?esc(duration.label):'—'}</td><td>${spillRagCell(duration)}</td><td title="${esc(support.reason)}">${support.comparable?'Matched':'Not comparable'}</td></tr>`;
+      return `<tr><td>${year}</td><td>${fmt(o?.spill_count,0)}</td><td>${fmt(m?.spill_count,0)}</td><td>${spillRagCell(count,support.reason)}</td><td>${fmt(o?.duration_hours,2)}</td><td>${fmt(m?.duration_hours,2)}</td><td>${spillRagCell(duration,support.reason)}</td></tr>`;
     }).join('');
-    return summary+'<p class="spill-rag-method">RAG uses absolute deviation from observed: Green ≤5%, Amber &gt;5–10%, Red &gt;10%. If observed = 0 and model &gt; 0 the deviation is treated as Red/∞. Overall RAG still requires aligned whole-series support; each yearly row is assessed independently whenever observed and modelled support for that calendar year is aligned.</p><div class="table-wrap spill-annual-compare"><table class="data-table"><thead><tr><th>Year</th><th>Observed count</th><th>Model count</th><th>Count deviation</th><th>Count RAG</th><th>Observed duration h</th><th>Model duration h</th><th>Duration deviation</th><th>Duration RAG</th><th>Support</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    return '<p class="spill-rag-method">RAG: Green ≤5%, Amber ≤10%, Red &gt;10% absolute difference from observed. Common years/months are checked independently; hover a withheld result for its reason.</p><div class="table-wrap spill-annual-compare"><table class="data-table"><thead><tr><th>Year</th><th>Observed count</th><th>Modelled count</th><th>Count RAG</th><th>Observed h</th><th>Modelled h</th><th>Duration RAG</th></tr></thead><tbody>'+rows+'</tbody></table></div><h4>Monthly comparison · 12/24 spill count</h4>'+spillMonthlyGrid([['Observed',observed],['Modelled',model]],'spill_count',true)+'<h4>Monthly comparison · spill duration (h)</h4>'+spillMonthlyGrid([['Observed',observed],['Modelled',model]],'duration_hours',true);
+  }
+
+  function spillPeriodSupport(o,m,observed,model){
+    const support=spillComparisonSupport(o,m,{requireMask:false});
+    if(!support.comparable)return support;
+    if(!o?.analysis_start||!o?.analysis_end||!m?.analysis_start||!m?.analysis_end)return {comparable:false,reason:'Period boundaries are unavailable; recalculate spills.'};
+    const start=modelClock(o.analysis_start),end=modelClock(o.analysis_end);
+    const mask=result=>spillExclusionMask(result).map(([a,b])=>[a<start?start:a,b>end?end:b]).filter(([a,b])=>a<b);
+    if(JSON.stringify(mask(observed))!==JSON.stringify(mask(model)))return {comparable:false,reason:'Observed and modelled exclusion masks differ in this period.'};
+    return support;
   }
 
   function renderSpillsV2() {
-    $('obsSpillSummary').innerHTML = spillSummaryHtml(state.spills.observed);
-    $('modelSpillSummary').innerHTML = spillSummaryHtml(state.spills.model);
+    for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
+      const local=$('spill-'+id);if(local)local.checked=Boolean($(id)?.checked);
+    }
+    $('obsSpillSummary').innerHTML = '';
+    $('obsSpillSummary').hidden = true;
+    $('modelSpillSummary').innerHTML = '';
+    $('modelSpillSummary').hidden = true;
     $('obsMonthly').innerHTML = annualTable(state.spills.observed);
     $('modelMonthly').innerHTML = annualTable(state.spills.model);
     $('spillComparison').innerHTML = annualComparison();
