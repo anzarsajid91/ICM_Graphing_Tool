@@ -51,6 +51,27 @@ def test_resolved_mm_threshold_is_converted_independently_of_canonical_values(tm
     assert result({**args, "threshold": 2500})["blocks"] == []
 
 
+def test_native_hyd_lps_and_mm_produce_si_volume_end_to_end(tmp_path):
+    paths=[]
+    for name,quantity,unit,value in [("level","U_LEVEL","mm",2000),("flow","U_FLOW","L/s",100)]:
+        path=tmp_path/f"{name}.csv"
+        path.write_text(f"FILE,TYPE=HYD\nUserSettings,{quantity},U_VALUES\nUserSettingsValues,m AD,{unit}\nP_DATETIME,P_VALUE\n01/01/2026 00:00:00,{value}\n01/01/2026 00:10:00,{value}\n")
+        paths.append(str(path))
+    r=result(dict(level_path=paths[0],level_col="value",flow_path=paths[1],flow_col="value",threshold=1000,target_count=0))
+    assert r["threshold_canonical_m"] == 1
+    assert r["screening"][0]["required_storage_m3"] == pytest.approx(60)
+
+
+def test_user_assigned_mm_units_do_not_double_convert_threshold_or_values(tmp_path):
+    args=pair(tmp_path,[0,600],[2000,2000],[100,100])
+    path=tmp_path/"unlabelled.csv"
+    pd.DataFrame({"Time":["01/01/2026 00:00:00","01/01/2026 00:10:00"],"Seconds":[0,600],"CSO01.1":[2000,2000]}).to_csv(path,index=False)
+    api.set_series_quantity(str(path),"CSO01.1","level","mm")
+    r=result({**args,"level_path":str(path),"level_col":"CSO01.1","threshold":1000})
+    assert r["threshold_canonical_m"] == 1
+    assert r["screening"][0]["required_storage_m3"] == pytest.approx(60)
+
+
 def test_excluded_period_retains_volume_but_withholds_annual_sizing(tmp_path):
     args = pair(tmp_path, [0, 300, 600], [2]*3, [100]*3)
     args["exclusions_json"] = json.dumps([{"start": "2026-01-01T00:02:00", "end": "2026-01-01T00:04:00", "reason": "outage"}])
