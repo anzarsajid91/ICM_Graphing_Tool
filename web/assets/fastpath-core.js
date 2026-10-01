@@ -295,7 +295,17 @@
     if(!head)throw new Error('Could not detect a supported timestamp column');
     const isHyd=hydSignature&&normalise(head.fields[head.timeIndex])==='p_datetime';
     if(isHyd){
-      const [quantity,unit]=hydQuantity(clean),epochs=[],timestamps=[],values=[];
+      const [quantity,fallbackUnit]=hydQuantity(clean),epochs=[],timestamps=[],values=[];
+      let keys=[],unit=fallbackUnit;
+      for(let i=0;i<head.index;i++){
+        const fields=parseCsvLine(lines[i],head.delimiter),tag=String(fields[0]||'').trim().toLowerCase();
+        if(tag==='usersettings')keys=fields.slice(1).map(x=>String(x).trim().toUpperCase());
+        if(tag==='usersettingsvalues'){
+          const index=keys.indexOf('U_VALUES');
+          if(index>=0&&String(fields[index+1]||'').trim())unit=String(fields[index+1]).trim();
+        }
+      }
+      const [canonical,factor]=canonicalUnit(quantity,unit);
       let invalid=0,duplicates=0,sentinelCount=0,nonNumeric=0;const seen=new Set();
       for(let i=head.index+1;i<lines.length;i++){
         if(!lines[i].trim())continue;
@@ -304,14 +314,14 @@
         const epoch=parseTimestamp(parts[0]);if(epoch==null){invalid+=1;continue;}
         if(seen.has(epoch))duplicates+=1;else seen.add(epoch);
         const n=numeric(parts[1]);if(n.sentinel)sentinelCount+=1;if(n.nonNumeric)nonNumeric+=1;
-        epochs.push(epoch);timestamps.push(modelClockFromEpoch(epoch));values.push(n.value);
+        epochs.push(epoch);timestamps.push(modelClockFromEpoch(epoch));values.push(n.value==null?null:n.value*(factor??1));
       }
       if(!timestamps.length)throw new Error('No valid P_DATETIME/value rows found');
-      const sorted=sortSeries(epochs,timestamps,[values]),preview=seriesPreview('value',quantity,unit,unit,sorted.seriesValues[0],sorted.timestamps,options.maxPoints);
+      const sorted=sortSeries(epochs,timestamps,[values]),preview=seriesPreview('value',quantity,unit,canonical,sorted.seriesValues[0],sorted.timestamps,options.maxPoints);
       return {
         schema_version:1,eligible:true,format:'icm_hyd_p_datetime_csv',source:{name:String(name||'')},monitor:null,rows:timestamps.length,
         start:sorted.timestamps[0],end:sorted.timestamps[sorted.timestamps.length-1],columns:['value'],
-        metadata:{quantity,original_unit:unit,canonical_unit:unit,unit_status:'resolved',conversion_factor:1,time_basis:'model clock/unspecified',timestamp_convention:'instantaneous'},
+        metadata:{quantity,original_unit:unit,canonical_unit:canonical,unit_status:canonical?'resolved':'unresolved',conversion_factor:factor??1,time_basis:'model clock/unspecified',timestamp_convention:'instantaneous'},
         audit:{rows:timestamps.length,invalid_timestamps:invalid,duplicate_timestamps:duplicates,sentinel_count:sentinelCount,non_numeric_count:nonNumeric},
         series:[preview],warnings:[]
       };
