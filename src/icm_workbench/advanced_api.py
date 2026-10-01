@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .detriment_api import parse_detriment_report, detriment_result
 
 import json
 import re
