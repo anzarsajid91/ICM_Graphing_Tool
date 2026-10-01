@@ -13,13 +13,13 @@ try{
   await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
   const labels=(await page.locator('.pw-primary-nav button').allTextContents()).map(x=>x.replace(/^[^A-Za-z]+/,'').trim());
-  if(labels.join('|')!=='Data / Time Series|Spills|Flow Survey|Graphs|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
+  if(labels.join('|')!=='Data / Time Series|Spills|Flow Survey|Graphs|Detriment Assessment|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
   const navigationOwnership=await page.evaluate(()=>({
     legacyDisplay:getComputedStyle(document.querySelector('nav.tabs')).display,
     precisionVisible:[...document.querySelectorAll('.pw-primary-nav button')].filter(x=>x.getClientRects().length>0).length,
     legacyLabels:[...document.querySelectorAll('nav.tabs .tab')].map(x=>x.textContent.trim()),
   }));
-  if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==5)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
+  if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==6)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const surveyTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
   if(surveyTabs.join('|')!=='FDV Check|Rainfall Check|Volume Balance')throw new Error('Flow Survey subtab order mismatch: '+JSON.stringify(surveyTabs));

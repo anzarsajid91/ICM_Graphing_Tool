@@ -36,6 +36,7 @@ const ROUTES={
       dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
     }
   },
+  detriment:window.ICMDetriment.routes,
   reports:{
     label:'Reports',
     icon:'report',

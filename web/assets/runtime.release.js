@@ -149,7 +149,7 @@ function isAuxiliarySeries(item,col){
   return ['second','seconds','elapsedsecond','elapsedseconds','simulationsecond','simulationseconds','timeindex','timestep','timesteps','row','rowid','index'].includes(token);
 }
 function hydraulicSeriesForItem(item){
-  if(!item||item.status!=='ready')return[];
+  if(!item||item.status!=='ready'||item.parsed?.metadata?.source_kind==='detriment_report')return[];
   const columns=(item.parsed?.columns||[]).filter(col=>!isAuxiliarySeries(item,col));
   const order=['depth','level','flow','velocity'];
   const byQuantity=new Map();
@@ -560,7 +560,7 @@ function allSeries(){
   }
   const out=[];
   for(const item of state.files.values()){
-    if(item.status!=='ready')continue;
+    if(item.status!=='ready'||item.parsed?.metadata?.source_kind==='detriment_report')continue;
     for(const col of item.parsed.columns||[]){
       if(isAuxiliarySeries(item,col))continue;
       out.push({item,col,key:sourceKey(item.id,col),label:seriesLabel(item,col),quantity:seriesQuantity(item,col),unit:seriesUnit(item,col)});
@@ -823,7 +823,7 @@ async function importGuard(fn){
 }
 
 async function ingestFiles(files){
-  const list=[...files].filter(f=>f&&recognised(f.name));
+  const list=[...files].filter(f=>f&&(recognised(f.name)||window.ICMDetriment?.reportKind(f)));
   if(!list.length){$('poolSummary').textContent='No recognised CSV / FDV / R files found.';return;}
   const importEpoch=sourceImportEpoch;
   const importIsCurrent=()=>importEpoch===sourceImportEpoch;
@@ -848,7 +848,8 @@ async function ingestFiles(files){
       if(!itemIsCurrent(item))return;
       item.fastpathTiming.t1=performance.now();item._buffer=buffer;
       const hashPromise=sha256Bytes(buffer);
-      const lower=file.name.toLowerCase(),previewEligible=lower.endsWith('.fdv')||lower.endsWith('.fdv.txt')||lower.endsWith('.csv')||lower.endsWith('.hyd');
+      item.reportKind=window.ICMDetriment?.reportKind(file,buffer)||null;
+      const lower=file.name.toLowerCase(),previewEligible=!item.reportKind&&(lower.endsWith('.fdv')||lower.endsWith('.fdv.txt')||lower.endsWith('.csv')||lower.endsWith('.hyd'));
       if(previewEligible){
         try{
           const fastResult=await fastpathEngine.parse(item,buffer,15000);
@@ -929,7 +930,7 @@ async function ingestFiles(files){
       await engine.addFile(item,bytes);
       if(!itemIsCurrent(item))continue;
       item._buffer=null;
-      const parsed=await engine.call('parse_source',{path:item.virtualPath});
+      const parsed=item.reportKind?await engine.call('parse_detriment_report',{path:item.virtualPath,report_kind:item.reportKind},'advanced_bridge'):await engine.call('parse_source',{path:item.virtualPath});
       if(!itemIsCurrent(item))continue;
       item.parsed=parsed;
       item.fastpathTiming.t6=performance.now();
@@ -938,7 +939,7 @@ async function ingestFiles(files){
       if(item.fastpathReconciliation.status==='mismatch'){
         diagnostic.errors.push({time:new Date().toISOString(),target:'fastpath-reconciliation',message:'FastPath preview differed from authoritative parse.',file:item.displayName,detail:item.fastpathReconciliation});
       }
-      window.ICMProjectRegistry?.registerSource(item);
+      if(item.parsed?.metadata?.source_kind!=='detriment_report')window.ICMProjectRegistry?.registerSource(item);
     }catch(err){
       if(itemIsCurrent(item)){
         item.status='error';item.error=String(err&&err.message||err);
@@ -1230,7 +1231,7 @@ function invalidateDwf(reason='DWF inputs changed.'){
 }
 function healthInputSignature(){
   return JSON.stringify({
-    sources:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({sha256:x.hash,format:x.parsed?.format,columns:x.parsed?.columns||[]})).sort((a,b)=>String(a.sha256).localeCompare(String(b.sha256))),
+    sources:[...state.files.values()].filter(x=>x.status==='ready'&&x.parsed?.metadata?.source_kind!=='detriment_report').map(x=>({sha256:x.hash,format:x.parsed?.format,columns:x.parsed?.columns||[]})).sort((a,b)=>String(a.sha256).localeCompare(String(b.sha256))),
     max_gap_seconds:Number($('gapInput')?.value||900),
     time_basis:'model clock/unspecified',
   });
@@ -1775,7 +1776,7 @@ function criteriaModeChanged(){
 async function runHealth(){
   const signature=healthInputSignature(),generation=++state.healthGeneration,rows=[];
   for(const item of state.files.values()){
-    if(item.status!=='ready')continue;
+    if(item.status!=='ready'||item.parsed?.metadata?.source_kind==='detriment_report')continue;
     try{
       const r=await engine.call('data_assessment',{path:item.virtualPath,max_gap_seconds:Number($('gapInput').value||900)});
       if(generation!==state.healthGeneration||signature!==healthInputSignature())throw new Error('Data Health inputs changed while calculation was running. The late result was discarded.');
