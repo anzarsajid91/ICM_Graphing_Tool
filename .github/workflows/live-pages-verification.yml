@@ -97,6 +97,7 @@ jobs:
         run: |
           set -o pipefail
           node web/tests/smoke.mjs 2>&1 | tee /tmp/icm-live-pages.log
+          node web/tests/detriment-smoke.mjs 2>&1 | tee /tmp/icm-live-detriment.log
 
       - name: Capture live verification evidence
         if: always()
@@ -107,6 +108,7 @@ jobs:
           retention-days: 30
           path: |
             /tmp/icm-live-pages.log
+            /tmp/icm-live-detriment.log
             /tmp/icm-live-pages-failure.png
             /tmp/icm-live-evidence/
             /tmp/live-build.json

@@ -75,6 +75,8 @@ jobs:
           node --check web/assets/workbench-survey.js
           node --check web/assets/workflow-26.js
           node --check web/assets/precision-workbench.js
+          node --check web/assets/detriment-workspace.js
+          node web/tests/detriment-unit.mjs
           node --check web/tests/smoke.mjs
           node --check web/tests/precision-shell.mjs
           node --check web/tests/baseline-comparison.mjs
@@ -121,6 +123,8 @@ jobs:
               'assets/workbench-survey.js',
               'assets/workflow-26.js',
               'assets/precision-workbench.js',
+              'assets/detriment-workspace.js',
+              'assets/detriment-workspace.css',
           ]
           for asset in versioned:
               assert f'{asset}?v={token}' in html, asset
@@ -179,6 +183,7 @@ jobs:
             cat /tmp/icm-pages-http.log
             exit 1
           fi
+          node web/tests/detriment-smoke.mjs
           node web/tests/smoke.mjs
 
       - name: Package exact review preview
