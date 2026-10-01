@@ -15,6 +15,7 @@ from icm_workbench.analysis import (
     rainfall_accumulation,
 )
 from icm_workbench.domain import ExclusionPeriod
+from icm_workbench.analysis.screening import calendar_spill_volumes
 
 _CACHE = {}
 _SERIES_CACHE = {}
@@ -995,7 +996,17 @@ def spill_result(path, column, threshold, exclusions_json="[]", max_gap_seconds=
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
 
-def storage_result(level_path, level_col, flow_path, flow_col, threshold, exclusions_json="[]", target_count=10, max_gap_seconds=900.0, start=None, end=None, level_unit_override=None, flow_unit_override=None):
+def _storage_threshold_m(threshold,contract,threshold_unit=None):
+    unit=threshold_unit or contract["original_unit"] or contract["canonical_unit"]
+    resolved,factor=canonical_unit(contract["quantity"],unit)
+    if resolved!="m" or factor is None:
+        raise ValueError("Storage threshold requires a resolved m or mm unit.")
+    value=float(threshold)*float(factor)
+    if not np.isfinite(value):raise ValueError("Storage threshold must be finite.")
+    return value
+
+
+def storage_result(level_path, level_col, flow_path, flow_col, threshold, exclusions_json="[]", target_count=10, max_gap_seconds=900.0, start=None, end=None, level_unit_override=None, flow_unit_override=None, threshold_unit=None):
     level,level_contract=_scaled_dimensional_frame(
         level_path,level_col,
         unit_override=level_unit_override,
@@ -1009,7 +1020,10 @@ def storage_result(level_path, level_col, flow_path, flow_col, threshold, exclus
         required_canonical_unit="m³/s",
     )
     exc=_exclusions(exclusions_json)
-    threshold_m=float(threshold)*float(level_contract["scale_to_canonical"])
+    threshold_m=_storage_threshold_m(threshold,level_contract,threshold_unit)
+    target=float(target_count)
+    if not np.isfinite(target) or target<0 or target!=int(target):
+        raise ValueError("Target count must be a non-negative integer.")
     physical=detect_spill_intervals(
         level,level_col,threshold_m,
         start=_model_clock_timestamp(start),
@@ -1018,19 +1032,30 @@ def storage_result(level_path, level_col, flow_path, flow_col, threshold, exclus
         exclusions=exc,
     )
     blocks=spill_block_volumes(physical["events"],flow,flow_col,max_gap_seconds=float(max_gap_seconds),exclusions=exc)
-    screening=idealised_storage_screening(blocks,target_count=int(target_count))
-    if physical.get("status")!="complete" and not screening.empty:
+    screening=idealised_storage_screening(blocks,target_count=int(target))
+    level_complete=physical.get("status")=="complete" and physical.get("excluded_seconds",0)<=1e-9
+    if not level_complete and not screening.empty:
         screening=screening.copy()
         screening["required_storage_m3"]=None
         screening["max_block_volume_m3"]=None
         screening["annual_block_volume_m3"]=None
+        screening["remaining_spill_count"]=None
         screening["status"]="partial" if physical.get("valid_seconds",0)>0 else "unavailable"
-        screening["reason"]="Required storage withheld because the level series has incomplete support over the assessment period."
+        screening["reason"]="Required storage withheld because the assessment period includes excluded or unsupported level data; retained discharge volumes do not establish a whole-period spill target."
     screen_statuses=set(screening["status"]) if not screening.empty and "status" in screening else set()
-    overall="complete" if physical.get("status")=="complete" and (not screen_statuses or screen_statuses=={"complete"}) else (
+    overall="complete" if level_complete and (not screen_statuses or screen_statuses=={"complete"}) else (
         "partial" if physical.get("valid_seconds",0)>0 else "unavailable"
     )
+    calendar=calendar_spill_volumes(physical["events"],flow,flow_col,max_gap_seconds=float(max_gap_seconds),exclusions=exc)
+    for row in calendar:
+        if not level_complete or row["status"]!="complete":
+            row["volume_m3_partial"]=row["volume_m3"]
+            row["volume_m3"]=None
+            row["status"]="partial"
     payload={
+        "method":"whole-episode capture; reset between episodes; legacy 12/24 compatibility counts",
+        "volume_year_basis":"Episode volumes follow episode attribution; calendar volumes split physical discharge at 1 January.",
+        "calendar_volumes":calendar,
         "calculation_status":overall,
         "level_contract":level_contract,
         "flow_contract":flow_contract,
