@@ -75,11 +75,12 @@ function drawCharts(r){
 }
 function rawEvidence(raw){return raw?'<dl class="dt-evidence">'+Object.entries(raw).map(([k,v])=>'<dt>'+escape(k)+'</dt><dd>'+escape(v)+'</dd>').join('')+'</dl>':'<p>Asset absent from this report.</p>';}
 function renderDrawer(){
-  const row=results[kind]?.rows.find(x=>x.asset_id===selected),drawer=$('dtDrawer');drawer.hidden=!row;if(!row)return;
+  const row=results[kind]?.rows.find(x=>x.asset_id===selected),drawer=$('dtDrawer');drawer.hidden=!row;if(!row){resizeAssessmentCharts();return;}
   drawer.innerHTML='<button class="dt-close" id="dtClose" type="button" aria-label="Close asset evidence">×</button><small>ASSET EVIDENCE</small><h2>'+escape(row.asset_id)+'</h2>'+badge(row)+'<p>'+escape(row.flags.map(x=>x.replaceAll('_',' ')).join(' · '))+'</p><p><strong>Δ '+number(row.delta,true)+' '+escape(row.unit)+'</strong></p>'+(kind==='level'?'<p>Ground A / B: '+number(row.ground_a)+' / '+number(row.ground_b)+' m<br>Freeboard A / B: '+number(row.freeboard_a)+' / '+number(row.freeboard_b)+' m</p>':'')+(kind==='level'?'<h3>A / B elevation section</h3><div id="dtSectionChart"></div>':kind==='spill'?'<h3>Exceedance timeline · model clock</h3><div id="dtTimelineChart"></div><p class="dt-muted">Bars show exported start/end spans. Actual exceedance duration is retained independently; a spill-block span can include non-spilling intervals.</p>':'')+'<h3>Scenario A · raw report</h3>'+rawEvidence(row.evidence_a)+'<h3>Scenario B · raw report</h3>'+rawEvidence(row.evidence_b)+(kind==='spill'?['a','b'].map(s=>'<h3>Scenario '+s.toUpperCase()+' · exceedance details</h3>'+((row['details_'+s]||[]).length?'<div class="dt-scroll"><table><thead><tr><th>Start</th><th>End</th><th>Actual duration (h)</th></tr></thead><tbody>'+row['details_'+s].map(e=>'<tr><td>'+escape(e.start)+'</td><td>'+escape(e.end)+'</td><td>'+number(e.duration_hours)+'</td></tr>').join('')+'</tbody></table></div>':'<p class="dt-muted">No detail report linked.</p>')).join(''):'')+'<p class="dt-muted">Display values use up to six decimal places. CSV retains calculated numeric precision and raw source evidence.</p>';
-  drawEvidenceCharts(row);
-  $('dtClose').onclick=()=>{selected=null;drawer.hidden=true;};
+  drawEvidenceCharts(row);resizeAssessmentCharts();
+  $('dtClose').onclick=()=>{selected=null;drawer.hidden=true;resizeAssessmentCharts();};
 }
+function resizeAssessmentCharts(){if(!window.Plotly)return;requestAnimationFrame(()=>{for(const id of ['dtChart','dtPairedChart','dtDurationChart']){const el=$(id);if(el?.data)Promise.resolve(Plotly.Plots.resize(el)).catch(()=>{});}});}
 function drawEvidenceCharts(row){
   if(!window.Plotly)return;const r=results[kind],layout={height:250,margin:{l:65,r:20,t:15,b:55},font:{family:'Inter, system-ui',size:11},legend:{orientation:'h'},paper_bgcolor:'#fff',plot_bgcolor:'#fff'};
   if(kind==='level'){
