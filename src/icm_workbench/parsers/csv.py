@@ -108,13 +108,27 @@ def parse_icm_hyd_csv(path):
         if len(parts)<2:malformed+=1;continue
         rows.append((parts[0].strip(),parts[1].strip()))
     if not rows:raise ValueError("No P_DATETIME/value rows found")
-    quantity,unit=_quantity(path); frame=pd.DataFrame(rows,columns=["raw_timestamp","raw_value"])
+    quantity,unit=_quantity(path)
+    # U_LEVEL describes survey elevations. U_VALUES, when present, declares
+    # the actual P_VALUE series unit and must take precedence.
+    settings={}; keys=[]
+    for line in lines[:start]:
+        parts=next(csv.reader([line]))
+        if not parts:continue
+        tag=parts[0].strip().lower()
+        if tag=="usersettings":
+            keys=[x.strip().upper() for x in parts[1:]]
+        elif tag=="usersettingsvalues":
+            settings.update(zip(keys,(x.strip() for x in parts[1:])))
+    unit=settings.get("U_VALUES") or unit
+    resolved,factor=canonical_unit(quantity,unit)
+    frame=pd.DataFrame(rows,columns=["raw_timestamp","raw_value"])
     frame["timestamp"]=_parse_timestamps(frame.pop("raw_timestamp"))
     invalid=int(frame.timestamp.isna().sum());malformed+=invalid;frame=frame.dropna(subset=["timestamp"])
     if frame.empty:raise ValueError("No valid P_DATETIME/value rows found")
-    values,audit=clean_numeric(frame.pop("raw_value")); frame["value"]=values; frame=frame.sort_values("timestamp")
+    values,audit=clean_numeric(frame.pop("raw_value")); frame["value"]=values*(factor if factor is not None else 1.0); frame=frame.sort_values("timestamp")
     reference=_vertical_reference(path,quantity)
-    metadata={"quantity":quantity,"original_unit":unit,"canonical_unit":unit,"unit_status":"resolved","conversion_factor":1.0,"source_encoding":source_encoding,"time_basis":"model clock/unspecified","timestamp_convention":"instantaneous"}
+    metadata={"quantity":quantity,"original_unit":unit,"canonical_unit":resolved,"unit_status":"resolved" if resolved else "unresolved","conversion_factor":factor if factor is not None else 1.0,"source_encoding":source_encoding,"time_basis":"model clock/unspecified","timestamp_convention":"instantaneous"}
     if reference is not None:
         metadata["vertical_reference"]=reference
         metadata["source_unit_label"]=f"{unit} {reference}"
