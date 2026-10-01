@@ -51,3 +51,5 @@ console.log('Review regressions passed: provenance, named flags, paired comparis
 assert.equal(api.reportOnlyWorkspace({mapping:{observed:null,models:[],rain:null},detriment:{flooding:{a:{reference:{sha256:'a'}}}}}),true);
 assert.equal(api.reportOnlyWorkspace({mapping:{observed:{sha256:'hyd'},models:[],rain:null},detriment:{flooding:{a:{reference:{sha256:'a'}}}}}),false);
 assert.equal(api.reportOnlyWorkspace({mapping:{models:[]}}),false);
+for(const header of ['Time (s),Node ID,Level (m)','Node ID,Level (m),Date/Time','P_DATETIME,Node ID,Level (m)'])assert.equal(api.detectReport(header+'\n2025-01-01,001,2'),null,'Native timestamp headings retain the existing parser');
+assert.equal(api.reportKind({name:'survey.fdv'},new TextEncoder().encode('Node ID,Level\n001,2').buffer),null);
