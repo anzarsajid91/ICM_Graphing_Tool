@@ -10,10 +10,10 @@ const reports=()=>[...state.files.values()].filter(isReport);
 function detectReport(text){
   const lines=String(text).split(/\r?\n/).slice(0,100);
   // Native time series keep their existing import path, even if an ID is present.
-  if(lines.some(l=>/(?:^|[,;\t])\s*"?(?:time|datetime|date time|timestamp|seconds)"?\s*[,;\t]/i.test(l)))return null;
+  if(lines.some(l=>/TYPE\s*=\s*HYD/i.test(l)||l.split(/[,;\t]/).some(c=>/^(?:time|date|timestamp|pdatetime|seconds|elapsedseconds|simulationseconds)/.test(c.trim().replace(/[^a-z0-9]/gi,'').toLowerCase()))))return null;
   return lines.some(l=>/(?:node\s*id|cso\s*id|asset\s*id|object\s*id|\bID\b)/i.test(l)&&/(?:flood|level|ground|spill|exceedance|duration|elevation)/i.test(l))?'auto':null;
 }
-function reportKind(file,buffer){return forced.get(file)||(buffer?detectReport(new TextDecoder().decode(buffer.slice(0,32768))):null);}
+function reportKind(file,buffer){return forced.get(file)||(buffer&&/\.csv$/i.test(file.name)?detectReport(new TextDecoder().decode(buffer.slice(0,32768))):null);}
 const csvCell=value=>'"'+(typeof value==='string'&&/^[\s]*[=+\-@\t\r\n]/.test(value)?"'":'')+String(value??'').replaceAll('"','""')+'"';
 function csv(result,rows){
   const fields=['asset_id','status','a','b','delta','unit','ground_a','ground_b','freeboard_a','freeboard_b','freeboard_change','duration_a_hours','duration_b_hours','duration_delta_hours','critical_a','critical_b','flags','scenario_a','scenario_b','source_a_sha256','source_b_sha256','threshold','freeboard_required','scope','period_start','period_end','template','counting_mode','method','ground_source_sha256','source_a_mapping','source_b_mapping','evidence_a','evidence_b','scenario_a_configuration','scenario_b_configuration','ground_configuration','detail_a_configuration','detail_b_configuration','date_convention','boundary_policy'];
