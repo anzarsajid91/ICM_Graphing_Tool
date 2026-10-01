@@ -183,8 +183,8 @@ jobs:
             cat /tmp/icm-pages-http.log
             exit 1
           fi
-          node web/tests/smoke.mjs
           node web/tests/detriment-smoke.mjs
+          node web/tests/smoke.mjs
 
       - name: Package exact review preview
         if: success()

@@ -90,11 +90,16 @@ def _unit_from_header(column,dimension):
     low=str(column).lower().replace("³","3")
     candidates=re.findall(r"[\[(]([^\])]+)[\])]",low)
     candidates+=re.findall(r"\b(mm|m3|m|mins?|minutes?|hours?|h)\s*$",low)
+    known={"level":{"m","mm","maod","mad"},
+           "volume":{"m3","l","litres","liters","ml"},
+           "duration":{"min","mins","minute","minutes","h","hr","hours","s","sec","seconds"},
+           "flow":{"m3/s","l/s","ml/d"},"count":{"spills","events","count"}}
     for raw in candidates:
         key=re.sub(r"[\s_]","",raw)
-        if dimension=="level" and key in ("m","mm","maod","mad"):return "mm" if key=="mm" else "m"
-        if dimension=="volume" and key in ("m3","l","litres","liters","ml"):return key
-        if dimension=="duration" and key in ("min","mins","minute","minutes","h","hr","hours","s","sec","seconds"):return key
+        declared=next((d for d,units in known.items() if key in units),None)
+        if declared and declared!=dimension:
+            raise ValueError(f"Incompatible physical dimension in {column!r}: declared {declared}, assessed {dimension}.")
+        if declared:return "mm" if key=="mm" else "m" if key in ("maod","mad") else key
     return None
 
 
@@ -120,6 +125,10 @@ def _source(config,kind,detail=False):
     required=['value'] if kind in ('flooding','level') else (['duration'] if detail else ['count','duration']) if kind=='spill' else ['ground']
     for field in required:
         if mapping.get(field) not in columns:raise ValueError(f"Map the {field} column in {config.get('name') or 'report'}.")
+    if kind=='spill':
+        token=_token(mapping.get('duration',''))
+        if 'period' in token or ('block' in token and 'actual' not in token):
+            raise ValueError('Spill-block period is not actual exceedance duration; map the duration statistic.')
     attribute=mapping.get('attribute');attribute_value=str(config.get('attribute_value') or '').strip()
     if attribute in columns:
         values={r[attribute] for r in records}
@@ -137,17 +146,44 @@ def _source(config,kind,detail=False):
 def _value(source,row,field,dimension=None,unit_field="unit",nonnegative=False):
     column=source['mapping'].get(field)
     if not row or not column:return None
+    if field=='count':_unit_from_header(column,'count')
     value=_number(row.get(column))
     if value is None or (nonnegative and value<0):return None
     return value*_factor(source,column,dimension,unit_field) if dimension else value
 
 
-def _datum(source):
+def _datum(source,field=None):
     declared=str(source.get('datum') or '').strip().casefold()
-    column=str(source.get('mapping',{}).get('value') or source.get('mapping',{}).get('ground') or '')
-    detected='aod' if re.search(r'(?i)m\s*aod|maod',column) else 'ad' if re.search(r'(?i)m\s+ad',column) else None
+    column=str(source.get('mapping',{}).get(field) if field else source.get('mapping',{}).get('value') or source.get('mapping',{}).get('ground') or '')
+    detected='aod' if re.search(r'(?i)m\s*aod|maod',column) else 'ad' if re.search(r'(?i)m\s*ad\b',column) else None
     if detected and declared and declared!=detected:raise ValueError("Selected datum contradicts the report heading.")
     return declared or detected
+
+
+def _report_datetime(value):
+    raw=str(value or '').strip()
+    try:parsed=datetime.fromisoformat(raw)
+    except ValueError:
+        parsed=None
+        for fmt in ('%d/%m/%Y %H:%M:%S.%f','%d/%m/%Y %H:%M:%S','%d/%m/%Y %H:%M',
+                    '%d-%b-%Y %H:%M:%S','%d-%b-%Y %H:%M','%d/%b/%Y %H:%M:%S','%d/%b/%Y %H:%M'):
+            try:parsed=datetime.strptime(raw,fmt);break
+            except ValueError:continue
+    if parsed is None or parsed.tzinfo is not None:
+        raise ValueError("Resolve report date/time values to ISO or day/month/year in a common model clock.")
+    return parsed
+
+
+def _validate_detail_period(source,start,end):
+    for field in ('start','end'):
+        if not source['mapping'].get(field):
+            raise ValueError("Map detail start and end dates to verify the declared period and event boundaries.")
+    for records in source['groups'].values():
+        for row in records:
+            a=_report_datetime(row.get(source['mapping']['start']));b=_report_datetime(row.get(source['mapping']['end']))
+            if b<=a:raise ValueError("Detail end date must be later than its start.")
+            if a<start or a>=end or b>end:
+                raise ValueError("Detail row lies outside or crosses the declared period boundary. Export period-specific evidence with explicit boundary attribution before assessment.")
 
 
 def _detail_events(source,asset):
@@ -155,7 +191,7 @@ def _detail_events(source,asset):
     events=[]
     for raw in source['groups'].get(asset,[]):
         duration=_value(source,raw,'duration','duration','duration_unit',True)
-        events.append({'start':raw.get(source['mapping'].get('start')),'end':raw.get(source['mapping'].get('end')),
+        events.append({'start':_report_datetime(raw.get(source['mapping'].get('start'))).isoformat(sep=' '),'end':_report_datetime(raw.get(source['mapping'].get('end'))).isoformat(sep=' '),
                        'duration_hours':float(duration) if duration is not None else None,'source_row':raw})
     return events
 
@@ -194,12 +230,19 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
     a=_source(a_config,kind,detail=kind=='spill' and mode!='summary');b=_source(b_config,kind,detail=kind=='spill' and mode!='summary')
     if kind=='level':
         if not _datum(a) or _datum(a)!=_datum(b):raise ValueError("Level reports must share a declared vertical datum.")
+        for source in (a,b):
+            if source['mapping'].get('ground') and _datum(source,'ground')!=_datum(source):
+                raise ValueError('Inline ground and water-level datum must match.')
         if any('depth' in _token(s['mapping']['value']) for s in (a,b)):raise ValueError("Maximum depth cannot substitute for water-level elevation.")
-    if kind=='spill' and mode=='summary' and any('exceedancecount' in _token(s['mapping']['count']) for s in (a,b)):
+    if kind=='spill' and mode=='summary' and any('exceed' in _token(s['mapping']['count']) for s in (a,b)):
         raise ValueError("Exceedance count is not an authoritative block Spill count.")
     ground_config=json.loads(ground_json);ground=_source(ground_config,'ground') if ground_config else None
-    if kind=='level' and ground and _datum(ground)!=_datum(a):raise ValueError("Ground levels must use the same vertical datum as water levels.")
+    if kind=='level' and ground and _datum(ground,'ground')!=_datum(a):raise ValueError("Ground levels must use the same vertical datum as water levels.")
     detail_sources=[_source(json.loads(raw),'spill',detail=True) if json.loads(raw) else None for raw in (detail_a_json,detail_b_json)]
+    if kind=='spill':
+        start=_report_datetime(a_config['period_start']);end=_report_datetime(a_config['period_end'])
+        for source in ([a,b] if mode!='summary' else [])+[d for d in detail_sources if d]:
+            _validate_detail_period(source,start,end)
     rows=[]
     for asset in sorted(set(a['groups'])|set(b['groups'])):
         ra=(a['groups'].get(asset) or [None])[0];rb=(b['groups'].get(asset) or [None])[0]
@@ -263,7 +306,8 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
              'unresolved':sum(r['status'] in ('unmatched','unavailable') or 'freeboard_unavailable' in r['flags'] for r in rows),
              'max_increase':max([r['delta'] for r in rows if r['delta'] is not None]+[Decimal(0)])}
     result={'kind':kind,'rows':rows,'summary':summary,'criteria':criteria,'scenario_a':a_config,'scenario_b':b_config,
-            'ground_source':ground_config,'status':'partial' if summary['unresolved'] else 'complete',
+            'ground_source':ground_config,'detail_source_a':json.loads(detail_a_json),'detail_source_b':json.loads(detail_b_json),
+            'date_convention':'ISO or day/month/year model clock','boundary_policy':'reject crossing or out-of-period detail rows','status':'partial' if summary['unresolved'] else 'complete',
             'method':'Matched report assets; unrounded canonical B minus A; strict tolerance exceedance; missing assets never zero',
             'counting_mode':mode if kind=='spill' else None}
     return json.dumps(result,default=lambda v:float(v) if isinstance(v,Decimal) else str(v),ensure_ascii=False,allow_nan=False)

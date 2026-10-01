@@ -138,9 +138,9 @@ def test_spill_period_and_template_mismatch_block_comparison(tmp_path):
 
 
 def test_detail_only_requires_explicit_counting_semantics(tmp_path):
-    mapping={'asset_id':'CSO ID','duration':'Exceedance duration (mins)','start':'Start of exceedance (Absolute)'}
-    a=report(tmp_path,'da.csv',[{'CSO ID':'CSO01','Exceedance duration (mins)':'60','Start of exceedance (Absolute)':'2025-01-01 00:00'}],mapping)
-    b=report(tmp_path,'db.csv',[{'CSO ID':'CSO01','Exceedance duration (mins)':'60','Start of exceedance (Absolute)':'2025-01-01 00:00'},{'CSO ID':'CSO01','Exceedance duration (mins)':'120','Start of exceedance (Absolute)':'2025-02-01 00:00'}],mapping)
+    mapping={'asset_id':'CSO ID','duration':'Exceedance duration (mins)','start':'Start of exceedance (Absolute)','end':'End of exceedance (Absolute)'}
+    a=report(tmp_path,'da.csv',[{'CSO ID':'CSO01','Exceedance duration (mins)':'60','Start of exceedance (Absolute)':'2025-01-01 00:00','End of exceedance (Absolute)':'2025-01-01 01:00'}],mapping)
+    b=report(tmp_path,'db.csv',[{'CSO ID':'CSO01','Exceedance duration (mins)':'60','Start of exceedance (Absolute)':'2025-01-01 00:00','End of exceedance (Absolute)':'2025-01-01 01:00'},{'CSO ID':'CSO01','Exceedance duration (mins)':'120','Start of exceedance (Absolute)':'2025-02-01 00:00','End of exceedance (Absolute)':'2025-02-01 02:00'}],mapping)
     for s in [a,b]:s['report_kind']='spill_detail';s['duration_unit']='min'
     with pytest.raises(ValueError,match='Summary|counting'):calculate('spill',a,b)
     row=calculate('spill',a,b,criteria={'counting_mode':'block-rows'})['rows'][0]
@@ -162,3 +162,61 @@ def test_scope_confirmation_and_invalid_tolerance_block_comparison(tmp_path):
     a,b=floods(tmp_path)
     with pytest.raises(ValueError,match='confirm'):calculate('flooding',a,b,criteria={'scope_confirmed':False})
     with pytest.raises(ValueError,match='threshold|tolerance'):calculate('flooding',a,b,criteria={'threshold':-1})
+
+
+@pytest.mark.parametrize('kind,column,unit',[('flooding','Flood volume (m)','m³'),('level','Maximum level (m³)','m')])
+def test_known_unit_of_wrong_dimension_cannot_be_overridden(tmp_path,kind,column,unit):
+    mapping={'asset_id':'ID','value':column}
+    a,b=[report(tmp_path,n,[{'ID':'001',column:v}],mapping) for n,v in [('ua.csv','2'),('ub.csv','8')]]
+    for s in (a,b):s['unit']=unit
+    with pytest.raises(ValueError,match='dimension|incompatible'):calculate(kind,a,b)
+
+
+def test_inline_ground_datum_must_match_water_level_datum(tmp_path):
+    a,b=levels(tmp_path,'99.35','99.30')
+    for n,s,v in [('gda.csv',a,'99.35'),('gdb.csv',b,'99.30')]:
+        s['mapping']['ground']='Ground level (m AD)'
+        s['path']=report(tmp_path,n,[{'ID':'MH01','Max level (m)':v,'Ground level (m AD)':'100'}],s['mapping'])['path']
+    with pytest.raises(ValueError,match='datum'):calculate('level',a,b,criteria={'threshold':.15,'freeboard_required':.5})
+
+
+@pytest.mark.parametrize('field,column',[('count','Number of exceedances'),('duration','Total period of exceedances (h)')])
+def test_recognizable_incompatible_spill_statistics_are_rejected(tmp_path,field,column):
+    a,b=spills(tmp_path)
+    for n,s,c,t in [('xa.csv',a,'12','18'),('xb.csv',b,'15','22')]:
+        old=s['mapping'][field];s['mapping'][field]=column
+        row={'CSO ID':'CSO01','Spill count':c,'Total duration of exceedances (h)':t};row[column]=row.pop(old)
+        s['path']=report(tmp_path,n,row and [row],s['mapping'])['path']
+    with pytest.raises(ValueError,match='count|duration|period|statistic'):calculate('spill',a,b)
+
+
+@pytest.mark.parametrize('start,end',[('2024-01-01 00:00','2024-01-01 01:00'),('2026-01-01 00:00','2026-01-01 01:00'),('2025-12-31 23:00','2026-01-01 01:00'),('bad-date','2025-01-01 01:00'),('2025-01-01 02:00','2025-01-01 01:00')])
+def test_detail_period_and_boundary_validation(tmp_path,start,end):
+    mapping={'asset_id':'CSO ID','duration':'Duration (h)','start':'Start','end':'End'}
+    a,b=[report(tmp_path,n,[{'CSO ID':'CSO01','Duration (h)':'1','Start':start,'End':end}],mapping,report_kind='spill_detail') for n in ['pa.csv','pb.csv']]
+    with pytest.raises(ValueError,match='period|date|boundary|end'):calculate('spill',a,b,criteria={'counting_mode':'block-rows'})
+
+
+def test_detail_year_boundary_exact_end_and_day_first_dates(tmp_path):
+    mapping={'asset_id':'CSO ID','duration':'Duration (h)','start':'Start','end':'End'}
+    a,b=[report(tmp_path,n,[{'CSO ID':'CSO01','Duration (h)':'1','Start':'31/12/2025 23:00','End':'01/01/2026 00:00'}],mapping,report_kind='spill_detail') for n in ['ya.csv','yb.csv']]
+    r=calculate('spill',a,b,criteria={'counting_mode':'block-rows'})
+    assert r['rows'][0]['a']==1 and r['rows'][0]['duration_a_hours']==1
+    assert r['date_convention']=='ISO or day/month/year model clock'
+
+
+def test_export_provenance_retains_optional_detail_sources_and_settings(tmp_path):
+    a,b=spills(tmp_path)
+    mapping={'asset_id':'CSO ID','duration':'Duration (h)','start':'Start','end':'End'}
+    detail=report(tmp_path,'evidence.csv',[{'CSO ID':'CSO01','Duration (h)':'1','Start':'2025-01-01 00:00','End':'2025-01-01 01:00'}],mapping,sha256='detail-fingerprint')
+    r=calculate('spill',a,b,detail_b_json=json.dumps(detail))
+    assert r['detail_source_b']['sha256']=='detail-fingerprint'
+    assert r['detail_source_b']['mapping']==mapping
+
+
+def test_spill_count_column_cannot_be_a_volume_unit(tmp_path):
+    a,b=spills(tmp_path)
+    for n,s,c,t in [('cua.csv',a,'12','18'),('cub.csv',b,'15','22')]:
+        s['mapping']['count']='Spill count (m³)'
+        s['path']=report(tmp_path,n,[{'CSO ID':'CSO01','Spill count (m³)':c,'Total duration of exceedances (h)':t}],s['mapping'])['path']
+    with pytest.raises(ValueError,match='dimension|incompatible'):calculate('spill',a,b)
