@@ -114,6 +114,13 @@ assert.equal(hyd.eligible,true);
 assert.equal(hyd.format,'icm_hyd_p_datetime_csv');
 assert.equal(hyd.series[0].quantity,'flow');
 assert.equal(hyd.series[0].canonical_unit,'m³/s');
+for(const [quantity,unit,value,want,canonical] of [['U_FLOW','L/s',100,.1,'m³/s'],['U_LEVEL','mm',2000,2,'m']]){
+  const native=core.parseText('native.csv',`TYPE=HYD\nUserSettings,${quantity},U_VALUES\nUserSettingsValues,m AD,${unit}\nP_DATETIME,value\n01/02/2026 00:00:00,${value}\n01/02/2026 00:10:00,${value}\n`);
+  assert.equal(native.eligible,true);
+  assert.equal(native.series[0].original_unit,unit);
+  assert.equal(native.series[0].canonical_unit,canonical);
+  assert.deepEqual(Array.from(native.series[0].values),[want,want]);
+}
 
 const noTime=core.parseText('invalid.csv','x,value\n1,2\n2,3\n');
 assert.equal(noTime.eligible,false);
