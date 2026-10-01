@@ -2023,7 +2023,7 @@ async function applyWorkspace(w){
   const expected=(w.source_references||[]).length;
   const matched=(w.source_references||[]).filter(r=>[...state.files.values()].some(x=>x.hash===r.sha256)).length;
   $('workspaceStatus').textContent=`Restoring workspace… ${matched}/${expected} source fingerprint(s) matched; rebuilding mappings and graph.`;
-  await applyMapping();
+  if(!window.ICMDetriment?.reportOnlyWorkspace(w))await applyMapping();
   // Rebuild report scenario choices only after the restored model mapping is
   // authoritative, then re-apply the persisted scenario subset by fingerprint.
   $('modelSelect')?.dispatchEvent(new Event('change',{bubbles:true}));

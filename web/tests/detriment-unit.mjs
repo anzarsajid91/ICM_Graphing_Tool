@@ -48,3 +48,6 @@ assert.equal(api.relinkSource({sha256:'a',name:'old.csv'},[{id:'new',hash:'a',di
 assert.equal(api.relinkSource({sha256:'a',name:'old.csv'},[{id:'one',hash:'a',displayName:'other.csv'},{id:'two',hash:'a',displayName:'old.csv'}]).id,'two');
 assert.equal(api.relinkSource({sha256:'a',name:'old.csv'},[{id:'one',hash:'a',displayName:'other.csv'},{id:'two',hash:'a',displayName:'also.csv'}]),null);
 console.log('Review regressions passed: provenance, named flags, paired comparisons, freeboard section, event timeline and fingerprint relinking.');
+assert.equal(api.reportOnlyWorkspace({mapping:{observed:null,models:[],rain:null},detriment:{flooding:{a:{reference:{sha256:'a'}}}}}),true);
+assert.equal(api.reportOnlyWorkspace({mapping:{observed:{sha256:'hyd'},models:[],rain:null},detriment:{flooding:{a:{reference:{sha256:'a'}}}}}),false);
+assert.equal(api.reportOnlyWorkspace({mapping:{models:[]}}),false);
