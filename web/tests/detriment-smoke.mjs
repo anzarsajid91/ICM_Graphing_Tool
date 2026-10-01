@@ -24,7 +24,7 @@ try{
   await route('flooding');await selectReport('a','flood-a.csv');await selectReport('b','flood-b.csv');await scope();await field('threshold').fill('5');
   let r=await run();assert.equal(r.summary.detriment,1);assert.equal(r.summary.matched,4);assert.equal(r.summary.unresolved,2);assert.equal(r.rows.find(x=>x.asset_id==='001').delta,6);assert.equal(r.rows.find(x=>x.asset_id==='004').status,'risk');
   assert.equal(await page.locator('#dtTable tbody tr').count(),1);
-  await page.click('[data-asset="001"]');assert.ok(await page.locator('#dtDrawer').evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.top<window.innerHeight&&r.right<=window.innerWidth;}),'Asset evidence opens in viewport');assert.match(await page.locator('#dtDrawer').innerText(),/30y-120min/);
+  await page.click('[data-asset="001"]');assert.ok(await page.locator('#dtDrawer').evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.top<window.innerHeight&&r.right<=window.innerWidth;}),'Asset evidence opens in viewport');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1),'Selected drawer containment');assert.match(await page.locator('#dtDrawer').innerText(),/30y-120min/);
   const csv=await exportText('#dtExportCsv');assert.match(csv,/"001"/);assert.match(csv,/source_a_sha256/);assert.match(csv,/"5"/);
   assert.match(await exportText('#dtExportHtml'),/Assessment criteria and source provenance/);
   await page.screenshot({path:path.join(evidence,'detriment-flooding.png'),fullPage:false});
