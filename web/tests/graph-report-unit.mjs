@@ -5,6 +5,16 @@ const source=fs.readFileSync('web/assets/runtime.release.js','utf8').replace(/st
 const sandbox={window:{},document:{getElementById:()=>null,querySelector:()=>null},console,setTimeout,clearTimeout};
 vm.createContext(sandbox);vm.runInContext(source,sandbox);
 const run=code=>vm.runInContext(code,sandbox);
+const storageEvidence=run(`monthlyVolumeHtml([{year:2026,month:1,volume_m3:null,volume_m3_partial:48,valid_seconds:480,gap_seconds:0,uncovered_seconds:0,excluded_seconds:0,assessment_excluded_seconds:120,coverage_fraction:.8,status:'partial'}])`);
+assert(storageEvidence.includes('48 retained'));
+assert(storageEvidence.includes('80%'));
+assert(storageEvidence.includes('0.03'));
+const storageReport=run(`state.storage={calculation_status:'complete',threshold_canonical_m:1,method:'whole-episode capture',screening:[{year:2025,required_storage_m3:360,physical_blocks:1,compatibility_spill_count:1,remaining_spill_count:0,target_count:0,annual_block_volume_m3:360,status:'complete'}],calendar_volumes:[{year:2025,volume_m3:180,status:'complete'},{year:2026,volume_m3:180,status:'complete'}]};reportStorageHtml()`);
+assert(storageReport.includes('episode-attributed volume'));
+assert(storageReport.includes('Calendar year'));
+assert(storageReport.includes('2026'));
+assert(storageReport.includes('180'));
+assert(storageReport.includes('screened remaining count'));
 const layout=run(`hydraulicGraphLayout({fdvMode:true,quantities:['flow','depth','velocity'],hasRain:true,rainMax:66,statistics:[{role:'Observed',statistics:{quantity:'flow',unit:'m³/s'}},{role:'Observed',statistics:{quantity:'depth',unit:'m'}},{role:'Observed',statistics:{quantity:'velocity',unit:'m/s'}},{role:'Rainfall',statistics:{quantity:'rainfall',unit:'mm/h'}}]})`);
 assert(layout.yaxis4.domain[1]<layout.yaxis.domain[0]);
 assert(layout.yaxis.domain[1]<layout.yaxis3.domain[0]);

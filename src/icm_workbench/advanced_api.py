@@ -428,7 +428,7 @@ def dwf_scaled(
     result["context_method"]="shared analysis period; role-scoped exclusions applied before canonical DWF-v2"
     return json.dumps(python_bridge._jsonable(result),ensure_ascii=False)
 
-def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshold,exclusions_json="[]",max_gap_seconds=900.0,start=None,end=None,level_unit_override=None,flow_unit_override=None,**_ignored):
+def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshold,exclusions_json="[]",max_gap_seconds=900.0,start=None,end=None,level_unit_override=None,flow_unit_override=None,threshold_unit=None,**_ignored):
     level,level_contract=python_bridge._scaled_dimensional_frame(
         level_path,level_col,
         unit_override=level_unit_override,
@@ -442,7 +442,7 @@ def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshol
         required_canonical_unit="m³/s",
     )
     exclusions=python_bridge._exclusions(exclusions_json)
-    threshold_m=float(threshold)*float(level_contract["scale_to_canonical"])
+    threshold_m=python_bridge._storage_threshold_m(threshold,level_contract,threshold_unit)
     physical=detect_spill_intervals(
         level,level_col,threshold_m,
         start=python_bridge._model_clock_timestamp(start),
@@ -468,16 +468,34 @@ def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshol
             rec["gap_seconds"]+=float(result["gap_seconds"])
             rec["excluded_seconds"]+=float(result["excluded_seconds"])
             rec["uncovered_seconds"]+=uncovered
+    # Event integration has already removed excluded level intervals. Preserve
+    # period support separately, including outages during otherwise dry periods.
+    assessment={}
+    if physical.get("analysis_start") is not None:
+        timestamps=pd.to_datetime(level.timestamp).to_numpy()
+        for a,b in split_interval_by_month(physical["analysis_start"],physical["analysis_end"]):
+            left=max(0,int(timestamps.searchsorted(pd.Timestamp(a).to_datetime64()))-1)
+            right=min(len(level),int(timestamps.searchsorted(pd.Timestamp(b).to_datetime64(),side="right"))+1)
+            support=detect_spill_intervals(level.iloc[left:right],level_col,threshold_m,start=a,end=b,max_gap_seconds=float(max_gap_seconds),exclusions=exclusions)
+            key=(pd.Timestamp(a).year,pd.Timestamp(a).month)
+            assessment[key]=support
+            if key not in monthly and (support.get("excluded_seconds",0)>0 or support.get("status")!="complete"):
+                monthly[key]={"year":key[0],"month":key[1],"volume_m3":0.0,"requested_seconds":0.0,"valid_seconds":0.0,"gap_seconds":0.0,"excluded_seconds":0.0,"uncovered_seconds":0.0}
     rows=[]
     for key in sorted(monthly):
         rec=monthly[key]
+        support=assessment.get(key,physical)
+        rec["assessment_excluded_seconds"]=float(support.get("excluded_seconds",0))
+        rec["assessment_unknown_seconds"]=float(support.get("unknown_seconds",0))
+        period_coverage=float(support.get("valid_seconds",0))/float(support["analysis_seconds"]) if support.get("analysis_seconds",0)>0 else None
         complete=(
             rec["requested_seconds"]>0
             and rec["gap_seconds"]<=1e-9
             and rec["excluded_seconds"]<=1e-9
             and rec["uncovered_seconds"]<=1e-9
             and rec["valid_seconds"]>=rec["requested_seconds"]-1e-9
-            and physical.get("status")=="complete"
+            and support.get("status")=="complete"
+            and rec["assessment_excluded_seconds"]<=1e-9
         )
         validity=validity_summary(
             requested_seconds=rec["requested_seconds"],
@@ -486,8 +504,11 @@ def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshol
             unknown_seconds=rec["gap_seconds"],
             uncovered_seconds=rec["uncovered_seconds"],
         )
-        rec["status"]="complete" if complete else validity["calculation_status"]
-        rec["coverage_fraction"]=validity["coverage_fraction"]
+        rec["status"]="complete" if complete else ("partial" if support.get("valid_seconds",0)>0 else "unavailable")
+        rec["discharge_coverage_fraction"]=validity["coverage_fraction"]
+        rec["assessment_coverage_fraction"]=period_coverage
+        coverage=[v for v in (validity["coverage_fraction"],period_coverage) if v is not None]
+        rec["coverage_fraction"]=min(coverage) if coverage else None
         rec["validity"]=validity
         if not complete:
             rec["volume_m3_partial"]=rec["volume_m3"]
@@ -495,7 +516,7 @@ def monthly_spill_volume_result(level_path,level_col,flow_path,flow_col,threshol
         rows.append(rec)
     return json.dumps(python_bridge._jsonable({
         "rows":rows,
-        "calculation_status":"complete" if physical.get("status")=="complete" and all(r["status"]=="complete" for r in rows) else ("partial" if physical.get("valid_seconds",0)>0 else "unavailable"),
+        "calculation_status":"complete" if physical.get("status")=="complete" and physical.get("excluded_seconds",0)<=1e-9 and all(r["status"]=="complete" for r in rows) else ("partial" if physical.get("valid_seconds",0)>0 else "unavailable"),
         "level_contract":level_contract,
         "flow_contract":flow_contract,
     }),ensure_ascii=False)
