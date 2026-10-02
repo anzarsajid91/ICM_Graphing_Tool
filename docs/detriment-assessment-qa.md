@@ -26,3 +26,24 @@ A fresh whole-branch reviewer found six Important issues, all addressed with obs
 - Post-deployment verification runs both the existing full smoke and new detriment smoke against the exact deployed main revision.
 
 Native user ICM exports are now supplied and covered by [the reference validation contract](icm-buddy-reference-validation.md): worst-case Level (41 rows), worst-case Volume (18 rows), and statistical spill detail (124 rows). Explicit mapping and engineering confirmations remain required for unfamiliar exports. Physical event rows are not automatically converted to UK12/24 counts.
+
+## Hydra Bench ID selection and About
+
+Each detriment tab stores an independent draft and applied list. Apply accepts
+newline, comma, semicolon, tab or unambiguous horizontal space lists, and quoted
+IDs containing separators. Copied grids detect ID headings; ambiguous columns
+require an explicit selection. IDs remain strings with exact, case-sensitive
+matching. Duplicates are removed; requested, found and absent IDs are reported.
+Missing-scenario rows retain their original unresolved evidence.
+
+The applied selection scopes the table, charts, summary figures, selected-asset
+evidence and CSV/HTML exports. Editing a draft alone does not change results.
+Clear restores the prior table filter and sort. Saved workspaces preserve every
+tab's list. No matches produce an empty view; the full population is never used
+as a fallback. Existing calculations remain authoritative and unmodified.
+
+Local checks cover parser edge cases, all three tabs, filtered chart arrays and
+exports, absent IDs, draft/Apply/Clear, persistence and source removal. Native
+reference browser acceptance and the existing shell acceptance also pass. About
+sits above the file list and contains six workspace summaries, working workspace
+links, and Built by Anzar Sajid. Desktop and mobile views were inspected.

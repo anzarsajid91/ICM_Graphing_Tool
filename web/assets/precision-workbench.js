@@ -37,6 +37,10 @@ const ROUTES={
       dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
     }
   },
+  about:{
+    label:'About',icon:'about',
+    pages:{overview:{label:'Overview',title:'About Hydra Bench',description:'A practical workbench for hydraulic evidence, model verification and scenario assessment.',root:()=>$('tab-about')}}
+  },
   reports:{
     label:'Reports',
     icon:'report',
@@ -87,7 +91,8 @@ function navIcon(name){
     rainfall:'<path d="M7 15a4 4 0 0 1 .6-8 5.5 5.5 0 0 1 10.5 1.5A3.5 3.5 0 0 1 18 15"/><path d="M8 18l-1 2M12 18l-1 2M16 18l-1 2"/>',
     verify:'<path d="M12 3 4.5 7v5c0 4.6 3.1 7.5 7.5 9 4.4-1.5 7.5-4.4 7.5-9V7z"/><path d="m8.5 12 2.2 2.2 4.8-5"/>',
     spills:'<path d="M4 9c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2"/><path d="M4 14c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2"/><path d="M4 19c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2"/>',
-    report:'<path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M9 11h6M9 15h6M9 19h4"/>'
+    report:'<path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M9 11h6M9 15h6M9 19h4"/>',
+    about:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>'
   };
   return '<span class="pw-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+(paths[name]||paths.data)+'</svg></span>';
 }
@@ -288,9 +293,12 @@ function buildShell(){
   const app=document.createElement('div');app.className='pw-app';
   const rail=document.createElement('aside');rail.className='pw-rail';rail.setAttribute('aria-label','Primary workspaces');
   rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><span class="pw-brand-icon">HB</span><span class="pw-brand-title">Hydra Bench</span></div><small>Browser-local hydraulic evidence and assessment.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
-  const pnav=qs('.pw-primary-nav',rail);
+  const bottom=document.createElement('div');bottom.className='pw-rail-bottom';
+  bottom.innerHTML='<nav class="pw-about-nav" aria-label="About the tool"></nav>';
+  bottom.appendChild(qs('.pw-asset-browser',rail));rail.appendChild(bottom);
+  const pnav=qs('.pw-primary-nav',rail),aboutNav=qs('.pw-about-nav',rail);
   Object.entries(ROUTES).forEach(([key,w])=>{
-    const b=document.createElement('button');b.type='button';b.dataset.workspace=key;b.innerHTML=navIcon(w.icon)+'<span class="pw-nav-label">'+esc(w.label)+'</span>';b.setAttribute('aria-label',w.label);b.addEventListener('click',()=>navigate(key,Object.keys(w.pages)[0],true));pnav.appendChild(b);
+    const b=document.createElement('button');b.type='button';b.dataset.workspace=key;b.innerHTML=navIcon(w.icon)+'<span class="pw-nav-label">'+esc(w.label)+'</span>';b.setAttribute('aria-label',w.label);b.addEventListener('click',()=>navigate(key,Object.keys(w.pages)[0],true));(key==='about'?aboutNav:pnav).appendChild(b);
   });
   const stage=document.createElement('div');stage.className='pw-stage';
   const context=document.createElement('section');context.className='pw-context';
@@ -463,7 +471,7 @@ function navigate(workspace,page,push=false){
     }
   }
   applyPageComposition();
-  qsa('.pw-primary-nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.workspace===workspace?'page':'false'));
+  qsa('.pw-primary-nav button,.pw-about-nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.workspace===workspace?'page':'false'));
   $('pwBreadcrumbWorkspace').textContent=spec.label;$('pwBreadcrumbPage').textContent=p.label;$('pwPageTitle').textContent=p.title;$('pwPageDescription').textContent=p.description;
   const sn=$('pwSecondaryNav');sn.innerHTML='';
   Object.entries(spec.pages).forEach(([key,entry])=>{const b=document.createElement('button');b.type='button';b.dataset.page=key;b.textContent=entry.label;b.setAttribute('aria-current',key===page?'page':'false');b.addEventListener('click',()=>navigate(workspace,key,true));sn.appendChild(b);});
@@ -579,8 +587,23 @@ function wireContextUpdates(){
   const focusMedia=matchMedia('(min-width:901px)');
   focusMedia.addEventListener?.('change',()=>applyFocusCanvas(false));
 }
+function buildAboutPage(){
+  if($('tab-about'))return;
+  const summaries=[
+    ['data','time-series','Data / Time Series','Upload CSV, FDV and rainfall R files, association workbooks and ICM assessment reports into a shared source pool. Assign observed, modelled and rainfall series, confirm their quantities and units, and review hydraulic traces, thresholds, rainfall events and source statistics. This is the starting point for supplying and checking the evidence used by the other workspaces.'],
+    ['spills','assessment','Spills','Assess observed and modelled spills using explicit thresholds, exclusions and valid temporal support. Review physical spill intervals, UK 12/24 counts and yearly or monthly comparisons. Storage Assessment provides idealised storage screening and modelled spill-volume evidence to support further engineering investigation.'],
+    ['survey','fdv-check','Flow Survey','Check the quality and usefulness of a flow survey through FDV Check, Rainfall Check and Volume Balance. Review monitor data health, gauge quality and wet-weather event response, then assess flow continuity between associated upstream and downstream monitors on common valid periods.'],
+    ['detriment','flooding','Detriment Assessment','Compare baseline Scenario A with proposed Scenario B using exported ICM report evidence. The Flooding, Level and Spill tabs assess changes in flood volume, maximum water-level elevation and freeboard, or spill counts and actual durations. Explicit criteria, raw asset evidence and optional manhole / link ID lists support a focused, traceable assessment.'],
+    ['graphs','comparison','Graphs','Explore observed versus modelled agreement, depth and flow–depth rating diagnostics, and dry-weather-flow baselines. Use scatter views, fitted relationships and verification statistics to understand model performance and hydraulic behaviour, with sample support and data-validity limitations retained.'],
+    ['reports','report-generation','Reports','Export engineering assessments and graph reports from the current analysis, and save or restore a workspace with its configuration and source fingerprints. Reports carry the relevant criteria, units and evidence so results can be reviewed and shared; saved workspaces reference the original files without embedding their raw data.']
+  ];
+  const panel=document.createElement('section');panel.id='tab-about';panel.className='tab-panel';panel.hidden=true;
+  panel.innerHTML='<article class="panel pw-about-page"><header class="pw-about-intro"><span class="pw-about-monogram" aria-hidden="true">HB</span><div><h2>Hydra Bench</h2><p class="pw-about-lead">Hydraulic evidence. Clear assessment.</p></div></header><p class="pw-about-description">Hydra Bench is a browser-based engineering workbench for reviewing exported InfoWorks ICM results, telemetry, flow surveys and rainfall data. It brings data assessment, model verification, spill analysis and scenario comparison into one place, with explicit assumptions, units and traceable source evidence. Imported engineering data is processed locally in your browser.</p><section aria-labelledby="pwAboutWorkspaces"><h3 id="pwAboutWorkspaces">Your workspaces</h3><div class="pw-about-workspaces">'+summaries.map(([w,p,title,description])=>'<section><h4><button type="button" data-about-workspace="'+w+'" data-about-page="'+p+'">'+esc(title)+' <span aria-hidden="true">↗</span></button></h4><p>'+esc(description)+'</p></section>').join('')+'</div></section><section class="pw-about-author"><h3>Built by Anzar Sajid</h3><p>Created from practical hydraulic modelling and data-review workflows, Hydra Bench aims to make engineering evidence easier to inspect, compare and communicate. Its focus is on clear results, explicit assessment criteria and a streamlined path from imported data to an auditable engineering review.</p><small>© 2026 Anzar Sajid</small></section></article>';
+  qs('main.shell').appendChild(panel);
+  qsa('[data-about-workspace]',panel).forEach(button=>button.addEventListener('click',()=>navigate(button.dataset.aboutWorkspace,button.dataset.aboutPage,true)));
+}
 function mount(){
-  identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();
+  buildAboutPage();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();
   const initial=parseHash()||{workspace:'data',page:'time-series'};navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }

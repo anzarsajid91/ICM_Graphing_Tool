@@ -11,7 +11,11 @@ Current capabilities include observed/model scenario plotting and comparison,
 rainfall/event assessment, DWF screening, telemetry/data-quality review,
 physical spill detection with separate 12/24 compatibility counting, reversible
 reason-coded exclusions, idealised storage screening, workspaces and evidence
-exports.
+exports. The Detriment Assessment workspace compares baseline and proposed
+ICM flooding, level and spill reports; each tab accepts a pasted manhole/link ID
+list or copied ICM grid to scope its tables, charts, summaries and exports.
+About, above the source list in the navigation, describes the tool, its workspaces
+and its creator, Anzar Sajid.
 
 Engineering calculations use explicit unit and support contracts. Dimensional
 results are withheld when units are unresolved, missing rainfall is not treated
