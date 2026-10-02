@@ -23,11 +23,11 @@ def _exc(raw):return ExclusionPeriod(datetime.fromisoformat(raw["start"]),dateti
 
 def create_app(data_dir):
     Dash,Input,Output,State,dcc,html,no_update,ctx,ALL,go=_dash();root=Path(data_dir).expanduser().resolve();root.mkdir(parents=True,exist_ok=True)
-    app=Dash(__name__,title="ICM Calibration Workbench",assets_folder=str(Path(__file__).with_name("assets")))
+    app=Dash(__name__,title="ICM Buddy",assets_folder=str(Path(__file__).with_name("assets")))
     def nav(label,value):return html.Button(label,id={"type":"nav","view":value},n_clicks=0,className="nav-button")
     app.layout=html.Div([
         dcc.Store(id="active-view",data="data"),dcc.Store(id="exclusions",storage_type="session",data=[]),dcc.Store(id="spill-result",data=None),
-        html.Header([html.Div([html.H1("ICM Calibration Workbench"),html.Div("Exported-data calibration and spill assessment",className="subtitle")]),html.Div([html.Button("Save workspace",id="save-workspace",className="secondary"),html.Button("Help",id="help-button",className="secondary")],className="top-actions")],className="topbar"),
+        html.Header([html.Div([html.H1("ICM Buddy"),html.Div("Exported-data calibration and spill assessment",className="subtitle")]),html.Div([html.Button("Save workspace",id="save-workspace",className="secondary"),html.Button("Help",id="help-button",className="secondary")],className="top-actions")],className="topbar"),
         html.Div([html.Nav([nav("Data","data"),nav("Compare","compare"),nav("Events","events"),nav("Spills","spills"),nav("Report","report")],className="navrail"),html.Main([
             html.Div([html.Div([html.Span("Data root",className="context-label"),html.Span(str(root))]),html.Div([html.Span("Analysis",className="context-label"),html.Span("Not run",id="context-analysis")]),html.Div([html.Span("Quality",className="context-label"),html.Span("Pending")])],className="context-strip"),
             html.Div("Ready. Source files are never modified.",id="status-area",className="status info"),
@@ -122,6 +122,6 @@ def create_app(data_dir):
     def report(_,result,exclusions):
         if not result:return no_update,"Run a spill assessment first."
         counts=pd.DataFrame(result.get("monthly_counts",[]));durations=pd.DataFrame(result.get("monthly_durations",[]));summary={k:v for k,v in result.items() if k not in {"events","monthly_counts","monthly_durations","exclusion_audit"}};warnings=["Counts are definitive only where unexcluded data coverage is complete."] if result.get("count_status")!="definitive" else []
-        text=assessment_html(title="ICM Calibration Workbench — Spill Assessment",summary=summary,tables={"Monthly 12/24 counts":counts,"Monthly physical durations":durations},exclusions=exclusions or [],warnings=warnings)
+        text=assessment_html(title="ICM Buddy — Spill Assessment",summary=summary,tables={"Monthly 12/24 counts":counts,"Monthly physical durations":durations},exclusions=exclusions or [],warnings=warnings)
         return dict(content=text,filename="icm_workbench_spill_assessment.html",type="text/html"),html.Div([html.Strong("Report scope ready"),html.P(f"{len(exclusions or [])} exclusion period(s) included in the audit.")])
     return app

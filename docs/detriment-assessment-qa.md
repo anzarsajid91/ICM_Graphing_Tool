@@ -25,4 +25,4 @@ A fresh whole-branch reviewer found six Important issues, all addressed with obs
 - Rendered acceptance remains a required CI gate: all three report workflows, mapping/paste, named filters, paired/section/timeline plots, CSV/HTML, stale results, restore/rename/removal and responsive containment. Existing Chromium workflow, Firefox shell and baseline-performance jobs remain enabled.
 - Post-deployment verification runs both the existing full smoke and new detriment smoke against the exact deployed main revision.
 
-Representative user ICM report exports were not supplied. Header aliases and synthetic fixtures are provisional; explicit column mapping and engineering confirmations are required for unfamiliar exports. Physical event rows are not automatically converted to UK12/24 counts.
+Native user ICM exports are now supplied and covered by [the reference validation contract](icm-buddy-reference-validation.md): worst-case Level (41 rows), worst-case Volume (18 rows), and statistical spill detail (124 rows). Explicit mapping and engineering confirmations remain required for unfamiliar exports. Physical event rows are not automatically converted to UK12/24 counts.
