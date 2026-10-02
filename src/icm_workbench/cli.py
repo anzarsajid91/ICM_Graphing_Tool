@@ -3,7 +3,7 @@ import argparse,json
 from pathlib import Path
 
 def build_parser():
-    p=argparse.ArgumentParser(description="ICM Buddy");p.add_argument("--data-dir",default="data",help="Registered local data root");p.add_argument("--port",type=int,default=8050);p.add_argument("--host",default="127.0.0.1",choices=["127.0.0.1","localhost"],help="Loopback only for this release");p.add_argument("--batch-config",help="Run an explicit saved calibration-pair batch JSON instead of starting Dash");p.add_argument("--batch-output",help="Optional JSON output path for batch results");return p
+    p=argparse.ArgumentParser(description="Hydra Bench");p.add_argument("--data-dir",default="data",help="Registered local data root");p.add_argument("--port",type=int,default=8050);p.add_argument("--host",default="127.0.0.1",choices=["127.0.0.1","localhost"],help="Loopback only for this release");p.add_argument("--batch-config",help="Run an explicit saved calibration-pair batch JSON instead of starting Dash");p.add_argument("--batch-output",help="Optional JSON output path for batch results");return p
 def main(argv=None):
     args=build_parser().parse_args(argv);root=Path(args.data_dir).expanduser().resolve();root.mkdir(parents=True,exist_ok=True)
     if not root.is_dir():raise SystemExit(f"Data path is not a directory: {root}")

@@ -57,7 +57,7 @@ try{
   const migrated=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
   if(migrated.workspace!=='spills'||migrated.page!=='storage')throw new Error('Legacy Storage route did not migrate: '+JSON.stringify(migrated));
   const productTitle=((await page.locator('.pw-brand-title').textContent())||'').trim();
-  if(productTitle!=='ICM Buddy')throw new Error('Product title must be ICM Buddy, got '+JSON.stringify(productTitle));
+  if(productTitle!=='Hydra Bench')throw new Error('Product title must be Hydra Bench, got '+JSON.stringify(productTitle));
   if(await page.locator('#pwRailToggle').count()!==1)throw new Error('Navigation rail needs an explicit collapse/expand control.');
   if(await page.locator('[data-pw-page="provenance"]').count()!==0)throw new Error('User-facing provenance route should be removed.');
 

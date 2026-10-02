@@ -1,4 +1,4 @@
-# ICM Buddy
+# Hydra Bench
 
 [Open the browser tool](https://anzarsajid91.github.io/ICM_Graphing_Tool/)
 

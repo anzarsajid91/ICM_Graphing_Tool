@@ -131,7 +131,7 @@ async function exportHtml(){
       rows.map(x=>'<tr><td>'+escape(x.asset_id)+'</td><td class="dt-'+escape(x.status)+'">'+escape(x.status)+'</td><td>'+number(x.a)+'</td><td>'+number(x.b)+'</td><td>'+number(x.delta,true)+' '+escape(x.unit)+'</td>'+
         (level?'<td>'+number(x.ground_a)+' / '+number(x.ground_b)+'</td><td>'+number(x.freeboard_a)+' / '+number(x.freeboard_b)+'</td>':spill?'<td>'+number(x.duration_a_hours)+' / '+number(x.duration_b_hours)+'</td><td>'+number(x.duration_delta_hours,true)+'</td>':'')+
         '<td>'+escape(x.flags.join('; '))+'</td></tr>').join('')+'</tbody></table></div><h2>Assessment criteria and source provenance</h2><pre>'+escape(JSON.stringify(evidence,null,2))+'</pre><h2>Asset evidence · full calculation precision</h2><pre>'+escape(JSON.stringify(rows,null,2))+'</pre></article>';
-    downloadBlob('icm-'+exportKind+'-detriment.html',reportShell('ICM Buddy · '+titles[exportKind],'Baseline A compared with proposed B · '+r.scenario_a.scope,body,true),'text/html');
+    downloadBlob('icm-'+exportKind+'-detriment.html',reportShell('Hydra Bench · '+titles[exportKind],'Baseline A compared with proposed B · '+r.scenario_a.scope,body,true),'text/html');
   }catch(error){$('dtStatus').textContent='Report export failed: '+String(error?.message||error);}
   finally{if(results[kind])button.disabled=false;}
 }
