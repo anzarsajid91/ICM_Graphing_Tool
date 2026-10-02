@@ -101,3 +101,7 @@ assert.equal(api.summariseRows([population[3]]).unresolved,1);
 assert.equal(population.length,4,'Scoping does not mutate the authoritative population');
 assert.match(api.csv({...r,asset_selection:{ids:['001','ABSENT'],absent:['ABSENT'],column:'0',duplicates_removed:1}},r.rows),/asset_selection_absent_ids/);
 console.log('ID selection units passed: clipboard lists/grids, quotes, ambiguity, leading zeros, exact matches, missing scenarios, empty views and scoped summaries.');
+assert.deepEqual(ids('Node ID,X\n"MH;1",123').ids,['MH;1'],'Quoted semicolon does not change CSV grid delimiter');
+assert.deepEqual(ids('Node ID,X\n"MH\t1",123').ids,['MH\t1'],'Quoted tab does not change CSV grid delimiter');
+assert.deepEqual(ids('Node ID;X\n"MH,1";123').ids,['MH,1']);
+assert.deepEqual(ids('Node ID\n001,002\n003;004').ids,['001','002','003','004'],'A one-column heading can precede mixed-separator list rows');

@@ -43,14 +43,24 @@ function clipboardCells(text,delimiter){
   if(quoted)throw Error('A quoted ID is unfinished. Close the quote before applying.');
   pushRow();return rows;
 }
+function clipboardDelimiter(text){
+  const counts={'\t':0,';':0,',':0};let quoted=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(ch==='"'){if(quoted&&text[i+1]==='"')i++;else quoted=!quoted;}
+    else if(!quoted&&ch==='\n')break;
+    else if(!quoted&&Object.hasOwn(counts,ch))counts[ch]++;
+  }
+  return Object.keys(counts).reduce((best,key)=>counts[key]>counts[best]?key:best,',');
+}
 function parseIdList(text,column='auto',knownIds=[]){
   const raw=String(text??'').replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n').trim();
   if(!raw)return {ids:[],duplicates:0,columns:[],error:null,mode:'list'};
   try{
     // Inspect potential grid headings before treating delimiters as an ID list.
-    const delimiter=raw.includes('\t')?'\t':raw.includes(';')?';':',';
+    const delimiter=clipboardDelimiter(raw);
     const grid=clipboardCells(raw,delimiter),head=grid[0]||[],candidates=head.map((v,i)=>idHeading(v)?i:-1).filter(i=>i>=0);
-    const gridLike=(candidates.length>0&&grid.length>1)||(delimiter==='\t'&&grid.length>1&&head.length>1);
+    const gridLike=(candidates.length>0&&grid.length>1&&head.length>1)||(delimiter==='\t'&&grid.length>1&&head.length>1);
     const columns=gridLike||/^\d+$/.test(column)?Array.from({length:grid.reduce((n,r)=>Math.max(n,r.length),0)},(_,i)=>({value:String(i),label:'Column '+(i+1)+(candidates.length?' · '+(head[i]||'unnamed'):'' )})):[];
     let values,mode='list';
     if(column!=='list'&&(gridLike||/^\d+$/.test(column))){
@@ -66,7 +76,7 @@ function parseIdList(text,column='auto',knownIds=[]){
         const tokens=raw.match(/"(?:""|[^"])*"|'[^']*'|[^\s]+/g)||[];
         values=tokens.map(v=>v.replace(/^"|"$/g,'').replaceAll('""','"').replace(/^'|'$/g,''));
       }
-      if(values.length>1&&!knownIds.includes(values[0])&&idHeading(values[0]))values.shift();
+      if(column!=='list'&&values.length>1&&idHeading(values[0]))values.shift();
     }
     const ids=[],seen=new Set();let duplicates=0;
     for(let value of values){value=String(value).trim();if(value.startsWith("'")&&value.endsWith("'")&&value.length>1)value=value.slice(1,-1);if(!value)continue;if(seen.has(value)){duplicates++;continue;}seen.add(value);ids.push(value);}
