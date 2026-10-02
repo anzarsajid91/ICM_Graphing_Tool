@@ -8,3 +8,7 @@
 @media(max-width:600px){.dt-drawer{position:fixed;top:90px;right:12px;width:calc(100vw - 24px);max-height:calc(100vh - 110px)}}
 @media(min-width:1200px){.dt-layout:has(.dt-drawer:not([hidden])){grid-template-columns:260px minmax(0,1fr) 300px}.dt-drawer{grid-column:3;grid-row:1;position:sticky;top:90px;right:auto;width:auto;max-height:75vh;z-index:2}}
 @media(min-width:601px) and (max-width:1199px){.dt-drawer{top:360px;max-height:calc(100vh - 380px)}}
+
+.dt-import-warning{font-size:11px;line-height:1.55;padding:8px 10px;border-left:2px solid #b9771c;background:#fff6e5;color:#805d24;overflow-wrap:anywhere}
+
+.dt-metric .dt-metric-unit{display:block;margin-top:5px;font-size:11px;font-weight:500;line-height:1.45;color:#607986}

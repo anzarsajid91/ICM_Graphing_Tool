@@ -1,6 +1,6 @@
 # GitHub Pages browser edition
 
-This directory is the zero-install delivery surface for the ICM Calibration Workbench.
+This directory is the zero-install delivery surface for the ICM Buddy.
 
 ## Architecture
 

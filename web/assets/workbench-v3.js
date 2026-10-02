@@ -15,7 +15,7 @@
       owner.dataset.icmCopyright = 'true';
       if (!owner.parentElement) footer.prepend(owner);
     }
-    owner.textContent = 'ICM Graphing Tool — © 2026 Anzar Sajid';
+    owner.textContent = 'ICM Buddy — © 2026 Anzar Sajid';
   }
 
   function exposeThresholdControlsGlobally() {

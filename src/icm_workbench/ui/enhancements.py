@@ -235,7 +235,7 @@ def enhance_app(app, root: Path):
 
     @app.callback(Output("review-report-download","data"), Input("review-report-btn","n_clicks"), State("spill-result","data"), State("exclusions","data"), State("review-notes","data"), prevent_initial_call=True)
     def review_report(_,spill_result,exclusions,notes):
-        summary={"spill_result":spill_result or {},"note_count":len(notes or []),"exclusion_count":len(exclusions or [])};text=assessment_html(title="ICM Calibration Workbench — Current Assessment",summary=summary,tables={},exclusions=exclusions or [],notes=notes or [],warnings=[]);return dict(content=text,filename="icm_workbench_current_assessment.html",type="text/html")
+        summary={"spill_result":spill_result or {},"note_count":len(notes or []),"exclusion_count":len(exclusions or [])};text=assessment_html(title="ICM Buddy — Current Assessment",summary=summary,tables={},exclusions=exclusions or [],notes=notes or [],warnings=[]);return dict(content=text,filename="icm_workbench_current_assessment.html",type="text/html")
 
     @app.callback(Output("batch-result","children"), Input("batch-upload","contents"), prevent_initial_call=True)
     def batch_upload(contents):

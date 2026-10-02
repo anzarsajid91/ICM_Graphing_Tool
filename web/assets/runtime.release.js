@@ -24,7 +24,7 @@ const diagnostic = {
 window.__ICM_WORKBENCH__ = diagnostic;
 diagnostic.sourcePoolRevision = 0;
 function notifySourcePoolChanged(reason='changed'){
-  for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
+  for(const id of reason==='engine-recovered'?[]:['timeBasisConfirmed','levelDatumConfirmed']){
     const input=$(id);if(input)input.checked=false;
   }
   const detail={
@@ -177,7 +177,11 @@ function compactGraphRole(role,item,col){
 const safeName=(name)=>String(name).replace(/[^a-zA-Z0-9._-]+/g,'_').slice(-120);
 const modelClock=(v)=>String(v||'').trim().replace(' ','T').slice(0,19);
 const toLocalInput=(v)=>modelClock(v);
-const setEngineStatus=(text,kind='booting')=>{$('engineStatus').innerHTML=`<span class="status-dot ${kind}"></span><span>${esc(text)}</span>`;};
+const setEngineStatus=(text,kind='booting')=>{
+  const status=$('engineStatus');if(!status)return;
+  status.innerHTML=`<span class="status-dot ${kind}"></span><span>${esc(text)}</span>`+(kind==='error'?'<button type="button" id="engineRetryBtn" class="engine-retry" title="Reload Python and restore uploaded sources and interpretation settings">Retry Python</button>':'');
+  const retry=$('engineRetryBtn');if(retry)retry.onclick=recoverAuthoritativeEngine;
+};
 let operationDepth=0;
 function operationLabel(target){
   const labels={
@@ -384,14 +388,18 @@ class BrowserPythonEngine {
   _spawn(){
     if(typeof Worker!=='function')throw new Error('Web Workers are not available in this browser.');
     this.worker=new Worker(`assets/analysis-worker.js?v=${encodeURIComponent(buildToken)}`);
-    this.worker.addEventListener('message',event=>this._message(event.data||{}));
+    const spawnedWorker=this.worker;
+    this.worker.addEventListener('message',event=>{if(this.worker===spawnedWorker)this._message(event.data||{});});
     this.worker.addEventListener('error',event=>{
+      if(this.worker!==spawnedWorker)return;
       const message=event?.message||'Python analysis worker failed.';
       diagnostic.errors.push({time:new Date().toISOString(),target:'analysis-worker',message});
       for(const [,entry] of this.pending)entry.reject(new Error(message));
       this.pending.clear();
       this.queue=[];this.active=null;this._renderQueue();
       this.ready=false;
+      diagnostic.status='failed';
+      setEngineStatus('Advanced analysis unavailable: '+message,'error');
     });
   }
   _message(message){
@@ -425,17 +433,18 @@ class BrowserPythonEngine {
     if(this.ready)return {ready:true,manifestCount:diagnostic.manifestCount,execution:'web-worker'};
     if(this.booting)return this.booting;
     this._spawn();
-    this.booting=this._request('boot').then(info=>{
-      this.ready=true;
-      diagnostic.status='ready';
+    const booting=this._request('boot').then(info=>{
       diagnostic.execution='web-worker';
       diagnostic.manifestCount=Number(info?.manifestCount||0);
       diagnostic.workerBuildToken=info?.buildToken||null;
       if(diagnostic.workerBuildToken&&diagnostic.workerBuildToken!==buildToken){
         throw new Error(`Worker asset version mismatch: page ${buildToken}, worker ${diagnostic.workerBuildToken}.`);
       }
+      this.ready=true;
+      diagnostic.status='ready';
       return info;
-    }).finally(()=>{this.booting=null;});
+    }).finally(()=>{if(this.booting===booting)this.booting=null;});
+    this.booting=booting;
     return this.booting;
   }
   async addFile(item,bytes=null){
@@ -478,7 +487,7 @@ const engine=new BrowserPythonEngine();
 const fastpathEngine=new BrowserFastPathEngine();
 let engineBootPromise=null;
 let sourceImportEpoch=0;
-const TRANSIENT_SOURCE_STATUSES=new Set(['reading','preview-ready','waiting-engine','validating']);
+const TRANSIENT_SOURCE_STATUSES=new Set(['reading','preview-ready','waiting-engine','validating','restoring']);
 function invalidatePendingSourceImports(){
   sourceImportEpoch+=1;
   fastpathEngine.terminate();
@@ -510,6 +519,55 @@ function ensureEngineBoot(){
   if(!engineBootPromise)engineBootPromise=bootAuthoritativeEngine();
   return engineBootPromise;
 }
+let engineRecoveryPromise=null;
+async function restoreSeriesInterpretations(){
+  for(const [key,quantity] of state.seriesQuantityOverrides.entries()){
+    const mapped=mappingObject(key);
+    if(mapped&&quantity)await applySeriesQuantityOverride(key,String(quantity).toLowerCase(),{refresh:false,unit:state.seriesUnitOverrides.get(key)||null});
+  }
+  for(const [key,unit] of state.seriesUnitOverrides.entries()){
+    if(state.seriesQuantityOverrides.has(key))continue;
+    const mapped=mappingObject(key);
+    if(mapped)await applySeriesQuantityOverride(key,seriesQuantity(mapped.item,mapped.col),{refresh:false,unit});
+  }
+}
+async function recoverAuthoritativeEngine(){
+  if(engineRecoveryPromise)return engineRecoveryPromise;
+  // Keep file objects, IDs, mappings and saved interpretations. A failed boot
+  // can leave display-only or waiting sources as well as authoritative files.
+  sourceImportEpoch+=1;
+  const items=[...state.files.values()].filter(item=>item.file&&(item.status==='ready'||item.status==='preview-only'||TRANSIENT_SOURCE_STATUSES.has(item.status)||item.advancedUnavailable));
+  for(const item of items)item.status='restoring';
+  operationDepth+=1;setEngineStatus('Reloading Python…','booting');
+  operationUpdate('Reloading Python',null,'Restoring uploaded sources and interpretation settings.');
+  const work=(async()=>{
+    const info=await engine.restart();
+    let failedSources=0;
+    for(const item of items){
+      if(state.files.get(item.id)!==item)continue;
+      try{
+        await engine.addFile(item);
+        item.parsed=item.reportKind?await engine.call('parse_detriment_report',{path:item.virtualPath,report_kind:item.reportKind},'advanced_bridge'):await engine.call('parse_source',{path:item.virtualPath});
+        item.status='ready';item.error=null;item.advancedUnavailable=false;item._buffer=null;
+      }catch(error){item.status='error';item.error=String(error?.message||error);item.advancedUnavailable=!engine.ready;failedSources+=1;}
+    }
+    if(!engine.ready)throw new Error('Python worker failed while restoring sources. Retry again.');
+    await restoreSeriesInterpretations();
+    diagnostic.status='ready';diagnostic.engineReadyAt=performance.now();
+    setEngineStatus('Advanced analysis ready · authoritative Python engine','ready');
+    renderPool();renderSeriesOptions();notifySourcePoolChanged('engine-recovered');
+    if(failedSources)$('poolSummary').textContent+=` · ${failedSources} source(s) could not be restored; inspect source errors.`;
+    return info;
+  })();
+  engineBootPromise=work;
+  engineRecoveryPromise=work.catch(error=>{
+    engineBootPromise=null;diagnostic.status='failed';
+    setEngineStatus('Engine restart failed: '+String(error?.message||error),'error');
+    diagnostic.errors.push({time:new Date().toISOString(),target:'engine-recovery',message:String(error?.message||error)});
+    return null;
+  }).finally(()=>{engineRecoveryPromise=null;operationEnd();});
+  return engineRecoveryPromise;
+}
 let cancellingOperation=false;
 async function cancelCurrentOperation(){
   if(cancellingOperation)return;
@@ -524,6 +582,7 @@ async function cancelCurrentOperation(){
     const restartPromise=engine.restart(readyItems);
     engineBootPromise=restartPromise;
     const info=await restartPromise;
+    await restoreSeriesInterpretations();
     diagnostic.status='ready';
     diagnostic.engineReadyAt=performance.now();
     setEngineStatus('Reference Python worker ready · files remain local','ready');
@@ -910,6 +969,7 @@ async function ingestFiles(files){
     if(!importIsCurrent())return;
     for(const item of pending){
       if(item.status==='error')continue;
+      item.advancedUnavailable=true;
       if(item.preview&&item.preview.eligible){item.status='preview-only';item.error='Advanced analysis unavailable; preview remains display-only.';}
       else{item.status='error';item.error='Advanced analysis unavailable and this format has no FastPath preview.';}
       recordFastPath(item);
@@ -1094,13 +1154,15 @@ function renderPool(){
     const sent=Number(audit.sentinel_count||0)+(audit.column_audit?Object.values(audit.column_audit).reduce((a,x)=>a+Number(x.sentinel_count||0),0):0);
     const malformed=Number(audit.malformed_rows||0)+Number(audit.invalid_timestamps||0);
     const period=p.start?esc(modelClock(p.start))+' → '+esc(modelClock(p.end)):'—';
-    const statusLabel={reading:'Reading…','waiting-engine':'Waiting for advanced engine…','preview-ready':'Preview ready · validating…',validating:'Preview ready · validating…',ready:'Ready',error:'Error','preview-only':'Preview only · advanced unavailable'}[item.status]||item.status;
-    const auditText=item.status==='error'?(item.error||'Failed'):(item.preview&&item.preview.eligible&&item.status!=='ready'?'FastPath structural preview':sent+' sentinel; '+malformed+' malformed/invalid');
+    const statusLabel={reading:'Reading…','waiting-engine':'Waiting for advanced engine…','preview-ready':'Preview ready · validating…',validating:'Preview ready · validating…',restoring:'Restoring Python source…',ready:'Ready',error:'Error','preview-only':'Preview only · advanced unavailable'}[item.status]||item.status;
+    const reportWarning=p.metadata?.source_kind==='detriment_report'&&Boolean(audit.numeric_date_cells||audit.date_only_boundaries);
+    const reportAudit=p.metadata?.source_kind==='detriment_report'?String(audit.report_rows||p.rows)+' report rows'+(audit.numeric_date_cells?' · '+audit.numeric_date_cells+' date-formatted numeric cells':'')+(audit.date_only_boundaries?' · '+audit.date_only_boundaries+' date-only boundary (00:00)':''):null;
+    const auditText=item.status==='error'?(item.error||'Failed'):(reportAudit||(item.preview&&item.preview.eligible&&item.status!=='ready'?'FastPath structural preview':sent+' sentinel; '+malformed+' malformed/invalid'));
     const reconcile=item.fastpathReconciliation&&item.fastpathReconciliation.status==='mismatch'?' · preview mismatch ⚠':item.fastpathReconciliation&&item.fastpathReconciliation.status==='matched'?' · preview validated':'';
     const status=item.status==='error'?'<span class="audit-bad">Error</span>':esc(statusLabel+reconcile)+(item.status==='ready'&&Number.isFinite(item.loadSeconds)?' · '+fmt(item.loadSeconds,1)+' s':'');
     const removeDisabled=TRANSIENT_SOURCE_STATUSES.has(item.status);
     const removeTitle=removeDisabled?'Finish importing before removing':'Remove '+item.displayName;
-    return '<tr data-source-id="'+esc(item.id)+'"><td><div class="file-name">'+esc(item.displayName)+'</div><small>'+mb(item.file.size)+' · SHA '+(item.hash?item.hash.slice(0,10):'…')+'</small></td><td>'+esc(p.format||'—')+'</td><td>'+(p.rows??'—')+'</td><td>'+period+'</td><td class="'+((sent||malformed||(item.fastpathReconciliation&&item.fastpathReconciliation.status==='mismatch'))?'audit-warn':'audit-good')+'">'+esc(auditText)+'</td><td>'+status+'</td><td class="source-remove-cell"><button type="button" class="source-remove-btn" data-source-remove="'+esc(item.id)+'" aria-label="'+esc(removeTitle)+'" title="'+esc(removeTitle)+'" '+(removeDisabled?'disabled':'')+'>×</button></td></tr>';
+    return '<tr data-source-id="'+esc(item.id)+'"><td><div class="file-name">'+esc(item.displayName)+'</div><small>'+mb(item.file.size)+' · SHA '+(item.hash?item.hash.slice(0,10):'…')+'</small></td><td>'+esc(p.format||'—')+'</td><td>'+(p.rows??'—')+'</td><td>'+period+'</td><td class="'+((sent||malformed||reportWarning||(item.fastpathReconciliation&&item.fastpathReconciliation.status==='mismatch'))?'audit-warn':'audit-good')+'">'+esc(auditText)+'</td><td>'+status+'</td><td class="source-remove-cell"><button type="button" class="source-remove-btn" data-source-remove="'+esc(item.id)+'" aria-label="'+esc(removeTitle)+'" title="'+esc(removeTitle)+'" '+(removeDisabled?'disabled':'')+'>×</button></td></tr>';
   }).join('');
   document.querySelectorAll('[data-source-remove]').forEach(button=>button.addEventListener('click',()=>void guarded('poolSummary',()=>removeSourceById(button.dataset.sourceRemove))));
 }
@@ -1289,21 +1351,7 @@ async function restoreAnalysisWorkerAfterBackgroundInterrupt(reason='Interactive
     // Quantity reinterpretation is held in the authoritative Python cache as
     // well as JS metadata. A worker restart must faithfully restore those
     // engineer-assigned semantics before any graph/statistics request proceeds.
-    for(const [key,quantity] of state.seriesQuantityOverrides.entries()){
-      const mapped=mappingObject(key);
-      if(!mapped||!quantity)continue;
-      await engine.call('set_series_quantity',{
-        path:mapped.item.virtualPath,
-        column:mapped.col,
-        quantity:String(quantity).toLowerCase(),
-        unit:state.seriesUnitOverrides.get(key)||null
-      });
-    }
-    for(const [key,unit] of state.seriesUnitOverrides.entries()){
-      if(state.seriesQuantityOverrides.has(key))continue;
-      const mapped=mappingObject(key);
-      if(mapped)await engine.call('set_series_quantity',{path:mapped.item.virtualPath,column:mapped.col,quantity:seriesQuantity(mapped.item,mapped.col),unit});
-    }
+    await restoreSeriesInterpretations();
     return true;
   })();
   backgroundComparisonInterruptPromise=work.finally(()=>{
@@ -1908,7 +1956,7 @@ function thresholdWorkspaceSeries(role){
   const model=mappingObject(key);
   return model&&['depth','level'].includes(String(seriesQuantity(model.item,model.col)||'').toLowerCase())?workspaceSeries(key):null;
 }
-function workspaceObject(strictExclusions=true){return {schema_version:3,application:'ICM Graphing Tool GitHub Pages',time_basis:$('timeBasisConfirmed')?.checked?'model clock/engineer-confirmed':'model clock/unspecified',time_basis_confirmed:Boolean($('timeBasisConfirmed')?.checked),level_datum_confirmed:Boolean($('levelDatumConfirmed')?.checked),saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity,unit:state.seriesUnitOverrides.get(key)||null})).filter(x=>x.series&&x.quantity),series_unit_overrides:[...state.seriesUnitOverrides.entries()].map(([key,unit])=>({series:workspaceSeries(key),unit})).filter(x=>x.series&&x.unit),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),storage_threshold_unit:$('storageThresholdUnit')?.value||null,target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#ff0000',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#ff0000'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
+function workspaceObject(strictExclusions=true){return {schema_version:3,application:'ICM Buddy GitHub Pages',time_basis:$('timeBasisConfirmed')?.checked?'model clock/engineer-confirmed':'model clock/unspecified',time_basis_confirmed:Boolean($('timeBasisConfirmed')?.checked),level_datum_confirmed:Boolean($('levelDatumConfirmed')?.checked),saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity,unit:state.seriesUnitOverrides.get(key)||null})).filter(x=>x.series&&x.quantity),series_unit_overrides:[...state.seriesUnitOverrides.entries()].map(([key,unit])=>({series:workspaceSeries(key),unit})).filter(x=>x.series&&x.unit),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),storage_threshold_unit:$('storageThresholdUnit')?.value||null,target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#ff0000',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#ff0000'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
 function downloadBlob(name,content,type='application/octet-stream'){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 function downloadWorkspace(){downloadBlob(`icm-workbench-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(workspaceObject(),null,2),'application/json');$('workspaceStatus').textContent='Workspace downloaded. Raw files were not embedded.';}
 function findSeriesFromWorkspace(ref){
@@ -2084,7 +2132,7 @@ function reportCss(landscape=false){
   return ':root{--ink:#182433;--muted:#667788;--line:#d9e1e8;--soft:#f5f8fa;--accent:#315b9b}*{box-sizing:border-box}html{background:#eef2f5}body{margin:0;color:var(--ink);font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:1.45;background:#fff}.report{max-width:1180px;margin:0 auto;padding:30px 34px 42px}.report-header{border-bottom:3px solid var(--accent);padding-bottom:16px;margin-bottom:22px;display:flex;justify-content:space-between;gap:24px;align-items:flex-end}.report-header h1{font-size:26px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em}.report-header p{margin:0;color:var(--muted)}.report-meta{text-align:right;color:var(--muted);font-size:12px;white-space:nowrap}h2{font-size:18px;margin:26px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:14px;margin:18px 0 8px}.note{background:var(--soft);border-left:4px solid var(--accent);padding:10px 12px;margin:12px 0 18px}.report-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.card{min-width:0;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:#fff;break-inside:avoid}.card h3{margin:0 0 8px}.table-wrap{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:7px;margin:8px 0 14px}table{border-collapse:collapse;width:100%;min-width:620px}th,td{padding:7px 9px;border-bottom:1px solid #e8edf1;text-align:left;vertical-align:top;font-size:11.5px}th{background:var(--soft);color:#435466;text-transform:uppercase;letter-spacing:.025em;font-size:10.5px}tr:last-child td{border-bottom:0}.figure{margin:12px 0 20px;break-inside:avoid}.report-plot{width:100%;min-width:0}.report-figure-metrics{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}.report-figure-metrics-title{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}.report-figure-metrics .graph-statistics-note{margin:0 0 7px}.report-figure-metrics .table-wrap{margin:0}.report-figure-metrics .graph-stats-compact{font-size:10.5px}.graph-stats-compact small{display:block;max-width:240px;overflow-wrap:anywhere}.graph-statistics-note{font-size:12px}.figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.figure figcaption{font-size:11.5px;color:var(--muted);margin-top:6px}.summary-box{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0}.summary-box>div{border:1px solid var(--line);border-radius:7px;padding:9px;background:var(--soft)}.summary-box strong{display:block;font-size:16px}.summary-box span{font-size:10.5px;color:var(--muted)}.swatch{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.14)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f9fb;border:1px solid var(--line);border-radius:6px;padding:10px;font:11px/1.45 Consolas,monospace}.hash{font-family:Consolas,monospace;font-size:10.5px;overflow-wrap:anywhere}.muted{color:var(--muted)}.report-page{break-after:page;page-break-after:always}.report-page:last-child{break-after:auto;page-break-after:auto}.report-footer{border-top:1px solid var(--line);margin-top:30px;padding-top:10px;color:var(--muted);font-size:11px;display:flex;justify-content:space-between;gap:12px}@media(max-width:760px){.report{padding:20px 16px}.report-header{display:block}.report-meta{text-align:left;margin-top:10px}.report-grid,.summary-box{grid-template-columns:1fr}table{min-width:560px}}@media print{html{background:#fff}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.report{max-width:none;padding:0}.card,.figure,.table-wrap{break-inside:avoid}.period-figure{break-inside:auto}.period-figure .report-plot{break-inside:avoid}.period-figure .report-figure-metrics{break-before:page;page-break-before:always;break-inside:avoid}.period-figure figcaption{break-inside:avoid}}@page{size:'+(landscape?'A4 landscape':'A4 portrait')+';margin:12mm}';
 }
 function reportShell(title,subtitle,body,landscape=false){
-  return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+reportCss(landscape)+'</style></head><body><main class="report"><header class="report-header"><div><h1>'+esc(title)+'</h1><p>'+esc(subtitle)+'</p></div><div class="report-meta">Generated '+esc(new Date().toLocaleString())+'<br>ICM Graphing Tool</div></header>'+body+'<footer class="report-footer"><span>Engineering review output · source data processed locally in the browser</span><span>© 2026 Anzar Sajid</span></footer></main></body></html>';
+  return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+reportCss(landscape)+'</style></head><body><main class="report"><header class="report-header"><div><h1>'+esc(title)+'</h1><p>'+esc(subtitle)+'</p></div><div class="report-meta">Generated '+esc(new Date().toLocaleString())+'<br>ICM Buddy</div></header>'+body+'<footer class="report-footer"><span>Engineering review output · source data processed locally in the browser</span><span>© 2026 Anzar Sajid</span></footer></main></body></html>';
 }
 function reportMappingTable(w){
   const rows=[];
@@ -2488,7 +2536,7 @@ async function downloadReport(){
   body+='<h2>Project data context</h2>'+reportProjectRegistry();
   body+='<h2>Source provenance</h2>'+reportSources(w);
   body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({report_options:options,spills:state.spillSnapshot,storage:state.storage,comparison:state.comparisonSnapshot,professional_flow_survey:window.__ICM_WORKBENCH__.lastProfessionalSurvey||null,rating_diagnostic:state.rating||null,project_registry:window.ICMProjectRegistry?.snapshot()||null,execution:diagnostic.execution||'unknown'},null,2))+'</pre></details>';
-  const html=await interactiveReportHtml(reportShell('ICM Calibration Workbench — Engineering Assessment','Professional hydraulic data review and model-verification output',body,false));
+  const html=await interactiveReportHtml(reportShell('ICM Buddy — Engineering Assessment','Professional hydraulic data review and model-verification output',body,false));
   if(reportSignature!==analysisSignature())throw new Error('Inputs changed during report generation. Retry export.');
   downloadBlob('icm-workbench-report-'+new Date().toISOString().slice(0,10)+'.html',html,'text/html');
   $('workspaceStatus').textContent='Professional HTML engineering report downloaded.';
@@ -2547,7 +2595,7 @@ async function downloadFourPeriod(){
     const layout=hydraulicGraphLayout({...result,range:[a,b],title:year+' — '+title,shapes});
     body+='<section class="report-page"><h2>'+esc(title)+'</h2>'+reportPlotFigure('period-graph-'+i,result.traces,layout,result.statistics,'',{period:true})+'</section>';
   }
-  const html=await interactiveReportHtml(reportShell('ICM Calibration Workbench — '+year+' Four-Period Report','Annual hydraulic time-series review',body,true));
+  const html=await interactiveReportHtml(reportShell('ICM Buddy — '+year+' Four-Period Report','Annual hydraulic time-series review',body,true));
   if(signature!==analysisSignature())throw new Error('Inputs changed during report generation. Retry export.');
   downloadBlob('icm-'+year+'-four-period-report.html',html,'text/html');
   $('workspaceStatus').textContent='Interactive four-period HTML report downloaded.';
