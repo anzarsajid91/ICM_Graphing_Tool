@@ -1,6 +1,6 @@
 # GitHub Pages browser edition
 
-This directory is the zero-install delivery surface for the ICM Buddy.
+This directory is the zero-install delivery surface for the Hydra Bench.
 
 ## Architecture
 

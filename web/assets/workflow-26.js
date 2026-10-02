@@ -983,7 +983,7 @@
       '<h2>Audit note</h2><p class="muted">This monthly output is intended as a concise engineering hand-off. Detailed weekly calculations, Event Response evidence, raw gauge evidence, exclusions and source provenance remain available in the workbench/full HTML report.</p>';
 
     if (typeof reportShell === 'function') {
-      return reportShell('ICM Buddy — Monthly Flow Survey Assessment', surveyPeriodText(), body, true);
+      return reportShell('Hydra Bench — Monthly Flow Survey Assessment', surveyPeriodText(), body, true);
     }
     return '<!doctype html><html><head><meta charset="utf-8"><title>Monthly Flow Survey Assessment</title></head><body>'+body+'</body></html>';
   }

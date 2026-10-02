@@ -22,7 +22,7 @@ function close(a,b){assert.ok(Math.abs(a-b)<1e-9,`${a} != ${b}`);}
 try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.ICMDetriment&&window.__ICM_PRECISION_WORKBENCH__),null,{timeout:30000});
-  assert.match(await page.title(),/ICM Buddy/);
+  assert.match(await page.title(),/Hydra Bench/);
   assert.deepEqual((await page.locator('.pw-primary-nav .pw-nav-label').allTextContents()).map(x=>x.trim()),['Data / Time Series','Spills','Flow Survey','Detriment Assessment','Graphs','Reports']);
   const note=await page.locator('#dropzone span').textContent();
   assert.match(note,/\.CSV, \.FDV, \.R/);assert.match(note,/fm_rg_assoc.xlsx/);assert.doesNotMatch(note,/\.txt|\.FTV/i);
@@ -71,7 +71,7 @@ try{
       assert.match(await page.locator('#dtChart').evaluate(el=>el.layout.xaxis.title.text),/spill-block rows/);
     }
     const csv=await download('#dtExportCsv');assert.match(csv,/source_a_sha256/);assert.ok(csv.includes(largest.asset_id));
-    const html=await download('#dtExportHtml');assert.match(html,/ICM Buddy/);assert.match(html,/data:image\/png;base64/);assert.match(html,/Anzar Sajid/);
+    const html=await download('#dtExportHtml');assert.match(html,/Hydra Bench/);assert.match(html,/data:image\/png;base64/);assert.match(html,/Anzar Sajid/);
     if(kind==='level')assert.match(html,/Freeboard A \/ B/);
     if(kind==='spill')assert.match(html,/Actual duration A \/ B/);
     const report=await browser.newPage({viewport:{width:390,height:844}});await report.setContent(html);
