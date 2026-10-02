@@ -51,7 +51,7 @@ def assessment_html(*,title,summary,tables,exclusions=None,notes=None,warnings=N
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         f"<title>{html.escape(title)}</title><style>{_REPORT_CSS}</style></head><body><main>",
         f"<header><h1>{html.escape(title)}</h1>"
-        f"<p class='muted'>Generated {html.escape(generated)} · ICM Calibration Workbench</p></header>",
+        f"<p class='muted'>Generated {html.escape(generated)} · ICM Buddy</p></header>",
     ]
     for warning in warnings or []:
         parts.append(f"<div class='warn'>{html.escape(str(warning))}</div>")

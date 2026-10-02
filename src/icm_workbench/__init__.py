@@ -1,2 +1,2 @@
-"""ICM Calibration Workbench."""
+"""ICM Buddy."""
 __version__ = "0.1.0-dev"

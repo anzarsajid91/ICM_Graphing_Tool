@@ -27,6 +27,7 @@ const ROUTES={
       'volume-balance':{label:'Volume Balance',title:'Volume balance',description:'Assess upstream/downstream flow continuity on common valid temporal support with explicit assumptions.',tab:'data-health',root:()=>$('tab-data-health')}
     }
   },
+  detriment:window.ICMDetriment.routes,
   graphs:{
     label:'Graphs',
     icon:'verify',
@@ -36,7 +37,6 @@ const ROUTES={
       dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
     }
   },
-  detriment:window.ICMDetriment.routes,
   reports:{
     label:'Reports',
     icon:'report',
@@ -287,7 +287,7 @@ function buildShell(){
   const review=footer?.previousElementSibling?.matches('section.panel')?footer.previousElementSibling:null;
   const app=document.createElement('div');app.className='pw-app';
   const rail=document.createElement('aside');rail.className='pw-rail';rail.setAttribute('aria-label','Primary workspaces');
-  rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><span class="pw-brand-icon">ICM</span><span class="pw-brand-title">ICM Graphing Tool</span></div><small>Browser-local hydraulic evidence and assessment.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
+  rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><span class="pw-brand-icon">ICM</span><span class="pw-brand-title">ICM Buddy</span></div><small>Browser-local hydraulic evidence and assessment.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
   const pnav=qs('.pw-primary-nav',rail);
   Object.entries(ROUTES).forEach(([key,w])=>{
     const b=document.createElement('button');b.type='button';b.dataset.workspace=key;b.innerHTML=navIcon(w.icon)+'<span class="pw-nav-label">'+esc(w.label)+'</span>';b.setAttribute('aria-label',w.label);b.addEventListener('click',()=>navigate(key,Object.keys(w.pages)[0],true));pnav.appendChild(b);
@@ -472,7 +472,7 @@ function navigate(workspace,page,push=false){
   qs('.pw-rail')?.classList.remove('is-open');
   applyFocusCanvas(false);
   if(push){const h='#/'+workspace+'/'+page;if(location.hash!==h)history.pushState(null,'',h);}
-  document.title=p.title+' · ICM Graphing Tool';
+  document.title=p.title+' · ICM Buddy';
   resizeVisuals();
   window.dispatchEvent(new CustomEvent('icm:route-changed',{detail:{workspace,page}}));
 }

@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="description" content="Zero-install ICM Graphing Tool running locally in your browser." />
-  <title>ICM Graphing Tool</title>
+  <meta name="description" content="Zero-install ICM Buddy running locally in your browser." />
+  <title>ICM Buddy</title>
   <link rel="stylesheet" href="assets/app.css" />
   <script src="https://cdn.plot.ly/plotly-3.1.0.min.js" charset="utf-8"></script>
 </head>
 <body>
   <header class="topbar">
-    <div><h1>ICM Graphing Tool</h1><p>Zero-install, browser-local review of ICM CSV, FDV and rainfall R exports.</p></div>
+    <div><h1>ICM Buddy</h1><p>Zero-install, browser-local review of ICM CSV, FDV and rainfall R exports.</p></div>
     <div class="engine-status" id="engineStatus"><span class="status-dot booting"></span><span>Starting analysis worker…</span></div>
   </header>
 
@@ -22,7 +22,7 @@
       </div>
       <input id="fileInput" type="file" multiple accept=".hyd,.csv,.fdv,.txt,.r,.xlsx" hidden />
       <input id="folderInput" type="file" webkitdirectory multiple hidden />
-      <div class="dropzone" id="dropzone"><strong>Drop survey files or a folder here</strong><span>Recognised data: .csv, .fdv, .fdv.txt, .r, .r.txt · optional authoritative survey configuration: fm_rg_assoc.xlsx</span></div>
+      <div class="dropzone" id="dropzone"><strong>Drop survey files or a folder here</strong><span>Recognised data: .CSV, .FDV, .R · survey association: fm_rg_assoc.xlsx</span></div>
       <div class="pool-summary" id="poolSummary">No files loaded.</div>
       <div class="table-wrap"><table class="data-table"><thead><tr><th>File</th><th>Format</th><th>Rows</th><th>Period</th><th>Audit</th><th>Status</th><th class="source-remove-head" aria-label="Remove source"></th></tr></thead><tbody id="poolBody"></tbody></table></div>
     </section>
@@ -227,7 +227,7 @@
     </section>
   </main>
 
-  <section class="panel"><label>Review notes and assumptions<textarea id="reviewNotes" rows="3" placeholder="Notes are exported separately from computed results"></textarea></label></section><footer><span>ICM Graphing Tool — © 2026 Anzar Sajid</span><span id="footerBuild">Reference engine: Python worker / canonical core</span></footer>
+  <section class="panel"><label>Review notes and assumptions<textarea id="reviewNotes" rows="3" placeholder="Notes are exported separately from computed results"></textarea></label></section><footer><span>ICM Buddy — © 2026 Anzar Sajid</span><span id="footerBuild">Reference engine: Python worker / canonical core</span></footer>
   <script type="module" src="assets/runtime.js"></script>
 </body>
 </html>
