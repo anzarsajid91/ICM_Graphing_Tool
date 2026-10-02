@@ -74,6 +74,9 @@ try{
     const html=await download('#dtExportHtml');assert.match(html,/ICM Buddy/);assert.match(html,/data:image\/png;base64/);assert.match(html,/Anzar Sajid/);
     if(kind==='level')assert.match(html,/Freeboard A \/ B/);
     if(kind==='spill')assert.match(html,/Actual duration A \/ B/);
+    const report=await browser.newPage({viewport:{width:390,height:844}});await report.setContent(html);
+    await report.waitForFunction(()=>[...document.images].every(img=>img.complete&&img.naturalWidth>0));
+    assert.ok(await report.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1),'Exported report contains mobile tables and images');await report.close();
     await fs.writeFile(path.join(evidence,'reference-'+kind+'.html'),html);
     await fs.writeFile(path.join(evidence,'reference-'+kind+'.csv'),csv);
     await fs.writeFile(path.join(evidence,'reference-'+kind+'-result.json'),JSON.stringify(result,null,2));
