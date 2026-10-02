@@ -1222,7 +1222,7 @@ def _spills_report_html(variable, obs, sim, rain, thresholds, colors, observed_r
 
     comp_table = _html_table_from_records('Observed vs Modelled spills table', comparison_df.to_dict('records'), comparison_df.columns.tolist())
 
-    return f'<!doctype html><html><head><meta charset="utf-8"><title>V17 Spill Assessment Report</title><style>{css}</style></head><body><h1>ICM CSV Calibration Viewer V17 — Spill Assessment Report</h1>{warn_html}<section><h2>1. Full time period graph</h2>{fig_html}</section><section>{obs_table}</section><section>{model_table}</section><section>{comp_table}</section></body></html>'
+    return f'<!doctype html><html><head><meta charset="utf-8"><title>Hydra Bench Spill Assessment Report</title><style>{css}</style></head><body><h1>Hydra Bench — Spill Assessment Report</h1>{warn_html}<section><h2>1. Full time period graph</h2>{fig_html}</section><section>{obs_table}</section><section>{model_table}</section><section>{comp_table}</section></body></html>'
 
 
 
@@ -1254,7 +1254,7 @@ def make_html_report(variable,year,obs,sim,rain,colors,thresholds):
 
     css='body{font-family:Segoe UI,Arial,sans-serif;margin:18px;background:#f7f7f8}.graph-section{background:white;border:1px solid #ddd;border-radius:8px;padding:14px;margin:18px 0;page-break-after:always}'
 
-    return f'<!doctype html><html><head><meta charset="utf-8"><title>ICM {year} {variable} Graph Report</title><style>{css}</style></head><body><h1>ICM CSV Calibration Graph Report</h1><div>Variable: {variable.capitalize()} | Year: {year}</div>{"".join(sections)}</body></html>'
+    return f'<!doctype html><html><head><meta charset="utf-8"><title>Hydra Bench {year} {variable} Graph Report</title><style>{css}</style></head><body><h1>Hydra Bench Graph Report</h1><div>Variable: {variable.capitalize()} | Year: {year}</div>{"".join(sections)}</body></html>'
 
 
 
@@ -1808,11 +1808,11 @@ def data_assessment_panel_v18(obs,rain=None,wapug_events=None):
 
 DATA_FOLDER=get_data_folder(); REGISTRY=Registry(DATA_FOLDER); FILE_OPTIONS=csv_options(DATA_FOLDER); DEFAULT_OBS=FILE_OPTIONS[0]['value'] if FILE_OPTIONS else None; DEFAULT_SIM=[FILE_OPTIONS[1]['value']] if len(FILE_OPTIONS)>1 else ([] if not FILE_OPTIONS else [FILE_OPTIONS[0]['value']])
 
-app=Dash(__name__); app.title='ICM CSV Calibration Viewer v19.50'
+app=Dash(__name__); app.title='Hydra Bench'
 
 app.layout=html.Div([
 
-    html.H2('ICM CSV Calibration Viewer v19.50 — Calibration, Spill, Storage, WAPUG and Data Assessment',style={'margin':'0'}),
+    html.H2('Hydra Bench — Calibration, Spill, Storage, WAPUG and Data Assessment',style={'margin':'0'}),
 
     html.Div('Local desktop app. V18 adds native FDV/R support, multi-variable hydraulic plotting, WAPUG/manual rainfall event highlighting, scatter log view and selected-file data assessment while retaining V17 core logic.',style={'color':'#555','marginTop':'4px'}),
 
@@ -5924,9 +5924,9 @@ def v20_monthly_model_volumes(flow_file,flow_profile,sim_files,active,threshold)
     return rows,{'level':lcol,'flow':fcol,'interval':med/60,'threshold':float(threshold)}
 
 try:
-    app.title='ICM CSV Calibration Viewer v20.0'
+    app.title='Hydra Bench'
     if isinstance(app.layout.children,list):
-        app.layout.children[0].children='ICM CSV Calibration Viewer v20.0 — Calibration, Spill, Storage, WAPUG and Data Assessment'
+        app.layout.children[0].children='Hydra Bench — Calibration, Spill, Storage, WAPUG and Data Assessment'
         app.layout.children.insert(2,html.Div(id='v20-status',children='V20 ready.',style={'padding':'9px 12px','margin':'10px 0','borderRadius':'8px','background':'#eef6ff','border':'1px solid #b9d8f5','color':'#17324d'}))
         app.layout.children.insert(3,v20_card('V20 workflow guide',[html.Div('Select inputs, apply the graph, review Data Health, configure profile colours, then run assessments and exports.'),html.Div('Existing controls and calculation pathways remain available below.',style={'color':'#667','marginTop':'5px'})]))
     tabs=v19_find_by_id(app.layout,'main-tabs'); tabs.children=list(tabs.children)
@@ -5991,7 +5991,7 @@ def v20_summary(n,*x):
 @app.callback(Output('v20-summary-download','data'),Input('v20-summary-download-run','n_clicks'),State('v20-summary-data','data'),prevent_initial_call=True)
 def v20_summary_download(n,d):
     if not d:return no_update
-    return dict(content='\n'.join(['# ICM CSV Calibration Viewer V20 Analysis Summary','']+[f"- **{k}:** {json.dumps(v) if isinstance(v,(dict,list)) else v}" for k,v in d.items()]),filename='icm_v20_analysis_summary.md',type='text/markdown')
+    return dict(content='\n'.join(['# Hydra Bench Analysis Summary','']+[f"- **{k}:** {json.dumps(v) if isinstance(v,(dict,list)) else v}" for k,v in d.items()]),filename='icm_v20_analysis_summary.md',type='text/markdown')
 
 # ============================ END V20.0 UPGRADE ============================
 
@@ -6089,7 +6089,7 @@ def _spills_report_html(variable,obs,sim,rain,thresholds,colors,observed_result,
     for title,frame in [('Observed monthly 12/24 spill count',observed_result['monthly']),('Observed monthly spill duration (hr)',observed_result['monthly_duration']),('Model monthly 12/24 spill count',model_result['monthly']),('Model monthly spill duration (hr)',model_result['monthly_duration']),('Observed vs Modelled monthly spill-count comparison',comparison_df)]:
         tables.append('<section>'+_html_table_from_records(title,frame.to_dict('records'),frame.columns.tolist())+'</section>')
     duration_df=compare_monthly_spill_durations(observed_result.get('monthly_duration_raw'),model_result.get('monthly_duration_raw')); tables.append('<section>'+_html_table_from_records('Observed vs Modelled monthly spill-duration comparison',duration_df.to_dict('records'),duration_df.columns.tolist())+'</section>')
-    return f'<!doctype html><html><head><meta charset="utf-8"><title>V20 Spill Assessment Report</title><style>{css}</style></head><body><h1>ICM CSV Calibration Viewer V20 — Spill Assessment Report</h1>{warning_html}<section><h2>1. Full time period graph</h2>{fig_html}</section>{"".join(tables)}</body></html>'
+    return f'<!doctype html><html><head><meta charset="utf-8"><title>Hydra Bench Spill Assessment Report</title><style>{css}</style></head><body><h1>Hydra Bench — Spill Assessment Report</h1>{warning_html}<section><h2>1. Full time period graph</h2>{fig_html}</section>{"".join(tables)}</body></html>'
 
 # =================== END V20_MONTHLY_SPILL_DURATION_PATCH ===================
 

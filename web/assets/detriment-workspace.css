@@ -12,3 +12,8 @@
 .dt-import-warning{font-size:11px;line-height:1.55;padding:8px 10px;border-left:2px solid #b9771c;background:#fff6e5;color:#805d24;overflow-wrap:anywhere}
 
 .dt-metric .dt-metric-unit{display:block;margin-top:5px;font-size:11px;font-weight:500;line-height:1.45;color:#607986}
+
+.dt-id-selector{background:#edf5f6;border:1px solid #c7dfe3;border-radius:10px;padding:14px;margin-bottom:12px;min-width:0}
+.dt-id-selector h3{font-size:14px}.dt-id-selector textarea{box-sizing:border-box;width:100%;min-width:0;max-width:100%;resize:vertical;border:1px solid #cbd9df;border-radius:6px;background:white;padding:9px;color:#243e4b;font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+.dt-id-actions{display:flex;gap:8px;flex-wrap:wrap}.dt-id-error{color:#a02d3e}.dt-id-selector .dt-muted{overflow-wrap:anywhere}
+.dt-selection-status{border:1px solid #c7dfe3;background:#edf5f6;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12px;overflow-wrap:anywhere}.dt-selection-status p{font-size:11px;line-height:1.6;color:#516e7b;margin:8px 0 0}.dt-selection-status details{margin-top:8px}

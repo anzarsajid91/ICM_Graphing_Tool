@@ -217,7 +217,7 @@ def enhance_app(app, root: Path):
         hashes={r["relative_path"]:r["sha256"] for r in catalogue_folder(root)};refs={}
         for role,ref in [("observed",obs_ref),("model",model_ref)]:
             if ref:refs[role]={"reference":ref,"sha256":hashes.get(ref)}
-        ws=Workspace(schema_version=1,name="ICM Workbench workspace",source_references=refs,analysis={"observed":obs_ref,"observed_column":obs_col,"model":model_ref,"model_column":model_col},exclusions=list(exclusions or []),annotations=list(notes or []));return dict(content=json.dumps(ws.to_dict(),indent=2,default=str),filename="icm_workbench.workspace.json",type="application/json")
+        ws=Workspace(schema_version=1,name="Hydra Bench workspace",source_references=refs,analysis={"observed":obs_ref,"observed_column":obs_col,"model":model_ref,"model_column":model_col},exclusions=list(exclusions or []),annotations=list(notes or []));return dict(content=json.dumps(ws.to_dict(),indent=2,default=str),filename="icm_workbench.workspace.json",type="application/json")
 
     @app.callback(Output("exclusions","data",allow_duplicate=True), Output("review-notes","data",allow_duplicate=True), Output("compare-observed","value"), Output("compare-column","value"), Output("compare-model","value"), Output("compare-model-column","value"), Output("workspace-status","children"), Input("workspace-upload","contents"), prevent_initial_call=True)
     def open_workspace(contents):

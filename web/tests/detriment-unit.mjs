@@ -57,3 +57,47 @@ assert.equal(api.reportOnlyWorkspace({mapping:{observed:{sha256:'hyd'},models:[]
 assert.equal(api.reportOnlyWorkspace({mapping:{models:[]}}),false);
 for(const header of ['Time (s),Node ID,Level (m)','Node ID,Level (m),Date/Time','P_DATETIME,Node ID,Level (m)'])assert.equal(api.detectReport(header+'\n2025-01-01,001,2'),null,'Native timestamp headings retain the existing parser');
 assert.equal(api.reportKind({name:'survey.fdv'},new TextEncoder().encode('Node ID,Level\n001,2').buffer),null);
+
+// Clipboard formats, exact identifier matching and view summaries.
+const ids=(text,column='auto',known=[])=>JSON.parse(JSON.stringify(api.parseIdList(text,column,known)));
+for(const text of ['001\nMH-12\nMH-12.1','001,MH-12,MH-12.1','001;MH-12;MH-12.1','001\tMH-12\tMH-12.1','001 MH-12 MH-12.1'])assert.deepEqual(ids(text).ids,['001','MH-12','MH-12.1']);
+assert.deepEqual(ids('\uFEFFNode ID\r\n001\r\n002\r\n001').ids,['001','002']);
+assert.equal(ids('001,001,002').duplicates,1);
+assert.deepEqual(ids('"MH 01", "MH,02", "MH;03", "MH\"\"04"').ids,['MH 01','MH,02','MH;03','MH"04']);
+assert.deepEqual(ids('MH 01\nMH 02').ids,['MH 01','MH 02']);
+assert.deepEqual(ids('MH 01\n').ids,['MH 01']);
+assert.deepEqual(ids('ID').ids,['ID']);
+assert.deepEqual(ids('MH 01','auto',['MH 01']).ids,['MH 01']);
+assert.deepEqual(ids('"MH 01" "MH 02"').ids,['MH 01','MH 02']);
+assert.ok(ids('"unfinished').error);
+assert.deepEqual(ids('Node ID\tX\tY\n001\t123\t456\nMH-12\t789\t123').ids,['001','MH-12']);
+assert.deepEqual(ids('Node ID,X,Y\n001,123,456\n002,789,123').ids,['001','002']);
+assert.deepEqual(ids('Node ID;X;Y\n001;123;456\n002;789;123').ids,['001','002']);
+assert.ok(ids('Node ID\tLink ID\n001\t001.1').error);
+assert.deepEqual(ids('Node ID\tLink ID\n001\t001.1','1').ids,['001.1']);
+assert.ok(ids('001\t123\n002\t456').error);
+assert.deepEqual(ids('001\t123\n002\t456','0').ids,['001','002']);
+assert.deepEqual(ids('001\t123\n002\t456','list').ids,['001','123','002','456']);
+assert.ok(ids('Node ID\tX\n001\t2\n002','1').error);
+assert.deepEqual(ids('').ids,[]);
+assert.deepEqual(ids('001002').ids,['001002'],'An undelimited string stays a single ID');
+assert.deepEqual(ids('ID\n001\nID','auto',['ID']).ids,['001','ID'],'Header is removed only as a heading; a later ID remains');
+const population=[
+ {asset_id:'001',matched:true,status:'detriment',delta:6,flags:[]},
+ {asset_id:'001.1',matched:true,status:'unchanged',delta:0,flags:[]},
+ {asset_id:'A-only',matched:false,status:'unmatched',delta:null,flags:['missing_scenario_b']},
+ {asset_id:'MH 02',matched:true,status:'risk',delta:.1,flags:['freeboard_unavailable']}
+];
+const selectedRows=JSON.parse(JSON.stringify(api.selectIdRows(population,['A-only','001','ABSENT','001.1'])));
+assert.deepEqual(selectedRows.map(r=>r.asset_id),['A-only','001','001.1']);
+assert.equal(selectedRows[0].status,'unmatched');assert.equal(selectedRows[0].delta,null);
+assert.deepEqual(JSON.parse(JSON.stringify(api.idMatchSummary(population,['001','ABSENT']))),{requested:2,found:1,absent:['ABSENT']});
+assert.equal(api.selectIdRows(population,['00']).length,0,'No prefix matching or fallback to all rows');
+assert.equal(api.selectIdRows(population,['mh 02']).length,0,'Matching is case-sensitive');
+assert.equal(api.selectIdRows(population,[]).length,4,'Blank selection restores the full population');
+assert.deepEqual(JSON.parse(JSON.stringify(api.summariseRows(selectedRows))),{assets:3,matched:2,detriment:1,risk:0,improved:0,unresolved:1,max_increase:6});
+assert.equal(api.summariseRows([]).max_increase,null,'No evidence does not produce a numeric maximum');
+assert.equal(api.summariseRows([population[3]]).unresolved,1);
+assert.equal(population.length,4,'Scoping does not mutate the authoritative population');
+assert.match(api.csv({...r,asset_selection:{ids:['001','ABSENT'],absent:['ABSENT'],column:'0',duplicates_removed:1}},r.rows),/asset_selection_absent_ids/);
+console.log('ID selection units passed: clipboard lists/grids, quotes, ambiguity, leading zeros, exact matches, missing scenarios, empty views and scoped summaries.');

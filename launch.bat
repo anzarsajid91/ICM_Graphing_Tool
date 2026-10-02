@@ -5,7 +5,7 @@ if not exist .venv\Scripts\python.exe (echo ERROR: Virtual environment not found
 set "DATA_FOLDER=C:\Users\SAJ104645\OneDrive - Mott MacDonald\Desktop\Projects\UU\icm_csv_calibration_viewer_v20\data"
 if "%DATA_FOLDER%"=="" set "DATA_FOLDER=%CD%\data"
 if not exist "%DATA_FOLDER%" (echo ERROR: Data folder not found: & echo "%DATA_FOLDER%" & pause & exit /b 1)
-echo Starting ICM CSV Calibration Viewer v16...
+echo Starting Hydra Bench...
 echo Data folder: %DATA_FOLDER%
 echo Cache folder: %DATA_FOLDER%\_icm_viewer_cache_v16
 start "" "http://127.0.0.1:8050"
