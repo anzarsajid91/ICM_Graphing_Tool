@@ -13,7 +13,7 @@ try{
   await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
   const labels=(await page.locator('.pw-primary-nav button').allTextContents()).map(x=>x.replace(/^[^A-Za-z]+/,'').trim());
-  if(labels.join('|')!=='Data / Time Series|Spills|Flow Survey|Graphs|Detriment Assessment|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
+  if(labels.join('|')!=='Data / Time Series|Spills|Flow Survey|Detriment Assessment|Graphs|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
   const navigationOwnership=await page.evaluate(()=>({
     legacyDisplay:getComputedStyle(document.querySelector('nav.tabs')).display,
     precisionVisible:[...document.querySelectorAll('.pw-primary-nav button')].filter(x=>x.getClientRects().length>0).length,
@@ -57,7 +57,7 @@ try{
   const migrated=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
   if(migrated.workspace!=='spills'||migrated.page!=='storage')throw new Error('Legacy Storage route did not migrate: '+JSON.stringify(migrated));
   const productTitle=((await page.locator('.pw-brand-title').textContent())||'').trim();
-  if(productTitle!=='ICM Graphing Tool')throw new Error('Product title must be ICM Graphing Tool, got '+JSON.stringify(productTitle));
+  if(productTitle!=='ICM Buddy')throw new Error('Product title must be ICM Buddy, got '+JSON.stringify(productTitle));
   if(await page.locator('#pwRailToggle').count()!==1)throw new Error('Navigation rail needs an explicit collapse/expand control.');
   if(await page.locator('[data-pw-page="provenance"]').count()!==0)throw new Error('User-facing provenance route should be removed.');
 

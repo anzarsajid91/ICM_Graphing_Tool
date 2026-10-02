@@ -158,6 +158,14 @@ def test_report_parser_reads_icm_preamble_and_pasted_tsv(tmp_path):
     assert r['start'] is None and r['end'] is None
 
 
+def test_explicit_generic_volume_mapping_still_compares_with_known_flood_measure(tmp_path):
+    a,b=floods(tmp_path)
+    b['path']=report(tmp_path,'mapped.csv',[{'Identifier':'001','Outcome':'8'}],{'asset_id':'Identifier','value':'Outcome'})['path']
+    b['mapping']={'asset_id':'Identifier','value':'Outcome'}
+    row=calculate('flooding',a,b)['rows'][0]
+    assert row['delta']==6 and row['status']=='detriment'
+
+
 def test_scope_confirmation_and_invalid_tolerance_block_comparison(tmp_path):
     a,b=floods(tmp_path)
     with pytest.raises(ValueError,match='confirm'):calculate('flooding',a,b,criteria={'scope_confirmed':False})

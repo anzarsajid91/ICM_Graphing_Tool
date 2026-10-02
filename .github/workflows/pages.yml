@@ -9,6 +9,7 @@ on:
       - 'tests/**'
       - 'scripts/build_pages.py'
       - 'scripts/reference_workflow_simulation.py'
+      - 'scripts/detriment_reference_cases.py'
       - '.github/workflows/pages.yml'
       - '.github/workflows/live-pages-verification.yml'
   pull_request:
@@ -19,6 +20,7 @@ on:
       - 'tests/**'
       - 'scripts/build_pages.py'
       - 'scripts/reference_workflow_simulation.py'
+      - 'scripts/detriment_reference_cases.py'
       - '.github/workflows/pages.yml'
       - '.github/workflows/live-pages-verification.yml'
   workflow_dispatch:
@@ -77,6 +79,8 @@ jobs:
           node --check web/assets/precision-workbench.js
           node --check web/assets/detriment-workspace.js
           node web/tests/detriment-unit.mjs
+          node web/tests/engine-recovery-unit.mjs
+          node --check web/tests/detriment-reference-smoke.mjs
           node --check web/tests/smoke.mjs
           node --check web/tests/precision-shell.mjs
           node --check web/tests/baseline-comparison.mjs
@@ -184,6 +188,7 @@ jobs:
             exit 1
           fi
           node web/tests/detriment-smoke.mjs
+          node web/tests/detriment-reference-smoke.mjs
           node web/tests/smoke.mjs
 
       - name: Package exact review preview

@@ -18,11 +18,11 @@ def _token(value):
 
 ALIASES={
     "asset_id":("nodeid","csoid","objectid","id","node","cso","assetid","asset","nodename","reference"),
-    "flood":("floodvolume","maxfloodvolume","maximumfloodvolume","floodingvolume","floodedvolume","floodlostvolume","floodvol","maxfloodvol"),
+    "flood":("floodvolume","maxfloodvolume","maximumfloodvolume","floodingvolume","floodedvolume","floodlostvolume","maxfloodlostvolume","floodvol","maxfloodvol"),
     "level":("maxlevel","maximumlevel","maximumwaterlevel","maxwaterlevel","waterlevel","level","waterelevation","maximumwaterelevation","head"),
     "ground":("groundlevel","groundelevation","coverlevel","gl"),
     "count":("spillcount","numberofspills","totalspills","spills"),
-    "duration":("totaldurationofexceedances","exceedanceduration","totalspillduration","actualspillduration","spillingduration","duration"),
+    "duration":("totaldurationofexceedances","exceedanceduration","totalspillduration","actualspillduration","spillingduration","spillduration","duration"),
     "critical_simulation":("criticalsimulation","simulation","sim","worstcasesimulation","networkrunensemblesim"),
     "start":("startofexceedance","startofspill","start","starttime"),
     "end":("endofexceedance","endofspill","end","endtime"),
@@ -36,9 +36,39 @@ def _suggest(columns,kind):
         for alias in aliases:
             found=next((c for c in columns if _token(c)==alias),None)
             if found is not None:fields[field]=found;break
+    # Absolute dates must take precedence over elapsed-minute columns, which
+    # have the same token after parenthetical unit text is removed.
+    for field in ("start","end"):
+        absolute=next((c for c in columns if _token(c) in ALIASES[field]
+                       and re.search(r"(?i)absolute|date",c)),None)
+        if absolute:fields[field]=absolute
+    # The leading result measure is the critical parameter in a native worst
+    # case export. Do not prefer an ancillary flood-volume column by alias rank.
+    fields['flood']=next((c for c in columns if _token(c) in ALIASES['flood']),fields.get('flood'))
     value=fields.get("flood" if kind=="flooding" else "level")
     if value:fields["value"]=value
     return {k:v for k,v in fields.items() if k not in ("flood","level")}
+
+
+def _infer_kind(columns):
+    tokens={_token(c) for c in columns}
+    if tokens.intersection(ALIASES['count']):return 'spill_summary'
+    if (tokens.intersection(ALIASES['duration']) and tokens.intersection(ALIASES['start'])
+            and tokens.intersection(ALIASES['end'])):return 'spill_detail'
+    for column in columns:
+        for kind,field in [('flooding','flood'),('level','level')]:
+            if _token(column) in ALIASES[field]:return kind
+    return 'ground' if tokens.intersection(ALIASES['ground']) else 'generic'
+
+
+def _critical_kind(columns):
+    tokens={_token(c) for c in columns}
+    return _infer_kind(columns) if 'returnperiod' in tokens and tokens.intersection(ALIASES['critical_simulation']) else None
+
+
+def _flood_measure(column):
+    token=_token(column)
+    return 'flood_lost_volume' if 'floodlost' in token else 'flood_volume' if 'flood' in token else 'other_volume'
 
 
 def _read_table(path,kind="auto"):
@@ -63,19 +93,30 @@ def _read_table(path,kind="auto"):
         records.append({column:value.strip() for column,value in zip(columns,fields)})
     if not records:raise ValueError("The report contains no asset rows.")
     if len(records)>200000:raise ValueError("Report exceeds 200,000 rows. Export the selected assessment scope.")
-    tokens={_token(c) for c in columns}
     if kind=="auto":
-        kind=next((label for label,key in [('spill_summary','count'),('flooding','flood'),('level','level'),('spill_detail','duration'),('ground','ground')]
-                   if tokens.intersection(ALIASES[key])),"generic")
+        kind=_infer_kind(columns)
     return columns,records,kind,encoding
 
 
 def parse_detriment_report(path,report_kind="auto"):
     columns,records,kind,encoding=_read_table(path,report_kind)
+    mapping=_suggest(columns,kind)
+    numeric_dates=sum(bool(re.fullmatch(r'\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}(?::\d{2})?',value))
+                      for row in records for column,value in row.items()
+                      if re.search(r'\((?:m3|m³|l/s|m|%)\)',column,re.I))
+    date_only=sum(bool(re.fullmatch(r'\d{2}/\d{2}/\d{4}',row.get(mapping.get(field),'')))
+                  for row in records for field in ('start','end'))
+    warnings=[]
+    if numeric_dates:warnings.append(f'{numeric_dates} date-formatted cells occur in numeric columns. Values are preserved; mapped non-numeric results remain unavailable.')
+    if date_only:warnings.append(f'{date_only} date-only event boundaries are interpreted as 00:00 in the common model clock.')
+    if kind=='spill_detail':warnings.append('Detail rows do not declare an authoritative UK 12/24 spill count. Confirm the exported-row basis or supply a summary.')
     return json.dumps({"format":"icm_report_table","columns":columns,"rows":len(records),"start":None,"end":None,
         "metadata":{"source_kind":"detriment_report","report_kind":kind,"source_encoding":encoding,
-                    "mapping_suggestions":_suggest(columns,kind)},
-        "preview_rows":records[:8],"audit":{"report_rows":len(records),"malformed_rows":0}},ensure_ascii=False)
+                    "mapping_suggestions":mapping,"critical_kind":_critical_kind(columns),"warnings":warnings,
+                    "datum":_datum({'mapping':mapping}),
+                    "mapping_by_kind":{k:_suggest(columns,k) for k in ('flooding','level','spill','ground')}},
+        "preview_rows":records[:8],"audit":{"report_rows":len(records),"malformed_rows":0,
+                    "numeric_date_cells":numeric_dates,"date_only_boundaries":date_only}},ensure_ascii=False)
 
 
 def _number(value):
@@ -119,7 +160,12 @@ def _factor(source,column,dimension,field="unit"):
 def _source(config,kind,detail=False):
     if not config or not config.get("path"):raise ValueError("Select both report sources from Data Sources.")
     columns,records,report_kind,_=_read_table(config["path"],config.get("report_kind","auto"))
+    critical=_critical_kind(columns)
+    if kind in ('flooding','level') and critical and critical!=kind:
+        raise ValueError(f'This is a {critical}-critical worst-case report. Upload the separate {kind} worst-case export; ancillary values are not independent worst cases.')
     mapping=dict(config.get("mapping") or _suggest(columns,kind))
+    if critical and kind in ('flooding','level') and mapping.get('value')!=_suggest(columns,critical).get('value'):
+        raise ValueError('Map the leading critical measure column from this worst-case report; ancillary results belong to that critical simulation and are not independent worst cases.')
     id_column=mapping.get("asset_id")
     if id_column not in columns:raise ValueError("Map the asset ID column for every selected report.")
     required=['value'] if kind in ('flooding','level') else (['duration'] if detail else ['count','duration']) if kind=='spill' else ['ground']
@@ -134,6 +180,12 @@ def _source(config,kind,detail=False):
         values={r[attribute] for r in records}
         if len(values)>1 and not attribute_value:raise ValueError("Report contains multiple attributes. Select the assessed attribute.")
         if attribute_value:records=[r for r in records if r[attribute]==attribute_value]
+        if not records:raise ValueError('No report rows match the selected attribute. Correct the selection before comparison.')
+    if kind=='spill':
+        for column in columns:
+            if _token(column) in ('network','run','sim','simulation','simid'):
+                values={r[column] for r in records if r[column]}
+                if len(values)>1:raise ValueError(f'Spill report contains multiple {column} values. Export one scenario/run before comparing.')
     grouped={}
     for row in records:
         asset=row[id_column].strip()
@@ -165,7 +217,7 @@ def _report_datetime(value):
     try:parsed=datetime.fromisoformat(raw)
     except ValueError:
         parsed=None
-        for fmt in ('%d/%m/%Y %H:%M:%S.%f','%d/%m/%Y %H:%M:%S','%d/%m/%Y %H:%M',
+        for fmt in ('%d/%m/%Y %H:%M:%S.%f','%d/%m/%Y %H:%M:%S','%d/%m/%Y %H:%M','%d/%m/%Y',
                     '%d-%b-%Y %H:%M:%S','%d-%b-%Y %H:%M','%d/%b/%Y %H:%M:%S','%d/%b/%Y %H:%M'):
             try:parsed=datetime.strptime(raw,fmt);break
             except ValueError:continue
@@ -178,9 +230,12 @@ def _validate_detail_period(source,start,end):
     for field in ('start','end'):
         if not source['mapping'].get(field):
             raise ValueError("Map detail start and end dates to verify the declared period and event boundaries.")
-    for records in source['groups'].values():
+    for asset,records in source['groups'].items():
+        seen=set()
         for row in records:
             a=_report_datetime(row.get(source['mapping']['start']));b=_report_datetime(row.get(source['mapping']['end']))
+            if (a,b) in seen:raise ValueError(f'Duplicate detail event boundaries for {asset!r}; resolve duplicate or mixed-run evidence before counting.')
+            seen.add((a,b))
             if b<=a:raise ValueError("Detail end date must be later than its start.")
             if a<start or a>=end or b>end:
                 raise ValueError("Detail row lies outside or crosses the declared period boundary. Export period-specific evidence with explicit boundary attribution before assessment.")
@@ -218,6 +273,7 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
     required=_number(criteria.get('freeboard_required')) if criteria.get('freeboard_required') is not None else None
     if criteria.get('freeboard_required') is not None and (required is None or required<0):raise ValueError("Required freeboard must be finite and non-negative.")
     mode=criteria.get('counting_mode','summary')
+    count_unit={'summary':'spills','block-rows':'spill-block rows','physical-events':'physical events'}.get(mode,'spills')
     if kind=='spill':
         if mode not in ('summary','block-rows','physical-events'):raise ValueError("Select an explicit spill counting mode.")
         for field in ('period_start','period_end','template'):
@@ -228,6 +284,10 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
         if mode=='summary' and any(s.get('report_kind')=='spill_detail' or not s.get('mapping',{}).get('count') for s in (a_config,b_config)):
             raise ValueError("Upload Exceedance Summary for authoritative Spill count, or explicitly select the exported detail counting mode.")
     a=_source(a_config,kind,detail=kind=='spill' and mode!='summary');b=_source(b_config,kind,detail=kind=='spill' and mode!='summary')
+    if kind=='flooding':
+        measures=[_flood_measure(s['mapping']['value']) for s in (a,b)]
+        if 'other_volume' not in measures and measures[0]!=measures[1]:
+            raise ValueError('Scenario flood-volume measures must match: flood-only and combined flood/lost volume cannot be compared as the same measure.')
     if kind=='level':
         if not _datum(a) or _datum(a)!=_datum(b):raise ValueError("Level reports must share a declared vertical datum.")
         for source in (a,b):
@@ -252,7 +312,7 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
             else:v=_value(source,raw,'value','volume' if kind=='flooding' else 'level',nonnegative=kind=='flooding')
             values.append(v)
         va,vb=values;delta=vb-va if va is not None and vb is not None else None
-        row={'asset_id':asset,'a':va,'b':vb,'delta':delta,'unit':{'flooding':'m³','level':'m','spill':'spills'}[kind],
+        row={'asset_id':asset,'a':va,'b':vb,'delta':delta,'unit':{'flooding':'m³','level':'m','spill':count_unit}[kind],
              'matched':bool(ra is not None and rb is not None),'flags':[],'status':'unchanged',
              'evidence_a':ra,'evidence_b':rb,
              'critical_a':(ra or {}).get(a['mapping'].get('critical_simulation')),
@@ -309,5 +369,5 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
             'ground_source':ground_config,'detail_source_a':json.loads(detail_a_json),'detail_source_b':json.loads(detail_b_json),
             'date_convention':'ISO or day/month/year model clock','boundary_policy':'reject crossing or out-of-period detail rows','status':'partial' if summary['unresolved'] else 'complete',
             'method':'Matched report assets; unrounded canonical B minus A; strict tolerance exceedance; missing assets never zero',
-            'counting_mode':mode if kind=='spill' else None}
+            'counting_mode':mode if kind=='spill' else None,'count_unit':count_unit if kind=='spill' else None}
     return json.dumps(result,default=lambda v:float(v) if isinstance(v,Decimal) else str(v),ensure_ascii=False,allow_nan=False)

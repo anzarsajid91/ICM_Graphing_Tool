@@ -9,6 +9,10 @@ assert.equal(api.escape('<001>'),'&lt;001&gt;');
 assert.equal(api.detectReport('Worst case\nNode ID\tFlood volume (m³)\n001\t8'),'auto');
 assert.equal(api.detectReport('Time,Node ID,Flow (L/s)\n2025-01-01,001,3'),null);
 assert.equal(api.detectReport('Seconds,Level\n0,1'),null);
+for(const name of ['Worst_Case_Level_Sample.csv','Worst_Case_Volume_Sample.csv','Statistical_Template_spills_Sample.csv']){
+  assert.equal(api.detectReport(fs.readFileSync('reference/current-tool/sample-data/other/'+name,'utf8')),'auto',name+' uses report path');
+}
+assert.equal(api.detectReport('Time (UTC),Node ID,Level (m)\n2025-01-01,001,1'),null);
 assert.equal(api.csvCell('=SUM(A1)'), '"\'=SUM(A1)"');
 assert.equal(api.csvCell(-.30000000000000004),'"-0.30000000000000004"');
 assert.equal(api.csvCell('001'),'"001"');
