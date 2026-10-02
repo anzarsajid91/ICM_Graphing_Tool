@@ -126,11 +126,11 @@ async function exportHtml(){
       '<h2>'+escape(r.scenario_a.name)+' → '+escape(r.scenario_b.name)+'</h2><p>'+escape(r.method)+'</p><p>Scope: '+escape(r.scenario_a.scope)+'. Evidence status: '+escape(r.status)+'.</p>'+
       '<p>Filtered table: '+rows.length+'/'+r.rows.length+' assets · '+escape(config().filter)+' · search '+escape(config().search||'(none)')+'. Charts show the largest 20 comparable changes by absolute magnitude across all assets. Optional selected-asset figures show '+escape(selected||'(none)')+'.</p>'+
       (spill?'<p>Counting basis: '+escape(r.counting_mode)+' ('+escape(r.count_unit)+'). Actual duration is independent of the exported start/end span. Detail rows are not automatically UK 12/24 counts.</p>':'')+
-      figures.join('')+'<h2>Assessment results</h2><table class="data-table"><thead><tr><th>Asset</th><th>Status</th><th>A ('+escape(unit)+')</th><th>B ('+escape(unit)+')</th><th>Δ B − A</th>'+
+      figures.join('')+'<h2>Assessment results</h2><div class="table-wrap"><table class="data-table"><thead><tr><th>Asset</th><th>Status</th><th>A ('+escape(unit)+')</th><th>B ('+escape(unit)+')</th><th>Δ B − A</th>'+
       (level?'<th>Ground A / B (m)</th><th>Freeboard A / B (m)</th>':spill?'<th>Actual duration A / B (h)</th><th>Δ duration (h)</th>':'')+'<th>Flags</th></tr></thead><tbody>'+
       rows.map(x=>'<tr><td>'+escape(x.asset_id)+'</td><td class="dt-'+escape(x.status)+'">'+escape(x.status)+'</td><td>'+number(x.a)+'</td><td>'+number(x.b)+'</td><td>'+number(x.delta,true)+' '+escape(x.unit)+'</td>'+
         (level?'<td>'+number(x.ground_a)+' / '+number(x.ground_b)+'</td><td>'+number(x.freeboard_a)+' / '+number(x.freeboard_b)+'</td>':spill?'<td>'+number(x.duration_a_hours)+' / '+number(x.duration_b_hours)+'</td><td>'+number(x.duration_delta_hours,true)+'</td>':'')+
-        '<td>'+escape(x.flags.join('; '))+'</td></tr>').join('')+'</tbody></table><h2>Assessment criteria and source provenance</h2><pre>'+escape(JSON.stringify(evidence,null,2))+'</pre><h2>Asset evidence · full calculation precision</h2><pre>'+escape(JSON.stringify(rows,null,2))+'</pre></article>';
+        '<td>'+escape(x.flags.join('; '))+'</td></tr>').join('')+'</tbody></table></div><h2>Assessment criteria and source provenance</h2><pre>'+escape(JSON.stringify(evidence,null,2))+'</pre><h2>Asset evidence · full calculation precision</h2><pre>'+escape(JSON.stringify(rows,null,2))+'</pre></article>';
     downloadBlob('icm-'+exportKind+'-detriment.html',reportShell('ICM Buddy · '+titles[exportKind],'Baseline A compared with proposed B · '+r.scenario_a.scope,body,true),'text/html');
   }catch(error){$('dtStatus').textContent='Report export failed: '+String(error?.message||error);}
   finally{if(results[kind])button.disabled=false;}
