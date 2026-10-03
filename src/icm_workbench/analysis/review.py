@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from icm_workbench.analysis.alignment import time_coverage
+from icm_workbench.analysis.exclusions import normalise_exclusions
 from icm_workbench.analysis.rainfall import daily_rainfall_support
 
 
@@ -17,7 +19,12 @@ def rating_curve_fit(depth, flow, diameter_m=None):
     """
     d = pd.to_numeric(depth, errors="coerce")
     q = pd.to_numeric(flow, errors="coerce")
-    mask = d.notna() & q.notna() & (d > 0) & (q > 0)
+    mask = (
+        np.isfinite(d.to_numpy(dtype=float))
+        & np.isfinite(q.to_numpy(dtype=float))
+        & (d.to_numpy(dtype=float) > 0)
+        & (q.to_numpy(dtype=float) > 0)
+    )
     d = d[mask].astype(float)
     q = q[mask].astype(float)
     base = {
@@ -143,7 +150,7 @@ def weekly_data_assessment(df,max_gap_seconds=900.0):
     for week,g in x.groupby(pd.Grouper(key="timestamp",freq="W-SUN",label="right",closed="right")):
         if g.empty:continue
         for col in channels:
-            vals=pd.to_numeric(g[col],errors="coerce"); valid=vals.notna(); gaps=pd.to_datetime(g.timestamp).diff().dt.total_seconds(); gap_count=int((gaps>float(max_gap_seconds)).sum())
+            vals=pd.to_numeric(g[col],errors="coerce"); valid=pd.Series(np.isfinite(vals.to_numpy(dtype=float)),index=vals.index); gaps=pd.to_datetime(g.timestamp).diff().dt.total_seconds(); gap_count=int((gaps>float(max_gap_seconds)).sum())
             if np.isfinite(median) and median>0 and len(g)>1:
                 span=max((g.timestamp.max()-g.timestamp.min()).total_seconds(),median); expected=max(1,int(round(span/median))+1); coverage=min(100.0,100.0*int(valid.sum())/expected)
             else: coverage=100.0*float(valid.mean()) if len(valid) else 0.0
@@ -170,6 +177,7 @@ def weekly_data_assessment(df,max_gap_seconds=900.0):
     return pd.DataFrame(rows)
 
 
+
 def dry_weather_flow(
     flow_df,
     flow_col,
@@ -182,37 +190,48 @@ def dry_weather_flow(
     rain_semantics="intensity",
     rain_interval_min=None,
     rain_max_gap_seconds=None,
+    flow_max_gap_seconds=None,
 ):
     """Validity-aware screening DWF baseline.
 
-    A day is eligible only when rainfall support is complete for that civil/model
-    clock day. Missing or uncovered rainfall is unknown, never dry.
+    A day is eligible only when both rainfall support and observed-flow support
+    are defensible for the civil/model-clock day. Missing rainfall is never dry,
+    and a sparse flow sample cannot manufacture a complete DWF baseline.
     """
-    if flow_df is None or getattr(flow_df,"empty",True) or flow_col not in flow_df.columns:
-        return {"available":"No","reason":"Observed flow unavailable.","calculation_status":"unavailable"}
-    f=flow_df[["timestamp",flow_col]].copy()
-    f["timestamp"]=pd.to_datetime(f.timestamp,errors="coerce")
-    f[flow_col]=pd.to_numeric(f[flow_col],errors="coerce")
-    f=f.dropna(subset=["timestamp",flow_col]).sort_values("timestamp")
+    if flow_df is None or getattr(flow_df, "empty", True) or flow_col not in flow_df.columns:
+        return {"available": "No", "reason": "Observed flow unavailable.", "calculation_status": "unavailable"}
+
+    f = flow_df[["timestamp", flow_col]].copy()
+    f["timestamp"] = pd.to_datetime(f["timestamp"], errors="coerce")
+    f[flow_col] = pd.to_numeric(f[flow_col], errors="coerce")
+    f = f.dropna(subset=["timestamp"]).sort_values("timestamp").drop_duplicates("timestamp", keep="last")
     if f.empty:
-        return {"available":"No","reason":"No valid observed flow.","calculation_status":"unavailable"}
+        return {"available": "No", "reason": "No valid observed flow timestamps.", "calculation_status": "unavailable"}
 
-    d=f.timestamp.diff().dt.total_seconds().div(60)
-    d=d[d>0]
-    step=float(d.median()) if len(d) else np.nan
-    f["day"]=f.timestamp.dt.floor("D")
+    diffs = f["timestamp"].diff().dt.total_seconds()
+    positive = diffs[diffs > 0]
+    step_seconds = float(positive.median()) if len(positive) else np.nan
+    if flow_max_gap_seconds is None:
+        # Flow-survey series are expected to be sub-hourly/hourly. Cap inferred
+        # support so one point per day cannot be interpreted as continuous flow.
+        flow_gap = min(step_seconds * 1.5, 7200.0) if np.isfinite(step_seconds) else 7200.0
+    else:
+        flow_gap = float(flow_max_gap_seconds)
+    if not np.isfinite(flow_gap) or flow_gap <= 0:
+        raise ValueError("flow_max_gap_seconds must be positive")
+    f["day"] = f["timestamp"].dt.floor("D")
 
-    if rainfall_df is None or getattr(rainfall_df,"empty",True) or rain_col not in rainfall_df.columns:
+    if rainfall_df is None or getattr(rainfall_df, "empty", True) or rain_col not in rainfall_df.columns:
         return {
-            "available":"Unavailable",
-            "reason":"Rainfall unavailable; dry-weather days cannot be established.",
-            "average_dwf":None,
-            "dry_days_used":0,
-            "calculation_status":"unavailable",
-            "candidate_days":[],
+            "available": "Unavailable",
+            "reason": "Rainfall unavailable; dry-weather days cannot be established.",
+            "average_dwf": None,
+            "dry_days_used": 0,
+            "calculation_status": "unavailable",
+            "candidate_days": [],
         }
 
-    daily=daily_rainfall_support(
+    daily = daily_rainfall_support(
         rainfall_df,
         rain_col,
         semantics=rain_semantics,
@@ -221,73 +240,248 @@ def dry_weather_flow(
     )
     if daily.empty:
         return {
-            "available":"Unavailable",
-            "reason":"Rainfall contains no assessable support; dry-weather days cannot be established.",
-            "average_dwf":None,
-            "dry_days_used":0,
-            "calculation_status":"unavailable",
-            "candidate_days":[],
+            "available": "Unavailable",
+            "reason": "Rainfall contains no assessable support; dry-weather days cannot be established.",
+            "average_dwf": None,
+            "dry_days_used": 0,
+            "calculation_status": "unavailable",
+            "candidate_days": [],
         }
 
-    daily_by_day={pd.Timestamp(row.day):row for row in daily.itertuples(index=False)}
-    last_day=f["day"].max()
-    cutoff=last_day-pd.Timedelta(days=int(baseline_days))
-    candidate_days=[]
-    chosen=[]
-    for day in sorted(pd.unique(f.loc[(f["day"]>=cutoff)&(f["day"]<=last_day),"day"])):
-        day=pd.Timestamp(day)
-        row=daily_by_day.get(day)
-        if row is None:
-            candidate_days.append({"day":day,"status":"unknown","reason":"No rainfall support for day.","rainfall_depth_mm":None,"rainfall_coverage_fraction":0.0})
-            continue
-        coverage=float(row.coverage_fraction)
-        depth=float(row.depth_mm)
-        if row.status!="complete" or coverage<0.999999:
-            candidate_days.append({"day":day,"status":"unknown","reason":"Rainfall support is incomplete.","rainfall_depth_mm":depth,"rainfall_coverage_fraction":coverage})
-            continue
-        if depth<=float(dry_day_mm):
-            chosen.append(day)
-            candidate_days.append({"day":day,"status":"dry","reason":"Complete rainfall support and depth at/below threshold.","rainfall_depth_mm":depth,"rainfall_coverage_fraction":coverage})
-        else:
-            candidate_days.append({"day":day,"status":"wet","reason":"Rainfall depth exceeds dry-day threshold.","rainfall_depth_mm":depth,"rainfall_coverage_fraction":coverage})
+    daily_by_day = {pd.Timestamp(row.day): row for row in daily.itertuples(index=False)}
+    last_day = f["day"].max()
+    cutoff = last_day - pd.Timedelta(days=int(baseline_days))
+    candidate_days = []
+    chosen = []
+    daily_min = []
 
-    use=f[f.day.isin(chosen)].copy()
-    daily_min=[]
-    if np.isfinite(step) and step>0:
-        window=max(1,int(round(float(adp_hours)*60.0/step)))
-        for _,g in use.groupby("day"):
-            s=pd.to_numeric(g[flow_col],errors="coerce").rolling(window=window,min_periods=max(1,window//2)).mean()
-            if s.notna().any():daily_min.append(float(s.min()))
-    value=float(np.nanmean(daily_min)) if daily_min else (float(use[flow_col].mean()) if not use.empty else np.nan)
-    enough=len(chosen)>=int(min_dry_days)
+    for day in sorted(pd.unique(f.loc[(f["day"] >= cutoff) & (f["day"] <= last_day), "day"])):
+        day = pd.Timestamp(day)
+        rain_row = daily_by_day.get(day)
+        if rain_row is None:
+            candidate_days.append({
+                "day": day,
+                "status": "unknown",
+                "reason": "No rainfall support for day.",
+                "rainfall_depth_mm": None,
+                "rainfall_coverage_fraction": 0.0,
+                "flow_coverage_fraction": 0.0,
+                "flow_status": "unavailable",
+            })
+            continue
+
+        rain_coverage = float(rain_row.coverage_fraction or 0.0)
+        rain_depth = float(rain_row.depth_mm)
+        if rain_row.status != "complete" or rain_coverage < 0.999999:
+            candidate_days.append({
+                "day": day,
+                "status": "unknown",
+                "reason": "Rainfall support is incomplete.",
+                "rainfall_depth_mm": rain_depth,
+                "rainfall_coverage_fraction": rain_coverage,
+                "flow_coverage_fraction": None,
+                "flow_status": "not-assessed",
+            })
+            continue
+        if rain_depth > float(dry_day_mm):
+            candidate_days.append({
+                "day": day,
+                "status": "wet",
+                "reason": "Rainfall depth exceeds dry-day threshold.",
+                "rainfall_depth_mm": rain_depth,
+                "rainfall_coverage_fraction": rain_coverage,
+                "flow_coverage_fraction": None,
+                "flow_status": "not-assessed",
+            })
+            continue
+
+        day_end = day + pd.Timedelta(days=1)
+        flow_support = time_coverage(
+            f,
+            flow_col,
+            day,
+            day_end,
+            max_gap_seconds=flow_gap,
+        )
+        flow_coverage = flow_support.get("coverage_fraction")
+        if flow_support.get("status") != "complete" or flow_coverage is None or flow_coverage < 0.999999:
+            candidate_days.append({
+                "day": day,
+                "status": "insufficient-flow",
+                "reason": "Dry rainfall day rejected because observed-flow support is incomplete.",
+                "rainfall_depth_mm": rain_depth,
+                "rainfall_coverage_fraction": rain_coverage,
+                "flow_coverage_fraction": flow_coverage,
+                "flow_status": flow_support.get("status", "unavailable"),
+            })
+            continue
+
+        g = f[(f["timestamp"] >= day) & (f["timestamp"] < day_end)].copy()
+        values = pd.to_numeric(g[flow_col], errors="coerce")
+        finite = np.isfinite(values.to_numpy(dtype=float))
+        g = g.loc[finite].copy()
+        if g.empty:
+            candidate_days.append({
+                "day": day,
+                "status": "insufficient-flow",
+                "reason": "Dry rainfall day contains no finite observed-flow values.",
+                "rainfall_depth_mm": rain_depth,
+                "rainfall_coverage_fraction": rain_coverage,
+                "flow_coverage_fraction": flow_coverage,
+                "flow_status": "unavailable",
+            })
+            continue
+
+        effective_step_minutes = step_seconds / 60.0 if np.isfinite(step_seconds) else np.nan
+        if not np.isfinite(effective_step_minutes) or effective_step_minutes <= 0:
+            continue
+        window = max(1, int(round(float(adp_hours) * 60.0 / effective_step_minutes)))
+        rolling = pd.to_numeric(g[flow_col], errors="coerce").rolling(
+            window=window, min_periods=window
+        ).mean()
+        if not rolling.notna().any():
+            candidate_days.append({
+                "day": day,
+                "status": "insufficient-flow",
+                "reason": "Dry rainfall day lacks a complete ADP rolling window.",
+                "rainfall_depth_mm": rain_depth,
+                "rainfall_coverage_fraction": rain_coverage,
+                "flow_coverage_fraction": flow_coverage,
+                "flow_status": "complete",
+            })
+            continue
+
+        chosen.append(day)
+        daily_min.append(float(rolling.min()))
+        candidate_days.append({
+            "day": day,
+            "status": "dry",
+            "reason": "Complete rainfall and flow support; ADP window available.",
+            "rainfall_depth_mm": rain_depth,
+            "rainfall_coverage_fraction": rain_coverage,
+            "flow_coverage_fraction": flow_coverage,
+            "flow_status": "complete",
+        })
+
+    value = float(np.nanmean(daily_min)) if daily_min else np.nan
+    enough = len(chosen) >= int(min_dry_days)
     return {
-        "available":"Yes" if enough else "Low confidence",
-        "average_dwf":value if np.isfinite(value) else None,
-        "dry_days_used":int(len(chosen)),
-        "dry_day_threshold_mm":float(dry_day_mm),
-        "baseline_days":int(baseline_days),
-        "minimum_dry_days":int(min_dry_days),
-        "adp_hours":float(adp_hours),
-        "calculation_status":"complete" if enough else "partial",
-        "rainfall_semantics":rain_semantics,
-        "rainfall_interval_min":None if rain_interval_min is None else float(rain_interval_min),
-        "candidate_days":candidate_days,
+        "available": "Yes" if enough else "Low confidence",
+        "average_dwf": value if np.isfinite(value) else None,
+        "dry_days_used": int(len(chosen)),
+        "dry_day_threshold_mm": float(dry_day_mm),
+        "baseline_days": int(baseline_days),
+        "minimum_dry_days": int(min_dry_days),
+        "adp_hours": float(adp_hours),
+        "flow_max_gap_seconds": float(flow_gap),
+        "calculation_status": "complete" if enough and np.isfinite(value) else ("partial" if chosen else "unavailable"),
+        "rainfall_semantics": rain_semantics,
+        "rainfall_interval_min": None if rain_interval_min is None else float(rain_interval_min),
+        "candidate_days": candidate_days,
     }
 
-def event_response_summary(observed,modelled,events,obs_col,model_col,baseline_hours=3.0,post_hours=6.0):
-    """Per-rainfall-event peak uplift and timing comparison without assigning a subjective pass/fail score."""
-    rows=[]
-    if not events:return rows
+
+def event_response_summary(
+    observed,
+    modelled,
+    events,
+    obs_col,
+    model_col,
+    baseline_hours=3.0,
+    post_hours=6.0,
+    observed_exclusions=(),
+    model_exclusions=(),
+    max_gap_seconds=3600.0,
+    minimum_requested_coverage_fraction=0.80,
+):
+    """Per-event response evidence with role-specific validity accounting."""
+
+    def _mask_rows(frame, column, exclusions):
+        x = frame[["timestamp", column]].copy()
+        x["timestamp"] = pd.to_datetime(x["timestamp"], errors="coerce")
+        x[column] = pd.to_numeric(x[column], errors="coerce")
+        finite = np.isfinite(x[column].to_numpy(dtype=float))
+        x = x.loc[x["timestamp"].notna() & finite].sort_values("timestamp")
+        for exc in normalise_exclusions(exclusions):
+            mask = (x["timestamp"] >= pd.Timestamp(exc.start)) & (x["timestamp"] < pd.Timestamp(exc.end))
+            x = x.loc[~mask]
+        return x
+
+    def _window_status(frame, column, start, end, exclusions):
+        support = time_coverage(
+            frame,
+            column,
+            start,
+            end,
+            max_gap_seconds=float(max_gap_seconds),
+            exclusions=exclusions,
+        )
+        requested_coverage = support.get("validity", {}).get("requested_coverage_fraction")
+        sufficient = (
+            support.get("status") == "complete"
+            and requested_coverage is not None
+            and float(requested_coverage) >= float(minimum_requested_coverage_fraction)
+        )
+        return support, sufficient
+
+    rows = []
+    if not events:
+        return rows
+
     for event in events:
-        start=pd.Timestamp(event["start"]); end=pd.Timestamp(event["end"]); b0=start-pd.Timedelta(hours=float(baseline_hours)); r1=end+pd.Timedelta(hours=float(post_hours))
-        def stats(df,col):
-            x=df[["timestamp",col]].copy(); x["timestamp"]=pd.to_datetime(x.timestamp,errors="coerce"); x[col]=pd.to_numeric(x[col],errors="coerce"); x=x.dropna().sort_values("timestamp")
-            base=x[(x.timestamp>=b0)&(x.timestamp<start)][col]; resp=x[(x.timestamp>=start)&(x.timestamp<=r1)]
-            if resp.empty:return None
-            baseline=float(base.median()) if not base.empty else float(resp[col].quantile(.10)); idx=resp[col].idxmax(); peak=float(resp.loc[idx,col]); return {"baseline":baseline,"peak":peak,"uplift":peak-baseline,"peak_time":pd.Timestamp(resp.loc[idx,"timestamp"])}
-        o=stats(observed,obs_col); m=stats(modelled,model_col)
-        row={"event":event.get("event"),"rain_start":start,"rain_end":end,"rain_depth_mm":event.get("total_depth_mm"),"observed_baseline":o["baseline"] if o else np.nan,"observed_uplift":o["uplift"] if o else np.nan,"modelled_uplift":m["uplift"] if m else np.nan,"uplift_error_percent":np.nan,"peak_lag_minutes":np.nan}
-        if o and m and abs(o["uplift"])>1e-12:row["uplift_error_percent"]=float((m["uplift"]-o["uplift"])/o["uplift"]*100.0)
-        if o and m:row["peak_lag_minutes"]=float((m["peak_time"]-o["peak_time"]).total_seconds()/60.0)
+        start = pd.Timestamp(event["start"])
+        end = pd.Timestamp(event["end"])
+        b0 = start - pd.Timedelta(hours=float(baseline_hours))
+        r1 = end + pd.Timedelta(hours=float(post_hours))
+
+        def stats(df, col, exclusions):
+            base_support, base_ok = _window_status(df, col, b0, start, exclusions)
+            response_support, response_ok = _window_status(df, col, start, r1, exclusions)
+            x = _mask_rows(df, col, exclusions)
+            base = x[(x["timestamp"] >= b0) & (x["timestamp"] < start)]
+            resp = x[(x["timestamp"] >= start) & (x["timestamp"] <= r1)]
+            if not base_ok or not response_ok or base.empty or resp.empty:
+                return {
+                    "available": False,
+                    "baseline_support": base_support,
+                    "response_support": response_support,
+                    "reason": "Baseline or response support is incomplete after gaps/exclusions.",
+                }
+            baseline = float(base[col].median())
+            idx = resp[col].idxmax()
+            peak = float(resp.loc[idx, col])
+            return {
+                "available": True,
+                "baseline": baseline,
+                "peak": peak,
+                "uplift": peak - baseline,
+                "peak_time": pd.Timestamp(resp.loc[idx, "timestamp"]),
+                "baseline_support": base_support,
+                "response_support": response_support,
+            }
+
+        o = stats(observed, obs_col, observed_exclusions)
+        m = stats(modelled, model_col, model_exclusions)
+        row = {
+            "event": event.get("event"),
+            "rain_start": start,
+            "rain_end": end,
+            "rain_depth_mm": event.get("total_depth_mm"),
+            "observed_baseline": o.get("baseline", np.nan),
+            "observed_uplift": o.get("uplift", np.nan),
+            "modelled_uplift": m.get("uplift", np.nan),
+            "uplift_error_percent": np.nan,
+            "peak_lag_minutes": np.nan,
+            "observed_baseline_coverage": o.get("baseline_support", {}).get("validity"),
+            "observed_response_coverage": o.get("response_support", {}).get("validity"),
+            "model_baseline_coverage": m.get("baseline_support", {}).get("validity"),
+            "model_response_coverage": m.get("response_support", {}).get("validity"),
+            "calculation_status": "complete" if o.get("available") and m.get("available") else "partial",
+        }
+        if o.get("available") and m.get("available") and abs(o["uplift"]) > 1e-12:
+            row["uplift_error_percent"] = float((m["uplift"] - o["uplift"]) / o["uplift"] * 100.0)
+        if o.get("available") and m.get("available"):
+            row["peak_lag_minutes"] = float((m["peak_time"] - o["peak_time"]).total_seconds() / 60.0)
         rows.append(row)
     return rows
+
