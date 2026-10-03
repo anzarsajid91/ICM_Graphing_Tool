@@ -7,6 +7,7 @@ const state = {
   healthResult: null, healthSignature: null, healthGeneration: 0,
   seriesQuantityOverrides: new Map(),
   seriesUnitOverrides: new Map(),
+  rainfallSemanticsOverrides: new Map(),
   seriesSemanticsModelOrder: [],
   seriesSemanticsPending: new Set(),
 };
@@ -102,7 +103,7 @@ function unitToCanonicalFactor(quantity,unit){
   if(q==='flow'&&['ml/d','mld'].includes(u))return 1000/86400;
   if(q==='flow'&&['m3/d','m3d'].includes(u))return 1/86400;
   if(q==='velocity'&&['m/s','ms','mps'].includes(u))return 1;
-  if(q==='rainfall'&&['mm/h','mmh'].includes(u))return 1;
+  if(q==='rainfall'&&['mm/h','mmh','mm'].includes(u))return 1;
   return null;
 }
 function normaliseDisplayUnit(quantity,unit){
@@ -120,6 +121,7 @@ function normaliseDisplayUnit(quantity,unit){
   if(q==='flow'&&['m3/d','m3d'].includes(u))return 'm³/d';
   if(q==='velocity'&&['m/s','ms','mps'].includes(u))return 'm/s';
   if(q==='rainfall'&&['mm/h','mmh'].includes(u))return 'mm/h';
+  if(q==='rainfall'&&u==='mm')return 'mm';
   return unit||null;
 }
 function seriesDisplayUnit(item,col){
@@ -132,6 +134,20 @@ function seriesDisplayUnit(item,col){
   const selected=(key&&state.seriesUnitOverrides.get(key))||detail.display_unit||sourceUnit||seriesUnit(item,col)||null;
   return normaliseDisplayUnit(quantity,selected);
 }
+function rainfallSemanticsFor(item,col){
+  if(!item)return 'unresolved';
+  const key=item?.id?sourceKey(item.id,col):'';
+  const detail=seriesMetadata(item,col),metadata=item?.parsed?.metadata||{};
+  const override=key&&state.rainfallSemanticsOverrides.get(key);
+  if(override)return override;
+  const declared=String(detail.rainfall_semantics||metadata.rainfall_semantics||'').toLowerCase();
+  if(['intensity','incremental_depth'].includes(declared))return declared;
+  const unit=normaliseDisplayUnit('rainfall',seriesDisplayUnit(item,col));
+  if(String(unit||'').toLowerCase()==='mm/h')return 'intensity';
+  if(String(unit||'').toLowerCase()==='mm')return 'incremental_depth';
+  return 'unresolved';
+}
+diagnostic.rainfallSemanticsFor=rainfallSemanticsFor;
 function canonicalToDisplayFactor(quantity,unit){
   const factor=unitToCanonicalFactor(quantity,unit);
   return factor==null||!Number.isFinite(Number(factor))||Number(factor)===0?1:1/Number(factor);
@@ -742,7 +758,7 @@ function renderSeriesSemanticsOverrides(){
     ['velocity','Velocity'],
     ['rainfall','Rainfall'],
   ];
-  const units={level:['m','mm'],depth:['m','mm'],flow:['m³/s','L/s','Ml/d','m³/d'],velocity:['m/s'],rainfall:['mm/h']};
+  const units={level:['m','mm'],depth:['m','mm'],flow:['m³/s','L/s','Ml/d','m³/d'],velocity:['m/s'],rainfall:['mm/h','mm']};
   target.innerHTML=rows.map(row=>{
     const source=seriesLabel(row.mapped.item,row.mapped.col);
     const declaredChoice=options.find(([value])=>value===row.quantity)||[row.quantity,row.quantity||'Declared quantity'];
@@ -753,7 +769,11 @@ function renderSeriesSemanticsOverrides(){
     const unitChoices=row.quantity==='rainfall'&&sourceChoice&&!available.includes(sourceChoice)
       ?[sourceChoice,...available]:available;
     const current=unitChoices.find(value=>unitKey(value)===unitKey(normaliseDisplayUnit(row.quantity,row.unit)))||'';
-    return '<div class="series-semantics-row"'+(row.quantity==='rainfall'?' title="Rainfall units are assigned only. No rainfall unit conversion is applied."':'')+'><div class="series-semantics-source" title="'+esc(source)+'"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.quantity==='rainfall'?' <small>No rainfall unit conversion is applied.</small>':'')+(row.locked?' <small title="Native source metadata declares this quantity. Quantity reinterpretation is protected; compatible display units remain selectable.">Quantity declared by source</small>':'')+'</div><label><span class="series-semantics-quantity-label">Interpret Value as</span><select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label><label><span class="series-semantics-unit-label">Unit'+(row.quantity==='rainfall'?' <small>(assignment only; no conversion)</small>':'')+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'</span><select data-series-unit-key="'+esc(row.key)+'" aria-label="Unit — '+esc(source)+'"'+(!available.length?' disabled':'')+'><option value="">'+(row.sourceUnit?'Use source unit':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
+    const rainSemantics=row.quantity==='rainfall'?rainfallSemanticsFor(row.mapped.item,row.mapped.col):null;
+    const semanticsControl=row.quantity==='rainfall'
+      ?'<label><span class="series-semantics-unit-label">Rainfall values represent</span><select data-rainfall-semantics-key="'+esc(row.key)+'" aria-label="Rainfall values represent — '+esc(source)+'"><option value="unresolved" '+(rainSemantics==='unresolved'?'selected':'')+'>Unresolved — confirm</option><option value="intensity" '+(rainSemantics==='intensity'?'selected':'')+'>Intensity</option><option value="incremental_depth" '+(rainSemantics==='incremental_depth'?'selected':'')+'>Incremental depth per interval</option></select></label>'
+      :'';
+    return '<div class="series-semantics-row"'+(row.quantity==='rainfall'?' title="Rainfall unit assignment does not silently convert source values. Semantics controls how intervals are integrated."':'')+'><div class="series-semantics-source" title="'+esc(source)+'"><strong>'+esc(row.role)+'</strong> · '+esc(source)+(row.quantity==='rainfall'?' <small>Unit assignment does not silently convert rainfall values.</small>':'')+(row.locked?' <small title="Native source metadata declares this quantity. Quantity reinterpretation is protected; compatible display units remain selectable.">Quantity declared by source</small>':'')+'</div><label><span class="series-semantics-quantity-label">Interpret Value as</span><select data-series-quantity-key="'+esc(row.key)+'" aria-label="Interpret Value as — '+esc(source)+'">'+choices.map(([value,label])=>'<option value="'+value+'"'+(row.quantity===value?' selected':'')+'>'+label+'</option>').join('')+'</select></label>'+semanticsControl+'<label><span class="series-semantics-unit-label">Unit'+(row.quantity==='rainfall'?' <small>(assignment only; no conversion)</small>':'')+(row.unitSource?' <small>('+esc(row.unitSource)+')</small>':'')+'</span><select data-series-unit-key="'+esc(row.key)+'" aria-label="Unit — '+esc(source)+'"'+(!available.length?' disabled':'')+'><option value="">'+(row.sourceUnit?'Use source unit':'Unspecified — confirm unit')+'</option>'+unitChoices.map(value=>'<option value="'+esc(value)+'"'+(value===current?' selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label></div>';
   }).join('');
   target.querySelectorAll('[data-series-quantity-key]').forEach(select=>select.addEventListener('change',()=>{
     void applySeriesSemanticsChange(select.dataset.seriesQuantityKey,select.value||null);
@@ -764,7 +784,12 @@ function renderSeriesSemanticsOverrides(){
     const quantity=seriesQuantity(mapped.item,mapped.col)||(key===$('rainSelect')?.value?'rainfall':null);
     void applySeriesSemanticsChange(key,quantity,{unit:select.value});
   }));
-  target.querySelectorAll('[data-series-quantity-key],[data-series-unit-key]').forEach(select=>{
+  target.querySelectorAll('[data-rainfall-semantics-key]').forEach(select=>select.addEventListener('change',()=>{
+    const key=select.dataset.rainfallSemanticsKey,value=String(select.value||'unresolved');
+    if(value==='unresolved')state.rainfallSemanticsOverrides.delete(key);else state.rainfallSemanticsOverrides.set(key,value);
+    invalidateRainEvents('Rainfall semantics changed.');invalidateDwf('Rainfall semantics changed.');renderSeriesSemanticsOverrides();
+  }));
+  target.querySelectorAll('[data-series-quantity-key],[data-series-unit-key],[data-rainfall-semantics-key]').forEach(select=>{
     const key=select.dataset.seriesQuantityKey||select.dataset.seriesUnitKey;
     if(state.seriesSemanticsPending.has(key))select.disabled=true;
   });
@@ -1292,6 +1317,7 @@ function rainEventInputSignature(){
     criteria:appliedRainCriteria(),
     analysis:analysisBounds(),
     exclusions:exclusionPayload(false,'rainfall'),
+    rainfall_semantics:(()=>{const x=mappingObject(state.mapping.rain);return x?rainfallSemanticsFor(x.item,x.col):'unresolved';})(),
     time_basis:'model clock/unspecified',
   });
 }
@@ -1324,6 +1350,7 @@ function dwfInputSignature(){
     analysis:analysisBounds(),
     flow_exclusions:exclusionPayload(false,'observed',flowKey),
     rainfall_exclusions:exclusionPayload(false,'rainfall',state.mapping.rain),
+    rainfall_semantics:(()=>{const x=mappingObject(state.mapping.rain);return x?rainfallSemanticsFor(x.item,x.col):'unresolved';})(),
     time_basis:'model clock/unspecified',
   });
 }
@@ -1752,12 +1779,15 @@ async function runRating(){
 async function runDwf(){
   const flowKey=$('dwfFlowSelect').value,flow=mappingObject(flowKey),rain=mappingObject(state.mapping.rain);
   if(!flow)throw new Error('Select observed flow.');
+  const rainSemantics=rain?rainfallSemanticsFor(rain.item,rain.col):'unresolved';
+  if(rain&&rainSemantics==='unresolved')throw new Error('Confirm whether the mapped rainfall values are intensity or incremental depth before calculating DWF.');
   const signature=dwfInputSignature(),generation=++state.dwfGeneration,bounds=analysisBounds();
   const r=await engine.call('dwf_scaled',{
     flow_path:flow.item.virtualPath,flow_col:flow.col,
     flow_unit_override:$('dwfFlowUnit')?.value||null,
     rain_path:rain?.item.virtualPath||null,rain_col:rain?.col||'rainfall',
     rain_factor:Number($('rainFactor').value||1),
+    rainfall_semantics:rainSemantics,
     dry_day_mm:Number($('dwfDryDay').value||1),
     baseline_days:Number($('dwfBaselineDays').value||28),
     min_dry_days:5,adp_hours:Number($('dwfAdpHours').value||6),
@@ -1818,6 +1848,8 @@ function renderExclusions(){
 
 async function runRainEvents(){
   const rain=mappingObject(state.mapping.rain);if(!rain)throw new Error('Map a rainfall series first.');
+  const semantics=rainfallSemanticsFor(rain.item,rain.col);
+  if(semantics==='unresolved')throw new Error('Confirm whether the mapped rainfall values are intensity or incremental depth before calculating rainfall events.');
   const criteria=appliedRainCriteria(),bounds=analysisBounds(),signature=rainEventInputSignature(),generation=++state.rainEventGeneration;
   const r=await engine.call('rainfall_event_scaled',{
     path:rain.item.virtualPath,column:rain.col,
@@ -1827,6 +1859,7 @@ async function runRainEvents(){
     minimum_depth_mm:criteria.minimum_depth_mm,
     minimum_event_duration_min:criteria.minimum_event_duration_min,
     dry_gap_min:criteria.dry_gap_min,
+    rainfall_semantics:semantics,
     exclusions_json:JSON.stringify(exclusionPayload(true,'rainfall')),
     start:bounds.start,
     end:bounds.end
@@ -1844,10 +1877,11 @@ async function runRainEvents(){
 async function renderEventResponses(expectedGeneration=state.rainEventGeneration,expectedSignature=state.rainEventSignature){
   const obs=mappingObject(state.mapping.observed),model=currentModels()[0];
   if(!obs||!model||!state.rainEvents.length){$('eventResponseBody').innerHTML='';return;}
-  const responseSignature=JSON.stringify({event_signature:expectedSignature,observed:workspaceSeries(state.mapping.observed),model:workspaceSeries(sourceKey(model.item.id,model.col))});
-  const r=await engine.call('event_response_result',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:model.item.virtualPath,model_col:model.col,events_json:JSON.stringify(state.rainEvents),baseline_hours:3,post_hours:6});
-  const currentModel=currentModels()[0];
-  const currentSignature=JSON.stringify({event_signature:state.rainEventSignature,observed:workspaceSeries(state.mapping.observed),model:currentModel?workspaceSeries(sourceKey(currentModel.item.id,currentModel.col)):null});
+  const modelKey=sourceKey(model.item.id,model.col);
+  const responseSignature=JSON.stringify({event_signature:expectedSignature,observed:workspaceSeries(state.mapping.observed),model:workspaceSeries(modelKey),observed_exclusions:exclusionPayload(false,'observed',state.mapping.observed),model_exclusions:exclusionPayload(false,'model',modelKey),max_gap_seconds:Number($('gapInput')?.value||900)});
+  const r=await engine.call('event_response_result',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:model.item.virtualPath,model_col:model.col,events_json:JSON.stringify(state.rainEvents),baseline_hours:3,post_hours:6,observed_exclusions_json:JSON.stringify(exclusionPayload(true,'observed',state.mapping.observed)),model_exclusions_json:JSON.stringify(exclusionPayload(true,'model',modelKey)),max_gap_seconds:Number($('gapInput')?.value||900)});
+  const currentModel=currentModels()[0],currentModelKey=currentModel?sourceKey(currentModel.item.id,currentModel.col):'';
+  const currentSignature=JSON.stringify({event_signature:state.rainEventSignature,observed:workspaceSeries(state.mapping.observed),model:currentModel?workspaceSeries(currentModelKey):null,observed_exclusions:exclusionPayload(false,'observed',state.mapping.observed),model_exclusions:currentModel?exclusionPayload(false,'model',currentModelKey):[],max_gap_seconds:Number($('gapInput')?.value||900)});
   if(expectedGeneration!==state.rainEventGeneration||!rainEventsFresh()||responseSignature!==currentSignature)throw new Error('Event-response inputs changed while calculation was running. The late result was discarded.');
   $('eventResponseBody').innerHTML=(r.rows||[]).map(x=>`<tr><td>${x.event}</td><td>${esc(x.rain_start)}</td><td>${fmt(x.rain_depth_mm,2)}</td><td>${fmt(x.observed_baseline,4)}</td><td>${fmt(x.observed_uplift,4)}</td><td>${fmt(x.modelled_uplift,4)}</td><td>${fmt(x.uplift_error_percent,1)}</td><td>${fmt(x.peak_lag_minutes,1)}</td></tr>`).join('');
 }
@@ -2010,7 +2044,7 @@ function thresholdWorkspaceSeries(role){
   const model=mappingObject(key);
   return model&&['depth','level'].includes(String(seriesQuantity(model.item,model.col)||'').toLowerCase())?workspaceSeries(key):null;
 }
-function workspaceObject(strictExclusions=true){return {schema_version:3,application:'Hydra Bench GitHub Pages',time_basis:$('timeBasisConfirmed')?.checked?'model clock/engineer-confirmed':'model clock/unspecified',time_basis_confirmed:Boolean($('timeBasisConfirmed')?.checked),level_datum_confirmed:Boolean($('levelDatumConfirmed')?.checked),saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity,unit:state.seriesUnitOverrides.get(key)||null})).filter(x=>x.series&&x.quantity),series_unit_overrides:[...state.seriesUnitOverrides.entries()].map(([key,unit])=>({series:workspaceSeries(key),unit})).filter(x=>x.series&&x.unit),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),storage_threshold_unit:$('storageThresholdUnit')?.value||null,target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#ff0000',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#ff0000'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
+function workspaceObject(strictExclusions=true){return {schema_version:3,application:'Hydra Bench GitHub Pages',time_basis:$('timeBasisConfirmed')?.checked?'model clock/engineer-confirmed':'model clock/unspecified',time_basis_confirmed:Boolean($('timeBasisConfirmed')?.checked),level_datum_confirmed:Boolean($('levelDatumConfirmed')?.checked),saved_at:new Date().toISOString(),navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity,unit:state.seriesUnitOverrides.get(key)||null})).filter(x=>x.series&&x.quantity),series_unit_overrides:[...state.seriesUnitOverrides.entries()].map(([key,unit])=>({series:workspaceSeries(key),unit})).filter(x=>x.series&&x.unit),rainfall_semantics_overrides:[...state.rainfallSemanticsOverrides.entries()].map(([key,semantics])=>({series:workspaceSeries(key),semantics})).filter(x=>x.series&&x.semantics),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),storage_threshold_unit:$('storageThresholdUnit')?.value||null,target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#ff0000',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#ff0000'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
 function downloadBlob(name,content,type='application/octet-stream'){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 function downloadWorkspace(){downloadBlob(`icm-workbench-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(workspaceObject(),null,2),'application/json');$('workspaceStatus').textContent='Workspace downloaded. Raw files were not embedded.';}
 function findSeriesFromWorkspace(ref){
@@ -2049,6 +2083,7 @@ async function applyWorkspace(w){
   renderSeriesOptions();
   state.seriesQuantityOverrides.clear();
   state.seriesUnitOverrides.clear();
+  state.rainfallSemanticsOverrides.clear();
   for(const entry of w.series_quantity_overrides||[]){
     const key=findSeriesFromWorkspace(entry?.series);
     if(key&&entry?.quantity)await applySeriesQuantityOverride(key,entry.quantity,{refresh:false,unit:entry.unit||null});
@@ -2060,6 +2095,7 @@ async function applyWorkspace(w){
       await applySeriesQuantityOverride(key,seriesQuantity(mapped.item,mapped.col),{refresh:false,unit:entry.unit});
     }
   }
+  for(const entry of w.rainfall_semantics_overrides||[]){const key=findSeriesFromWorkspace(entry?.series);if(key&&['intensity','incremental_depth'].includes(String(entry?.semantics||'')))state.rainfallSemanticsOverrides.set(key,String(entry.semantics));}
   renderSeriesOptions();
   state.mapping.observed=findSeriesFromWorkspace(w.mapping?.observed);
   state.mapping.models=(w.mapping?.models||[]).map(findSeriesFromWorkspace).filter(Boolean);
@@ -2167,7 +2203,7 @@ function analysisSignature(){
     issues:registry.issues||[],
     associationSource:registry.associationSource||null,
   };
-  return JSON.stringify({mapping:w.mapping,series_quantity_overrides:w.series_quantity_overrides,analysis:w.analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual,time_basis:w.time_basis,level_datum_confirmed:w.level_datum_confirmed,project_context:projectContext});
+  return JSON.stringify({mapping:w.mapping,series_quantity_overrides:w.series_quantity_overrides,rainfall_semantics_overrides:w.rainfall_semantics_overrides,analysis:w.analysis,exclusions:w.exclusions,active_spill_model:w.active_spill_model,rain_events:w.rain_events.manual,time_basis:w.time_basis,level_datum_confirmed:w.level_datum_confirmed,project_context:projectContext});
 }
 function assertFreshResults(options=null){
   const sig=analysisSignature();
