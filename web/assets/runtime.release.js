@@ -905,6 +905,7 @@ async function handoffFastPath(item){
     $('observedSelect').value='';
     $('rainSelect').value=preferred.key;
   }else{
+    if(preferred.item.parsed?.format==='fdv_ascii')renderSeriesOptions({observed:preferred.key,models:[]});
     $('observedSelect').value=preferred.key;
   }
   [...$('modelSelect').options].forEach(o=>o.selected=false);
@@ -1204,10 +1205,10 @@ function renderPool(){
   }).join('');
   document.querySelectorAll('[data-source-remove]').forEach(button=>button.addEventListener('click',()=>void guarded('poolSummary',()=>removeSourceById(button.dataset.sourceRemove))));
 }
-function renderSeriesOptions(){
+function renderSeriesOptions(preferredMapping=null){
   const all=allSeries(),obs=$('observedSelect'),mod=$('modelSelect'),rain=$('rainSelect'),prevMods=orderedSelectedModelKeys();
-  setOptions(obs,sourcePickerSeries(all,[obs.value]));
-  mod.innerHTML=sourcePickerSeries(all,prevMods).map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');
+  setOptions(obs,sourcePickerSeries(all,[preferredMapping?.observed||obs.value]));
+  mod.innerHTML=sourcePickerSeries(all,preferredMapping?.models||prevMods).map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');
   [...mod.options].forEach(o=>o.selected=prevMods.includes(o.value));
   orderedSelectedModelKeys();
   setOptions(rain,all,{none:true});
@@ -1220,9 +1221,10 @@ function renderSeriesOptions(){
 }
 function autoSuggestMappings(all){
   if(!$('observedSelect').value){
-    const s=all.find(x=>x.role==='observed'&&['depth','level','flow'].includes(String(x.quantity||'').toLowerCase()))
-      ||all.find(x=>/observ|edm|monitor/i.test(x.item.displayName)&&/depth|level|flow/i.test(x.col))
-      ||all.find(x=>['depth','level'].includes(String(x.quantity||'').toLowerCase()));
+    const choices=all.filter(s=>[...$('observedSelect').options].some(option=>option.value===s.key));
+    const s=choices.find(x=>x.role==='observed'&&['depth','level','flow'].includes(String(x.quantity||'').toLowerCase()))
+      ||choices.find(x=>/observ|edm|monitor/i.test(x.item.displayName)&&/depth|level|flow/i.test(x.col))
+      ||choices.find(x=>['depth','level'].includes(String(x.quantity||'').toLowerCase()));
     if(s)$('observedSelect').value=s.key;
   }
   if(!$('rainSelect').value){
@@ -2050,6 +2052,7 @@ async function applyWorkspace(w){
   state.mapping.models=(w.mapping?.models||[]).map(findSeriesFromWorkspace).filter(Boolean);
   state.seriesSemanticsModelOrder=[...state.mapping.models];
   state.mapping.rain=findSeriesFromWorkspace(w.mapping?.rain);
+  renderSeriesOptions(state.mapping);
   $('observedSelect').value=state.mapping.observed;
   [...$('modelSelect').options].forEach(o=>o.selected=state.mapping.models.includes(o.value));
   $('rainSelect').value=state.mapping.rain;
