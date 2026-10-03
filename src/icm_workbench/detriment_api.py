@@ -277,6 +277,8 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
     if kind not in ('flooding','level','spill'):raise ValueError("Unsupported detriment assessment.")
     criteria=json.loads(criteria_json);a_config=json.loads(scenario_a_json);b_config=json.loads(scenario_b_json)
     if not criteria.get('scope_confirmed'):raise ValueError("Please confirm matching assessment scope and completed ICM runs.")
+    if kind=='level' and not criteria.get('elevation_confirmed'):
+        raise ValueError("Please confirm maximum water-level elevations and the common vertical datum.")
     for scenario in (a_config,b_config):
         scope=scenario.get('scope')
         if not isinstance(scope,str) or not scope.strip():
