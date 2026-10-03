@@ -79,3 +79,58 @@
 .w27-comment-section{grid-column:1/-1;background:#fbfcfe}
 .w27-comment-section textarea{min-height:86px;resize:vertical}
 #surveyMonthlyPdfBtn::after{content:"";display:inline-block}
+
+
+/* Audit remediation PR5: synchronized Week Matrix + Network review surface. */
+.w26-matrix-workbench{overflow:visible}
+.w26-matrix-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:16px;align-items:start}
+.w26-matrix-main{min-width:0}
+.w26-matrix-toolbar{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin:10px 0}
+.w26-matrix-toolbar label{display:grid;gap:4px;font-size:11px;font-weight:650;color:#58636e}
+.w26-matrix-toolbar input[type="search"]{min-width:180px}
+.w26-inline-check{display:flex!important;grid-auto-flow:column;align-items:center;gap:6px!important;padding-bottom:7px}
+.w26-schematic-tools{display:flex;gap:6px;margin-left:auto;align-items:center}
+.w26-matrix-region{margin:8px 0 14px}
+.w26-matrix-scroll{max-width:100%;overflow:auto;border:1px solid #e0e5e9;border-radius:10px;background:#fff}
+.w26-week-matrix{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:11px}
+.w26-week-matrix th,.w26-week-matrix td{border-right:1px solid #edf0f2;border-bottom:1px solid #edf0f2;padding:0;text-align:center;vertical-align:middle}
+.w26-week-matrix thead th{position:sticky;top:0;z-index:3;background:#f7f9fa;padding:8px 10px;white-space:nowrap;font-weight:700;color:#5e6974}
+.w26-matrix-sticky{position:sticky!important;left:0;z-index:4!important;background:#fff!important;min-width:120px;padding:8px 10px!important;text-align:left!important;box-shadow:1px 0 0 #e8ecef}
+.w26-week-matrix thead .w26-matrix-sticky{z-index:5!important;background:#f7f9fa!important}
+.w26-matrix-cell button,.w26-matrix-cell>span{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;min-width:72px;min-height:42px;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;cursor:pointer;padding:5px}
+.w26-matrix-cell>span{cursor:default}
+.w26-matrix-green{background:#eef8f0;color:#286b39}.w26-matrix-amber{background:#fff7e4;color:#7a5800}.w26-matrix-red{background:#fdecee;color:#963038}.w26-matrix-grey{background:#f1f3f5;color:#68727b}
+.w26-matrix-cell.is-selected{outline:2px solid #315b9b;outline-offset:-2px;box-shadow:inset 0 0 0 1px #fff}
+.w26-matrix-cell.is-exception button{font-weight:800}
+.w26-matrix-empty{padding:8px!important;color:#a2aab1;background:#fafbfc}
+.w26-matrix-review-mark,.w26-matrix-stale{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:999px;font-size:9px;line-height:1;background:#315b9b;color:#fff}
+.w26-matrix-stale{background:#9b6718}
+.w26-schematic-viewport{max-height:560px;overflow:auto;border:1px solid #e0e5e9;border-radius:10px;background:#fbfcfd;padding:8px;scroll-behavior:smooth}
+.w26-schematic-viewport svg{transition:transform .16s ease}
+.w26-evidence-drawer{position:sticky;top:12px;max-height:calc(100vh - 32px);overflow:auto;border:1px solid #dce2e7;border-radius:12px;background:#fff;box-shadow:0 8px 24px rgba(35,48,61,.08);min-height:220px}
+.w26-drawer-empty{padding:22px;color:#68737d}.w26-drawer-empty p{font-size:12px;line-height:1.5}
+.w26-drawer-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:14px;border-bottom:1px solid #edf0f2}
+.w26-drawer-head h4{margin:3px 0 0;font-size:17px}
+.w26-drawer-tabs{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #edf0f2}
+.w26-drawer-tabs button{border:0;background:#fff;padding:10px 5px;font-size:11px;font-weight:650;color:#67727d;cursor:pointer}
+.w26-drawer-tabs button.is-active{color:#26384a;box-shadow:inset 0 -2px #315b9b;background:#f8fafc}
+.w26-drawer-body{padding:14px}.w26-drawer-body .weekly-editor{margin:0}
+.w26-drawer-status{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.w26-drawer-nav{position:sticky;bottom:0;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid #edf0f2;background:rgba(255,255,255,.96);backdrop-filter:blur(8px)}
+.w26-drawer-nav span{font-size:10px;color:#737f89;white-space:nowrap}
+#surveyBalanceReviewTable>.w26-matrix-scroll{margin-bottom:14px}
+
+@media (max-width:1180px){
+  .w26-matrix-layout{grid-template-columns:minmax(0,1fr) 320px}
+}
+@media (max-width:900px){
+  .w26-matrix-layout{grid-template-columns:1fr}
+  .w26-evidence-drawer{position:relative;top:auto;max-height:none}
+  .w26-schematic-tools{margin-left:0}
+}
+@media (max-width:600px){
+  .w26-drawer-tabs{grid-template-columns:repeat(2,1fr)}
+  .w26-matrix-toolbar{align-items:stretch}
+  .w26-matrix-toolbar label{width:100%}
+  .w26-schematic-tools{width:100%;overflow:auto}
+}
