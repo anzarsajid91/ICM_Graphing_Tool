@@ -1,10 +1,11 @@
+import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import { chromium, firefox } from 'playwright';
 
 const browserName=String(process.env.ICM_BROWSER||'firefox').toLowerCase();
 const launcher=browserName==='chromium'?chromium:firefox;
 const baseUrl=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
-const browser=await launcher.launch({headless:true});
-const context=await browser.newContext({viewport:{width:1440,height:1000}});
+const browser=await launcher.launch(browserLaunchOptions());
+const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000}});
 const page=await context.newPage();
 const errors=[];
 page.on('pageerror',e=>errors.push('pageerror '+String(e?.name||'Error')+': '+String(e?.message||String(e))+(e?.stack?' | '+String(e.stack).replace(/\s+/g,' '):'')));
@@ -13,7 +14,7 @@ try{
   await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
   const labels=(await page.locator('.pw-primary-nav button').allTextContents()).map(x=>x.replace(/^[^A-Za-z]+/,'').trim());
-  if(labels.join('|')!=='Data / Time Series|Spills|Flow Survey|Detriment Assessment|Graphs|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
+  if(labels.join('|')!=='Data / Time Series|Spills|Flow Survey|Detriment Assessment|Plots|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
   const navigationOwnership=await page.evaluate(()=>({
     legacyDisplay:getComputedStyle(document.querySelector('nav.tabs')).display,
     precisionVisible:[...document.querySelectorAll('.pw-primary-nav button')].filter(x=>x.getClientRects().length>0).length,
@@ -22,7 +23,7 @@ try{
   if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==6)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const surveyTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
-  if(surveyTabs.join('|')!=='FDV Check|Rainfall Check|Volume Balance')throw new Error('Flow Survey subtab order mismatch: '+JSON.stringify(surveyTabs));
+  if(surveyTabs.join('|')!=='FDV Check|Rainfall Check|Volume Balance|Monthly Review')throw new Error('Flow Survey subtab order mismatch: '+JSON.stringify(surveyTabs));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
   const dataTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
   if(dataTabs.join('|')!=='Time Series')throw new Error('Data workspace must be one continuous Time Series workflow: '+JSON.stringify(dataTabs));
@@ -130,7 +131,7 @@ try{
     const survey=window.__ICM_WORKBENCH__.survey;
     survey.balance=null;
     survey.reviews={};
-    survey.batchSignature='survey-sig-a';
+    survey.batchSignature=window.__ICM_WORKBENCH__.surveyDependencySignature('complete');
     survey.balanceSignature='balance-sig-a';
     const balanceRow={week_ending:'2026-09-06',downstream_monitor:'FM03',upstream_monitors:['FM01','FM02'],rag:'Red',balance_ratio:1.42,recommendation:'Investigate FM03 and upstream support.'};
     survey.batch={
@@ -139,6 +140,7 @@ try{
         gauge_count:1,
         criteria:{minimum_operational_gauges:1,spatial_cv_limit_percent:40},
         gauge_summary:[{gauge:'RG01',status:'Amber',operational_coverage_percent:88,event_strike_count:1,current_dynamic_status:'Review'}],
+        gauge_weekly:[{gauge:'RG01',week_ending:'2026-09-06',rag:'Amber'}],
         candidate_wapug_events:[{event:1,start:'2026-09-05T12:00:00',end:'2026-09-05T14:00:00',mean_depth_mm:8.2,spatial_cv_percent:52,operational_gauges:1,qualifies_network_wapug:false}],
         qualified_wapug_events:[]
       },
@@ -147,11 +149,14 @@ try{
     };
     window.__ICM_WORKBENCH__.workflow26.render();
 
+    const wf=window.__ICM_WORKBENCH__.workflow26;
+    const monitorWeekKey=wf.weekKey('SM-Overflow',survey.batch.monitors[0].weekly.weeks[0]);
+    const gaugeWeekKey=wf.weekKey('RG01',survey.batch.network.gauge_weekly[0]);
     let monitorMissingReason=false,gaugeMissingReason=false;
-    try{window.__ICM_WORKBENCH__.workflow26.applyMonitorReview('SM-Overflow','Green','','AS');}catch{monitorMissingReason=true;}
-    try{window.__ICM_WORKBENCH__.workflow26.applyReview('gauge','RG01','Amber','Green','','AS');}catch{gaugeMissingReason=true;}
+    try{wf.applyWeeklyReview('monitor-week','SM-Overflow',monitorWeekKey,'Green','','AS');}catch{monitorMissingReason=true;}
+    try{wf.applyWeeklyReview('gauge-week','RG01',gaugeWeekKey,'Green','','AS');}catch{gaugeMissingReason=true;}
 
-    window.__ICM_WORKBENCH__.workflow26.applyMonitorReview('SM-Overflow','Green','Monitor installed on overflow link; intermittent response is expected.','AS');
+    wf.applyWeeklyReview('monitor-week','SM-Overflow',monitorWeekKey,'Green','Monitor installed on overflow link; intermittent response is expected.','AS');
     window.__ICM_WORKBENCH__.workflow26.saveMonitorComment('SM-Overflow','Tidal impact noted; pumping influence noted.','AS');
     const savedComment=window.__ICM_WORKBENCH__.workflow26.monitorComment('SM-Overflow');
     const originalSignature=survey.batchSignature;
@@ -159,7 +164,7 @@ try{
     const monthlyHtml=window.__ICM_WORKBENCH__.workflow26.monthlyReportHtml();
     const workspaceComment=workspaceObject()?.survey?.monitor_comments?.['SM-Overflow']||null;
     survey.batchSignature=originalSignature;
-    window.__ICM_WORKBENCH__.workflow26.applyReview('gauge','RG01','Amber','Green','Nearby gauges and site inspection confirm the logger remained representative.','AS');
+    wf.applyWeeklyReview('gauge-week','RG01',gaugeWeekKey,'Green','Nearby gauges and site inspection confirm the logger remained representative.','AS');
     const balanceKey=window.__ICM_WORKBENCH__.workflow26.balanceRowKey(balanceRow);
     window.__ICM_WORKBENCH__.workflow26.applyReview('balance',balanceKey,'Red','Amber','Known lateral inflow explains part of the imbalance; retain investigation action.','AS');
 
@@ -183,6 +188,7 @@ try{
 
     survey.batch.monitors[0].weekly.weeks[0].rag='Amber';
     survey.batch.network.gauge_summary[0].status='Green';
+    survey.batch.network.gauge_weekly[0].rag='Green';
     balanceRow.rag='Amber';
     window.__ICM_WORKBENCH__.workflow26.render();
 
@@ -190,9 +196,10 @@ try{
     const gaugeChanged=window.__ICM_WORKBENCH__.workflow26.reviewedGaugeState(survey.batch.network.gauge_summary[0]);
     const balanceChanged=window.__ICM_WORKBENCH__.workflow26.reviewedBalanceState(balanceRow);
     const retained=JSON.parse(JSON.stringify(survey.reviews));
+    const retainedWeekly=Boolean(retained['monitor-week:'+monitorWeekKey]?.reason&&retained['gauge-week:'+gaugeWeekKey]?.reason);
 
-    window.__ICM_WORKBENCH__.workflow26.revertReview('monitor','SM-Overflow');
-    window.__ICM_WORKBENCH__.workflow26.revertReview('gauge','RG01');
+    window.__ICM_WORKBENCH__.workflow26.revertReview('monitor-week',monitorWeekKey);
+    window.__ICM_WORKBENCH__.workflow26.revertReview('gauge-week',gaugeWeekKey);
     window.__ICM_WORKBENCH__.workflow26.revertReview('balance',balanceKey);
 
     return {
@@ -203,7 +210,7 @@ try{
       monthlyPdfButton:Boolean(document.querySelector('#surveyMonthlyPdfBtn')),
       monitorCurrent,gaugeCurrent,balanceCurrent,
       monitorSignatureChanged,gaugeSignatureChanged,balanceSignatureChanged,
-      monitorChanged,gaugeChanged,balanceChanged,retained,
+      monitorChanged,gaugeChanged,balanceChanged,retained,retainedWeekly,
       headerVisible:Boolean(document.querySelector('#surveyReviewHeader')?.getClientRects().length),
       monitorDetail:Boolean(document.querySelector('#surveyMonitorDetail')),
       gaugeDetail:Boolean(document.querySelector('#surveyGaugeDetail')),
@@ -225,7 +232,7 @@ try{
     reviewLayer.monitorChanged.review_current||reviewLayer.monitorChanged.reviewed!=='Amber'||
     reviewLayer.gaugeChanged.review_current||reviewLayer.gaugeChanged.reviewed!=='Green'||
     reviewLayer.balanceChanged.review_current||reviewLayer.balanceChanged.reviewed!=='Amber'||
-    !reviewLayer.retained['monitor:SM-Overflow']?.reason||!reviewLayer.retained['gauge:RG01']?.reason||
+    !reviewLayer.retainedWeekly||
     !reviewLayer.headerVisible||!reviewLayer.monitorDetail||!reviewLayer.gaugeDetail||!reviewLayer.balanceDetail
   )throw new Error('Engineer review / stale-review safeguards failed: '+JSON.stringify(reviewLayer));
 
@@ -389,7 +396,7 @@ try{
   }));
   if(keyboardFocus.activeText!=='Rainfall Check'||keyboardFocus.outline==='none'||Number.parseFloat(keyboardFocus.outlineWidth||'0')<=0)throw new Error('Keyboard subtab focus/navigation failed: '+JSON.stringify(keyboardFocus));
   await page.keyboard.press('End');
-  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='volume-balance');
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='monthly-review');
   await page.keyboard.press('Home');
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='fdv-check');
 

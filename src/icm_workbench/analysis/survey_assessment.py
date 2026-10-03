@@ -326,6 +326,38 @@ def _daily_fault_history(
     return histories, summary
 
 
+def _gauge_weekly_rows(daily_by_gauge, fault_history):
+    """Weekly review evidence from native daily support and existing fault flags.
+
+    W-SUN matches monitor weeks. A week is Green only with >=90% operational
+    days and no strike/fault evidence; no valid support is Grey. Spatial CV is
+    network evidence and is not assigned as an individual gauge failure.
+    """
+    rows = []
+    for name, table in daily_by_gauge.items():
+        if table is None or table.empty:
+            continue
+        groups = table.groupby(pd.DatetimeIndex(table.index).to_period("W-SUN"))
+        for period, days in groups:
+            first, last = pd.Timestamp(days.index.min()), pd.Timestamp(days.index.max())
+            coverage = pd.to_numeric(days["coverage_fraction"], errors="coerce").fillna(0)
+            operational = int((coverage >= OPERATIONAL_COVERAGE_FRACTION).sum())
+            faults = [x for x in fault_history if x["gauge"] == name and first <= pd.Timestamp(x["day"]) <= last]
+            strikes = sum(bool(x.get("strike")) for x in faults)
+            faulty = any(x.get("status") == "Faulty" for x in faults)
+            fraction = operational / len(days)
+            rag = "Grey" if coverage.sum() <= 0 else "Amber" if fraction < OPERATIONAL_COVERAGE_FRACTION or strikes or faulty else "Green"
+            rows.append({"gauge": name, "week_ending": period.end_time.normalize(),
+                         "start": first, "end": last + pd.Timedelta(days=1),
+                         "days_assessed": len(days), "operational_days": operational,
+                         "operational_coverage_percent": 100 * fraction,
+                         "rain_total_mm": float(pd.to_numeric(days["depth_mm"], errors="coerce").sum()),
+                         "daily_strikes": strikes, "faulty_in_week": faulty, "rag": rag,
+                         "decision_path": "No valid rainfall support" if rag == "Grey" else "Review coverage or fault evidence" if rag == "Amber" else "Operational daily support; no fault evidence",
+                         "method": "gauge-weekly-support-v1"})
+    return rows
+
+
 def network_rainfall_assessment(
     gauges: dict[str, tuple[pd.DataFrame, str, float | None]],
     *,
@@ -567,6 +599,7 @@ def network_rainfall_assessment(
         },
         "daily": daily_rows,
         "gauge_summary": gauge_summary,
+        "gauge_weekly": _gauge_weekly_rows(daily_by_gauge, daily_fault_history),
         "fault_history": daily_fault_history,
         "event_fault_history": event_fault_history,
         "significant_windows": [

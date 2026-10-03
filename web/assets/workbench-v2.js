@@ -883,7 +883,9 @@
       }
 
       let modelIndex=0;
-      for(const key of state.mapping.models){
+      for(const selectedModel of modelGraphSeries()){
+        const key=selectedModel.key;
+        if(ui.channelMode!=='combined'&&selectedModel.item.parsed?.format==='fdv_ascii'&&selectedModel.quantity!==ui.channelMode)continue;
         const model=await v2SeriesFor(key,range,'model');
         if(!model||generation!==ui.graphGeneration)return;
         let quantity=String(seriesQuantity(model.item,model.col)||'').toLowerCase();
@@ -891,7 +893,7 @@
         pointCounts[`model_${modelIndex+1}`]={
           raw:model.data.raw_count,shown:model.data.display_count,native:model.data.native_resolution,topology:model.data.topology_exceeds_budget
         };
-        modelEntries.push({source:model,quantity,index:modelIndex,key});
+        modelEntries.push({source:model,quantity,index:selectedModel.index,key:selectedModel.mappingKey});
         modelIndex+=1;
       }
 
