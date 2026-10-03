@@ -24,7 +24,7 @@ try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.ICMDetriment&&window.__ICM_PRECISION_WORKBENCH__),null,{timeout:30000});
   assert.match(await page.title(),/Hydra Bench/);
-  assert.deepEqual((await page.locator('.pw-primary-nav .pw-nav-label').allTextContents()).map(x=>x.trim()),['Data / Time Series','Spills','Flow Survey','Detriment Assessment','Graphs','Reports']);
+  assert.deepEqual((await page.locator('.pw-primary-nav .pw-nav-label').allTextContents()).map(x=>x.trim()),['Data / Time Series','Spills','Flow Survey','Detriment Assessment','Plots','Reports']);
   const note=await page.locator('#dropzone span').textContent();
   assert.match(note,/\.CSV, \.FDV, \.R/);assert.match(note,/fm_rg_assoc.xlsx/);assert.doesNotMatch(note,/\.txt|\.FTV/i);
   const files=Object.values(cases).flatMap(c=>[c.original,...c.paths]);
