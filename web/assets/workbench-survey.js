@@ -9,6 +9,7 @@
     balance: null,
     balanceSignature: null,
     generation: 0,
+    rainConfirmations: {},
   };
   window.__ICM_WORKBENCH__.survey = survey;
 
@@ -392,17 +393,29 @@
     return { item: null, status: 'missing', matches: [] };
   }
 
+  function rainSourceFingerprint(item) {
+    return String(item?.sha256 || item?.fingerprint || item?.virtualPath || item?.displayName || item?.file?.name || '');
+  }
+
   function matchRain(gauge) {
     const key = token(gauge);
     if (!key) return { item: null, status: 'missing', matches: [] };
     const exact = rainfallItems().filter(item => rainIdentity(item) === key);
-    if (exact.length === 1) return { item: exact[0], status: 'matched' };
+    if (exact.length === 1) return { item: exact[0], status: 'exact', confidence: 'exact-name' };
     if (exact.length > 1) return { item: null, status: 'conflict', matches: exact };
     const relaxed = rainfallItems().filter(item => {
       const value = rainIdentity(item);
       return value.endsWith(key) || key.endsWith(value);
     });
-    if (relaxed.length === 1) return { item: relaxed[0], status: 'matched' };
+    if (relaxed.length === 1) {
+      const item = relaxed[0];
+      const saved = survey.rainConfirmations?.[key];
+      const fingerprint = rainSourceFingerprint(item);
+      if (saved && saved.source_fingerprint === fingerprint) {
+        return { item, status: 'confirmed', confidence: 'engineer-confirmed-heuristic' };
+      }
+      return { item, status: 'candidate', confidence: 'heuristic-name', matches: relaxed };
+    }
     return { item: null, status: relaxed.length > 1 ? 'conflict' : 'missing', matches: relaxed };
   }
 
@@ -441,12 +454,29 @@
   }
 
   function rainSourceSpecs() {
-    return rainfallItems().map(item => ({
-      name: stem(item.displayName || item.file && item.file.name),
-      path: item.virtualPath,
-      column: (item.parsed && item.parsed.columns || [])[0] || 'rainfall',
-      display_name: item.displayName,
-    }));
+    const records = survey.association?.records || [];
+    const specs = [];
+    const seen = new Set();
+    for (const record of records) {
+      const gauge = String(record.rain_gauge || '').trim();
+      if (!gauge) continue;
+      const match = matchRain(gauge);
+      if (!match.item || !['exact','confirmed'].includes(match.status)) continue;
+      const identity = token(gauge);
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      specs.push({
+        name: gauge,
+        gauge,
+        path: match.item.virtualPath,
+        column: (match.item.parsed && match.item.parsed.columns || [])[0] || 'rainfall',
+        display_name: match.item.displayName,
+        match_status: match.status,
+        source_fingerprint: rainSourceFingerprint(match.item),
+        network_member: true,
+      });
+    }
+    return specs;
   }
 
   function associationConflictText(record) {
@@ -469,7 +499,7 @@
     }
     const records = association.records || [];
     const monitorMatches = records.filter(x => matchMonitor(x.monitor).status === 'matched').length;
-    const rainMatches = records.filter(x => x.rain_gauge && matchRain(x.rain_gauge).status === 'matched').length;
+    const rainMatches = records.filter(x => x.rain_gauge && ['exact','confirmed'].includes(matchRain(x.rain_gauge).status)).length;
     const issueCount = (association.issues || []).length + (association.conflicts || []).length;
     status.innerHTML = '<strong>' + esc(survey.associationSource && survey.associationSource.name || 'fm_rg_assoc.xlsx') + '</strong> · sheet ' + esc(association.sheet_name || survey.associationSource && survey.associationSource.sheet || '—') + ' · workbook values are authoritative.';
     summary.innerHTML =
@@ -485,19 +515,44 @@
         '<td>' + (record.diameter_mm == null ? '—' : fmt(record.diameter_mm, 0) + ' mm') + '</td>' +
         '<td>' + esc((record.upstream || []).join(', ') || '—') + '</td>' +
         '<td><span class="source-match ' + esc(fm.status) + '">' + esc(fm.status) + '</span>' + (fm.item ? '<br><small>' + esc(fm.item.displayName) + '</small>' : '') + '</td>' +
-        '<td><span class="source-match ' + esc(rg.status) + '">' + esc(rg.status) + '</span>' + (rg.item ? '<br><small>' + esc(rg.item.displayName) + '</small>' : '') + '</td>' +
+        '<td><span class="source-match ' + esc(rg.status) + '">' + esc(rg.status) + '</span>' +
+        (rg.item ? '<br><small>' + esc(rg.item.displayName) + '</small>' : '') +
+        (rg.status === 'candidate' ? '<br><button type="button" class="btn quiet confirm-rain-match" data-gauge="' + esc(record.rain_gauge) + '">Confirm mapping</button>' : '') +
+        '</td>' +
         '<td class="survey-conflict">' + esc(associationConflictText(record)) + '</td></tr>';
     }).join('');
     table.innerHTML = '<div class="survey-table-wrap"><table class="data-table survey-table"><thead><tr><th>Monitor</th><th>Rain gauge</th><th>Pipe diameter</th><th>Upstream trace</th><th>FDV source</th><th>RG source</th><th>Workbook precedence / conflicts</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    table.querySelectorAll('.confirm-rain-match').forEach(button => button.addEventListener('click', () => {
+      const gauge = button.dataset.gauge || '';
+      const match = matchRain(gauge);
+      if (!match.item || match.status !== 'candidate') return;
+      survey.rainConfirmations[token(gauge)] = {
+        gauge,
+        source_fingerprint: rainSourceFingerprint(match.item),
+        display_name: match.item.displayName || match.item.file?.name || null,
+        confirmed_at: new Date().toISOString(),
+      };
+      invalidateSurveyResults('Rainfall source mapping confirmation changed.');
+      renderAssociation();
+    }));
     renderSurveySchematic(survey.balance);
   }
 
   function currentControls(strict=true) {
+    const allExclusions = exclusionPayload(strict);
+    const hydraulicExclusions = allExclusions.filter(item => {
+      const scope = String(item.scope || 'both');
+      return scope === 'observed' || scope === 'both' || scope.startsWith('survey:monitor:');
+    });
+    const rainfallExclusions = allExclusions.filter(item => {
+      const scope = String(item.scope || '');
+      return scope === 'rainfall' || scope.startsWith('survey:gauge:');
+    });
     const controls={
       start: modelClock(document.getElementById('analysisStart') && document.getElementById('analysisStart').value) || null,
       end: modelClock(document.getElementById('analysisEnd') && document.getElementById('analysisEnd').value) || null,
-      hydraulic_exclusions_json: JSON.stringify(exclusionPayload(strict, 'observed')),
-      rainfall_exclusions_json: JSON.stringify(exclusionPayload(strict, 'rainfall')),
+      hydraulic_exclusions_json: JSON.stringify(hydraulicExclusions),
+      rainfall_exclusions_json: JSON.stringify(rainfallExclusions),
       max_gap_seconds: Number(document.getElementById('gapInput') && document.getElementById('gapInput').value || 900),
       amber_tolerance_percent: Number(document.getElementById('surveyBalanceTolerance') && document.getElementById('surveyBalanceTolerance').value || 10),
     };
@@ -526,6 +581,7 @@
       association_source:survey.associationSource?{name:survey.associationSource.name||null,sha256:survey.associationSource.sha256||null,sheet:survey.associationSource.sheet||null}:null,
       monitor_sources:monitorSourceSpecs(),
       rain_sources:kind==='complete'?rainSourceSpecs():[],
+      rain_confirmations:survey.rainConfirmations||{},
       controls,
       population_above_50k:document.getElementById('surveyPopulation')?document.getElementById('surveyPopulation').value==='over50':true,
       apply_fault_cutoff:Boolean(document.getElementById('surveyApplyFaultCutoff')&&document.getElementById('surveyApplyFaultCutoff').checked),
@@ -855,6 +911,7 @@
         balance_tolerance_percent: Number(document.getElementById('surveyBalanceTolerance') && document.getElementById('surveyBalanceTolerance').value || 10),
         population_above_50k: document.getElementById('surveyPopulation') ? document.getElementById('surveyPopulation').value === 'over50' : true,
         apply_fault_cutoff: Boolean(document.getElementById('surveyApplyFaultCutoff') && document.getElementById('surveyApplyFaultCutoff').checked),
+        rain_confirmations: JSON.parse(JSON.stringify(survey.rainConfirmations || {})),
       };
       return value;
     };
@@ -875,6 +932,9 @@
           if (document.getElementById('surveyBalanceTolerance')) document.getElementById('surveyBalanceTolerance').value = saved.balance_tolerance_percent == null ? 10 : saved.balance_tolerance_percent;
           if (document.getElementById('surveyPopulation')) document.getElementById('surveyPopulation').value = saved.population_above_50k === false ? 'under50' : 'over50';
           if (document.getElementById('surveyApplyFaultCutoff')) document.getElementById('surveyApplyFaultCutoff').checked = Boolean(saved.apply_fault_cutoff);
+          survey.rainConfirmations = saved.rain_confirmations && typeof saved.rain_confirmations === 'object'
+            ? JSON.parse(JSON.stringify(saved.rain_confirmations))
+            : {};
           await refreshAssociationConflicts();
           renderAssociation();
         }
