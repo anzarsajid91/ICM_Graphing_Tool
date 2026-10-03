@@ -983,16 +983,15 @@ def professional_survey_batch_result(
     associations = json.loads(association_json) if isinstance(association_json, str) else list(association_json or [])
     monitor_sources = json.loads(monitor_sources_json) if isinstance(monitor_sources_json, str) else list(monitor_sources_json or [])
     rain_sources = json.loads(rain_sources_json) if isinstance(rain_sources_json, str) else list(rain_sources_json or [])
-    fallback_exclusions = python_bridge._exclusions(exclusions_json)
-    hydraulic_exclusions = (
-        python_bridge._exclusions(hydraulic_exclusions_json)
+    hydraulic_exclusions_raw = (
+        hydraulic_exclusions_json
         if hydraulic_exclusions_json is not None
-        else fallback_exclusions
+        else exclusions_json
     )
-    rainfall_exclusions = (
-        python_bridge._exclusions(rainfall_exclusions_json)
+    rainfall_exclusions_raw = (
+        rainfall_exclusions_json
         if rainfall_exclusions_json is not None
-        else fallback_exclusions
+        else exclusions_json
     )
     analysis_start = python_bridge._model_clock_timestamp(start)
     analysis_end = python_bridge._model_clock_timestamp(end)
@@ -1054,6 +1053,7 @@ def professional_survey_batch_result(
         gauges,
         population_above_50k=bool(population_above_50k),
         apply_fault_cutoff=bool(apply_fault_cutoff),
+        gauge_exclusions=gauge_exclusions,
     )
     performance["network_rainfall_seconds"] = float(
         time.perf_counter() - network_started
@@ -1295,8 +1295,8 @@ def professional_survey_batch_result(
         "analysis_controls": {
             "start": analysis_start,
             "end": analysis_end,
-            "hydraulic_exclusion_count": len(hydraulic_exclusions),
-            "rainfall_exclusion_count": len(rainfall_exclusions),
+            "hydraulic_exclusion_count": len(_survey_exclusion_records(hydraulic_exclusions_raw)),
+            "rainfall_exclusion_count": len(_survey_exclusion_records(rainfall_exclusions_raw)),
             "scoped_exclusions": True,
             "max_gap_seconds": float(max_gap_seconds),
             "amber_tolerance_percent": float(amber_tolerance_percent),
