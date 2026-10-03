@@ -1,3 +1,4 @@
+import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -12,8 +13,8 @@ const currentUrl=(process.env.ICM_CURRENT_URL||'http://127.0.0.1:8000/').replace
 const evidenceDir=process.env.ICM_BASELINE_EVIDENCE_DIR||'/tmp/icm-baseline-evidence';
 const baselineSha=process.env.ICM_BASELINE_SHA||'cb66e762b23c5cd59cf61b42a6c4b52655307cfc';
 const currentSha=process.env.GITHUB_SHA||'local';
-const browser=await chromium.launch({headless:true});
-const context=await browser.newContext({viewport:{width:1440,height:1000},timezoneId:'Asia/Kolkata'});
+const browser=await chromium.launch(browserLaunchOptions());
+const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000},timezoneId:'Asia/Kolkata'});
 
 async function extractModel(){
   const archive=path.join(root,'reference/current-tool/sample-data/other/StationA_Modelled Data.zip');

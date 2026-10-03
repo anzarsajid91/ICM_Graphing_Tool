@@ -34,14 +34,15 @@
     return map;
   }
 
-  function surveySchematicHtml(result) {
+  function surveySchematicHtml(result, options={}) {
     const records = survey.association && survey.association.records || [];
-    if (!records.length) return '<div class="v2-empty">Load fm_rg_assoc.xlsx to generate the monitor connectivity schematic.</div>';
+    if (!records.length && !options.monitors?.length) return '<div class="v2-empty">Load FDV files and fm_rg_assoc.xlsx to generate the monitor schematic.</div>';
     const nodes = new Map();
     for (const record of records) {
       nodes.set(record.monitor, {...record, upstream:[...(record.upstream || [])]});
       for (const upstream of record.upstream || []) if (!nodes.has(upstream)) nodes.set(upstream, {monitor:upstream, upstream:[], inferred:true});
     }
+    for(const name of options.monitors||[])if(!nodes.has(name))nodes.set(name,{monitor:name,upstream:[]});
     const levels = new Map([...nodes.keys()].map(name => [name, 0]));
     for (let pass=0; pass<nodes.size+2; pass+=1) {
       let changed=false;
@@ -63,7 +64,7 @@
       const x=maxLevel?90+(820*level/maxLevel):500;
       names.forEach((name,index)=>positions.set(name,{x,y:70+(height-120)*(index+1)/(names.length+1)}));
     }
-    const status=monitorRagMap(result);
+    const status=options.status||monitorRagMap(result);
     const colours={
       Green:{fill:'#e8f5e9',stroke:'#2e7d32',dot:'#2e7d32'},
       Amber:{fill:'#fff8e1',stroke:'#c28b00',dot:'#c28b00'},
@@ -86,18 +87,20 @@
       const meta=[];
       if(node.rain_gauge)meta.push(node.rain_gauge);
       if(node.diameter_mm!=null)meta.push(fmt(node.diameter_mm,0)+' mm');
-      nodeSvg.push('<g class="schematic-monitor" transform="translate('+(p.x-74)+' '+(p.y-30)+')">'+
+      nodeSvg.push('<g class="schematic-monitor" '+(options.interactive?'role="button" tabindex="0" data-survey-node="'+esc(name)+'" aria-label="Review '+esc(name)+' · '+esc(rag)+'" ':'')+'transform="translate('+(p.x-74)+' '+(p.y-30)+')">'+
         '<title>'+esc(name)+' · '+esc(rag)+' · '+esc(meta.join(' · ')||'association node')+'</title>'+
         '<rect width="148" height="60" rx="13" fill="'+colour.fill+'" stroke="'+colour.stroke+'" stroke-width="2"></rect>'+
         '<circle cx="18" cy="19" r="7" fill="'+colour.dot+'"></circle>'+
         '<text x="31" y="23" class="schematic-monitor-name">'+esc(name)+'</text>'+
+        (options.interactive?'<text x="136" y="23" text-anchor="end" class="schematic-monitor-meta">'+esc(rag)+'</text>':'')+
         '<text x="18" y="44" class="schematic-monitor-meta">'+esc(meta.join(' · ')||'flow monitor')+'</text></g>');
     }
     return '<div class="survey-schematic"><div class="survey-schematic-head"><div><strong>Association schematic</strong><span>Connectivity from fm_rg_assoc.xlsx; layout is schematic, not geographic.</span></div>'+
       '<div class="schematic-legend"><span class="rag-green">Green</span><span class="rag-amber">Amber</span><span class="rag-red">Red</span><span class="rag-grey">Not assessed</span></div></div>'+
-      '<svg viewBox="0 0 '+width+' '+height+'" role="img" aria-label="Flow monitor association schematic"><defs><marker id="flowArrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#66879d"></path></marker></defs>'+
-      edges.join('')+nodeSvg.join('')+'</svg><div class="schematic-note">Node colour shows the worst available RAG evidence over the current assessed period; Grey means no current result.</div></div>';
+      '<svg viewBox="0 0 '+width+' '+height+'" role="'+(options.interactive?'group':'img')+'" aria-label="Flow monitor association schematic"><defs><marker id="flowArrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#66879d"></path></marker></defs>'+
+      edges.join('')+nodeSvg.join('')+'</svg><div class="schematic-note">'+esc(options.note||'Node colour shows the worst available RAG evidence over the current assessed period; Grey means no current result.')+'</div></div>';
   }
+  window.__ICM_WORKBENCH__.surveySchematicHtml=surveySchematicHtml;
 
   function renderSurveySchematic(result=survey.balance) {
     const target=document.getElementById('surveyNetworkSchematic');
@@ -133,7 +136,7 @@
         tools: ['Gauge assessment', 'WAPUG / manual events', 'Event bands', 'Hydraulic response'],
       },
       compare: {
-        label: 'Graphs',
+        label: 'Plots',
         description: 'Compare observed and modelled hydraulics over a controlled period and investigate where the model differs.',
         tools: ['Pairs & calibration metrics', 'Residuals', 'Cumulative / exceedance', 'Depth & rating diagnostics'],
       },
@@ -540,9 +543,9 @@
     // signature immediately. Stale results are never exported as current.
     survey.generation += 1;
     const status = document.getElementById('completeSurveyStatus');
-    if (status && survey.batch) status.textContent = reason + ' Previous complete-survey results are stale; re-run before relying on or exporting them.';
+    if (status && survey.batch) status.textContent = reason + (surveyFresh('complete') ? ' Survey assessment inputs are unchanged; existing results remain current.' : ' Previous complete-survey results are stale; re-run before relying on or exporting them.');
     const summary = document.getElementById('surveyBalanceSummary');
-    if (summary && survey.balance) summary.insertAdjacentHTML('afterbegin','<div class="privacy-note"><strong>Stale:</strong> ' + esc(reason) + ' Recalculate volume balance before relying on the previous result.</div>');
+    if (summary && survey.balance && !surveyFresh('balance')) summary.insertAdjacentHTML('afterbegin','<div class="privacy-note"><strong>Stale:</strong> ' + esc(reason) + ' Recalculate volume balance before relying on the previous result.</div>');
     renderReportPreflight();
   }
 
@@ -788,6 +791,7 @@
       if(head)addCollapseControl(subpanel,head,(head.querySelector('h3')?.textContent||'tool').trim());
     }
   }
+  window.__ICM_WORKBENCH__.addSectionCollapse=addCollapseControl;
 
   function wireIngestion() {
     const coreIngest = ingestFiles;
