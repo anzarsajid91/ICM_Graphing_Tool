@@ -314,6 +314,13 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
         if mode=='summary' and any(s.get('report_kind')=='spill_detail' or not s.get('mapping',{}).get('count') for s in (a_config,b_config)):
             raise ValueError("Upload Exceedance Summary for authoritative Spill count, or explicitly select the exported detail counting mode.")
     a=_source(a_config,kind,detail=kind=='spill' and mode!='summary');b=_source(b_config,kind,detail=kind=='spill' and mode!='summary')
+    for context_key in ('datum','period','template','storm_set'):
+        av=a.get('source_context',{}).get(context_key,{}).get('value')
+        bv=b.get('source_context',{}).get(context_key,{}).get('value')
+        if av and bv and str(av).strip().casefold()!=str(bv).strip().casefold():
+            raise ValueError(
+                f"Source-verified {context_key.replace('_',' ')} differs between Scenario A and B."
+            )
     if kind=='flooding':
         resolved=[_resolved_flood_measure(s) for s in (a,b)]
         measures=[item[0] for item in resolved]
