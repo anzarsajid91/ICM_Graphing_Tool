@@ -1,3 +1,4 @@
+import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -10,8 +11,8 @@ const execFileAsync=promisify(execFile);
 const root=process.cwd();
 const baseUrl=(process.env.ICM_BASE_URL||'http://127.0.0.1:8000/').replace(/\/?$/,'/');
 const liveMode=Boolean(process.env.ICM_BASE_URL);
-const browser=await chromium.launch({headless:true});
-const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true,timezoneId:'Asia/Kolkata'});
+const browser=await chromium.launch(browserLaunchOptions());
+const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000},acceptDownloads:true,timezoneId:'Asia/Kolkata'});
 const page=await context.newPage();
 const consoleErrors=[];
 const failedRequests=[];
@@ -20,7 +21,7 @@ page.on('pageerror',e=>consoleErrors.push(`pageerror: ${String(e)}`));
 page.on('console',m=>{if(m.type()==='error')consoleErrors.push(`console: ${m.text()}`);});
 page.on('requestfailed',r=>failedRequests.push(`${r.method()} ${r.url()} :: ${r.failure()?.errorText||'failed'}`));
 
-async function optionValue(selector,needle){return page.locator(`${selector} option`).evaluateAll((opts,n)=>opts.find(x=>x.textContent.includes(n))?.value||'',needle);}
+async function optionValue(selector,needle){return page.locator(`${selector} option`).evaluateAll((opts,n)=>(opts.find(x=>x.textContent.includes(n))||(/\.fdv/i.test(n)&&opts.find(x=>x.textContent.includes(n.split(' — ')[0])&&x.textContent.includes(' · FDV'))))?.value||'',needle);}
 const routeAliases={
   'data/sources':['data','time-series'],
   'data/series-mapping':['data','time-series'],
@@ -681,7 +682,7 @@ async function verifyIndividualSourceRemoval(){
       await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},expected,{timeout:30000});
     };
     await probeRoute('data','series-mapping');
-    const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>options.find(o=>o.textContent.includes(text))?.value||'',needle);
+    const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>(options.find(o=>o.textContent.includes(text))||(/\.fdv/i.test(text)&&options.find(o=>o.textContent.includes(text.split(' — ')[0])&&o.textContent.includes(' · FDV'))))?.value||'',needle);
     const observed=await option('#observedSelect','RemoveTest-FM01.fdv — depth');
     const rainfall=await option('#rainSelect','RemoveTest-RG01.R — rainfall');
     if(!observed||!rainfall)throw new Error('Reference removal fixture did not expose FM01 depth and RG01 rainfall series.');
@@ -809,7 +810,7 @@ async function verifyPlotlyEngineeringEnhancements(){
       await probe.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,pageName]);
       await probe.waitForFunction(([w,p])=>{const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();return route?.workspace===w&&route?.page===p;},expected,{timeout:30000});
     };
-    const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>options.find(o=>o.textContent.includes(text))?.value||'',needle);
+    const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>(options.find(o=>o.textContent.includes(text))||(/\.fdv/i.test(text)&&options.find(o=>o.textContent.includes(text.split(' — ')[0])&&o.textContent.includes(' · FDV'))))?.value||'',needle);
     await nav('data','series-mapping');
     const observed=await option('#observedSelect','Plotly-Observed-FM01.fdv — depth');
     const model=await option('#modelSelect','Plotly-Model-FM01.fdv — depth');
@@ -1255,7 +1256,7 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
   const primaryLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(primaryLabels.map(x=>x.trim()).join('|')!=='Data / Time Series|Spills|Flow Survey|Detriment Assessment|Graphs|Reports')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
+  if(primaryLabels.map(x=>x.trim()).join('|')!=='Data / Time Series|Spills|Flow Survey|Detriment Assessment|Plots|Reports')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
   for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080}]){
     await page.setViewportSize(size);
     await precisionRoute('data','sources');
@@ -2360,10 +2361,10 @@ try{
   stage='association workbook and canonical survey navigation';
   await precisionRoute('survey','fdv-check');
   const navLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(navLabels.map(x=>x.trim()).join('|')!=='Data / Time Series|Spills|Flow Survey|Detriment Assessment|Graphs|Reports')throw new Error('Unexpected Precision navigation: '+JSON.stringify(navLabels));
+  if(navLabels.map(x=>x.trim()).join('|')!=='Data / Time Series|Spills|Flow Survey|Detriment Assessment|Plots|Reports')throw new Error('Unexpected Precision navigation: '+JSON.stringify(navLabels));
   if(navLabels.some(x=>/storage/i.test(x)))throw new Error('Storage must remain a Spills subtab, not a primary workspace: '+JSON.stringify(navLabels));
   const flowSurveySubtabs=await page.locator('.pw-secondary-nav button').allTextContents();
-  if(flowSurveySubtabs.map(x=>x.trim()).join('|')!=='FDV Check|Rainfall Check|Volume Balance')throw new Error('Unexpected Flow Survey subtab sequence: '+JSON.stringify(flowSurveySubtabs));
+  if(flowSurveySubtabs.map(x=>x.trim()).join('|')!=='FDV Check|Rainfall Check|Volume Balance|Monthly Review')throw new Error('Unexpected Flow Survey subtab sequence: '+JSON.stringify(flowSurveySubtabs));
   const workflowGuide=await page.locator('#workflowGuide').textContent();
   if(!workflowGuide.includes('Workflow')||!workflowGuide.includes('Survey')||!workflowGuide.includes('FSAT Event Response')||!workflowGuide.includes('volume balance'))throw new Error('Contextual Survey workflow guide is incomplete: '+workflowGuide);
   const activeTabStyle=await page.locator('.pw-primary-nav button[aria-current="page"]').evaluate(el=>({fontWeight:getComputedStyle(el).fontWeight,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));

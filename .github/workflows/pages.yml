@@ -83,7 +83,9 @@ jobs:
           node --check web/tests/detriment-reference-smoke.mjs
           node --check web/tests/smoke.mjs
           node --check web/tests/precision-shell.mjs
+          node --check web/tests/schematic-review-smoke.mjs
           node --check web/tests/baseline-comparison.mjs
+          node web/tests/weekly-review-unit.mjs
           node web/tests/graph-report-unit.mjs
           node web/tests/spill-evidence-unit.mjs
           node web/tests/rainfall-unit.mjs
@@ -190,6 +192,7 @@ jobs:
           node web/tests/detriment-smoke.mjs
           node web/tests/detriment-reference-smoke.mjs
           node web/tests/smoke.mjs
+          node web/tests/schematic-review-smoke.mjs
 
       - name: Package exact review preview
         if: success()

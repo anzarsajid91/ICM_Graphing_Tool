@@ -1,8 +1,9 @@
+import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch(browserLaunchOptions());
 const page=await browser.newPage({viewport:{width:1440,height:1000},acceptDownloads:true});
 const evidence=process.env.ICM_EVIDENCE_DIR||'/tmp/icm-detriment-evidence';
 await fs.mkdir(evidence,{recursive:true});

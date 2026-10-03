@@ -168,6 +168,14 @@ function observedGraphSeries(){
   }
   return [{...selected,quantity:seriesQuantity(selected.item,selected.col),key:state.mapping.observed}];
 }
+function modelGraphSeries(){
+  return (state.mapping.models||[]).flatMap((key,index)=>{
+    const selected=mappingObject(key);if(!selected)return[];
+    const sources=selected.item.parsed?.format==='fdv_ascii'?hydraulicSeriesForItem(selected.item):[{...selected,key,quantity:seriesQuantity(selected.item,selected.col)}];
+    return sources.map(source=>({...source,mappingKey:key,index}));
+  });
+}
+window.__ICM_WORKBENCH__.modelGraphSeries=modelGraphSeries;
 function compactGraphRole(role,item,col){
   const quantity=String(seriesQuantity(item,col)||'').toLowerCase();
   const qLabel={depth:'Depth',flow:'Flow',velocity:'Velocity',level:'Level',rainfall:'Rainfall'}[quantity]||'';
@@ -629,11 +637,41 @@ function allSeries(){
 }
 function setOptions(select,all,{none=false,preserve=true}={}){const prev=preserve?select.value:'';select.innerHTML=(none?'<option value="">None</option>':'<option value="">Select…</option>')+all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');if([...select.options].some(o=>o.value===prev))select.value=prev;}
 
+// The picker represents a native FDV source; its channels remain independently
+// addressable by the calculation engine and the dedicated diagnostic selectors.
+function sourcePickerSeries(all,preferredKeys=[]){
+  const seen=new Set(),out=[];
+  for(const series of all){
+    if(series.item.parsed?.format!=='fdv_ascii'){out.push(series);continue;}
+    if(seen.has(series.item.id))continue;
+    seen.add(series.item.id);
+    const channels=all.filter(s=>s.item.id===series.item.id);
+    const selected=channels.find(s=>preferredKeys.includes(s.key))||channels.find(s=>s.quantity==='depth')||series;
+    out.push({...selected,label:series.item.displayName+' · FDV (Flow / Depth / Velocity)'});
+  }
+  return out;
+}
+function refreshDiagnosticSelectors(all=allSeries()){
+  const quantity=s=>String(seriesQuantity(s.item,s.col)||s.quantity||'').toLowerCase();
+  const modelIds=new Set([...orderedSelectedModelKeys(),...(state.mapping.models||[])].map(mappingObject).filter(Boolean).map(s=>s.item.id));
+  for(const s of all)if(s.role==='modelled'||s.role==='model')modelIds.add(s.item.id);
+  const observed=mappingObject($('observedSelect')?.value||state.mapping.observed);
+  const observedPool=all.filter(s=>s.item.id===observed?.item.id||(!modelIds.has(s.item.id)&&s.role==='observed'));
+  // Every loaded source remains available for explicit model selection, including
+  // CSVs whose default registry role is observed. Do not infer a role from names.
+  const modelPool=all.filter(s=>s.item.id!==observed?.item.id);
+  for(const [id,pool,q] of [['ratingObsDepth',observedPool,'vertical'],['ratingObsFlow',observedPool,'flow'],['ratingModelDepth',modelPool,'vertical'],['ratingModelFlow',modelPool,'flow']]){
+    const choices=pool.filter(s=>q==='vertical'?['depth','level'].includes(quantity(s)):quantity(s)==='flow');
+    choices.sort((a,b)=>Number(modelIds.has(b.item.id))-Number(modelIds.has(a.item.id)));
+    setOptions($(id),choices);
+  }
+}
+
 const advancedSelectionTouched=new Set();
 function preferAdvanced(id,all,predicate){
   const select=$(id);
   if(!select||advancedSelectionTouched.has(id)||select.value)return;
-  const series=all.find(predicate);
+  const series=all.find(s=>predicate(s)&&[...select.options].some(option=>option.value===s.key));
   if(series)select.value=series.key;
 }
 
@@ -1168,8 +1206,8 @@ function renderPool(){
 }
 function renderSeriesOptions(){
   const all=allSeries(),obs=$('observedSelect'),mod=$('modelSelect'),rain=$('rainSelect'),prevMods=orderedSelectedModelKeys();
-  setOptions(obs,all);
-  mod.innerHTML=all.map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');
+  setOptions(obs,sourcePickerSeries(all,[obs.value]));
+  mod.innerHTML=sourcePickerSeries(all,prevMods).map(s=>`<option value='${esc(s.key)}'>${esc(s.label)}</option>`).join('');
   [...mod.options].forEach(o=>o.selected=prevMods.includes(o.value));
   orderedSelectedModelKeys();
   setOptions(rain,all,{none:true});
@@ -1193,8 +1231,9 @@ function autoSuggestMappings(all){
     if(s)$('rainSelect').value=s.key;
   }
 }
-function prefer(select,all,predicate){if(select.value)return;const s=all.find(predicate);if(s)select.value=s.key;}
+function prefer(select,all,predicate){if(select.value)return;const keys=new Set([...select.options].map(o=>o.value));const s=all.find(s=>keys.has(s.key)&&predicate(s));if(s)select.value=s.key;}
 function autoSuggestAdvanced(all){
+  refreshDiagnosticSelectors(all);
   const obs=mappingObject($('observedSelect').value),model=mappingObject(orderedSelectedModelKeys()[0]||'');
   const q=(s,name)=>String(s.quantity||seriesQuantity(s.item,s.col)||'').toLowerCase()===name;
   const vertical=s=>q(s,'depth')||q(s,'level');
@@ -2334,7 +2373,7 @@ async function staticReportFallbackHtml(html,reason='Interactive Plotly runtime 
   return '<!doctype html>'+doc.documentElement.outerHTML;
 }
 async function interactiveReportHtml(html){
-  const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,displayModeBar:true,scrollZoom:false,toImageButtonOptions:{format:'png',filename:el.id,scale:2}}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
+  const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,displayModeBar:true,scrollZoom:false,toImageButtonOptions:{format:'png',filename:el.id,width:1600,height:Number(p.layout.height)||850,scale:2}}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
   if(!reportPlotlyBundle){
     const source=[...document.scripts].find(s=>/plotly-[\d.]+(?:\.min)?\.js/.test(s.src))?.src;
     if(!source)return staticReportFallbackHtml(html,'The external Plotly script source was not available for embedding.');
@@ -2543,10 +2582,10 @@ async function downloadReport(){
 }
 
 async function reportTraces(period){
-  const sources=observedGraphSeries(),fdvMode=sources.length>=2,traces=[],statistics=[],quantities=[];
+  const sources=observedGraphSeries(),models=modelGraphSeries(),fdvMode=sources.length>=2||models.some(s=>s.item.parsed?.format==='fdv_ascii'),traces=[],statistics=[],quantities=[];
   const axisFor=q=>fdvMode?(q==='flow'?'y3':q==='velocity'?'y4':'y'):'y';
   const entries=[...sources.map(s=>({key:s.key,role:'Observed',observed:true})),
-    ...state.mapping.models.map((key,i)=>({key,role:'Model '+(i+1),colour:state.modelColours[key]||palette[i%palette.length]}))];
+    ...models.map(s=>({key:s.key,role:'Model '+(s.index+1),colour:state.modelColours[s.mappingKey]||palette[s.index%palette.length]}))];
   if(state.mapping.rain)entries.push({key:state.mapping.rain,role:'Rainfall',colour:$('rainColor').value});
   let rainMax=1,hasRain=false;
   for(const entry of entries){
@@ -2562,7 +2601,8 @@ async function reportTraces(period){
     traces.push({x:d.timestamp,y:values,name:entry.role+' · '+source.col,meta:source.item.displayName,
       type:rain?'bar':'scatter',mode:rain?undefined:'lines',connectgaps:false,
       yaxis:rain?'y2':axisFor(quantity),line:rain?undefined:{color:traceColour,width:1.5},
-      marker:rain?{color:traceColour}:undefined,opacity:rain?.72:1});
+      marker:rain?{color:traceColour,line:{color:traceColour,width:.4}}:undefined,opacity:rain?.85:1,
+      ...(rain&&Number(source.item.parsed?.metadata?.interval_min)>0?{width:Number(source.item.parsed.metadata.interval_min)*60000,base:0}:{})});
     const label=compactGraphRole(entry.role,source.item,source.col),reference=seriesReference(source.item,source.col)||null;
     if(d.assessment_statistics)statistics.push({role:entry.role,compact_label:label+' · raw',label:seriesLabel(source.item,source.col),statistics:d.statistics,factor,reference});
     statistics.push({role:entry.role,compact_label:label+(d.assessment_statistics?' · assessed':''),
