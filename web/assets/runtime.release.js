@@ -653,13 +653,15 @@ function sourcePickerSeries(all,preferredKeys=[]){
 }
 function refreshDiagnosticSelectors(all=allSeries()){
   const quantity=s=>String(seriesQuantity(s.item,s.col)||s.quantity||'').toLowerCase();
-  const modelIds=new Set([...orderedSelectedModelKeys(),...(state.mapping.models||[])].map(mappingObject).filter(Boolean).map(s=>s.item.id));
+  const modelKeys=new Set([...orderedSelectedModelKeys(),...(state.mapping.models||[])]);
+  const modelIds=new Set([...modelKeys].map(mappingObject).filter(Boolean).map(s=>s.item.id));
   for(const s of all)if(s.role==='modelled'||s.role==='model')modelIds.add(s.item.id);
-  const observed=mappingObject($('observedSelect')?.value||state.mapping.observed);
-  const observedPool=all.filter(s=>s.item.id===observed?.item.id||(!modelIds.has(s.item.id)&&s.role==='observed'));
+  const observedKey=$('observedSelect')?.value||state.mapping.observed;
+  const observed=mappingObject(observedKey);
+  const observedPool=all.filter(s=>s.key===observedKey||(!modelKeys.has(s.key)&&(s.item.id===observed?.item.id||(!modelIds.has(s.item.id)&&s.role==='observed'))));
   // Every loaded source remains available for explicit model selection, including
   // CSVs whose default registry role is observed. Do not infer a role from names.
-  const modelPool=all.filter(s=>s.item.id!==observed?.item.id);
+  const modelPool=all.filter(s=>s.item.id!==observed?.item.id||modelKeys.has(s.key)||s.role==='modelled'||s.role==='model'||(s.item.parsed?.format==='fdv_ascii'&&modelIds.has(s.item.id)));
   for(const [id,pool,q] of [['ratingObsDepth',observedPool,'vertical'],['ratingObsFlow',observedPool,'flow'],['ratingModelDepth',modelPool,'vertical'],['ratingModelFlow',modelPool,'flow']]){
     const choices=pool.filter(s=>q==='vertical'?['depth','level'].includes(quantity(s)):quantity(s)==='flow');
     choices.sort((a,b)=>Number(modelIds.has(b.item.id))-Number(modelIds.has(a.item.id)));
