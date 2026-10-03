@@ -622,15 +622,16 @@ def professional_flow_survey_result(
     rain_meta = getattr(rain_parsed, "metadata", {}) or {}
     rain_interval = rain_meta.get("interval_min")
     rain_interval = float(rain_interval) if rain_interval else None
-    hydraulic_exclusions_raw = (
-        hydraulic_exclusions_json
+    fallback_exclusions = python_bridge._exclusions(exclusions_json)
+    hydraulic_exclusions = (
+        python_bridge._exclusions(hydraulic_exclusions_json)
         if hydraulic_exclusions_json is not None
-        else exclusions_json
+        else fallback_exclusions
     )
-    rainfall_exclusions_raw = (
-        rainfall_exclusions_json
+    rainfall_exclusions = (
+        python_bridge._exclusions(rainfall_exclusions_json)
         if rainfall_exclusions_json is not None
-        else exclusions_json
+        else fallback_exclusions
     )
     analysis_start = python_bridge._model_clock_timestamp(start)
     analysis_end = python_bridge._model_clock_timestamp(end)
@@ -689,7 +690,6 @@ def professional_flow_survey_result(
         gauges,
         population_above_50k=bool(population_above_50k),
         apply_fault_cutoff=bool(apply_fault_cutoff),
-        gauge_exclusions=gauge_exclusions,
     )
     monitor = monitor_weekly_assessment(
         hydraulic,
@@ -727,15 +727,13 @@ def professional_flow_survey_result(
             ),
             "analysis_start": analysis_start,
             "analysis_end": analysis_end,
-            "hydraulic_exclusion_count": len(_survey_exclusion_records(hydraulic_exclusions_raw)),
-            "rainfall_exclusion_count": len(_survey_exclusion_records(rainfall_exclusions_raw)),
+            "hydraulic_exclusion_count": len(hydraulic_exclusions),
+            "rainfall_exclusion_count": len(rainfall_exclusions),
             "scoped_exclusions": True,
             "max_gap_seconds": float(max_gap_seconds),
         },
     }
     return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
-
-
 
 def survey_association_result(headers_json="[]", rows_json="[]", inferred_json="{}"):
     from icm_workbench.analysis.survey_context import (
