@@ -96,10 +96,12 @@ def integrate_series(
         retained_seconds = float(sum((q - p).total_seconds() for p, q in pieces))
         pair_excluded_seconds = max(0.0, support - retained_seconds)
 
+        finite_v0 = bool(pd.notna(v0) and np.isfinite(float(v0)))
+        finite_v1 = bool(pd.notna(v1) and np.isfinite(float(v1)))
         invalid_pair = (
             dt > float(max_gap_seconds)
-            or pd.isna(v0)
-            or (semantics == "instantaneous" and pd.isna(v1))
+            or not finite_v0
+            or (semantics == "instantaneous" and not finite_v1)
         )
         if invalid_pair:
             gap_seconds += retained_seconds
