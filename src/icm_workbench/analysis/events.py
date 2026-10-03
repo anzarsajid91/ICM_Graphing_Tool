@@ -3,7 +3,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from icm_workbench.analysis.exclusions import apply_exclusions
 from icm_workbench.analysis.rainfall import rainfall_support_segments
 
 
@@ -29,13 +28,13 @@ def detect_rainfall_events(
     if rain is None or getattr(rain, "empty", True):
         return []
 
-    r, _ = apply_exclusions(rain, exclusions, [intensity_col])
     segments = rainfall_support_segments(
-        r,
+        rain,
         intensity_col,
         semantics=semantics,
         declared_interval_minutes=declared_interval_minutes,
         max_gap_seconds=max_gap_seconds,
+        exclusions=exclusions,
     )
     if segments.empty:
         return []
