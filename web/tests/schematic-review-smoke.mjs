@@ -19,9 +19,12 @@ try{
  for(const width of [1440,780]){
   await page.setViewportSize({width,height:1000});await page.locator('#surveyAssessmentSettings > summary').click();
   const toggle=page.locator('#surveyAssociationPanel > .subhead .tool-collapse-toggle');await toggle.click();assert(await page.locator('#surveyAssociationPanel .tool-collapse-body').isVisible());await toggle.click();
+  assert(await page.locator('#surveyAssessmentSettings #gapInput').isVisible());await page.fill('#gapInput','901');await page.fill('#gapInput','900');
   await page.locator('#surveyAssessmentSettings > summary').click();
  }
  await page.setViewportSize({width:1440,height:1000});
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));assert(await page.locator('.mapping-panel #gapInput').isVisible());
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));assert.equal(await page.locator('#gapInput').count(),1);
  await page.click('#runCompleteSurveyBtn');
  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.survey.batch&&window.__ICM_WORKBENCH__.surveyFresh('complete'),null,{timeout:600000});
  const current=await page.evaluate(()=>({monitors:window.__ICM_WORKBENCH__.survey.batch.monitors.length,weeks:window.__ICM_WORKBENCH__.survey.batch.monitors.find(m=>m.monitor==='FM01').weekly.weeks.length,gaugeWeeks:window.__ICM_WORKBENCH__.survey.batch.network.gauge_weekly.length}));await fs.writeFile(evidence+'/assessment.json',JSON.stringify(await page.evaluate(()=>window.__ICM_WORKBENCH__.survey.batch)));console.log('REFERENCE',JSON.stringify(current));assert.equal(current.monitors,9);assert(current.weeks>1);assert(current.gaugeWeeks>1);

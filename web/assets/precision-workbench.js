@@ -419,7 +419,10 @@ function inspectorContext(page){
   const root=page.root?.();
   if(current.workspace==='data'&&current.page==='time-series'){dock($('v2GraphToolbar'));dock($('sharedAnalysisPanel'));dock(qs('.appearance-panel',root));}
   if(current.workspace==='graphs'&&current.page==='comparison'){dock($('sharedAnalysisPanel'));dock(qs('.mapping-grid',root));dock(qs('.actions',root));}
-  if(current.workspace==='survey')dockSurveySettings($('sharedAnalysisPanel'));
+  if(current.workspace==='survey'){
+    dockSurveySettings($('sharedAnalysisPanel'));
+    dockSurveySettings($('gapInput')?.closest('label'));
+  }
   if(current.workspace==='graphs'&&['rating','dwf'].includes(current.page))dock($('sharedAnalysisPanel'));
   if(current.workspace==='spills'&&current.page==='storage')dock($('sharedAnalysisPanel'));
   const useful=docked.some(item=>item.node.closest('.pw-inspector'));
