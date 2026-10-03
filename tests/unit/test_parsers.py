@@ -111,6 +111,7 @@ def test_r_parser_preserves_header_contract_and_exponents(tmp_path:Path):
     parsed=parse_rainfall_r(p)
     assert parsed.frame.rainfall.tolist()==pytest.approx([10.0,2.5])
     assert parsed.metadata["canonical_unit"]=="mm/h"
+    assert parsed.metadata["rainfall_semantics"]=="intensity"
     assert parsed.metadata["interval_min"]==2
 
 
@@ -120,3 +121,18 @@ def test_infer_quantity_does_not_confuse_level_with_velocity():
     assert infer_quantity("Water Level (m AOD)") == "level"
     assert infer_quantity("vel (m/s)") == "velocity"
     assert infer_quantity("velocity_m_s") == "velocity"
+
+
+def test_r_parser_declared_mm_is_incremental_depth(tmp_path:Path):
+    p=tmp_path/"RG_depth.R"
+    p.write_text(
+        "**FIELD: 1,RAINFALL\n"
+        "**UNITS: 1,mm\n"
+        "**CONSTANTS: 3,START,END,INTERVAL\n"
+        "*CSTART\n2601010000 2601010004 2\n*CEND\n1.0 2.0\n",
+        encoding="utf-8",
+    )
+    parsed=parse_rainfall_r(p)
+    assert parsed.metadata["canonical_unit"]=="mm"
+    assert parsed.metadata["rainfall_semantics"]=="incremental_depth"
+    assert parsed.metadata["timestamp_convention"]=="interval_depth"
