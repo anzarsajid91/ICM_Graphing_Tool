@@ -678,11 +678,16 @@ def survey_volume_balance(
     start: Any = None,
     end: Any = None,
     exclusions: list[Any] | None = None,
+    exclusions_by_monitor: dict[str, list[Any]] | None = None,
     max_gap_seconds: float = 900.0,
     amber_tolerance_percent: float = 10.0,
 ) -> dict[str, Any]:
     """Weekly W-SUN FSAT parity plus support-aware continuity diagnostic."""
     exclusions = list(exclusions or [])
+    exclusions_by_monitor = {
+        str(name): list(items or [])
+        for name, items in (exclusions_by_monitor or {}).items()
+    }
     flow_frames = {
         str(name): _normalise_flow_frame(frame, "flow")
         for name, frame in (flows or {}).items()
@@ -722,8 +727,9 @@ def survey_volume_balance(
             continue
         week_volumes: dict[str, dict[str, Any]] = {}
         for monitor, frame in flow_frames.items():
+            monitor_exclusions = exclusions_by_monitor.get(monitor, exclusions)
             legacy_volume, zero_issue, n_valid = _legacy_signed_volume(
-                frame, week_start, week_end, exclusions
+                frame, week_start, week_end, monitor_exclusions
             )
             support_frame = _integration_support_window(
                 frame, week_start, week_end
@@ -736,7 +742,7 @@ def survey_volume_balance(
                     week_end,
                     max_gap_seconds=float(max_gap_seconds),
                 )
-                if not exclusions
+                if not monitor_exclusions
                 else integrate_series(
                     support_frame,
                     "flow",
@@ -744,7 +750,7 @@ def survey_volume_balance(
                     week_end,
                     semantics="instantaneous",
                     max_gap_seconds=float(max_gap_seconds),
-                    exclusions=exclusions,
+                    exclusions=monitor_exclusions,
                 )
             )
             volume = float(result["integral"]) if result.get("valid_seconds", 0.0) > 0 else None
