@@ -476,6 +476,10 @@ body.precision-workbench{
 .precision-workbench .tool-collapse-body{padding:0 16px 16px}
 .precision-workbench .tool-collapsed>.tool-collapse-body{display:none}
 .precision-workbench .tool-collapsed>.subhead,.precision-workbench .tool-collapsed>.pw-surface-head{margin-bottom:0;border-bottom:0}
+.precision-workbench .w26-settings-grid{align-items:start}
+.precision-workbench .w26-settings-grid>:is(.panel,.subpanel,.survey-control-grid){grid-column:1/-1;min-width:0;max-width:100%}
+.precision-workbench .w26-settings-grid .subhead{flex-wrap:wrap}
+.precision-workbench .w26-settings-grid .subhead>div:first-child{flex:1 1 280px;min-width:0}
 .precision-workbench details>summary{padding:12px 16px;background:#f0f5f7;border:1px solid #d4e2e7;border-radius:7px;color:#164e63;font-weight:600;cursor:pointer}
 .precision-workbench details[open]>summary{margin-bottom:16px}
 .assessment-canvas{background:#fbfdfe;border:1px solid var(--pw-border);border-radius:10px;padding:16px;margin-block:12px}
