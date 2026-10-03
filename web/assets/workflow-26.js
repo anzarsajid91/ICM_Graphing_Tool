@@ -14,6 +14,10 @@
   survey.selectedBalanceKey = survey.selectedBalanceKey || null;
   survey.selectedWeek = survey.selectedWeek || null;
   survey.selectedWeeks = survey.selectedWeeks || {};
+  survey.reviewContext = survey.reviewContext && typeof survey.reviewContext === 'object'
+    ? survey.reviewContext
+    : {kind:'monitor-week',name:null,weekKey:null,drawerTab:'overview',exceptionsOnly:false,search:'',zoom:{fdv:1,rain:1}};
+  survey.reviewContext.zoom = survey.reviewContext.zoom || {fdv:1,rain:1};
 
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -526,6 +530,71 @@
           (review ? '<button type="button" class="btn" data-w26-review-revert>Revert to Calculated</button>' : '')+'</div>'+
         '</div>'+
       '</div>';
+  }
+
+
+  function weekValue(row){return String(row?.week_ending||row?.end||'');}
+  function weekLabel(value){return String(value||'').slice(0,10)||'—';}
+  function matrixNames(kind){
+    return kind==='monitor-week'
+      ? (survey.batch?.monitors||[]).map(row=>String(row.monitor)).filter(Boolean)
+      : (survey.batch?.network?.gauge_summary||[]).map(row=>String(row.gauge)).filter(Boolean);
+  }
+  function matrixWeeks(kind){
+    const set=new Set();
+    for(const name of matrixNames(kind))for(const row of weekRows(kind,name))if(weekValue(row))set.add(weekValue(row));
+    return [...set].sort();
+  }
+  function matrixRow(kind,name,week){return weekRows(kind,name).find(row=>weekValue(row)===String(week))||null;}
+  function matrixIsException(state){return state.historical_review||['Amber','Red','Grey'].includes(state.reviewed)||state.reviewed!==state.calculated;}
+  function weekMatrixHtml(kind,{readonly=false}={}){
+    const names=matrixNames(kind),weeks=matrixWeeks(kind);
+    if(!names.length||!weeks.length)return '<div class="pool-summary">No weekly assessment matrix is available yet.</div>';
+    const query=String(survey.reviewContext.search||'').trim().toLowerCase(),exceptionsOnly=Boolean(survey.reviewContext.exceptionsOnly);
+    const shown=names.filter(name=>(!query||name.toLowerCase().includes(query))&&(!exceptionsOnly||weeks.some(week=>{const row=matrixRow(kind,name,week);return row&&matrixIsException(reviewedWeekState(kind,name,row));})));
+    return '<div class="w26-matrix-scroll"><table class="w26-week-matrix"><thead><tr><th class="w26-matrix-sticky">Monitor / gauge</th>'+weeks.map(week=>'<th>'+esc(weekLabel(week))+'</th>').join('')+'</tr></thead><tbody>'+
+      shown.map(name=>'<tr><th class="w26-matrix-sticky" scope="row">'+esc(name)+'</th>'+weeks.map(week=>{
+        const row=matrixRow(kind,name,week);if(!row)return '<td class="w26-matrix-empty">—</td>';
+        const state=reviewedWeekState(kind,name,row),key=weekKey(name,row),selected=survey.reviewContext.kind===kind&&survey.reviewContext.name===name&&survey.reviewContext.weekKey===key;
+        const marks=(state.review?'<span class="w26-matrix-review-mark" title="Engineer review recorded">R</span>':'')+(state.historical_review?'<span class="w26-matrix-stale" title="Review needs reconfirmation">!</span>':'');
+        const title=[name,weekLabel(week),'Calculated '+state.calculated,'Reported '+state.reviewed,state.review?.reviewer?'Reviewer '+state.review.reviewer:'',state.review?.reason||''].filter(Boolean).join(' · ');
+        const content='<span class="w26-matrix-rag">'+esc(state.reviewed)+'</span>'+marks;
+        return '<td class="w26-matrix-cell w26-matrix-'+state.reviewed.toLowerCase()+(selected?' is-selected':'')+(matrixIsException(state)?' is-exception':'')+'" title="'+esc(title)+'">'+(readonly?'<span>'+content+'</span>':'<button type="button" data-matrix-cell data-week-kind="'+esc(kind)+'" data-week-name="'+esc(name)+'" data-week-key="'+esc(key)+'" data-week-ending="'+esc(week)+'">'+content+'</button>')+'</td>';
+      }).join('')+'</tr>').join('')+'</tbody></table></div>';
+  }
+  function exceptionQueue(kind){
+    const queue=[];for(const name of matrixNames(kind))for(const row of weekRows(kind,name)){const state=reviewedWeekState(kind,name,row);if(matrixIsException(state))queue.push({kind,name,row,key:weekKey(name,row),week:weekValue(row),state});}
+    return queue.sort((a,b)=>a.week.localeCompare(b.week)||a.name.localeCompare(b.name,undefined,{numeric:true}));
+  }
+  function selectReviewWeek(kind,name,key=null,week=null){
+    const rows=weekRows(kind,name),row=rows.find(r=>weekKey(name,r)===key)||rows.find(r=>weekValue(r)===week)||rows.find(r=>weekValue(r)===survey.schematicWeek)||rows[0];if(!row)return;
+    const rowKey=weekKey(name,row);survey.reviewContext.kind=kind;survey.reviewContext.name=name;survey.reviewContext.weekKey=rowKey;survey.selectedWeeks[kind+':'+name]=rowKey;survey.schematicWeek=weekValue(row);survey.selectedWeek=survey.schematicWeek;
+    if(kind==='monitor-week')survey.selectedMonitor=name;else survey.selectedGauge=name;renderAll();
+  }
+  function drawerContent(kind,name){
+    if(!name)return '<div class="w26-drawer-empty"><strong>Select a matrix cell or schematic node.</strong><p>The selected week’s evidence and engineer review remain here while you move through the survey.</p></div>';
+    const rows=weekRows(kind,name),row=rows.find(r=>weekKey(name,r)===survey.reviewContext.weekKey)||rows.find(r=>weekValue(r)===survey.schematicWeek)||rows[0];if(!row)return '<div class="w26-drawer-empty">No weekly evidence for '+esc(name)+'.</div>';
+    const state=reviewedWeekState(kind,name,row),tab=survey.reviewContext.drawerTab||'overview',monitor=kind==='monitor-week'?monitorByName(name):null,gauge=kind==='gauge-week'?gaugeByName(name):null;
+    const tabs=['overview','evidence','weekly','audit'].map(value=>'<button type="button" data-drawer-tab="'+value+'" class="'+(tab===value?'is-active':'')+'">'+(value==='audit'?'Edit / Audit':value.charAt(0).toUpperCase()+value.slice(1))+'</button>').join('');
+    let body='';
+    if(tab==='overview')body='<div class="w26-drawer-status"><span>Calculated '+ragPill(state.calculated)+'</span><span>Reported '+ragPill(state.reviewed)+'</span></div><dl class="weekly-evidence"><dt>Week ending</dt><dd>'+esc(weekLabel(weekValue(row)))+'</dd><dt>Reviewer</dt><dd>'+esc(state.review?.reviewer||'Not reviewed')+'</dd><dt>Review state</dt><dd>'+esc(state.historical_review?'Needs reconfirmation':state.review?'Current':'Calculated only')+'</dd></dl>'+(monitor?'<div class="pool-summary">Rain gauge '+esc(monitor.rain_gauge||'—')+' · pipe diameter '+(monitor.diameter_mm==null?'—':fmt(monitor.diameter_mm,0)+' mm')+'</div>':'')+(gauge?'<div class="pool-summary">Operational coverage '+fmt(gauge.operational_coverage_percent,1)+'% · '+Number(gauge.event_strike_count||0)+' event strike(s).</div>':'');
+    else if(tab==='evidence')body=scalarEvidence(row)+(monitor?'<details class="w26-technical-evidence" open><summary>Event response evidence</summary>'+monitorEventEvidence(monitor)+'</details>':'')+(gauge?'<details class="w26-technical-evidence" open><summary>Gauge evidence</summary>'+scalarEvidence(gauge)+'</details>':'');
+    else if(tab==='weekly')body=weeklyReviewTable(kind,name);
+    else body=weeklyEditor(kind,name);
+    const queue=exceptionQueue(kind),at=queue.findIndex(item=>item.name===name&&item.key===weekKey(name,row));
+    return '<div class="w26-drawer-head"><div><span class="w26-eyebrow">'+(kind==='monitor-week'?'FDV monitor':'Rain gauge')+'</span><h4>'+esc(name)+' · '+esc(weekLabel(weekValue(row)))+'</h4></div><button type="button" class="btn quiet" data-drawer-close>Close</button></div><div class="w26-drawer-tabs">'+tabs+'</div><div class="w26-drawer-body">'+body+'</div><div class="w26-drawer-nav"><button type="button" class="btn quiet" data-exception-step="-1" '+(queue.length?'':'disabled')+'>← Previous exception</button><span>'+(queue.length?(at>=0?String(at+1):'—')+' / '+queue.length:'No exceptions')+'</span><button type="button" class="btn quiet" data-exception-step="1" '+(queue.length?'':'disabled')+'>Next exception →</button></div>';
+  }
+  function renderReviewMatrix(kind){
+    const suffix=kind==='monitor-week'?'fdv':'rain',matrix=$('assessmentMatrix-'+suffix),drawer=$('assessmentDrawer-'+suffix);if(matrix)matrix.innerHTML=weekMatrixHtml(kind);if(drawer)drawer.innerHTML=drawerContent(kind,survey.reviewContext.kind===kind?survey.reviewContext.name:null);
+    const search=$('assessmentSearch-'+suffix);if(search&&search.value!==String(survey.reviewContext.search||''))search.value=survey.reviewContext.search||'';const toggle=$('assessmentExceptions-'+suffix);if(toggle)toggle.checked=Boolean(survey.reviewContext.exceptionsOnly);
+    const viewport=$('assessmentSchematicViewport-'+suffix),scale=Number(survey.reviewContext.zoom?.[suffix]||1);if(viewport){const svg=viewport.querySelector('svg');if(svg){svg.style.transform='scale('+scale+')';svg.style.transformOrigin='top left';}}
+  }
+  function renderAllMatrices(){renderReviewMatrix('monitor-week');renderReviewMatrix('gauge-week');}
+  function balanceMatrixHtml(){
+    const rows=balanceRows();if(!rows.length)return '<div class="pool-summary">No weekly volume-balance matrix available.</div>';
+    const weeks=[...new Set(rows.map(r=>String(r.week_ending||'')).filter(Boolean))].sort(),paths=new Map();
+    for(const row of rows){const label=(row.upstream_monitors||[]).join(' + ')+' → '+String(row.downstream_monitor||'—'),key=[String(row.downstream_monitor||''),[...(row.upstream_monitors||[])].sort().join(',')].join('|');if(!paths.has(key))paths.set(key,label);}
+    return '<div class="w26-matrix-scroll"><table class="w26-week-matrix"><thead><tr><th class="w26-matrix-sticky">Network path</th>'+weeks.map(w=>'<th>'+esc(weekLabel(w))+'</th>').join('')+'</tr></thead><tbody>'+[...paths].map(([pathKey,label])=>'<tr><th class="w26-matrix-sticky">'+esc(label)+'</th>'+weeks.map(week=>{const row=rows.find(r=>String(r.week_ending||'')===week&&[String(r.downstream_monitor||''),[...(r.upstream_monitors||[])].sort().join(',')].join('|')===pathKey);if(!row)return '<td class="w26-matrix-empty">—</td>';const state=reviewedBalanceState(row),key=balanceRowKey(row);return '<td class="w26-matrix-cell w26-matrix-'+state.reviewed.toLowerCase()+(survey.selectedBalanceKey===key?' is-selected':'')+'"><button type="button" data-balance-matrix="'+esc(key)+'">'+esc(state.reviewed)+(state.review?' <span class="w26-matrix-review-mark">R</span>':'')+'</button></td>';}).join('')+'</tr>').join('')+'</tbody></table></div>';
   }
 
   function assessmentWeekOptions(){
