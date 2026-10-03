@@ -87,12 +87,12 @@
       const meta=[];
       if(node.rain_gauge)meta.push(node.rain_gauge);
       if(node.diameter_mm!=null)meta.push(fmt(node.diameter_mm,0)+' mm');
-      if(options.interactive)meta.push(rag);
       nodeSvg.push('<g class="schematic-monitor" '+(options.interactive?'role="button" tabindex="0" data-survey-node="'+esc(name)+'" aria-label="Review '+esc(name)+' · '+esc(rag)+'" ':'')+'transform="translate('+(p.x-74)+' '+(p.y-30)+')">'+
         '<title>'+esc(name)+' · '+esc(rag)+' · '+esc(meta.join(' · ')||'association node')+'</title>'+
         '<rect width="148" height="60" rx="13" fill="'+colour.fill+'" stroke="'+colour.stroke+'" stroke-width="2"></rect>'+
         '<circle cx="18" cy="19" r="7" fill="'+colour.dot+'"></circle>'+
         '<text x="31" y="23" class="schematic-monitor-name">'+esc(name)+'</text>'+
+        (options.interactive?'<text x="136" y="23" text-anchor="end" class="schematic-monitor-meta">'+esc(rag)+'</text>':'')+
         '<text x="18" y="44" class="schematic-monitor-meta">'+esc(meta.join(' · ')||'flow monitor')+'</text></g>');
     }
     return '<div class="survey-schematic"><div class="survey-schematic-head"><div><strong>Association schematic</strong><span>Connectivity from fm_rg_assoc.xlsx; layout is schematic, not geographic.</span></div>'+
@@ -543,9 +543,9 @@
     // signature immediately. Stale results are never exported as current.
     survey.generation += 1;
     const status = document.getElementById('completeSurveyStatus');
-    if (status && survey.batch) status.textContent = reason + ' Previous complete-survey results are stale; re-run before relying on or exporting them.';
+    if (status && survey.batch) status.textContent = reason + (surveyFresh('complete') ? ' Survey assessment inputs are unchanged; existing results remain current.' : ' Previous complete-survey results are stale; re-run before relying on or exporting them.');
     const summary = document.getElementById('surveyBalanceSummary');
-    if (summary && survey.balance) summary.insertAdjacentHTML('afterbegin','<div class="privacy-note"><strong>Stale:</strong> ' + esc(reason) + ' Recalculate volume balance before relying on the previous result.</div>');
+    if (summary && survey.balance && !surveyFresh('balance')) summary.insertAdjacentHTML('afterbegin','<div class="privacy-note"><strong>Stale:</strong> ' + esc(reason) + ' Recalculate volume balance before relying on the previous result.</div>');
     renderReportPreflight();
   }
 
