@@ -62,6 +62,13 @@ try{
  assert((await page.locator('#ratingModelDepth option').allTextContents()).some(x=>x.includes('Model Scenario.csv')));assert(!(await page.locator('#ratingModelDepth option').allTextContents()).some(x=>x.includes('FM01.fdv')));
  for(const tab of ['rating','dwf']){await page.evaluate(t=>window.__ICM_PRECISION_WORKBENCH__.navigate('graphs',t,false),tab);assert(!await page.locator('#scenarioComparisonTable').isVisible());}
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','comparison',false));assert(await page.locator('#scenarioComparisonTable').isVisible());
+ console.log('STEP observed and modelled columns in the same CSV');
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
+ await page.setInputFiles('#fileInput',{name:'Shared source.csv',mimeType:'text/csv',buffer:Buffer.from(csv.replace('Depth (m),Flow (m3/s)','Depth (m),Level (m)'))});await page.waitForFunction(()=>[...state.files.values()].some(x=>x.file.name==='Shared source.csv'&&x.status==='ready'),null,{timeout:60000});
+ const sharedObserved=await page.locator('#observedSelect option').evaluateAll(opts=>opts.find(o=>o.textContent.includes('Shared source.csv')&&o.textContent.includes('Depth'))?.value),sharedModel=await page.locator('#modelSelect option').evaluateAll(opts=>opts.find(o=>o.textContent.includes('Shared source.csv')&&o.textContent.includes('Level'))?.value);assert(sharedObserved&&sharedModel);
+ await page.selectOption('#observedSelect',sharedObserved);await page.selectOption('#modelSelect',[sharedModel]);
+ assert((await page.locator('#ratingModelDepth option').evaluateAll(opts=>opts.map(o=>o.value))).includes(sharedModel));assert(!(await page.locator('#ratingObsDepth option').evaluateAll(opts=>opts.map(o=>o.value))).includes(sharedModel));
+ await page.selectOption('#observedSelect',fm01);
  console.log('STEP annual HTML and Plotly PNG');
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));await page.selectOption('#modelSelect',[]);await page.click('#applyMappingBtn');await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastPanelOrder?.join('|')==='rainfall|flow|depth|velocity',null,{timeout:60000});
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation',false));await page.fill('#reportYear','2026');const downloadPromise=page.waitForEvent('download',{timeout:180000});await page.click('#downloadFourPeriodBtn');const download=await downloadPromise;await download.saveAs(evidence+'/annual.html');

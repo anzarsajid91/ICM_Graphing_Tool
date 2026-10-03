@@ -107,3 +107,17 @@ assert.deepEqual(Array.from(sandbox.window.fdvPicker.grouped),['depth']);
 assert.deepEqual(Array.from(sandbox.window.fdvPicker.legacy),['flow']);
 assert.equal(sandbox.window.fdvPicker.suggested,run(`sourceKey('fdv-picker','depth')`));
 console.log('FDV picker regression passed: one file option, legacy channel preference and valid automatic selection.');
+
+run(`{
+ const item={id:'combined-csv',displayName:'Observed and Model.csv',file:{name:'Observed and Model.csv'},status:'ready',parsed:{format:'tabular_csv',columns:['Observed Depth','Model Depth'],metadata:{quantity_by_column:{'Observed Depth':'depth','Model Depth':'depth'}}}};
+ state.files.clear();state.files.set(item.id,item);
+ window.combinedObservedKey=sourceKey(item.id,'Observed Depth');window.combinedModelKey=sourceKey(item.id,'Model Depth');
+ state.mapping.observed=window.combinedObservedKey;state.mapping.models=[window.combinedModelKey];
+ window.combinedSelects={observedSelect:{value:window.combinedObservedKey},modelSelect:{selectedOptions:[{value:window.combinedModelKey}]},ratingObsDepth:{},ratingObsFlow:{},ratingModelDepth:{},ratingModelFlow:{}};
+ setOptions=(select,rows)=>{select.rows=rows.map(s=>s.key);};
+}`);
+sandbox.document.getElementById=id=>sandbox.window.combinedSelects[id]||null;
+run(`refreshDiagnosticSelectors();`);
+assert.deepEqual(Array.from(sandbox.window.combinedSelects.ratingModelDepth.rows),[sandbox.window.combinedModelKey]);
+assert.deepEqual(Array.from(sandbox.window.combinedSelects.ratingObsDepth.rows),[sandbox.window.combinedObservedKey]);
+console.log('Diagnostic selector regression passed: explicit model columns in a shared CSV remain selectable independently of observed columns.');
