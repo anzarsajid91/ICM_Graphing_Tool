@@ -136,6 +136,7 @@ def _support_for_window(
     start: pd.Timestamp,
     end: pd.Timestamp,
     interval_min: float | None,
+    exclusions: list[Any] | None = None,
 ) -> dict[str, float | bool]:
     duration = max(0.0, float((pd.Timestamp(end) - pd.Timestamp(start)).total_seconds()))
     if duration <= 0:
@@ -151,6 +152,7 @@ def _support_for_window(
         semantics="intensity",
         declared_interval_minutes=interval_min,
         max_gap_seconds=(float(interval_min) * 90.0 if interval_min else None),
+        exclusions=list(exclusions or []),
     )
     depth = 0.0
     valid_seconds = 0.0
@@ -363,6 +365,7 @@ def network_rainfall_assessment(
     *,
     population_above_50k: bool = True,
     apply_fault_cutoff: bool = False,
+    gauge_exclusions: dict[str, list[Any]] | None = None,
 ) -> dict[str, Any]:
     """Professional multi-gauge rainfall assessment derived from the companion tools.
 
@@ -370,6 +373,10 @@ def network_rainfall_assessment(
     and is applied to network WAPUG qualification only when explicitly requested.
     """
     preset = wapug_population_preset(population_above_50k)
+    gauge_exclusions = {
+        str(name): list(items or [])
+        for name, items in (gauge_exclusions or {}).items()
+    }
     clean: dict[str, tuple[pd.DataFrame, str, float | None]] = {}
     daily_by_gauge: dict[str, pd.DataFrame] = {}
     gauge_events: dict[str, list[dict[str, Any]]] = {}
@@ -388,6 +395,7 @@ def network_rainfall_assessment(
             semantics="intensity",
             declared_interval_minutes=interval_value,
             max_gap_seconds=(interval_value * 90.0 if interval_value else None),
+            exclusions=gauge_exclusions.get(str(name), []),
         )
         daily_by_gauge[str(name)] = (
             daily.set_index("day") if not daily.empty else pd.DataFrame()
@@ -405,6 +413,7 @@ def network_rainfall_assessment(
             semantics="intensity",
             declared_interval_minutes=interval_value,
             max_gap_seconds=(interval_value * 90.0 if interval_value else None),
+            exclusions=gauge_exclusions.get(str(name), []),
         )
         gauge_events[str(name)] = events
         candidate_windows.extend(
@@ -441,7 +450,9 @@ def network_rainfall_assessment(
     event_fault_history: list[dict[str, Any]] = []
     for event_index, (start, end) in enumerate(significant_windows, 1):
         support = {
-            name: _support_for_window(frame, col, start, end, interval)
+            name: _support_for_window(
+                frame, col, start, end, interval, gauge_exclusions.get(name, [])
+            )
             for name, (frame, col, interval) in clean.items()
         }
         operational = {
@@ -499,7 +510,9 @@ def network_rainfall_assessment(
                 and pd.Timestamp(start) >= pd.Timestamp(cutoff)
             ):
                 continue
-            value = _support_for_window(frame, col, start, end, interval)
+            value = _support_for_window(
+                frame, col, start, end, interval, gauge_exclusions.get(name, [])
+            )
             if bool(value["operational"]):
                 support[name] = value
         depths = np.asarray(
