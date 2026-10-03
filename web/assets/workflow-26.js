@@ -123,30 +123,84 @@
     return survey.monitorComments[String(name || '')] || null;
   }
 
+  function rebuildCommentSnapshot() {
+    const current = {};
+    for (const event of survey.commentLedger || []) {
+      const monitor = String(event.monitor || '');
+      if (!monitor) continue;
+      if (event.event_type === 'comment_cleared') {
+        delete current[monitor];
+      } else if (['comment_created','comment_updated','comment_migrated'].includes(event.event_type)) {
+        current[monitor] = {
+          monitor,
+          text:String(event.text || ''),
+          author:event.author || null,
+          updated_at:event.updated_at || event.event_at || null,
+          method:event.method || 'engineer-comment-v2',
+          event_id:event.event_id || null,
+        };
+      }
+    }
+    survey.monitorComments = current;
+    return current;
+  }
+
+  function migrateLegacyComments(legacy) {
+    return Object.values(legacy || {}).filter(Boolean).map(comment => ({
+      ...comment,
+      event_type:'comment_migrated',
+      event_id:auditId(),
+      event_at:comment.updated_at || nowIso(),
+      method:'engineer-comment-v2',
+    }));
+  }
+
+  if (!survey.commentLedger.length && Object.keys(survey.monitorComments || {}).length) {
+    survey.commentLedger = migrateLegacyComments(survey.monitorComments);
+  }
+  rebuildCommentSnapshot();
+
   function saveMonitorComment(name, text='', author='') {
     const monitor = monitorByName(name);
     if (!monitor) throw new Error('The selected monitor is not present in the current Flow Survey assessment.');
     const clean = String(text || '').trim();
-    if (!clean) {
-      delete survey.monitorComments[String(name)];
-      renderAll();
-      return null;
-    }
+    if (!clean) return clearMonitorComment(name, author);
     const previous = monitorComment(name);
-    survey.monitorComments[String(name)] = {
+    const updatedAt = nowIso();
+    survey.commentLedger.push(Object.freeze({
       monitor:String(name),
       text:clean,
       author:String(author || '').trim() || previous?.author || null,
-      updated_at:nowIso(),
-      method:'engineer-comment-v1',
-    };
+      updated_at:updatedAt,
+      event_at:updatedAt,
+      event_type:previous ? 'comment_updated' : 'comment_created',
+      event_id:auditId(),
+      method:'engineer-comment-v2',
+    }));
+    rebuildCommentSnapshot();
     renderAll();
     return survey.monitorComments[String(name)];
   }
 
-  function clearMonitorComment(name) {
-    delete survey.monitorComments[String(name || '')];
+  function clearMonitorComment(name, author='') {
+    const key = String(name || '');
+    const previous = monitorComment(key);
+    if (!previous) return null;
+    const eventAt = nowIso();
+    survey.commentLedger.push(Object.freeze({
+      monitor:key,
+      text:previous.text,
+      author:String(author || '').trim() || previous.author || null,
+      event_at:eventAt,
+      updated_at:eventAt,
+      event_type:'comment_cleared',
+      event_id:auditId(),
+      previous_comment_event_id:previous.event_id || null,
+      method:'engineer-comment-v2',
+    }));
+    rebuildCommentSnapshot();
     renderAll();
+    return null;
   }
 
   function isBoundaryShortWeek(row) {
