@@ -83,6 +83,9 @@ def test_network_rainfall_exclusion_isolated_to_target_gauge():
         gauges,
         gauge_exclusions={"RG01": [exclusion], "RG02": []},
     )
-    summary = {row["gauge"]: row for row in result["gauge_summary"]}
-    assert summary["RG01"]["operational_days"] == 0
-    assert summary["RG02"]["operational_days"] == 1
+    daily = result["daily"][0]
+    # Excluded time is removed only from RG01 support; it does not suppress
+    # RG02 or become zero rainfall. With 1 mm/h over a day, RG02 retains
+    # 24 mm while RG01 retains only the non-excluded 12 h.
+    assert daily["gauge_depths_mm"]["RG01"] == 12.0
+    assert daily["gauge_depths_mm"]["RG02"] == 24.0
