@@ -881,9 +881,16 @@ def _survey_hydraulic_bundle(source):
     return out, contracts
 
 
-def _survey_rain_source(path, column="rainfall", factor=1.0):
+def _survey_rain_source(path, column="rainfall", factor=1.0, rainfall_semantics=None):
+    """Return the survey's canonical rainfall-intensity working series.
+
+    Raw rainfall values are never silently reinterpreted. Explicit interval-depth
+    series are converted analytically to mm/h using their declared interval so
+    the existing FSAT/network algorithms continue to operate on one canonical
+    rainfall representation.
+    """
     if not path:
-        return None, None
+        return None, None, None
     parsed = python_bridge._load(path)
     frame = parsed.frame.copy()
     if column not in frame.columns:
@@ -891,10 +898,23 @@ def _survey_rain_source(path, column="rainfall", factor=1.0):
         if not available:
             raise ValueError(f"Rainfall source {path!r} has no value column.")
         column = available[0]
-    frame[column] = pd.to_numeric(frame[column], errors="coerce") * float(factor)
     metadata = getattr(parsed, "metadata", {}) or {}
     interval = metadata.get("interval_min")
-    return frame, float(interval) if interval else None
+    source_semantics = str(rainfall_semantics or metadata.get("rainfall_semantics") or "unresolved").lower()
+    if source_semantics not in {"intensity", "incremental_depth"}:
+        raise ValueError(
+            f"Rainfall source {path!r} has unresolved rainfall semantics. "
+            "Confirm Intensity or Incremental depth before Flow Survey assessment."
+        )
+    values = pd.to_numeric(frame[column], errors="coerce") * float(factor)
+    if source_semantics == "incremental_depth":
+        if interval is None or not np.isfinite(float(interval)) or float(interval) <= 0:
+            raise ValueError(
+                f"Rainfall source {path!r} is incremental depth but has no positive declared interval."
+            )
+        values = values * 60.0 / float(interval)
+    frame[column] = values
+    return frame, float(interval) if interval else None, source_semantics
 
 
 def survey_volume_balance_result(
@@ -1025,6 +1045,7 @@ def professional_survey_batch_result(
     gauge_exclusions = {}
     rain_lookup = {}
     rain_issues = []
+    rainfall_contracts = {}
     rain_load_started = time.perf_counter()
     for source in rain_sources:
         name = str(source.get("name") or source.get("gauge") or "").strip()
@@ -1033,11 +1054,19 @@ def professional_survey_batch_result(
         if not name or not path:
             continue
         try:
-            frame, interval = _survey_rain_source(path, column, rain_factor)
+            frame, interval, source_semantics = _survey_rain_source(
+                path, column, rain_factor, source.get("rainfall_semantics")
+            )
             exclusions_for_gauge = _survey_exclusions_for(
                 rainfall_exclusions_raw, "gauge", name, "rainfall"
             )
             gauges[name] = (frame, column, interval)
+            rainfall_contracts[name] = {
+                "source_semantics": source_semantics,
+                "working_semantics": "intensity",
+                "working_unit": "mm/h",
+                "declared_interval_min": interval,
+            }
             gauge_exclusions[name] = exclusions_for_gauge
             rain_lookup[_survey_name_token(name)] = (
                 frame, column, interval, exclusions_for_gauge
