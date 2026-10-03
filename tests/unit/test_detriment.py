@@ -172,6 +172,28 @@ def test_scope_confirmation_and_invalid_tolerance_block_comparison(tmp_path):
     with pytest.raises(ValueError,match='threshold|tolerance'):calculate('flooding',a,b,criteria={'threshold':-1})
 
 
+@pytest.mark.parametrize('kind',['flooding','level','spill'])
+@pytest.mark.parametrize('missing',[None,'',' \t\n '])
+def test_missing_scope_is_distinct_from_mismatched_scope(tmp_path,kind,missing):
+    a,b=floods(tmp_path)
+    for slot in ('a','b','both'):
+        baseline,proposed=dict(a),dict(b)
+        if slot in ('a','both'):baseline['scope']=missing
+        if slot in ('b','both'):proposed['scope']=missing
+        with pytest.raises(ValueError,match='Enter a common assessment scope'):
+            calculate(kind,baseline,proposed)
+
+
+def test_scope_trims_whitespace_but_rejects_different_storm_sets(tmp_path):
+    a,b=floods(tmp_path)
+    a['scope']=' 30-year matched storm set \n'
+    result=calculate('flooding',a,b)
+    assert result['scenario_a']['scope']==result['scenario_b']['scope']=='30-year matched storm set'
+    assert result['rows'][0]['delta']==6
+    b['scope']='100-year matched storm set'
+    with pytest.raises(ValueError,match='scopes must match'):calculate('flooding',a,b)
+
+
 @pytest.mark.parametrize('kind,column,unit',[('flooding','Flood volume (m)','m³'),('level','Maximum level (m³)','m')])
 def test_known_unit_of_wrong_dimension_cannot_be_overridden(tmp_path,kind,column,unit):
     mapping={'asset_id':'ID','value':column}

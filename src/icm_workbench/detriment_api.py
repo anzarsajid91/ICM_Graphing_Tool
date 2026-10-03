@@ -266,7 +266,12 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
     if kind not in ('flooding','level','spill'):raise ValueError("Unsupported detriment assessment.")
     criteria=json.loads(criteria_json);a_config=json.loads(scenario_a_json);b_config=json.loads(scenario_b_json)
     if not criteria.get('scope_confirmed'):raise ValueError("Please confirm matching assessment scope and completed ICM runs.")
-    if not a_config.get('scope') or a_config.get('scope')!=b_config.get('scope'):
+    for scenario in (a_config,b_config):
+        scope=scenario.get('scope')
+        if not isinstance(scope,str) or not scope.strip():
+            raise ValueError("Enter a common assessment scope for both scenarios (for example, return period, storm set and climate allowance).")
+        scenario['scope']=scope.strip()
+    if a_config['scope']!=b_config['scope']:
         raise ValueError("Scenario assessment scopes must match.")
     threshold=_number(criteria.get('threshold',0))
     if threshold is None or threshold<0:raise ValueError("Detriment tolerance/threshold must be finite and non-negative.")
