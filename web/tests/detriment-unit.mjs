@@ -5,6 +5,10 @@ const sandbox={window:{addEventListener(){}},document:{readyState:'loading',addE
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync('web/assets/detriment-workspace.js','utf8'),sandbox);
 const api=sandbox.window.ICMDetriment;
+assert.equal(api.assessmentErrorMessage(new Error('Enter a common assessment scope.')),'Enter a common assessment scope.');
+assert.equal(api.assessmentErrorMessage(new Error('Traceback (most recent call last):\n  File "/workbench/detriment_api.py", line 270\nValueError: Scenario assessment scopes must match.\n')),'Scenario assessment scopes must match.');
+assert.equal(api.assessmentErrorMessage(new Error('ValueError: Declared unit is incompatible.')),'Declared unit is incompatible.');
+assert.doesNotMatch(api.assessmentErrorMessage(new Error('Traceback (most recent call last):\nRuntimeError: internal failure')),/Traceback|\/workbench|RuntimeError/);
 assert.equal(api.escape('<001>'),'&lt;001&gt;');
 assert.equal(api.detectReport('Worst case\nNode ID\tFlood volume (m³)\n001\t8'),'auto');
 assert.equal(api.detectReport('Time,Node ID,Flow (L/s)\n2025-01-01,001,3'),null);
