@@ -44,6 +44,13 @@ async function precisionRoute(workspace,subpage){
   await page.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,subpage]);
   await page.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},expected);
 }
+async function openSurveySettings(target=page){
+  await target.locator('#surveyAssessmentSettings').evaluate(el=>{el.open=true;});
+  for(const id of ['sharedAnalysisPanel','surveyAssociationPanel']){
+    const toggle=target.locator('#'+id+'.tool-collapsed > :is(.subhead,.tool-main-head,.pw-surface-head) .tool-collapse-toggle');
+    if(await toggle.count())await toggle.click();
+  }
+}
 async function clickTab(name){
   const routes={
     graph:['data','time-series'],
@@ -1081,6 +1088,7 @@ async function verifyRealFlowSurveyReference(){
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__.survey?.association?.records?.length===9,null,{timeout:90000});
     await probe.waitForFunction(()=>document.querySelector('#surveyAssociationSummary')?.textContent.includes('9/9'),null,{timeout:90000});
     await probe.locator('#surveyAssessmentSettings').evaluate(el=>{el.open=true;});
+    await openSurveySettings(probe);
     await probe.selectOption('#surveyPopulation','over50');
 
     const started=Date.now();
@@ -2347,6 +2355,7 @@ try{
   await page.click('#runHealthBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#healthBody tr').length>0,null,{timeout:60000});
   if(await page.evaluate(()=>window.__ICM_WORKBENCH__.healthFresh?.())!==true)throw new Error('Fresh Data Health result was not bound to source/gap dependencies.');
+  await openSurveySettings();
   await page.fill('#gapInput','901');
   await page.locator('#gapInput').dispatchEvent('change');
   await page.waitForFunction(()=>document.querySelector('#healthBody')?.textContent.includes('Stale Data Health result cleared.')&&window.__ICM_WORKBENCH__.healthFresh?.()===false);
