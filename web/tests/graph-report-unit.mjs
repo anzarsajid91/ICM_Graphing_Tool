@@ -90,3 +90,34 @@ assert.deepEqual(Array.from(largeBounds),[0,250000]);
 const largeFit=run(`regressionLinePoints({regression_slope:1,regression_intercept:0},Array.from({length:160000},(_,i)=>({obs:i,sim:i})),false)`);
 assert.deepEqual(Array.from(largeFit.x),[0,159999]);
 console.log('Scatter regressions passed: log population is positive-only and raw-scale fitted lines clip only their nonpositive portion.');
+
+run(`{
+ const item={id:'fdv-picker',displayName:'FM01.fdv',file:{name:'FM01.fdv'},status:'ready',parsed:{format:'fdv_ascii',columns:['flow','depth','velocity'],metadata:{quantity_by_column:{flow:'flow',depth:'depth',velocity:'velocity'}}}};
+ state.files.clear();state.files.set(item.id,item);
+ const rows=allSeries(),grouped=sourcePickerSeries(rows),flowKey=sourceKey(item.id,'flow');
+ window.fdvPicker={grouped:grouped.map(s=>s.col),legacy:sourcePickerSeries(rows,[flowKey]).map(s=>s.col)};
+ const options=grouped.map(s=>({value:s.key}));let selected='';
+ window.pickerSelect={options,get value(){return selected;},set value(v){selected=options.some(o=>o.value===v)?v:'';}};
+ window.rainPicker={value:'',options:[{value:''}]};
+ window.fdvPickerRows=rows;
+}`);
+sandbox.document.getElementById=id=>id==='observedSelect'?sandbox.window.pickerSelect:id==='rainSelect'?sandbox.window.rainPicker:null;
+run(`autoSuggestMappings(window.fdvPickerRows);window.fdvPicker.suggested=window.pickerSelect.value;`);
+assert.deepEqual(Array.from(sandbox.window.fdvPicker.grouped),['depth']);
+assert.deepEqual(Array.from(sandbox.window.fdvPicker.legacy),['flow']);
+assert.equal(sandbox.window.fdvPicker.suggested,run(`sourceKey('fdv-picker','depth')`));
+console.log('FDV picker regression passed: one file option, legacy channel preference and valid automatic selection.');
+
+run(`{
+ const item={id:'combined-csv',displayName:'Observed and Model.csv',file:{name:'Observed and Model.csv'},status:'ready',parsed:{format:'tabular_csv',columns:['Observed Depth','Model Depth'],metadata:{quantity_by_column:{'Observed Depth':'depth','Model Depth':'depth'}}}};
+ state.files.clear();state.files.set(item.id,item);
+ window.combinedObservedKey=sourceKey(item.id,'Observed Depth');window.combinedModelKey=sourceKey(item.id,'Model Depth');
+ state.mapping.observed=window.combinedObservedKey;state.mapping.models=[window.combinedModelKey];
+ window.combinedSelects={observedSelect:{value:window.combinedObservedKey},modelSelect:{selectedOptions:[{value:window.combinedModelKey}]},ratingObsDepth:{},ratingObsFlow:{},ratingModelDepth:{},ratingModelFlow:{}};
+ setOptions=(select,rows)=>{select.rows=rows.map(s=>s.key);};
+}`);
+sandbox.document.getElementById=id=>sandbox.window.combinedSelects[id]||null;
+run(`refreshDiagnosticSelectors();`);
+assert.deepEqual(Array.from(sandbox.window.combinedSelects.ratingModelDepth.rows),[sandbox.window.combinedModelKey]);
+assert.deepEqual(Array.from(sandbox.window.combinedSelects.ratingObsDepth.rows),[sandbox.window.combinedObservedKey]);
+console.log('Diagnostic selector regression passed: explicit model columns in a shared CSV remain selectable independently of observed columns.');

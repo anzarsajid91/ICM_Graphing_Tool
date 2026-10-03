@@ -22,14 +22,15 @@ const ROUTES={
     label:'Flow Survey',
     icon:'survey',
     pages:{
-      'fdv-check':{label:'FDV Check',title:'FDV check',description:'Data health, telemetry QA and whole-survey/weekly evidence with missing support reported as unknown.',tab:'data-health',root:()=>$('tab-data-health')},
+      'fdv-check':{label:'FDV Check',title:'FDV check',description:'Select a monitor on the schematic to review its weekly data quality, rating and comments.',tab:'data-health',root:()=>$('tab-data-health')},
       'rainfall-check':{label:'Rainfall Check',title:'Rainfall check',description:'Review Flow Survey gauge health, network WAPUG qualification and event evidence without depending on the standalone Time Series rainfall-event workflow.',tab:'data-health',root:()=>$('tab-data-health')},
-      'volume-balance':{label:'Volume Balance',title:'Volume balance',description:'Assess upstream/downstream flow continuity on common valid temporal support with explicit assumptions.',tab:'data-health',root:()=>$('tab-data-health')}
+      'volume-balance':{label:'Volume Balance',title:'Volume balance',description:'Assess upstream/downstream flow continuity on common valid temporal support with explicit assumptions.',tab:'data-health',root:()=>$('tab-data-health')},
+      'monthly-review':{label:'Monthly Review',title:'Monthly survey review',description:'Review effective weekly outcomes, engineering comments and actions, then export the monthly PDF.',tab:'data-health',root:()=>$('tab-data-health')}
     }
   },
   detriment:window.ICMDetriment.routes,
   graphs:{
-    label:'Graphs',
+    label:'Plots',
     icon:'verify',
     pages:{
       comparison:{label:'Observed vs Modelled',title:'Observed versus modelled diagnostics',description:'Compare scenarios using the canonical bounded-alignment engine, scatter views and verification statistics.',tab:'compare',root:()=>$('tab-compare')},
@@ -232,7 +233,7 @@ function ensureReportSurfaces(){
   options.innerHTML='<div class="subhead"><div><h3>Report options</h3><p>Select the authoritative sections and model scenarios to include. These settings are saved with the workspace.</p></div></div>'+
     '<div class="mapping-grid compact-wide">'+
       '<label><span>Sections</span><span class="pw-check-stack"><span><input id="reportIncludeTimeSeries" type="checkbox" checked> Full-period time series</span><span><input id="reportIncludeSpillsStorage" type="checkbox" checked> Spills & storage</span><span><input id="reportIncludeComparison" type="checkbox" checked> Comparison diagnostics</span><span><input id="reportIncludeSurvey" type="checkbox" checked> Flow-survey evidence</span></span></label>'+
-      '<label>Scatter view<select id="reportScatterScale"><option value="current">Current Graphs view</option><option value="linear">Linear</option><option value="log">Log₁₀ (positive pairs only)</option></select><small>Report statistics follow the eligible pair population for this selected view.</small></label>'+
+      '<label>Scatter view<select id="reportScatterScale"><option value="current">Current Plots view</option><option value="linear">Linear</option><option value="log">Log₁₀ (positive pairs only)</option></select><small>Report statistics follow the eligible pair population for this selected view.</small></label>'+
       '<label>Comparison scenarios<select id="reportScenarioSelect" multiple size="4"></select><small>Only currently mapped model scenarios are available.</small></label>'+
     '</div>';
   builder.appendChild(options);refreshReportScenarioOptions();
@@ -241,14 +242,24 @@ function ensureReportSurfaces(){
   if(wsStatus)new MutationObserver(()=>{mirror.textContent=wsStatus.textContent;}).observe(wsStatus,{childList:true,subtree:true,characterData:true});
   panel.append(builder,workspace);
 }
+function installSectionHierarchy(){
+  const wb=window.__ICM_WORKBENCH__;
+  for(const section of qsa('.pw-page-surface,.subpanel,.w26-review-section')){
+    if(section.matches('details')||section.dataset.collapsible==='true')continue;
+    const header=qs(':scope > .pw-surface-head,:scope > .subhead,:scope > .w26-section-head',section);
+    if(header)wb?.addSectionCollapse?.(section,header,(qs('h3,h4',header)?.textContent||'section').trim());
+  }
+}
+window.__ICM_WORKBENCH__.installSectionHierarchy=installSectionHierarchy;
 function preparePageComposition(){
   ensureDataTimeSeriesSurface();ensureDataHealthSurface();ensureSpillSurfaces();ensureReportSurfaces();
   const professional=qs('.survey-professional');
   const completeSurvey=$('completeSurveyPanel');
   own($('pwDataSetupSurface'),['data/time-series']);
   own($('pwTimeSeriesEventSurface'),['data/time-series']);
-  own($('surveyReviewHeader'),['survey/fdv-check','survey/rainfall-check','survey/volume-balance']);
-  own($('surveyAssociationPanel'),['survey/fdv-check']);
+  own($('surveyReviewHeader'),['survey/fdv-check','survey/rainfall-check','survey/volume-balance','survey/monthly-review']);
+  own($('surveyMonthlyReview'),['survey/monthly-review']);
+  own($('surveyAssociationPanel'),['survey/fdv-check','survey/rainfall-check','survey/volume-balance','survey/monthly-review']);
   own(qs('#tab-data-health .tool-main-section'),['survey/fdv-check']);
   own($('pwDataHealthSummary'),['survey/fdv-check']);
   own(completeSurvey,['survey/fdv-check']);
@@ -258,6 +269,7 @@ function preparePageComposition(){
   own(qs('#tab-compare > .panel'),['graphs/comparison','graphs/rating','graphs/dwf']);
   own(qs('#tab-compare > .panel > .panel-head'),['graphs/comparison']);
   own(qs('#tab-compare .tool-main-section'),['graphs/comparison']);
+  own($('scenarioComparisonTable'),['graphs/comparison']);
   own($('pwRatingPanel'),['graphs/rating']);
   own($('pwDwfPanel'),['graphs/dwf']);
   own($('tab-storage'),['spills/storage']);
@@ -270,6 +282,7 @@ function preparePageComposition(){
   const balanceBtn=$('runSurveyBalanceBtn');if(balanceBtn){balanceBtn.classList.remove('primary');balanceBtn.textContent='Recalculate balance';}
   const ratingBtn=$('runRatingBtn');if(ratingBtn)ratingBtn.classList.add('primary');
   const dwfBtn=$('runDwfBtn');if(dwfBtn)dwfBtn.classList.add('primary');
+  installSectionHierarchy();
 }
 
 function applyPageComposition(){
@@ -394,23 +407,25 @@ function dock(node){
   const marker=document.createComment('precision-workbench-inspector-home');
   node.parentNode.insertBefore(marker,node);$('pwInspectorBody').appendChild(node);docked.push({node,marker});
 }
+function dockSurveySettings(node){
+  const target=$('surveyAssessmentSettingsBody');
+  if(!node||!target||target.contains(node))return;
+  const marker=document.createComment('survey-settings-home');node.parentNode.insertBefore(marker,node);
+  target.prepend(node);docked.push({node,marker});
+}
 function inspectorContext(page){
   const body=$('pwInspectorBody'),inspector=$('pwInspector'),toggle=$('pwInspectorToggle');if(!body)return;
   body.innerHTML='<div class="pw-context-card"><h4>Current context</h4><dl><dt>Workspace</dt><dd>'+esc(ROUTES[current.workspace].label)+'</dd><dt>Page</dt><dd>'+esc(page.label)+'</dd><dt>Processing</dt><dd>Local browser</dd></dl></div>';
   const root=page.root?.();
   if(current.workspace==='data'&&current.page==='time-series'){dock($('v2GraphToolbar'));dock($('sharedAnalysisPanel'));dock(qs('.appearance-panel',root));}
   if(current.workspace==='graphs'&&current.page==='comparison'){dock($('sharedAnalysisPanel'));dock(qs('.mapping-grid',root));dock(qs('.actions',root));}
-  if(current.workspace==='survey'&&current.page==='fdv-check'){
-    // Data Health calculations depend on the canonical maximum interpolation
-    // gap. Keep one source of truth, but surface that existing control
-    // contextually instead of forcing the user back into Series Mapping.
-    dock($('gapInput')?.closest('label'));
+  if(current.workspace==='survey'){
+    dockSurveySettings($('sharedAnalysisPanel'));
+    dockSurveySettings($('gapInput')?.closest('label'));
   }
-  if(current.workspace==='survey'&&current.page==='rainfall-check'){dock($('sharedAnalysisPanel'));dock(qs('.survey-method',root));}
-  if(current.workspace==='survey'&&current.page==='volume-balance')dock($('sharedAnalysisPanel'));
   if(current.workspace==='graphs'&&['rating','dwf'].includes(current.page))dock($('sharedAnalysisPanel'));
   if(current.workspace==='spills'&&current.page==='storage')dock($('sharedAnalysisPanel'));
-  const useful=docked.length>0;
+  const useful=docked.some(item=>item.node.closest('.pw-inspector'));
   document.body.classList.toggle('pw-has-inspector',useful);
   if(inspector){inspector.hidden=!useful;if(!useful)inspector.classList.remove('is-open');}
   if(toggle)toggle.hidden=!useful;
@@ -592,9 +607,9 @@ function buildAboutPage(){
   const summaries=[
     ['data','time-series','Data / Time Series','Upload CSV, FDV and rainfall R files, association workbooks and ICM assessment reports into a shared source pool. Assign observed, modelled and rainfall series, confirm their quantities and units, and review hydraulic traces, thresholds, rainfall events and source statistics. This is the starting point for supplying and checking the evidence used by the other workspaces.'],
     ['spills','assessment','Spills','Assess observed and modelled spills using explicit thresholds, exclusions and valid temporal support. Review physical spill intervals, UK 12/24 counts and yearly or monthly comparisons. Storage Assessment provides idealised storage screening and modelled spill-volume evidence to support further engineering investigation.'],
-    ['survey','fdv-check','Flow Survey','Check the quality and usefulness of a flow survey through FDV Check, Rainfall Check and Volume Balance. Review monitor data health, gauge quality and wet-weather event response, then assess flow continuity between associated upstream and downstream monitors on common valid periods.'],
+    ['survey','fdv-check','Flow Survey','Review monitor and rain-gauge weeks from their schematics, record a rating and comment for each week, and check flow continuity in Volume Balance. Monthly Review brings the outcomes and actions together for PDF export.'],
     ['detriment','flooding','Detriment Assessment','Compare baseline Scenario A with proposed Scenario B using exported ICM report evidence. The Flooding, Level and Spill tabs assess changes in flood volume, maximum water-level elevation and freeboard, or spill counts and actual durations. Explicit criteria, raw asset evidence and optional manhole / link ID lists support a focused, traceable assessment.'],
-    ['graphs','comparison','Graphs','Explore observed versus modelled agreement, depth and flow–depth rating diagnostics, and dry-weather-flow baselines. Use scatter views, fitted relationships and verification statistics to understand model performance and hydraulic behaviour, with sample support and data-validity limitations retained.'],
+    ['graphs','comparison','Plots','Explore observed versus modelled agreement, depth and flow–depth rating diagnostics, and dry-weather-flow baselines. Use scatter views, fitted relationships and verification statistics to understand model performance and hydraulic behaviour, with sample support and data-validity limitations retained.'],
     ['reports','report-generation','Reports','Export engineering assessments and graph reports from the current analysis, and save or restore a workspace with its configuration and source fingerprints. Reports carry the relevant criteria, units and evidence so results can be reviewed and shared; saved workspaces reference the original files without embedding their raw data.']
   ];
   const panel=document.createElement('section');panel.id='tab-about';panel.className='tab-panel';panel.hidden=true;

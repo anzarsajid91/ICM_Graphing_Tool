@@ -1,3 +1,4 @@
+import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -10,7 +11,7 @@ const cases=JSON.parse(execFileSync(process.env.PYTHON||'python3',['scripts/detr
 const evidence=process.env.ICM_EVIDENCE_DIR||'/tmp/icm-reference-evidence';
 await fs.mkdir(evidence,{recursive:true});
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch(browserLaunchOptions());
 const page=await browser.newPage({viewport:{width:1440,height:1000},acceptDownloads:true});
 const errors=[];page.on('pageerror',e=>errors.push(String(e)));
 const field=key=>page.locator('#dtForm [data-key="'+key+'"]');
@@ -23,7 +24,7 @@ try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.ICMDetriment&&window.__ICM_PRECISION_WORKBENCH__),null,{timeout:30000});
   assert.match(await page.title(),/Hydra Bench/);
-  assert.deepEqual((await page.locator('.pw-primary-nav .pw-nav-label').allTextContents()).map(x=>x.trim()),['Data / Time Series','Spills','Flow Survey','Detriment Assessment','Graphs','Reports']);
+  assert.deepEqual((await page.locator('.pw-primary-nav .pw-nav-label').allTextContents()).map(x=>x.trim()),['Data / Time Series','Spills','Flow Survey','Detriment Assessment','Plots','Reports']);
   const note=await page.locator('#dropzone span').textContent();
   assert.match(note,/\.CSV, \.FDV, \.R/);assert.match(note,/fm_rg_assoc.xlsx/);assert.doesNotMatch(note,/\.txt|\.FTV/i);
   const files=Object.values(cases).flatMap(c=>[c.original,...c.paths]);
