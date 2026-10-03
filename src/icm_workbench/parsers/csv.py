@@ -40,6 +40,13 @@ def _head(path,lines=100):
     return "\n".join(text.splitlines()[:lines])
 def is_icm_hyd_csv(path):
     text=_head(path).lower();return "p_datetime" in text and ("type=hyd" in text or "u_level" in text or "u_flow" in text or "u_velocity" in text)
+def _detect_time_basis(values):
+    """Classify explicit timezone/offset timestamps before model-clock use."""
+    raw = pd.Series(values, dtype="string").str.strip()
+    aware = raw.str.contains(r"(?:Z|[+-]\d{2}:?\d{2})$", regex=True, na=False)
+    return "timezone-aware/unresolved" if bool(aware.any()) else "model clock/unspecified"
+
+
 def _parse_timestamps(values):
     """Parse UK-style timestamps without corrupting explicit year-first/ISO dates.
 
@@ -165,7 +172,14 @@ def parse_tabular_csv(path):
     except Exception as exc:raise ValueError(f"Could not parse tabular CSV: {exc}") from exc
     df.columns=[str(c).strip() for c in df.columns]; tc=detect_time_column(df)
     if not tc:raise ValueError(f"Could not detect a timestamp column. Columns={list(df.columns)}")
-    timestamps=_parse_timestamps(df[tc]); value_cols=[c for c in df.columns if c!=tc and pd.to_numeric(df[c],errors="coerce").notna().any()]
+    time_basis=_detect_time_basis(df[tc])
+    if time_basis=="timezone-aware/unresolved":
+        # Preserve absolute ordering for preview only. UTC-normalised timestamps
+        # remain analytically blocked until the engineer resolves model-clock basis.
+        timestamps=pd.to_datetime(df[tc],errors="coerce",format="mixed",utc=True).dt.tz_localize(None)
+    else:
+        timestamps=_parse_timestamps(df[tc])
+    value_cols=[c for c in df.columns if c!=tc and pd.to_numeric(df[c],errors="coerce").notna().any()]
     if not value_cols:raise ValueError("No numeric value columns found")
     out=pd.DataFrame({"timestamp":timestamps}); audits={}; quantities={}; series_meta={}
     for c in value_cols:
@@ -197,6 +211,6 @@ def parse_tabular_csv(path):
             "unit_status":unit_status,
         }
     invalid=int(out.timestamp.isna().sum());out=out.dropna(subset=["timestamp"]).sort_values("timestamp")
-    return ParsedData(out,"tabular_csv",{"columns":value_cols,"quantity_by_column":quantities,"series_metadata":series_meta,"source_encoding":source_encoding,"time_basis":"model clock/unspecified","timestamp_convention":"instantaneous"},{ "invalid_timestamps":invalid,"duplicate_timestamps":int(out.timestamp.duplicated().sum()),"column_audit":audits,"rows":len(out)})
+    return ParsedData(out,"tabular_csv",{"columns":value_cols,"quantity_by_column":quantities,"series_metadata":series_meta,"source_encoding":source_encoding,"time_basis":time_basis,"time_resolution_required":time_basis=="timezone-aware/unresolved","timestamp_convention":"instantaneous"},{ "invalid_timestamps":invalid,"duplicate_timestamps":int(out.timestamp.duplicated().sum()),"column_audit":audits,"rows":len(out)})
 def parse_csv(path):
     p=Path(path);return parse_icm_hyd_csv(p) if is_icm_hyd_csv(p) else parse_tabular_csv(p)
