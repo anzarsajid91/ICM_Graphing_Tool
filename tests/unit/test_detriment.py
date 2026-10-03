@@ -16,7 +16,7 @@ def report(tmp_path, name, rows, mapping, **extra):
 
 def calculate(kind,a,b,**kwargs):
     assert callable(getattr(api,'detriment_result',None)), 'detriment_result is not implemented'
-    criteria=dict(scope_confirmed=True,threshold=5,freeboard_required=None,counting_mode='summary')
+    criteria=dict(scope_confirmed=True,elevation_confirmed=True,threshold=5,freeboard_required=None,counting_mode='summary')
     criteria.update(kwargs.pop('criteria',{}))
     return json.loads(api.detriment_result(kind,json.dumps(a),json.dumps(b),json.dumps(criteria),**kwargs))
 
@@ -40,6 +40,16 @@ def test_flooding_change_retains_id_and_critical_simulations(tmp_path):
 def test_flood_threshold_boundaries_and_improvements(tmp_path,a,b,threshold,status,flag):
     row=calculate('flooding',*floods(tmp_path,a,b),criteria={'threshold':threshold})['rows'][0]
     assert row['status']==status and flag in row['flags']
+
+
+def test_any_new_flooding_policy_overrides_volume_tolerance(tmp_path):
+    row=calculate(
+        'flooding',
+        *floods(tmp_path,'0','.4'),
+        criteria={'threshold':5,'new_flooding_policy':'any_new_flooding'},
+    )['rows'][0]
+    assert row['status']=='detriment'
+    assert {'new_flooding','new_flooding_policy_detriment'}<=set(row['flags'])
 
 
 def test_outer_join_does_not_turn_missing_asset_into_zero(tmp_path):
@@ -130,6 +140,36 @@ def test_reduced_count_with_longer_duration_is_mixed_risk(tmp_path):
     assert row['status']=='risk' and 'mixed_result' in row['flags']
 
 
+def test_explicit_either_spill_policy_treats_duration_breach_as_detriment(tmp_path):
+    row=calculate(
+        'spill',
+        *spills(tmp_path,'10','24'),
+        criteria={
+            'count_tolerance':0,
+            'duration_tolerance_hours':1,
+            'spill_combination_policy':'either_criterion',
+        },
+    )['rows'][0]
+    assert row['count_status']=='improvement'
+    assert row['duration_status']=='detriment'
+    assert row['status']=='detriment'
+
+
+def test_spill_count_and_duration_tolerances_are_independent(tmp_path):
+    row=calculate(
+        'spill',
+        *spills(tmp_path,'13','20'),
+        criteria={
+            'count_tolerance':2,
+            'duration_tolerance_hours':3,
+            'spill_combination_policy':'either_criterion',
+        },
+    )['rows'][0]
+    assert row['count_status']=='risk'
+    assert row['duration_status']=='risk'
+    assert row['status']=='risk'
+
+
 def test_spill_period_and_template_mismatch_block_comparison(tmp_path):
     a,b=spills(tmp_path);b['period_end']='2026-02-01'
     with pytest.raises(ValueError,match='period'):calculate('spill',a,b)
@@ -149,19 +189,25 @@ def test_detail_only_requires_explicit_counting_semantics(tmp_path):
 
 
 def test_report_parser_reads_icm_preamble_and_pasted_tsv(tmp_path):
-    path=tmp_path/'grid.csv';path.write_text('Worst Case Report\nNode ID\tFlood volume (m³)\tSimulation\n001\t8\t30y-60min\n')
+    path=tmp_path/'grid.csv';path.write_text('Scenario: Baseline\nDatum: AOD\nStorm set: 30-year matched\nWorst Case Report\nNode ID\tFlood volume (m³)\tSimulation\n001\t8\t30y-60min\n')
     assert callable(getattr(api,'parse_detriment_report',None)), 'report adapter is not implemented'
     r=json.loads(api.parse_detriment_report(str(path),'flooding'))
     assert r['metadata']['source_kind']=='detriment_report'
     assert r['preview_rows'][0]['Node ID']=='001'
     assert r['metadata']['mapping_suggestions']['value']=='Flood volume (m³)'
+    assert r['metadata']['source_context']['scenario']['value']=='Baseline'
+    assert r['metadata']['source_context']['scenario']['basis']=='source_verified'
+    assert r['metadata']['source_context']['datum']['value']=='AOD'
     assert r['start'] is None and r['end'] is None
 
 
-def test_explicit_generic_volume_mapping_still_compares_with_known_flood_measure(tmp_path):
+def test_generic_volume_mapping_requires_explicit_flood_measure(tmp_path):
     a,b=floods(tmp_path)
     b['path']=report(tmp_path,'mapped.csv',[{'Identifier':'001','Outcome':'8'}],{'asset_id':'Identifier','value':'Outcome'})['path']
     b['mapping']={'asset_id':'Identifier','value':'Outcome'}
+    with pytest.raises(ValueError,match='Declare whether|generic volume'):
+        calculate('flooding',a,b)
+    b['flood_measure']='flood_volume'
     row=calculate('flooding',a,b)['rows'][0]
     assert row['delta']==6 and row['status']=='detriment'
 
@@ -233,6 +279,17 @@ def test_detail_year_boundary_exact_end_and_day_first_dates(tmp_path):
     r=calculate('spill',a,b,criteria={'counting_mode':'block-rows'})
     assert r['rows'][0]['a']==1 and r['rows'][0]['duration_a_hours']==1
     assert r['date_convention']=='ISO or day/month/year model clock'
+
+
+def test_result_distinguishes_engineer_declared_and_source_verified_context(tmp_path):
+    a,b=floods(tmp_path)
+    for source,label in ((a,'Baseline'),(b,'Proposed')):
+        original=open(source['path'],encoding='utf-8').read()
+        open(source['path'],'w',encoding='utf-8').write('Scenario: '+label+'\n'+original)
+    result=calculate('flooding',a,b)
+    assert result['provenance']['scope']['scenario_a']['basis']=='engineer_declared'
+    assert result['provenance']['source_context_a']['scenario']['basis']=='source_verified'
+    assert result['provenance']['source_context_a']['scenario']['value']=='Baseline'
 
 
 def test_export_provenance_retains_optional_detail_sources_and_settings(tmp_path):
