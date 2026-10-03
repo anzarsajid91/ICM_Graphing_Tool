@@ -189,8 +189,12 @@ def test_dwf_scaled_applies_shared_period_units_and_role_exclusions(tmp_path: Pa
     assert result["excluded_rainfall_rows"]==24
     by_day={pd.Timestamp(x["day"]).date():x for x in result["candidate_days"]}
     assert set(by_day)=={pd.Timestamp("2026-01-02").date(),pd.Timestamp("2026-01-03").date(),pd.Timestamp("2026-01-04").date()}
+    assert by_day[pd.Timestamp("2026-01-02").date()]["status"]=="insufficient-flow"
     assert by_day[pd.Timestamp("2026-01-03").date()]["status"]=="unknown"
-    assert result["average_dwf"]==pytest.approx(0.1)
+    # Under the strengthened DWF contract an excluded-flow day is not a valid
+    # dry baseline day. The bounded period contains no complete dry day.
+    assert result["average_dwf"] is None
+    assert result["calculation_status"]=="unavailable"
 
 
 def test_dwf_scaled_withholds_unresolved_flow_units_without_override(tmp_path: Path):
