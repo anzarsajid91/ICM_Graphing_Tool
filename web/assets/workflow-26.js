@@ -648,10 +648,14 @@
     for(const [kind,targetId] of [['fdv','completeSurveyMonitors'],['rain','surveyGaugeReview']]){
       const target=$(targetId);
       if(!target||$('assessmentCanvas-'+kind))continue;
-      const canvas=document.createElement('section');canvas.id='assessmentCanvas-'+kind;canvas.className='assessment-canvas';
-      canvas.innerHTML='<div class="assessment-canvas-head"><div><h4>'+(kind==='fdv'?'Monitor assessment':'Rainfall assessment')+'</h4><p>Select a week and click a '+(kind==='fdv'?'monitor':'gauge')+' to review.</p></div><label>Assessment week<select id="assessmentWeek-'+kind+'"></select></label></div><div id="assessmentSchematic-'+kind+'"></div>';
+      const canvas=document.createElement('section');canvas.id='assessmentCanvas-'+kind;canvas.className='assessment-canvas w26-matrix-workbench';
+      canvas.innerHTML='<div class="assessment-canvas-head"><div><h4>'+(kind==='fdv'?'Monitor assessment':'Rainfall assessment')+'</h4><p>Use the week matrix and network together. The evidence drawer stays open while you move through exceptions.</p></div><label>Assessment week<select id="assessmentWeek-'+kind+'"></select></label></div>'+
+        '<div class="w26-matrix-layout"><div class="w26-matrix-main"><div class="w26-matrix-toolbar"><label>Find '+(kind==='fdv'?'monitor':'gauge')+'<input id="assessmentSearch-'+kind+'" type="search" placeholder="Search ID"></label><label class="w26-inline-check"><input id="assessmentExceptions-'+kind+'" type="checkbox"> Exceptions only</label><div class="w26-schematic-tools"><button type="button" class="btn quiet" data-schematic-zoom="-1" data-schematic-kind="'+kind+'">−</button><button type="button" class="btn quiet" data-schematic-fit data-schematic-kind="'+kind+'">Fit</button><button type="button" class="btn quiet" data-schematic-zoom="1" data-schematic-kind="'+kind+'">+</button><button type="button" class="btn quiet" data-schematic-focus data-schematic-kind="'+kind+'">Focus selected</button></div></div>'+
+        '<div id="assessmentMatrix-'+kind+'" class="w26-matrix-region"></div><div id="assessmentSchematicViewport-'+kind+'" class="w26-schematic-viewport"><div id="assessmentSchematic-'+kind+'"></div></div></div><aside id="assessmentDrawer-'+kind+'" class="w26-evidence-drawer" aria-live="polite"></aside></div>';
       target.insertAdjacentElement('beforebegin',canvas);
-      $('assessmentWeek-'+kind).addEventListener('change',event=>{survey.schematicWeek=event.target.value;renderAssessmentSchematics();});
+      $('assessmentWeek-'+kind).addEventListener('change',event=>{survey.schematicWeek=event.target.value;renderAssessmentSchematics();renderAllMatrices();});
+      $('assessmentSearch-'+kind)?.addEventListener('input',event=>{survey.reviewContext.search=event.target.value;renderAllMatrices();});
+      $('assessmentExceptions-'+kind)?.addEventListener('change',event=>{survey.reviewContext.exceptionsOnly=Boolean(event.target.checked);renderAllMatrices();});
       const details=document.createElement('details');details.className='w26-technical-evidence assessment-all-rows';details.innerHTML='<summary>All '+(kind==='fdv'?'monitor':'gauge')+' assessment rows</summary>';
       target.insertAdjacentElement('beforebegin',details);details.appendChild(target);
     }
@@ -834,7 +838,23 @@
 
     panel.addEventListener('click', event => {
       const node=event.target.closest('[data-survey-node],[data-survey-gauge]');
-      if(node){openAssessmentPopup(node.hasAttribute('data-survey-gauge')?'gauge-week':'monitor-week',node.dataset.surveyGauge||node.dataset.surveyNode);return;}
+      if(node){const kind=node.hasAttribute('data-survey-gauge')?'gauge-week':'monitor-week',name=node.dataset.surveyGauge||node.dataset.surveyNode;selectReviewWeek(kind,name,null,survey.schematicWeek);return;}
+      const matrixCell=event.target.closest('[data-matrix-cell]');
+      if(matrixCell){selectReviewWeek(matrixCell.dataset.weekKind,matrixCell.dataset.weekName,matrixCell.dataset.weekKey,matrixCell.dataset.weekEnding);return;}
+      const drawerTab=event.target.closest('[data-drawer-tab]');
+      if(drawerTab){survey.reviewContext.drawerTab=drawerTab.dataset.drawerTab;renderAllMatrices();return;}
+      const drawerClose=event.target.closest('[data-drawer-close]');
+      if(drawerClose){survey.reviewContext.name=null;survey.reviewContext.weekKey=null;renderAllMatrices();return;}
+      const exceptionStep=event.target.closest('[data-exception-step]');
+      if(exceptionStep){const kind=survey.reviewContext.kind||'monitor-week',queue=exceptionQueue(kind);if(!queue.length)return;let at=queue.findIndex(item=>item.name===survey.reviewContext.name&&item.key===survey.reviewContext.weekKey);at=(at+Number(exceptionStep.dataset.exceptionStep||1)+queue.length)%queue.length;const item=queue[at];selectReviewWeek(item.kind,item.name,item.key,item.week);return;}
+      const balanceCell=event.target.closest('[data-balance-matrix]');
+      if(balanceCell){survey.selectedBalanceKey=balanceCell.dataset.balanceMatrix;renderBalanceReview();return;}
+      const zoomButton=event.target.closest('[data-schematic-zoom]');
+      if(zoomButton){const suffix=zoomButton.dataset.schematicKind,delta=Number(zoomButton.dataset.schematicZoom||0);survey.reviewContext.zoom[suffix]=Math.min(1.8,Math.max(.6,Number(survey.reviewContext.zoom[suffix]||1)+delta*.15));renderAllMatrices();return;}
+      const fitButton=event.target.closest('[data-schematic-fit]');
+      if(fitButton){survey.reviewContext.zoom[fitButton.dataset.schematicKind]=1;renderAllMatrices();const viewport=$('assessmentSchematicViewport-'+fitButton.dataset.schematicKind);if(viewport){viewport.scrollLeft=0;viewport.scrollTop=0;}return;}
+      const focusButton=event.target.closest('[data-schematic-focus]');
+      if(focusButton){const suffix=focusButton.dataset.schematicKind,name=suffix==='fdv'?survey.selectedMonitor:survey.selectedGauge;if(!name)return;const viewport=$('assessmentSchematicViewport-'+suffix),selector=suffix==='fdv'?'[data-survey-node="'+CSS.escape(name)+'"]':'[data-survey-gauge="'+CSS.escape(name)+'"]';viewport?.querySelector(selector)?.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});return;}
       const weekEdit=event.target.closest('[data-week-edit]');
       if(weekEdit){const match=weekByKey(weekEdit.dataset.weekKind,weekEdit.dataset.weekEdit);if(match)survey.selectedWeeks[weekEdit.dataset.weekKind+':'+match.name]=weekEdit.dataset.weekEdit;renderMonitorDetail();renderGaugeDetail();const root=$(weekEdit.dataset.weekKind==='monitor-week'?'surveyMonitorDetail':'surveyGaugeDetail');root?.querySelector('.weekly-editor')?.scrollIntoView({block:'center',behavior:'smooth'});return;}
       const quick=event.target.closest('[data-week-note]');
@@ -1107,7 +1127,7 @@
       detail.innerHTML = '';
       return;
     }
-    table.innerHTML =
+    table.innerHTML = balanceMatrixHtml() +
       '<div class="table-wrap"><table class="data-table"><thead><tr><th>Week</th><th>Network path</th><th>Calculated</th><th>Reviewed</th><th>Calculated recommendation</th><th></th></tr></thead><tbody>'+
       rows.map(row => {
         const key = balanceRowKey(row);
@@ -1258,6 +1278,7 @@
       '</div>'+
       '<div class="w26-section-head"><div><h4>Engineering action register</h4><p>Exceptions only. Reviewed outcomes drive this register; all calculated evidence remains available underneath.</p></div></div>'+
       (actionRows ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Area</th><th>Subject</th><th>Severity</th><th>Action / rationale</th></tr></thead><tbody>'+actionRows+'</tbody></table></div>' : '<div class="w26-good-state">No Amber/Red monitor, rainfall or volume-balance exceptions in the current reported assessment.</div>')+
+      '<div class="w26-section-head"><div><h4>Weekly assurance matrix</h4><p>Reported monitor-week status; R marks an engineer review and ! marks a review that needs reconfirmation.</p></div></div>'+weekMatrixHtml('monitor-week',{readonly:true})+
       '<div class="w26-section-head"><div><h4>Weekly reviewer comments</h4><p>Each comment belongs to a specific monitor or gauge week.</p></div></div>'+weeklyReportTableHtml(true)+
       (commentRows ? '<div class="w26-section-head"><div><h4>Previous monitor-wide comments</h4><p>Retained from earlier workspaces.</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Monitor</th><th>Reported status</th><th>Comment</th><th>Author</th><th>Updated</th></tr></thead><tbody>'+commentRows+'</tbody></table></div>' : '');
     for(const head of [...root.children].filter(el=>el.classList.contains('w26-section-head'))){
@@ -1273,6 +1294,7 @@
     renderBalanceReview();
     renderMonthlyReview();
     renderAssessmentSchematics();
+    renderAllMatrices();
   }
 
   function monthlyReportHtml() {
@@ -1445,6 +1467,7 @@
         // the authoritative audit records from schema v5 onward.
         value.survey.engineer_reviews = JSON.parse(JSON.stringify(survey.reviews || {}));
         value.survey.monitor_comments = JSON.parse(JSON.stringify(survey.monitorComments || {}));
+        value.survey.review_context = JSON.parse(JSON.stringify(survey.reviewContext || {}));
         value.survey.review_schema_version = 5;
         return value;
       };
@@ -1468,6 +1491,10 @@
           ? JSON.parse(JSON.stringify(value.survey.comment_ledger))
           : migrateLegacyComments(legacyComments);
         rebuildCommentSnapshot();
+        survey.reviewContext = value?.survey?.review_context && typeof value.survey.review_context === 'object'
+          ? {...survey.reviewContext,...JSON.parse(JSON.stringify(value.survey.review_context))}
+          : survey.reviewContext;
+        survey.reviewContext.zoom = survey.reviewContext.zoom || {fdv:1,rain:1};
         survey.selectedWeeks = {};
         survey.selectedMonitor = null;
         survey.selectedGauge = null;
