@@ -1738,7 +1738,11 @@ def monitor_weekly_assessment(
                     len(dry_days)
                 ),
                 "excluded_samples": int(g["_excluded"].sum()),
-                "assessable_samples": int(assessable.sum()),
+                "assessable_samples": int(common_assessable.sum()),
+                "assessable_samples_by_channel": {
+                    quantity: int((~g[f"_excluded_{quantity}"].astype(bool)).sum())
+                    for quantity in channel_meta
+                },
                 "diagnostics": {
                     "correlation": correlation,
                     "event_linkage": linkage,
