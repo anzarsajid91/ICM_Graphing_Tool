@@ -52,6 +52,16 @@ def _load(path):
     return _CACHE[path]
 
 
+def _require_model_clock(parsed, label="Source"):
+    metadata = getattr(parsed, "metadata", {}) or {}
+    if metadata.get("time_basis") == "timezone-aware/unresolved":
+        raise ValueError(
+            f"{label} contains timezone-aware timestamps. Resolve the source to the "
+            "project/model clock before running engineering calculations."
+        )
+    return parsed
+
+
 def clear_cache():
     _CACHE.clear()
     _SERIES_CACHE.clear()
@@ -802,7 +812,9 @@ def _series_contract(path, column, unit_override=None):
     }
 
 
+
 def _scaled_dimensional_frame(path, column, *, unit_override=None, allowed_quantities=(), required_canonical_unit=None):
+    parsed = _require_model_clock(_load(path), label=f"Series {column!r}")
     contract = _series_contract(path, column, unit_override=unit_override)
     if allowed_quantities and contract["quantity"] not in set(allowed_quantities):
         raise ValueError(
@@ -814,10 +826,14 @@ def _scaled_dimensional_frame(path, column, *, unit_override=None, allowed_quant
             f"Dimensional calculation withheld: resolve {column!r} to {required_canonical_unit}. "
             f"Current unit is {contract['original_unit'] or 'unknown'}."
         )
-    frame = _load(path).frame.copy()
-    frame[column] = pd.to_numeric(frame[column], errors="coerce") * float(contract["scale_to_canonical"])
+    frame = parsed.frame.copy()
+    values = pd.to_numeric(frame[column], errors="coerce").to_numpy(dtype=float)
+    non_finite = ~np.isfinite(values)
+    values[non_finite] = np.nan
+    frame[column] = values * float(contract["scale_to_canonical"])
+    contract = dict(contract)
+    contract["non_finite_values"] = int(non_finite.sum())
     return frame, contract
-
 
 def _rain_support_gap_seconds(parsed):
     metadata = getattr(parsed, "metadata", {}) or {}
@@ -959,32 +975,73 @@ def rating_result(obs_path,model_path=None,depth_col="depth",flow_col="flow",mod
     return json.dumps(_jsonable(payload),ensure_ascii=False)
 
 
-def dwf_result(flow_path,flow_col,rain_path=None,rain_col="rainfall",dry_day_mm=1.0,baseline_days=28,min_dry_days=5,adp_hours=6.0):
-    flow=_load(flow_path).frame
-    rain_parsed=_load(rain_path) if rain_path else None
-    rain=rain_parsed.frame if rain_parsed is not None else None
-    metadata=getattr(rain_parsed,"metadata",{}) or {} if rain_parsed is not None else {}
-    interval=metadata.get("interval_min") if rain_parsed is not None else None
-    result=dry_weather_flow(
-        flow,flow_col,rain,rain_col,
+
+def dwf_result(
+    flow_path,
+    flow_col,
+    rain_path=None,
+    rain_col="rainfall",
+    dry_day_mm=1.0,
+    baseline_days=28,
+    min_dry_days=5,
+    adp_hours=6.0,
+    rainfall_semantics="intensity",
+    flow_max_gap_seconds=None,
+):
+    flow_parsed = _require_model_clock(_load(flow_path), label="Observed flow")
+    flow = flow_parsed.frame
+    rain_parsed = _require_model_clock(_load(rain_path), label="Rainfall") if rain_path else None
+    rain = rain_parsed.frame if rain_parsed is not None else None
+    metadata = (getattr(rain_parsed, "metadata", {}) or {}) if rain_parsed is not None else {}
+    interval = metadata.get("interval_min") if rain_parsed is not None else None
+    result = dry_weather_flow(
+        flow,
+        flow_col,
+        rain,
+        rain_col,
         dry_day_mm=float(dry_day_mm),
         baseline_days=int(baseline_days),
         min_dry_days=int(min_dry_days),
         adp_hours=float(adp_hours),
-        rain_semantics="intensity",
+        rain_semantics=rainfall_semantics,
         rain_interval_min=float(interval) if interval else None,
         rain_max_gap_seconds=_rain_support_gap_seconds(rain_parsed) if rain_parsed is not None else None,
+        flow_max_gap_seconds=flow_max_gap_seconds,
     )
-    return json.dumps(_jsonable(result),ensure_ascii=False)
+    return json.dumps(_jsonable(result), ensure_ascii=False)
 
-def event_response_result(obs_path,obs_col,model_path,model_col,events_json,baseline_hours=3.0,post_hours=6.0):
-    events=json.loads(events_json) if isinstance(events_json,str) else events_json
-    rows=event_response_summary(_load(obs_path).frame,_load(model_path).frame,events,obs_col,model_col,float(baseline_hours),float(post_hours))
-    return json.dumps(_jsonable({"rows":rows}),ensure_ascii=False)
 
+def event_response_result(
+    obs_path,
+    obs_col,
+    model_path,
+    model_col,
+    events_json,
+    baseline_hours=3.0,
+    post_hours=6.0,
+    observed_exclusions_json="[]",
+    model_exclusions_json="[]",
+    max_gap_seconds=3600.0,
+):
+    events = json.loads(events_json) if isinstance(events_json, str) else events_json
+    obs = _require_model_clock(_load(obs_path), label="Observed response").frame
+    model = _require_model_clock(_load(model_path), label="Model response").frame
+    rows = event_response_summary(
+        obs,
+        model,
+        events,
+        obs_col,
+        model_col,
+        float(baseline_hours),
+        float(post_hours),
+        observed_exclusions=_exclusions(observed_exclusions_json),
+        model_exclusions=_exclusions(model_exclusions_json),
+        max_gap_seconds=float(max_gap_seconds),
+    )
+    return json.dumps(_jsonable({"rows": rows}), ensure_ascii=False)
 
 def spill_result(path, column, threshold, exclusions_json="[]", max_gap_seconds=900.0, start=None, end=None):
-    frame = _load(path).frame
+    frame = _require_model_clock(_load(path), label="Spill series").frame
     result = spill_assessment(frame, column, float(threshold), start=_model_clock_timestamp(start), end=_model_clock_timestamp(end), max_gap_seconds=float(max_gap_seconds), exclusions=_exclusions(exclusions_json))
     payload = dict(result)
     payload["counting_windows"] = _records(result.get("counting_windows"))
