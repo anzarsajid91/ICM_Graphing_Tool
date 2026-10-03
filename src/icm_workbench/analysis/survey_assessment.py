@@ -1338,6 +1338,7 @@ def monitor_weekly_assessment(
     analysis_end: Any = None,
     exclusions: list[Any] | None = None,
     rain_exclusions: list[Any] | None = None,
+    channel_exclusions: dict[str, list[Any]] | None = None,
 ) -> dict[str, Any]:
     """Assess mapped FDV channels against mapped rainfall on a weekly basis."""
     if (
@@ -1351,6 +1352,10 @@ def monitor_weekly_assessment(
             "method": "monitor-weekly-v2",
         }
     hydraulic_exclusions = list(exclusions or [])
+    channel_exclusions = {
+        str(name): list(items or [])
+        for name, items in (channel_exclusions or {}).items()
+    }
     rainfall_exclusions = (
         hydraulic_exclusions
         if rain_exclusions is None
@@ -1401,9 +1406,32 @@ def monitor_weekly_assessment(
         }
 
     h["_excluded"] = _exclusion_mask(h["timestamp"], hydraulic_exclusions)
-    if bool(h["_excluded"].any()):
-        for col in use_cols:
-            h.loc[h["_excluded"], col] = np.nan
+
+    channel_meta = {}
+    if depth_col:
+        channel_meta["depth"] = (
+            depth_col,
+            DEPTH_ACTIVE_EPS_M,
+        )
+    if velocity_col:
+        channel_meta["velocity"] = (
+            velocity_col,
+            VELOCITY_ACTIVE_EPS_MS,
+        )
+    if flow_col:
+        channel_meta["flow"] = (
+            flow_col,
+            FLOW_ACTIVE_EPS_M3S,
+        )
+
+    for quantity, (col, _) in channel_meta.items():
+        specific = channel_exclusions.get(quantity, [])
+        mask = h["_excluded"].copy()
+        if specific:
+            mask |= _exclusion_mask(h["timestamp"], specific)
+        h[f"_excluded_{quantity}"] = mask
+        if bool(mask.any()):
+            h.loc[mask, col] = np.nan
 
     dt_minutes = _median_step_minutes(h["timestamp"])
     if not np.isfinite(dt_minutes) or dt_minutes <= 0:
@@ -1428,23 +1456,6 @@ def monitor_weekly_assessment(
         rain_col,
         rain_interval_min,
     )
-
-    channel_meta = {}
-    if depth_col:
-        channel_meta["depth"] = (
-            depth_col,
-            DEPTH_ACTIVE_EPS_M,
-        )
-    if velocity_col:
-        channel_meta["velocity"] = (
-            velocity_col,
-            VELOCITY_ACTIVE_EPS_MS,
-        )
-    if flow_col:
-        channel_meta["flow"] = (
-            flow_col,
-            FLOW_ACTIVE_EPS_M3S,
-        )
 
     for quantity, (col, _) in channel_meta.items():
         if quantity in {"depth", "velocity"}:
@@ -1508,10 +1519,10 @@ def monitor_weekly_assessment(
             continue
         if analysis_end is not None and start > pd.Timestamp(analysis_end):
             continue
-        assessable = ~g["_excluded"].astype(bool)
+        common_assessable = ~g["_excluded"].astype(bool)
         rain_total = float(
             pd.to_numeric(
-                g.loc[assessable, "_rain_increment"], errors="coerce"
+                g.loc[common_assessable, "_rain_increment"], errors="coerce"
             )
             .fillna(0.0)
             .sum()
@@ -1537,8 +1548,9 @@ def monitor_weekly_assessment(
 
         for quantity, (col, active_eps) in channel_meta.items():
             raw = pd.to_numeric(g[col], errors="coerce")
-            raw_assessable = raw.where(assessable)
-            assessable_count = int(assessable.sum())
+            quantity_assessable = ~g[f"_excluded_{quantity}"].astype(bool)
+            raw_assessable = raw.where(quantity_assessable)
+            assessable_count = int(quantity_assessable.sum())
             coverage[quantity] = (
                 float(raw_assessable.notna().sum() / assessable_count)
                 if assessable_count
@@ -1562,7 +1574,7 @@ def monitor_weekly_assessment(
                     residual_col in g.columns
                     and assessable_count > 0
                     and float(
-                        g.loc[assessable, residual_col].notna().sum()
+                        g.loc[quantity_assessable, residual_col].notna().sum()
                         / assessable_count
                     )
                     > 0.60
@@ -1584,10 +1596,10 @@ def monitor_weekly_assessment(
                 use_residual = False
                 methods[quantity] = "raw"
 
-            response_assessable = pd.to_numeric(response, errors="coerce").where(assessable)
+            response_assessable = pd.to_numeric(response, errors="coerce").where(quantity_assessable)
             rain_assessable = pd.to_numeric(
                 g["_rain_increment"], errors="coerce"
-            ).where(assessable)
+            ).where(quantity_assessable)
             correlation[quantity] = _correlation_assessment(
                 rain_assessable,
                 response_assessable,
