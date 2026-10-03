@@ -1512,6 +1512,7 @@
     version:5,
     weekKey,reviewedWeekState,applyWeeklyReview,weekRows,
     reviewLedgerEvents,rebuildReviewSnapshot,
+    weekMatrixHtml,exceptionQueue,selectReviewWeek,drawerContent,balanceMatrixHtml,renderAllMatrices,
     calculatedMonitorStatus,
     reviewedMonitorState,
     reviewedGaugeState,
