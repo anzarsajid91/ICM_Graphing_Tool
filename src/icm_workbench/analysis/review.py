@@ -191,6 +191,8 @@ def dry_weather_flow(
     rain_interval_min=None,
     rain_max_gap_seconds=None,
     flow_max_gap_seconds=None,
+    flow_exclusions=(),
+    rain_exclusions=(),
 ):
     """Validity-aware screening DWF baseline.
 
@@ -237,6 +239,7 @@ def dry_weather_flow(
         semantics=rain_semantics,
         declared_interval_minutes=rain_interval_min,
         max_gap_seconds=rain_max_gap_seconds,
+        exclusions=rain_exclusions,
     )
     if daily.empty:
         return {
@@ -272,7 +275,8 @@ def dry_weather_flow(
 
         rain_coverage = float(rain_row.coverage_fraction or 0.0)
         rain_depth = float(rain_row.depth_mm)
-        if rain_row.status != "complete" or rain_coverage < 0.999999:
+        rain_excluded = float(getattr(rain_row, "excluded_seconds", 0.0) or 0.0)
+        if rain_row.status != "complete" or rain_coverage < 0.999999 or rain_excluded > 1e-6:
             candidate_days.append({
                 "day": day,
                 "status": "unknown",
@@ -302,9 +306,11 @@ def dry_weather_flow(
             day,
             day_end,
             max_gap_seconds=flow_gap,
+            exclusions=flow_exclusions,
         )
         flow_coverage = flow_support.get("coverage_fraction")
-        if flow_support.get("status") != "complete" or flow_coverage is None or flow_coverage < 0.999999:
+        flow_excluded = float(flow_support.get("excluded_seconds", 0.0) or 0.0)
+        if flow_support.get("status") != "complete" or flow_coverage is None or flow_coverage < 0.999999 or flow_excluded > 1e-6:
             candidate_days.append({
                 "day": day,
                 "status": "insufficient-flow",
