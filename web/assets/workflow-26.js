@@ -1370,9 +1370,13 @@
       workspaceObject = function(...args) {
         const value = coreWorkspaceObject(...args);
         value.survey = value.survey || {};
+        value.survey.review_ledger = JSON.parse(JSON.stringify(survey.reviewLedger || []));
+        value.survey.comment_ledger = JSON.parse(JSON.stringify(survey.commentLedger || []));
+        // Retain current snapshots for backward readers; the ledgers above are
+        // the authoritative audit records from schema v5 onward.
         value.survey.engineer_reviews = JSON.parse(JSON.stringify(survey.reviews || {}));
         value.survey.monitor_comments = JSON.parse(JSON.stringify(survey.monitorComments || {}));
-        value.survey.review_schema_version = 4;
+        value.survey.review_schema_version = 5;
         return value;
       };
     }
@@ -1380,12 +1384,21 @@
       const coreApplyWorkspace = applyWorkspace;
       applyWorkspace = async function(value) {
         const result = await coreApplyWorkspace(value);
-        survey.reviews = value?.survey?.engineer_reviews && typeof value.survey.engineer_reviews === 'object'
+        const legacyReviews = value?.survey?.engineer_reviews && typeof value.survey.engineer_reviews === 'object'
           ? JSON.parse(JSON.stringify(value.survey.engineer_reviews))
           : {};
-        survey.monitorComments = value?.survey?.monitor_comments && typeof value.survey.monitor_comments === 'object'
+        survey.reviewLedger = Array.isArray(value?.survey?.review_ledger)
+          ? JSON.parse(JSON.stringify(value.survey.review_ledger))
+          : migrateLegacyReviews(legacyReviews);
+        rebuildReviewSnapshot();
+
+        const legacyComments = value?.survey?.monitor_comments && typeof value.survey.monitor_comments === 'object'
           ? JSON.parse(JSON.stringify(value.survey.monitor_comments))
           : {};
+        survey.commentLedger = Array.isArray(value?.survey?.comment_ledger)
+          ? JSON.parse(JSON.stringify(value.survey.comment_ledger))
+          : migrateLegacyComments(legacyComments);
+        rebuildCommentSnapshot();
         survey.selectedWeeks = {};
         survey.selectedMonitor = null;
         survey.selectedGauge = null;
@@ -1400,8 +1413,9 @@
   installPersistence();
   wb.workflow26ReportHtml = reportHtml;
   wb.workflow26 = {
-    version:4,
+    version:5,
     weekKey,reviewedWeekState,applyWeeklyReview,weekRows,
+    reviewLedgerEvents,rebuildReviewSnapshot,
     calculatedMonitorStatus,
     reviewedMonitorState,
     reviewedGaugeState,
