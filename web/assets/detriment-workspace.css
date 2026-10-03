@@ -19,3 +19,4 @@
 .dt-selection-status{border:1px solid #c7dfe3;background:#edf5f6;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12px;overflow-wrap:anywhere}.dt-selection-status p{font-size:11px;line-height:1.6;color:#516e7b;margin:8px 0 0}.dt-selection-status details{margin-top:8px}
 
 .dt-field [aria-invalid="true"]{border-color:#a02d3e;outline:2px solid #a02d3e;outline-offset:2px}
+.dt-field-error{display:block;margin-top:8px;color:#a02d3e;font-size:11px}

@@ -136,6 +136,8 @@ function invalidate(message='Inputs changed. Recalculate to refresh the evidence
 function bindForm(){
   $('dtForm').querySelectorAll('[data-key]').forEach(el=>el.addEventListener(el.type==='checkbox'?'change':el.tagName==='SELECT'?'change':'input',()=>{
     const key=el.dataset.key,value=el.type==='checkbox'?el.checked:el.value;setKey(key,value);el.removeAttribute('aria-invalid');
+    const error=$('dtError-'+key.replaceAll('.','-'));
+    if(error){el.setAttribute('aria-describedby',(el.getAttribute('aria-describedby')||'').split(' ').filter(id=>id!==error.id).join(' '));error.remove();}
     if(key.endsWith('.id')){const slot=key.split('.')[0],item=state.files.get(value),meta=item?.parsed?.metadata,mappingKind=slot==='ground'?'ground':slot.startsWith('detail')?'spill':kind;config()[slot].mapping={...(meta?.mapping_by_kind?.[mappingKind]||meta?.mapping_suggestions||{})};config()[slot].reference=item?{sha256:item.hash,name:item.displayName}:null;if(kind==='level'&&!config().datum&&meta?.datum)config().datum=meta.datum.toUpperCase();}
     invalidate();if(key.endsWith('.id')||key==='counting_mode'||key.endsWith('.mapping.attribute'))renderForm();
   }));
@@ -198,7 +200,13 @@ function drawEvidenceCharts(row){
 function sourceConfig(slot){const c=config()[slot],item=state.files.get(c.id);if(!item){if(slot==='a'||slot==='b')throw Error('Select both reports from Data Sources.');return null;}return {...c,path:item.virtualPath,name:item.displayName,sha256:item.hash,report_kind:item.parsed.metadata.report_kind,datum:config().datum,scope:config().scope.trim(),period_start:config().period_start,period_end:config().period_end,template:config().template.trim()};}
 function setupError(key,message){
   const field=$('dtForm').querySelector('[data-key="'+key+'"]');
-  if(field){field.setAttribute('aria-invalid','true');field.focus({preventScroll:true});field.scrollIntoView({block:'center',inline:'nearest'});}
+  if(field){
+    const id='dtError-'+key.replaceAll('.','-');let error=$(id);
+    if(!error){error=document.createElement('span');error.id=id;error.className='dt-field-error';error.setAttribute('role','alert');if(field.type==='checkbox')field.parentElement.after(error);else field.parentElement.append(error);}
+    error.textContent=message;field.setAttribute('aria-invalid','true');
+    field.setAttribute('aria-describedby',[...new Set([...(field.getAttribute('aria-describedby')||'').split(' ').filter(Boolean),id])].join(' '));
+    field.focus({preventScroll:true});error.scrollIntoView({block:'center',inline:'nearest'});
+  }
   throw Error(message);
 }
 function assessmentErrorMessage(error){
