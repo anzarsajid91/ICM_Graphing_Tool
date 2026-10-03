@@ -3,7 +3,34 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from icm_workbench.analysis.exclusions import normalise_exclusions
 from icm_workbench.analysis.validity import validity_summary
+
+
+def _split_support_interval(start, end, exclusions):
+    """Split one support interval into excluded and retained pieces."""
+    start, end = pd.Timestamp(start), pd.Timestamp(end)
+    boundaries = {start, end}
+    normalised = normalise_exclusions(exclusions)
+    for exc in normalised:
+        a = max(start, pd.Timestamp(exc.start))
+        b = min(end, pd.Timestamp(exc.end))
+        if b > a:
+            boundaries.add(a)
+            boundaries.add(b)
+    ordered = sorted(boundaries)
+    pieces = []
+    for a, b in zip(ordered[:-1], ordered[1:]):
+        if b <= a:
+            continue
+        midpoint = a + (b - a) / 2
+        excluded = any(
+            pd.Timestamp(exc.start) <= midpoint < pd.Timestamp(exc.end)
+            for exc in normalised
+        )
+        pieces.append((a, b, excluded))
+    return pieces
+
 
 
 def rainfall_support_segments(
@@ -13,13 +40,14 @@ def rainfall_support_segments(
     semantics: str = "intensity",
     declared_interval_minutes: float | None = None,
     max_gap_seconds: float | None = None,
+    exclusions=(),
 ) -> pd.DataFrame:
-    """Return explicit rainfall support intervals.
+    """Return explicit, exclusion-aware rainfall support intervals.
 
-    Intensity values are treated as interval-average rates in mm/h and are
-    integrated over each actual timestamp interval. Incremental-depth values
-    are treated as interval depths in mm. The final intensity sample is only
-    assigned support when a declared regular interval is supplied.
+    Intensity values are interval-average rates in mm/h. Incremental-depth
+    values are interval depths in mm and are apportioned by elapsed support when
+    an exclusion splits the source interval. Excluded time remains represented
+    explicitly so valid + missing + unknown + excluded support is conserved.
     """
     columns = [
         "start",
@@ -63,38 +91,58 @@ def rainfall_support_segments(
         else:
             continue
 
-        support = float((end - start).total_seconds())
-        if support <= 0:
+        full_support = float((end - start).total_seconds())
+        if full_support <= 0:
             continue
 
-        value = row[value_col]
-        status = "valid"
-        valid = bool(pd.notna(value))
-        if max_gap_seconds is not None and support > float(max_gap_seconds):
-            valid = False
-            status = "unknown"
-        elif not valid:
-            status = "missing"
+        raw_value = row[value_col]
+        finite = bool(pd.notna(raw_value) and np.isfinite(float(raw_value)))
+        base_status = "valid"
+        base_valid = finite
+        if max_gap_seconds is not None and full_support > float(max_gap_seconds):
+            base_valid = False
+            base_status = "unknown"
+        elif not finite:
+            base_status = "missing"
 
-        depth = np.nan
-        if valid:
-            v = max(float(value), 0.0)
-            if semantics == "intensity":
-                depth = v * support / 3600.0
-            else:
-                depth = v
+        for piece_start, piece_end, excluded in _split_support_interval(
+            start, end, exclusions
+        ):
+            support = float((piece_end - piece_start).total_seconds())
+            if support <= 0:
+                continue
+            if excluded:
+                rows.append(
+                    {
+                        "start": piece_start,
+                        "end": piece_end,
+                        "value": None if not finite else float(raw_value),
+                        "support_seconds": support,
+                        "depth_mm": np.nan,
+                        "valid": False,
+                        "status": "excluded",
+                    }
+                )
+                continue
 
-        rows.append(
-            {
-                "start": start,
-                "end": end,
-                "value": None if pd.isna(value) else float(value),
-                "support_seconds": support,
-                "depth_mm": depth,
-                "valid": valid,
-                "status": status,
-            }
-        )
+            depth = np.nan
+            if base_valid:
+                value = max(float(raw_value), 0.0)
+                if semantics == "intensity":
+                    depth = value * support / 3600.0
+                else:
+                    depth = value * support / full_support
+            rows.append(
+                {
+                    "start": piece_start,
+                    "end": piece_end,
+                    "value": None if not finite else float(raw_value),
+                    "support_seconds": support,
+                    "depth_mm": depth,
+                    "valid": base_valid,
+                    "status": base_status,
+                }
+            )
     return pd.DataFrame(rows, columns=columns)
 
 
@@ -105,14 +153,16 @@ def rainfall_accumulation(
     semantics: str = "intensity",
     declared_interval_minutes: float | None = None,
     max_gap_seconds: float | None = None,
+    exclusions=(),
 ) -> dict:
-    """Accumulate rainfall with explicit support and the common validity model."""
+    """Accumulate rainfall with explicit support and exclusion accounting."""
     seg = rainfall_support_segments(
         rain,
         value_col,
         semantics=semantics,
         declared_interval_minutes=declared_interval_minutes,
         max_gap_seconds=max_gap_seconds,
+        exclusions=exclusions,
     )
     if seg.empty:
         validity = validity_summary(requested_seconds=0.0, valid_seconds=0.0)
@@ -121,6 +171,7 @@ def rainfall_accumulation(
             "valid_seconds": 0.0,
             "unknown_seconds": 0.0,
             "missing_seconds": 0.0,
+            "excluded_seconds": 0.0,
             "requested_seconds": 0.0,
             "coverage_fraction": None,
             "status": "unavailable",
@@ -134,11 +185,13 @@ def rainfall_accumulation(
     valid = float(seg.loc[seg["valid"], "support_seconds"].sum())
     missing = float(seg.loc[seg["status"].eq("missing"), "support_seconds"].sum())
     explicit_unknown = float(seg.loc[seg["status"].eq("unknown"), "support_seconds"].sum())
+    excluded = float(seg.loc[seg["status"].eq("excluded"), "support_seconds"].sum())
     total = float(seg.loc[seg["valid"], "depth_mm"].sum())
 
     validity = validity_summary(
         requested_seconds=requested,
         valid_seconds=valid,
+        excluded_seconds=excluded,
         missing_seconds=missing,
         unknown_seconds=explicit_unknown,
         uncovered_seconds=0.0,
@@ -146,9 +199,9 @@ def rainfall_accumulation(
     return {
         "total_depth_mm": total if valid > 0 else None,
         "valid_seconds": valid,
-        # Preserve the legacy aggregate while exposing the detailed state split.
-        "unknown_seconds": max(0.0, requested - valid),
+        "unknown_seconds": float(validity["unknown_seconds"]),
         "missing_seconds": missing,
+        "excluded_seconds": excluded,
         "requested_seconds": requested,
         "coverage_fraction": validity["coverage_fraction"],
         "status": validity["calculation_status"],
@@ -166,6 +219,7 @@ def daily_rainfall_support(
     semantics: str = "intensity",
     declared_interval_minutes: float | None = None,
     max_gap_seconds: float | None = None,
+    exclusions=(),
 ) -> pd.DataFrame:
     """Split rainfall support at midnight and return daily depth/coverage."""
     seg = rainfall_support_segments(
@@ -174,6 +228,7 @@ def daily_rainfall_support(
         semantics=semantics,
         declared_interval_minutes=declared_interval_minutes,
         max_gap_seconds=max_gap_seconds,
+        exclusions=exclusions,
     )
     columns = [
         "day",
@@ -181,6 +236,7 @@ def daily_rainfall_support(
         "valid_seconds",
         "missing_seconds",
         "unknown_seconds",
+        "excluded_seconds",
         "coverage_fraction",
         "status",
     ]
@@ -203,18 +259,16 @@ def daily_rainfall_support(
                     "valid_seconds": 0.0,
                     "missing_seconds": 0.0,
                     "unknown_seconds": 0.0,
+                    "excluded_seconds": 0.0,
                 },
             )
             if bool(row.valid):
                 rec["valid_seconds"] += seconds
-                if semantics == "intensity":
-                    rec["depth_mm"] += max(float(row.value), 0.0) * seconds / 3600.0
-                else:
-                    rec["depth_mm"] += (
-                        float(row.depth_mm) * seconds / float(row.support_seconds)
-                    )
+                rec["depth_mm"] += float(row.depth_mm) * seconds / float(row.support_seconds)
             elif row.status == "missing":
                 rec["missing_seconds"] += seconds
+            elif row.status == "excluded":
+                rec["excluded_seconds"] += seconds
             else:
                 rec["unknown_seconds"] += seconds
             cursor = part_end
@@ -226,11 +280,13 @@ def daily_rainfall_support(
             rec["valid_seconds"]
             + rec["missing_seconds"]
             + rec["unknown_seconds"]
+            + rec["excluded_seconds"]
         )
         uncovered = max(0.0, 86400.0 - represented)
         validity = validity_summary(
             requested_seconds=86400.0,
             valid_seconds=rec["valid_seconds"],
+            excluded_seconds=rec["excluded_seconds"],
             missing_seconds=rec["missing_seconds"],
             unknown_seconds=rec["unknown_seconds"],
             uncovered_seconds=uncovered,
@@ -242,12 +298,12 @@ def daily_rainfall_support(
                 "valid_seconds": float(rec["valid_seconds"]),
                 "missing_seconds": float(rec["missing_seconds"]),
                 "unknown_seconds": float(validity["unknown_seconds"]),
+                "excluded_seconds": float(rec["excluded_seconds"]),
                 "coverage_fraction": validity["coverage_fraction"],
                 "status": validity["calculation_status"],
             }
         )
     return pd.DataFrame(rows, columns=columns)
-
 
 def multi_gauge_rainfall_assessment(
     gauges: dict,
