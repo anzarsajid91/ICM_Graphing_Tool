@@ -941,9 +941,14 @@ def fsat_event_response_assessment(
     end: Any = None,
     exclusions: list[Any] | None = None,
     rain_exclusions: list[Any] | None = None,
+    channel_exclusions: dict[str, list[Any]] | None = None,
 ) -> dict[str, Any]:
     """Port FSAT Event Response diameter gates and derived criteria."""
     hydraulic_exclusions = list(exclusions or [])
+    channel_exclusions = {
+        str(name): list(items or [])
+        for name, items in (channel_exclusions or {}).items()
+    }
     rainfall_exclusions = (
         hydraulic_exclusions
         if rain_exclusions is None
@@ -965,13 +970,16 @@ def fsat_event_response_assessment(
     rain_increment = rain_series * interval / 60.0
 
     depth = _mask_exclusions_series(
-        _indexed_series(hydraulic, depth_col), hydraulic_exclusions
+        _indexed_series(hydraulic, depth_col),
+        [*hydraulic_exclusions, *channel_exclusions.get("depth", [])],
     )
     velocity = _mask_exclusions_series(
-        _indexed_series(hydraulic, velocity_col), hydraulic_exclusions
+        _indexed_series(hydraulic, velocity_col),
+        [*hydraulic_exclusions, *channel_exclusions.get("velocity", [])],
     )
     flow = _mask_exclusions_series(
-        _indexed_series(hydraulic, flow_col), hydraulic_exclusions
+        _indexed_series(hydraulic, flow_col),
+        [*hydraulic_exclusions, *channel_exclusions.get("flow", [])],
     )
     dt_candidates = []
     for series in (depth, velocity, flow):
