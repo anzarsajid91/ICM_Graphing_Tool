@@ -1,0 +1,39 @@
+{
+  "programme": "Hydra Bench audit remediation",
+  "baseline_main_sha": "8031b8a37fdb04a3bdc4c4eac17b2cffe6301288",
+  "baseline_pr": 55,
+  "programme_start": "2026-10-04",
+  "runtime_architecture": [
+    "HTML/CSS/JavaScript UI",
+    "Web Worker",
+    "Pyodide",
+    "Python authoritative engineering core",
+    "Plotly"
+  ],
+  "architecture_freeze": {
+    "rust": false,
+    "java": false,
+    "go": false,
+    "typescript_rewrite": false,
+    "frontend_framework_migration": false,
+    "backend": false,
+    "database": false,
+    "replace_pyodide": false,
+    "duplicate_calculation_engine": false
+  },
+  "known_issue_characterization": [
+    "A-01",
+    "A-02",
+    "A-03",
+    "A-04",
+    "A-05",
+    "A-06",
+    "A-07"
+  ],
+  "planned_pull_requests": 8,
+  "notes": [
+    "Known-issue characterization tests are expected xfails in PR 1.",
+    "PR 2 must promote each A-01 to A-07 characterization to a normal passing regression as the corresponding defect is fixed.",
+    "The production baseline reported 220 Python tests plus browser/JavaScript acceptance in PR 55; current CI remains authoritative for exact counts."
+  ]
+}
