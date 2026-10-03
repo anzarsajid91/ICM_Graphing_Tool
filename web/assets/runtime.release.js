@@ -1799,8 +1799,19 @@ function exclusionPayload(strict=true,role=null,key=null){
 }
 function addExclusionRow(value={}){state.exclusions.push({id:crypto.randomUUID(),start:value.start||'',end:value.end||'',reason:'',enabled:true,scope:'both',...value});renderExclusions();}
 function renderExclusions(){
-  const scopes=[['both','Observed + models'],['observed','Observed / EDM'],['model','All mapped models'],['rainfall','Rainfall'],...state.mapping.models.map(key=>{const m=mappingObject(key);return [key,seriesLabel(m.item,m.col)];})];
-  $('exclusionRows').innerHTML=state.exclusions.length?state.exclusions.map(e=>`<div class="ex-row" data-id="${esc(e.id)}"><label>Enabled<input type="checkbox" data-field="enabled" ${e.enabled!==false?'checked':''}></label><label>Start<input type="datetime-local" step="1" data-field="start" value="${esc(modelClock(e.start))}"></label><label>End<input type="datetime-local" step="1" data-field="end" value="${esc(modelClock(e.end))}"></label><label>Scope<select data-field="scope">${scopes.map(([v,n])=>`<option value="${esc(v)}" ${(e.scope||'both')===v?'selected':''}>${esc(n)}</option>`).join('')}</select></label><label>Reason<input type="text" data-field="reason" value="${esc(e.reason)}"></label><button class="btn quiet remove-ex" data-id="${esc(e.id)}">Remove</button></div>`).join(''):'<div class="pool-summary">No exclusion periods.</div>';
+  const surveyRecords=window.__ICM_WORKBENCH__?.survey?.association?.records||[];
+  const surveyScopes=[];
+  const monitorNames=[...new Set(surveyRecords.map(row=>String(row.monitor||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  for(const monitor of monitorNames){
+    surveyScopes.push(['survey:monitor:'+monitor+':all','Survey · '+monitor+' · all hydraulic']);
+    surveyScopes.push(['survey:monitor:'+monitor+':flow','Survey · '+monitor+' · flow']);
+    surveyScopes.push(['survey:monitor:'+monitor+':depth','Survey · '+monitor+' · depth']);
+    surveyScopes.push(['survey:monitor:'+monitor+':velocity','Survey · '+monitor+' · velocity']);
+  }
+  const gaugeNames=[...new Set(surveyRecords.map(row=>String(row.rain_gauge||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  for(const gauge of gaugeNames)surveyScopes.push(['survey:gauge:'+gauge+':rainfall','Survey · '+gauge+' · rainfall']);
+  const scopes=[['both','Observed + models'],['observed','Observed / EDM'],['model','All mapped models'],['rainfall','Rainfall'],...surveyScopes,...state.mapping.models.map(key=>{const m=mappingObject(key);return [key,seriesLabel(m.item,m.col)];})];
+  $('exclusionRows').innerHTML=state.exclusions.length?state.exclusions.map(e=>`<div class="ex-row" data-id="${esc(e.id)}"><label>Enabled<input type="checkbox" data-field="enabled" ${e.enabled!==false?'checked':''}></label><label>Start<input type="datetime-local" step="1" data-field="start" value="${esc(modelClock(e.start))}"></label><label>End<input type="datetime-local" step="1" data-field="end" value="${esc(modelClock(e.end))}"></label><label>Scope<select data-field="scope">${([...(scopes),...(!scopes.some(([v])=>v===(e.scope||'both'))?[[(e.scope||'both'),'Saved survey scope']]:[])]).map(([v,n])=>`<option value="${esc(v)}" ${(e.scope||'both')===v?'selected':''}>${esc(n)}</option>`).join('')}</select></label><label>Reason<input type="text" data-field="reason" value="${esc(e.reason)}"></label><button class="btn quiet remove-ex" data-id="${esc(e.id)}">Remove</button></div>`).join(''):'<div class="pool-summary">No exclusion periods.</div>';
   document.querySelectorAll('.ex-row input,.ex-row select').forEach(inp=>inp.addEventListener('change',()=>{const e=state.exclusions.find(x=>x.id===inp.closest('.ex-row').dataset.id);if(e){state.exclusionHistory??=[];state.exclusionHistory.push({...e,changed_at:new Date().toISOString()});e[inp.dataset.field]=inp.type==='checkbox'?inp.checked:inp.value;}try{exclusionPayload(true);}catch{return;}void drawTimeChart().catch(err=>showError('mappingStatus',err?.message||err));}));
   document.querySelectorAll('.remove-ex').forEach(b=>b.addEventListener('click',()=>{state.deletedExclusions??=[];state.deletedExclusions.push(state.exclusions.find(x=>x.id===b.dataset.id));state.exclusions=state.exclusions.filter(x=>x.id!==b.dataset.id);renderExclusions();void drawTimeChart();}));
 }
