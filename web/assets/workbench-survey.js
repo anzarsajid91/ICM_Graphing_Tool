@@ -465,11 +465,13 @@
       const identity = token(gauge);
       if (seen.has(identity)) continue;
       seen.add(identity);
+      const column=(match.item.parsed && match.item.parsed.columns || [])[0] || 'rainfall';
       specs.push({
         name: gauge,
         gauge,
         path: match.item.virtualPath,
-        column: (match.item.parsed && match.item.parsed.columns || [])[0] || 'rainfall',
+        column,
+        rainfall_semantics: wb.rainfallSemanticsFor?.(match.item,column) || match.item?.parsed?.metadata?.rainfall_semantics || 'unresolved',
         display_name: match.item.displayName,
         match_status: match.status,
         source_fingerprint: rainSourceFingerprint(match.item),
