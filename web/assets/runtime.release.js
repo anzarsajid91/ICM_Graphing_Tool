@@ -540,7 +540,11 @@ async function bootAuthoritativeEngine(){
   }
 }
 function ensureEngineBoot(){
-  if(!engineBootPromise)engineBootPromise=bootAuthoritativeEngine();
+  if(!engineBootPromise){
+    diagnostic.status='booting';
+    setEngineStatus('Initialising advanced analysis…','booting');
+    engineBootPromise=bootAuthoritativeEngine();
+  }
   return engineBootPromise;
 }
 let engineRecoveryPromise=null;
@@ -2739,5 +2743,24 @@ function wireEvents(){
   });
   $('downloadWorkspaceBtn').addEventListener('click',()=>guarded('workspaceStatus',downloadWorkspace));$('loadWorkspaceBtn').addEventListener('click',()=>$('workspaceInput').click());$('workspaceInput').addEventListener('change',e=>e.target.files[0]&&guarded('workspaceStatus',()=>loadWorkspaceFile(e.target.files[0])));eventGuard('saveNamedWorkspaceBtn','workspaceStatus',saveNamedWorkspace);eventGuard('loadNamedWorkspaceBtn','workspaceStatus',loadNamedWorkspace);eventGuard('downloadReportBtn','workspaceStatus',downloadReport);eventGuard('downloadFourPeriodBtn','workspaceStatus',downloadFourPeriod);$('downloadManifestBtn')?.addEventListener('click',()=>guarded('workspaceStatus',downloadManifest));document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn)));
 }
-async function start(){window.ICMProjectRegistry?.mount();wireEvents();renderPool();renderSeriesOptions();renderExclusions();renderNamedWorkspaces();criteriaModeChanged();setEngineStatus('Initialising advanced analysis…','booting');void ensureEngineBoot().catch(()=>{});}
+function isIOSWebKitRuntime(){
+  const ua=String(navigator.userAgent||'');
+  return /iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&Number(navigator.maxTouchPoints||0)>1);
+}
+async function start(){
+  window.ICMProjectRegistry?.mount();
+  wireEvents();
+  renderPool();
+  renderSeriesOptions();
+  renderExclusions();
+  renderNamedWorkspaces();
+  criteriaModeChanged();
+  if(isIOSWebKitRuntime()){
+    diagnostic.status='idle';
+    diagnostic.mobileDeferredEngine=true;
+    setEngineStatus('Hydra Bench ready · Python starts when data is loaded','ready');
+    return;
+  }
+  void ensureEngineBoot().catch(()=>{});
+}
 start();
