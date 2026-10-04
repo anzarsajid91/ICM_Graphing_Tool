@@ -6,7 +6,9 @@
   if (!survey) return;
 
   survey.reviews = survey.reviews && typeof survey.reviews === 'object' ? survey.reviews : {};
+  survey.reviewLedger = Array.isArray(survey.reviewLedger) ? survey.reviewLedger : [];
   survey.monitorComments = survey.monitorComments && typeof survey.monitorComments === 'object' ? survey.monitorComments : {};
+  survey.commentLedger = Array.isArray(survey.commentLedger) ? survey.commentLedger : [];
   survey.selectedMonitor = survey.selectedMonitor || null;
   survey.selectedGauge = survey.selectedGauge || null;
   survey.selectedBalanceKey = survey.selectedBalanceKey || null;
@@ -24,6 +26,7 @@
   const RANK = {Grey:0, Green:1, Amber:2, Red:3};
   const VALID_RAG = new Set(Object.keys(RANK));
   const nowIso = () => new Date().toISOString();
+  const auditId = () => globalThis.crypto?.randomUUID?.() || ('audit-'+Date.now()+'-'+Math.random().toString(36).slice(2));
 
   function normaliseRag(value) {
     const text = String(value || 'Grey').trim();
@@ -72,20 +75,21 @@
     if(status!=='auto'&&!VALID_RAG.has(status))throw new Error('Select a valid weekly rating.');
     if(!String(reviewer||'').trim())throw new Error('Enter your name or initials for this weekly review.');
     const rating=status==='auto'?normaliseRag(match.row.rag):status;
-    const previous=reviewFor(kind,key);
-    const record=applyReview(kind,key,match.row.rag,rating,comment,reviewer);
-    record.history=previous?[...(previous.history||[]),{...previous,history:undefined}]:[];
-    record.use_calculated=status==='auto';record.monitor_or_gauge=name;
-    record.start=String(match.row.start||'');record.end=String(match.row.end||'');record.week_ending=String(match.row.week_ending||'');
-    record.method='weekly-engineer-review-v1';
-    renderAll();return record;
+    return applyReview(kind,key,match.row.rag,rating,comment,reviewer,{
+      use_calculated:status==='auto',
+      monitor_or_gauge:name,
+      start:String(match.row.start||''),
+      end:String(match.row.end||''),
+      week_ending:String(match.row.week_ending||''),
+      method:'weekly-engineer-review-v2',
+    });
   }
   function scalarEvidence(row){
     return '<dl class="weekly-evidence">'+Object.entries(row||{}).filter(([k,v])=>v!=null&&typeof v!=='object'&&!['method','monitor','gauge'].includes(k)).map(([k,v])=>'<dt>'+esc(k.replaceAll('_',' '))+'</dt><dd>'+esc(typeof v==='number'?fmt(v,3):v)+'</dd>').join('')+'</dl>';
   }
   function reviewHistoryHtml(review){
-    const rows=review?.history||[];
-    return rows.length?'<details class="w26-technical-evidence"><summary>Previous weekly reviews ('+rows.length+')</summary><div class="table-wrap"><table class="data-table"><thead><tr><th>Reviewer</th><th>Reviewed at</th><th>Rating</th><th>Comment</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.reviewer||'—')+'</td><td>'+esc(r.reviewed_at||'—')+'</td><td>'+esc(r.reviewed_status)+'</td><td>'+esc(r.reason||'—')+'</td></tr>').join('')+'</tbody></table></div></details>':'';
+    const rows=review?.audit_events||[];
+    return rows.length>1?'<details class="w26-technical-evidence"><summary>Review audit trail ('+rows.length+' events)</summary><div class="table-wrap"><table class="data-table"><thead><tr><th>Event</th><th>Reviewer</th><th>At</th><th>Rating</th><th>Comment</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(String(r.event_type||'review').replaceAll('_',' '))+'</td><td>'+esc(r.reviewer||'—')+'</td><td>'+esc(r.event_at||'—')+'</td><td>'+esc(r.reviewed_status||'—')+'</td><td>'+esc(r.reason||'—')+'</td></tr>').join('')+'</tbody></table></div></details>':'';
   }
   function monitorEventEvidence(monitor){
     const rows=monitor.event_response?.rows||[];
@@ -119,30 +123,84 @@
     return survey.monitorComments[String(name || '')] || null;
   }
 
+  function rebuildCommentSnapshot() {
+    const current = {};
+    for (const event of survey.commentLedger || []) {
+      const monitor = String(event.monitor || '');
+      if (!monitor) continue;
+      if (event.event_type === 'comment_cleared') {
+        delete current[monitor];
+      } else if (['comment_created','comment_updated','comment_migrated'].includes(event.event_type)) {
+        current[monitor] = {
+          monitor,
+          text:String(event.text || ''),
+          author:event.author || null,
+          updated_at:event.updated_at || event.event_at || null,
+          method:event.method || 'engineer-comment-v2',
+          event_id:event.event_id || null,
+        };
+      }
+    }
+    survey.monitorComments = current;
+    return current;
+  }
+
+  function migrateLegacyComments(legacy) {
+    return Object.values(legacy || {}).filter(Boolean).map(comment => ({
+      ...comment,
+      event_type:'comment_migrated',
+      event_id:auditId(),
+      event_at:comment.updated_at || nowIso(),
+      method:'engineer-comment-v2',
+    }));
+  }
+
+  if (!survey.commentLedger.length && Object.keys(survey.monitorComments || {}).length) {
+    survey.commentLedger = migrateLegacyComments(survey.monitorComments);
+  }
+  rebuildCommentSnapshot();
+
   function saveMonitorComment(name, text='', author='') {
     const monitor = monitorByName(name);
     if (!monitor) throw new Error('The selected monitor is not present in the current Flow Survey assessment.');
     const clean = String(text || '').trim();
-    if (!clean) {
-      delete survey.monitorComments[String(name)];
-      renderAll();
-      return null;
-    }
+    if (!clean) return clearMonitorComment(name, author);
     const previous = monitorComment(name);
-    survey.monitorComments[String(name)] = {
+    const updatedAt = nowIso();
+    survey.commentLedger.push(Object.freeze({
       monitor:String(name),
       text:clean,
       author:String(author || '').trim() || previous?.author || null,
-      updated_at:nowIso(),
-      method:'engineer-comment-v1',
-    };
+      updated_at:updatedAt,
+      event_at:updatedAt,
+      event_type:previous ? 'comment_updated' : 'comment_created',
+      event_id:auditId(),
+      method:'engineer-comment-v2',
+    }));
+    rebuildCommentSnapshot();
     renderAll();
     return survey.monitorComments[String(name)];
   }
 
-  function clearMonitorComment(name) {
-    delete survey.monitorComments[String(name || '')];
+  function clearMonitorComment(name, author='') {
+    const key = String(name || '');
+    const previous = monitorComment(key);
+    if (!previous) return null;
+    const eventAt = nowIso();
+    survey.commentLedger.push(Object.freeze({
+      monitor:key,
+      text:previous.text,
+      author:String(author || '').trim() || previous.author || null,
+      event_at:eventAt,
+      updated_at:eventAt,
+      event_type:'comment_cleared',
+      event_id:auditId(),
+      previous_comment_event_id:previous.event_id || null,
+      method:'engineer-comment-v2',
+    }));
+    rebuildCommentSnapshot();
     renderAll();
+    return null;
   }
 
   function isBoundaryShortWeek(row) {
@@ -168,6 +226,104 @@
   function reviewKey(kind, id) {
     return kind + ':' + String(id || '');
   }
+
+  function reviewLedgerEvents(kind, id) {
+    const key = reviewKey(kind, id);
+    return (survey.reviewLedger || []).filter(event => reviewKey(event.kind, event.subject) === key);
+  }
+
+  function reviewFromLedgerEvent(event) {
+    if (!event || event.event_type === 'reverted_to_calculated') return null;
+    return {
+      kind:String(event.kind || ''),
+      subject:String(event.subject || ''),
+      calculated_status_at_review:normaliseRag(event.calculated_status_at_review),
+      reviewed_status:normaliseRag(event.reviewed_status),
+      calculation_signature_at_review:event.calculation_signature_at_review || null,
+      reason:String(event.reason || ''),
+      reviewer:event.reviewer || null,
+      reviewed_at:event.reviewed_at || event.event_at || null,
+      use_calculated:Boolean(event.use_calculated),
+      monitor_or_gauge:event.monitor_or_gauge || null,
+      start:event.start || '',
+      end:event.end || '',
+      week_ending:event.week_ending || '',
+      method:event.method || 'engineer-review-v2',
+      event_id:event.event_id || null,
+    };
+  }
+
+  function rebuildReviewSnapshot() {
+    const active = {};
+    for (const event of survey.reviewLedger || []) {
+      const key = reviewKey(event.kind, event.subject);
+      if (event.event_type === 'reverted_to_calculated') {
+        delete active[key];
+        continue;
+      }
+      if (!['review_created','review_updated','review_reconfirmed','review_migrated'].includes(event.event_type)) continue;
+      active[key] = reviewFromLedgerEvent(event);
+    }
+    for (const [key, review] of Object.entries(active)) {
+      const events = (survey.reviewLedger || []).filter(event => reviewKey(event.kind,event.subject) === key);
+      review.history = events
+        .filter(event => ['review_created','review_updated','review_reconfirmed','review_migrated'].includes(event.event_type) && event.event_id !== review.event_id)
+        .map(reviewFromLedgerEvent)
+        .filter(Boolean);
+      review.audit_events = events.map(event => ({
+        event_type:event.event_type,
+        event_at:event.event_at || event.reviewed_at || null,
+        reviewer:event.reviewer || null,
+        reviewed_status:event.reviewed_status || null,
+        reason:event.reason || '',
+        calculation_signature_at_review:event.calculation_signature_at_review || null,
+      }));
+    }
+    survey.reviews = active;
+    return active;
+  }
+
+  function migrateLegacyReviews(legacy) {
+    const ledger = [];
+    for (const [key, current] of Object.entries(legacy || {})) {
+      if (!current || typeof current !== 'object') continue;
+      const split = key.indexOf(':');
+      const inferredKind = split >= 0 ? key.slice(0, split) : 'review';
+      const inferredSubject = split >= 0 ? key.slice(split + 1) : key;
+      const history = Array.isArray(current.history) ? current.history : [];
+      for (const old of history) {
+        ledger.push({
+          ...old,
+          kind:String(old.kind || current.kind || inferredKind),
+          subject:String(old.subject || current.subject || inferredSubject),
+          event_type:'review_migrated',
+          event_id:auditId(),
+          event_at:old.reviewed_at || nowIso(),
+        });
+      }
+      ledger.push({
+        ...current,
+        history:undefined,
+        kind:String(current.kind || inferredKind),
+        subject:String(current.subject || inferredSubject),
+        event_type:'review_migrated',
+        event_id:auditId(),
+        event_at:current.reviewed_at || nowIso(),
+      });
+    }
+    return ledger;
+  }
+
+  function appendReviewEvent(event) {
+    survey.reviewLedger.push(Object.freeze({...event}));
+    rebuildReviewSnapshot();
+    return reviewFor(event.kind, event.subject);
+  }
+
+  if (!survey.reviewLedger.length && Object.keys(survey.reviews || {}).length) {
+    survey.reviewLedger = migrateLegacyReviews(survey.reviews);
+  }
+  rebuildReviewSnapshot();
 
   function reviewFor(kind, id) {
     return survey.reviews[reviewKey(kind, id)] || null;
@@ -240,31 +396,60 @@
     return reviewedState('balance', balanceRowKey(row), normaliseRag(row?.rag));
   }
 
-  function applyReview(kind, id, calculatedStatus, reviewedStatus, reason='', reviewer='') {
+  function applyReview(kind, id, calculatedStatus, reviewedStatus, reason='', reviewer='', details={}) {
     const calculated = normaliseRag(calculatedStatus);
     const reviewed = normaliseRag(reviewedStatus || calculated);
     const cleanReason = String(reason || '').trim();
     if (reviewed !== calculated && !cleanReason) {
       throw new Error('Enter an engineering reason before superseding the calculated assessment.');
     }
-    survey.reviews[reviewKey(kind, id)] = {
+    const previous = reviewFor(kind, id);
+    const signature = calculationSignatureFor(kind);
+    const eventType = !previous
+      ? 'review_created'
+      : (reviewCurrent(previous, calculated, signature) ? 'review_updated' : 'review_reconfirmed');
+    const reviewedAt = nowIso();
+    const event = {
       kind:String(kind),
       subject:String(id),
       calculated_status_at_review:calculated,
       reviewed_status:reviewed,
-      calculation_signature_at_review:calculationSignatureFor(kind),
+      calculation_signature_at_review:signature,
       reason:cleanReason,
       reviewer:String(reviewer || '').trim() || null,
-      reviewed_at:nowIso(),
-      method:'engineer-review-v1',
+      reviewed_at:reviewedAt,
+      event_at:reviewedAt,
+      event_type:eventType,
+      event_id:auditId(),
+      method:details.method || 'engineer-review-v2',
+      ...details,
     };
+    const record = appendReviewEvent(event);
     renderAll();
-    return survey.reviews[reviewKey(kind, id)];
+    return record;
   }
 
-  function revertReview(kind, id) {
-    delete survey.reviews[reviewKey(kind, id)];
+  function revertReview(kind, id, reviewer='') {
+    const previous = reviewFor(kind, id);
+    if (!previous) return null;
+    const eventAt = nowIso();
+    survey.reviewLedger.push(Object.freeze({
+      kind:String(kind),
+      subject:String(id),
+      event_type:'reverted_to_calculated',
+      event_id:auditId(),
+      event_at:eventAt,
+      reviewer:String(reviewer || '').trim() || previous.reviewer || null,
+      calculated_status_at_review:previous.calculated_status_at_review,
+      reviewed_status:previous.reviewed_status,
+      calculation_signature_at_review:calculationSignatureFor(kind),
+      reason:'Reverted to calculated assessment.',
+      previous_review_event_id:previous.event_id || null,
+      method:'engineer-review-ledger-v2',
+    }));
+    rebuildReviewSnapshot();
     renderAll();
+    return null;
   }
 
   function applyMonitorReview(name, reviewedStatus, reason='', reviewer='') {
@@ -1185,9 +1370,13 @@
       workspaceObject = function(...args) {
         const value = coreWorkspaceObject(...args);
         value.survey = value.survey || {};
+        value.survey.review_ledger = JSON.parse(JSON.stringify(survey.reviewLedger || []));
+        value.survey.comment_ledger = JSON.parse(JSON.stringify(survey.commentLedger || []));
+        // Retain current snapshots for backward readers; the ledgers above are
+        // the authoritative audit records from schema v5 onward.
         value.survey.engineer_reviews = JSON.parse(JSON.stringify(survey.reviews || {}));
         value.survey.monitor_comments = JSON.parse(JSON.stringify(survey.monitorComments || {}));
-        value.survey.review_schema_version = 4;
+        value.survey.review_schema_version = 5;
         return value;
       };
     }
@@ -1195,12 +1384,21 @@
       const coreApplyWorkspace = applyWorkspace;
       applyWorkspace = async function(value) {
         const result = await coreApplyWorkspace(value);
-        survey.reviews = value?.survey?.engineer_reviews && typeof value.survey.engineer_reviews === 'object'
+        const legacyReviews = value?.survey?.engineer_reviews && typeof value.survey.engineer_reviews === 'object'
           ? JSON.parse(JSON.stringify(value.survey.engineer_reviews))
           : {};
-        survey.monitorComments = value?.survey?.monitor_comments && typeof value.survey.monitor_comments === 'object'
+        survey.reviewLedger = Array.isArray(value?.survey?.review_ledger)
+          ? JSON.parse(JSON.stringify(value.survey.review_ledger))
+          : migrateLegacyReviews(legacyReviews);
+        rebuildReviewSnapshot();
+
+        const legacyComments = value?.survey?.monitor_comments && typeof value.survey.monitor_comments === 'object'
           ? JSON.parse(JSON.stringify(value.survey.monitor_comments))
           : {};
+        survey.commentLedger = Array.isArray(value?.survey?.comment_ledger)
+          ? JSON.parse(JSON.stringify(value.survey.comment_ledger))
+          : migrateLegacyComments(legacyComments);
+        rebuildCommentSnapshot();
         survey.selectedWeeks = {};
         survey.selectedMonitor = null;
         survey.selectedGauge = null;
@@ -1215,8 +1413,9 @@
   installPersistence();
   wb.workflow26ReportHtml = reportHtml;
   wb.workflow26 = {
-    version:4,
+    version:5,
     weekKey,reviewedWeekState,applyWeeklyReview,weekRows,
+    reviewLedgerEvents,rebuildReviewSnapshot,
     calculatedMonitorStatus,
     reviewedMonitorState,
     reviewedGaugeState,
