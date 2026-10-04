@@ -88,6 +88,7 @@ jobs:
           node --check web/tests/smoke.mjs
           node --check web/tests/precision-shell.mjs
           node --check web/tests/webkit-ios-shell.mjs
+          node --check web/tests/cold-start-shell.mjs
           node --check web/tests/schematic-review-smoke.mjs
           node --check web/tests/baseline-comparison.mjs
           node web/tests/weekly-review-unit.mjs
@@ -195,6 +196,7 @@ jobs:
             cat /tmp/icm-pages-http.log
             exit 1
           fi
+          node web/tests/cold-start-shell.mjs
           node web/tests/detriment-smoke.mjs
           node web/tests/detriment-reference-smoke.mjs
           node web/tests/audit-release-smoke.mjs
