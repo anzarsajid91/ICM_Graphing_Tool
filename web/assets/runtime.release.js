@@ -785,13 +785,9 @@ function renderSeriesSemanticsOverrides(){
     void applySeriesSemanticsChange(key,quantity,{unit:select.value});
   }));
   target.querySelectorAll('[data-rainfall-semantics-key]').forEach(select=>select.addEventListener('change',()=>{
-    const key=select.dataset.rainfallSemanticsKey;
-    const value=String(select.value||'unresolved');
-    if(value==='unresolved')state.rainfallSemanticsOverrides.delete(key);
-    else state.rainfallSemanticsOverrides.set(key,value);
-    invalidateRainEvents('Rainfall semantics changed.');
-    invalidateDwf('Rainfall semantics changed.');
-    renderSeriesSemanticsOverrides();
+    const key=select.dataset.rainfallSemanticsKey,value=String(select.value||'unresolved');
+    if(value==='unresolved')state.rainfallSemanticsOverrides.delete(key);else state.rainfallSemanticsOverrides.set(key,value);
+    invalidateRainEvents('Rainfall semantics changed.');invalidateDwf('Rainfall semantics changed.');renderSeriesSemanticsOverrides();
   }));
   target.querySelectorAll('[data-series-quantity-key],[data-series-unit-key],[data-rainfall-semantics-key]').forEach(select=>{
     const key=select.dataset.seriesQuantityKey||select.dataset.seriesUnitKey;
@@ -1833,8 +1829,19 @@ function exclusionPayload(strict=true,role=null,key=null){
 }
 function addExclusionRow(value={}){state.exclusions.push({id:crypto.randomUUID(),start:value.start||'',end:value.end||'',reason:'',enabled:true,scope:'both',...value});renderExclusions();}
 function renderExclusions(){
-  const scopes=[['both','Observed + models'],['observed','Observed / EDM'],['model','All mapped models'],['rainfall','Rainfall'],...state.mapping.models.map(key=>{const m=mappingObject(key);return [key,seriesLabel(m.item,m.col)];})];
-  $('exclusionRows').innerHTML=state.exclusions.length?state.exclusions.map(e=>`<div class="ex-row" data-id="${esc(e.id)}"><label>Enabled<input type="checkbox" data-field="enabled" ${e.enabled!==false?'checked':''}></label><label>Start<input type="datetime-local" step="1" data-field="start" value="${esc(modelClock(e.start))}"></label><label>End<input type="datetime-local" step="1" data-field="end" value="${esc(modelClock(e.end))}"></label><label>Scope<select data-field="scope">${scopes.map(([v,n])=>`<option value="${esc(v)}" ${(e.scope||'both')===v?'selected':''}>${esc(n)}</option>`).join('')}</select></label><label>Reason<input type="text" data-field="reason" value="${esc(e.reason)}"></label><button class="btn quiet remove-ex" data-id="${esc(e.id)}">Remove</button></div>`).join(''):'<div class="pool-summary">No exclusion periods.</div>';
+  const surveyRecords=window.__ICM_WORKBENCH__?.survey?.association?.records||[];
+  const surveyScopes=[];
+  const monitorNames=[...new Set(surveyRecords.map(row=>String(row.monitor||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  for(const monitor of monitorNames){
+    surveyScopes.push(['survey:monitor:'+monitor+':all','Survey · '+monitor+' · all hydraulic']);
+    surveyScopes.push(['survey:monitor:'+monitor+':flow','Survey · '+monitor+' · flow']);
+    surveyScopes.push(['survey:monitor:'+monitor+':depth','Survey · '+monitor+' · depth']);
+    surveyScopes.push(['survey:monitor:'+monitor+':velocity','Survey · '+monitor+' · velocity']);
+  }
+  const gaugeNames=[...new Set(surveyRecords.map(row=>String(row.rain_gauge||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  for(const gauge of gaugeNames)surveyScopes.push(['survey:gauge:'+gauge+':rainfall','Survey · '+gauge+' · rainfall']);
+  const scopes=[['both','Observed + models'],['observed','Observed / EDM'],['model','All mapped models'],['rainfall','Rainfall'],...surveyScopes,...state.mapping.models.map(key=>{const m=mappingObject(key);return [key,seriesLabel(m.item,m.col)];})];
+  $('exclusionRows').innerHTML=state.exclusions.length?state.exclusions.map(e=>`<div class="ex-row" data-id="${esc(e.id)}"><label>Enabled<input type="checkbox" data-field="enabled" ${e.enabled!==false?'checked':''}></label><label>Start<input type="datetime-local" step="1" data-field="start" value="${esc(modelClock(e.start))}"></label><label>End<input type="datetime-local" step="1" data-field="end" value="${esc(modelClock(e.end))}"></label><label>Scope<select data-field="scope">${([...(scopes),...(!scopes.some(([v])=>v===(e.scope||'both'))?[[(e.scope||'both'),'Saved survey scope']]:[])]).map(([v,n])=>`<option value="${esc(v)}" ${(e.scope||'both')===v?'selected':''}>${esc(n)}</option>`).join('')}</select></label><label>Reason<input type="text" data-field="reason" value="${esc(e.reason)}"></label><button class="btn quiet remove-ex" data-id="${esc(e.id)}">Remove</button></div>`).join(''):'<div class="pool-summary">No exclusion periods.</div>';
   document.querySelectorAll('.ex-row input,.ex-row select').forEach(inp=>inp.addEventListener('change',()=>{const e=state.exclusions.find(x=>x.id===inp.closest('.ex-row').dataset.id);if(e){state.exclusionHistory??=[];state.exclusionHistory.push({...e,changed_at:new Date().toISOString()});e[inp.dataset.field]=inp.type==='checkbox'?inp.checked:inp.value;}try{exclusionPayload(true);}catch{return;}void drawTimeChart().catch(err=>showError('mappingStatus',err?.message||err));}));
   document.querySelectorAll('.remove-ex').forEach(b=>b.addEventListener('click',()=>{state.deletedExclusions??=[];state.deletedExclusions.push(state.exclusions.find(x=>x.id===b.dataset.id));state.exclusions=state.exclusions.filter(x=>x.id!==b.dataset.id);renderExclusions();void drawTimeChart();}));
 }
@@ -1871,25 +1878,10 @@ async function renderEventResponses(expectedGeneration=state.rainEventGeneration
   const obs=mappingObject(state.mapping.observed),model=currentModels()[0];
   if(!obs||!model||!state.rainEvents.length){$('eventResponseBody').innerHTML='';return;}
   const modelKey=sourceKey(model.item.id,model.col);
-  const responseInputs={
-    event_signature:expectedSignature,
-    observed:workspaceSeries(state.mapping.observed),
-    model:workspaceSeries(modelKey),
-    observed_exclusions:exclusionPayload(false,'observed',state.mapping.observed),
-    model_exclusions:exclusionPayload(false,'model',modelKey),
-    max_gap_seconds:Number($('gapInput')?.value||900),
-  };
-  const responseSignature=JSON.stringify(responseInputs);
+  const responseSignature=JSON.stringify({event_signature:expectedSignature,observed:workspaceSeries(state.mapping.observed),model:workspaceSeries(modelKey),observed_exclusions:exclusionPayload(false,'observed',state.mapping.observed),model_exclusions:exclusionPayload(false,'model',modelKey),max_gap_seconds:Number($('gapInput')?.value||900)});
   const r=await engine.call('event_response_result',{obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:model.item.virtualPath,model_col:model.col,events_json:JSON.stringify(state.rainEvents),baseline_hours:3,post_hours:6,observed_exclusions_json:JSON.stringify(exclusionPayload(true,'observed',state.mapping.observed)),model_exclusions_json:JSON.stringify(exclusionPayload(true,'model',modelKey)),max_gap_seconds:Number($('gapInput')?.value||900)});
   const currentModel=currentModels()[0],currentModelKey=currentModel?sourceKey(currentModel.item.id,currentModel.col):'';
-  const currentSignature=JSON.stringify({
-    event_signature:state.rainEventSignature,
-    observed:workspaceSeries(state.mapping.observed),
-    model:currentModel?workspaceSeries(currentModelKey):null,
-    observed_exclusions:exclusionPayload(false,'observed',state.mapping.observed),
-    model_exclusions:currentModel?exclusionPayload(false,'model',currentModelKey):[],
-    max_gap_seconds:Number($('gapInput')?.value||900),
-  });
+  const currentSignature=JSON.stringify({event_signature:state.rainEventSignature,observed:workspaceSeries(state.mapping.observed),model:currentModel?workspaceSeries(currentModelKey):null,observed_exclusions:exclusionPayload(false,'observed',state.mapping.observed),model_exclusions:currentModel?exclusionPayload(false,'model',currentModelKey):[],max_gap_seconds:Number($('gapInput')?.value||900)});
   if(expectedGeneration!==state.rainEventGeneration||!rainEventsFresh()||responseSignature!==currentSignature)throw new Error('Event-response inputs changed while calculation was running. The late result was discarded.');
   $('eventResponseBody').innerHTML=(r.rows||[]).map(x=>`<tr><td>${x.event}</td><td>${esc(x.rain_start)}</td><td>${fmt(x.rain_depth_mm,2)}</td><td>${fmt(x.observed_baseline,4)}</td><td>${fmt(x.observed_uplift,4)}</td><td>${fmt(x.modelled_uplift,4)}</td><td>${fmt(x.uplift_error_percent,1)}</td><td>${fmt(x.peak_lag_minutes,1)}</td></tr>`).join('');
 }
@@ -2103,10 +2095,7 @@ async function applyWorkspace(w){
       await applySeriesQuantityOverride(key,seriesQuantity(mapped.item,mapped.col),{refresh:false,unit:entry.unit});
     }
   }
-  for(const entry of w.rainfall_semantics_overrides||[]){
-    const key=findSeriesFromWorkspace(entry?.series);
-    if(key&&['intensity','incremental_depth'].includes(String(entry?.semantics||'')))state.rainfallSemanticsOverrides.set(key,String(entry.semantics));
-  }
+  for(const entry of w.rainfall_semantics_overrides||[]){const key=findSeriesFromWorkspace(entry?.series);if(key&&['intensity','incremental_depth'].includes(String(entry?.semantics||'')))state.rainfallSemanticsOverrides.set(key,String(entry.semantics));}
   renderSeriesOptions();
   state.mapping.observed=findSeriesFromWorkspace(w.mapping?.observed);
   state.mapping.models=(w.mapping?.models||[]).map(findSeriesFromWorkspace).filter(Boolean);
