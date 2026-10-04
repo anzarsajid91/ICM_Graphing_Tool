@@ -201,7 +201,7 @@ async function verifyClearDuringPendingImport(){
   probe.on('console',message=>{if(message.type()==='error')probeErrors.push('console: '+message.text());});
   try{
     await probe.goto(baseUrl+'?pending_clear='+Date.now(),{waitUntil:'domcontentloaded'});
-    await probe.waitForFunction(()=>document.querySelector('#engineStatus')?.textContent.includes('Initialising advanced analysis'),null,{timeout:30000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     const payload=Buffer.from([
       'timestamp,Depth (m)',
       '2026-02-01T00:00:00,0.2',
@@ -290,9 +290,9 @@ async function verifyFastPathFailureFallsBack(){
     }));
     await probe.goto(baseUrl+'?fastpath_failure_fallback='+Date.now(),{waitUntil:'domcontentloaded'});
     // "No files loaded." exists in static HTML, so it cannot prove runtime.start()
-    // has executed. engineStatus is changed only after wireEvents() attaches the
-    // import handlers, making this a deterministic readiness boundary.
-    await probe.waitForFunction(()=>document.querySelector('#engineStatus')?.textContent.includes('Initialising advanced analysis'),null,{timeout:30000});
+    // has executed. The idle diagnostic and navigation API appear after the
+    // import handlers are attached, making this a deterministic readiness boundary.
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     const payload=Buffer.from(['timestamp,Depth (m)','2026-02-01T00:00:00,0.2','2026-02-01T00:01:00,0.3',''].join('\n'),'utf8');
     await probe.setInputFiles('#fileInput',{name:'fastpath-fallback.csv',mimeType:'text/csv',buffer:payload});
     try{
