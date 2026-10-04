@@ -903,7 +903,7 @@
       const focusButton=event.target.closest('[data-schematic-focus]');
       if(focusButton){const suffix=focusButton.dataset.schematicKind,name=suffix==='fdv'?survey.selectedMonitor:survey.selectedGauge;if(!name)return;const viewport=$('assessmentSchematicViewport-'+suffix),selector=suffix==='fdv'?'[data-survey-node="'+CSS.escape(name)+'"]':'[data-survey-gauge="'+CSS.escape(name)+'"]';viewport?.querySelector(selector)?.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});return;}
       const weekEdit=event.target.closest('[data-week-edit]');
-      if(weekEdit){const match=weekByKey(weekEdit.dataset.weekKind,weekEdit.dataset.weekEdit);if(match)survey.selectedWeeks[weekEdit.dataset.weekKind+':'+match.name]=weekEdit.dataset.weekEdit;renderMonitorDetail();renderGaugeDetail();const root=$(weekEdit.dataset.weekKind==='monitor-week'?'surveyMonitorDetail':'surveyGaugeDetail');root?.querySelector('.weekly-editor')?.scrollIntoView({block:'center',behavior:'smooth'});return;}
+      if(weekEdit){const kind=weekEdit.dataset.weekKind,match=weekByKey(kind,weekEdit.dataset.weekEdit);if(match){survey.reviewContext.drawerTab='audit';selectReviewWeek(kind,match.name,weekEdit.dataset.weekEdit);$('assessmentDrawer-'+(kind==='monitor-week'?'fdv':'rain'))?.scrollIntoView({block:'nearest',behavior:'smooth'});}return;}
       const quick=event.target.closest('[data-week-note]');
       if(quick){const input=quick.closest('.weekly-editor')?.querySelector('.weekly-comment');if(input){input.value=[input.value.trim(),quick.dataset.weekNote].filter(Boolean).join(' ');input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();}return;}
       const weeklySave=event.target.closest('[data-week-save]');
