@@ -43,5 +43,27 @@ def parse_rainfall_r(path):
     if not tokens:raise ValueError("Rainfall R contains no data")
     clean,audit=clean_numeric(pd.Series(np.asarray(tokens,dtype=float)));out=pd.DataFrame({"timestamp":pd.date_range(start=start,periods=len(clean),freq=pd.Timedelta(minutes=interval)),"rainfall":clean})
     normalised_unit=str(unit or "").strip().lower().replace(" ","")
-    canonical="mm/h" if normalised_unit in {"mm/h","mm/hr","mmperhour"} else None
-    return ParsedData(out,"rainfall_r_ascii",{"interval_min":interval,"quantity":"rainfall","field":field,"original_unit":unit or "unknown","canonical_unit":canonical,"constants":constants,"header_end":dates[-1] if len(dates)>1 else None,"time_basis":"model clock/unspecified","timestamp_convention":"interval_average/confirm"},{**audit,"rows":len(out)})
+    if normalised_unit in {"mm/h","mm/hr","mmperhour"}:
+        canonical="mm/h"; semantics="intensity"
+    elif normalised_unit in {"mm","millimetre","millimetres","millimeter","millimeters"}:
+        canonical="mm"; semantics="incremental_depth"
+    else:
+        canonical=None; semantics="unresolved"
+    return ParsedData(
+        out,
+        "rainfall_r_ascii",
+        {
+            "interval_min":interval,
+            "quantity":"rainfall",
+            "field":field,
+            "original_unit":unit or "unknown",
+            "canonical_unit":canonical,
+            "rainfall_semantics":semantics,
+            "rainfall_semantics_source":"declared_unit" if semantics!="unresolved" else "unresolved",
+            "constants":constants,
+            "header_end":dates[-1] if len(dates)>1 else None,
+            "time_basis":"model clock/unspecified",
+            "timestamp_convention":"interval_average" if semantics=="intensity" else ("interval_depth" if semantics=="incremental_depth" else "confirm"),
+        },
+        {**audit,"rows":len(out)},
+    )
