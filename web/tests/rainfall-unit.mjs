@@ -21,7 +21,7 @@ assert(nodes.get('seriesSemanticsRows').innerHTML.includes('value="mm/h"'));
 assert(nodes.get('seriesSemanticsRows').innerHTML.includes('value="mm"'));
 assert(nodes.get('seriesSemanticsRows').innerHTML.includes('data-rainfall-semantics-key'));
 assert(nodes.get('seriesSemanticsRows').innerHTML.includes('Incremental depth per interval'));
-assert(nodes.get('seriesSemanticsRows').innerHTML.includes('does not silently convert rainfall values'));
+assert(nodes.get('seriesSemanticsRows').innerHTML.includes('No rainfall unit conversion is applied.'));
 nodes.get('observedSelect').value=obs;
 assert.equal(run('genericSeriesSemanticsRows().map(x=>x.role).join("|")'),'Observed|Rainfall');
 nodes.get('modelSelect').selectedOptions=[{value:rain}];

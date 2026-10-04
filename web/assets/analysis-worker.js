@@ -4,10 +4,10 @@
  * thread stays responsive. The worker loads only the authoritative
  * icm_workbench package; web/python_bridge.py is now a compatibility shim.
  */
-const PYODIDE_INDEX='https://cdn.jsdelivr.net/pyodide/v0.29.4/full/';
 const WORKER_URL=new URL(self.location.href);
 const BUILD_TOKEN=WORKER_URL.searchParams.get('v')||'local';
 const SITE_ROOT=new URL('../',WORKER_URL);
+const PYODIDE_INDEX=new URL('vendor/pyodide-0.29.4/',SITE_ROOT).href;
 function releaseUrl(relative){
   const url=new URL(relative,SITE_ROOT);
   url.searchParams.set('v',BUILD_TOKEN);

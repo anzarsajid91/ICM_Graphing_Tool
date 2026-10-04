@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "dependencies": {
+    "SheetJS": {
+      "version": "0.20.3",
+      "source": "https://cdn.sheetjs.com/xlsx-0.20.3/package/"
+    },
+    "Plotly": {
+      "version": "3.1.0",
+      "source": "https://cdn.plot.ly/plotly-3.1.0.min.js"
+    },
+    "Pyodide": {
+      "version": "0.29.4",
+      "source": "https://cdn.jsdelivr.net/pyodide/v0.29.4/full/",
+      "packages": [
+        "numpy",
+        "pandas",
+        "python-dateutil",
+        "pytz",
+        "six"
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "plotly-3.1.0/LICENSE",
+      "bytes": 1086,
+      "sha256": "8c45d9eaf50c2f72dd9c7ab9ef440788ba58a3538484b5c51c1f17d5128752e7"
+    },
+    {
+      "path": "plotly-3.1.0/plotly.min.js",
+      "bytes": 4763993,
+      "sha256": "122e3be346d66616944d0b83eaaf7242581508c3c1cfa0995a17af0d83eff770"
+    },
+    {
+      "path": "pyodide-0.29.4/LICENSE",
+      "bytes": 16725,
+      "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+    },
+    {
+      "path": "pyodide-0.29.4/licenses/numpy-2.2.5-cp313-cp313-pyemscripten_2025_0_wasm32/LICENSE.txt",
+      "bytes": 1543,
+      "sha256": "01fb016849aa427edb1bbbbd55f91c26ca6cadb32a5b20e7f000655dd05b0760"
+    },
+    {
+      "path": "pyodide-0.29.4/licenses/pandas-2.3.3-cp313-cp313-pyemscripten_2025_0_wasm32/LICENSE",
+      "bytes": 1634,
+      "sha256": "533eb6d0b98e5be3ddd12dce97be35dd11282f5c47cdf8d08c81756fd5d70a26"
+    },
+    {
+      "path": "pyodide-0.29.4/licenses/python_dateutil-2.9.0.post0-py2.py3-none-any/LICENSE",
+      "bytes": 2889,
+      "sha256": "ba00f51a0d92823b5a1cde27d8b5b9d2321e67ed8da9bc163eff96d5e17e577e"
+    },
+    {
+      "path": "pyodide-0.29.4/licenses/pytz-2025.2-py2.py3-none-any/LICENSE.txt",
+      "bytes": 1088,
+      "sha256": "be8b1a37ebe26c592a90f6c0eb33103a7f383ce2f4d7498c0af9a526990a07b8"
+    },
+    {
+      "path": "pyodide-0.29.4/licenses/six-1.17.0-py2.py3-none-any/LICENSE",
+      "bytes": 1066,
+      "sha256": "4375ba20e2b9c6c4e7cad2940a628fd90e95cc3d50ee92aae755715d8ba1fbd0"
+    },
+    {
+      "path": "pyodide-0.29.4/numpy-2.2.5-cp313-cp313-pyemscripten_2025_0_wasm32.whl",
+      "bytes": 2823762,
+      "sha256": "800c98edc0c864dfa49f07005680c699b4b42b84eae1f8cb19d35b3634e7f05c"
+    },
+    {
+      "path": "pyodide-0.29.4/pandas-2.3.3-cp313-cp313-pyemscripten_2025_0_wasm32.whl",
+      "bytes": 4493372,
+      "sha256": "2579a3d8e9f040421836365ccf7886fc4054c87381d4d481840a97785cd78923"
+    },
+    {
+      "path": "pyodide-0.29.4/pyodide-lock.json",
+      "bytes": 122027,
+      "sha256": "14d2c2dba101277999e17135e653d8f15389ad1437f53eae213bf0c3cdff723d"
+    },
+    {
+      "path": "pyodide-0.29.4/pyodide.asm.js",
+      "bytes": 1074322,
+      "sha256": "fe75e97ef2c7a10c41f23b96344c553c7c1c62821bb206080dbb24941c06d5f3"
+    },
+    {
+      "path": "pyodide-0.29.4/pyodide.asm.wasm",
+      "bytes": 8647684,
+      "sha256": "10090fe41e019ae669d512e1f747021a8db2aaab0f6dd6f85fa9368c55d681e3"
+    },
+    {
+      "path": "pyodide-0.29.4/pyodide.js",
+      "bytes": 18597,
+      "sha256": "7be9e63eddf6bd8786a5ab71c8689c35731d187e3415fe58d7cb95423b50421a"
+    },
+    {
+      "path": "pyodide-0.29.4/python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
+      "bytes": 229892,
+      "sha256": "1fe3a0346ef21bc85b295227256d6aed72aa8116178b019fc5ae5d57fbd213cf"
+    },
+    {
+      "path": "pyodide-0.29.4/python_stdlib.zip",
+      "bytes": 2424002,
+      "sha256": "92cb24faa546818f3ef4050fd5bd2b6487bd2042efed2113af141d035f30efb4"
+    },
+    {
+      "path": "pyodide-0.29.4/pytz-2025.2-py2.py3-none-any.whl",
+      "bytes": 509225,
+      "sha256": "d7fb2f11cf7f8dd17e652d5494189f520ee086e9fc71aef4cbb978f5dcfc2878"
+    },
+    {
+      "path": "pyodide-0.29.4/six-1.17.0-py2.py3-none-any.whl",
+      "bytes": 11050,
+      "sha256": "bc830cfdc71a224b6d0e4337183a87ea53f21b6623deca5771ee3bc866fd8da2"
+    },
+    {
+      "path": "sheetjs-0.20.3/LICENSE",
+      "bytes": 11355,
+      "sha256": "4d2a38ac35cda06a555c84074a819d413339cd3691b822cae50f8f322fe01f64"
+    },
+    {
+      "path": "sheetjs-0.20.3/xlsx.full.min.js",
+      "bytes": 951904,
+      "sha256": "cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41"
+    }
+  ]
+}
