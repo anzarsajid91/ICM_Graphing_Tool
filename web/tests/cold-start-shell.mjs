@@ -46,12 +46,16 @@ try{
   assert.equal(pyodideRequests.length,0,'navigation alone must not start Pyodide');
 
   const sample=path.join(process.cwd(),'reference/current-tool/sample-data/fdv/FM01.fdv');
+  const firstPyodideRequest=page.waitForRequest(
+    request=>request.url().includes('/vendor/pyodide-0.29.4/'),
+    {timeout:10000}
+  );
   await page.setInputFiles('#fileInput',sample);
   await page.waitForFunction(
     ()=>['booting','ready'].includes(window.__ICM_WORKBENCH__?.status),
     null,{timeout:5000}
   );
-  await page.waitForFunction(()=>performance.getEntriesByType('resource').some(e=>String(e.name).includes('/vendor/pyodide-0.29.4/')),null,{timeout:10000});
+  await firstPyodideRequest;
   assert.ok(pyodideRequests.length>0,'loading engineering data should start the authoritative runtime on demand');
   assert.deepEqual(errors,[]);
   console.log('PASS desktop cold start: shell ready in '+shellReadyMs+' ms with no Pyodide request before data load.');
