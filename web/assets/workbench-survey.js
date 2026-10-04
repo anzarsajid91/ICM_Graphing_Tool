@@ -471,7 +471,7 @@
         gauge,
         path: match.item.virtualPath,
         column,
-        rainfall_semantics: wb.rainfallSemanticsFor?.(match.item,column) || match.item?.parsed?.metadata?.rainfall_semantics || 'unresolved',
+        rainfall_semantics: rainfallSemanticsFor(match.item,column) || match.item?.parsed?.metadata?.rainfall_semantics || 'unresolved',
         display_name: match.item.displayName,
         match_status: match.status,
         source_fingerprint: rainSourceFingerprint(match.item),
