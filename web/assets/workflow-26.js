@@ -19,6 +19,9 @@
     : {kind:'monitor-week',name:null,weekKey:null,drawerTab:'overview',exceptionsOnly:false,search:'',zoom:{fdv:1,rain:1}};
   survey.reviewContext.zoom = survey.reviewContext.zoom || {fdv:1,rain:1};
 
+  const weeklyDrafts = new Map();
+  const draftKey = (kind,key) => JSON.stringify([survey.batchSignature||null,kind,key]);
+
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
@@ -114,10 +117,11 @@
     if(!row)return '';
     const key=weekKey(name,row),s=reviewedWeekState(kind,name,row),review=s.review;
     survey.selectedWeeks[kind+':'+name]=key;
-    const selected=review?(review.use_calculated?'auto':review.reviewed_status):'auto';
+    const draft=weeklyDrafts.get(draftKey(kind,key));
+    const selected=draft?.rating??(review?(review.use_calculated?'auto':review.reviewed_status):'auto');
     return '<section class="weekly-editor" data-week-kind="'+kind+'" data-week-key="'+esc(key)+'" data-week-name="'+esc(name)+'"><div class="w26-section-head"><div><h5>Review '+esc(name)+' · week ending '+esc(String(row.week_ending||row.end||'').slice(0,10))+'</h5><p>'+esc(row.start||'')+' → '+esc(row.end||'')+'</p></div></div>'+
       (s.historical_review?'<div class="w26-review-warning">The retained review needs rechecking. The calculated rating is reported until reconfirmed.</div>':'')+
-      '<div class="weekly-editor-fields"><label>Weekly rating<select class="weekly-rating"><option value="auto" '+(selected==='auto'?'selected':'')+'>Use calculated ('+esc(s.calculated)+')</option>'+['Green','Amber','Red','Grey'].map(r=>'<option '+(selected===r?'selected':'')+'>'+r+'</option>').join('')+'</select></label><label>Reviewer<input class="weekly-reviewer" value="'+esc(review?.reviewer||'')+'" placeholder="Name / initials"></label><label class="weekly-comment-label">Weekly comment<textarea class="weekly-comment" rows="3" placeholder="Comment for this week; required when changing its rating.">'+esc(review?.reason||'')+'</textarea></label></div>'+
+      '<div class="weekly-editor-fields"><label>Weekly rating<select class="weekly-rating"><option value="auto" '+(selected==='auto'?'selected':'')+'>Use calculated ('+esc(s.calculated)+')</option>'+['Green','Amber','Red','Grey'].map(r=>'<option '+(selected===r?'selected':'')+'>'+r+'</option>').join('')+'</select></label><label>Reviewer<input class="weekly-reviewer" value="'+esc(draft?.reviewer??review?.reviewer??'')+'" placeholder="Name / initials"></label><label class="weekly-comment-label">Weekly comment<textarea class="weekly-comment" rows="3" placeholder="Comment for this week; required when changing its rating.">'+esc(draft?.comment??review?.reason??'')+'</textarea></label></div>'+
       '<div class="weekly-quick-notes"><span>Add context:</span><button type="button" class="btn quiet" data-week-note="Tidal impact noted.">Tidal impact</button><button type="button" class="btn quiet" data-week-note="Pumping influence noted.">Pumping influence</button></div>'+
       '<div class="w26-review-error" role="alert"></div><div class="actions left"><button type="button" class="btn primary" data-week-save>Save weekly review</button>'+(review?'<button type="button" class="btn" data-week-reset>Reset this week</button>':'')+'</div>'+
       '<details class="w26-technical-evidence"><summary>Calculated evidence for this week</summary>'+scalarEvidence(row)+(kind==='gauge-week'?'<p class="muted">Green requires at least 90% operational days and no daily strike or fault evidence. Amber marks coverage or fault evidence for review; Grey means no valid support. Network spatial variation is assessed separately.</p>':'')+'</details>'+reviewHistoryHtml(review)+'</section>';
@@ -587,7 +591,40 @@
   function renderReviewMatrix(kind){
     const suffix=kind==='monitor-week'?'fdv':'rain',matrix=$('assessmentMatrix-'+suffix),drawer=$('assessmentDrawer-'+suffix);if(matrix)matrix.innerHTML=weekMatrixHtml(kind);if(drawer)drawer.innerHTML=drawerContent(kind,survey.reviewContext.kind===kind?survey.reviewContext.name:null);
     const search=$('assessmentSearch-'+suffix);if(search&&search.value!==String(survey.reviewContext.search||''))search.value=survey.reviewContext.search||'';const toggle=$('assessmentExceptions-'+suffix);if(toggle)toggle.checked=Boolean(survey.reviewContext.exceptionsOnly);
-    const viewport=$('assessmentSchematicViewport-'+suffix),scale=Number(survey.reviewContext.zoom?.[suffix]||1);if(viewport){const svg=viewport.querySelector('svg');if(svg){svg.style.transform='scale('+scale+')';svg.style.transformOrigin='top left';}}
+    updateSchematicView(suffix);
+  }
+  function updateSchematicView(suffix){
+    const viewport=$('assessmentSchematicViewport-'+suffix),svg=viewport?.querySelector('svg');
+    if(!svg)return;
+    const scale=Number(survey.reviewContext.zoom?.[suffix]||1),box=svg.viewBox.baseVal;
+    const width=Math.max(1,viewport.clientWidth-18)*scale;
+    svg.style.transform='none';svg.style.width=width+'px';svg.style.maxWidth='none';
+    svg.style.height=(width*box.height/box.width)+'px';
+  }
+  function bindSchematicPan(viewport){
+    let drag=null,suppressClick=false;
+    if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>updateSchematicView(viewport.id.endsWith('-fdv')?'fdv':'rain')).observe(viewport);
+    viewport.tabIndex=0;viewport.setAttribute('aria-label','Association schematic. Drag to pan or use arrow keys.');
+    viewport.addEventListener('pointerdown',event=>{
+      if(event.button!==0||viewport.dataset.pan==='off')return;
+      drag={id:event.pointerId,x:event.clientX,y:event.clientY,left:viewport.scrollLeft,top:viewport.scrollTop,moved:false};
+    });
+    viewport.addEventListener('pointermove',event=>{
+      if(!drag||drag.id!==event.pointerId)return;
+      const dx=event.clientX-drag.x,dy=event.clientY-drag.y;
+      if(!drag.moved&&Math.hypot(dx,dy)<4)return;
+      drag.moved=true;viewport.setPointerCapture(event.pointerId);viewport.classList.add('is-panning');
+      viewport.scrollLeft=drag.left-dx;viewport.scrollTop=drag.top-dy;event.preventDefault();
+    });
+    const end=event=>{if(!drag)return;suppressClick=event.type==='pointerup'&&drag.moved;drag=null;viewport.classList.remove('is-panning');};
+    viewport.addEventListener('pointerup',end);viewport.addEventListener('pointercancel',end);
+    viewport.addEventListener('pointerleave',()=>{if(drag&&!drag.moved)drag=null;});
+    viewport.addEventListener('click',event=>{if(suppressClick){suppressClick=false;event.preventDefault();event.stopPropagation();}},true);
+    viewport.addEventListener('keydown',event=>{
+      if(event.target!==viewport)return;
+      const offsets={ArrowLeft:[-80,0],ArrowRight:[80,0],ArrowUp:[0,-80],ArrowDown:[0,80]};
+      if(offsets[event.key]){event.preventDefault();viewport.scrollBy(...offsets[event.key]);}
+    });
   }
   function renderAllMatrices(){renderReviewMatrix('monitor-week');renderReviewMatrix('gauge-week');}
   function balanceMatrixHtml(){
@@ -632,7 +669,9 @@
       select.innerHTML=weeks.length?weeks.map(w=>'<option value="'+esc(w)+'" '+(w===survey.schematicWeek?'selected':'')+'>Week ending '+esc(w.slice(0,10))+'</option>').join(''):'<option value="">No weeks assessed</option>';
       const monitorNames=[...new Set([...(survey.batch?.monitors||[]).map(m=>m.monitor),...(survey.association?.records||[]).map(r=>r.monitor)])];
       const status=new Map(monitorNames.map(name=>[name,schematicRating('monitor-week',name)]));
+      const viewport=$('assessmentSchematicViewport-'+kind),left=viewport?.scrollLeft||0,top=viewport?.scrollTop||0;
       root.innerHTML=kind==='fdv'?wb.surveySchematicHtml?.(null,{monitors:monitorNames,status,interactive:true,note:'Click a monitor to inspect its weekly ratings. Colours show the selected week; Grey means no current assessment.'})||'':rainfallSchematicHtml();
+      updateSchematicView(kind);if(viewport){viewport.scrollLeft=left;viewport.scrollTop=top;}
     }
     wb.installSectionHierarchy?.();
   }
@@ -650,9 +689,10 @@
       if(!target||$('assessmentCanvas-'+kind))continue;
       const canvas=document.createElement('section');canvas.id='assessmentCanvas-'+kind;canvas.className='assessment-canvas w26-matrix-workbench';
       canvas.innerHTML='<div class="assessment-canvas-head"><div><h4>'+(kind==='fdv'?'Monitor assessment':'Rainfall assessment')+'</h4><p>Use the week matrix and network together. The evidence drawer stays open while you move through exceptions.</p></div><label>Assessment week<select id="assessmentWeek-'+kind+'"></select></label></div>'+
-        '<div class="w26-matrix-layout"><div class="w26-matrix-main"><div class="w26-matrix-toolbar"><label>Find '+(kind==='fdv'?'monitor':'gauge')+'<input id="assessmentSearch-'+kind+'" type="search" placeholder="Search ID"></label><label class="w26-inline-check"><input id="assessmentExceptions-'+kind+'" type="checkbox"> Exceptions only</label><div class="w26-schematic-tools"><button type="button" class="btn quiet" data-schematic-zoom="-1" data-schematic-kind="'+kind+'">−</button><button type="button" class="btn quiet" data-schematic-fit data-schematic-kind="'+kind+'">Fit</button><button type="button" class="btn quiet" data-schematic-zoom="1" data-schematic-kind="'+kind+'">+</button><button type="button" class="btn quiet" data-schematic-focus data-schematic-kind="'+kind+'">Focus selected</button></div></div>'+
+        '<div class="w26-matrix-layout"><div class="w26-matrix-main"><div class="w26-matrix-toolbar"><label>Find '+(kind==='fdv'?'monitor':'gauge')+'<input id="assessmentSearch-'+kind+'" type="search" placeholder="Search ID"></label><label class="w26-inline-check"><input id="assessmentExceptions-'+kind+'" type="checkbox"> Exceptions only</label><div class="w26-schematic-tools"><button type="button" class="btn quiet" data-schematic-pan data-schematic-kind="'+kind+'" aria-pressed="true" title="Drag the schematic to pan">Pan</button><button type="button" class="btn quiet" data-schematic-zoom="-1" data-schematic-kind="'+kind+'">−</button><button type="button" class="btn quiet" data-schematic-fit data-schematic-kind="'+kind+'">Fit</button><button type="button" class="btn quiet" data-schematic-zoom="1" data-schematic-kind="'+kind+'">+</button><button type="button" class="btn quiet" data-schematic-focus data-schematic-kind="'+kind+'">Focus selected</button></div></div>'+
         '<div id="assessmentMatrix-'+kind+'" class="w26-matrix-region"></div><div id="assessmentSchematicViewport-'+kind+'" class="w26-schematic-viewport"><div id="assessmentSchematic-'+kind+'"></div></div></div><aside id="assessmentDrawer-'+kind+'" class="w26-evidence-drawer" aria-live="polite"></aside></div>';
       target.insertAdjacentElement('beforebegin',canvas);
+      bindSchematicPan($('assessmentSchematicViewport-'+kind));
       $('assessmentWeek-'+kind).addEventListener('change',event=>{survey.schematicWeek=event.target.value;renderAssessmentSchematics();renderAllMatrices();});
       $('assessmentSearch-'+kind)?.addEventListener('input',event=>{survey.reviewContext.search=event.target.value;renderAllMatrices();});
       $('assessmentExceptions-'+kind)?.addEventListener('change',event=>{survey.reviewContext.exceptionsOnly=Boolean(event.target.checked);renderAllMatrices();});
@@ -836,6 +876,11 @@
       if (h) h.textContent = 'Survey configuration · fm_rg_assoc.xlsx';
     }
 
+    const captureDraft=event=>{
+      const form=event.target.closest('.weekly-editor');if(!form)return;
+      weeklyDrafts.set(draftKey(form.dataset.weekKind,form.dataset.weekKey),{rating:form.querySelector('.weekly-rating').value,comment:form.querySelector('.weekly-comment').value,reviewer:form.querySelector('.weekly-reviewer').value});
+    };
+    panel.addEventListener('input',captureDraft);panel.addEventListener('change',captureDraft);
     panel.addEventListener('click', event => {
       const node=event.target.closest('[data-survey-node],[data-survey-gauge]');
       if(node){const kind=node.hasAttribute('data-survey-gauge')?'gauge-week':'monitor-week',name=node.dataset.surveyGauge||node.dataset.surveyNode;selectReviewWeek(kind,name,null,survey.schematicWeek);return;}
@@ -849,20 +894,22 @@
       if(exceptionStep){const kind=survey.reviewContext.kind||'monitor-week',queue=exceptionQueue(kind);if(!queue.length)return;let at=queue.findIndex(item=>item.name===survey.reviewContext.name&&item.key===survey.reviewContext.weekKey);at=(at+Number(exceptionStep.dataset.exceptionStep||1)+queue.length)%queue.length;const item=queue[at];selectReviewWeek(item.kind,item.name,item.key,item.week);return;}
       const balanceCell=event.target.closest('[data-balance-matrix]');
       if(balanceCell){survey.selectedBalanceKey=balanceCell.dataset.balanceMatrix;renderBalanceReview();return;}
+      const panButton=event.target.closest('[data-schematic-pan]');
+      if(panButton){const viewport=$('assessmentSchematicViewport-'+panButton.dataset.schematicKind),enabled=panButton.getAttribute('aria-pressed')!=='true';panButton.setAttribute('aria-pressed',String(enabled));viewport.dataset.pan=enabled?'on':'off';return;}
       const zoomButton=event.target.closest('[data-schematic-zoom]');
-      if(zoomButton){const suffix=zoomButton.dataset.schematicKind,delta=Number(zoomButton.dataset.schematicZoom||0);survey.reviewContext.zoom[suffix]=Math.min(1.8,Math.max(.6,Number(survey.reviewContext.zoom[suffix]||1)+delta*.15));renderAllMatrices();return;}
+      if(zoomButton){const suffix=zoomButton.dataset.schematicKind,delta=Number(zoomButton.dataset.schematicZoom||0);survey.reviewContext.zoom[suffix]=Math.min(1.8,Math.max(.6,Number(survey.reviewContext.zoom[suffix]||1)+delta*.15));updateSchematicView(suffix);return;}
       const fitButton=event.target.closest('[data-schematic-fit]');
-      if(fitButton){survey.reviewContext.zoom[fitButton.dataset.schematicKind]=1;renderAllMatrices();const viewport=$('assessmentSchematicViewport-'+fitButton.dataset.schematicKind);if(viewport){viewport.scrollLeft=0;viewport.scrollTop=0;}return;}
+      if(fitButton){survey.reviewContext.zoom[fitButton.dataset.schematicKind]=1;updateSchematicView(fitButton.dataset.schematicKind);const viewport=$('assessmentSchematicViewport-'+fitButton.dataset.schematicKind);if(viewport){viewport.scrollLeft=0;viewport.scrollTop=0;}return;}
       const focusButton=event.target.closest('[data-schematic-focus]');
       if(focusButton){const suffix=focusButton.dataset.schematicKind,name=suffix==='fdv'?survey.selectedMonitor:survey.selectedGauge;if(!name)return;const viewport=$('assessmentSchematicViewport-'+suffix),selector=suffix==='fdv'?'[data-survey-node="'+CSS.escape(name)+'"]':'[data-survey-gauge="'+CSS.escape(name)+'"]';viewport?.querySelector(selector)?.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});return;}
       const weekEdit=event.target.closest('[data-week-edit]');
-      if(weekEdit){const match=weekByKey(weekEdit.dataset.weekKind,weekEdit.dataset.weekEdit);if(match)survey.selectedWeeks[weekEdit.dataset.weekKind+':'+match.name]=weekEdit.dataset.weekEdit;renderMonitorDetail();renderGaugeDetail();const root=$(weekEdit.dataset.weekKind==='monitor-week'?'surveyMonitorDetail':'surveyGaugeDetail');root?.querySelector('.weekly-editor')?.scrollIntoView({block:'center',behavior:'smooth'});return;}
+      if(weekEdit){const kind=weekEdit.dataset.weekKind,match=weekByKey(kind,weekEdit.dataset.weekEdit);if(match){survey.reviewContext.drawerTab='audit';selectReviewWeek(kind,match.name,weekEdit.dataset.weekEdit);$('assessmentDrawer-'+(kind==='monitor-week'?'fdv':'rain'))?.scrollIntoView({block:'nearest',behavior:'smooth'});}return;}
       const quick=event.target.closest('[data-week-note]');
-      if(quick){const input=quick.closest('.weekly-editor')?.querySelector('.weekly-comment');if(input){input.value=[input.value.trim(),quick.dataset.weekNote].filter(Boolean).join(' ');input.focus();}return;}
+      if(quick){const input=quick.closest('.weekly-editor')?.querySelector('.weekly-comment');if(input){input.value=[input.value.trim(),quick.dataset.weekNote].filter(Boolean).join(' ');input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();}return;}
       const weeklySave=event.target.closest('[data-week-save]');
-      if(weeklySave){const form=weeklySave.closest('.weekly-editor');try{applyWeeklyReview(form.dataset.weekKind,form.dataset.weekName,form.dataset.weekKey,form.querySelector('.weekly-rating').value,form.querySelector('.weekly-comment').value,form.querySelector('.weekly-reviewer').value);}catch(err){form.querySelector('.w26-review-error').textContent=String(err.message||err);}return;}
+      if(weeklySave){const form=weeklySave.closest('.weekly-editor');try{applyWeeklyReview(form.dataset.weekKind,form.dataset.weekName,form.dataset.weekKey,form.querySelector('.weekly-rating').value,form.querySelector('.weekly-comment').value,form.querySelector('.weekly-reviewer').value);weeklyDrafts.delete(draftKey(form.dataset.weekKind,form.dataset.weekKey));renderAllMatrices();}catch(err){form.querySelector('.w26-review-error').textContent=String(err.message||err);}return;}
       const reset=event.target.closest('[data-week-reset]');
-      if(reset){const form=reset.closest('.weekly-editor');revertReview(form.dataset.weekKind,form.dataset.weekKey);return;}
+      if(reset){const form=reset.closest('.weekly-editor');weeklyDrafts.delete(draftKey(form.dataset.weekKind,form.dataset.weekKey));revertReview(form.dataset.weekKind,form.dataset.weekKey);return;}
       const close=event.target.closest('[data-week-close]');
       if(close){if(close.dataset.weekClose==='monitor')survey.selectedMonitor=null;else survey.selectedGauge=null;survey.selectedWeek=null;renderMonitorDetail();renderGaugeDetail();return;}
       const open = event.target.closest('[data-w26-monitor]');
@@ -1475,6 +1522,7 @@
     if (typeof applyWorkspace === 'function') {
       const coreApplyWorkspace = applyWorkspace;
       applyWorkspace = async function(value) {
+        weeklyDrafts.clear();
         const result = await coreApplyWorkspace(value);
         const legacyReviews = value?.survey?.engineer_reviews && typeof value.survey.engineer_reviews === 'object'
           ? JSON.parse(JSON.stringify(value.survey.engineer_reviews))

@@ -134,3 +134,14 @@
   .w26-matrix-toolbar label{width:100%}
   .w26-schematic-tools{width:100%;overflow:auto}
 }
+
+/* The evidence drawer can be narrower than the full monitor detail panel. */
+.w26-evidence-drawer .weekly-editor-fields{grid-template-columns:minmax(0,1fr)}
+.w26-evidence-drawer .weekly-editor-fields label{min-width:0}
+.w26-evidence-drawer .weekly-quick-notes,.w26-evidence-drawer .actions{flex-wrap:wrap}
+.w26-schematic-viewport{cursor:grab;touch-action:none;scroll-behavior:auto}
+.w26-schematic-viewport.is-panning{cursor:grabbing;user-select:none}
+.w26-schematic-viewport[data-pan="off"]{cursor:auto;touch-action:auto}
+.w26-schematic-tools [data-schematic-pan][aria-pressed="true"]{background:#e5f1f3;color:#126773}
+.w26-schematic-viewport .survey-schematic{overflow:visible;margin:0;padding:0}
+.w26-schematic-viewport .survey-schematic svg{min-width:0}

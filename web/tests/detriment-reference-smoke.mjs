@@ -97,13 +97,16 @@ try{
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1),'No horizontal page overflow');
     await page.screenshot({path:path.join(evidence,'reference-level-'+viewport.width+'.png'),fullPage:false});
   }
-  // Failed initial startup: previously uploaded report sources survive retry.
+  // Failed first on-demand startup: a source selected before Python becomes
+  // available survives the controlled failure and retry without a page reload.
   const failed=await browser.newPage({viewport:{width:1366,height:768}});
   await failed.route('**/python/package-manifest.json*',r=>r.fulfill({status:503,body:'Controlled first-boot failure'}));
   await failed.goto(base,{waitUntil:'domcontentloaded'});
-  await failed.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='failed',null,{timeout:120000});
   await failed.setInputFiles('#fileInput',cases.spill.original);
-  await failed.waitForFunction(()=>[...state.files.values()].some(x=>x.advancedUnavailable),null,{timeout:60000});
+  await failed.waitForFunction(
+    ()=>window.__ICM_WORKBENCH__?.status==='failed'&&[...state.files.values()].some(x=>x.advancedUnavailable),
+    null,{timeout:120000}
+  );
   await failed.unroute('**/python/package-manifest.json*');await failed.locator('#engineRetryBtn').click();
   await failed.waitForFunction(()=>[...state.files.values()].some(x=>x.status==='ready'&&x.parsed.metadata.report_kind==='spill_detail'),null,{timeout:120000});
   await failed.screenshot({path:path.join(evidence,'recovered-startup.png'),fullPage:false});await failed.close();

@@ -4,7 +4,7 @@ const browser=await chromium.launch(browserLaunchOptions());
 const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true,...browserContextOptions()});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
 try{
  await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
- await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate&&engine.ready,null,{timeout:90000});
+ await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate&&(window.__ICM_WORKBENCH__?.status==='ready'||(window.__ICM_WORKBENCH__?.deferredEngine&&window.__ICM_WORKBENCH__?.status==='idle')),null,{timeout:90000});
  assert((await page.title()).includes('Hydra Bench'));assert((await page.locator('.pw-primary-nav').innerText()).includes('Plots'));
  console.log('STEP import supplied FDV/rain/workbook');
  await page.setInputFiles('#fileInput',[...['FM01','FM02','FM02A','FM03','FM04','FM05','FM06','FM07','FM08'].map(n=>root+'/reference/current-tool/sample-data/fdv/'+n+'.fdv'),...['RG01','RG02','RG03','RG04'].map(n=>root+'/reference/current-tool/sample-data/rainfall/'+n+'.R'),root+'/reference/current-tool/sample-data/rainfall/fm_rg_assoc.xlsx']);
@@ -38,13 +38,49 @@ try{
  assert(await page.locator('#assessmentDrawer-fdv').isVisible());
  assert((await page.locator('#assessmentDrawer-fdv').innerText()).includes('FM01'));
  assert.equal(await page.locator('#assessmentPopup').isVisible(),false);
+ // Drag pans both axes; an ordinary click still selects the node.
+ async function checkPan(suffix){
+  const viewport=page.locator('#assessmentSchematicViewport-'+suffix);
+  await viewport.scrollIntoViewIfNeeded();
+  for(let i=0;i<5;i++)await page.locator('[data-schematic-zoom="1"][data-schematic-kind="'+suffix+'"]').click();
+  await viewport.scrollIntoViewIfNeeded();
+  const box=await viewport.boundingBox();
+  await page.mouse.move(box.x+box.width*.7,box.y+box.height*.7);await page.mouse.down();
+  await page.mouse.move(box.x+box.width*.4,box.y+box.height*.4,{steps:8});await page.mouse.up();
+  const position=await viewport.evaluate(el=>({x:el.scrollLeft,y:el.scrollTop}));
+  assert(position.x>20&&position.y>20,'Drag moves the '+suffix+' schematic on both axes');
+  await page.locator('[data-schematic-fit][data-schematic-kind="'+suffix+'"]').click();
+  assert.deepEqual(await viewport.evaluate(el=>[el.scrollLeft,el.scrollTop]),[0,0]);
+ }
+ await checkPan('fdv');
+
  await page.screenshot({path:evidence+'/week-matrix-drawer.png',fullPage:false});
  // The schematic initially selects the first full week, which can be the
  // second matrix column when the survey starts midweek. Review two explicit
  // matrix weeks so this journey verifies restoration of distinct records.
  await page.locator('#assessmentMatrix-fdv [data-week-name="FM01"]').first().click();
  await page.locator('#assessmentDrawer-fdv [data-drawer-tab="audit"]').click();
- const editor=page.locator('#assessmentDrawer-fdv .weekly-editor');await editor.locator('.weekly-rating').selectOption('auto');await editor.locator('.weekly-reviewer').fill('Anzar');await editor.locator('[data-week-note="Tidal impact noted."]').click();await editor.locator('[data-week-save]').click();
+ await page.locator('#assessmentDrawer-fdv [data-drawer-tab="weekly"]').click();
+ const weekEdit=page.locator('#assessmentDrawer-fdv [data-week-edit]').nth(1),editedKey=await weekEdit.getAttribute('data-week-edit');
+ await weekEdit.click();
+ assert.equal(await page.locator('#assessmentDrawer-fdv .weekly-editor').getAttribute('data-week-key'),editedKey);
+ await page.locator('#assessmentMatrix-fdv [data-week-name="FM01"]').first().click();
+ const editor=page.locator('#assessmentDrawer-fdv .weekly-editor');await editor.locator('.weekly-comment').fill('Draft survives zoom and navigation.');
+ await page.locator('[data-schematic-zoom="1"][data-schematic-kind="fdv"]').click();
+ assert.equal(await editor.locator('.weekly-comment').inputValue(),'Draft survives zoom and navigation.');
+ await page.locator('#assessmentDrawer-fdv [data-drawer-tab="overview"]').click();
+ await page.locator('#assessmentDrawer-fdv [data-drawer-tab="audit"]').click();
+ assert.equal(await editor.locator('.weekly-comment').inputValue(),'Draft survives zoom and navigation.');
+ const firstWeek=page.locator('#assessmentMatrix-fdv [data-week-name="FM01"]');
+ await firstWeek.nth(1).click();assert.equal(await editor.locator('.weekly-comment').inputValue(),'');
+ await firstWeek.first().click();assert.equal(await editor.locator('.weekly-comment').inputValue(),'Draft survives zoom and navigation.');
+ await editor.locator('.weekly-comment').fill('');
+ for(const width of [1440,1024]){
+  await page.setViewportSize({width,height:1000});
+  assert(await editor.evaluate(el=>[...el.querySelectorAll('input,select,textarea')].every(field=>field.getBoundingClientRect().right<=el.getBoundingClientRect().right+1)),'Editor fields fit the drawer');
+ }
+ await page.setViewportSize({width:1440,height:1000});
+ await editor.locator('.weekly-rating').selectOption('auto');await editor.locator('.weekly-reviewer').fill('Anzar');await editor.locator('[data-week-note="Tidal impact noted."]').click();await editor.locator('[data-week-save]').click();
  await page.waitForFunction(()=>Object.values(window.__ICM_WORKBENCH__.survey.reviews).some(r=>r.kind==='monitor-week'&&r.reason==='Tidal impact noted.'&&r.reviewer==='Anzar'));
  assert.equal(await page.locator('#assessmentDrawer-fdv .weekly-editor .weekly-comment').inputValue(),'Tidal impact noted.');
  const fm01Cells=page.locator('#assessmentMatrix-fdv [data-week-name="FM01"]');assert((await fm01Cells.count())>1);await fm01Cells.nth(1).click();await page.locator('#assessmentDrawer-fdv [data-drawer-tab="audit"]').click();
@@ -60,7 +96,7 @@ try{
  await page.evaluate(()=>window.__ICM_WORKBENCH__.workflow26.selectMonitor('FM01'));
  const weekData=await page.evaluate(()=>Object.values(window.__ICM_WORKBENCH__.survey.reviews).filter(r=>r.kind==='monitor-week').map(r=>({week:r.week_ending,reason:r.reason,reviewer:r.reviewer})));assert.equal(weekData.length,2);assert.notEqual(weekData[0].week,weekData[1].week);
  await page.screenshot({path:evidence+'/weekly-review.png',fullPage:false});
- await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','rainfall-check',false));assert(await page.locator('#assessmentMatrix-rain .w26-week-matrix').isVisible());await page.locator('#assessmentSchematic-rain [data-survey-gauge="RG01"]').click();assert((await page.locator('#assessmentDrawer-rain').innerText()).includes('RG01'));await page.locator('#assessmentDrawer-rain [data-drawer-tab="audit"]').click();await page.locator('#assessmentDrawer-rain .weekly-reviewer').fill('Rain reviewer');await page.locator('#assessmentDrawer-rain .weekly-comment').fill('Gauge inspection completed.');await page.locator('#assessmentDrawer-rain [data-week-save]').click();
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','rainfall-check',false));assert(await page.locator('#assessmentMatrix-rain .w26-week-matrix').isVisible());await checkPan('rain');await page.locator('#assessmentSchematic-rain [data-survey-gauge="RG01"]').click();assert((await page.locator('#assessmentDrawer-rain').innerText()).includes('RG01'));await page.locator('#assessmentDrawer-rain [data-drawer-tab="audit"]').click();await page.locator('#assessmentDrawer-rain .weekly-reviewer').fill('Rain reviewer');await page.locator('#assessmentDrawer-rain .weekly-comment').fill('Gauge inspection completed.');await page.locator('#assessmentDrawer-rain [data-week-save]').click();
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','monthly-review',false));assert(await page.locator('#surveyMonthlyReview').isVisible());assert(!await page.locator('#completeSurveyPanel').isVisible());assert((await page.locator('#surveyMonthlyReviewBody').innerText()).includes('Tidal impact noted.'));
  const popupPromise=page.waitForEvent('popup');await page.click('#surveyMonthlyPdfBtn');const printable=await popupPromise;await printable.waitForLoadState();assert((await printable.locator('body').innerText()).includes('Pumping influence noted.'));await printable.pdf({path:evidence+'/monthly.pdf',format:'A4',landscape:true,printBackground:true});await printable.close();
  await page.screenshot({path:evidence+'/monthly-review.png',fullPage:false});

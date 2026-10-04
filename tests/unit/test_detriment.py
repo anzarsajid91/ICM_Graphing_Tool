@@ -220,14 +220,23 @@ def test_scope_confirmation_and_invalid_tolerance_block_comparison(tmp_path):
 
 @pytest.mark.parametrize('kind',['flooding','level','spill'])
 @pytest.mark.parametrize('missing',[None,'',' \t\n '])
-def test_missing_scope_is_distinct_from_mismatched_scope(tmp_path,kind,missing):
-    a,b=floods(tmp_path)
+def test_optional_scope_does_not_change_engineering_results(tmp_path,kind,missing):
+    if kind=='level':
+        a,b=levels(tmp_path)
+    elif kind=='spill':
+        a,b=spills(tmp_path)
+    else:
+        a,b=floods(tmp_path)
+    expected=calculate(kind,a,b)
     for slot in ('a','b','both'):
         baseline,proposed=dict(a),dict(b)
         if slot in ('a','both'):baseline['scope']=missing
         if slot in ('b','both'):proposed['scope']=missing
-        with pytest.raises(ValueError,match='Enter a common assessment scope'):
-            calculate(kind,baseline,proposed)
+        result=calculate(kind,baseline,proposed)
+        assert result['rows']==expected['rows']
+        assert result['summary']==expected['summary']
+        omitted='scenario_b' if slot=='b' else 'scenario_a'
+        assert result['provenance']['scope'][omitted]['basis']=='unavailable'
 
 
 def test_scope_trims_whitespace_but_rejects_different_storm_sets(tmp_path):
