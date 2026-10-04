@@ -29,9 +29,9 @@ def _inject_v2_assets(build_token: str) -> None:
     )
     html = html.replace(
         '<script type="module" src="assets/runtime.js"></script>',
-        '<script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/fastpath-preview.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>\n  <script src="assets/workbench-survey.js"></script>\n  <script src="assets/workflow-26.js"></script>\n  <script src="assets/detriment-workspace.js"></script>\n  <script src="assets/precision-workbench.js"></script>',
+        '<script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/fastpath-preview.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="vendor/sheetjs-0.20.3/xlsx.full.min.js"></script>\n  <script src="assets/workbook-reader.js"></script>\n  <script src="assets/workbench-survey.js"></script>\n  <script src="assets/workflow-26.js"></script>\n  <script src="assets/detriment-workspace.js"></script>\n  <script src="assets/precision-workbench.js"></script>',
     )
-    required = ["domain-registry.js", "workbench-v2.css", "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "workflow-26.css", "workflow-26.js", "precision-workbench.css", "precision-workbench.js", "detriment-workspace.css", "detriment-workspace.js", "xlsx@0.18.5"]
+    required = ["domain-registry.js", "workbench-v2.css", "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "workflow-26.css", "workflow-26.js", "precision-workbench.css", "precision-workbench.js", "detriment-workspace.css", "detriment-workspace.js", "vendor/sheetjs-0.20.3/xlsx.full.min.js"]
     if not all(name in html for name in required):
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
 
@@ -39,12 +39,15 @@ def _inject_v2_assets(build_token: str) -> None:
     # Version every local script/style URL with the exact release SHA so index,
     # browser runtime, worker and Python package cannot be mixed across releases.
     local_assets = [
+        "vendor/plotly-3.1.0/plotly.min.js",
+        "vendor/sheetjs-0.20.3/xlsx.full.min.js",
         "assets/app.css",
         "assets/workbench-v2.css",
         "assets/workbench-survey.css",
         "assets/workflow-26.css",
         "assets/detriment-workspace.css",
         "assets/precision-workbench.css",
+        "assets/workbook-reader.js",
         "assets/domain-registry.js",
         "assets/runtime.js",
         "assets/workbench-v2.js",
@@ -65,6 +68,8 @@ def _inject_v2_assets(build_token: str) -> None:
 
 
 def build() -> None:
+    from verify_vendor import verify_vendor
+    verify_vendor(ROOT)
     if SITE.exists():
         shutil.rmtree(SITE)
     shutil.copytree(WEB, SITE, ignore=shutil.ignore_patterns("tests"))

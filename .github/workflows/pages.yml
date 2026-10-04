@@ -8,17 +8,19 @@ on:
       - 'src/icm_workbench/**'
       - 'tests/**'
       - 'scripts/build_pages.py'
+      - 'scripts/verify_vendor.py'
       - 'scripts/reference_workflow_simulation.py'
       - 'scripts/detriment_reference_cases.py'
       - '.github/workflows/pages.yml'
       - '.github/workflows/live-pages-verification.yml'
   pull_request:
-    branches: [main]
+    branches: [main, "audit/**"]
     paths:
       - 'web/**'
       - 'src/icm_workbench/**'
       - 'tests/**'
       - 'scripts/build_pages.py'
+      - 'scripts/verify_vendor.py'
       - 'scripts/reference_workflow_simulation.py'
       - 'scripts/detriment_reference_cases.py'
       - '.github/workflows/pages.yml'
@@ -78,6 +80,7 @@ jobs:
           node --check web/assets/workflow-26.js
           node --check web/assets/precision-workbench.js
           node --check web/assets/detriment-workspace.js
+          node web/tests/workbook-reader-unit.mjs
           node web/tests/detriment-unit.mjs
           node web/tests/engine-recovery-unit.mjs
           node --check web/tests/detriment-reference-smoke.mjs
@@ -140,7 +143,8 @@ jobs:
           assert Path('_site/assets/fastpath-worker.js').exists()
           assert Path('_site/assets/fastpath-preview.js').exists()
           assert Path('_site/assets/domain-registry.js').exists()
-          assert 'xlsx@0.18.5' in html
+          assert 'vendor/sheetjs-0.20.3/xlsx.full.min.js' in html
+          assert 'https://cdn.' not in html
           assert 'type="module" src="assets/runtime.js"' not in html
           print(f'Pages manifest verified: {len(actual)} Python modules; current browser UX staged exactly.')
           PY
