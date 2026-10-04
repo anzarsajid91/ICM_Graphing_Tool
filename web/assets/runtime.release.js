@@ -2755,12 +2755,13 @@ async function start(){
   renderExclusions();
   renderNamedWorkspaces();
   criteriaModeChanged();
-  if(isIOSWebKitRuntime()){
-    diagnostic.status='idle';
-    diagnostic.mobileDeferredEngine=true;
-    setEngineStatus('Hydra Bench ready · Python starts when data is loaded','ready');
-    return;
-  }
-  void ensureEngineBoot().catch(()=>{});
+  // Cold start must stay lightweight on every browser. FastPath can render
+  // useful previews immediately after source selection while the authoritative
+  // Python worker starts on demand through ensureEngineBoot().
+  diagnostic.status='idle';
+  diagnostic.deferredEngine=true;
+  diagnostic.mobileDeferredEngine=isIOSWebKitRuntime();
+  diagnostic.engineDeferredAt=performance.now();
+  setEngineStatus('Hydra Bench ready · advanced analysis starts when data is loaded','ready');
 }
 start();
