@@ -8,7 +8,7 @@ from icm_workbench import advanced_api as api
 
 def report(tmp_path, name, rows, mapping, **extra):
     path=tmp_path/name
-    with path.open('w',newline='') as f:
+    with path.open('w',newline='',encoding='utf-8') as f:
         writer=csv.DictWriter(f,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
     return dict(path=str(path),mapping=dict(mapping),name=name,unit='m³',duration_unit='h',datum='AOD',
                 scope='30-year matched storm set',period_start='2025-01-01',period_end='2026-01-01',template='UK12/24 same threshold/integral',**extra)
