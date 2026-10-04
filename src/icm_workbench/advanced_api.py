@@ -201,7 +201,7 @@ def rating_sources_result(
         payload["exponent_difference"] = modelled["b"] - observed["b"]
     return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
 
-def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.0,minimum_intensity_duration_min=6.0,minimum_depth_mm=5.0,minimum_event_duration_min=60.0,dry_gap_min=15.0,exclusions_json="[]",start=None,end=None):
+def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.0,minimum_intensity_duration_min=6.0,minimum_depth_mm=5.0,minimum_event_duration_min=60.0,dry_gap_min=15.0,exclusions_json="[]",start=None,end=None,rainfall_semantics="intensity"):
     parsed=python_bridge._load(path)
     frame=parsed.frame.copy()
     frame[column]=pd.to_numeric(frame[column],errors="coerce")*float(conversion_factor)
@@ -225,7 +225,7 @@ def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.
         minimum_event_duration_min=float(minimum_event_duration_min),
         dry_gap_min=float(dry_gap_min),
         exclusions=python_bridge._exclusions(exclusions_json),
-        semantics="intensity",
+        semantics=rainfall_semantics,
         declared_interval_minutes=float(interval) if interval else None,
         max_gap_seconds=python_bridge._rain_support_gap_seconds(parsed),
     )
@@ -239,7 +239,7 @@ def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.
             "minimum_event_duration_min":float(minimum_event_duration_min),
             "dry_gap_min":float(dry_gap_min),
             "conversion_factor":float(conversion_factor),
-            "rainfall_semantics":"intensity",
+            "rainfall_semantics":rainfall_semantics,
             "declared_interval_min":float(interval) if interval else None,
             "support_method":"actual elapsed intervals; final support only from declared interval",
             "analysis_start":analysis_start,
@@ -247,7 +247,7 @@ def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.
         }
     }),ensure_ascii=False)
 
-def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_points=5000):
+def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_points=5000,rainfall_semantics="intensity",exclusions_json="[]"):
     """Return support-aware cumulative rainfall depth from the native series."""
     parsed=python_bridge._load(path)
     frame=parsed.frame.copy()
@@ -268,9 +268,10 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
     result=rainfall_accumulation(
         x,
         column,
-        semantics="intensity",
+        semantics=rainfall_semantics,
         declared_interval_minutes=float(interval) if interval else None,
         max_gap_seconds=rain_gap_seconds,
+        exclusions=python_bridge._exclusions(exclusions_json),
     )
     seg=result["segments"]
     running=0.0
@@ -314,6 +315,8 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
         "validity":result.get("validity"),
         "conversion_factor":float(conversion_factor),
         "interval_min":float(interval) if interval else None,
+        "rainfall_semantics":rainfall_semantics,
+        "excluded_seconds":result.get("excluded_seconds",0.0),
         "start":pd.Timestamp(x["timestamp"].iloc[0]).isoformat(),
         "end":pd.Timestamp(x["timestamp"].iloc[-1]).isoformat(),
         "integration_method":"actual-support interval-average intensity × elapsed time; gaps above the defensible source-support limit are unknown; declared interval used only for final support",
@@ -352,6 +355,8 @@ def dwf_scaled(
     flow_exclusions_json="[]",
     rainfall_exclusions_json="[]",
     flow_unit_override=None,
+    rainfall_semantics="intensity",
+    flow_max_gap_seconds=None,
 ):
     """Run the canonical DWF method on the shared Graphs analytical context.
 
@@ -404,8 +409,10 @@ def dwf_scaled(
 
     flow=_bound(flow)
     rain=_bound(rain)
-    flow,excluded_flow_rows=_mask(flow,flow_col,python_bridge._exclusions(flow_exclusions_json))
-    rain,excluded_rainfall_rows=_mask(rain,rain_col,python_bridge._exclusions(rainfall_exclusions_json))
+    flow_exclusions=python_bridge._exclusions(flow_exclusions_json)
+    rain_exclusions=python_bridge._exclusions(rainfall_exclusions_json)
+    _,excluded_flow_rows=_mask(flow,flow_col,flow_exclusions)
+    _,excluded_rainfall_rows=_mask(rain,rain_col,rain_exclusions)
 
     metadata=getattr(rain_parsed,"metadata",{}) or {} if rain_parsed is not None else {}
     interval=metadata.get("interval_min") if rain_parsed is not None else None
@@ -415,13 +422,17 @@ def dwf_scaled(
         baseline_days=int(baseline_days),
         min_dry_days=int(min_dry_days),
         adp_hours=float(adp_hours),
-        rain_semantics="intensity",
+        rain_semantics=rainfall_semantics,
         rain_interval_min=float(interval) if interval else None,
         rain_max_gap_seconds=python_bridge._rain_support_gap_seconds(rain_parsed) if rain_parsed is not None else None,
+        flow_max_gap_seconds=flow_max_gap_seconds,
+        flow_exclusions=flow_exclusions,
+        rain_exclusions=rain_exclusions,
     )
     result["rain_conversion_factor"]=float(rain_factor)
     result["flow_contract"]=flow_contract
     result["flow_unit"]="m³/s"
+    result["rainfall_semantics"]=rainfall_semantics
     result["analysis_start"]=None if analysis_start is None else analysis_start.isoformat()
     result["analysis_end"]=None if analysis_end is None else analysis_end.isoformat()
     result["excluded_flow_rows"]=excluded_flow_rows

@@ -24,6 +24,7 @@ def _subtract_interval(start, end, exclusions):
     return pieces
 
 
+
 def _valid_segments(df, value_col, max_gap_seconds):
     x = df[["timestamp", value_col]].copy()
     x["timestamp"] = pd.to_datetime(x["timestamp"], errors="coerce")
@@ -35,16 +36,19 @@ def _valid_segments(df, value_col, max_gap_seconds):
     )
     if x.empty:
         return []
-    invalid = x[value_col].isna()
+    finite = np.isfinite(pd.to_numeric(x[value_col], errors="coerce").to_numpy(dtype=float))
+    invalid = pd.Series(~finite, index=x.index)
     dt = x["timestamp"].diff().dt.total_seconds()
     breaks = invalid | invalid.shift(fill_value=False) | dt.gt(float(max_gap_seconds))
     group = breaks.cumsum()
-    return [
-        g.dropna(subset=[value_col]).copy()
-        for _, g in x.groupby(group)
-        if not g.dropna(subset=[value_col]).empty
-    ]
-
+    out = []
+    for _, g in x.groupby(group):
+        values = pd.to_numeric(g[value_col], errors="coerce")
+        keep = np.isfinite(values.to_numpy(dtype=float))
+        cleaned = g.loc[keep].copy()
+        if not cleaned.empty:
+            out.append(cleaned)
+    return out
 
 def interpolate_without_bridging(source, target_times, value_col, max_gap_seconds):
     result = pd.Series(index=target_times, dtype=float)
@@ -69,6 +73,7 @@ def interpolate_without_bridging(source, target_times, value_col, max_gap_second
     return result
 
 
+
 def pair_series(
     observed,
     modelled,
@@ -78,32 +83,48 @@ def pair_series(
     start=None,
     end=None,
 ):
+    """Pair observed targets with bounded model interpolation.
+
+    The requested analysis window clips target observations, not the source
+    samples needed to bracket those targets. This preserves defensible source
+    points just outside the boundary without allowing interpolation across a
+    gap larger than max_gap_seconds.
+    """
     obs = observed[["timestamp", obs_col]].copy()
     mod = modelled[["timestamp", model_col]].copy()
-    for d, c in ((obs, obs_col), (mod, model_col)):
+    for d, col in ((obs, obs_col), (mod, model_col)):
         d["timestamp"] = pd.to_datetime(d["timestamp"], errors="coerce")
-        d[c] = pd.to_numeric(d[c], errors="coerce")
+        d[col] = pd.to_numeric(d[col], errors="coerce")
         d.dropna(subset=["timestamp"], inplace=True)
         d.sort_values("timestamp", inplace=True)
         d.drop_duplicates("timestamp", keep="last", inplace=True)
+
+    obs_values = pd.to_numeric(obs[obs_col], errors="coerce").to_numpy(dtype=float)
+    obs = obs.loc[np.isfinite(obs_values)].copy()
     if start is not None:
         obs = obs[obs.timestamp >= pd.Timestamp(start)]
-        mod = mod[mod.timestamp >= pd.Timestamp(start)]
     if end is not None:
         obs = obs[obs.timestamp <= pd.Timestamp(end)]
-        mod = mod[mod.timestamp <= pd.Timestamp(end)]
-    obs = obs.dropna(subset=[obs_col])
     if obs.empty or mod.empty:
         return pd.DataFrame(columns=["timestamp", "obs", "sim"])
+
     a = max(obs.timestamp.min(), mod.timestamp.min())
     b = min(obs.timestamp.max(), mod.timestamp.max())
+    if b < a:
+        return pd.DataFrame(columns=["timestamp", "obs", "sim"])
     obs = obs[(obs.timestamp >= a) & (obs.timestamp <= b)]
+    if obs.empty:
+        return pd.DataFrame(columns=["timestamp", "obs", "sim"])
+
     target = pd.DatetimeIndex(obs.timestamp)
     sim = interpolate_without_bridging(mod, target, model_col, max_gap_seconds)
-    return pd.DataFrame(
+    paired = pd.DataFrame(
         {"timestamp": target, "obs": obs[obs_col].to_numpy(), "sim": sim.to_numpy()}
-    ).dropna(subset=["obs", "sim"])
-
+    )
+    finite = np.isfinite(pd.to_numeric(paired["obs"], errors="coerce")) & np.isfinite(
+        pd.to_numeric(paired["sim"], errors="coerce")
+    )
+    return paired.loc[finite].reset_index(drop=True)
 
 def time_coverage(
     df,

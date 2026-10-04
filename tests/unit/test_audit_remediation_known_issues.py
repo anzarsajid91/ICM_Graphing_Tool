@@ -11,15 +11,12 @@ from icm_workbench import advanced_api
 from icm_workbench.analysis.alignment import pair_series
 from icm_workbench.analysis.events import detect_rainfall_events
 from icm_workbench.analysis.integration import integrate_series
+from icm_workbench.analysis.rainfall import rainfall_accumulation
 from icm_workbench.analysis.review import dry_weather_flow, event_response_summary
 from icm_workbench.domain import ExclusionPeriod
 from icm_workbench.parsers.csv import parse_tabular_csv
 
 
-@pytest.mark.xfail(
-    reason="A-01: DWF completeness currently does not enforce adequate daily flow support.",
-    strict=False,
-)
 def test_a01_sparse_flow_cannot_produce_complete_dwf():
     # Six complete dry rainfall days but only one flow sample per day.
     flow = pd.DataFrame(
@@ -50,10 +47,6 @@ def test_a01_sparse_flow_cannot_produce_complete_dwf():
     assert result["calculation_status"] != "complete"
 
 
-@pytest.mark.xfail(
-    reason="A-02: browser rainfall bridges currently hard-code intensity semantics.",
-    strict=False,
-)
 def test_a02_rainfall_bridges_expose_explicit_semantics_contract():
     for function in (
         advanced_api.rainfall_event_scaled,
@@ -63,10 +56,6 @@ def test_a02_rainfall_bridges_expose_explicit_semantics_contract():
         assert "rainfall_semantics" in inspect.signature(function).parameters
 
 
-@pytest.mark.xfail(
-    reason="A-03: an exclusion wholly between rainfall timestamps is currently invisible.",
-    strict=False,
-)
 def test_a03_between_sample_rainfall_exclusion_breaks_event_support():
     rain = pd.DataFrame(
         {
@@ -108,10 +97,6 @@ def test_a03_between_sample_rainfall_exclusion_breaks_event_support():
     )
 
 
-@pytest.mark.xfail(
-    reason="A-04: pair_series clips away model bracketing points before interpolation.",
-    strict=False,
-)
 def test_a04_requested_start_keeps_model_bracket_for_interpolation():
     observed = pd.DataFrame(
         {"timestamp": pd.to_datetime(["2026-01-01 10:05"]), "value": [5.0]}
@@ -136,10 +121,6 @@ def test_a04_requested_start_keeps_model_bracket_for_interpolation():
     assert paired.iloc[0]["sim"] == pytest.approx(5.0)
 
 
-@pytest.mark.xfail(
-    reason="A-05: timezone-aware CSV sources are not classified unresolved at import.",
-    strict=False,
-)
 def test_a05_timezone_aware_csv_is_flagged_before_model_clock_calculation(tmp_path):
     source = tmp_path / "timezone-aware.csv"
     source.write_text(
@@ -150,22 +131,15 @@ def test_a05_timezone_aware_csv_is_flagged_before_model_clock_calculation(tmp_pa
     )
     parsed = parse_tabular_csv(source)
     assert parsed.metadata["time_basis"] == "timezone-aware/unresolved"
+    assert parsed.metadata["time_resolution_required"] is True
 
 
-@pytest.mark.xfail(
-    reason="A-06: event response currently has no observed/model exclusion contract.",
-    strict=False,
-)
 def test_a06_event_response_accepts_role_specific_hydraulic_exclusions():
     parameters = inspect.signature(event_response_summary).parameters
     assert "observed_exclusions" in parameters
     assert "model_exclusions" in parameters
 
 
-@pytest.mark.xfail(
-    reason="A-07: non-finite hydraulic values can currently retain complete support.",
-    strict=False,
-)
 def test_a07_infinite_flow_invalidates_integration_support():
     frame = pd.DataFrame(
         {
@@ -187,3 +161,90 @@ def test_a07_infinite_flow_invalidates_integration_support():
         max_gap_seconds=120.0,
     )
     assert result["status"] != "complete"
+
+
+def test_a02_intensity_and_incremental_depth_are_not_conflated():
+    rain = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-01-01 00:00", periods=3, freq="15min"),
+            "rainfall": [6.0, 6.0, 6.0],
+        }
+    )
+    intensity = rainfall_accumulation(
+        rain,
+        "rainfall",
+        semantics="intensity",
+        declared_interval_minutes=15.0,
+        max_gap_seconds=900.0,
+    )
+    incremental = rainfall_accumulation(
+        rain,
+        "rainfall",
+        semantics="incremental_depth",
+        declared_interval_minutes=15.0,
+        max_gap_seconds=900.0,
+    )
+    assert intensity["total_depth_mm"] == pytest.approx(4.5)
+    assert incremental["total_depth_mm"] == pytest.approx(18.0)
+
+
+def test_a03_excluded_rainfall_support_is_conserved_and_not_accumulated():
+    rain = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-01-01 00:00", periods=3, freq="15min"),
+            "rainfall": [6.0, 6.0, 6.0],
+        }
+    )
+    exclusion = ExclusionPeriod(
+        datetime(2026, 1, 1, 0, 5),
+        datetime(2026, 1, 1, 0, 10),
+        "known gauge fault",
+    )
+    result = rainfall_accumulation(
+        rain,
+        "rainfall",
+        semantics="intensity",
+        declared_interval_minutes=15.0,
+        max_gap_seconds=900.0,
+        exclusions=[exclusion],
+    )
+    assert result["requested_seconds"] == pytest.approx(2700.0)
+    assert result["excluded_seconds"] == pytest.approx(300.0)
+    assert result["valid_seconds"] == pytest.approx(2400.0)
+    assert result["total_depth_mm"] == pytest.approx(4.0)
+
+
+def test_a06_event_response_with_major_baseline_exclusion_is_partial():
+    t = pd.date_range("2026-01-01", periods=13, freq="30min")
+    obs = pd.DataFrame(
+        {"timestamp": t, "flow": [1, 1, 1, 1, 1, 2, 4, 3, 2, 1, 1, 1, 1]}
+    )
+    model = pd.DataFrame(
+        {"timestamp": t, "flow": [1, 1, 1, 1, 1, 1.5, 2, 4, 3, 2, 1, 1, 1]}
+    )
+    events = [
+        {
+            "event": 1,
+            "start": pd.Timestamp("2026-01-01 02:00"),
+            "end": pd.Timestamp("2026-01-01 03:00"),
+            "total_depth_mm": 7.0,
+        }
+    ]
+    exclusion = ExclusionPeriod(
+        datetime(2026, 1, 1, 0, 30),
+        datetime(2026, 1, 1, 1, 30),
+        "invalid observed baseline",
+    )
+    row = event_response_summary(
+        obs,
+        model,
+        events,
+        "flow",
+        "flow",
+        baseline_hours=2,
+        post_hours=2,
+        observed_exclusions=[exclusion],
+        max_gap_seconds=3600.0,
+    )[0]
+    assert row["calculation_status"] == "partial"
+    assert pd.isna(row["observed_uplift"])
