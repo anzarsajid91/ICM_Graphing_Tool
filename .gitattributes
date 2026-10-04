@@ -1,0 +1,2 @@
+# Pinned upstream artifacts must retain their exact bytes on every platform.
+web/vendor/** -text
