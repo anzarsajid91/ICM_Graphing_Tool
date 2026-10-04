@@ -4,7 +4,7 @@ const browser=await chromium.launch(browserLaunchOptions());
 const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true,...browserContextOptions()});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
 try{
  await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
- await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:90000});
+ await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate&&(window.__ICM_WORKBENCH__?.status==='ready'||(window.__ICM_WORKBENCH__?.deferredEngine&&window.__ICM_WORKBENCH__?.status==='idle')),null,{timeout:90000});
  assert((await page.title()).includes('Hydra Bench'));assert((await page.locator('.pw-primary-nav').innerText()).includes('Plots'));
  console.log('STEP import supplied FDV/rain/workbook');
  await page.setInputFiles('#fileInput',[...['FM01','FM02','FM02A','FM03','FM04','FM05','FM06','FM07','FM08'].map(n=>root+'/reference/current-tool/sample-data/fdv/'+n+'.fdv'),...['RG01','RG02','RG03','RG04'].map(n=>root+'/reference/current-tool/sample-data/rainfall/'+n+'.R'),root+'/reference/current-tool/sample-data/rainfall/fm_rg_assoc.xlsx']);
