@@ -201,7 +201,7 @@ async function verifyClearDuringPendingImport(){
   probe.on('console',message=>{if(message.type()==='error')probeErrors.push('console: '+message.text());});
   try{
     await probe.goto(baseUrl+'?pending_clear='+Date.now(),{waitUntil:'domcontentloaded'});
-    await probe.waitForFunction(()=>document.querySelector('#engineStatus')?.textContent.includes('Initialising advanced analysis'),null,{timeout:30000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     const payload=Buffer.from([
       'timestamp,Depth (m)',
       '2026-02-01T00:00:00,0.2',
@@ -290,9 +290,9 @@ async function verifyFastPathFailureFallsBack(){
     }));
     await probe.goto(baseUrl+'?fastpath_failure_fallback='+Date.now(),{waitUntil:'domcontentloaded'});
     // "No files loaded." exists in static HTML, so it cannot prove runtime.start()
-    // has executed. engineStatus is changed only after wireEvents() attaches the
-    // import handlers, making this a deterministic readiness boundary.
-    await probe.waitForFunction(()=>document.querySelector('#engineStatus')?.textContent.includes('Initialising advanced analysis'),null,{timeout:30000});
+    // has executed. The idle diagnostic and navigation API appear after the
+    // import handlers are attached, making this a deterministic readiness boundary.
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     const payload=Buffer.from(['timestamp,Depth (m)','2026-02-01T00:00:00,0.2','2026-02-01T00:01:00,0.3',''].join('\n'),'utf8');
     await probe.setInputFiles('#fileInput',{name:'fastpath-fallback.csv',mimeType:'text/csv',buffer:payload});
     try{
@@ -330,7 +330,7 @@ async function verifyMixedSiblingImport(){
   probe.on('pageerror',error=>probeErrors.push(String(error)));
   try{
     await probe.goto(baseUrl+'?mixed_import='+Date.now(),{waitUntil:'domcontentloaded'});
-    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     const valid={name:'sibling-valid.csv',mimeType:'text/csv',buffer:Buffer.from('timestamp,Depth (m)\n2026-02-01T00:00:00,0.2\n2026-02-01T00:01:00,0.3\n')};
     const invalid={name:'sibling-invalid.fdv',mimeType:'text/plain',buffer:Buffer.from('this is not a valid FDV file\n')};
     await probe.setInputFiles('#fileInput',[valid,invalid]);
@@ -424,7 +424,7 @@ async function verifyStationAThresholdChain(){
   };
   try{
     await probe.goto(baseUrl+'?station_a_threshold='+Date.now(),{waitUntil:'domcontentloaded'});
-    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     await probe.setInputFiles('#fileInput',[
       path.join(root,'reference/current-tool/sample-data/other/StationA_EDM.csv'),
       path.join(root,'reference/current-tool/sample-data/other/StationA_Rainfall.csv'),
@@ -674,7 +674,7 @@ async function verifyIndividualSourceRemoval(){
   probe.on('console',message=>{if(message.type()==='error'&&!message.text().includes('favicon.ico'))probeErrors.push('console: '+message.text());});
   try{
     await probe.goto(baseUrl+'?individual_source_remove='+Date.now(),{waitUntil:'domcontentloaded'});
-    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     const fdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv'));
     const rain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG01.R'));
     await probe.setInputFiles('#fileInput',[
@@ -796,7 +796,7 @@ async function verifyPlotlyEngineeringEnhancements(){
   try{
     await probe.setViewportSize({width:1366,height:760});
     await probe.goto(baseUrl+'?plotly_engineering='+Date.now(),{waitUntil:'domcontentloaded'});
-    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     await probe.evaluate(()=>{
       const confirm=()=>{for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
         const input=document.getElementById(id);input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
@@ -999,9 +999,9 @@ async function verifyPlotlyEngineeringEnhancements(){
   }
 }
 
-async function waitReady(){
-  try{await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready'&&document.querySelector('#engineStatus')?.textContent.includes('ready'),null,{timeout:120000});}
-  catch(err){const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);throw new Error(`Engine readiness failed. status=${status}; diagnostic=${JSON.stringify(diag)}; original=${err}`);}
+async function waitShellReady(){
+  try{await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('#engineStatus')?.textContent.includes('ready'),null,{timeout:30000});}
+  catch(err){const status=await page.locator('#engineStatus').textContent().catch(()=>'(missing)');const diag=await page.evaluate(()=>window.__ICM_WORKBENCH__||null).catch(()=>null);throw new Error(`Shell readiness failed. status=${status}; diagnostic=${JSON.stringify(diag)}; original=${err}`);}
 }
 function denseCsv(){
   const lines=['timestamp,level'];
@@ -1065,7 +1065,7 @@ async function verifyRealFlowSurveyReference(){
   };
   try{
     await probe.goto(baseUrl+'?real_flow_survey='+Date.now(),{waitUntil:'domcontentloaded'});
-    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     await nav('survey','fdv-check');
 
     const ref=path.join(root,'reference/current-tool/sample-data');
@@ -1255,14 +1255,14 @@ try{
   const applicationNavigationStart=Date.now();
   await page.goto(baseUrl+(liveMode?`?live_verify=${Date.now()}`:''),{waitUntil:'domcontentloaded'});
   performanceEvidence.applicationDomReadyMs=Date.now()-applicationNavigationStart;
-  await waitReady();
+  await waitShellReady();
   await page.evaluate(()=>{
     const confirm=()=>{for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
       const input=document.getElementById(id);input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
     }};
     window.addEventListener('icm:source-pool-changed',confirm);confirm();
   });
-  performanceEvidence.applicationEngineReadyMs=Date.now()-applicationNavigationStart;
+  performanceEvidence.applicationShellReadyMs=Date.now()-applicationNavigationStart;
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
   const primaryLabels=await page.locator('.pw-primary-nav button').allTextContents();

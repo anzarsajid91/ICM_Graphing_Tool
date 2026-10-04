@@ -19,7 +19,7 @@ page.on('console',message=>{if(message.type()==='error')errors.push(message.text
 try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
   assert.match(await page.title(),/Hydra Bench/);
-  await page.waitForFunction(()=>engine.ready&&window.__ICM_PRECISION_WORKBENCH__,null,{timeout:90000});
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
   await page.setInputFiles('#fileInput',{name:'audit-hydraulic.csv',mimeType:'text/csv',buffer:Buffer.from('Time,Flow (m3/s)\n2025-01-01 00:00:00,0.02\n2025-01-01 00:05:00,0.03\n2025-01-01 00:10:00,0.04\n')});
   await page.waitForFunction(()=>[...state.files.values()].some(x=>x.displayName==='audit-hydraulic.csv'&&x.status==='ready'));
   const restored=await page.evaluate(async()=>{
