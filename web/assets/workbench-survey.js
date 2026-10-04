@@ -256,7 +256,7 @@
   }
 
   function workbookCandidate() {
-    if (typeof XLSX === 'undefined') throw new Error('Excel reader did not load. Reload with network access to the pinned SheetJS library.');
+    if (typeof XLSX === 'undefined') throw new Error('Excel reader did not load. Reload the application to restore the packaged Excel reader.');
   }
 
   function scoreHeader(row) {
@@ -317,7 +317,7 @@
     workbookCandidate();
     const status = document.getElementById('surveyAssociationStatus');
     status.textContent = 'Reading ' + file.name + '…';
-    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false });
+    const workbook = window.ICMWorkbookReader.read(await file.arrayBuffer());
     const table = extractAssociationMatrix(workbook);
     const result = await engine.call('survey_association_result', {
       headers_json: JSON.stringify(table.headers),
