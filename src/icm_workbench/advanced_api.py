@@ -735,8 +735,6 @@ def professional_flow_survey_result(
     }
     return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
 
-
-
 def survey_association_result(headers_json="[]", rows_json="[]", inferred_json="{}"):
     from icm_workbench.analysis.survey_context import (
         merge_authoritative_associations,
@@ -758,6 +756,48 @@ def survey_association_result(headers_json="[]", rows_json="[]", inferred_json="
 
 def _survey_name_token(value):
     return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
+
+def _survey_exclusion_records(raw):
+    if raw is None:
+        return []
+    items = json.loads(raw) if isinstance(raw, str) else list(raw or [])
+    return [dict(item) for item in items if item and item.get("enabled") is not False]
+
+
+def _survey_exclusions_for(raw, subject_type=None, subject_id=None, channel=None):
+    """Resolve global plus survey-targeted exclusions for one subject/channel."""
+    selected = []
+    wanted_id = _survey_name_token(subject_id)
+    for item in _survey_exclusion_records(raw):
+        scope = str(item.get("scope") or "")
+        item_type = item.get("subject_type")
+        item_id = item.get("subject_id")
+        item_channel = item.get("channel")
+        if scope.startswith("survey:"):
+            parts = scope.split(":")
+            if len(parts) >= 4:
+                _, item_type, item_id, item_channel = parts[:4]
+        elif item_type:
+            pass
+        else:
+            # Legacy/global role exclusion already passed into the relevant
+            # hydraulic/rainfall collection; apply to every subject.
+            selected.append(item)
+            continue
+
+        if subject_type and str(item_type or "") != str(subject_type):
+            continue
+        if subject_id and _survey_name_token(item_id) != wanted_id:
+            continue
+        target_channel = str(item_channel or "all")
+        if channel is None:
+            if target_channel != "all":
+                continue
+        elif target_channel not in {"all", str(channel)}:
+            continue
+        selected.append(item)
+    return python_bridge._exclusions(selected)
 
 
 def _survey_channel(path, column, quantity, unit_override=None):
@@ -841,9 +881,16 @@ def _survey_hydraulic_bundle(source):
     return out, contracts
 
 
-def _survey_rain_source(path, column="rainfall", factor=1.0):
+def _survey_rain_source(path, column="rainfall", factor=1.0, rainfall_semantics=None):
+    """Return the survey's canonical rainfall-intensity working series.
+
+    Raw rainfall values are never silently reinterpreted. Explicit interval-depth
+    series are converted analytically to mm/h using their declared interval so
+    the existing FSAT/network algorithms continue to operate on one canonical
+    rainfall representation.
+    """
     if not path:
-        return None, None
+        return None, None, None
     parsed = python_bridge._load(path)
     frame = parsed.frame.copy()
     if column not in frame.columns:
@@ -851,10 +898,23 @@ def _survey_rain_source(path, column="rainfall", factor=1.0):
         if not available:
             raise ValueError(f"Rainfall source {path!r} has no value column.")
         column = available[0]
-    frame[column] = pd.to_numeric(frame[column], errors="coerce") * float(factor)
     metadata = getattr(parsed, "metadata", {}) or {}
     interval = metadata.get("interval_min")
-    return frame, float(interval) if interval else None
+    source_semantics = str(rainfall_semantics or metadata.get("rainfall_semantics") or "unresolved").lower()
+    if source_semantics not in {"intensity", "incremental_depth"}:
+        raise ValueError(
+            f"Rainfall source {path!r} has unresolved rainfall semantics. "
+            "Confirm Intensity or Incremental depth before Flow Survey assessment."
+        )
+    values = pd.to_numeric(frame[column], errors="coerce") * float(factor)
+    if source_semantics == "incremental_depth":
+        if interval is None or not np.isfinite(float(interval)) or float(interval) <= 0:
+            raise ValueError(
+                f"Rainfall source {path!r} is incremental depth but has no positive declared interval."
+            )
+        values = values * 60.0 / float(interval)
+    frame[column] = values
+    return frame, float(interval) if interval else None, source_semantics
 
 
 def survey_volume_balance_result(
@@ -870,8 +930,8 @@ def survey_volume_balance_result(
 
     associations = json.loads(association_json) if isinstance(association_json, str) else list(association_json or [])
     sources = json.loads(monitor_sources_json) if isinstance(monitor_sources_json, str) else list(monitor_sources_json or [])
-    exclusions = python_bridge._exclusions(exclusions_json)
     flows = {}
+    exclusions_by_monitor = {}
     contracts = {}
     missing = []
     for source in sources:
@@ -893,6 +953,9 @@ def survey_volume_balance_result(
                 missing.append({"monitor": monitor, "reason": "flow channel unavailable"})
                 continue
             flows[monitor] = frame
+            exclusions_by_monitor[monitor] = _survey_exclusions_for(
+                exclusions_json, "monitor", monitor, "flow"
+            )
             contracts[monitor] = contract
         except Exception as exc:
             missing.append({"monitor": monitor, "reason": str(exc)})
@@ -902,7 +965,8 @@ def survey_volume_balance_result(
         associations,
         start=python_bridge._model_clock_timestamp(start),
         end=python_bridge._model_clock_timestamp(end),
-        exclusions=exclusions,
+        exclusions=[],
+        exclusions_by_monitor=exclusions_by_monitor,
         max_gap_seconds=float(max_gap_seconds),
         amber_tolerance_percent=float(amber_tolerance_percent),
     )
@@ -939,16 +1003,15 @@ def professional_survey_batch_result(
     associations = json.loads(association_json) if isinstance(association_json, str) else list(association_json or [])
     monitor_sources = json.loads(monitor_sources_json) if isinstance(monitor_sources_json, str) else list(monitor_sources_json or [])
     rain_sources = json.loads(rain_sources_json) if isinstance(rain_sources_json, str) else list(rain_sources_json or [])
-    fallback_exclusions = python_bridge._exclusions(exclusions_json)
-    hydraulic_exclusions = (
-        python_bridge._exclusions(hydraulic_exclusions_json)
+    hydraulic_exclusions_raw = (
+        hydraulic_exclusions_json
         if hydraulic_exclusions_json is not None
-        else fallback_exclusions
+        else exclusions_json
     )
-    rainfall_exclusions = (
-        python_bridge._exclusions(rainfall_exclusions_json)
+    rainfall_exclusions_raw = (
+        rainfall_exclusions_json
         if rainfall_exclusions_json is not None
-        else fallback_exclusions
+        else exclusions_json
     )
     analysis_start = python_bridge._model_clock_timestamp(start)
     analysis_end = python_bridge._model_clock_timestamp(end)
@@ -979,8 +1042,10 @@ def professional_survey_batch_result(
         return cached
 
     gauges = {}
+    gauge_exclusions = {}
     rain_lookup = {}
     rain_issues = []
+    rainfall_contracts = {}
     rain_load_started = time.perf_counter()
     for source in rain_sources:
         name = str(source.get("name") or source.get("gauge") or "").strip()
@@ -989,16 +1054,23 @@ def professional_survey_batch_result(
         if not name or not path:
             continue
         try:
-            frame, interval = _survey_rain_source(path, column, rain_factor)
-            if rainfall_exclusions:
-                stamp = pd.to_datetime(frame["timestamp"], errors="coerce")
-                for exc in rainfall_exclusions:
-                    frame.loc[
-                        (stamp >= pd.Timestamp(exc.start)) & (stamp < pd.Timestamp(exc.end)),
-                        column,
-                    ] = np.nan
+            frame, interval, source_semantics = _survey_rain_source(
+                path, column, rain_factor, source.get("rainfall_semantics")
+            )
+            exclusions_for_gauge = _survey_exclusions_for(
+                rainfall_exclusions_raw, "gauge", name, "rainfall"
+            )
             gauges[name] = (frame, column, interval)
-            rain_lookup[_survey_name_token(name)] = (frame, column, interval)
+            rainfall_contracts[name] = {
+                "source_semantics": source_semantics,
+                "working_semantics": "intensity",
+                "working_unit": "mm/h",
+                "declared_interval_min": interval,
+            }
+            gauge_exclusions[name] = exclusions_for_gauge
+            rain_lookup[_survey_name_token(name)] = (
+                frame, column, interval, exclusions_for_gauge
+            )
         except Exception as exc:
             rain_issues.append({"gauge": name, "reason": str(exc)})
     performance["rain_source_load_seconds"] = float(
@@ -1010,6 +1082,7 @@ def professional_survey_batch_result(
         gauges,
         population_above_50k=bool(population_above_50k),
         apply_fault_cutoff=bool(apply_fault_cutoff),
+        gauge_exclusions=gauge_exclusions,
     )
     performance["network_rainfall_seconds"] = float(
         time.perf_counter() - network_started
@@ -1080,8 +1153,17 @@ def professional_survey_batch_result(
                 "contracts": contracts,
             })
             continue
-        rain_frame, rain_col, rain_interval = rain_spec
+        rain_frame, rain_col, rain_interval, monitor_rain_exclusions = rain_spec
 
+        monitor_exclusions = _survey_exclusions_for(
+            hydraulic_exclusions_raw, "monitor", monitor, None
+        )
+        channel_exclusions = {
+            quantity: _survey_exclusions_for(
+                hydraulic_exclusions_raw, "monitor", monitor, quantity
+            )
+            for quantity in ("depth", "velocity", "flow")
+        }
         weekly_started = time.perf_counter()
         weekly = monitor_weekly_assessment(
             hydraulic,
@@ -1095,8 +1177,9 @@ def professional_survey_batch_result(
             network_wapug_events=network.get("qualified_wapug_events") or None,
             analysis_start=analysis_start,
             analysis_end=analysis_end,
-            exclusions=hydraulic_exclusions,
-            rain_exclusions=rainfall_exclusions,
+            exclusions=monitor_exclusions,
+            rain_exclusions=monitor_rain_exclusions,
+            channel_exclusions=channel_exclusions,
         )
         monitor_perf["weekly_assessment_seconds"] = float(
             time.perf_counter() - weekly_started
@@ -1131,8 +1214,9 @@ def professional_survey_batch_result(
             monitor_type=str(source.get("monitor_type") or "FM"),
             start=analysis_start,
             end=analysis_end,
-            exclusions=hydraulic_exclusions,
-            rain_exclusions=rainfall_exclusions,
+            exclusions=monitor_exclusions,
+            rain_exclusions=monitor_rain_exclusions,
+            channel_exclusions=channel_exclusions,
         )
         monitor_perf["event_response_seconds"] = float(
             time.perf_counter() - event_started
@@ -1154,12 +1238,19 @@ def professional_survey_batch_result(
         })
 
     volume_started = time.perf_counter()
+    volume_exclusions_by_monitor = {
+        monitor: _survey_exclusions_for(
+            hydraulic_exclusions_raw, "monitor", monitor, "flow"
+        )
+        for monitor in volume_flows
+    }
     volume = survey_volume_balance(
         volume_flows,
         associations,
         start=analysis_start,
         end=analysis_end,
-        exclusions=hydraulic_exclusions,
+        exclusions=[],
+        exclusions_by_monitor=volume_exclusions_by_monitor,
         max_gap_seconds=float(max_gap_seconds),
         amber_tolerance_percent=float(amber_tolerance_percent),
     ) if volume_flows else {
@@ -1233,8 +1324,8 @@ def professional_survey_batch_result(
         "analysis_controls": {
             "start": analysis_start,
             "end": analysis_end,
-            "hydraulic_exclusion_count": len(hydraulic_exclusions),
-            "rainfall_exclusion_count": len(rainfall_exclusions),
+            "hydraulic_exclusion_count": len(_survey_exclusion_records(hydraulic_exclusions_raw)),
+            "rainfall_exclusion_count": len(_survey_exclusion_records(rainfall_exclusions_raw)),
             "scoped_exclusions": True,
             "max_gap_seconds": float(max_gap_seconds),
             "amber_tolerance_percent": float(amber_tolerance_percent),
@@ -1246,7 +1337,8 @@ def professional_survey_batch_result(
         "source_policy": {
             "association_workbook_authoritative": True,
             "mapped_rainfall_used_per_monitor": True,
-            "all_loaded_rainfall_used_for_network_context": True,
+            "all_loaded_rainfall_used_for_network_context": False,
+            "network_rainfall_membership": "authoritative association / explicitly supplied rain_sources only",
             "raw_sources_mutated": False,
         },
         "method": "complete-survey-fsat-v1",
