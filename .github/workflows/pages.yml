@@ -87,6 +87,7 @@ jobs:
           node --check web/tests/detriment-reference-smoke.mjs
           node --check web/tests/smoke.mjs
           node --check web/tests/precision-shell.mjs
+          node --check web/tests/webkit-ios-shell.mjs
           node --check web/tests/schematic-review-smoke.mjs
           node --check web/tests/baseline-comparison.mjs
           node web/tests/weekly-review-unit.mjs
@@ -331,6 +332,49 @@ jobs:
           done
           node web/tests/precision-shell.mjs
 
+
+  browser-webkit-ios-shell:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Assemble exact release artifact
+        run: python scripts/build_pages.py
+      - name: Install WebKit acceptance runner
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps webkit
+      - name: Verify iOS WebKit startup shell
+        env:
+          ICM_EVIDENCE_DIR: /tmp/icm-ios-webkit
+        run: |
+          python -m http.server 8000 --directory _site >/tmp/icm-webkit-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:8000/ >/dev/null 2>&1 && break
+            sleep 1
+          done
+          node web/tests/webkit-ios-shell.mjs
+      - name: Retain iOS WebKit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-webkit-shell-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            /tmp/icm-ios-webkit/
+            /tmp/icm-webkit-http.log
+
   build:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
@@ -338,7 +382,7 @@ jobs:
       pages: write
       id-token: write
     runs-on: ubuntu-latest
-    needs: [browser-smoke, baseline-performance, browser-firefox-shell]
+    needs: [browser-smoke, baseline-performance, browser-firefox-shell, browser-webkit-ios-shell]
     steps:
       - uses: actions/checkout@v6
         with:
