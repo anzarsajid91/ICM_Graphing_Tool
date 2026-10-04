@@ -319,6 +319,7 @@
     status.textContent = 'Reading ' + file.name + '…';
     const workbook = window.ICMWorkbookReader.read(await file.arrayBuffer());
     const table = extractAssociationMatrix(workbook);
+    await ensureEngineBoot();
     const result = await engine.call('survey_association_result', {
       headers_json: JSON.stringify(table.headers),
       rows_json: JSON.stringify(table.rows),
@@ -351,6 +352,7 @@
       record.diameter_mm == null ? '' : record.diameter_mm,
       (record.upstream || []).join(', '),
     ]);
+    await ensureEngineBoot();
     const refreshed = await engine.call('survey_association_result', {
       headers_json: JSON.stringify(headers),
       rows_json: JSON.stringify(rows),
