@@ -223,7 +223,7 @@ async function calculate(){
     if(!c.scope_confirmed)setupError('scope_confirmed','Confirm matching assessment scope and completed ICM runs.');
     if(kind==='level'&&!c.elevation_confirmed)setupError('elevation_confirmed','Confirm water-level elevations and the common vertical datum.');
     const a=sourceConfig('a'),b=sourceConfig('b');if(a.path===b.path)throw Error('Select separate baseline and proposed reports.');
-    const criteria={scope_confirmed:c.scope_confirmed,elevation_confirmed:c.elevation_confirmed,threshold:kind==='spill'?0:c.threshold,freeboard_required:c.freeboard_required===''?null:c.freeboard_required,counting_mode:c.counting_mode,new_flooding_policy:c.new_flooding_policy,count_tolerance:c.count_tolerance,duration_tolerance_hours:c.duration_tolerance_hours,spill_combination_policy:c.spill_combination_policy};
+    const criteria={policy_schema_version:2,scope_confirmed:c.scope_confirmed,elevation_confirmed:c.elevation_confirmed,threshold:kind==='spill'?0:c.threshold,freeboard_required:c.freeboard_required===''?null:c.freeboard_required,counting_mode:c.counting_mode,new_flooding_policy:c.new_flooding_policy,count_tolerance:c.count_tolerance,duration_tolerance_hours:c.duration_tolerance_hours,spill_combination_policy:c.spill_combination_policy};
     const result=await engine.call('detriment_result',{kind,scenario_a_json:JSON.stringify(a),scenario_b_json:JSON.stringify(b),criteria_json:JSON.stringify(criteria),ground_json:JSON.stringify(kind==='level'?sourceConfig('ground'):null),detail_a_json:JSON.stringify(kind==='spill'?sourceConfig('detail_a'):null),detail_b_json:JSON.stringify(kind==='spill'?sourceConfig('detail_b'):null)},'advanced_bridge');
     if(runGeneration!==generation||runKind!==kind)return;
     results[kind]=result;selected=null;renderIdPreview();renderResults();
@@ -241,9 +241,23 @@ async function exportHtml(currentView=false){
       const src=await Plotly.toImage(chart,{format:'png',width:1100,height:Number(chart.layout?.height)||400,scale:1.5});
       figures.push('<figure><h3>'+escape(title)+'</h3><img alt="'+escape(title)+'" src="'+src+'"></figure>');
     }
+    if(!currentView){
+      // Build full-scope figures from exported rows, independent of screen filters.
+      const host=document.createElement('div');host.style.cssText='position:fixed;left:-12000px;width:1100px;';document.body.append(host);
+      try{
+        for(const [field,title,unit] of [['delta','Change by asset',r.rows[0]?.unit||''],...(exportKind==='spill'?[['duration_delta_hours','Actual duration change','h']]:[])]){
+          const plotted=rows.filter(x=>x[field]!=null).sort((a,b)=>Math.abs(b[field])-Math.abs(a[field])||a.asset_id.localeCompare(b.asset_id)).slice(0,20).reverse();
+          if(!plotted.length)continue;
+          await Plotly.newPlot(host,[{type:'bar',orientation:'h',y:plotted.map(x=>x.asset_id),x:plotted.map(x=>x[field]),marker:{color:'#315b9b'}}],{width:1100,height:Math.max(300,plotted.length*24+100),margin:{l:140,r:25,t:25,b:55},xaxis:{title:{text:'B − A ('+unit+')'}},yaxis:{type:'category'},paper_bgcolor:'#fff',plot_bgcolor:'#fff'},{displaylogo:false,staticPlot:true});
+          const src=await Plotly.toImage(host,{format:'png',width:1100,height:host.layout.height,scale:1.5});
+          figures.push('<figure><h3>'+escape(title)+' · largest 20 comparable changes in full scope</h3><img alt="'+escape(title)+'" src="'+src+'"></figure>');
+          Plotly.purge(host);
+        }
+      }finally{Plotly.purge(host);host.remove();}
+    }
     if(exportGeneration!==generation||exportKind!==kind||results[kind]!==r||exportView!==exportViewSignature())throw Error('Assessment changed during export. Recalculate and export the current evidence.');
     const unit=r.rows[0]?.unit||'',level=exportKind==='level',spill=exportKind==='spill',exportStatus=selection.ids.length?(rows.length?(summariseRows(rows).unresolved?'partial':'complete'):'unavailable'):r.status;
-    const evidence={criteria:r.criteria,scenario_a:r.scenario_a,scenario_b:r.scenario_b,ground_source:r.ground_source,detail_source_a:r.detail_source_a,detail_source_b:r.detail_source_b,date_convention:r.date_convention,boundary_policy:r.boundary_policy,counting_mode:r.counting_mode,asset_selection:selection};
+    const evidence={provenance:r.provenance,criteria:r.criteria,scenario_a:r.scenario_a,scenario_b:r.scenario_b,ground_source:r.ground_source,detail_source_a:r.detail_source_a,detail_source_b:r.detail_source_b,date_convention:r.date_convention,boundary_policy:r.boundary_policy,counting_mode:r.counting_mode,asset_selection:selection};
     const body='<style>.dt-report img{width:100%;height:auto}.dt-report figure{margin:20px 0;break-inside:avoid}.dt-report pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px}.dt-report table{font-variant-numeric:tabular-nums}.dt-report .dt-detriment{color:#a02d3e}.dt-report .dt-risk{color:#8c5e17}.dt-report .dt-improvement{color:#0c7266}</style><article class="dt-report">'+
       '<h2>'+escape(r.scenario_a.name)+' → '+escape(r.scenario_b.name)+'</h2><p>'+escape(r.method)+'</p><p>Scope: '+escape(r.scenario_a.scope)+'. Evidence status: '+escape(exportStatus)+'.</p>'+
       '<p>'+(currentView?'Current-view export: '+rows.length+'/'+r.rows.length+' assets · '+escape(config().filter)+' · search '+escape(config().search||'(none)')+'.':'Full assessment export: '+rows.length+' assets in the applied assessment scope; transient table filter/search are ignored.')+'</p>'+
