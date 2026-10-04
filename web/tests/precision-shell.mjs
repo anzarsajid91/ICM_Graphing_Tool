@@ -11,8 +11,10 @@ const errors=[];
 page.on('pageerror',e=>errors.push('pageerror '+String(e?.name||'Error')+': '+String(e?.message||String(e))+(e?.stack?' | '+String(e.stack).replace(/\s+/g,' '):'')));
 page.on('console',m=>{if(m.type()==='error'){const loc=m.location?.()||{};errors.push('console: '+m.text()+(loc.url?' @ '+loc.url+':'+String((loc.lineNumber??0)+1)+':'+String((loc.columnNumber??0)+1):''));}});
 try{
+  console.log('SHELL STEP load application');
   await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
+  console.log('SHELL STEP navigation shell');
   const labels=(await page.locator('.pw-primary-nav button').allTextContents()).map(x=>x.replace(/^[^A-Za-z]+/,'').trim());
   if(labels.join('|')!=='Data / Time Series|Spills|Flow Survey|Detriment Assessment|Plots|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
   const navigationOwnership=await page.evaluate(()=>({
@@ -127,6 +129,7 @@ try{
   }));
   if(!healthComposition.summaryVisible||!healthComposition.rawInsideDetails)throw new Error('FDV Check summary/detail composition is incomplete: '+JSON.stringify(healthComposition));
 
+  console.log('SHELL STEP review ledger and monthly evidence');
   const reviewLayer=await page.evaluate(()=>{
     const survey=window.__ICM_WORKBENCH__.survey;
     survey.balance=null;
@@ -236,6 +239,7 @@ try{
     !reviewLayer.headerVisible||!reviewLayer.monitorDetail||!reviewLayer.gaugeDetail||!reviewLayer.balanceDetail
   )throw new Error('Engineer review / stale-review safeguards failed: '+JSON.stringify(reviewLayer));
 
+  console.log('SHELL STEP rainfall route');
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','rainfall-check',false));
   const rainfallSeparation=await page.evaluate(()=>{
     const visible=el=>Boolean(el)&&!el.hidden&&el.getClientRects().length>0&&getComputedStyle(el).display!=='none';
@@ -247,6 +251,7 @@ try{
   });
   if(!rainfallSeparation.flowSurveyRain||!rainfallSeparation.statusHeader||rainfallSeparation.standaloneTimeSeriesEvents)throw new Error('Flow Survey rainfall and standalone Time Series WAPUG state/surfaces are not separated: '+JSON.stringify(rainfallSeparation));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
+  console.log('SHELL STEP typography');
   const typeScale=await page.evaluate(()=>({
     title:Number.parseFloat(getComputedStyle(document.querySelector('.pw-page-title')).fontSize),
     section:Number.parseFloat(getComputedStyle(document.querySelector('.panel-head h2')).fontSize),
@@ -270,6 +275,7 @@ try{
   const rhythmFailures=Object.entries(rhythm).filter(([,v])=>Number.isFinite(v)&&v!==0&&Math.round(v)%4!==0);
   if(rhythmFailures.length)throw new Error('PR25 spacing rhythm must resolve to 8px base / 4px micro-spacing on structural surfaces: '+JSON.stringify({rhythm,rhythmFailures}));
 
+  console.log('SHELL STEP stylesheet spacing');
   const precisionCss=await (await fetch(new URL('assets/precision-workbench.css',baseUrl))).text();
   const stylesheetRhythmFailures=[];
   for(const match of precisionCss.matchAll(/(?:^|[;{])\s*(gap|padding(?:-(?:top|right|bottom|left))?|margin(?:-(?:top|right|bottom|left))?)\s*:\s*([^;}]+)/gm)){
@@ -278,6 +284,7 @@ try{
   }
   if(stylesheetRhythmFailures.length)throw new Error('Precision stylesheet contains spacing outside the 8px base / 4px micro rhythm: '+JSON.stringify(stylesheetRhythmFailures));
 
+  console.log('SHELL STEP primary actions');
   const primaryRoutes=[
     ['survey','fdv-check','runCompleteSurveyBtn'],
     ['survey','volume-balance','runCompleteSurveyBtn'],
@@ -312,6 +319,7 @@ try{
     throw new Error('Storage route must contain the legacy comparison surface: '+JSON.stringify(verificationContainment));
   }
 
+  console.log('SHELL STEP responsive surfaces');
   const quietSurfaces=await page.evaluate(()=>{
     const inspect=(workspace,route,selector)=>{
       window.__ICM_PRECISION_WORKBENCH__.navigate(workspace,route,false);
