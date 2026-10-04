@@ -39,6 +39,10 @@ try{
  assert((await page.locator('#assessmentDrawer-fdv').innerText()).includes('FM01'));
  assert.equal(await page.locator('#assessmentPopup').isVisible(),false);
  await page.screenshot({path:evidence+'/week-matrix-drawer.png',fullPage:false});
+ // The schematic initially selects the first full week, which can be the
+ // second matrix column when the survey starts midweek. Review two explicit
+ // matrix weeks so this journey verifies restoration of distinct records.
+ await page.locator('#assessmentMatrix-fdv [data-week-name="FM01"]').first().click();
  await page.locator('#assessmentDrawer-fdv [data-drawer-tab="audit"]').click();
  const editor=page.locator('#assessmentDrawer-fdv .weekly-editor');await editor.locator('.weekly-rating').selectOption('auto');await editor.locator('.weekly-reviewer').fill('Anzar');await editor.locator('[data-week-note="Tidal impact noted."]').click();await editor.locator('[data-week-save]').click();
  await page.waitForFunction(()=>Object.values(window.__ICM_WORKBENCH__.survey.reviews).some(r=>r.kind==='monitor-week'&&r.reason==='Tidal impact noted.'&&r.reviewer==='Anzar'));

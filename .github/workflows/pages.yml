@@ -80,6 +80,7 @@ jobs:
           node --check web/assets/workflow-26.js
           node --check web/assets/precision-workbench.js
           node --check web/assets/detriment-workspace.js
+          node web/tests/survey-source-unit.mjs
           node web/tests/workbook-reader-unit.mjs
           node web/tests/detriment-unit.mjs
           node web/tests/engine-recovery-unit.mjs
@@ -195,6 +196,7 @@ jobs:
           fi
           node web/tests/detriment-smoke.mjs
           node web/tests/detriment-reference-smoke.mjs
+          node web/tests/audit-release-smoke.mjs
           node web/tests/smoke.mjs
           node web/tests/schematic-review-smoke.mjs
 
@@ -336,7 +338,7 @@ jobs:
       pages: write
       id-token: write
     runs-on: ubuntu-latest
-    needs: browser-smoke
+    needs: [browser-smoke, baseline-performance, browser-firefox-shell]
     steps:
       - uses: actions/checkout@v6
         with:

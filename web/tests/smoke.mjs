@@ -628,7 +628,7 @@ async function verifyStationAThresholdChain(){
       window.__icmOriginalFetch=window.fetch;
       window.fetch=(input,init)=>{
         const url=String(input?.url||input||'');
-        if(/plotly-[\d.]+(?:\.min)?\.js/.test(url))return Promise.reject(new Error('forced Plotly embed fetch failure'));
+        if(/\/vendor\/plotly-[\d.]+\/plotly\.min\.js(?:\?|$)/.test(url))return Promise.reject(new Error('forced Plotly embed fetch failure'));
         return window.__icmOriginalFetch(input,init);
       };
     });
@@ -1689,6 +1689,9 @@ try{
   stage='observed-only mapping with rainfall';
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect',rain);
+  // Generic rainfall headings require a declared interval meaning. This demo
+  // is an intensity series; units alone must not resolve its semantics.
+  await page.locator('[data-rainfall-semantics-key]').selectOption('intensity');
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>document.querySelector('#mappingStatus')?.textContent.includes('0 comparison scenario')&&document.querySelector('#mappingStatus')?.textContent.includes('rainfall mapped'));
   await page.waitForFunction(()=>Boolean(document.querySelector('#timeChart')?.layout?.yaxis2),null,{timeout:60000});
