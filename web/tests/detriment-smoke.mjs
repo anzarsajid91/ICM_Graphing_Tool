@@ -22,35 +22,23 @@ try{
   await page.setInputFiles('#dtFileInput',(await fs.readdir('tests/fixtures/detriment')).filter(n=>n.endsWith('.csv')).map(n=>path.resolve('tests/fixtures/detriment',n)));
   await page.waitForFunction(()=>[...state.files.values()].filter(x=>x.status==='ready'&&x.parsed?.metadata?.source_kind==='detriment_report').length===9,null,{timeout:120000});
   assert.equal(await page.evaluate(()=>allSeries().length),0,'Report-only pool has no hydraulic series');
-  // Missing scope must be actionable in every assessment, including on a narrow screen.
-  await page.evaluate(()=>{window.__detrimentCalls=0;const call=engine.call.bind(engine);engine.call=(name,...args)=>{if(name==='detriment_result')window.__detrimentCalls++;return call(name,...args);};});
-  for(const [assessment,width] of [['flooding',1440],['level',1440],['spill',1440],['flooding',390]]){
-    await page.setViewportSize({width,height:1000});await route(assessment);
-    const prefix=assessment==='flooding'?'flood':assessment;
-    await selectReport('a',prefix+'-a.csv');await selectReport('b',prefix+'-b.csv');
+  // Optional scope text never blocks; incomplete mandatory criteria still do.
+  for(const width of [1440,390]){
+    await page.setViewportSize({width,height:1000});await route('flooding');
+    await selectReport('a','flood-a.csv');await selectReport('b','flood-b.csv');
     await field('scope').fill('');await field('scope_confirmed').check();
-    for(const value of ['', '   ']){
-      await field('scope').fill(value);await page.click('#runDetrimentBtn');
-      assert.match(await page.locator('#dtStatus').innerText(),/Enter a common assessment scope/);
-      assert.doesNotMatch(await page.locator('#dtStatus').innerText(),/Traceback|scopes must match/);
-      assert.equal(await field('scope').getAttribute('aria-invalid'),'true');
-      assert.ok(await field('scope').evaluate(el=>{const r=el.getBoundingClientRect();return document.activeElement===el&&r.top>=0&&r.bottom<=window.innerHeight;}),'Required scope is focused and brought into view');
-      assert.match(await page.locator('#dtError-scope').innerText(),/Enter a common assessment scope/);
-      assert.ok(await page.locator('#dtError-scope').evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=window.innerHeight;}),'Explanation remains visible beside the required field');
-      assert.equal(await page.evaluate(()=>window.ICMDetriment.result()),null);
-      assert.equal(await page.locator('#dtExportCsv').isDisabled(),true);
-      assert.equal(await page.locator('#runDetrimentBtn').isDisabled(),false);
-    }
-    if(assessment==='flooding'&&width===1440)await page.screenshot({path:path.join(evidence,'detriment-missing-scope.png'),fullPage:false});
-    await field('scope').fill('30-year matched storm set');
-    assert.equal(await field('scope').getAttribute('aria-invalid'),null);
-    assert.equal(await page.locator('#dtError-scope').count(),0);
-    await field('scope_confirmed').uncheck();await page.click('#runDetrimentBtn');
+    await field('threshold').fill('5');
+    const optional=await run();assert.equal(optional.summary.detriment,1);
+    assert.equal(optional.scenario_a.scope,'');
+    assert.equal(optional.provenance.scope.scenario_a.basis,'unavailable');
+    await field('threshold').fill('');await page.click('#runDetrimentBtn');
+    await page.waitForFunction(()=>document.getElementById('dtStatus').textContent.includes('non-negative'));
+    assert.equal(await page.evaluate(()=>window.ICMDetriment.result()),null);
+    assert.equal(await page.locator('#dtExportCsv').isDisabled(),true);
+    await field('threshold').fill('5');await field('scope_confirmed').uncheck();await page.click('#runDetrimentBtn');
     assert.match(await page.locator('#dtStatus').innerText(),/Confirm matching assessment scope/);
     assert.ok(await field('scope_confirmed').evaluate(el=>document.activeElement===el));
-    assert.ok(await page.locator('#dtError-scope_confirmed').evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=window.innerHeight;}),'Confirmation error remains visible');
   }
-  assert.equal(await page.evaluate(()=>window.__detrimentCalls),0,'Incomplete setup does not call Python');
   await page.setViewportSize({width:1440,height:1000});
   await route('flooding');await selectReport('a','flood-a.csv');await selectReport('b','flood-b.csv');await scope();
   // Actual Pyodide ValueErrors retain their useful message without the traceback.

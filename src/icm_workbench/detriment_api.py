@@ -317,10 +317,8 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
         raise ValueError("Please confirm maximum water-level elevations and the common vertical datum.")
     for scenario in (a_config,b_config):
         scope=scenario.get('scope')
-        if not isinstance(scope,str) or not scope.strip():
-            raise ValueError("Enter a common assessment scope for both scenarios (for example, return period, storm set and climate allowance).")
-        scenario['scope']=scope.strip()
-    if a_config['scope']!=b_config['scope']:
+        scenario['scope']=scope.strip() if isinstance(scope,str) else ''
+    if a_config['scope'] and b_config['scope'] and a_config['scope']!=b_config['scope']:
         raise ValueError("Scenario assessment scopes must match.")
     threshold=_number(criteria.get('threshold',0))
     if threshold is None or threshold<0:raise ValueError("Detriment tolerance/threshold must be finite and non-negative.")
@@ -473,8 +471,8 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
              'max_increase':max([r['delta'] for r in rows if r['delta'] is not None]+[Decimal(0)])}
     provenance={
         'scope':{
-            'scenario_a':{'value':a_config.get('scope'),'basis':'engineer_declared'},
-            'scenario_b':{'value':b_config.get('scope'),'basis':'engineer_declared'},
+            'scenario_a':{'value':a_config.get('scope'),'basis':'engineer_declared' if a_config.get('scope') else 'unavailable'},
+            'scenario_b':{'value':b_config.get('scope'),'basis':'engineer_declared' if b_config.get('scope') else 'unavailable'},
         },
         'datum':{
             'scenario_a':{'value':a_config.get('datum'),'basis':'engineer_declared' if a_config.get('datum') else 'unavailable'},
