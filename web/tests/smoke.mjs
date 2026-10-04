@@ -1116,6 +1116,8 @@ async function verifyRealFlowSurveyReference(){
       return {
         monitor_count:monitors.length,
         gauge_count:batch?.network?.gauge_count||0,
+        associated_gauges:[...new Set((survey?.association?.records||[]).map(r=>r.rain_gauge).filter(Boolean))].sort(),
+        network_gauges:(batch?.network?.gauge_summary||[]).map(r=>r.gauge).sort(),
         candidate_count:candidates.length,
         qualified_count:qualified.length,
         candidate_cv:candidates[0]?.spatial_cv_percent??null,
@@ -1133,8 +1135,8 @@ async function verifyRealFlowSurveyReference(){
       };
     });
 
-    if(evidence.monitor_count!==9||evidence.gauge_count!==4||!evidence.association_authoritative){
-      throw new Error('Real reference Flow Survey did not preserve the authoritative 9-monitor/4-gauge context: '+JSON.stringify(evidence));
+    if(evidence.monitor_count!==9||evidence.gauge_count!==3||JSON.stringify(evidence.associated_gauges)!==JSON.stringify(['RG01','RG02','RG03'])||JSON.stringify(evidence.network_gauges)!==JSON.stringify(evidence.associated_gauges)||!evidence.association_authoritative){
+      throw new Error('Real reference Flow Survey must use the workbook’s 9 monitors and 3 associated gauges; the loaded RG04 remains outside the network: '+JSON.stringify(evidence));
     }
     if(evidence.candidate_count!==1||evidence.qualified_count!==0||!(Number(evidence.candidate_cv)>40)){
       throw new Error('Real reference WAPUG network suitability differs from the independently validated reference outcome: '+JSON.stringify(evidence));

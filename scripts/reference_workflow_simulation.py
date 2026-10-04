@@ -462,15 +462,19 @@ def _flow_survey_workflow() -> dict[str, Any]:
 
     rain_sources = []
     gauges = {}
+    associated_gauges = {str(row.get("rain_gauge") or "").strip() for row in associations}
+    associated_gauges.discard("")
     for path in sorted((SAMPLE / "rainfall").glob("RG*.R")):
         parsed = parse_file(path)
         col = _series_column(parsed)
         interval = (parsed.metadata or {}).get("interval_min")
-        rain_sources.append({"name": path.stem, "path": str(path), "column": col})
+        if path.stem in associated_gauges:
+            rain_sources.append({"name": path.stem, "path": str(path), "column": col})
         gauges[path.stem] = (parsed.frame.copy(), col, float(interval) if interval else None)
 
-    network_over = network_rainfall_assessment(gauges, population_above_50k=True, apply_fault_cutoff=False)
-    network_under = network_rainfall_assessment(gauges, population_above_50k=False, apply_fault_cutoff=False)
+    network_gauges = {name: source for name, source in gauges.items() if name in associated_gauges}
+    network_over = network_rainfall_assessment(network_gauges, population_above_50k=True, apply_fault_cutoff=False)
+    network_under = network_rainfall_assessment(network_gauges, population_above_50k=False, apply_fault_cutoff=False)
     network_over_summary = _network_candidate_summary(network_over)
     network_under_summary = _network_candidate_summary(network_under)
 
@@ -534,7 +538,12 @@ def _flow_survey_workflow() -> dict[str, Any]:
     checks = {
         "association_workbook_parsed": bool(associations),
         "fdv_sources_match_authoritative_monitors": bool(monitor_sources),
-        "all_four_reference_gauges_loaded": bool((batch.get("network") or {}).get("gauge_count") == 4),
+        "all_four_reference_gauges_loaded": bool(len(gauges) == 4),
+        "network_uses_authoritative_gauges": bool(
+            associated_gauges == {"RG01", "RG02", "RG03"}
+            and {row.get("gauge") for row in gauge_summary} == associated_gauges
+            and (batch.get("network") or {}).get("gauge_count") == len(associated_gauges)
+        ),
         "network_wapug_classification_defensible": bool(
             network_over_summary["candidate_count"] > 0
             and network_over_summary["classification_consistent"]
