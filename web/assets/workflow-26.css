@@ -143,3 +143,5 @@
 .w26-schematic-viewport.is-panning{cursor:grabbing;user-select:none}
 .w26-schematic-viewport[data-pan="off"]{cursor:auto;touch-action:auto}
 .w26-schematic-tools [data-schematic-pan][aria-pressed="true"]{background:#e5f1f3;color:#126773}
+.w26-schematic-viewport .survey-schematic{overflow:visible;margin:0;padding:0}
+.w26-schematic-viewport .survey-schematic svg{min-width:0}
