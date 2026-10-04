@@ -1276,7 +1276,9 @@ try{
   }
   await page.setViewportSize({width:1440,height:1000});
   await precisionRoute('data','sources');
-  const architecture=await page.evaluate(()=>({
+  const readArchitecture=()=>page.evaluate(()=>({
+    status:window.__ICM_WORKBENCH__?.status,
+    deferredEngine:window.__ICM_WORKBENCH__?.deferredEngine,
     execution:window.__ICM_WORKBENCH__?.execution,
     mainThreadPyodide:typeof loadPyodide,
     registryMounted:Boolean(window.ICMProjectRegistry&&document.querySelector('#domainRegistryPanel')),
@@ -1285,8 +1287,9 @@ try{
     workerBuild:window.__ICM_WORKBENCH__?.workerBuildToken||null,
     localAssetUrls:[...document.querySelectorAll('script[src],link[href]')].map(el=>el.src||el.href).filter(url=>/\/assets\//.test(url)&&new URL(url).origin===location.origin),
   }));
-  if(architecture.execution!=='web-worker'||architecture.mainThreadPyodide!=='undefined'||!architecture.registryMounted)throw new Error('Worker/domain architecture not active: '+JSON.stringify(architecture));
-  if(!architecture.pageBuild||architecture.pageBuild!==architecture.runtimeBuild||architecture.pageBuild!==architecture.workerBuild)throw new Error('Page/runtime/worker release versions are not coherent: '+JSON.stringify(architecture));
+  let architecture=await readArchitecture();
+  if(architecture.status!=='idle'||!architecture.deferredEngine||architecture.workerBuild!==null||architecture.execution!==undefined||architecture.mainThreadPyodide!=='undefined'||!architecture.registryMounted)throw new Error('Cold shell must defer the authoritative worker: '+JSON.stringify(architecture));
+  if(!architecture.pageBuild||architecture.pageBuild!==architecture.runtimeBuild)throw new Error('Page/runtime release versions are not coherent: '+JSON.stringify(architecture));
   if(architecture.localAssetUrls.some(url=>!new URL(url).searchParams.get('v')))throw new Error('A local JS/CSS asset is not release-versioned: '+JSON.stringify(architecture.localAssetUrls));
   if(!((await page.locator('footer').textContent())||'').includes('© 2026 Anzar Sajid'))throw new Error('Live footer copyright missing');
 
@@ -1312,6 +1315,9 @@ try{
     const route=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
     if(route.workspace!==testCase.route[0]||route.page!==testCase.route[1])throw new Error('Import changed the active Precision route: '+JSON.stringify({testCase,route}));
   }
+  architecture=await readArchitecture();
+  if(architecture.execution!=='web-worker'||architecture.mainThreadPyodide!=='undefined'||!architecture.registryMounted)throw new Error('Imported data must use the authoritative worker: '+JSON.stringify(architecture));
+  if(architecture.pageBuild!==architecture.runtimeBuild||architecture.pageBuild!==architecture.workerBuild)throw new Error('Page/runtime/worker release versions are not coherent after import: '+JSON.stringify(architecture));
   await precisionRoute('data','sources');
   await page.click('#clearPoolBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0);
