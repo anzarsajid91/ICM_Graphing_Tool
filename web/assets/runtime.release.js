@@ -2427,8 +2427,8 @@ async function staticReportFallbackHtml(html,reason='Interactive Plotly runtime 
 async function interactiveReportHtml(html){
   const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,displayModeBar:true,scrollZoom:false,toImageButtonOptions:{format:'png',filename:el.id,width:1600,height:Number(p.layout.height)||850,scale:2}}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
   if(!reportPlotlyBundle){
-    const source=[...document.scripts].find(s=>/plotly-[\d.]+(?:\.min)?\.js/.test(s.src))?.src;
-    if(!source)return staticReportFallbackHtml(html,'The external Plotly script source was not available for embedding.');
+    const source=[...document.scripts].find(s=>/\/vendor\/plotly-[\d.]+\/plotly\.min\.js(?:\?|$)/.test(s.src))?.src;
+    if(!source)return staticReportFallbackHtml(html,'The packaged Plotly script source was not available for embedding.');
     try{
       const response=await fetch(source);
       if(!response.ok)throw new Error('Plotly bundle request returned HTTP '+response.status+'.');
