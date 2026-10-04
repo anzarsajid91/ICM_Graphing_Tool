@@ -34,7 +34,7 @@ def test_original_csv_structure_and_reference_scenario_results(cases, kind):
         assert a["mapping"]["duration"] == "Spill Duration (mins)"
         assert a["mapping"]["start"] == "Start of Spill (absolute)"
         assert a["mapping"]["end"] == "End of Spill (absolute)"
-    criteria = dict(scope_confirmed=True, threshold=".15" if kind == "level" else "5",
+    criteria = dict(scope_confirmed=True, elevation_confirmed=True, threshold=".15" if kind == "level" else "5",
                     freeboard_required=".5" if kind == "level" else None,
                     counting_mode="block-rows" if kind == "spill" else "summary")
     result = json.loads(detriment_result(kind, json.dumps(a), json.dumps(b), json.dumps(criteria)))
@@ -59,7 +59,7 @@ def test_flood_and_flood_lost_measures_cannot_be_mixed(cases):
     a, b = [source(p, "flooding") for p in cases["flooding"]["paths"]]
     b["mapping"]["value"] = "Max Flood volume (m3)"
     with pytest.raises(ValueError, match="measure"):
-        detriment_result("flooding", json.dumps(a), json.dumps(b), json.dumps(dict(scope_confirmed=True)))
+        detriment_result("flooding", json.dumps(a), json.dumps(b), json.dumps(dict(scope_confirmed=True, elevation_confirmed=True)))
 
 
 def test_flood_critical_report_cannot_supply_worst_case_levels(cases):
@@ -67,7 +67,7 @@ def test_flood_critical_report_cannot_supply_worst_case_levels(cases):
     for item in (a, b):
         item["mapping"]["value"] = "Max Level (m AD)"
     with pytest.raises(ValueError, match="critical|worst.case"):
-        detriment_result("level", json.dumps(a), json.dumps(b), json.dumps(dict(scope_confirmed=True)))
+        detriment_result("level", json.dumps(a), json.dumps(b), json.dumps(dict(scope_confirmed=True, elevation_confirmed=True)))
 
 
 def test_reference_audit_reports_ancillary_date_values_and_date_only_end(cases):
@@ -92,11 +92,11 @@ def test_reference_detail_duplicate_and_mixed_scenarios_block_counting(cases, ch
         writer = csv.DictWriter(stream, fieldnames=columns)
         writer.writeheader(); writer.writerows(rows)
     with pytest.raises(ValueError, match='[Dd]uplicate|multiple.*Run'):
-        detriment_result('spill', json.dumps(a), json.dumps(b), json.dumps(dict(scope_confirmed=True, counting_mode='block-rows')))
+        detriment_result('spill', json.dumps(a), json.dumps(b), json.dumps(dict(scope_confirmed=True, elevation_confirmed=True, counting_mode='block-rows')))
 
 
 def test_missing_attribute_selection_is_not_a_zero_result(cases):
     a,b=[source(p,'spill') for p in cases['spill']['paths']]
     a['attribute_value']='Nonexistent attribute'
     with pytest.raises(ValueError,match='No report rows'):
-        detriment_result('spill',json.dumps(a),json.dumps(b),json.dumps(dict(scope_confirmed=True,counting_mode='block-rows')))
+        detriment_result('spill',json.dumps(a),json.dumps(b),json.dumps(dict(scope_confirmed=True, elevation_confirmed=True,counting_mode='block-rows')))

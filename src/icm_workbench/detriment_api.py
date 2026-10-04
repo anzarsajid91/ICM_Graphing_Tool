@@ -71,6 +71,52 @@ def _flood_measure(column):
     return 'flood_lost_volume' if 'floodlost' in token else 'flood_volume' if 'flood' in token else 'other_volume'
 
 
+def _report_context(path):
+    """Extract only explicitly labelled report-preamble context.
+
+    These values are evidence from the source file, not inferred from a common
+    UI declaration. Unrecognised free text is deliberately left unverified.
+    """
+    text,_=_read_text(Path(path))
+    context={}
+    labels={
+        'scenario': r'(?i)^\s*scenario\s*[:=,-]\s*(.+?)\s*$',
+        'simulation': r'(?i)^\s*(?:simulation|run)\s*[:=,-]\s*(.+?)\s*$',
+        'datum': r'(?i)^\s*(?:vertical\s+)?datum\s*[:=,-]\s*(.+?)\s*$',
+        'period': r'(?i)^\s*(?:assessment\s+)?period\s*[:=,-]\s*(.+?)\s*$',
+        'template': r'(?i)^\s*(?:report\s+)?template\s*[:=,-]\s*(.+?)\s*$',
+        'storm_set': r'(?i)^\s*(?:storm\s+set|storm|return\s+period)\s*[:=,-]\s*(.+?)\s*$',
+    }
+    for line in text.splitlines()[:100]:
+        # Stop at the report header; asset rows are not preamble metadata.
+        if any(_token(c) in ALIASES['asset_id'] for c in re.split(r'[,;\t]',line)):
+            break
+        for key,pattern in labels.items():
+            match=re.match(pattern,line)
+            if match:
+                value=match.group(1).strip()
+                if key in context and context[key]['value']!=value:
+                    raise ValueError(f'Conflicting source report context: {key}.')
+                context[key]={'value':value,'basis':'source_verified'}
+    return context
+
+
+def _resolved_flood_measure(source):
+    inferred=_flood_measure(source['mapping'].get('value'))
+    selected=str(source.get('flood_measure') or source.get('measure') or 'auto').strip().lower()
+    allowed={'flood_volume','flood_lost_volume'}
+    if inferred in allowed:
+        if selected not in ('','auto') and selected!=inferred:
+            raise ValueError('Selected flooding measure contradicts the mapped report heading.')
+        return inferred,'source_verified'
+    if selected in allowed:
+        return selected,'engineer_declared'
+    raise ValueError(
+        'The mapped flooding column is a generic volume. Declare whether it is '
+        'Flood volume or combined Flood + lost volume before comparison.'
+    )
+
+
 def _read_table(path,kind="auto"):
     text,encoding=_read_text(Path(path));lines=text.splitlines()
     candidates=[]
@@ -114,6 +160,7 @@ def parse_detriment_report(path,report_kind="auto"):
         "metadata":{"source_kind":"detriment_report","report_kind":kind,"source_encoding":encoding,
                     "mapping_suggestions":mapping,"critical_kind":_critical_kind(columns),"warnings":warnings,
                     "datum":_datum({'mapping':mapping}),
+                    "source_context":_report_context(path),
                     "mapping_by_kind":{k:_suggest(columns,k) for k in ('flooding','level','spill','ground')}},
         "preview_rows":records[:8],"audit":{"report_rows":len(records),"malformed_rows":0,
                     "numeric_date_cells":numeric_dates,"date_only_boundaries":date_only}},ensure_ascii=False)
@@ -192,7 +239,7 @@ def _source(config,kind,detail=False):
         if not asset:raise ValueError("Report contains a blank asset ID.")
         if asset in grouped and not detail:raise ValueError(f"Duplicate asset ID {asset!r}; select one attribute/run or correct the report.")
         grouped.setdefault(asset,[]).append(row)
-    return dict(config,mapping=mapping,groups=grouped,report_kind=report_kind)
+    return dict(config,mapping=mapping,groups=grouped,report_kind=report_kind,source_context=_report_context(config["path"]))
 
 
 def _value(source,row,field,dimension=None,unit_field="unit",nonnegative=False):
@@ -266,6 +313,8 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
     if kind not in ('flooding','level','spill'):raise ValueError("Unsupported detriment assessment.")
     criteria=json.loads(criteria_json);a_config=json.loads(scenario_a_json);b_config=json.loads(scenario_b_json)
     if not criteria.get('scope_confirmed'):raise ValueError("Please confirm matching assessment scope and completed ICM runs.")
+    if kind=='level' and not criteria.get('elevation_confirmed'):
+        raise ValueError("Please confirm maximum water-level elevations and the common vertical datum.")
     for scenario in (a_config,b_config):
         scope=scenario.get('scope')
         if not isinstance(scope,str) or not scope.strip():
@@ -278,6 +327,18 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
     required=_number(criteria.get('freeboard_required')) if criteria.get('freeboard_required') is not None else None
     if criteria.get('freeboard_required') is not None and (required is None or required<0):raise ValueError("Required freeboard must be finite and non-negative.")
     mode=criteria.get('counting_mode','summary')
+    new_flooding_policy=criteria.get('new_flooding_policy','tolerance')
+    if new_flooding_policy not in ('tolerance','any_new_flooding'):
+        raise ValueError("Select a valid new-flooding assessment policy.")
+    count_tolerance=_number(criteria.get('count_tolerance',0))
+    duration_tolerance=_number(criteria.get('duration_tolerance_hours',0))
+    if count_tolerance is None or count_tolerance<0:
+        raise ValueError("Spill count tolerance must be finite and non-negative.")
+    if duration_tolerance is None or duration_tolerance<0:
+        raise ValueError("Spill duration tolerance must be finite and non-negative.")
+    spill_policy=criteria.get('spill_combination_policy','legacy')
+    if spill_policy not in ('legacy','either_criterion','count_primary'):
+        raise ValueError("Select a valid spill count/duration combination policy.")
     count_unit={'summary':'spills','block-rows':'spill-block rows','physical-events':'physical events'}.get(mode,'spills')
     if kind=='spill':
         if mode not in ('summary','block-rows','physical-events'):raise ValueError("Select an explicit spill counting mode.")
@@ -289,10 +350,22 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
         if mode=='summary' and any(s.get('report_kind')=='spill_detail' or not s.get('mapping',{}).get('count') for s in (a_config,b_config)):
             raise ValueError("Upload Exceedance Summary for authoritative Spill count, or explicitly select the exported detail counting mode.")
     a=_source(a_config,kind,detail=kind=='spill' and mode!='summary');b=_source(b_config,kind,detail=kind=='spill' and mode!='summary')
+    for context_key in ('datum','period','template','storm_set'):
+        av=a.get('source_context',{}).get(context_key,{}).get('value')
+        bv=b.get('source_context',{}).get(context_key,{}).get('value')
+        if av and bv and str(av).strip().casefold()!=str(bv).strip().casefold():
+            raise ValueError(
+                f"Source-verified {context_key.replace('_',' ')} differs between Scenario A and B."
+            )
     if kind=='flooding':
-        measures=[_flood_measure(s['mapping']['value']) for s in (a,b)]
-        if 'other_volume' not in measures and measures[0]!=measures[1]:
+        resolved=[_resolved_flood_measure(s) for s in (a,b)]
+        measures=[item[0] for item in resolved]
+        if measures[0]!=measures[1]:
             raise ValueError('Scenario flood-volume measures must match: flood-only and combined flood/lost volume cannot be compared as the same measure.')
+        a['flood_measure_resolved'],a['flood_measure_basis']=resolved[0]
+        b['flood_measure_resolved'],b['flood_measure_basis']=resolved[1]
+        a_config['flood_measure_resolved'],a_config['flood_measure_basis']=resolved[0]
+        b_config['flood_measure_resolved'],b_config['flood_measure_basis']=resolved[1]
     if kind=='level':
         if not _datum(a) or _datum(a)!=_datum(b):raise ValueError("Level reports must share a declared vertical datum.")
         for source in (a,b):
@@ -326,11 +399,17 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
         if not row['matched']:row['status']='unmatched';flags.append('missing_scenario_b' if rb is None else 'missing_scenario_a')
         elif delta is None:row['status']='unavailable';flags.append('invalid_or_missing_value')
         elif kind in ('flooding','level'):
-            if delta>threshold:flags.append('flood_detriment' if kind=='flooding' else 'level_detriment');row['status']='detriment'
-            elif delta>0:flags.append('increase_within_tolerance');row['status']='risk'
-            elif delta<0:flags.append('improvement');row['status']='improvement'
+            is_new_flooding=kind=='flooding' and va==0 and vb>0
+            if is_new_flooding:flags.append('new_flooding')
+            if is_new_flooding and new_flooding_policy=='any_new_flooding':
+                flags.append('new_flooding_policy_detriment');row['status']='detriment'
+            elif delta>threshold:
+                flags.append('flood_detriment' if kind=='flooding' else 'level_detriment');row['status']='detriment'
+            elif delta>0:
+                flags.append('increase_within_tolerance');row['status']='risk'
+            elif delta<0:
+                flags.append('improvement');row['status']='improvement'
             else:flags.append('unchanged')
-            if kind=='flooding' and va==0 and vb>0:flags.append('new_flooding')
         if kind=='level':
             grounds=[]
             for source,raw in ((a,ra),(b,rb)):
@@ -355,24 +434,63 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
             row.update(duration_a_hours=ta,duration_b_hours=tb,duration_delta_hours=dt,
                        details_a=_detail_events(detail_sources[0] or (a if mode!='summary' else None),asset),
                        details_b=_detail_events(detail_sources[1] or (b if mode!='summary' else None),asset))
-            if row['matched'] and (delta is None or dt is None):row['status']='unavailable';flags.append('invalid_or_missing_count_or_duration')
+            if row['matched'] and (delta is None or dt is None):
+                row['status']='unavailable';flags.append('invalid_or_missing_count_or_duration')
+                row['count_status']=row['duration_status']='unavailable'
             elif row['matched']:
-                if delta>0:row['status']='detriment';flags.append('spill_count_detriment')
-                elif delta<0:row['status']='improvement';flags.append('count_improvement')
-                if dt>0:
-                    flags.append('duration_increase')
-                    if delta<0:flags.append('mixed_result')
-                    if delta<=0:row['status']='risk'
-                elif dt<0:flags.append('duration_improvement');row['status']='improvement' if delta<=0 else row['status']
+                if delta>count_tolerance:count_status='detriment';flags.append('spill_count_detriment')
+                elif delta>0:count_status='risk';flags.append('count_increase_within_tolerance')
+                elif delta<0:count_status='improvement';flags.append('count_improvement')
+                else:count_status='unchanged'
+                if dt>duration_tolerance:duration_status='detriment';flags.append('duration_detriment')
+                elif dt>0:duration_status='risk';flags.append('duration_increase_within_tolerance')
+                elif dt<0:duration_status='improvement';flags.append('duration_improvement')
+                else:duration_status='unchanged'
+                row['count_status']=count_status;row['duration_status']=duration_status
+                if delta<0 and dt>0:flags.append('mixed_result')
+                if spill_policy=='either_criterion':
+                    if 'detriment' in (count_status,duration_status):row['status']='detriment'
+                    elif 'risk' in (count_status,duration_status):row['status']='risk'
+                    elif 'improvement' in (count_status,duration_status):row['status']='improvement'
+                    else:row['status']='unchanged'
+                elif spill_policy=='count_primary':
+                    row['status']=count_status
+                else:
+                    # Backward-compatible behaviour for restored workspaces that
+                    # pre-date independent count/duration policies.
+                    if delta>0:row['status']='detriment'
+                    elif delta<0:row['status']='improvement'
+                    else:row['status']='unchanged'
+                    if dt>0:
+                        flags.append('duration_increase')
+                        if delta<=0:row['status']='risk'
+                    elif dt<0 and delta<=0:row['status']='improvement'
                 if not flags:flags.append('unchanged')
         rows.append(row)
     summary={'assets':len(rows),'matched':sum(r['matched'] for r in rows),
              **{key:sum(r['status']==status for r in rows) for key,status in [('detriment','detriment'),('risk','risk'),('improved','improvement')]},
              'unresolved':sum(r['status'] in ('unmatched','unavailable') or 'freeboard_unavailable' in r['flags'] for r in rows),
              'max_increase':max([r['delta'] for r in rows if r['delta'] is not None]+[Decimal(0)])}
+    provenance={
+        'scope':{
+            'scenario_a':{'value':a_config.get('scope'),'basis':'engineer_declared'},
+            'scenario_b':{'value':b_config.get('scope'),'basis':'engineer_declared'},
+        },
+        'datum':{
+            'scenario_a':{'value':a_config.get('datum'),'basis':'engineer_declared' if a_config.get('datum') else 'unavailable'},
+            'scenario_b':{'value':b_config.get('datum'),'basis':'engineer_declared' if b_config.get('datum') else 'unavailable'},
+        },
+        'source_context_a':a.get('source_context',{}),
+        'source_context_b':b.get('source_context',{}),
+    }
     result={'kind':kind,'rows':rows,'summary':summary,'criteria':criteria,'scenario_a':a_config,'scenario_b':b_config,
             'ground_source':ground_config,'detail_source_a':json.loads(detail_a_json),'detail_source_b':json.loads(detail_b_json),
+            'provenance':provenance,
             'date_convention':'ISO or day/month/year model clock','boundary_policy':'reject crossing or out-of-period detail rows','status':'partial' if summary['unresolved'] else 'complete',
-            'method':'Matched report assets; unrounded canonical B minus A; strict tolerance exceedance; missing assets never zero',
+            'method':'Matched report assets; unrounded canonical B minus A; explicit policy criteria; missing assets never zero',
+            'new_flooding_policy':new_flooding_policy if kind=='flooding' else None,
+            'spill_combination_policy':spill_policy if kind=='spill' else None,
+            'count_tolerance':float(count_tolerance) if kind=='spill' else None,
+            'duration_tolerance_hours':float(duration_tolerance) if kind=='spill' else None,
             'counting_mode':mode if kind=='spill' else None,'count_unit':count_unit if kind=='spill' else None}
     return json.dumps(result,default=lambda v:float(v) if isinstance(v,Decimal) else str(v),ensure_ascii=False,allow_nan=False)
