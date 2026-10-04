@@ -21,9 +21,12 @@ specific change.
 
 ## Release discipline
 
-The work is split into eight sequential pull requests. Each PR starts from the
-latest merged `main`, has its own regression evidence, and must be mergeable and
-reversible without depending on unmerged work from a later PR.
+The work is split into eight sequential pull requests. At the user's request,
+implementation is prepared as a stack before any merge: PR 1 targets `main`,
+and each following PR targets its predecessor. Merge in order; retarget each
+successor to the updated `main` and rerun its exact-head gates before merging.
+Each PR has its own regression evidence and must be reversible without depending
+on an unmerged later PR. A green cumulative PR 8 does not replace those gates.
 
 1. **PR 1 — baseline safety net**
    - freeze this programme and the production baseline;
