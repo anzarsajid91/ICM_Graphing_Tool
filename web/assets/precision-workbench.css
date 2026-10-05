@@ -42,7 +42,7 @@ body.precision-workbench{
 }
 .pw-brand{padding:4px 8px 12px;border-bottom:1px solid rgba(255,255,255,.12)}
 .pw-brand-mark{display:flex;align-items:center;gap:12px;font-weight:700;letter-spacing:.01em}
-.pw-brand-icon{display:grid;place-items:center;width:32px;height:32px;border-radius:7px;background:var(--pw-teal);font-weight:800;color:white}
+.pw-brand-icon{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;padding:0;border:0;border-radius:7px;background:var(--pw-teal);font-weight:800;color:white;cursor:pointer}
 .pw-brand small{display:block;margin-top:8px;color:#aebfca;line-height:1.35}
 .pw-primary-nav{display:grid;gap:4px}
 .pw-primary-nav button{
@@ -70,6 +70,7 @@ body.precision-workbench{
 @media(max-width:620px){.pw-about-nav .pw-nav-label{display:block}.pw-about-nav button{justify-content:flex-start;padding:8px 12px}.pw-about-page{padding:20px!important}.pw-about-workspaces{grid-template-columns:1fr;gap:20px}.pw-about-intro h2{font-size:24px}}
 .pw-empty-assets{font-size:12px;color:#8ea4b2;padding:4px 8px}
 .pw-stage{min-width:0;display:flex;flex-direction:column}
+.precision-workbench main.shell{overflow-anchor:none}
 .precision-workbench .topbar{
   position:sticky;top:0;z-index:40;background:rgba(255,255,255,.97);backdrop-filter:blur(8px);
   border-bottom:1px solid var(--pw-border);padding:12px var(--pw-gap);box-shadow:none;
@@ -328,6 +329,18 @@ body.precision-workbench{
   .pw-primary-nav button{justify-content:center;padding:12px}
   .pw-nav-icon{margin:auto}
   .pw-scope-item strong{max-width:150px}
+}
+@media(min-width:621px) and (max-width:900px){
+  .precision-workbench.pw-rail-expanded .pw-app{grid-template-columns:216px minmax(0,1fr)}
+  .precision-workbench.pw-rail-expanded .pw-brand-mark{justify-content:flex-start}
+  .precision-workbench.pw-rail-expanded .pw-brand-title,
+  .precision-workbench.pw-rail-expanded .pw-brand small,
+  .precision-workbench.pw-rail-expanded .pw-primary-nav .pw-nav-label,
+  .precision-workbench.pw-rail-expanded .pw-about-nav .pw-nav-label,
+  .precision-workbench.pw-rail-expanded .pw-asset-browser{display:block}
+  .precision-workbench.pw-rail-expanded .pw-primary-nav button,
+  .precision-workbench.pw-rail-expanded .pw-about-nav button{justify-content:flex-start;padding:8px 12px}
+  .precision-workbench.pw-rail-expanded .pw-nav-icon{margin:0}
 }
 @media(max-width:620px){
   .pw-app{grid-template-columns:1fr}

@@ -90,6 +90,7 @@ jobs:
           node --check web/tests/webkit-ios-shell.mjs
           node --check web/tests/cold-start-shell.mjs
           node --check web/tests/schematic-review-smoke.mjs
+          node --check web/tests/workspace-interactions.mjs
           node --check web/tests/baseline-comparison.mjs
           node web/tests/weekly-review-unit.mjs
           node web/tests/graph-report-unit.mjs
@@ -200,6 +201,7 @@ jobs:
           node web/tests/detriment-smoke.mjs
           node web/tests/detriment-reference-smoke.mjs
           node web/tests/audit-release-smoke.mjs
+          node web/tests/workspace-interactions.mjs
           node web/tests/smoke.mjs
           node web/tests/schematic-review-smoke.mjs
 
@@ -333,6 +335,7 @@ jobs:
             sleep 1
           done
           node web/tests/precision-shell.mjs
+          node web/tests/workspace-interactions.mjs
 
 
   browser-webkit-ios-shell:

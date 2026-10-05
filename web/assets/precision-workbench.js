@@ -79,11 +79,57 @@ let docked=[];
 let syncingLegacy=false;
 let focusPreference=false;
 let railCollapsed=false;
+let railExplicit=false;
 try{
   const saved=sessionStorage.getItem('icm-pw-focus-canvas');
   if(saved==='on'||saved==='off')focusPreference=saved==='on';
 }catch{}
-try{railCollapsed=sessionStorage.getItem('icm-pw-rail-collapsed')==='on';}catch{}
+try{const saved=sessionStorage.getItem('icm-pw-rail-collapsed');railCollapsed=saved==='on';railExplicit=saved==='on'||saved==='off';}catch{}
+// The document is the scrolling surface, so route swaps need their own memory.
+// Keep subtabs separate even where they share a legacy tab-panel element.
+const routeScroll=new Map();
+let scrollRestore=null;
+let routeMounted=false;
+try{
+  const saved=JSON.parse(sessionStorage.getItem('icm-pw-route-scroll')||'{}');
+  for(const [key,position] of Object.entries(saved)){
+    if(Number.isFinite(position?.x)&&Number.isFinite(position?.y)&&position.x>=0&&position.y>=0)routeScroll.set(key,position);
+  }
+}catch{}
+function persistRouteScroll(){try{sessionStorage.setItem('icm-pw-route-scroll',JSON.stringify(Object.fromEntries(routeScroll)));}catch{}}
+function rememberRouteScroll(){
+  if(!routeMounted)return;
+  const key=current.workspace+'/'+current.page;
+  routeScroll.set(key,scrollRestore?.key===key?scrollRestore.position:{x:window.scrollX,y:window.scrollY});
+  persistRouteScroll();
+}
+function cancelScrollRestore(){
+  if(!scrollRestore)return;
+  cancelAnimationFrame(scrollRestore.frame);scrollRestore=null;
+}
+function restoreRouteScroll(){
+  cancelScrollRestore();
+  const key=current.workspace+'/'+current.page,position=routeScroll.get(key)||{x:0,y:0};
+  const task={key,position,deadline:performance.now()+3000,frame:0};scrollRestore=task;
+  const apply=()=>{
+    if(scrollRestore!==task)return;
+    window.scrollTo({left:position.x,top:position.y,behavior:'instant'});
+    // A delayed chart/table can make a previously saved offset available later.
+    // Stop as soon as it is reachable, or when the engineer starts interacting.
+    if((Math.abs(window.scrollY-position.y)<2&&Math.abs(window.scrollX-position.x)<2)||performance.now()>=task.deadline){scrollRestore=null;return;}
+    task.frame=requestAnimationFrame(apply);
+  };
+  task.frame=requestAnimationFrame(apply);
+}
+function wireScrollMemory(){
+  if('scrollRestoration' in history)history.scrollRestoration='manual';
+  const interrupt=()=>cancelScrollRestore();
+  window.addEventListener('wheel',interrupt,{passive:true});
+  window.addEventListener('touchstart',interrupt,{passive:true});
+  window.addEventListener('pointerdown',interrupt,{passive:true});
+  window.addEventListener('keydown',event=>{if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key))interrupt();});
+  window.addEventListener('pagehide',rememberRouteScroll);
+}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function navIcon(name){
   const paths={
@@ -305,7 +351,8 @@ function buildShell(){
   const review=footer?.previousElementSibling?.matches('section.panel')?footer.previousElementSibling:null;
   const app=document.createElement('div');app.className='pw-app';
   const rail=document.createElement('aside');rail.className='pw-rail';rail.setAttribute('aria-label','Primary workspaces');
-  rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><span class="pw-brand-icon">HB</span><span class="pw-brand-title">Hydra Bench</span></div><small>Browser-local hydraulic evidence and assessment.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
+  rail.id='pwNavigation';
+  rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><button type="button" id="pwBrandToggle" class="pw-brand-icon" aria-controls="pwNavigation" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">HB</button><span class="pw-brand-title">Hydra Bench</span></div><small>Browser-local hydraulic evidence and assessment.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
   const bottom=document.createElement('div');bottom.className='pw-rail-bottom';
   bottom.innerHTML='<nav class="pw-about-nav" aria-label="About the tool"></nav>';
   bottom.appendChild(qs('.pw-asset-browser',rail));rail.appendChild(bottom);
@@ -329,14 +376,24 @@ function buildShell(){
   const oldTabs=qs('.tabs');if(oldTabs){oldTabs.setAttribute('aria-hidden','true');oldTabs.inert=true;}
   const applyRailState=()=>{
     document.body.classList.toggle('pw-rail-collapsed',railCollapsed);
+    document.body.classList.toggle('pw-rail-expanded',railExplicit&&!railCollapsed);
     const toggle=$('pwRailToggle');if(toggle){toggle.setAttribute('aria-pressed',railCollapsed?'true':'false');toggle.textContent=railCollapsed?'Expand navigation':'Collapse navigation';}
+    syncBrandToggle();
   };
-  $('pwRailToggle')?.addEventListener('click',()=>{
-    if(matchMedia('(max-width:620px)').matches){rail.classList.toggle('is-open');return;}
-    railCollapsed=!railCollapsed;
+  const toggleRail=()=>{
+    if(matchMedia('(max-width:620px)').matches){rail.classList.toggle('is-open');syncBrandToggle();return;}
+    const expanding=rail.getBoundingClientRect().width<100;
+    if(expanding&&document.body.classList.contains('pw-focus-canvas')){
+      focusPreference=false;
+      try{sessionStorage.setItem('icm-pw-focus-canvas','off');}catch{}
+      applyFocusCanvas(true);
+    }
+    railCollapsed=!expanding;railExplicit=true;
     try{sessionStorage.setItem('icm-pw-rail-collapsed',railCollapsed?'on':'off');}catch{}
     applyRailState();resizeVisuals();
-  });
+  };
+  $('pwRailToggle')?.addEventListener('click',toggleRail);
+  $('pwBrandToggle')?.addEventListener('click',toggleRail);
   applyRailState();
   $('pwInspectorToggle')?.addEventListener('click',()=>{
     document.body.classList.remove('pw-inspector-collapsed');
@@ -462,6 +519,7 @@ function parseHash(){
 function navigate(workspace,page,push=false){
   const resolved=canonicalRoute(workspace,page);if(!resolved)return;
   workspace=resolved.workspace;page=resolved.page;
+  rememberRouteScroll();cancelScrollRestore();
   restoreDocked();
   current={workspace,page};
   const spec=ROUTES[workspace],p=spec.pages[page];
@@ -498,6 +556,14 @@ function navigate(workspace,page,push=false){
   document.title=p.title+' · Hydra Bench';
   resizeVisuals();
   window.dispatchEvent(new CustomEvent('icm:route-changed',{detail:{workspace,page}}));
+  routeMounted=true;restoreRouteScroll();
+}
+function syncBrandToggle(){
+  const button=$('pwBrandToggle'),rail=qs('.pw-rail');if(!button||!rail)return;
+  const expanded=matchMedia('(max-width:620px)').matches?rail.classList.contains('is-open'):rail.getBoundingClientRect().width>=100;
+  button.setAttribute('aria-expanded',String(expanded));
+  button.setAttribute('aria-label',expanded?'Collapse navigation':'Expand navigation');
+  button.title=expanded?'Collapse navigation':'Expand navigation';
 }
 function isFocusRoute(){
   return true;
@@ -534,6 +600,7 @@ function applyFocusCanvas(userInitiated=false){
   if(railToggle)railToggle.hidden=active;
   const inspector=$('pwInspector');
   if(!active&&userInitiated)inspector?.classList.remove('is-open');
+  syncBrandToggle();
   resizeVisuals();
 }
 function selectionLabel(id,fallback='—'){
@@ -601,6 +668,7 @@ function wireContextUpdates(){
   });
   const focusMedia=matchMedia('(min-width:901px)');
   focusMedia.addEventListener?.('change',()=>applyFocusCanvas(false));
+  matchMedia('(max-width:620px)').addEventListener?.('change',syncBrandToggle);
 }
 function buildAboutPage(){
   if($('tab-about'))return;
@@ -618,7 +686,7 @@ function buildAboutPage(){
   qsa('[data-about-workspace]',panel).forEach(button=>button.addEventListener('click',()=>navigate(button.dataset.aboutWorkspace,button.dataset.aboutPage,true)));
 }
 function mount(){
-  buildAboutPage();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();
+  buildAboutPage();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||{workspace:'data',page:'time-series'};navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }

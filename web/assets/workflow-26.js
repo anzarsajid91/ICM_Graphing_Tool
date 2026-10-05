@@ -593,13 +593,33 @@
     const search=$('assessmentSearch-'+suffix);if(search&&search.value!==String(survey.reviewContext.search||''))search.value=survey.reviewContext.search||'';const toggle=$('assessmentExceptions-'+suffix);if(toggle)toggle.checked=Boolean(survey.reviewContext.exceptionsOnly);
     updateSchematicView(suffix);
   }
-  function updateSchematicView(suffix){
+  const MIN_SCHEMATIC_ZOOM=.25,MAX_SCHEMATIC_ZOOM=4;
+  function updateSchematicView(suffix,preserveCentre=false){
     const viewport=$('assessmentSchematicViewport-'+suffix),svg=viewport?.querySelector('svg');
-    if(!svg)return;
-    const scale=Number(survey.reviewContext.zoom?.[suffix]||1),box=svg.viewBox.baseVal;
-    const width=Math.max(1,viewport.clientWidth-18)*scale;
+    const requested=Number(survey.reviewContext.zoom?.[suffix]??1);
+    const scale=Math.min(MAX_SCHEMATIC_ZOOM,Math.max(MIN_SCHEMATIC_ZOOM,Number.isFinite(requested)?requested:1));
+    survey.reviewContext.zoom[suffix]=scale;
+    const label=$('assessmentZoom-'+suffix);if(label)label.textContent=Math.round(scale*100)+'%';
+    for(const button of document.querySelectorAll('[data-schematic-zoom][data-schematic-kind="'+suffix+'"]')){
+      button.disabled=Number(button.dataset.schematicZoom)>0?scale>=MAX_SCHEMATIC_ZOOM:scale<=MIN_SCHEMATIC_ZOOM;
+    }
+    // Hidden routes have zero width. Do not shrink their SVG to one pixel;
+    // ResizeObserver reapplies the camera when the schematic becomes visible.
+    if(!svg||viewport.clientWidth<20||viewport.getClientRects().length===0)return;
+    const box=svg.viewBox.baseVal;if(!(box.width>0&&box.height>0))return;
+    const previous=svg.getBoundingClientRect(),oldLeft=viewport.scrollLeft,oldTop=viewport.scrollTop;
+    const availableWidth=viewport.clientWidth-18;
+    const maxHeight=Number.parseFloat(getComputedStyle(viewport).maxHeight)||560;
+    const decoration=[...svg.parentElement.children].filter(node=>node!==svg).reduce((sum,node)=>sum+node.getBoundingClientRect().height+12,0);
+    const fitWidth=Math.min(availableWidth,Math.max(80,maxHeight-18-decoration)*box.width/box.height);
+    const width=fitWidth*scale;
     svg.style.transform='none';svg.style.width=width+'px';svg.style.maxWidth='none';
     svg.style.height=(width*box.height/box.width)+'px';
+    if(preserveCentre&&previous.width>0){
+      const ratio=width/previous.width;
+      viewport.scrollLeft=(oldLeft+viewport.clientWidth/2)*ratio-viewport.clientWidth/2;
+      viewport.scrollTop=(oldTop+viewport.clientHeight/2)*ratio-viewport.clientHeight/2;
+    }
   }
   function bindSchematicPan(viewport){
     let drag=null,suppressClick=false;
@@ -689,7 +709,7 @@
       if(!target||$('assessmentCanvas-'+kind))continue;
       const canvas=document.createElement('section');canvas.id='assessmentCanvas-'+kind;canvas.className='assessment-canvas w26-matrix-workbench';
       canvas.innerHTML='<div class="assessment-canvas-head"><div><h4>'+(kind==='fdv'?'Monitor assessment':'Rainfall assessment')+'</h4><p>Use the week matrix and network together. The evidence drawer stays open while you move through exceptions.</p></div><label>Assessment week<select id="assessmentWeek-'+kind+'"></select></label></div>'+
-        '<div class="w26-matrix-layout"><div class="w26-matrix-main"><div class="w26-matrix-toolbar"><label>Find '+(kind==='fdv'?'monitor':'gauge')+'<input id="assessmentSearch-'+kind+'" type="search" placeholder="Search ID"></label><label class="w26-inline-check"><input id="assessmentExceptions-'+kind+'" type="checkbox"> Exceptions only</label><div class="w26-schematic-tools"><button type="button" class="btn quiet" data-schematic-pan data-schematic-kind="'+kind+'" aria-pressed="true" title="Drag the schematic to pan">Pan</button><button type="button" class="btn quiet" data-schematic-zoom="-1" data-schematic-kind="'+kind+'">−</button><button type="button" class="btn quiet" data-schematic-fit data-schematic-kind="'+kind+'">Fit</button><button type="button" class="btn quiet" data-schematic-zoom="1" data-schematic-kind="'+kind+'">+</button><button type="button" class="btn quiet" data-schematic-focus data-schematic-kind="'+kind+'">Focus selected</button></div></div>'+
+        '<div class="w26-matrix-layout"><div class="w26-matrix-main"><div class="w26-matrix-toolbar"><label>Find '+(kind==='fdv'?'monitor':'gauge')+'<input id="assessmentSearch-'+kind+'" type="search" placeholder="Search ID"></label><label class="w26-inline-check"><input id="assessmentExceptions-'+kind+'" type="checkbox"> Exceptions only</label><div class="w26-schematic-tools"><button type="button" class="btn quiet" data-schematic-pan data-schematic-kind="'+kind+'" aria-pressed="true" title="Drag the schematic to pan">Pan</button><button type="button" class="btn quiet" data-schematic-zoom="-1" data-schematic-kind="'+kind+'" aria-label="Zoom out">−</button><output id="assessmentZoom-'+kind+'" aria-label="Schematic zoom" aria-live="polite">100%</output><button type="button" class="btn quiet" data-schematic-fit data-schematic-kind="'+kind+'">Fit</button><button type="button" class="btn quiet" data-schematic-zoom="1" data-schematic-kind="'+kind+'" aria-label="Zoom in">+</button><button type="button" class="btn quiet" data-schematic-focus data-schematic-kind="'+kind+'">Focus selected</button></div></div>'+
         '<div id="assessmentMatrix-'+kind+'" class="w26-matrix-region"></div><div id="assessmentSchematicViewport-'+kind+'" class="w26-schematic-viewport"><div id="assessmentSchematic-'+kind+'"></div></div></div><aside id="assessmentDrawer-'+kind+'" class="w26-evidence-drawer" aria-live="polite"></aside></div>';
       target.insertAdjacentElement('beforebegin',canvas);
       bindSchematicPan($('assessmentSchematicViewport-'+kind));
@@ -897,11 +917,11 @@
       const panButton=event.target.closest('[data-schematic-pan]');
       if(panButton){const viewport=$('assessmentSchematicViewport-'+panButton.dataset.schematicKind),enabled=panButton.getAttribute('aria-pressed')!=='true';panButton.setAttribute('aria-pressed',String(enabled));viewport.dataset.pan=enabled?'on':'off';return;}
       const zoomButton=event.target.closest('[data-schematic-zoom]');
-      if(zoomButton){const suffix=zoomButton.dataset.schematicKind,delta=Number(zoomButton.dataset.schematicZoom||0);survey.reviewContext.zoom[suffix]=Math.min(1.8,Math.max(.6,Number(survey.reviewContext.zoom[suffix]||1)+delta*.15));updateSchematicView(suffix);return;}
+      if(zoomButton){const suffix=zoomButton.dataset.schematicKind,delta=Number(zoomButton.dataset.schematicZoom||0);survey.reviewContext.zoom[suffix]=Math.min(MAX_SCHEMATIC_ZOOM,Math.max(MIN_SCHEMATIC_ZOOM,Number(survey.reviewContext.zoom[suffix]||1)+delta*.25));updateSchematicView(suffix,true);return;}
       const fitButton=event.target.closest('[data-schematic-fit]');
       if(fitButton){survey.reviewContext.zoom[fitButton.dataset.schematicKind]=1;updateSchematicView(fitButton.dataset.schematicKind);const viewport=$('assessmentSchematicViewport-'+fitButton.dataset.schematicKind);if(viewport){viewport.scrollLeft=0;viewport.scrollTop=0;}return;}
       const focusButton=event.target.closest('[data-schematic-focus]');
-      if(focusButton){const suffix=focusButton.dataset.schematicKind,name=suffix==='fdv'?survey.selectedMonitor:survey.selectedGauge;if(!name)return;const viewport=$('assessmentSchematicViewport-'+suffix),selector=suffix==='fdv'?'[data-survey-node="'+CSS.escape(name)+'"]':'[data-survey-gauge="'+CSS.escape(name)+'"]';viewport?.querySelector(selector)?.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});return;}
+      if(focusButton){const suffix=focusButton.dataset.schematicKind,name=suffix==='fdv'?survey.selectedMonitor:survey.selectedGauge;if(!name)return;const viewport=$('assessmentSchematicViewport-'+suffix),selector=suffix==='fdv'?'[data-survey-node="'+CSS.escape(name)+'"]':'[data-survey-gauge="'+CSS.escape(name)+'"]',node=viewport?.querySelector(selector);if(node){const outer=viewport.getBoundingClientRect(),inner=node.getBoundingClientRect();viewport.scrollTo({left:viewport.scrollLeft+inner.x+inner.width/2-outer.x-outer.width/2,top:viewport.scrollTop+inner.y+inner.height/2-outer.y-outer.height/2,behavior:'instant'});}return;}
       const weekEdit=event.target.closest('[data-week-edit]');
       if(weekEdit){const kind=weekEdit.dataset.weekKind,match=weekByKey(kind,weekEdit.dataset.weekEdit);if(match){survey.reviewContext.drawerTab='audit';selectReviewWeek(kind,match.name,weekEdit.dataset.weekEdit);$('assessmentDrawer-'+(kind==='monitor-week'?'fdv':'rain'))?.scrollIntoView({block:'nearest',behavior:'smooth'});}return;}
       const quick=event.target.closest('[data-week-note]');
