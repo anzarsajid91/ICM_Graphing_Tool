@@ -144,4 +144,6 @@
 .w26-schematic-viewport[data-pan="off"]{cursor:auto;touch-action:auto}
 .w26-schematic-tools [data-schematic-pan][aria-pressed="true"]{background:#e5f1f3;color:#126773}
 .w26-schematic-viewport .survey-schematic{overflow:visible;margin:0;padding:0}
-.w26-schematic-viewport .survey-schematic svg{min-width:0}
+.w26-schematic-viewport .survey-schematic svg{min-width:0;min-height:0;flex-shrink:0}
+.w26-schematic-tools output{min-width:42px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums;color:#58636e;align-self:center}
+.w26-schematic-tools button:disabled{opacity:.4;cursor:default}

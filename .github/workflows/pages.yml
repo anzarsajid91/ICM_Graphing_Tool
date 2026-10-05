@@ -90,6 +90,7 @@ jobs:
           node --check web/tests/webkit-ios-shell.mjs
           node --check web/tests/cold-start-shell.mjs
           node --check web/tests/schematic-review-smoke.mjs
+          node --check web/tests/workspace-interactions.mjs
           node --check web/tests/baseline-comparison.mjs
           node web/tests/weekly-review-unit.mjs
           node web/tests/graph-report-unit.mjs
@@ -335,6 +336,48 @@ jobs:
           node web/tests/precision-shell.mjs
 
 
+  browser-interactions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Assemble exact release artifact
+        run: python scripts/build_pages.py
+      - name: Install existing Chromium and Firefox acceptance runners
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium firefox
+      - name: Verify workspace interactions in Chromium and Firefox
+        env:
+          ICM_EVIDENCE_DIR: /tmp/icm-interaction-evidence
+        run: |
+          python -m http.server 8000 --directory _site >/tmp/icm-interactions-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:8000/ >/dev/null 2>&1 && break
+            sleep 1
+          done
+          ICM_BROWSER=chromium node web/tests/workspace-interactions.mjs
+          ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs
+      - name: Retain workspace interaction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-interactions-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            /tmp/icm-interaction-evidence/
+            /tmp/icm-interactions-http.log
+
   browser-webkit-ios-shell:
     runs-on: ubuntu-latest
     needs: verify
@@ -384,7 +427,7 @@ jobs:
       pages: write
       id-token: write
     runs-on: ubuntu-latest
-    needs: [browser-smoke, baseline-performance, browser-firefox-shell, browser-webkit-ios-shell]
+    needs: [browser-smoke, baseline-performance, browser-firefox-shell, browser-webkit-ios-shell, browser-interactions]
     steps:
       - uses: actions/checkout@v6
         with:
