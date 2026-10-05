@@ -40,8 +40,8 @@ try{
   await page.goBack();await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='data'&&Math.abs(scrollY-420)<2);
   await page.goForward();await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='spills'&&Math.abs(scrollY-710)<2);
   // Late content must not permanently clamp a remembered route offset.
-  await page.evaluate(()=>{document.querySelector('main.shell').style.minHeight='';document.querySelector('#tab-spills').style.height='200px';document.querySelector('#tab-spills').style.overflow='hidden';});
   await navigate('about','overview');
+  await page.evaluate(()=>{document.querySelector('main.shell').style.minHeight='';document.querySelector('#tab-spills').style.height='200px';document.querySelector('#tab-spills').style.overflow='hidden';});
   await page.evaluate(()=>{
     window.__ICM_PRECISION_WORKBENCH__.navigate('spills','assessment',false);
     setTimeout(()=>{document.querySelector('main.shell').style.minHeight='3600px';document.querySelector('#tab-spills').style.height='';document.querySelector('#tab-spills').style.overflow='';},80);
