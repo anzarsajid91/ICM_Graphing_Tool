@@ -19,7 +19,8 @@ function signature(n){return JSON.stringify({bindings:n.bindings.map(b=>({sha256
 function isFresh(n){return Boolean(n.applied&&n.applied.signature===signature(n));}
 function checkpoint(){history.push(JSON.stringify(network));if(history.length>30)history.shift();}
 function snapshot(){return JSON.parse(JSON.stringify(network));}
-function persist(){state.networkSchematicWorkspace=snapshot();clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem(STORE,JSON.stringify(network));}catch(error){status('Browser save unavailable; use Save network to keep this layout.');}},250);}
+function flushSave(){clearTimeout(saveTimer);try{localStorage.setItem(STORE,JSON.stringify(network));}catch(error){status('Browser save unavailable; use Save network to keep this layout.');}}
+function persist(){state.networkSchematicWorkspace=snapshot();clearTimeout(saveTimer);saveTimer=setTimeout(flushSave,250);}
 function status(message){if($('nsStatus'))$('nsStatus').textContent=message;}
 function changed(geometry=false){persist();renderCanvas();if(!geometry)renderFilters();}
 function restore(value){
@@ -342,6 +343,10 @@ function mount(){
   });
   container.addEventListener('input',event=>{if(event.target.id==='nsSourceSearch'){const value=event.target.value.toLowerCase();container.querySelectorAll('[data-ns-file-name]').forEach(row=>row.hidden=!row.dataset.nsFileName.includes(value));}});
   observer=new ResizeObserver(()=>renderCanvas());observer.observe(canvas);
+  // Flush the latest edit before a rapid refresh/close, rather than losing
+  // changes still waiting in the short autosave debounce.
+  window.addEventListener('pagehide',flushSave);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSave();});
   window.addEventListener('icm:source-pool-changed',()=>{renderCanvas();if(editing)renderDrawer();});
   render();
 }
