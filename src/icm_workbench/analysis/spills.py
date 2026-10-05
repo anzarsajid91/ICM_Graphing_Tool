@@ -241,6 +241,13 @@ def _ceil_positive(x):
 
 
 def apply_12_24_counting(events):
+    """Retain episode weights and timestamp each occupied 12/24 count block.
+
+    Physical intervals are half-open: stopping at a block boundary does not
+    occupy the next block. A complete dry 24-hour block resets the sequence.
+    Count timestamps are the first retained discharge in each counted block;
+    they support calendar allocation without restarting counting at month edges.
+    """
     rows = []
     prev_E = None
     prev_F = 0
@@ -252,20 +259,24 @@ def apply_12_24_counting(events):
         if idx == 0:
             E, F, G, J = D, 1, A.year, (0 if C == 0 else (1 if C < 720 else _ceil_positive(((C - 720) / 1440) + 1)))
         else:
-            if (A - prev_E) > pd.Timedelta(days=1):
+            if (A - prev_E) >= pd.Timedelta(days=1):
                 E = D
-            elif B < prev_E:
+            elif B <= prev_E:
                 E = prev_E
             elif B < (prev_E + pd.Timedelta(days=1)):
                 E = prev_E + pd.Timedelta(days=1)
             else:
                 E = prev_E + pd.Timedelta(days=_ceil_positive((B - prev_E).total_seconds() / 86400))
-            F = prev_F + 1 if A > (prev_E + pd.Timedelta(days=1)) else prev_F
+            F = prev_F + 1 if A >= (prev_E + pd.Timedelta(days=1)) else prev_F
             G = A.year if (F == prev_F or A.year != prev_G) else prev_G
             if F != prev_F:
                 J = 1 if C < 720 else _ceil_positive(((C - 720) / 1440) + 1)
             else:
-                J = 0 if E == prev_E else (1 if B == prev_E else _ceil_positive((B - prev_E).total_seconds() / 86400))
+                J = 0 if E == prev_E else _ceil_positive((B - prev_E).total_seconds() / 86400)
+        if idx == 0 or F != prev_F:
+            count_times = ([A] + [A + pd.Timedelta(hours=12 + 24 * k) for k in range(J - 1)]) if J else []
+        else:
+            count_times = [max(A, prev_E + pd.Timedelta(days=k)) for k in range(J)]
         rows.append({
             "spill_start": A,
             "spill_stop": B,
@@ -275,6 +286,7 @@ def apply_12_24_counting(events):
             "year_start": int(G),
             "month_start": int(A.month),
             "spills": int(J),
+            "count_timestamps": [stamp.isoformat() for stamp in count_times],
         })
         prev_E, prev_F, prev_G = E, F, G
     return pd.DataFrame(rows)
@@ -297,12 +309,18 @@ def monthly_spill_durations(events):
 
 
 def monthly_spill_counts(counting):
+    """Allocate occupied count blocks by first discharge, not episode start."""
     if counting is None or counting.empty:
         return pd.DataFrame(columns=["year", "month", "spill_count"])
-    return (
-        counting.groupby(["year_start", "month_start"], as_index=False)["spills"]
-        .sum()
-        .rename(columns={"year_start": "year", "month_start": "month", "spills": "spill_count"})
+    totals = {}
+    for stamps in counting["count_timestamps"]:
+        for stamp in stamps:
+            timestamp = pd.Timestamp(stamp)
+            key = (timestamp.year, timestamp.month)
+            totals[key] = totals.get(key, 0) + 1
+    return pd.DataFrame(
+        [{"year": y, "month": m, "spill_count": n} for (y, m), n in sorted(totals.items())],
+        columns=["year", "month", "spill_count"],
     )
 
 
@@ -413,6 +431,6 @@ def spill_assessment(df, value_col, threshold, *, start=None, end=None, max_gap_
         "total_spill_count": None if physical["status"] == "unavailable" else (int(counting["spills"].sum()) if not counting.empty else 0),
         "total_spill_duration_hours": float(sum(e["duration_seconds"] for e in physical["events"]) / 3600.0),
         "count_status": count_status(physical),
-        "count_policy": "compatibility-12-24; masked or unknown windows provisional; wall-clock retained",
+        "count_policy": "12-24; counts allocated by first discharge in each occupied block; half-open intervals; masked or unknown windows provisional; wall-clock retained",
         "exclusion_audit": [e.to_dict() for e in exclusions],
     }

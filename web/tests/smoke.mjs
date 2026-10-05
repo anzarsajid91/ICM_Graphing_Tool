@@ -1185,7 +1185,74 @@ async function associationWorkbook({variant=false}={}){
   return {name:'fm_rg_assoc.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer};
 }
 
+async function verifySpillCalendarAllocation(){
+  const isolated=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000},acceptDownloads:true,timezoneId:'Asia/Kolkata'});
+  const probe=await isolated.newPage(),errors=[];
+  probe.on('pageerror',error=>errors.push('pageerror: '+String(error)));
+  probe.on('console',message=>{if(message.type()==='error'&&!message.text().includes('favicon.ico'))errors.push('console: '+message.text());});
+  try{
+    await probe.goto(baseUrl+'?spill_calendar='+Date.now(),{waitUntil:'domcontentloaded'});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
+    await probe.evaluate(()=>{
+      const confirm=()=>{for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
+        const input=document.getElementById(id);input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
+      }};
+      window.addEventListener('icm:source-pool-changed',confirm);confirm();
+    });
+    const origin=Date.parse('2025-10-01T00:00:00Z'),start=Date.parse('2025-10-24T14:37:12Z'),stop=Date.parse('2025-12-26T01:16:12Z');
+    const shortStart=origin+15*60000,shortStop=origin+75*60000,times=new Set([start,stop]);
+    for(let t=origin;t<stop;t+=15*60000)times.add(t);
+    const boundaries=new Set([shortStart,shortStop,start,stop]);
+    const csv='Time,Level (m)\n'+[...times].sort((a,b)=>a-b).map(t=>{
+      const wet=(t>=shortStart&&t<=shortStop)||(t>=start&&t<=stop);
+      return new Date(t).toISOString().slice(0,19).replace('T',' ')+','+(boundaries.has(t)?1:wet?2:0);
+    }).join('\n')+'\n';
+    await probe.setInputFiles('#fileInput',[
+      {name:'Calendar-Observed.csv',mimeType:'text/csv',buffer:Buffer.from(csv)},
+      {name:'Calendar-Modelled.csv',mimeType:'text/csv',buffer:Buffer.from(csv)},
+    ]);
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(row=>/Calendar-(Observed|Modelled)/.test(row.textContent)&&row.textContent.includes('Ready')).length===2,null,{timeout:120000});
+    const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>options.find(o=>o.textContent.includes(text))?.value||'',needle);
+    const observed=await option('#observedSelect','Calendar-Observed.csv'),modelled=await option('#modelSelect','Calendar-Modelled.csv');
+    if(!observed||!modelled)throw new Error('Calendar fixtures did not expose level mappings.');
+    await probe.selectOption('#observedSelect',observed);
+    await probe.selectOption('#modelSelect',[modelled]);
+    await probe.click('#applyMappingBtn');
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.uiV2?.graphRefreshing===false&&Array.isArray(window.__ICM_WORKBENCH__?.lastPanelOrder),null,{timeout:120000});
+    await probe.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('spills','assessment',false));
+    await probe.fill('#obsThreshold','1');await probe.fill('#modelThreshold','1');
+    await probe.click('#runSpillsBtn');
+    await probe.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in')&&state.spills?.observed&&state.spills?.model,null,{timeout:120000});
+    const evidence=await probe.evaluate(()=>{
+      const counts=document.querySelector('#spillComparison .spill-month-grid');
+      return {
+        observed:state.spills.observed,modelled:state.spills.model,
+        rendered:[...counts.querySelectorAll('tbody tr')].map(row=>[...row.querySelectorAll('td')].slice(-3).map(cell=>cell.childNodes[0]?.textContent?.trim())),
+        title:document.title,route:window.__ICM_PRECISION_WORKBENCH__.route()
+      };
+    });
+    for(const role of ['observed','modelled']){
+      const result=evidence[role],rows=result.monthly_summary;
+      if(JSON.stringify(rows.map(r=>r.spill_count))!=='[9,30,25]'||result.total_spill_count!==64)throw new Error('Calendar count allocation failed for '+role+': '+JSON.stringify(rows));
+      if(rows.some((r,i)=>Math.abs(r.duration_hours-[178.38,720,601.27][i])>1e-8))throw new Error('Physical durations changed for '+role+': '+JSON.stringify(rows));
+      if(result.counting_windows.some(row=>row.count_timestamps.length!==row.spills))throw new Error('Count timestamp audit does not reconcile for '+role);
+    }
+    if(JSON.stringify(evidence.rendered)!=='[["9","30","25"],["9","30","25"]]')throw new Error('Rendered monthly comparison disagrees with calculation: '+JSON.stringify(evidence.rendered));
+    if(errors.length)throw new Error('Calendar spill browser errors: '+errors.join(' | '));
+    if(process.env.ICM_EVIDENCE_DIR){
+      await fs.mkdir(process.env.ICM_EVIDENCE_DIR,{recursive:true});
+      await fs.writeFile(path.join(process.env.ICM_EVIDENCE_DIR,'spill-calendar-allocation.json'),JSON.stringify(evidence,null,2)+'\n');
+      await probe.screenshot({path:path.join(process.env.ICM_EVIDENCE_DIR,'spill-calendar-allocation.png'),fullPage:true});
+    }
+    console.log('SPILL_CALENDAR_ALLOCATION_PASS: observed/modelled monthly counts 9/30/25; duration 178.38/720/601.27 h; total 64; rendered comparison matches.');
+    return {counts:[9,30,25],duration_hours:[178.38,720,601.27],total:64,rendered:evidence.rendered,url:await probe.url(),title:evidence.title,console_errors:errors};
+  }finally{await isolated.close();}
+}
+
 try{
+  stage='spill calendar allocation from uploaded CSV to rendered comparison';
+  performanceEvidence.spillCalendarAllocation=await verifySpillCalendarAllocation();
+  await writePerformanceEvidence();
   stage='mixed-success import isolation';
   performanceEvidence.mixedSiblingImport=await verifyMixedSiblingImport();
   await writePerformanceEvidence();
