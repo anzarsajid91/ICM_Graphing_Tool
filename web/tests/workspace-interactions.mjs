@@ -76,7 +76,7 @@ try{
   assert(await width()>180,'Navigation preference survives reload');
   await page.evaluate(()=>{
     const wb=window.__ICM_WORKBENCH__,s=wb.survey,names=Array.from({length:9},(_,i)=>'FM'+String(i+1).padStart(2,'0'));
-    s.association={records:names.map((monitor,i)=>({monitor,rain_gauge:'RG'+String(i%3+1).padStart(2,'0'),diameter_mm:600,upstream:i?[names[i-1]]:[]}))};
+    s.association={records:names.map((monitor,i)=>({monitor,rain_gauge:'RG'+String(i%3+1).padStart(2,'0'),diameter_mm:600,upstream:i>=3?[names[i-3]]:[]}))};
     s.batch={monitors:names.map(monitor=>({monitor,status:'complete',rain_gauge:'RG01',diameter_mm:600,weekly:{weeks:[{week_ending:'2026-09-06',rag:'Green',decision_path:'UI fixture'}]},event_response:{rows:[]},contracts:{}})),network:{gauge_count:3,criteria:{},gauge_summary:['RG01','RG02','RG03'].map(gauge=>({gauge,status:'Green'})),gauge_weekly:['RG01','RG02','RG03'].map(gauge=>({gauge,week_ending:'2026-09-06',rag:'Green'})),candidate_wapug_events:[],qualified_wapug_events:[]},volume_balance:{rows:[],summary:{}},analysis_controls:{}};
     s.batchSignature=wb.surveyDependencySignature('complete');wb.workflow26.render();
   });
@@ -116,4 +116,7 @@ try{
   evidence.url=page.url();evidence.errors=errors;
   if(process.env.ICM_EVIDENCE_DIR){const dir=process.env.ICM_EVIDENCE_DIR+'/workspace-interactions';await fs.mkdir(dir,{recursive:true});await fs.writeFile(dir+'/'+browserName+'.json',JSON.stringify(evidence,null,2));await page.setViewportSize({width:1440,height:1000});await navigate('survey','fdv-check');await page.locator('#assessmentSchematicViewport-fdv').scrollIntoViewIfNeeded();await page.screenshot({path:dir+'/'+browserName+'.png',fullPage:false});}
   console.log('WORKSPACE_INTERACTIONS_PASS '+JSON.stringify(evidence));
+}catch(error){
+  if(process.env.ICM_EVIDENCE_DIR){const dir=process.env.ICM_EVIDENCE_DIR+'/workspace-interactions';await fs.mkdir(dir,{recursive:true});await fs.writeFile(dir+'/'+browserName+'-failure.json',JSON.stringify({...evidence,error:String(error),route:await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__?.route())},null,2));await page.screenshot({path:dir+'/'+browserName+'-failure.png',fullPage:false});}
+  throw error;
 }finally{await browser.close();}
