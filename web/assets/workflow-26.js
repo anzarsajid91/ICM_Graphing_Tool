@@ -596,6 +596,7 @@
   const MIN_SCHEMATIC_ZOOM=.25,MAX_SCHEMATIC_ZOOM=4;
   function updateSchematicView(suffix,preserveCentre=false){
     const viewport=$('assessmentSchematicViewport-'+suffix),svg=viewport?.querySelector('svg');
+    if(!viewport)return;
     const requested=Number(survey.reviewContext.zoom?.[suffix]??1);
     const scale=Math.min(MAX_SCHEMATIC_ZOOM,Math.max(MIN_SCHEMATIC_ZOOM,Number.isFinite(requested)?requested:1));
     survey.reviewContext.zoom[suffix]=scale;
