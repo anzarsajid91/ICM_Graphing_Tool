@@ -15,7 +15,8 @@ const ROUTES={
     icon:'spills',
     pages:{
       assessment:{label:'Spill Assessment',title:'EDM / model spill assessment',description:'Configure thresholds and exclusions, then review physical spill intervals, 12/24 counts and observed/model evidence.',tab:'spills',root:()=>$('tab-spills')},
-      storage:{label:'Storage Assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')}
+      storage:{label:'Storage Assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')},
+      network:{label:'Network Schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')}
     }
   },
   survey:{
@@ -28,7 +29,7 @@ const ROUTES={
       'monthly-review':{label:'Monthly Review',title:'Monthly survey review',description:'Review effective weekly outcomes, engineering comments and actions, then export the monthly PDF.',tab:'data-health',root:()=>$('tab-data-health')}
     }
   },
-  detriment:window.ICMDetriment.routes,
+  detriment:{...window.ICMDetriment.routes,icon:'detriment'},
   graphs:{
     label:'Plots',
     icon:'verify',
@@ -134,10 +135,11 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function navIcon(name){
   const paths={
     data:'<ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/>',
-    survey:'<circle cx="12" cy="12" r="8"/><path d="m8.5 12 2.2 2.2 4.8-5"/>',
+    survey:'<path d="M3 6c2.3 0 2.3-2 4.5-2S9.8 6 12 6s2.3-2 4.5-2S18.8 6 21 6M3 12c2.3 0 2.3-2 4.5-2s2.3 2 4.5 2 2.3-2 4.5-2 2.3 2 4.5 2M3 18c2.3 0 2.3-2 4.5-2s2.3 2 4.5 2 2.3-2 4.5-2 2.3 2 4.5 2"/>',
     rainfall:'<path d="M7 15a4 4 0 0 1 .6-8 5.5 5.5 0 0 1 10.5 1.5A3.5 3.5 0 0 1 18 15"/><path d="M8 18l-1 2M12 18l-1 2M16 18l-1 2"/>',
-    verify:'<path d="M12 3 4.5 7v5c0 4.6 3.1 7.5 7.5 9 4.4-1.5 7.5-4.4 7.5-9V7z"/><path d="m8.5 12 2.2 2.2 4.8-5"/>',
-    spills:'<path d="M4 9c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2"/><path d="M4 14c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2"/><path d="M4 19c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2"/>',
+    verify:'<path d="M4 15h3v6H4zM10.5 10h3v11h-3zM17 4h3v17h-3z" fill="currentColor" stroke="none"/>',
+    detriment:'<path d="M9 4H6v17h12V4h-3"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 10h6M9 14h6M9 18h4"/>',
+    spills:'<path d="M12 2C10 5 5 10.4 5 14.5a7 7 0 0 0 14 0C19 10.4 14 5 12 2Z"/><path d="M8 14.5a4 4 0 0 0 4 4"/>',
     report:'<path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M9 11h6M9 15h6M9 19h4"/>',
     about:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>'
   };
@@ -556,6 +558,7 @@ function navigate(workspace,page,push=false){
   document.title=p.title+' · Hydra Bench';
   resizeVisuals();
   window.dispatchEvent(new CustomEvent('icm:route-changed',{detail:{workspace,page}}));
+  if(workspace==='spills'&&page==='network')void window.ICMNetworkSchematic?.open();
   routeMounted=true;restoreRouteScroll();
 }
 function syncBrandToggle(){
@@ -686,6 +689,7 @@ function buildAboutPage(){
   qsa('[data-about-workspace]',panel).forEach(button=>button.addEventListener('click',()=>navigate(button.dataset.aboutWorkspace,button.dataset.aboutPage,true)));
 }
 function mount(){
+  const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
   buildAboutPage();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||{workspace:'data',page:'time-series'};navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
