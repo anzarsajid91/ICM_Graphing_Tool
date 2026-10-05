@@ -107,7 +107,7 @@ try{
     }
   }
   // Weekly drafts remain local while the camera and route change.
-  await navigate('survey','fdv-check');await page.locator('#assessmentDrawer-fdv [data-drawer-tab="audit"]').click();
+  await navigate('survey','fdv-check');await page.locator('#assessmentSchematic-fdv [data-survey-node="FM01"]').click();await page.locator('#assessmentDrawer-fdv [data-drawer-tab="audit"]').click();
   const comment=page.locator('#assessmentDrawer-fdv .weekly-comment');await comment.fill('Camera regression draft');
   await page.locator('[data-schematic-zoom="1"][data-schematic-kind="fdv"]').click();
   await navigate('survey','rainfall-check');await navigate('survey','fdv-check');assert.equal(await comment.inputValue(),'Camera regression draft');
