@@ -78,6 +78,10 @@ jobs:
           node --check web/assets/workbench-v3.js
           node --check web/assets/workbench-survey.js
           node --check web/assets/workflow-26.js
+          node --check web/assets/network-schematic-loader.js
+          node --check web/assets/network-schematic-core.js
+          node --check web/assets/network-schematic.js
+          node web/tests/network-schematic-unit.mjs
           node --check web/assets/precision-workbench.js
           node --check web/assets/detriment-workspace.js
           node web/tests/survey-source-unit.mjs
@@ -127,6 +131,7 @@ jobs:
               'assets/workbench-survey.css',
               'assets/workflow-26.css',
               'assets/precision-workbench.css',
+              'assets/network-schematic.css',
               'assets/domain-registry.js',
               'assets/runtime.js',
               'assets/workbench-v2.js',
@@ -136,6 +141,7 @@ jobs:
               'assets/workbench-survey.js',
               'assets/workflow-26.js',
               'assets/precision-workbench.js',
+              'assets/network-schematic-loader.js',
               'assets/detriment-workspace.js',
               'assets/detriment-workspace.css',
           ]
@@ -147,6 +153,8 @@ jobs:
           assert Path('_site/assets/fastpath-worker.js').exists()
           assert Path('_site/assets/fastpath-preview.js').exists()
           assert Path('_site/assets/domain-registry.js').exists()
+          assert Path('_site/assets/network-schematic-core.js').exists()
+          assert Path('_site/assets/network-schematic.js').exists()
           assert 'vendor/sheetjs-0.20.3/xlsx.full.min.js' in html
           assert 'https://cdn.' not in html
           assert 'type="module" src="assets/runtime.js"' not in html
@@ -366,7 +374,9 @@ jobs:
             sleep 1
           done
           ICM_BROWSER=chromium node web/tests/workspace-interactions.mjs
+          ICM_BROWSER=chromium node web/tests/network-schematic-smoke.mjs
           ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs
+          ICM_BROWSER=firefox node web/tests/network-schematic-smoke.mjs
       - name: Retain workspace interaction evidence
         if: always()
         uses: actions/upload-artifact@v4

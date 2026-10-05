@@ -25,13 +25,14 @@ def _inject_v2_assets(build_token: str) -> None:
     html = index.read_text(encoding="utf-8")
     html = html.replace(
         '<link rel="stylesheet" href="assets/app.css" />',
-        '<link rel="stylesheet" href="assets/app.css" />\n  <link rel="stylesheet" href="assets/workbench-v2.css" />\n  <link rel="stylesheet" href="assets/workbench-survey.css" />\n  <link rel="stylesheet" href="assets/workflow-26.css" />\n  <link rel="stylesheet" href="assets/detriment-workspace.css" />\n  <link rel="stylesheet" href="assets/precision-workbench.css" />',
+        '<link rel="stylesheet" href="assets/app.css" />\n  <link rel="stylesheet" href="assets/workbench-v2.css" />\n  <link rel="stylesheet" href="assets/workbench-survey.css" />\n  <link rel="stylesheet" href="assets/workflow-26.css" />\n  <link rel="stylesheet" href="assets/detriment-workspace.css" />\n  <link rel="stylesheet" href="assets/precision-workbench.css" />\n  <link rel="stylesheet" href="assets/network-schematic.css" />',
     )
     html = html.replace(
         '<script type="module" src="assets/runtime.js"></script>',
-        '<script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/fastpath-preview.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="vendor/sheetjs-0.20.3/xlsx.full.min.js"></script>\n  <script src="assets/workbook-reader.js"></script>\n  <script src="assets/workbench-survey.js"></script>\n  <script src="assets/workflow-26.js"></script>\n  <script src="assets/detriment-workspace.js"></script>\n  <script src="assets/precision-workbench.js"></script>',
+        '<script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/fastpath-preview.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="vendor/sheetjs-0.20.3/xlsx.full.min.js"></script>\n  <script src="assets/workbook-reader.js"></script>\n  <script src="assets/workbench-survey.js"></script>\n  <script src="assets/workflow-26.js"></script>\n  <script src="assets/detriment-workspace.js"></script>\n  <script src="assets/network-schematic-loader.js"></script>\n  <script src="assets/precision-workbench.js"></script>',
     )
     required = ["domain-registry.js", "workbench-v2.css", "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "workflow-26.css", "workflow-26.js", "precision-workbench.css", "precision-workbench.js", "detriment-workspace.css", "detriment-workspace.js", "vendor/sheetjs-0.20.3/xlsx.full.min.js"]
+    required.extend(["network-schematic.css", "network-schematic-loader.js"])
     if not all(name in html for name in required):
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
 
@@ -47,6 +48,7 @@ def _inject_v2_assets(build_token: str) -> None:
         "assets/workflow-26.css",
         "assets/detriment-workspace.css",
         "assets/precision-workbench.css",
+        "assets/network-schematic.css",
         "assets/workbook-reader.js",
         "assets/domain-registry.js",
         "assets/runtime.js",
@@ -58,6 +60,7 @@ def _inject_v2_assets(build_token: str) -> None:
         "assets/workflow-26.js",
         "assets/detriment-workspace.js",
         "assets/precision-workbench.js",
+        "assets/network-schematic-loader.js",
     ]
     for asset in local_assets:
         html = html.replace(f'"{asset}"', f'"{asset}?v={build_token}"')
