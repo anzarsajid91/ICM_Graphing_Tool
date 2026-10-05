@@ -1,4 +1,5 @@
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
+import {assertReportActionSpacing} from './report-layout.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -2971,8 +2972,7 @@ try{
   if(reportScenarioChoices.length<2)throw new Error('Report scenario selector did not expose both mapped model scenarios: '+JSON.stringify(reportScenarioChoices));
   await page.selectOption('#reportScenarioSelect',[reportScenarioChoices[0].value]);
   await page.selectOption('#reportScatterScale','log');
-    const reportSpacing=await page.evaluate(()=>{const top=document.querySelector('#namedWorkspaceSelect')?.closest('.actions')?.getBoundingClientRect();const bottom=document.querySelector('.report-actions')?.getBoundingClientRect();return{gap:top&&bottom?bottom.top-top.bottom:null};});
-  if(reportSpacing.gap!=null&&reportSpacing.gap<8)throw new Error('Report action controls are still crowded: '+JSON.stringify(reportSpacing));
+  await assertReportActionSpacing(page);
   await captureEvidence('05-report-workspace');
   const reportDownload=await downloadFrom('#downloadReportBtn');
   const report=await fs.readFile(await reportDownload.path(),'utf8');

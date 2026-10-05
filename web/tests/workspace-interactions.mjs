@@ -2,13 +2,14 @@
 // schematic cameras. Synthetic survey results isolate UI behaviour from engines.
 import {chromium,firefox} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
+import {assertReportActionSpacing} from './report-layout.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browserName=process.env.ICM_BROWSER||'chromium';
 const browser=await (browserName==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000}});
-const page=await context.newPage(),errors=[],evidence={browser:browserName,scroll:[],zoom:[],navigation:[]};
+const page=await context.newPage(),errors=[],evidence={browser:browserName,scroll:[],zoom:[],navigation:[],reportLayout:[]};
 page.on('pageerror',error=>errors.push(error.message));
 page.on('console',message=>{if(message.type()==='error'&&!message.text().includes('favicon.ico'))errors.push(message.text());});
 const settle=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
@@ -47,6 +48,15 @@ try{
     setTimeout(()=>{document.querySelector('main.shell').style.minHeight='3600px';document.querySelector('#tab-spills').style.height='';document.querySelector('#tab-spills').style.overflow='';},80);
   });
   await page.waitForFunction(()=>Math.abs(scrollY-710)<2);
+  // Report exports retain spacing after returning to a scrolled workspace.
+  for(const size of [1440,780]){
+    await page.setViewportSize({width:size,height:1000});
+    await navigate('reports','report-generation');
+    await page.evaluate(()=>window.scrollTo({top:219,behavior:'instant'}));await settle();
+    await navigate('data','time-series');await navigate('reports','report-generation');
+    assert(Math.abs(await page.evaluate(()=>scrollY)-219)<2);
+    evidence.reportLayout.push({viewport:size,...await assertReportActionSpacing(page)});
+  }
   await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
   const width=()=>page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
   for(const size of [1440,780]){
