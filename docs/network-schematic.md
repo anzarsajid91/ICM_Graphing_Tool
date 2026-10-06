@@ -11,11 +11,19 @@ CSOs, storm/emergency overflows, pumping stations, treatment works and storm
 tanks support spill evidence. Add separate treatment-works points for separate
 channels or discharge locations. Add circular manholes, junctions, outfalls and
 pointer labels as needed. Drag points to position them; pointer offsets can be
-edited in the settings drawer.
+edited in the settings drawer. Every point name can be dragged independently in
+Edit network. A moved name gets a leader arrow back to its point, stays attached
+when the point moves and keeps readable screen-size spacing during zoom. Use
+Label X/Y for precise placement or **Reset label** to restore its default position.
 
 Choose **Connect**, then click the upstream and downstream points. Select a wire
-to name it, change its colour, remove its arrow or delete it. Wires are straight
-asset-to-asset connections with separate boundary ports. Direction arrows sit
+to name it, change its colour, remove its arrow or delete it. New wires are straight
+asset-to-asset connections with separate boundary ports. In Edit network, select a
+connector and choose **+ Add bend**, or click a **+** handle on one of its segments.
+Drag the round bend handles to route the wire. Remove individual bends in the
+settings drawer, use **Straighten** to clear them, or Undo an edit. Bends are manual
+waypoints in network coordinates; pan and zoom keep them attached to the wire.
+Each connector retains its own asset boundary ports and direction arrow. Direction arrows sit
 on each wire, clear of the asset icons; outfalls and other larger symbols have
 white frames. Crossings do not create junctions. Assets, manholes,
 labels and connectors use red, amber or blue, with red as the initial default.
@@ -74,7 +82,14 @@ Changing those inputs marks the previous evidence stale; moving or renaming the
 point does not. No cross-asset period alignment or overlapping-spill analysis runs.
 
 Exit editing and select an asset to see its yearly observed/modelled table and
-one row per scenario and matching reporting period. Observed-only rows remain
+one row per scenario and matching reporting period. Select **Observed + all models**
+in Evidence for a compact asset badge showing **O: count** and **M (scenario): count**
+on separate lines. The selected Metric also supports duration in hours. The
+badge displays one year throughout; All years selects the latest eligible year
+for that asset and shows the year in its header. Missing values display a dash;
+stale values require recalculation. Model rows use the same comparison RAG bands
+as the evidence table. Unconfirmed or incompatible comparisons remain neutral;
+hover a row to see why. No value is borrowed from a different reporting year. Observed-only rows remain
 when no model shares that exact period. Coverage, channel, effective threshold,
 value range and comparison reasons sit in **Assessment details**. Results that
 classify all valid support as spilling carry a concise threshold-check warning. The top-level year/evidence/metric filters
