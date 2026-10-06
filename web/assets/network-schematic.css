@@ -40,3 +40,8 @@
 #nsWorkbench .ns-warning{color:#9a6500;max-width:160px}
 #nsWorkbench .ns-export-menu>summary{margin:0;background:white;min-height:36px}
 #nsWorkbench .ns-export-menu[open]>summary{margin:0}
+#nsWorkbench #nsSvg [data-ns-label]{cursor:grab}
+#nsWorkbench #nsSvg [data-ns-bend]{cursor:move}
+#nsWorkbench #nsSvg [data-ns-add-bend]{cursor:crosshair}
+#nsWorkbench .ns-bend-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+#nsWorkbench .ns-bend-list button{font-size:12px;min-height:30px;padding:5px 8px}
