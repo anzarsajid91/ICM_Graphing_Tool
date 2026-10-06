@@ -71,6 +71,8 @@ def _inject_v2_assets(build_token: str) -> None:
 
 
 def build() -> None:
+    from app_version import release_version
+    version = release_version()
     from verify_vendor import verify_vendor
     verify_vendor(ROOT)
     if SITE.exists():
@@ -84,6 +86,10 @@ def build() -> None:
     shutil.copy2(WEB / "assets" / "runtime.release.js", SITE / "assets" / "runtime.js")
     build_token = os.environ.get("GITHUB_SHA", "local")
     _inject_v2_assets(build_token)
+    index = SITE / "index.html"
+    html = index.read_text(encoding="utf-8").replace('id="appVersion">v1.000', f'id="appVersion">{version["app_version"]}')
+    html = html.replace('  <meta name="icm-build-sha"', f'  <meta name="hydra-bench-version" content="{version["app_version"]}" />\n  <meta name="icm-build-sha"')
+    index.write_text(html, encoding="utf-8")
 
     manifest = [
         path.relative_to(SRC).as_posix()
@@ -99,6 +105,7 @@ def build() -> None:
         json.dumps(
             {
                 "build_schema_version": 2,
+                **version,
                 "commit": os.environ.get("GITHUB_SHA", "local"),
                 "runtime": "worker-isolated Python kernel + canonical project registry + current engineering UX",
                 "python_module_count": len(manifest),

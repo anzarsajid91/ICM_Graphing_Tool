@@ -48,7 +48,7 @@ try{
       assert.equal(await field('a.mapping.duration').inputValue(),'Spill Duration (mins)');
       assert.equal(await field('a.mapping.start').inputValue(),'Start of Spill (absolute)');
       assert.equal(await field('a.mapping.end').inputValue(),'End of Spill (absolute)');
-      await field('period_start').fill('2023-01-01');await field('period_end').fill('2025-01-01');await field('template').fill('Controlled exported row basis, identical settings');
+      await field('period_start').fill('2030-01-01');await field('period_end').fill('2032-01-01');await field('template').fill('Controlled exported row basis, identical settings');
       await page.click('#runDetrimentBtn');await page.waitForFunction(()=>document.querySelector('#dtStatus').textContent.includes('Summary'));assert.equal(await page.evaluate(()=>window.ICMDetriment.result()),null);
       await field('counting_mode').selectOption('block-rows');
     }
@@ -66,9 +66,9 @@ try{
     await page.locator('[data-asset="'+largest.asset_id+'"]').click();
     if(kind==='level')assert.equal(await page.locator('#dtSectionChart .plot-container').count(),1);
     if(kind==='spill'){
-      assert.equal(result.count_unit,'spill-block rows');assert.equal(result.rows[0].details_a.length,124);assert.equal(result.rows[0].details_b.length,125);
+      assert.equal(result.count_unit,'spill-block rows');assert.equal(result.rows[0].details_a.length,cases[kind].original_rows);assert.equal(result.rows[0].details_b.length,cases[kind].original_rows+1);
       const timeline=await page.locator('#dtTimelineChart').evaluate(el=>el.data.map(t=>({count:t.x.length,groups:[...new Set(t.y)]})));
-      assert.deepEqual(timeline,[{count:124,groups:['A · baseline']},{count:125,groups:['B · proposed']}]);
+      assert.deepEqual(timeline,[{count:cases[kind].original_rows,groups:['A · baseline']},{count:cases[kind].original_rows+1,groups:['B · proposed']}]);
       assert.match(await page.locator('#dtChart').evaluate(el=>el.layout.xaxis.title.text),/spill-block rows/);
     }
     const csv=await download('#dtExportCsv');assert.match(csv,/source_a_sha256/);assert.ok(csv.includes(largest.asset_id));

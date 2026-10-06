@@ -150,8 +150,8 @@ Automated:
 
 Reference datasets:
 - representative and largest practical checked-in FDV;
-- Station A observed/EDM CSV;
-- Station A rainfall CSV (unit semantics remain unresolved unless explicitly established);
+- synthetic CSO observed/EDM CSV;
+- synthetic CSO rainfall CSV (unit semantics remain unresolved unless explicitly established);
 - existing R/reference workflows for regression;
 - multi-file/mixed-file import where current product supports it.
 

@@ -160,11 +160,11 @@ The target is Apple-inspired restraint, not an Apple clone and not decorative gl
 
 ## H. Reference data, browser, regression and evidence gates
 
-- [x] H1. FM01 FDV authoritative reference row count/period/statistics match known values.
-- [x] H2. RG01 rainfall authoritative reference total and statistics match known values.
-- [x] H3. Station A EDM CSV row count/period/quantity/units match expected authoritative parse.
-- [x] H4. Station A rainfall CSV preserves unresolved source units where not explicitly established.
-- [x] H5. Large Station A model CSV parses authoritative source data and does not expose auxiliary Seconds as an engineering series.
+- [x] H1. FM7413 FDV authoritative reference row count/period/statistics match known values.
+- [x] H2. RG5097 rainfall authoritative reference total and statistics match known values.
+- [x] H3. synthetic CSO EDM CSV row count/period/quantity/units match expected authoritative parse.
+- [x] H4. synthetic CSO rainfall CSV preserves unresolved source units where not explicitly established.
+- [x] H5. Large synthetic CSO model CSV parses authoritative source data and does not expose auxiliary Seconds as an engineering series.
 - [x] H6. Python regression suite is green on the exact head.
 - [x] H7. JS runtime/graph/report/domain/FastPath contract tests are green on the exact head.
 - [x] H8. Pages build/manifest/compile checks are green on the exact head.
