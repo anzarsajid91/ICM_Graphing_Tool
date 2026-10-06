@@ -67,7 +67,7 @@ def _valid_seconds_after_exclusions(a_ns, b_ns, exclusions):
     return max(0.0, covered_ns / 1e9)
 
 
-def detect_spill_intervals(df, value_col, threshold, *, start=None, end=None, max_gap_seconds=900.0, exclusions=()):
+def detect_spill_intervals(df, value_col, threshold, *, start=None, end=None, max_gap_seconds=900.0, exclusions=(), comparison="ge"):
     """Detect physical spill intervals using linear threshold crossings.
 
     The previous implementation walked every pair with ``DataFrame.iloc``. That was
@@ -78,6 +78,8 @@ def detect_spill_intervals(df, value_col, threshold, *, start=None, end=None, ma
     and missing values are unknown, exclusions are removed rather than treated as dry,
     and threshold crossings are linearly interpolated.
     """
+    if comparison not in ("ge", "gt"):
+        raise ValueError("Threshold rule must be ge or gt.")
     x = df[["timestamp", value_col]].copy()
     x["timestamp"] = pd.to_datetime(x["timestamp"], errors="coerce")
     x[value_col] = pd.to_numeric(x[value_col], errors="coerce")
@@ -167,8 +169,8 @@ def detect_spill_intervals(df, value_col, threshold, *, start=None, end=None, ma
         p_v0 = v0[pair_index]
         p_v1 = v1[pair_index]
 
-        above0 = p_v0 >= float(threshold)
-        above1 = p_v1 >= float(threshold)
+        above0 = p_v0 > float(threshold) if comparison == "gt" else p_v0 >= float(threshold)
+        above1 = p_v1 > float(threshold) if comparison == "gt" else p_v1 >= float(threshold)
         any_above = above0 | above1
         starts = p_t0.copy()
         stops = p_t1.copy()
@@ -345,7 +347,7 @@ def yearly_spill_summary(counts, durations, start, end):
     ])
 
 
-def spill_assessment(df, value_col, threshold, *, start=None, end=None, max_gap_seconds=900.0, exclusions=()):
+def spill_assessment(df, value_col, threshold, *, start=None, end=None, max_gap_seconds=900.0, exclusions=(), comparison="ge"):
     physical = detect_spill_intervals(
         df,
         value_col,
@@ -353,7 +355,7 @@ def spill_assessment(df, value_col, threshold, *, start=None, end=None, max_gap_
         start=start,
         end=end,
         max_gap_seconds=max_gap_seconds,
-        exclusions=exclusions,
+        exclusions=exclusions, comparison=comparison,
     )
     counting = apply_12_24_counting(physical["events"])
     durations = monthly_spill_durations(physical["events"])
@@ -376,7 +378,7 @@ def spill_assessment(df, value_col, threshold, *, start=None, end=None, max_gap_
         ys = max(pd.Timestamp(physical["analysis_start"]), pd.Timestamp(year=year, month=1, day=1))
         ye = min(pd.Timestamp(physical["analysis_end"]), pd.Timestamp(year=year+1, month=1, day=1))
         coverage = detect_spill_intervals(df, value_col, threshold, start=ys, end=ye,
-                                         max_gap_seconds=max_gap_seconds, exclusions=exclusions)
+                                         max_gap_seconds=max_gap_seconds, exclusions=exclusions, comparison=comparison)
         valid = coverage.get("valid_seconds", 0.0)
         status = count_status(coverage)
         row.update(requested_hours=coverage["analysis_seconds"]/3600,
@@ -409,7 +411,7 @@ def spill_assessment(df, value_col, threshold, *, start=None, end=None, max_gap_
             right = min(len(frame), int(stamps.searchsorted(edge, side="right")) + 1)
             coverage = detect_spill_intervals(frame.iloc[left:right], value_col, threshold,
                                              start=cursor, end=edge, max_gap_seconds=max_gap_seconds,
-                                             exclusions=exclusions)
+                                             exclusions=exclusions, comparison=comparison)
             status = count_status(coverage)
             key = (cursor.year, cursor.month)
             monthly_rows.append(dict(year=cursor.year, month=cursor.month,

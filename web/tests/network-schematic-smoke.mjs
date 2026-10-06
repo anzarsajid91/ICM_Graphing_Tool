@@ -16,6 +16,7 @@ function csv(year,count){
   }return Buffer.from(rows.join('\n'));
 }
 const files=[['Observed_2023.csv',2023,10],['Observed_2024.csv',2024,20],['Baseline_2023.csv',2023,13],['Baseline_2024.csv',2024,22],['Updated_2024.csv',2024,21]].map(([name,y,count])=>({name,mimeType:'text/csv',buffer:csv(y,count)}));
+files.push({name:'ZeroFlow_2024.csv',mimeType:'text/csv',buffer:Buffer.from(csv(2024,1).toString().replace('Depth (m)','Flow (m3/s)'))});
 async function assign(role,names){
   await page.click('[data-ns-add-sources="'+role+'"]');
   for(const name of names)await page.locator('#nsPicker .ns-file-list label').filter({hasText:name}).locator('input').check();
@@ -28,7 +29,7 @@ try{
   await page.goto(base,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate);
   assert.match(await page.title(),/Hydra Bench/);
   assert.equal(await page.locator('script[src*="network-schematic.js"]').count(),0,'Feature is lazy during boot');
-  await page.setInputFiles('#fileInput',files);await page.waitForFunction(()=>[...state.files.values()].filter(x=>x.status==='ready').length===5,null,{timeout:120000});
+  await page.setInputFiles('#fileInput',files);await page.waitForFunction(()=>[...state.files.values()].filter(x=>x.status==='ready').length===6,null,{timeout:120000});
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('spills','network',true));await page.waitForSelector('#nsEdit');
   await page.click('#nsEdit');await page.click('#nsAddAsset');await field('nsName','CSO A');
   console.log(name+': batch assignment and asset calculation');
@@ -51,13 +52,17 @@ try{
   await yearField.fill('2023');await yearField.dispatchEvent('change');
   await page.locator('#nsDrawer details summary').click();
   await field('nsGap','3800');assert.equal((await page.evaluate(()=>window.ICMNetworkSchematic.debug())).fresh[0].fresh,false,'Changed gap marks applied evidence stale');
-  const csvPromise=page.waitForEvent('download');await page.locator('.ns-export-menu summary').click();await page.click('#nsCsv');
+  const toolbarBefore=await page.locator('.ns-main-toolbar').boundingBox();
+  await page.locator('.ns-export-menu summary').click();
+  const toolbarOpen=await page.locator('.ns-main-toolbar').boundingBox();assert.equal(toolbarOpen.height,toolbarBefore.height,'Opening export menu does not reflow toolbar');
+  const csvPromise=page.waitForEvent('download');csvPromise.catch(()=>{});
+  await page.click('#nsCsv');assert.equal(await page.locator('.ns-export-menu').getAttribute('open'),null,'Export menu closes after action');
   const exported=await csvPromise;await exported.saveAs(evidence+'/network-evidence-'+name+'.csv');
   const exportedText=await fs.readFile(evidence+'/network-evidence-'+name+'.csv','utf8');
   assert.ok(exportedText.includes('"3700"'),'Evidence export retains original applied gap');assert.ok(!exportedText.includes('"3800"'));
-  await page.locator('.ns-export-menu summary').click();await field('nsGap','3700');assert.equal((await page.evaluate(()=>window.ICMNetworkSchematic.debug())).fresh[0].fresh,true);
+  await field('nsGap','3700');assert.equal((await page.evaluate(()=>window.ICMNetworkSchematic.debug())).fresh[0].fresh,true);
   console.log(name+': arrange points, connect, drag and review');
-  for(const [type,label] of [['pump','Pumping station'],['tank','Storm tank'],['wwtw','WwTW storm'],['wwtw','WwTW emergency'],['cso','CSO B']]){await page.selectOption('#nsAddType',type);await page.click('#nsAddAsset');await field('nsName',label);}
+  for(const [type,label] of [['pump','Pumping station'],['tank','Storm tank'],['wwtw','WwTW storm'],['outfall','Outfall'],['cso','CSO B']]){await page.selectOption('#nsAddType',type);await page.click('#nsAddAsset');await field('nsName',label);}
   await page.click('#nsAddManhole');await field('nsName','MH01');await page.click('#nsAddManhole');await field('nsName','MH02');await page.click('#nsAddLabel');await field('nsName','Storm route');
   saved=await snapshot();const positions=[[160,140],[380,300],[620,130],[870,280],[870,450],[160,440],[320,140],[710,280],[660,460]];
   saved.nodes.forEach((n,i)=>{[n.x,n.y]=positions[i];});await page.evaluate(s=>window.ICMNetworkSchematic.restore(s),saved);await page.click('#nsFit');
@@ -67,24 +72,50 @@ try{
   await page.click('#nsConnect');await page.locator('[data-ns-node="'+asset.id+'"]').click();await page.locator('[data-ns-node="'+saved.nodes[6].id+'"]').click();
   await page.locator('[data-ns-colour="blue"]').click();await page.locator('[data-ns-node="'+saved.nodes[2].id+'"]').click();await page.locator('[data-ns-node="'+saved.nodes[3].id+'"]').click();
   assert.equal((await snapshot()).edges.length,2);assert.equal((await snapshot()).edges[1].colour,'blue');
-  await page.click('#nsConnect');await page.locator('[data-ns-node="'+asset.id+'"]').click();
+  await page.click('#nsConnect');
+  const selectedEdge=await page.locator('[data-ns-edge]').first();await selectedEdge.focus();await selectedEdge.press('Enter');
+  await page.locator('#nsArrow').uncheck();assert.equal(await page.locator('[data-ns-direction]').count(),1,'Direction checkbox hides the selected arrow');
+  await page.locator('#nsArrow').check();assert.equal(await page.locator('[data-ns-direction]').count(),2,'Direction checkbox restores the selected arrow');
+  assert.equal(await page.locator('[data-ns-node="'+saved.nodes[4].id+'"] [data-ns-frame]').count(),1,'Outfall has a white frame');
+  await page.locator('[data-ns-node="'+asset.id+'"]').click();
   await page.screenshot({path:evidence+'/network-edit-'+name+'.png'});
   await page.click('#nsEdit');await page.locator('[data-ns-node="'+asset.id+'"]').click();
   await page.waitForSelector('#nsPopup:not([hidden])');
+  assert.equal(await page.locator('#nsPopup [data-ns-evidence-year]').count(),3,'One common-period row per model scenario/year');
+  assert.equal(await page.locator('#nsPopup .ns-evidence-details').getAttribute('open'),null,'Audit text starts collapsed');
+  assert.ok(await page.locator('[data-ns-direction]').count());
+  assert.equal(await page.locator('[data-ns-wire]').evaluateAll(els=>els.every(el=>!/[HV]/.test(el.getAttribute('d')))),true,'Connectors are straight');
   assert.ok(await page.locator('#nsPopup .ns-rag-green').count());assert.ok(await page.locator('#nsPopup .ns-rag-amber').count());assert.ok(await page.locator('#nsPopup .ns-rag-red').count());
   const containment=await page.evaluate(()=>{const p=document.getElementById('nsPopup').getBoundingClientRect(),c=document.getElementById('nsCanvas').getBoundingClientRect();return p.left>=c.left&&p.top>=c.top&&p.right<=c.right+1&&p.bottom<=c.bottom+1;});assert.ok(containment,'Popup stays inside capture area');
   const size=await page.locator('[data-ns-node] text').first().evaluate(el=>getComputedStyle(el).fontSize);await page.click('#nsZoomIn');assert.equal(await page.locator('[data-ns-node] text').first().evaluate(el=>getComputedStyle(el).fontSize),size,'Labels retain screen font size');await page.click('#nsFit');
   const panBefore=(await snapshot()).camera;await page.click('#nsPan');const box=await page.locator('#nsCanvas').boundingBox();await page.mouse.move(box.x+box.width*.8,box.y+70);await page.mouse.down();await page.mouse.move(box.x+box.width*.8-60,box.y+110,{steps:4});await page.mouse.up();assert.notEqual((await snapshot()).camera.x,panBefore.x);await page.click('#nsPan');await page.click('#nsFit');
   await page.screenshot({path:evidence+'/network-review-'+name+'.png'});
-  const downloadPromise=page.waitForEvent('download');await page.click('#nsCapture');const download=await downloadPromise;await download.saveAs(evidence+'/network-capture-'+name+'.png');const png=await fs.readFile(evidence+'/network-capture-'+name+'.png');assert.equal(png.subarray(1,4).toString(),'PNG');
+  const downloadPromise=page.waitForEvent('download');downloadPromise.catch(()=>{});await page.click('#nsCapture');const download=await downloadPromise;await download.saveAs(evidence+'/network-capture-'+name+'.png');const png=await fs.readFile(evidence+'/network-capture-'+name+'.png');assert.equal(png.subarray(1,4).toString(),'PNG');
   console.log(name+': capture complete; check responsive layout and saved evidence');
   const w=await page.evaluate(()=>workspaceObject());assert.equal(w.network_schematic.nodes[0].bindings.length,5);
   await page.setViewportSize({width:900,height:1000});await page.click('#nsFit');await page.locator('[data-ns-node="'+asset.id+'"]').click();assert.ok(await page.locator('#nsPopup').isVisible());
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),'No horizontal viewport overflow');
   await page.reload({waitUntil:'domcontentloaded'});await page.waitForSelector('#nsEdit');assert.equal((await snapshot()).nodes.length,9,'Layout survives refresh');
   await page.locator('[data-ns-node="'+asset.id+'"]').click();assert.match(await page.locator('#nsPopup').innerText(),/Recalculation required/,'Missing source evidence cannot retain current RAG');
-  await page.setInputFiles('#fileInput',files);await page.waitForFunction(()=>[...state.files.values()].filter(x=>x.status==='ready').length===5,null,{timeout:120000});
+  await page.setInputFiles('#fileInput',files);await page.waitForFunction(()=>[...state.files.values()].filter(x=>x.status==='ready').length===6,null,{timeout:120000});
   await page.waitForFunction(()=>window.ICMNetworkSchematic.debug().fresh[0].fresh,'Matching fingerprints restore bindings');
+  console.log(name+': verify zero-flow model rule and explicit per-source threshold override');
+  await page.click('#nsEdit');await page.click('#nsAddAsset');await field('nsName','Zero-flow regression');
+  await field('nsModelDefault','0');await assign('model',['ZeroFlow_2024.csv']);
+  await page.locator('#nsDrawer details summary').click();await field('nsGap','3700');
+  assert.equal(await page.locator('[data-ns-binding-field="comparison"]').inputValue(),'gt');
+  await page.click('#nsCalculate');await page.waitForFunction(()=>window.ICMNetworkSchematic.snapshot().nodes.at(-1).applied,null,{timeout:120000});
+  let flow=(await snapshot()).nodes.at(-1);assert.equal(flow.applied.rows[0].spill_count,1);assert.ok(flow.applied.rows[0].duration_hours<10);assert.equal(flow.applied.rows[0].comparison,'gt');
+  await field('nsModelDefault','99');
+  await page.locator('[data-ns-binding-field="threshold"]').fill('0');await page.locator('[data-ns-binding-field="threshold"]').dispatchEvent('change');
+  assert.match(await page.locator('[data-ns-effective-threshold]').innerText(),/> 0.*source override/);
+  await page.click('#nsCalculate');await page.waitForFunction(()=>window.ICMNetworkSchematic.debug().fresh.at(-1).fresh,null,{timeout:120000});
+  flow=(await snapshot()).nodes.at(-1);assert.equal(flow.applied.rows[0].spill_count,1);assert.equal(flow.applied.rows[0].threshold,0,'Explicit zero override wins over group default 99');
+  await page.selectOption('[data-ns-binding-field="comparison"]','ge');await page.click('#nsCalculate');await page.waitForFunction(()=>window.ICMNetworkSchematic.debug().fresh.at(-1).fresh,null,{timeout:120000});
+  flow=(await snapshot()).nodes.at(-1);assert.equal(flow.applied.rows[0].duration_hours,8784);assert.equal(flow.applied.rows[0].continuous_spill,true);
+  await page.click('#nsEdit');await page.locator('[data-ns-node="'+flow.id+'"]').click();
+  assert.match(await page.locator('#nsPopup').innerText(),/Continuous spill — check threshold/);
+  await page.screenshot({path:evidence+'/network-threshold-warning-'+name+'.png'});
   assert.deepEqual(errors,[],'No browser runtime errors');console.log(name+': batch mapping, real Python counts, warm-up, isolation, RAG, editor, camera, capture and restore passed.');
 }catch(error){await page.screenshot({path:evidence+'/network-failure-'+name+'.png',fullPage:true});throw error;}
 finally{await browser.close();}

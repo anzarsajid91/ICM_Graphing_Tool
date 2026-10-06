@@ -1053,12 +1053,12 @@ def spill_result(path, column, threshold, exclusions_json="[]", max_gap_seconds=
     return json.dumps(_jsonable(payload), ensure_ascii=False)
 
 
-def network_spill_result(path, column, threshold, years_json="null", exclusions_json="[]", max_gap_seconds=900.0):
+def network_spill_result(path, column, threshold, years_json="null", exclusions_json="[]", max_gap_seconds=900.0, comparison="ge"):
     """Isolated schematic reporting; never changes shared series or mappings."""
     from icm_workbench.analysis.network_spills import schematic_spill_assessment
     parsed = _require_model_clock(_load(path), label="Network spill series")
     result = schematic_spill_assessment(parsed.frame, column, threshold,
-        years=json.loads(years_json), max_gap_seconds=max_gap_seconds,
+        years=json.loads(years_json), max_gap_seconds=max_gap_seconds, comparison=comparison,
         exclusions=_exclusions(exclusions_json))
     return json.dumps(_jsonable(result), ensure_ascii=False)
 
