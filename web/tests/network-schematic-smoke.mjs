@@ -93,10 +93,13 @@ try{
   const nameOffset={...moved.nameOffset};await dragTo(page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]'),20,15);
   moved=(await snapshot()).nodes[0];assert.deepEqual(moved.nameOffset,nameOffset,'Label remains tied to the asset when its icon moves');
   assert.equal((await page.evaluate(()=>window.ICMNetworkSchematic.debug())).fresh[0].fresh,true,'Geometry edits leave calculation evidence current');
+  await page.click('#nsResetLabel');assert.equal((await snapshot()).nodes[0].nameOffset,undefined,'Reset label restores its default placement');
+  await dragTo(page.locator('[data-ns-label="'+asset.id+'"]'),-80,-70);assert.deepEqual((await snapshot()).nodes[0].nameOffset,nameOffset);
   await page.selectOption('#nsScenario','combined');await page.selectOption('#nsYear','2024');
   const summary=page.locator('[data-ns-node="'+asset.id+'"] [data-ns-summary]');
   const summaryText=()=>summary.locator('text').allTextContents();
   assert.deepEqual(await summaryText(),['2024','O: 20','M (Baseline): 22','M (Model update): 21']);
+  assert.ok(await summary.evaluate(el=>{const a=el.getBoundingClientRect(),b=el.parentElement.querySelector('[data-ns-frame]').getBoundingClientRect();return a.right<=b.left||a.left>=b.right||a.bottom<=b.top||a.top>=b.bottom;}),'Combined callout does not cover its asset icon');
   assert.equal(await summary.locator('.ns-rag-amber').count(),1);assert.equal(await summary.locator('.ns-rag-green').count(),1);
   await page.selectOption('#nsYear','2023');assert.deepEqual(await summaryText(),['2023','O: 10','M (Baseline): 13','M (Model update): —']);assert.equal(await summary.locator('.ns-rag-red').count(),1);
   await page.selectOption('#nsYear','all');assert.equal((await summaryText())[0],'2024','All years uses one latest year for the whole badge');
