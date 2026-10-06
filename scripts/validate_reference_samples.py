@@ -45,11 +45,11 @@ def _summary(path: Path, label: str | None = None):
 
 def main():
     required = [
-        REF / "fdv" / "FM01.fdv",
-        REF / "rainfall" / "RG01.R",
-        REF / "other" / "StationA_EDM.csv",
-        REF / "other" / "StationA_Rainfall.csv",
-        REF / "other" / "StationA_Modelled Data.zip",
+        REF / "fdv" / "FM7413.fdv",
+        REF / "rainfall" / "RG5097.R",
+        REF / "other" / "CS2666_EDM.csv",
+        REF / "other" / "CS2666_Rainfall.csv",
+        REF / "other" / "CS2666_Modelled_Data.zip",
     ]
     missing = [str(p) for p in required if not p.exists()]
     if missing:
@@ -83,32 +83,22 @@ def main():
 
     print("REFERENCE_SAMPLE_SUMMARY " + json.dumps(result, ensure_ascii=False, default=str))
 
-    # Stable contracts demonstrated by the user's reference examples.
-    fm01 = result["fm01"]
-    assert fm01["format"] == "fdv_ascii"
-    assert fm01["metadata"]["channels"]["flow"]["canonical_unit"] == "m³/s"
-    assert fm01["metadata"]["channels"]["depth"]["canonical_unit"] == "m"
-    assert fm01["metadata"]["channels"]["velocity"]["canonical_unit"] == "m/s"
-    assert abs(fm01["stats"]["flow"]["min"] - 0.039) < 1e-12
-    assert abs(fm01["stats"]["flow"]["max"] - 0.769) < 1e-12
-    assert abs(fm01["stats"]["depth"]["min"] - 0.113) < 1e-12
-    assert abs(fm01["stats"]["depth"]["max"] - 0.47) < 1e-12
-    assert abs(fm01["stats"]["velocity"]["min"] - 0.42) < 1e-12
-    assert abs(fm01["stats"]["velocity"]["max"] - 1.48) < 1e-12
-
-    rg01 = result["rg01"]
-    assert rg01["format"] == "rainfall_r_ascii"
-    assert rg01["metadata"]["canonical_unit"] == "mm/h"
-    assert abs(rg01["stats"]["rainfall"]["max"] - 66.0) < 1e-12
-
-    edm = result["station_edm"]
-    assert edm["format"] == "icm_hyd_p_datetime_csv"
-    assert edm["metadata"]["quantity"] == "level"
-    assert edm["metadata"]["canonical_unit"] == "m"
-
-    if not result["model_zip"]["entries"]:
-        raise AssertionError("StationA model ZIP contains no files")
+    manifest = json.loads((REF.parent / 'synthetic-manifest.json').read_text())
+    fm01 = result['fm01']
+    assert fm01['format'] == 'fdv_ascii'
+    for column, unit in [('flow', 'm³/s'), ('depth', 'm'), ('velocity', 'm/s')]:
+        assert fm01['metadata']['channels'][column]['canonical_unit'] == unit
+        expected = manifest['fdv_statistics'][manifest['monitors'][0]][column]
+        for actual_key, expected_key in [('min', 'minimum'), ('max', 'maximum'), ('mean', 'mean')]:
+            assert abs(fm01['stats'][column][actual_key] - expected[expected_key]) < 1e-10
+    assert result['rg01']['format'] == 'rainfall_r_ascii'
+    assert result['rg01']['metadata']['canonical_unit'] == 'mm/h'
+    assert result['station_edm']['format'] == 'icm_hyd_p_datetime_csv'
+    assert result['station_edm']['metadata']['quantity'] == 'level'
+    assert result['station_edm']['metadata']['canonical_unit'] == 'm'
+    assert result['model_zip']['entries']
+    assert all('parse_error' not in entry for entry in result['model_zip']['entries'])
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

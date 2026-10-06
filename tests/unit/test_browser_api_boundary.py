@@ -337,8 +337,8 @@ def test_rainfall_assignment_does_not_convert_values(tmp_path, header):
 def test_declared_rainfall_assignment_and_reset_preserve_values(tmp_path):
     import json
     from icm_workbench.browser_api import clear_cache, parse_source, series_data, set_series_quantity
-    source = tmp_path / "RG01.R"
-    source.write_bytes((Path(__file__).parents[2] / "reference/current-tool/sample-data/rainfall/RG01.R").read_bytes())
+    source = tmp_path / "RG5097.R"
+    source.write_bytes((Path(__file__).parents[2] / "reference/current-tool/sample-data/rainfall/RG5097.R").read_bytes())
     clear_cache()
     parsed = json.loads(parse_source(str(source)))
     column = parsed["columns"][0]

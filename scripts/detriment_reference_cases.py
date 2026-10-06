@@ -1,9 +1,10 @@
-"""Controlled A/B copies of user exports; expected values do not call the engine."""
+"""Controlled A/B synthetic fixtures; expected values do not call the engine."""
 from __future__ import annotations
 
 import csv
 import json
 from decimal import Decimal
+from datetime import datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,16 +54,17 @@ def build_cases(destination):
         else:
             # Retain exported actual duration; it differs from the event-span duration.
             b[0]["Spill Duration (mins)"] = str(Decimal(b[0]["Spill Duration (mins)"])+60)
-            b[0]["End of Spill (absolute)"] = "09/12/2023 21:44"
+            b[0]['End of Spill (absolute)'] = (datetime.strptime(b[0]['End of Spill (absolute)'], '%d/%m/%Y %H:%M')+timedelta(hours=1)).strftime('%d/%m/%Y %H:%M')
             extra = dict(b[0])
-            extra.update({"Start of Spill (absolute)": "02/01/2023 00:00",
-                          "End of Spill (absolute)": "02/01/2023 01:00",
+            extra.update({"Start of Spill (absolute)": "02/01/2030 00:00",
+                          "End of Spill (absolute)": "02/01/2030 01:00",
                           "Spill Duration (mins)": "60", "Spill Volume (m3)": "1"})
             b.append(extra)
-            expected = [dict(asset_id=a[0]["ID"], a=124, b=125, delta=1,
-                             duration_a_hours=float(Decimal("52265.2")/60),
-                             duration_b_hours=float(Decimal("52385.2")/60),
-                             duration_delta_hours=2, status="detriment", flag="spill_count_detriment")]
+            duration_a = sum(Decimal(str(row['Spill Duration (mins)'])) for row in a)/60
+            duration_b = sum(Decimal(str(row['Spill Duration (mins)'])) for row in b)/60
+            expected = [dict(asset_id=a[0]['ID'], a=len(a), b=len(b), delta=1,
+                             duration_a_hours=float(duration_a), duration_b_hours=float(duration_b),
+                             duration_delta_hours=2, status='detriment', flag='spill_count_detriment')]
         paths = []
         for side, rows in [("a", a), ("b", b)]:
             output = destination / f"reference-{kind}-{side}.csv"

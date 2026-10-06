@@ -7,11 +7,11 @@ try{
  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate&&(window.__ICM_WORKBENCH__?.status==='ready'||(window.__ICM_WORKBENCH__?.deferredEngine&&window.__ICM_WORKBENCH__?.status==='idle')),null,{timeout:90000});
  assert((await page.title()).includes('Hydra Bench'));assert((await page.locator('.pw-primary-nav').innerText()).includes('Plots'));
  console.log('STEP import supplied FDV/rain/workbook');
- await page.setInputFiles('#fileInput',[...['FM01','FM02','FM02A','FM03','FM04','FM05','FM06','FM07','FM08'].map(n=>root+'/reference/current-tool/sample-data/fdv/'+n+'.fdv'),...['RG01','RG02','RG03','RG04'].map(n=>root+'/reference/current-tool/sample-data/rainfall/'+n+'.R'),root+'/reference/current-tool/sample-data/rainfall/fm_rg_assoc.xlsx']);
+ await page.setInputFiles('#fileInput',[...['FM7413','FM8356','FM8095','FM7424','FM9320','FM2830','FM2961','FM8722','FM7307'].map(n=>root+'/reference/current-tool/sample-data/fdv/'+n+'.fdv'),...['RG5097','RG4922','RG6324','RG4977'].map(n=>root+'/reference/current-tool/sample-data/rainfall/'+n+'.R'),root+'/reference/current-tool/sample-data/rainfall/fm_rg_assoc.xlsx']);
  await page.waitForFunction(()=>state.files.size===13&&[...state.files.values()].every(x=>x.status==='ready'),null,{timeout:180000});
- const options=await page.locator('#observedSelect option').allTextContents();assert.equal(options.filter(s=>s.includes('FM01.fdv')).length,1);assert(options.find(s=>s.includes('FM01.fdv')).includes('FDV'));
- const fm01=await page.locator('#observedSelect option').evaluateAll(opts=>opts.find(o=>o.textContent.includes('FM01.fdv'))?.value);
- await page.selectOption('#observedSelect',fm01);await page.selectOption('#rainSelect',await page.locator('#rainSelect option').evaluateAll(opts=>opts.find(o=>o.textContent.includes('RG01.R'))?.value));await page.click('#applyMappingBtn');
+ const options=await page.locator('#observedSelect option').allTextContents();assert.equal(options.filter(s=>s.includes('FM7413.fdv')).length,1);assert(options.find(s=>s.includes('FM7413.fdv')).includes('FDV'));
+ const fm01=await page.locator('#observedSelect option').evaluateAll(opts=>opts.find(o=>o.textContent.includes('FM7413.fdv'))?.value);
+ await page.selectOption('#observedSelect',fm01);await page.selectOption('#rainSelect',await page.locator('#rainSelect option').evaluateAll(opts=>opts.find(o=>o.textContent.includes('RG5097.R'))?.value));await page.click('#applyMappingBtn');
  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastPanelOrder?.join('|')==='rainfall|flow|depth|velocity',null,{timeout:60000});
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
  assert.equal((await page.locator('#pwSecondaryNav button').allTextContents()).join('|'),'FDV Check|Rainfall Check|Volume Balance|Monthly Review');
@@ -27,16 +27,16 @@ try{
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));assert.equal(await page.locator('#gapInput').count(),1);
  await page.click('#runCompleteSurveyBtn');
  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.survey.batch&&window.__ICM_WORKBENCH__.surveyFresh('complete'),null,{timeout:600000});
- const current=await page.evaluate(()=>({monitors:window.__ICM_WORKBENCH__.survey.batch.monitors.length,weeks:window.__ICM_WORKBENCH__.survey.batch.monitors.find(m=>m.monitor==='FM01').weekly.weeks.length,gaugeWeeks:window.__ICM_WORKBENCH__.survey.batch.network.gauge_weekly.length}));await fs.writeFile(evidence+'/assessment.json',JSON.stringify(await page.evaluate(()=>window.__ICM_WORKBENCH__.survey.batch)));console.log('REFERENCE',JSON.stringify(current));assert.equal(current.monitors,9);assert(current.weeks>1);assert(current.gaugeWeeks>1);
+ const current=await page.evaluate(()=>({monitors:window.__ICM_WORKBENCH__.survey.batch.monitors.length,weeks:window.__ICM_WORKBENCH__.survey.batch.monitors.find(m=>m.monitor==='FM7413').weekly.weeks.length,gaugeWeeks:window.__ICM_WORKBENCH__.survey.batch.network.gauge_weekly.length}));await fs.writeFile(evidence+'/assessment.json',JSON.stringify(await page.evaluate(()=>window.__ICM_WORKBENCH__.survey.batch)));console.log('REFERENCE',JSON.stringify(current));assert.equal(current.monitors,9);assert(current.weeks>1);assert(current.gaugeWeeks>1);
  await page.locator('#assessmentSchematic-fdv').scrollIntoViewIfNeeded();
  await page.screenshot({path:evidence+'/fdv-schematic.png',fullPage:false});
- assert(await page.locator('#assessmentSchematic-fdv [data-survey-node="FM01"]').isVisible());
+ assert(await page.locator('#assessmentSchematic-fdv [data-survey-node="FM7413"]').isVisible());
  assert(!await page.locator('#pwInspector').isVisible());assert(!await page.locator('#pwDataHealthSummary .tool-collapse-body').isVisible());
  assert(await page.locator('#assessmentMatrix-fdv .w26-week-matrix').isVisible());
  assert((await page.locator('#assessmentMatrix-fdv [data-matrix-cell]').count())>1);
- await page.locator('#assessmentSchematic-fdv [data-survey-node="FM01"]').click();
+ await page.locator('#assessmentSchematic-fdv [data-survey-node="FM7413"]').click();
  assert(await page.locator('#assessmentDrawer-fdv').isVisible());
- assert((await page.locator('#assessmentDrawer-fdv').innerText()).includes('FM01'));
+ assert((await page.locator('#assessmentDrawer-fdv').innerText()).includes('FM7413'));
  assert.equal(await page.locator('#assessmentPopup').isVisible(),false);
  // Drag pans both axes; an ordinary click still selects the node.
  async function checkPan(suffix){
@@ -58,20 +58,20 @@ try{
  // The schematic initially selects the first full week, which can be the
  // second matrix column when the survey starts midweek. Review two explicit
  // matrix weeks so this journey verifies restoration of distinct records.
- await page.locator('#assessmentMatrix-fdv [data-week-name="FM01"]').first().click();
+ await page.locator('#assessmentMatrix-fdv [data-week-name="FM7413"]').first().click();
  await page.locator('#assessmentDrawer-fdv [data-drawer-tab="audit"]').click();
  await page.locator('#assessmentDrawer-fdv [data-drawer-tab="weekly"]').click();
  const weekEdit=page.locator('#assessmentDrawer-fdv [data-week-edit]').nth(1),editedKey=await weekEdit.getAttribute('data-week-edit');
  await weekEdit.click();
  assert.equal(await page.locator('#assessmentDrawer-fdv .weekly-editor').getAttribute('data-week-key'),editedKey);
- await page.locator('#assessmentMatrix-fdv [data-week-name="FM01"]').first().click();
+ await page.locator('#assessmentMatrix-fdv [data-week-name="FM7413"]').first().click();
  const editor=page.locator('#assessmentDrawer-fdv .weekly-editor');await editor.locator('.weekly-comment').fill('Draft survives zoom and navigation.');
  await page.locator('[data-schematic-zoom="1"][data-schematic-kind="fdv"]').click();
  assert.equal(await editor.locator('.weekly-comment').inputValue(),'Draft survives zoom and navigation.');
  await page.locator('#assessmentDrawer-fdv [data-drawer-tab="overview"]').click();
  await page.locator('#assessmentDrawer-fdv [data-drawer-tab="audit"]').click();
  assert.equal(await editor.locator('.weekly-comment').inputValue(),'Draft survives zoom and navigation.');
- const firstWeek=page.locator('#assessmentMatrix-fdv [data-week-name="FM01"]');
+ const firstWeek=page.locator('#assessmentMatrix-fdv [data-week-name="FM7413"]');
  await firstWeek.nth(1).click();assert.equal(await editor.locator('.weekly-comment').inputValue(),'');
  await firstWeek.first().click();assert.equal(await editor.locator('.weekly-comment').inputValue(),'Draft survives zoom and navigation.');
  await editor.locator('.weekly-comment').fill('');
@@ -83,20 +83,20 @@ try{
  await editor.locator('.weekly-rating').selectOption('auto');await editor.locator('.weekly-reviewer').fill('Anzar');await editor.locator('[data-week-note="Tidal impact noted."]').click();await editor.locator('[data-week-save]').click();
  await page.waitForFunction(()=>Object.values(window.__ICM_WORKBENCH__.survey.reviews).some(r=>r.kind==='monitor-week'&&r.reason==='Tidal impact noted.'&&r.reviewer==='Anzar'));
  assert.equal(await page.locator('#assessmentDrawer-fdv .weekly-editor .weekly-comment').inputValue(),'Tidal impact noted.');
- const fm01Cells=page.locator('#assessmentMatrix-fdv [data-week-name="FM01"]');assert((await fm01Cells.count())>1);await fm01Cells.nth(1).click();await page.locator('#assessmentDrawer-fdv [data-drawer-tab="audit"]').click();
+ const fm01Cells=page.locator('#assessmentMatrix-fdv [data-week-name="FM7413"]');assert((await fm01Cells.count())>1);await fm01Cells.nth(1).click();await page.locator('#assessmentDrawer-fdv [data-drawer-tab="audit"]').click();
  const secondEditor=page.locator('#assessmentDrawer-fdv .weekly-editor');await secondEditor.locator('.weekly-reviewer').fill('Reviewer B');await secondEditor.locator('.weekly-comment').fill('Pumping influence noted.');await secondEditor.locator('[data-week-save]').click();
  await page.evaluate(async()=>{
    const wb=window.__ICM_WORKBENCH__,snapshot=workspaceObject(),batch=JSON.parse(JSON.stringify(wb.survey.batch)),signature=wb.survey.batchSignature;
    wb.survey.reviews={};await applyWorkspace(snapshot);
    if(Object.keys(wb.survey.reviews).length!==2)throw new Error('Weekly reviews did not survive workspace reload.');
    wb.survey.batch=batch;wb.survey.batchSignature=signature;wb.workflow26.render();
-   const first=batch.monitors.find(m=>m.monitor==='FM01').weekly.weeks[0];
-   if(!wb.workflow26.reviewedWeekState('monitor-week','FM01',first).review_current)throw new Error('Same-source review did not remain current after restore.');
+   const first=batch.monitors.find(m=>m.monitor==='FM7413').weekly.weeks[0];
+   if(!wb.workflow26.reviewedWeekState('monitor-week','FM7413',first).review_current)throw new Error('Same-source review did not remain current after restore.');
  });
- await page.evaluate(()=>window.__ICM_WORKBENCH__.workflow26.selectMonitor('FM01'));
+ await page.evaluate(()=>window.__ICM_WORKBENCH__.workflow26.selectMonitor('FM7413'));
  const weekData=await page.evaluate(()=>Object.values(window.__ICM_WORKBENCH__.survey.reviews).filter(r=>r.kind==='monitor-week').map(r=>({week:r.week_ending,reason:r.reason,reviewer:r.reviewer})));assert.equal(weekData.length,2);assert.notEqual(weekData[0].week,weekData[1].week);
  await page.screenshot({path:evidence+'/weekly-review.png',fullPage:false});
- await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','rainfall-check',false));assert(await page.locator('#assessmentMatrix-rain .w26-week-matrix').isVisible());await checkPan('rain');await page.locator('#assessmentSchematic-rain [data-survey-gauge="RG01"]').click();assert((await page.locator('#assessmentDrawer-rain').innerText()).includes('RG01'));await page.locator('#assessmentDrawer-rain [data-drawer-tab="audit"]').click();await page.locator('#assessmentDrawer-rain .weekly-reviewer').fill('Rain reviewer');await page.locator('#assessmentDrawer-rain .weekly-comment').fill('Gauge inspection completed.');await page.locator('#assessmentDrawer-rain [data-week-save]').click();
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','rainfall-check',false));assert(await page.locator('#assessmentMatrix-rain .w26-week-matrix').isVisible());await checkPan('rain');await page.locator('#assessmentSchematic-rain [data-survey-gauge="RG5097"]').click();assert((await page.locator('#assessmentDrawer-rain').innerText()).includes('RG5097'));await page.locator('#assessmentDrawer-rain [data-drawer-tab="audit"]').click();await page.locator('#assessmentDrawer-rain .weekly-reviewer').fill('Rain reviewer');await page.locator('#assessmentDrawer-rain .weekly-comment').fill('Gauge inspection completed.');await page.locator('#assessmentDrawer-rain [data-week-save]').click();
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','monthly-review',false));assert(await page.locator('#surveyMonthlyReview').isVisible());assert(!await page.locator('#completeSurveyPanel').isVisible());assert((await page.locator('#surveyMonthlyReviewBody').innerText()).includes('Tidal impact noted.'));
  const popupPromise=page.waitForEvent('popup');await page.click('#surveyMonthlyPdfBtn');const printable=await popupPromise;await printable.waitForLoadState();assert((await printable.locator('body').innerText()).includes('Pumping influence noted.'));await printable.pdf({path:evidence+'/monthly.pdf',format:'A4',landscape:true,printBackground:true});await printable.close();
  await page.screenshot({path:evidence+'/monthly-review.png',fullPage:false});
@@ -105,7 +105,7 @@ try{
  const csv=['timestamp,Depth (m),Flow (m3/s)',...Array.from({length:72},(_,i)=>`2013-05-24T${String(Math.floor(i/6)).padStart(2,'0')}:${String(i%6*10).padStart(2,'0')}:00,${.4+i/1000},${.01+i/10000}`)].join('\n');
  await page.setInputFiles('#fileInput',{name:'Model Scenario.csv',mimeType:'text/csv',buffer:Buffer.from(csv)});await page.waitForFunction(()=>[...state.files.values()].some(x=>x.file.name==='Model Scenario.csv'&&x.status==='ready'),null,{timeout:60000});
  const modelDepth=await page.locator('#modelSelect option').evaluateAll(opts=>opts.find(o=>o.textContent.includes('Model Scenario.csv')&&o.textContent.includes('Depth'))?.value);assert(modelDepth);await page.selectOption('#modelSelect',[modelDepth]);
- assert((await page.locator('#ratingModelDepth option').allTextContents()).some(x=>x.includes('Model Scenario.csv')));assert(!(await page.locator('#ratingModelDepth option').allTextContents()).some(x=>x.includes('FM01.fdv')));
+ assert((await page.locator('#ratingModelDepth option').allTextContents()).some(x=>x.includes('Model Scenario.csv')));assert(!(await page.locator('#ratingModelDepth option').allTextContents()).some(x=>x.includes('FM7413.fdv')));
  for(const tab of ['rating','dwf']){await page.evaluate(t=>window.__ICM_PRECISION_WORKBENCH__.navigate('graphs',t,false),tab);assert(!await page.locator('#scenarioComparisonTable').isVisible());}
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','comparison',false));assert(await page.locator('#scenarioComparisonTable').isVisible());
  console.log('STEP observed and modelled columns in the same CSV');
@@ -117,7 +117,7 @@ try{
  await page.selectOption('#observedSelect',fm01);
  console.log('STEP annual HTML and Plotly PNG');
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));await page.selectOption('#modelSelect',[]);await page.click('#applyMappingBtn');await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastPanelOrder?.join('|')==='rainfall|flow|depth|velocity',null,{timeout:60000});
- await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation',false));await page.fill('#reportYear','2026');const downloadPromise=page.waitForEvent('download',{timeout:180000});await page.click('#downloadFourPeriodBtn');const download=await downloadPromise;await download.saveAs(evidence+'/annual.html');
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation',false));await page.fill('#reportYear','2028');const downloadPromise=page.waitForEvent('download',{timeout:180000});await page.click('#downloadFourPeriodBtn');const download=await downloadPromise;await download.saveAs(evidence+'/annual.html');
  const report=await context.newPage();await report.goto('file://'+evidence+'/annual.html');await report.waitForFunction(()=>document.querySelector('#period-graph-0')?._fullLayout,null,{timeout:60000});
  const config=await report.locator('#period-graph-0').evaluate(el=>({image:el._context.toImageButtonOptions,height:el._fullLayout.height,rain:el.data.filter(t=>t.type==='bar').map(t=>({yaxis:t.yaxis,max:Math.max(...t.y.filter(Number.isFinite))}))}));console.log('EXPORT',JSON.stringify(config));assert.equal(config.image.width,1600);assert.equal(config.image.height,config.height);assert(config.rain.some(t=>t.max>0));
  await report.waitForFunction(()=>[...document.querySelectorAll('.report-plot')].every(el=>el.querySelector('.modebar-btn')),null,{timeout:120000});const imagePromise=report.waitForEvent('download',{timeout:120000});imagePromise.catch(()=>{});await report.locator('#period-graph-0 .modebar-btn[data-title="Download plot as a PNG"]').click({timeout:120000});const image=await imagePromise;await image.saveAs(evidence+'/annual.png');const imageEvidence=await report.evaluate(async(dataUrl)=>{
