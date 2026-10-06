@@ -63,7 +63,7 @@ def test_runtime_sources_do_not_load_reference_fixtures():
     for root in [ROOT/'src',ROOT/'web/assets']:
         for path in root.rglob('*'):
             if path.suffix in ['.js','.py','.html']:
-                text=path.read_text()
+                text=path.read_text(encoding="utf-8")
                 assert 'reference/current-tool' not in text,path
                 for name in MANIFEST['monitors']+MANIFEST['gauges']+[MANIFEST['station']]:
                     assert name not in text,path
