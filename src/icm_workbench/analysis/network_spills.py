@@ -7,7 +7,7 @@ import pandas as pd
 from .spills import spill_assessment
 
 
-def _uncertain_context(x, column, threshold, gap, start, reporting_start, exclusions):
+def _uncertain_context(x, column, threshold, gap, start, reporting_start, exclusions, comparison="ge"):
     """Conservative phase check; unknown/excluded warm-up never implies dry.
 
     An occupied block can finish up to 24 h after discharge ends. Therefore
@@ -18,7 +18,7 @@ def _uncertain_context(x, column, threshold, gap, start, reporting_start, exclus
     values = pd.to_numeric(x[column], errors="coerce").to_numpy(dtype=float)
     t0, t1, v0, v1 = times[:-1], times[1:], values[:-1], values[1:]
     valid = np.isfinite(v0) & np.isfinite(v1) & ((t1-t0) <= gap*1e9)
-    initial = np.isfinite(values[0]) and values[0] >= threshold
+    initial = np.isfinite(values[0]) and (values[0] > threshold if comparison == "gt" else values[0] >= threshold)
     uncertain = [start.value] if initial else []
     bad = (~valid) & (t0 < reporting_start.value)
     if bad.any():
@@ -30,7 +30,9 @@ def _uncertain_context(x, column, threshold, gap, start, reporting_start, exclus
     if not uncertain:
         return ""
     after = max(uncertain)
-    dry = valid & (v0 < threshold) & (v1 < threshold) & (t0 >= after) & (t1 <= reporting_start.value)
+    below0 = v0 <= threshold if comparison == "gt" else v0 < threshold
+    below1 = v1 <= threshold if comparison == "gt" else v1 < threshold
+    dry = valid & below0 & below1 & (t0 >= after) & (t1 <= reporting_start.value)
     indices = np.flatnonzero(dry)
     if len(indices):
         groups = np.split(indices, np.flatnonzero(np.diff(indices) > 1)+1)
@@ -51,7 +53,7 @@ def main_reporting_year(start, end):
     ))
 
 
-def schematic_spill_assessment(frame, column, threshold, *, years=None, max_gap_seconds=900, exclusions=()):
+def schematic_spill_assessment(frame, column, threshold, *, years=None, max_gap_seconds=900, exclusions=(), comparison="ge"):
     """Report selected years without restarting occupied blocks at 1 January.
 
     Warm-up contributes counting context, never displayed duration or eligibility.
@@ -61,6 +63,8 @@ def schematic_spill_assessment(frame, column, threshold, *, years=None, max_gap_
     threshold, gap = float(threshold), float(max_gap_seconds)
     if not np.isfinite(threshold) or not np.isfinite(gap) or gap <= 0:
         raise ValueError("Threshold must be finite and the maximum gap must be positive.")
+    if comparison not in ("ge", "gt"):
+        raise ValueError("Threshold rule must be ge (at or above) or gt (above).")
     if column not in frame.columns:
         raise ValueError("Select an existing value channel.")
     x = frame[["timestamp", column]].copy()
@@ -81,7 +85,7 @@ def schematic_spill_assessment(frame, column, threshold, *, years=None, max_gap_
     if context_end <= start:
         raise ValueError("Selected years are outside this source's period.")
     result = spill_assessment(x, column, threshold, start=start, end=context_end,
-                              max_gap_seconds=gap, exclusions=exclusions)
+                              max_gap_seconds=gap, exclusions=exclusions, comparison=comparison)
     annual = {int(row["year"]): row for row in result["yearly_summary"].to_dict("records")}
     output = []
     for year in selected:
@@ -96,8 +100,14 @@ def schematic_spill_assessment(frame, column, threshold, *, years=None, max_gap_
         row.update(eligible=eligible, minimum_valid_hours=minimum,
                    reason="" if eligible else "Less than three calendar months of valid reporting data",
                    partial_year=(a != pd.Timestamp(year, 1, 1) or b != pd.Timestamp(year+1, 1, 1)),
-                   counting_basis=result["count_policy"], threshold=threshold)
-        context_status = _uncertain_context(x, column, threshold, gap, start, a, exclusions)
+                   counting_basis=result["count_policy"], threshold=threshold, comparison=comparison)
+        values = pd.to_numeric(x.loc[(x.timestamp >= a) & (x.timestamp <= b), column], errors="coerce")
+        values = values[np.isfinite(values)]
+        row.update(value_min=float(values.min()) if len(values) else None,
+                   value_max=float(values.max()) if len(values) else None,
+                   continuous_spill=bool(row["valid_hours"] > 0 and
+                       abs(row["duration_hours"] - row["valid_hours"]) < 1e-8))
+        context_status = _uncertain_context(x, column, threshold, gap, start, a, exclusions, comparison)
         if context_status and row["count_status"] == "definitive":
             row["count_status"] = context_status
         if not eligible:
