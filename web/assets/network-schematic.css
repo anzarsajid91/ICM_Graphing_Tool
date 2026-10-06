@@ -30,3 +30,13 @@
 #nsWorkbench .ns-export-menu{position:relative;font-size:12px}#nsWorkbench .ns-export-menu summary{cursor:pointer;border:1px solid #c7d2d9;border-radius:6px;padding:9px 10px;list-style:none}#nsWorkbench .ns-export-menu[open]{background:white;z-index:6}#nsWorkbench .ns-export-menu[open] button{display:block;width:100%;font-size:12px;margin-top:4px}
 @media(max-width:1150px){#nsWorkbench #nsLayout.ns-editing{grid-template-columns:minmax(0,1fr) 300px}#nsWorkbench .ns-network-legend{margin-left:0}}
 @media(max-width:850px){#nsWorkbench #nsLayout.ns-editing{grid-template-columns:minmax(0,1fr)}#nsWorkbench #nsDrawer{border-left:0;border-top:1px solid #dbe3e8;max-height:none}#nsWorkbench #nsCanvas{height:540px;max-height:none}#nsWorkbench .ns-canvas-note{bottom:64px}}
+
+#nsWorkbench .ns-export-actions{position:absolute;top:calc(100% + 6px);left:0;width:185px;padding:6px;background:white;border:1px solid #c7d2d9;border-radius:8px;box-shadow:0 6px 18px #0b294326}
+#nsWorkbench .ns-export-menu[open] .ns-export-actions button{margin:0;text-align:left;border:0;background:white}
+#nsWorkbench .ns-export-menu[open] .ns-export-actions button:hover{background:#f5f7f9}
+#nsWorkbench .ns-evidence-details{margin:12px 0;font-size:11px;color:#60717d}
+#nsWorkbench .ns-evidence-details summary{cursor:pointer;font-size:12px}
+#nsWorkbench .ns-evidence-details p{padding:6px 0;border-bottom:1px solid #e8edf0;line-height:1.6}
+#nsWorkbench .ns-warning{color:#9a6500;max-width:160px}
+#nsWorkbench .ns-export-menu>summary{margin:0;background:white;min-height:36px}
+#nsWorkbench .ns-export-menu[open]>summary{margin:0}
