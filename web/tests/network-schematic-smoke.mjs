@@ -125,6 +125,7 @@ try{
   const downloadPromise=page.waitForEvent('download');downloadPromise.catch(()=>{});await page.click('#nsCapture');const download=await downloadPromise;await download.saveAs(evidence+'/network-capture-'+name+'.png');const png=await fs.readFile(evidence+'/network-capture-'+name+'.png');assert.equal(png.subarray(1,4).toString(),'PNG');
   console.log(name+': capture complete; check responsive layout and saved evidence');
   const w=await page.evaluate(()=>workspaceObject());assert.equal(w.network_schematic.nodes[0].bindings.length,5);
+  await page.locator('[data-ns-close-popup]').click();
   await page.setViewportSize({width:900,height:1000});await page.click('#nsFit');await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();assert.ok(await page.locator('#nsPopup').isVisible());
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),'No horizontal viewport overflow');
   await page.reload({waitUntil:'domcontentloaded'});await page.waitForSelector('#nsEdit');assert.equal((await snapshot()).nodes.length,9,'Layout survives refresh');
