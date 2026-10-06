@@ -1138,7 +1138,7 @@ async function verifyRealFlowSurveyReference(){
       };
     });
 
-    if(evidence.monitor_count!==9||evidence.gauge_count!==3||JSON.stringify(evidence.associated_gauges)!==JSON.stringify(['RG5097','RG4922','RG6324'])||JSON.stringify(evidence.network_gauges)!==JSON.stringify(evidence.associated_gauges)||!evidence.association_authoritative){
+    if(evidence.monitor_count!==9||evidence.gauge_count!==3||JSON.stringify(evidence.associated_gauges)!==JSON.stringify([...synthetic.associated_gauges].sort())||JSON.stringify(evidence.network_gauges)!==JSON.stringify(evidence.associated_gauges)||!evidence.association_authoritative){
       throw new Error('Synthetic reference Flow Survey must use the workbook’s 9 monitors and 3 associated gauges; the loaded RG4977 remains outside the network: '+JSON.stringify(evidence));
     }
     if(evidence.candidate_count<1||evidence.qualified_count>evidence.candidate_count)throw new Error('Synthetic network event qualification invalid: '+JSON.stringify(evidence));
