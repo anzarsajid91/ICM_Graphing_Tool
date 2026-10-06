@@ -194,3 +194,14 @@ def test_network_endpoint_passes_explicit_threshold_rule(tmp_path):
 def test_invalid_threshold_rule_rejected():
     with pytest.raises(ValueError, match='Threshold rule'):
         schematic_spill_assessment(source(), 'depth', 0, comparison='guess')
+
+
+def test_strict_rule_keeps_exact_crossings_for_adjacent_floating_values():
+    frame = source('2024-01-01', '2025-01-01', value=1.0)
+    frame.loc[100, 'depth'] = np.nextafter(1.0, np.inf)
+    row = schematic_spill_assessment(frame, 'depth', 1, max_gap_seconds=3700, comparison='gt')['rows'][0]
+    # Both linear ramps are > 1 throughout their open interior, so their full
+    # two-hour support spills. Moving the threshold by one ULP would lose it.
+    assert row['spill_count'] == 1
+    assert row['duration_hours'] == pytest.approx(2)
+    assert row['threshold'] == 1
