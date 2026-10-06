@@ -107,7 +107,8 @@ stale results are explicitly marked as previous evidence.
 ## Isolation and release checks
 
 The feature's CSS is scoped to `#nsWorkbench`; its controller is loaded only when
-opening the new route. Existing spill/storage engines remain unchanged. Integration
+opening the new route. The shared detector accepts the schematic’s explicit comparison rule while its
+existing inclusive default and all other workspaces’ calls remain unchanged. Integration
 consists of the route, the updated workspace SVG icons, additive JSON persistence,
 a new Python endpoint and versioned build assets. Browser acceptance exercises batch
 mapping, real Python counts, RAG, drawing, dragging, camera controls, PNG capture,
