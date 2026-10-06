@@ -15,7 +15,7 @@ function sourceFor(b){
   return [...state.files.values()].find(x=>x.status==='ready'&&x.hash&&x.hash===b.sha256)||null;
 }
 function contract(b){const item=sourceFor(b);return item?{quantity:seriesQuantity(item,b.column)||'',unit:seriesUnit(item,b.column)||'',datum:seriesReference(item,b.column)||''}:{};}
-function signature(n){return JSON.stringify({bindings:n.bindings.map(b=>({sha256:b.sha256,column:b.column,role:b.role,scenario:b.scenario,years:b.years,threshold:b.threshold,quantity:b.quantity,unit:b.unit,datum:b.datum,current:contract(b),found:Boolean(sourceFor(b))})),defaults:n.defaults,gap:n.gap,exclusions:n.exclusions,confirmed:n.confirmed});}
+function signature(n){return JSON.stringify({methodVersion:2,bindings:n.bindings.map(b=>({sha256:b.sha256,column:b.column,role:b.role,scenario:b.scenario,years:b.years,threshold:b.threshold,comparison:C.thresholdRule(b),quantity:b.quantity,unit:b.unit,datum:b.datum,current:contract(b),found:Boolean(sourceFor(b))})),defaults:n.defaults,gap:n.gap,exclusions:n.exclusions,confirmed:n.confirmed});}
 function isFresh(n){return Boolean(n.applied&&n.applied.signature===signature(n));}
 function checkpoint(){history.push(JSON.stringify(network));if(history.length>30)history.shift();}
 function snapshot(){return JSON.parse(JSON.stringify(network));}
@@ -31,12 +31,12 @@ function point(x,y){return {x:x*network.camera.zoom+network.camera.x,y:y*network
 function world(x,y){return {x:(x-network.camera.x)/network.camera.zoom,y:(y-network.camera.y)/network.camera.zoom};}
 function dimensions(){return {width:Math.max(240,$('nsCanvas')?.clientWidth||1000),height:Math.max(360,$('nsCanvas')?.clientHeight||620)};}
 function icon(type){
-  const shapes={cso:'<rect x="-29" y="-22" width="58" height="44" rx="3"/><path d="M-25 2c8-7 14 5 22 0h5v-18h7v31h17"/>',
-    storm:'<rect x="-29" y="-22" width="58" height="44" rx="3"/><path d="M-25 2h21v-16h7v28h23"/>',
-    emergency:'<rect x="-29" y="-22" width="58" height="44" rx="3"/><path d="M-25 4h50M0-15v12M0 12h.01"/>',
+  const shapes={cso:'<path d="M-25 2c8-7 14 5 22 0h5v-18h7v31h17"/>',
+    storm:'<path d="M-25 2h21v-16h7v28h23"/>',
+    emergency:'<path d="M-25 4h50M0-15v12M0 12h.01"/>',
     pump:'<circle r="25"/><path d="M-10-14L15 0-10 14Z"/>',
-    wwtw:'<rect x="-32" y="-22" width="64" height="44" rx="2"/><path d="M-21-22v44M7-22v44M-32-10H32"/>',
-    tank:'<rect x="-32" y="-22" width="64" height="44" rx="2"/><path d="M-26-16v32M26-16v32M-26 0c10-7 18 7 28 0s17 5 24 0"/>',
+    wwtw:'<path d="M-21-22v44M7-22v44M-32-10H32"/>',
+    tank:'<path d="M-26-16v32M26-16v32M-26 0c10-7 18 7 28 0s17 5 24 0"/>',
     junction:'<circle r="12"/><path d="M-20 0h40M0-20v40"/>',outfall:'<path d="M-24-12H9V12H-24M9 0h20M22-7l7 7-7 7"/>',manhole:'<circle r="8"/>',label:'<circle r="3" fill="currentColor"/>'};
   return shapes[type]||shapes.cso;
 }
@@ -48,17 +48,16 @@ function badge(n){
 }
 function svgContent(){
   const {width,height}=dimensions(),parts=[];
-  parts.push('<defs>'+Object.entries(C.colours).map(([name,c])=>'<marker id="nsArrow-'+name+'" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0 0L6 3L0 6Z" fill="'+c+'"/></marker>').join('')+'</defs>');
+  const routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y));
   for(const e of network.edges){
-    const a=network.nodes.find(n=>n.id===e.from),b=network.nodes.find(n=>n.id===e.to);if(!a||!b)continue;
-    const p=point(a.x,a.y),q=point(b.x,b.y),middle=(p.x+q.x)/2,c=C.colours[e.colour];
-    const path='M'+p.x+' '+p.y+'H'+middle+'V'+q.y+'H'+q.x;
-    parts.push('<g data-ns-edge="'+html(e.id)+'" tabindex="0" role="button" aria-label="Connector '+html(e.name||a.name+' to '+b.name)+'"><path d="'+path+'" fill="none" stroke="transparent" stroke-width="14"/><path d="'+path+'" fill="none" stroke="'+c+'" stroke-width="'+(e.id===selected?3:2)+'" '+(e.arrow!==false?'marker-end="url(#nsArrow-'+e.colour+')"':'')+'/>'+(e.name?'<text x="'+(middle+7)+'" y="'+((p.y+q.y)/2-8)+'" fill="'+c+'" font-size="13">'+html(e.name)+'</text>':'')+'</g>');
+    const route=routes.get(e.id);if(!route)continue;
+    const a=network.nodes.find(n=>n.id===e.from),b=network.nodes.find(n=>n.id===e.to),c=C.colours[e.colour];
+    parts.push('<g data-ns-edge="'+html(e.id)+'" tabindex="0" role="button" aria-label="Connector '+html(e.name||a.name+' to '+b.name)+'"><path d="'+route.path+'" fill="none" stroke="transparent" stroke-width="14"/><path data-ns-wire="" d="'+route.path+'" fill="none" stroke="'+c+'" stroke-width="'+(e.id===selected?3:2)+'"/>'+(e.arrow!==false?'<polygon data-ns-direction="" points="'+route.arrow.map(p=>p.x+','+p.y).join(' ')+'" fill="'+c+'"/>':'')+(e.name?'<text x="'+route.label.x+'" y="'+route.label.y+'" fill="'+c+'" font-size="13">'+html(e.name)+'</text>':'')+'</g>');
   }
   for(const n of network.nodes){
-    const p=point(n.x,n.y),c=C.colours[n.colour],labelOffset=n.labelOffset||{x:30,y:-20},small=['manhole','label'].includes(n.type),value=badge(n);
+    const p=point(n.x,n.y),c=C.colours[n.colour],box=C.bounds(n.type),labelOffset=n.labelOffset||{x:30,y:-20},small=['manhole','label'].includes(n.type),value=badge(n);
     const label=small?'<path d="M0 0L'+labelOffset.x+' '+labelOffset.y+'" stroke="'+c+'" stroke-width="1" fill="none"/><text data-ns-label="'+html(n.id)+'" x="'+(labelOffset.x+5)+'" y="'+labelOffset.y+'" font-size="13" fill="#182732">'+html(n.name)+'</text>':'<text y="-35" text-anchor="middle" font-size="14" font-weight="600" fill="#182732">'+html(n.name)+'</text>';
-    parts.push('<g data-ns-node="'+html(n.id)+'" transform="translate('+p.x+' '+p.y+')" tabindex="0" role="button" aria-label="'+html(n.name)+' · '+html(C.types[n.type])+'"><title>'+html(n.name+' · '+C.types[n.type])+'</title>'+(selected===n.id?'<rect x="-38" y="-29" width="76" height="58" rx="7" fill="none" stroke="#0b8f96" stroke-width="2"/>':'')+'<rect x="-37" y="-28" width="74" height="56" fill="transparent"/><g stroke="'+c+'" stroke-width="1.8" fill="white" stroke-linecap="round" stroke-linejoin="round">'+icon(n.type)+'</g>'+label+(asset(n)?'<g transform="translate(38 -25)"><rect x="0" y="-12" width="'+Math.max(24,value.length*8+10)+'" height="22" rx="5" fill="white" stroke="#c7d2d9"/><text x="5" y="3" font-size="13" fill="#182732">'+html(value)+'</text></g>':'')+'</g>');
+    parts.push('<g data-ns-node="'+html(n.id)+'" transform="translate('+p.x+' '+p.y+')" tabindex="0" role="button" aria-label="'+html(n.name)+' · '+html(C.types[n.type])+'"><title>'+html(n.name+' · '+C.types[n.type])+'</title>'+(selected===n.id?'<rect x="-42" y="-32" width="84" height="64" rx="8" fill="none" stroke="#0b8f96" stroke-width="2"/>':'')+(box.circle?'':'<rect data-ns-frame="" x="'+(-box.x)+'" y="'+(-box.y)+'" width="'+(box.x*2)+'" height="'+(box.y*2)+'" rx="6" fill="white" stroke="'+c+'" stroke-width="1.5"/>')+'<rect x="-37" y="-28" width="74" height="56" fill="transparent"/><g stroke="'+c+'" stroke-width="1.8" fill="white" stroke-linecap="round" stroke-linejoin="round">'+icon(n.type)+'</g>'+label+(asset(n)?'<g transform="translate(38 -25)"><rect x="0" y="-12" width="'+Math.max(24,value.length*8+10)+'" height="22" rx="5" fill="white" stroke="#c7d2d9"/><text x="5" y="3" font-size="13" fill="#182732">'+html(value)+'</text></g>':'')+'</g>');
   }
   if(!network.nodes.length)parts.push('<text x="'+width/2+'" y="'+height/2+'" text-anchor="middle" fill="#60717d" font-size="15">Choose Edit network, then add your site assets and manholes.</text>');
   return parts.join('');
@@ -91,10 +90,12 @@ function renderFilters(){
 function colours(value,attribute){return '<div class="ns-swatches">'+Object.entries(C.colours).map(([k,c])=>'<button type="button" '+attribute+'="'+k+'" aria-label="'+k+' network colour" aria-pressed="'+(value===k)+'" style="--swatch:'+c+'"></button>').join('')+'</div>';}
 function bindingRows(n,role){return n.bindings.filter(b=>b.role===role).map(b=>{
   const item=sourceFor(b),metadata=contract(b),columns=item?.parsed?.columns||[b.column];
+  let effective='Set a source threshold or asset default';try{const t=C.effectiveThreshold(b,n.defaults);effective=(t.comparison==='gt'?'> ':'≥ ')+t.value+' '+(b.unit||metadata.unit||'')+' · '+t.source;}catch{}
   return '<div class="ns-source-row" data-ns-binding="'+html(b.id)+'"><div class="ns-source-title"><strong title="'+html(b.sourceName)+'">'+html(b.sourceName)+'</strong><button data-ns-remove-binding="'+html(b.id)+'" aria-label="Remove '+html(b.sourceName)+'">×</button></div>'+
     (role==='model'?fields('Scenario','<input data-ns-binding-field="scenario" value="'+html(b.scenario)+'">'):'')+
     fields('Channel',selectHtml('data-ns-binding-field="column"',columns.map(c=>[c,c]),b.column))+
     '<div class="ns-two">'+fields('Reporting years','<input data-ns-binding-field="years" value="'+html(b.years.join(', '))+'" placeholder="2022, 2023">')+fields('Threshold ('+html(b.unit||metadata.unit||'assign unit')+')','<input data-ns-binding-field="threshold" type="number" step="any" value="'+html(b.threshold)+'" placeholder="Group default">')+'</div>'+
+    fields('Spill when',selectHtml('data-ns-binding-field="comparison"',[['gt','Above threshold (>)'],['ge','At or above threshold (≥)']],C.thresholdRule(b)))+'<small data-ns-effective-threshold>'+html(effective)+'</small>'+
     '<div class="ns-two">'+fields('Quantity',selectHtml('data-ns-binding-field="quantity"',[['depth','Depth'],['level','Level'],['flow','Overflow flow'],['status','Spill status']],b.quantity))+fields('Source values unit',selectHtml('data-ns-binding-field="unit"',b.quantity==='status'?[['1','Binary / unitless']]:b.quantity==='flow'?[['','Assign…'],['m³/s','m³/s'],['L/s','L/s'],['Ml/d','Ml/d']]:[['','Assign…'],['m','m'],['mm','mm']],b.unit))+'</div>'+
     (b.quantity==='level'?fields('Level datum','<input data-ns-binding-field="datum" value="'+html(b.datum||'')+'" placeholder="e.g. AOD">'):'')+
     '<small>'+(item?'Main year suggested: '+(C.mainYear(item.parsed.start,item.parsed.end)||'unavailable')+' · '+html(String(item.parsed.start||'').slice(0,10))+' to '+html(String(item.parsed.end||'').slice(0,10))+'. Earlier warm-up is omitted from reported totals.':'Reload the original matching source fingerprint before calculating.')+'</small></div>';
@@ -118,17 +119,16 @@ function renderDrawer(){
 }
 function popupTable(n){
   if(!n.applied)return '<p>Assign evidence in Edit network, then Apply & calculate.</p>';
-  const fresh=isFresh(n),rows=n.applied.rows||[],observed=new Map(rows.filter(r=>r.role==='observed').map(r=>[r.year,r]));
-  const selectedRows=rows.filter(r=>network.year==='all'||String(r.year)===network.year).sort((a,b)=>a.year-b.year||(a.role==='observed'?0:1)-(b.role==='observed'?0:1)||String(a.scenario).localeCompare(String(b.scenario)));
-  let table='<table><thead><tr><th>Year</th><th>Evidence / scenario</th><th>Observed</th><th>Modelled</th><th>Obs. h</th><th>Model h</th></tr></thead><tbody>';
+  const fresh=isFresh(n),groups=C.evidenceRows(n.applied.rows||[],network.year);
+  let table='<table><thead><tr><th>Year</th><th>Scenario</th><th>Observed<br>spills</th><th>Modelled<br>spills</th><th>Observed<br>hours</th><th>Modelled<br>hours</th></tr></thead><tbody>';
   const cell=(v,rag)=>'<td'+(rag?' class="ns-rag-'+rag+'"':'')+'>'+f(v,Number.isInteger(v)?0:2)+'</td>';
-  for(const row of selectedRows){
-    const o=row.role==='observed'?row:observed.get(row.year),reason=row.role==='model'?(fresh?C.comparable(o,row,n.confirmed):'Recalculation required'):'',countRag=!reason&&row.role==='model'?C.rag(o?.spill_count,row.spill_count):null,durationRag=!reason&&row.role==='model'?C.rag(o?.duration_hours,row.duration_hours):null;
-    table+='<tr><td>'+html(row.year)+'</td><td>'+html(row.role==='observed'?'Observed':row.scenario)+(row.eligible?'':'<small>'+html(row.reason)+'</small>')+'</td>'+cell(o?.spill_count)+cell(row.role==='model'?row.spill_count:null,countRag)+cell(o?.duration_hours)+cell(row.role==='model'?row.duration_hours:null,durationRag)+'</tr>';
-    const period=row.analysis_start?row.analysis_start.slice(0,10)+' to '+row.analysis_end.slice(0,10):'No period';
-    table+='<tr class="ns-period"><td colspan="6">'+html(period)+(row.partial_year?' · partial year':'')+' · valid '+f(row.valid_hours,1)+' h · gaps '+f(row.unknown_hours,1)+' h · excluded '+f(row.excluded_hours,1)+' h'+(row.count_status&&row.count_status!=='definitive'?' · '+html(row.count_status):'')+(reason?' · '+html(reason):'')+'</td></tr>';
+  for(const group of groups){
+    const o=group.observed,m=group.model,reason=m?(fresh?C.comparable(o,m,n.confirmed):'Recalculation required'):'',countRag=m&&!reason?C.rag(o?.spill_count,m.spill_count):null,durationRag=m&&!reason?C.rag(o?.duration_hours,m.duration_hours):null;
+    table+='<tr data-ns-evidence-year="'+group.year+'"><td>'+group.year+'</td><td>'+html(group.scenario)+([o,m].some(r=>r?.continuous_spill)?'<small class="ns-warning">Continuous spill — check threshold</small>':'')+'</td>'+cell(o?.spill_count)+cell(m?.spill_count,countRag)+cell(o?.duration_hours)+cell(m?.duration_hours,durationRag)+'</tr>';
   }
-  return table+'</tbody></table>'+(fresh?'':'<p class="ns-note">Recalculation required: settings or source evidence changed. These are previous applied values.</p>')+'<div class="ns-rag-legend"><span class="ns-rag-green">Green ≤5%</span><span class="ns-rag-amber">Amber >5–10%</span><span class="ns-rag-red">Red >10%</span></div><small>12/24 counts · individual asset evidence · no annualisation</small>';
+  table+='</tbody></table>'+(groups.length?'':'<p>No evidence for the selected year.</p>');
+  const details=groups.map(g=>[g.observed,g.model].filter(Boolean).map(r=>'<p><strong>'+html(r.year+' · '+(r.role==='observed'?'Observed':r.scenario))+'</strong><br>'+html(r.analysis_start?r.analysis_start.slice(0,10)+' to '+r.analysis_end.slice(0,10):'No period')+(r.partial_year?' · partial year':'')+'<br>'+html(r.column)+' · '+(C.thresholdRule(r)==='gt'?'&gt;':'≥')+' '+f(r.threshold,6)+' '+html(r.unit||'')+'<br>Valid '+f(r.valid_hours,1)+' h · gaps '+f(r.unknown_hours,1)+' h · excluded '+f(r.excluded_hours,1)+' h'+(r.value_min!==undefined?'<br>Value range '+f(r.value_min,6)+' to '+f(r.value_max,6)+' '+html(r.unit||''):'')+(r.reason?'<br>'+html(r.reason):'')+(r.count_status&&r.count_status!=='definitive'?'<br>'+html(r.count_status):'')+(r.continuous_spill?'<br>All valid support is classified as spilling. Check channel, threshold, units and datum.':'')+'</p>').join('')+(g.model?'<p>'+html(fresh?C.comparable(g.observed,g.model,n.confirmed)||'Comparison eligible.':'Recalculation required.')+'</p>':'')).join('');
+  return table+(fresh?'':'<p class="ns-note">Recalculation required: settings, method or source evidence changed.</p>')+'<details class="ns-evidence-details"><summary>Assessment details</summary>'+details+'</details><small>12/24 counts · duration in hours</small>';
 }
 function renderPopup(){
   const pop=$('nsPopup'),n=node();if(!pop)return;pop.hidden=editing||!popupVisible||!n;
@@ -192,13 +192,12 @@ function calculationRows(n){
     const source=sourceFor(b);if(!source)throw new Error('Reload the matching source '+b.sourceName+'.');
     if(!source.parsed.columns.includes(b.column))throw new Error('Select a valid channel for '+b.sourceName+'.');
     if(!b.years.length)throw new Error('Select reporting years for '+b.sourceName+'.');
-    const raw=b.threshold===''?n.defaults[b.role==='observed'?'observed':'model']:b.threshold;
-    if(raw===''||raw===null||!Number.isFinite(Number(raw)))throw new Error('Enter a finite threshold for '+b.sourceName+'.');
+    const resolved=C.effectiveThreshold(b,n.defaults);
     if(!b.unit)throw new Error('Assign the source-value unit for '+b.sourceName+'.');
     const current=contract(b);
     if(current.quantity&&current.quantity!==b.quantity&&b.quantity!=='status')throw new Error('This source is interpreted as '+current.quantity+'. Use a matching channel, or interpret it in Data / Time Series.');
     if(current.unit&&current.unit!==b.unit)throw new Error('Source values are in '+current.unit+'; thresholds must use that same canonical unit.');
-    return {binding:b,source,threshold:Number(raw)};
+    return {binding:b,source,threshold:resolved.value,comparison:resolved.comparison};
   });
 }
 async function calculate(){
@@ -208,9 +207,9 @@ async function calculate(){
   busy=true;const sig=signature(n),rows=[];renderDrawer();
   try{
     for(let i=0;i<assignments.length;i++){
-      const {binding:b,source,threshold}=assignments[i];status('Calculating '+(i+1)+'/'+assignments.length+' · '+source.displayName);await new Promise(resolve=>requestAnimationFrame(resolve));
-      const result=await engine.call('network_spill_result',{path:source.virtualPath,column:b.column,threshold,years_json:JSON.stringify(b.years),exclusions_json:JSON.stringify(n.exclusions),max_gap_seconds:n.gap});
-      rows.push(...result.rows.map(row=>({...row,role:b.role,scenario:b.scenario,source_sha256:b.sha256,source_name:b.sourceName,column:b.column,quantity:b.quantity,unit:b.unit,datum:b.datum,exclusions:n.exclusions,context_start:result.context_start})));
+      const {binding:b,source,threshold,comparison}=assignments[i];status('Calculating '+(i+1)+'/'+assignments.length+' · '+source.displayName);await new Promise(resolve=>requestAnimationFrame(resolve));
+      const result=await engine.call('network_spill_result',{path:source.virtualPath,column:b.column,threshold,comparison,years_json:JSON.stringify(b.years),exclusions_json:JSON.stringify(n.exclusions),max_gap_seconds:n.gap});
+      rows.push(...result.rows.map(row=>({...row,role:b.role,scenario:b.scenario,comparison,source_sha256:b.sha256,source_name:b.sourceName,column:b.column,quantity:b.quantity,unit:b.unit,datum:b.datum,exclusions:n.exclusions,context_start:result.context_start})));
     }
     if(sig!==signature(n))throw new Error('Asset inputs changed while calculating. Reapply the settings.');
     n.applied={signature:sig,rows,settings:{gap:n.gap,confirmed:n.confirmed},calculated_at:new Date().toISOString()};persist();status('Applied '+assignments.length+' sources. Spill results are frozen to these settings.');
@@ -220,13 +219,14 @@ async function calculate(){
 function updateField(target){
   const n=node(),e=edge();if(!n&&!e)return;
   target.removeAttribute('aria-invalid');
+  if(target.validity?.badInput){target.setAttribute('aria-invalid','true');status('Enter a valid number before calculating.');return;}
   const container=target.closest('[data-ns-binding]');
   if(container&&n){
     const b=n.bindings.find(b=>b.id===container.dataset.nsBinding),key=target.dataset.nsBindingField;
     if(!b||!key)return;
     try{checkpoint();if(key==='years')b.years=C.validateYears(target.value);else if(key==='threshold')b.threshold=target.value===''?'':Number(target.value);else if(key==='scenario')b.scenario=target.value.trim()||'Baseline';else b[key]=target.value;
       if(key==='column'){const item=sourceFor(b);b.quantity=seriesQuantity(item,b.column)||b.quantity;b.unit=seriesUnit(item,b.column)||'';b.datum=seriesReference(item,b.column)||'';}
-      if(key==='quantity')b.unit='';changed();if(['column','quantity'].includes(key))renderDrawer();
+      if(['column','quantity'].includes(key))b.comparison=b.quantity==='flow'?'gt':'ge';if(key==='quantity')b.unit='';changed();if(['column','quantity','threshold','comparison'].includes(key))renderDrawer();
     }catch(error){status(error.message);target.setAttribute('aria-invalid','true');}return;
   }
   const object=n||e;
@@ -243,7 +243,7 @@ function updateField(target){
     else if(target.id==='nsConfirmed')n.confirmed=target.checked;
     else if(target.id==='nsExclusions')n.exclusions=parsedExclusions(target.value);
     else return;
-    changed();if(target.id==='nsType')renderDrawer();
+    changed();if(['nsType','nsObservedDefault','nsModelDefault'].includes(target.id))renderDrawer();
   }catch(error){status(error.message);target.setAttribute('aria-invalid','true');}
 }
 function removeSelected(){
@@ -281,7 +281,7 @@ function onPointerMove(event){
 }
 function onPointerUp(event){if(!drag)return;drag=null;try{$('nsCanvas').releasePointerCapture(event.pointerId);}catch{}persist();}
 function exportRows(){
-  const headers=['asset_id','asset_name','type','year','role','scenario','spill_count','duration_hours','eligible','analysis_start','analysis_end','valid_hours','unknown_hours','excluded_hours','count_status','counting_basis','source_name','source_sha256','column','threshold','unit','quantity','context_start','max_gap_seconds','exclusions','comparison_basis_confirmed','calculated_at','current'];
+  const headers=['asset_id','asset_name','type','year','role','scenario','spill_count','duration_hours','eligible','analysis_start','analysis_end','valid_hours','unknown_hours','excluded_hours','count_status','counting_basis','source_name','source_sha256','column','threshold','comparison','continuous_spill','value_min','value_max','unit','quantity','context_start','max_gap_seconds','exclusions','comparison_basis_confirmed','calculated_at','current'];
   const rows=network.nodes.flatMap(n=>(n.applied?.rows||[]).map(r=>({...r,asset_id:n.id,asset_name:n.name,type:n.type,max_gap_seconds:n.applied.settings?.gap??'',exclusions:JSON.stringify(r.exclusions||[]),comparison_basis_confirmed:n.applied.settings?.confirmed??'',calculated_at:n.applied.calculated_at,current:isFresh(n)})));
   const cell=v=>'"'+String(v??'').replaceAll('"','""')+'"';downloadBlob('hydra-network-spill-evidence.csv',[headers.join(','),...rows.map(r=>headers.map(k=>cell(r[k])).join(','))].join('\n'),'text/csv');
 }
@@ -322,7 +322,7 @@ async function capture(){
 }
 function mount(){
   const container=root();if(!container)return;
-  container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / export</summary><button id="nsSave">Save network</button><button id="nsLoad">Load network</button><button id="nsCsv">Export evidence CSV</button></details><input id="nsLoadInput" type="file" accept=".json" hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
+  container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / export</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network</button><button id="nsCsv">Export evidence CSV</button></div></details><input id="nsLoadInput" type="file" accept=".json" hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
     '<div id="nsEditTools" class="ns-edit-tools" hidden>'+selectHtml('id="nsAddType"',Object.entries(C.types).filter(([key])=>!['manhole','label'].includes(key)),'cso')+'<button id="nsAddAsset">+ Asset</button><button id="nsAddManhole">+ Manhole</button><button id="nsAddLabel">+ Label</button><button id="nsConnect" aria-pressed="false">Connect</button><span id="nsColourChoices"></span><button id="nsUndo" aria-label="Undo last edit">Undo</button><button id="nsDelete">Delete selected</button></div>'+
     '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag background to pan; select an asset to review evidence."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><aside id="nsPopup" hidden></aside><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button></div></div><aside id="nsDrawer" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
   mounted=true;container.addEventListener('click',onClick);container.addEventListener('change',event=>updateField(event.target));
@@ -335,7 +335,10 @@ function mount(){
   for(const [id,key] of [['nsYear','year'],['nsScenario','scenario'],['nsMetric','metric']])$(id).onchange=()=>{network[key]=$(id).value;changed(true);};
   $('nsSave').onclick=()=>downloadBlob('hydra-network-schematic.json',JSON.stringify(snapshot(),null,2),'application/json');$('nsLoad').onclick=()=>$('nsLoadInput').click();
   $('nsLoadInput').onchange=async event=>{try{const file=event.target.files[0];if(file){restore(JSON.parse(await file.text()));persist();status('Network restored. Reload matching source files to validate and calculate its evidence.');}}catch(error){status(error.message);}finally{event.target.value='';}};
-  $('nsCsv').onclick=exportRows;$('nsCapture').onclick=()=>capture().catch(error=>status(error.message));
+  for(const id of ['nsSave','nsLoad','nsCsv']){const action=$(id).onclick;$(id).onclick=()=>{document.querySelector('.ns-export-menu').open=false;action?.();};}
+  document.addEventListener('click',event=>{const menu=root()?.querySelector('.ns-export-menu');if(menu&&!menu.contains(event.target))menu.open=false;});
+  root().addEventListener('keydown',event=>{if(event.key==='Escape'){const menu=root().querySelector('.ns-export-menu');if(menu?.open){menu.open=false;menu.querySelector('summary').focus();}}});
+  $('nsCsv').onclick=()=>{root().querySelector('.ns-export-menu').open=false;exportRows();};$('nsCapture').onclick=()=>capture().catch(error=>status(error.message));
   const canvas=$('nsCanvas');canvas.addEventListener('pointerdown',onPointerDown);canvas.addEventListener('pointermove',onPointerMove);canvas.addEventListener('pointerup',onPointerUp);canvas.addEventListener('pointercancel',onPointerUp);
   canvas.addEventListener('keydown',event=>{if(event.target.closest('#nsPopup,#nsPicker'))return;const n=event.target.closest('[data-ns-node]'),e=event.target.closest('[data-ns-edge]');if(['Enter',' '].includes(event.key)&&(n||e)){event.preventDefault();if(n)selectPoint(n.dataset.nsNode);else{selected=e.dataset.nsEdge;renderDrawer();renderCanvas();}return;}
     if(event.key==='Escape'){connectFrom=null;popupVisible=false;$('nsPicker').hidden=true;renderPopup();return;}

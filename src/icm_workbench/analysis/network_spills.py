@@ -51,7 +51,7 @@ def main_reporting_year(start, end):
     ))
 
 
-def schematic_spill_assessment(frame, column, threshold, *, years=None, max_gap_seconds=900, exclusions=()):
+def schematic_spill_assessment(frame, column, threshold, *, years=None, max_gap_seconds=900, exclusions=(), comparison="ge"):
     """Report selected years without restarting occupied blocks at 1 January.
 
     Warm-up contributes counting context, never displayed duration or eligibility.
@@ -61,6 +61,13 @@ def schematic_spill_assessment(frame, column, threshold, *, years=None, max_gap_
     threshold, gap = float(threshold), float(max_gap_seconds)
     if not np.isfinite(threshold) or not np.isfinite(gap) or gap <= 0:
         raise ValueError("Threshold must be finite and the maximum gap must be positive.")
+    if comparison not in ("ge", "gt"):
+        raise ValueError("Threshold rule must be ge (at or above) or gt (above).")
+    # The shared detector remains inclusive. Its next representable threshold
+    # excludes equal-valued plateaus locally without rounding or a fixed epsilon.
+    detection_threshold = np.nextafter(threshold, np.inf) if comparison == "gt" else threshold
+    if not np.isfinite(detection_threshold):
+        raise ValueError("Threshold is outside the supported numeric range.")
     if column not in frame.columns:
         raise ValueError("Select an existing value channel.")
     x = frame[["timestamp", column]].copy()
@@ -80,7 +87,7 @@ def schematic_spill_assessment(frame, column, threshold, *, years=None, max_gap_
     context_end = min(end, pd.Timestamp(max(selected)+1, 1, 1))
     if context_end <= start:
         raise ValueError("Selected years are outside this source's period.")
-    result = spill_assessment(x, column, threshold, start=start, end=context_end,
+    result = spill_assessment(x, column, detection_threshold, start=start, end=context_end,
                               max_gap_seconds=gap, exclusions=exclusions)
     annual = {int(row["year"]): row for row in result["yearly_summary"].to_dict("records")}
     output = []
@@ -96,8 +103,14 @@ def schematic_spill_assessment(frame, column, threshold, *, years=None, max_gap_
         row.update(eligible=eligible, minimum_valid_hours=minimum,
                    reason="" if eligible else "Less than three calendar months of valid reporting data",
                    partial_year=(a != pd.Timestamp(year, 1, 1) or b != pd.Timestamp(year+1, 1, 1)),
-                   counting_basis=result["count_policy"], threshold=threshold)
-        context_status = _uncertain_context(x, column, threshold, gap, start, a, exclusions)
+                   counting_basis=result["count_policy"], threshold=threshold, comparison=comparison)
+        values = pd.to_numeric(x.loc[(x.timestamp >= a) & (x.timestamp <= b), column], errors="coerce")
+        values = values[np.isfinite(values)]
+        row.update(value_min=float(values.min()) if len(values) else None,
+                   value_max=float(values.max()) if len(values) else None,
+                   continuous_spill=bool(row["valid_hours"] > 0 and
+                       abs(row["duration_hours"] - row["valid_hours"]) < 1e-8))
+        context_status = _uncertain_context(x, column, detection_threshold, gap, start, a, exclusions)
         if context_status and row["count_status"] == "definitive":
             row["count_status"] = context_status
         if not eligible:
