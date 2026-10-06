@@ -15,7 +15,9 @@
       owner.dataset.icmCopyright = 'true';
       if (!owner.parentElement) footer.prepend(owner);
     }
+    const version = footer.querySelector('#appVersion');
     owner.textContent = 'Hydra Bench — © 2026 Anzar Sajid';
+    if (version) owner.append(' · ', version);
   }
 
   function exposeThresholdControlsGlobally() {

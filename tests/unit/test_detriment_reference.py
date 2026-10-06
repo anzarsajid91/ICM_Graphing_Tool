@@ -17,7 +17,7 @@ def source(path, kind):
     parsed = json.loads(parse_detriment_report(path))
     return dict(path=path, mapping=parsed["metadata"]["mapping_suggestions"],
                 report_kind=parsed["metadata"]["report_kind"], scope="Reference matched scope",
-                datum="AD", period_start="2023-01-01", period_end="2025-01-01",
+                datum="AD", period_start="2030-01-01", period_end="2032-01-01",
                 template="Reference exported row basis", duration_unit="auto")
 
 
@@ -49,7 +49,7 @@ def test_original_csv_structure_and_reference_scenario_results(cases, kind):
                 assert row[key] == value
     assert result["summary"]["unresolved"] == 0
     if kind == "spill":
-        assert len(result["rows"][0]["details_b"]) == 125
+        assert len(result["rows"][0]["details_b"]) == case['original_rows'] + 1
         assert result["counting_mode"] == "block-rows"
         with pytest.raises(ValueError, match="Summary|counting"):
             detriment_result(kind, json.dumps(a), json.dumps(b), json.dumps(dict(criteria, counting_mode="summary")))
@@ -72,7 +72,7 @@ def test_flood_critical_report_cannot_supply_worst_case_levels(cases):
 
 def test_reference_audit_reports_ancillary_date_values_and_date_only_end(cases):
     level = json.loads(parse_detriment_report(cases["level"]["original"]))
-    assert level["audit"]["numeric_date_cells"] == 122
+    assert level["audit"]["numeric_date_cells"] == 11
     spill = json.loads(parse_detriment_report(cases["spill"]["original"]))
     assert spill["audit"]["date_only_boundaries"] == 1
     assert spill["metadata"]["warnings"]

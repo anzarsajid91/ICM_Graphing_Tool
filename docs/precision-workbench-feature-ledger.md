@@ -40,7 +40,7 @@ This ledger reflects the canonical post-PR25 workflow. Historical route names ar
 - Precision ROUTES are the sole user-facing navigation owner. Legacy tabs remain implementation surfaces behind canonical routes rather than a second navigation model.
 - Import never chooses a new route on the user's behalf. FastPath may prepare a preview graph while the active workspace/subtab remains unchanged.
 - Data-only workflows remain valid: observed-only, model-only Depth/Level, rainfall-only and multi-scenario mappings are covered separately.
-- Hydraulic threshold controls are quantity-aware. Depth/Level may expose threshold controls; Flow/Velocity do not. Absolute Level retains source unit/reference context (for example Station A `m AD`).
+- Hydraulic threshold controls are quantity-aware. Depth/Level may expose threshold controls; Flow/Velocity do not. Absolute Level retains source unit/reference context (for example synthetic CSO `m AD`).
 - Threshold display and spill calculations share canonical stored values. Threshold changes invalidate affected spill readiness.
 - Graphs uses authoritative paired values and statistics. Log scatter filters only strictly positive plotted pairs and reports the removed count without modifying source data.
 - Observed traces retain the established red default; the first model retains `#5755d9`; rainfall keeps its established convention.
@@ -60,6 +60,6 @@ Final acceptance for this ledger is the exact-head PR #30 workflow set:
 3. Chromium complete browser workflow using repository reference data.
 4. Firefox Precision shell/navigation/focus checks.
 5. Same-runner repeated FastPath baseline comparison.
-6. Retained screenshots, downloaded HTML and print/PDF evidence reviewed against the requested workflow and Station A reference presentation.
+6. Retained screenshots, downloaded HTML and print/PDF evidence reviewed against the requested workflow and synthetic CSO reference presentation.
 
 The exact final head SHA and workflow run IDs are recorded in PR #30 after the last tracked documentation change so that evidence does not become stale merely by documenting it.

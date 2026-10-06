@@ -32,3 +32,8 @@ web/tests/baseline-local.mjs
 # Representative real-export UAT stays local by default
 tests/representative/data/
 tests/representative/manifest.local.json
+
+# Synthetic reference reports are reviewed fixtures, not generated user exports.
+!reference/current-tool/reports/
+!reference/current-tool/reports/**
+*.egg-info/
