@@ -65,6 +65,19 @@ def test_native_context_counts_match_existing_engine_across_year():
     assert row["analysis_start"] == "2024-01-01T00:00:00"
 
 
+def test_schematic_uses_occupied_12_24_blocks_not_physical_event_count():
+    frame = source("2024-01-01", "2024-04-02")
+    for start, end in [("2024-01-02T01:00", "2024-01-02T03:00"),
+                       ("2024-01-02T09:00", "2024-01-02T11:00"),
+                       ("2024-01-03T01:00", "2024-01-03T03:00")]:
+        frame.loc[(frame.timestamp >= start) & (frame.timestamp <= end), "depth"] = 2
+    shared = spill_assessment(frame, "depth", 1, max_gap_seconds=3700)
+    row = assess(frame)["rows"][0]
+    assert len(shared["events"]) == 3
+    assert row["spill_count"] == shared["total_spill_count"] == 2
+    assert row["counting_basis"].startswith("12-24;")
+
+
 def test_full_year_with_gap_remains_provisional():
     frame = source()
     frame.loc[2000:2050, "depth"] = np.nan
