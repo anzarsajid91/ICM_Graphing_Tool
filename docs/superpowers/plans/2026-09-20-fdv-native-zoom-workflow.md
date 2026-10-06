@@ -309,7 +309,7 @@ Run the repository's Workbench CI and Pages browser acceptance. Required:
 
 - [ ] **Step 2: Verify engineering parity**
 
-Read the smoke log and confirm current accepted values for rainfall totals, FM03 flow-continuity status/ratio, exclusion seconds, spill results, comparison/storage/report/workspace paths remain unchanged.
+Read the smoke log and confirm current accepted values for rainfall totals, FM7424 flow-continuity status/ratio, exclusion seconds, spill results, comparison/storage/report/workspace paths remain unchanged.
 
 - [ ] **Step 3: Inspect screenshots**
 

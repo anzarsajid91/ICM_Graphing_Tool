@@ -2,7 +2,7 @@
 
 Base reviewed: `466d5b0045c641ee28398bce14403130a76dc9c8`.
 
-The files under `reference/current-tool` are representative examples, not a format specification or a restriction on supported projects. All five Station A HTML Plotly payloads were inspected. Their observation/model colours are `#ff0000` and `#0008ff`. The FDV screenshot uses aligned rainfall, flow, depth and velocity panels with statistics below.
+The files under `reference/current-tool` are representative examples, not a format specification or a restriction on supported projects. All five synthetic CSO HTML Plotly payloads were inspected. Their observation/model colours are `#ff0000` and `#0008ff`. The FDV layout uses aligned rainfall, flow, depth and velocity panels with statistics below.
 
 ## Changes
 
@@ -15,13 +15,12 @@ The files under `reference/current-tool` are representative examples, not a form
 
 ## Independent checks completed locally
 
-- All nine FDV files and all four rainfall `.R` files parsed. Station A EDM parsed to 105,216 rows; rainfall CSV parsed to 349,387 rows.
-- FM01 screenshot reconciliation: flow min/max/average 0.039 / 0.769 / 0.128931055 m³/s; depth 0.113 / 0.470 / 0.188228510 m; velocity 0.42 / 1.48 / 0.880464263 m/s. RG01 total 85 mm. Native FM01 flow volume is 311,912.16 m³ over 28 days by an independent trapezoidal calculation.
-- Station A rainfall CSV has unresolved units and discontinuous timestamp support. Its dimensional total is withheld; missing intervals are not reported as dry.
+- All nine FDV files and all four rainfall `.R` files parsed. synthetic CSO EDM parsed to 105,216 rows; rainfall CSV parsed to 349,387 rows.
+- synthetic CSO rainfall CSV has unresolved units and discontinuous timestamp support. Its dimensional total is withheld; missing intervals are not reported as dry.
 - Six numerical tests cover irregular intervals, boundary clipping, exclusive sample membership, rainfall interval averaging, gaps, unknown units and empty windows. Node regression checks cover shared layout, safe report payloads, zero scaling, worker recovery, masks, workspace migration and registry behaviour. Pages packaging succeeded.
 
 ## Release gate
 
-The GitHub pull-request gate is the authoritative release check: it runs the complete Python suite plus numerical and real-reference tests, including parsing the CSV/HYD members of the model ZIP. Browser smoke imports real FM01/RG01, checks independently reconciled values, validates stacked domains, and opens exported reports with HTTPS blocked to verify embedded Plotly and layout containment.
+The GitHub pull-request gate is the authoritative release check: it runs the complete Python suite plus numerical and real-reference tests, including parsing the synthetic model ZIP. Browser smoke imports synthetic FM7413/RG5097, checks independently calculated synthetic values, validates stacked domains, and opens exported reports with HTTPS blocked to verify embedded Plotly and layout containment.
 
 The example legacy spill counts are not asserted as authoritative expected values: their support conventions and zero/missing handling differ from the current validity-aware engine. Existing spill/exclusion regression gates remain in force. Deployment and live verification must succeed before describing this revision as ready for review.

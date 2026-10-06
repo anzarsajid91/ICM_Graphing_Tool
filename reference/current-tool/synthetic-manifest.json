@@ -1,0 +1,366 @@
+{
+  "schema_version": 1,
+  "data_kind": "fully synthetic, independently generated",
+  "seed": 8349071265,
+  "station": "CS2666",
+  "monitors": [
+    "FM7413",
+    "FM8356",
+    "FM8095",
+    "FM7424",
+    "FM9320",
+    "FM2830",
+    "FM2961",
+    "FM8722",
+    "FM7307"
+  ],
+  "gauges": [
+    "RG5097",
+    "RG4922",
+    "RG6324",
+    "RG4977"
+  ],
+  "associated_gauges": [
+    "RG5097",
+    "RG4922",
+    "RG6324"
+  ],
+  "association_rows": [
+    [
+      "FM7413",
+      "RG5097",
+      450,
+      ""
+    ],
+    [
+      "FM8356",
+      "RG4922",
+      525,
+      ""
+    ],
+    [
+      "FM8095",
+      "RG6324",
+      525,
+      ""
+    ],
+    [
+      "FM7424",
+      "RG5097",
+      1050,
+      "FM7413, FM8356"
+    ],
+    [
+      "FM9320",
+      "RG4922",
+      600,
+      ""
+    ],
+    [
+      "FM2830",
+      "RG6324",
+      975,
+      "FM8095, FM9320"
+    ],
+    [
+      "FM2961",
+      "RG5097",
+      1500,
+      "FM7424, FM2830"
+    ],
+    [
+      "FM8722",
+      "RG4922",
+      600,
+      ""
+    ],
+    [
+      "FM7307",
+      "RG6324",
+      1650,
+      "FM2961, FM8722"
+    ]
+  ],
+  "survey_start": "2028-04-03T00:00:00",
+  "survey_end": "2028-05-05T00:00:00",
+  "survey_rows": 23041,
+  "edm_rows": 105121,
+  "rainfall_csv_rows": 86400,
+  "model_rows": 1008001,
+  "assessment_start": "2029-01-01T00:00:00",
+  "assessment_end": "2032-01-01T00:00:00",
+  "report_year": 2028,
+  "fdv_statistics": {
+    "FM7413": {
+      "flow": {
+        "rows": 23041,
+        "minimum": 0.012,
+        "maximum": 0.03,
+        "mean": 0.014883034590512568,
+        "total": 41148.84
+      },
+      "depth": {
+        "rows": 23041,
+        "minimum": 0.088,
+        "maximum": 0.155,
+        "mean": 0.108762249902348,
+        "total": 300706.98000000004
+      },
+      "velocity": {
+        "rows": 23041,
+        "minimum": 0.32,
+        "maximum": 0.86,
+        "mean": 0.5211865804435571,
+        "total": 1440978.0
+      }
+    },
+    "FM8356": {
+      "flow": {
+        "rows": 23041,
+        "minimum": 0.013000000000000001,
+        "maximum": 0.033,
+        "mean": 0.01658040015624322,
+        "total": 45841.68
+      },
+      "depth": {
+        "rows": 23041,
+        "minimum": 0.092,
+        "maximum": 0.15,
+        "mean": 0.10964853955991495,
+        "total": 303157.56
+      },
+      "velocity": {
+        "rows": 23041,
+        "minimum": 0.32,
+        "maximum": 0.86,
+        "mean": 0.5210950045570939,
+        "total": 1440723.0
+      }
+    },
+    "FM8095": {
+      "flow": {
+        "rows": 23041,
+        "minimum": 0.01,
+        "maximum": 0.029,
+        "mean": 0.014854172995963717,
+        "total": 41068.92
+      },
+      "depth": {
+        "rows": 23041,
+        "minimum": 0.091,
+        "maximum": 0.125,
+        "mean": 0.10044989366780956,
+        "total": 277724.16000000003
+      },
+      "velocity": {
+        "rows": 23041,
+        "minimum": 0.32,
+        "maximum": 0.86,
+        "mean": 0.5210012586259277,
+        "total": 1440465.0
+      }
+    },
+    "FM7424": {
+      "flow": {
+        "rows": 23041,
+        "minimum": 0.033,
+        "maximum": 0.09,
+        "mean": 0.04224195998437568,
+        "total": 116791.14000000001
+      },
+      "depth": {
+        "rows": 23041,
+        "minimum": 0.134,
+        "maximum": 0.23,
+        "mean": 0.1604756303979862,
+        "total": 443685.18000000005
+      },
+      "velocity": {
+        "rows": 23041,
+        "minimum": 0.32,
+        "maximum": 0.85,
+        "mean": 0.5209040406232369,
+        "total": 1440194.4
+      }
+    },
+    "FM9320": {
+      "flow": {
+        "rows": 23041,
+        "minimum": 0.008,
+        "maximum": 0.025,
+        "mean": 0.012211796363005078,
+        "total": 33763.44
+      },
+      "depth": {
+        "rows": 23041,
+        "minimum": 0.067,
+        "maximum": 0.107,
+        "mean": 0.08331001258625927,
+        "total": 230337.0
+      },
+      "velocity": {
+        "rows": 23041,
+        "minimum": 0.32,
+        "maximum": 0.85,
+        "mean": 0.5210468295646891,
+        "total": 1440588.0
+      }
+    },
+    "FM2830": {
+      "flow": {
+        "rows": 23041,
+        "minimum": 0.027,
+        "maximum": 0.078,
+        "mean": 0.039144958986155116,
+        "total": 108228.6
+      },
+      "depth": {
+        "rows": 23041,
+        "minimum": 0.132,
+        "maximum": 0.197,
+        "mean": 0.1549952259016536,
+        "total": 428532.9
+      },
+      "velocity": {
+        "rows": 23041,
+        "minimum": 0.32,
+        "maximum": 0.85,
+        "mean": 0.5210511696540949,
+        "total": 1440601.2000000002
+      }
+    },
+    "FM2961": {
+      "flow": {
+        "rows": 23041,
+        "minimum": 0.073,
+        "maximum": 0.197,
+        "mean": 0.09769871099344647,
+        "total": 270118.68
+      },
+      "depth": {
+        "rows": 23041,
+        "minimum": 0.213,
+        "maximum": 0.331,
+        "mean": 0.24877553057592988,
+        "total": 687816.9600000001
+      },
+      "velocity": {
+        "rows": 23041,
+        "minimum": 0.32,
+        "maximum": 0.86,
+        "mean": 0.5211735601753397,
+        "total": 1440942.0
+      }
+    },
+    "FM8722": {
+      "flow": {
+        "rows": 23041,
+        "minimum": 0.006,
+        "maximum": 0.022,
+        "mean": 0.009676142528536089,
+        "total": 26752.799999999996
+      },
+      "depth": {
+        "rows": 23041,
+        "minimum": 0.059000000000000004,
+        "maximum": 0.098,
+        "mean": 0.07083737684996311,
+        "total": 195851.94
+      },
+      "velocity": {
+        "rows": 23041,
+        "minimum": 0.32,
+        "maximum": 0.86,
+        "mean": 0.5211470856299639,
+        "total": 1440870.0
+      }
+    },
+    "FM7307": {
+      "flow": {
+        "rows": 23041,
+        "minimum": 0.094,
+        "maximum": 0.245,
+        "mean": 0.1237141183108372,
+        "total": 342046.5
+      },
+      "depth": {
+        "rows": 23041,
+        "minimum": 0.24,
+        "maximum": 0.378,
+        "mean": 0.28276047046569164,
+        "total": 781779.3600000001
+      },
+      "velocity": {
+        "rows": 23041,
+        "minimum": 0.32,
+        "maximum": 0.85,
+        "mean": 0.5210420554663426,
+        "total": 1440577.2000000002
+      }
+    }
+  },
+  "rainfall_statistics": {
+    "RG5097": {
+      "rows": 23041,
+      "minimum": 0.0,
+      "maximum": 21.0,
+      "mean": 0.09914066229764334,
+      "total": 76.14333333333333
+    },
+    "RG4922": {
+      "rows": 23041,
+      "minimum": 0.0,
+      "maximum": 19.0,
+      "mean": 0.0893364003298468,
+      "total": 68.61333333333333
+    },
+    "RG6324": {
+      "rows": 23041,
+      "minimum": 0.0,
+      "maximum": 75.6,
+      "mean": 0.180608480534699,
+      "total": 138.7133333333333
+    },
+    "RG4977": {
+      "rows": 23041,
+      "minimum": 0.0,
+      "maximum": 56.4,
+      "mean": 0.26843886984071874,
+      "total": 206.17
+    }
+  },
+  "detriment_rows": {
+    "level": 47,
+    "flooding": 47,
+    "spill": 83
+  },
+  "numeric_date_cells": 11,
+  "date_only_boundaries": 1,
+  "files": {
+    "reports/html/CS2666_Spills_2029_Baseline.html": "16eb6cdca2b58f715d07ea9f170a84df4e713ae21aba2cb120b800c49604093e",
+    "reports/html/CS2666_Spills_2030_Baseline.html": "04fbca1d3274d3a78b3970d5d58a40b697c2e4b450de6e996ba559a8f4179a13",
+    "reports/html/CS2666_Spills_2031_Baseline.html": "40ae928e8ebbb145f1b25985704a24094e05c66c96af9c3c35e67a7d4450538e",
+    "reports/html/CS2666_Spills_2031_Option_C.html": "ce5142a6a390b24176ed4b31d6a1090abeada55862938aab30365ea0fd5e9786",
+    "reports/html/CS2666_Spills_2031_Option_T.html": "081e228296d52f2b229565946f4d9b5c1092784e69db1938621c702a33611332",
+    "sample-data/fdv/FM2830.fdv": "f6125b056c4fb9066631bd4144337e933bf915e234d93efc71fd2b108bf49de4",
+    "sample-data/fdv/FM2961.fdv": "db449b249cf4f0f091efc0fbe863b84a57ffba45d0186aff0fe5e750eada0ff5",
+    "sample-data/fdv/FM7307.fdv": "949c14d1fbb55076846ced397094e8da36b2d32f845452491f462977ae0abd0b",
+    "sample-data/fdv/FM7413.fdv": "a8a1b8adc4ec12a85eae404b0ae1a15b356f7dd2700fd28de6bcfdd0e2c8e52f",
+    "sample-data/fdv/FM7424.fdv": "aa53890ad2b574480085b69d2e4b1b99cb18df96af3643ad0f82c9373de75777",
+    "sample-data/fdv/FM8095.fdv": "b29dff22594ba3a0bd599a82b84eddb88b678b237fcd5fec708e49cb8e821634",
+    "sample-data/fdv/FM8356.fdv": "991c3731606a2eed01475a1fcc2401cbeaa8c808a133d08335b32fe6ace51daa",
+    "sample-data/fdv/FM8722.fdv": "dd70f0ae333bb5d4fe4681e22e7c9771a1f34ad2d44521dff1493c8c14ea8f0e",
+    "sample-data/fdv/FM9320.fdv": "8365299a1d748f1f699349ead3a3004a9886ef61197e6985abe2ff2b18e261e8",
+    "sample-data/other/CS2666_EDM.csv": "78c13a78e87d2d781506b51104e15e9d238e67d8dab4c4cbe503698f09b67b50",
+    "sample-data/other/CS2666_Modelled_Data.zip": "4e351fbf21a4cf691d8f37372e0e544cbca2759a18f279ce0217f30f4310b475",
+    "sample-data/other/CS2666_Rainfall.csv": "57f58c6f3344340f77e5f12f81f597adc27bc3182dabf8fab7f5503627e24326",
+    "sample-data/other/Statistical_Template_spills_Sample.csv": "3cee308f8ebbc118532dbcc4a9d53f5a09a06f12e358eb6efd1ea24cf40e8fad",
+    "sample-data/other/Worst_Case_Level_Sample.csv": "3aca3ddd198348984b2472b526a2b177222acadf37a7b392027a331f2f4d49b3",
+    "sample-data/other/Worst_Case_Volume_Sample.csv": "d378e757b6f9a990cfbdadb1d660dc47228fb228acc9aab9bf451dd458b5a4a4",
+    "sample-data/rainfall/RG4922.R": "1ab1ec7af85413ea2a5acf0d2cb9a6c1a91f0e54bf6d7afaa76992318606fbb9",
+    "sample-data/rainfall/RG4977.R": "514374307bfde38347ec1c8262d0096b710c1009260d9b6552916bc4fffc39b3",
+    "sample-data/rainfall/RG5097.R": "ce358b5bc538ed107da0ab84abfe8d66a7649e2d1ff40e01470ffb63f008143b",
+    "sample-data/rainfall/RG6324.R": "aa010b42731041bfa3ed25b37a726c13512a721c243df94ac785036e3aad1378",
+    "sample-data/rainfall/fm_rg_assoc.xlsx": "cb2c58a219fbf7b94c2fa86ac4bcc9fc79f06dc113f80d2810601d05c3e98412"
+  }
+}

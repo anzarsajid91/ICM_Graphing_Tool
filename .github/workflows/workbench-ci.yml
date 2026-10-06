@@ -16,6 +16,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -23,7 +24,7 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e . pytest
       - run: python -m pytest
-      - name: Validate uploaded current-tool reference samples
+      - name: Validate synthetic current-tool reference samples
         if: runner.os == 'Linux'
         run: python scripts/validate_reference_samples.py
       - run: python -m compileall -q src

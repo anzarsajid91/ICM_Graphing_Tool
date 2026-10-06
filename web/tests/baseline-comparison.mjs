@@ -17,14 +17,14 @@ const browser=await chromium.launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000},timezoneId:'Asia/Kolkata'});
 
 async function extractModel(){
-  const archive=path.join(root,'reference/current-tool/sample-data/other/StationA_Modelled Data.zip');
+  const archive=path.join(root,'reference/current-tool/sample-data/other/CS2666_Modelled_Data.zip');
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),'icm-baseline-model-'));
   const py=[
     'import pathlib,sys,zipfile',
     'a=pathlib.Path(sys.argv[1]); d=pathlib.Path(sys.argv[2])',
     'with zipfile.ZipFile(a) as z:',
     ' m=[x for x in z.infolist() if not x.is_dir() and x.filename.lower().endswith((".csv",".hyd")) and "__MACOSX" not in x.filename][0]',
-    ' p=d/("StationA_Modelled Data"+pathlib.Path(m.filename).suffix.lower())',
+    ' p=d/("CS2666_Modelled_Data"+pathlib.Path(m.filename).suffix.lower())',
     ' p.write_bytes(z.read(m)); print(p); print(m.filename,file=sys.stderr)',
   ].join('\n');
   const {stdout,stderr}=await execFileAsync('python',['-c',py,archive,dir]);
@@ -100,10 +100,10 @@ async function measure(url,kind,spec){
 
 const model=await extractModel();
 const datasets=[
-  {dataset:'FM01.fdv',inputName:'FM01.fdv',sourcePath:path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv'),timeoutMs:180000},
-  {dataset:'StationA_EDM.csv',inputName:'StationA_EDM.csv',sourcePath:path.join(root,'reference/current-tool/sample-data/other/StationA_EDM.csv'),timeoutMs:240000},
-  {dataset:'StationA_Rainfall.csv',inputName:'StationA_Rainfall.csv',sourcePath:path.join(root,'reference/current-tool/sample-data/other/StationA_Rainfall.csv'),timeoutMs:300000},
-  {dataset:'StationA_Modelled Data.csv',inputName:path.basename(model.sourcePath),sourcePath:model.sourcePath,archiveMember:model.archiveMember,timeoutMs:360000},
+  {dataset:'FM7413.fdv',inputName:'FM7413.fdv',sourcePath:path.join(root,'reference/current-tool/sample-data/fdv/FM7413.fdv'),timeoutMs:180000},
+  {dataset:'CS2666_EDM.csv',inputName:'CS2666_EDM.csv',sourcePath:path.join(root,'reference/current-tool/sample-data/other/CS2666_EDM.csv'),timeoutMs:240000},
+  {dataset:'CS2666_Rainfall.csv',inputName:'CS2666_Rainfall.csv',sourcePath:path.join(root,'reference/current-tool/sample-data/other/CS2666_Rainfall.csv'),timeoutMs:300000},
+  {dataset:'CS2666_Modelled_Data.csv',inputName:path.basename(model.sourcePath),sourcePath:model.sourcePath,archiveMember:model.archiveMember,timeoutMs:360000},
 ];
 
 const SAMPLE_SIZE=3;

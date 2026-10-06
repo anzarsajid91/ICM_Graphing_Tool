@@ -84,7 +84,7 @@ def test_icm_hyd_metadata_distinguishes_overflow_level_from_flow(tmp_path:Path):
     p=tmp_path/"Overflow_Level.csv";p.write_text("!Version=1,Type=HYD\nUserSettings,U_LEVEL,m AD\nP_DATETIME,Value\n01/01/2026 00:00,1.2\n01/01/2026 00:02,1.3\n",encoding="utf-8");parsed=parse_icm_hyd_csv(p);assert parsed.metadata["quantity"]=="level";assert parsed.metadata["canonical_unit"]=="m";assert parsed.metadata["vertical_reference"]=="AD";assert parsed.metadata["source_unit_label"]=="m AD"
 
 def test_parse_file_content_sniffs_hyd_payload_with_csv_extension(tmp_path:Path):
-    p=tmp_path/"StationA_EDM.csv"
+    p=tmp_path/"Synthetic_EDM.csv"
     p.write_text("!Version=1,type=HYD,encoding=MBCS\nUserSettings,U_LEVEL,U_CONDHEIGHT,U_VALUES,U_DATETIME\nUserSettingsValues,m AD,mm,m,dd-mm-yyyy hh:mm\nP_DATETIME,1\n01/01/2022 00:15:00,3.62\n01/01/2022 00:30:00,3.63\n",encoding="utf-8")
     parsed=parse_file(p)
     assert parsed.format_name=="icm_hyd_p_datetime_csv"

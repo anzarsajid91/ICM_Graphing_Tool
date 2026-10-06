@@ -31,6 +31,9 @@ try{
     body:document.body.innerText,
   }));
   assert.equal(initial.status,'idle');
+  const version=await page.locator('#appVersion').textContent();
+  assert.match(version,/^v\d+\.\d{3}(?:-preview)?$/);
+  assert.match(await page.locator('footer').innerText(),/Anzar Sajid/);
   assert.equal(initial.deferred,true,'desktop cold start must defer the heavyweight Python runtime');
   assert.equal(initial.engineReadyAt,null,'authoritative engine must not be ready before a workflow needs it');
   assert.equal(pyodideRequests.length,0,'cold page open must not request Pyodide');
@@ -45,7 +48,7 @@ try{
   }
   assert.equal(pyodideRequests.length,0,'navigation alone must not start Pyodide');
 
-  const sample=path.join(process.cwd(),'reference/current-tool/sample-data/fdv/FM01.fdv');
+  const sample=path.join(process.cwd(),'reference/current-tool/sample-data/fdv/FM7413.fdv');
   const firstPyodideRequest=page.waitForRequest(
     request=>request.url().includes('/vendor/pyodide-0.29.4/'),
     {timeout:10000}

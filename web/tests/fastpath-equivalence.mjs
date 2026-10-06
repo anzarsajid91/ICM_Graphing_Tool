@@ -13,9 +13,9 @@ assert.ok(core);
 
 const authoritative=JSON.parse(execFileSync('python',['scripts/fastpath_authoritative_contract.py'],{encoding:'utf8',maxBuffer:32*1024*1024}));
 const paths={
-  'FM01.fdv':'reference/current-tool/sample-data/fdv/FM01.fdv',
-  'StationA_EDM.csv':'reference/current-tool/sample-data/other/StationA_EDM.csv',
-  'StationA_Rainfall.csv':'reference/current-tool/sample-data/other/StationA_Rainfall.csv',
+  'FM7413.fdv':'reference/current-tool/sample-data/fdv/FM7413.fdv',
+  'CS2666_EDM.csv':'reference/current-tool/sample-data/other/CS2666_EDM.csv',
+  'CS2666_Rainfall.csv':'reference/current-tool/sample-data/other/CS2666_Rainfall.csv',
 };
 const clock=v=>String(v||'').replace(' ','T').slice(0,19);
 const near=(a,b,tol=1e-10)=>a==null&&b==null||Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Math.abs(Number(a)-Number(b))<=tol*Math.max(1,Math.abs(Number(b)));
@@ -45,4 +45,4 @@ for(const [name,filePath] of Object.entries(paths)){
     }
   }
 }
-console.log('FastPath/Python reference equivalence passed for FM01 and Station A CSVs.');
+console.log('FastPath/Python reference equivalence passed for FM7413 and synthetic CSO CSVs.');

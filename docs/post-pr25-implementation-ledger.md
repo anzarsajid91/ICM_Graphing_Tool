@@ -17,8 +17,8 @@ Status meanings: **Verified** = evidenced on the applicable current/later build;
 | ARCH-02 | Native-resolution calculations, timestep/gap/DST/units/exclusions/spill-counting preserved | Python regression suite + browser numerical parity + existing PR25 gate | Implemented but unverified on final head |
 | DEF-THR-01 | Observed threshold only for applicable Depth/Level; Flow/Velocity ineligible | quantity-aware threshold context in runtime/workbench graph code; browser matrix tests | Implemented but unverified on final head |
 | DEF-THR-02 | Model threshold only for applicable model Depth/Level, including model-only workflow | model-only graph/spill/report support and browser test | Implemented but unverified on final head |
-| DEF-THR-03 | Zero/negative/out-of-range values, datum/unit context, incompatible remapping and immediate overlay | threshold context/reconciliation; Station A `m AD`; edge-case browser tests | Implemented but unverified on final head |
-| DEF-THR-04 | Same threshold value reaches control, graph, calculation and report; changes stale dependent results | canonical spill threshold state, dependency signatures, Station A chain test | Implemented but unverified on final head |
+| DEF-THR-03 | Zero/negative/out-of-range values, datum/unit context, incompatible remapping and immediate overlay | threshold context/reconciliation; synthetic CSO `m AD`; edge-case browser tests | Implemented but unverified on final head |
+| DEF-THR-04 | Same threshold value reaches control, graph, calculation and report; changes stale dependent results | canonical spill threshold state, dependency signatures, synthetic CSO chain test | Implemented but unverified on final head |
 | DEF-IMP-01 | File input preserves current workspace/subtab | route-continuity browser cases across Spills, Flow Survey, Graphs and Reports | Implemented but unverified on final head |
 | DEF-IMP-02 | Folder import and drag/drop preserve route; valid siblings survive malformed files | real-directory folder test, drag/drop route assertion, malformed-sibling regression | Implemented but unverified on final head |
 | NAV-01 | Principal order: Data / Time Series → Spills → Flow Survey → Graphs → Reports | `web/assets/precision-workbench.js` ROUTES | Implemented but unverified on final head |
@@ -38,15 +38,15 @@ Status meanings: **Verified** = evidenced on the applicable current/later build;
 | REPORT-03 | Export uses coherent authoritative snapshot and rejects stale selected results | dependency signatures + report freshness guard | Implemented but unverified on final head |
 | REPORT-04 | Selected scenario subset and linear/log scatter are honoured in report | report-specific scatter and browser payload assertions | Implemented but unverified on final head |
 | REPORT-05 | Full-period graph uses declared/source period, not accidental screen zoom | timezone-neutral report period and rebuilt authoritative report traces | Implemented but unverified on final head |
-| REPORT-06 | Station A-style downloaded HTML/print layout: rainfall visible, metrics integrated, tables/legends contained | independent report browser/print/PDF acceptance | Implemented but unverified on final head |
+| REPORT-06 | synthetic CSO-style downloaded HTML/print layout: rainfall visible, metrics integrated, tables/legends contained | independent report browser/print/PDF acceptance | Implemented but unverified on final head |
 | REPORT-07 | © 2026 Anzar Sajid and source/build/provenance retained | application/report footer and audit appendix tests | Implemented but unverified on final head |
 | STATE-01 | Dependency signatures include mappings, units, period, thresholds, exclusions and project/survey context | analysis/rating/spill/storage/survey signatures | Implemented but unverified on final head |
 | STATE-02 | Association rows/source/topology and criteria changes stale survey outputs; late async results discarded | survey dependency signatures/generation guards and browser regressions | Implemented but unverified on final head |
 | STATE-03 | Supported older workspaces/routes migrate; missing/changed sources guide reattachment; unsupported schemas fail safely | schema v1/v2/v3 migration and workspace browser acceptance | Implemented but unverified on final head |
 | UX-01 | Apple-inspired restrained graph-first hierarchy, progressive disclosure and contextual controls preserved | Precision shell/CSS and route ownership | Implemented but unverified on final head |
 | UX-02 | Responsive widths, narrow layout, keyboard focus, table containment and no document overflow | Precision shell/Chromium acceptance | Implemented but unverified on final head |
-| REF-01 | Real FDV/R/Station A reference inputs are exercised, not merely listed | reference manifest below + CI/browser/performance scripts | Implemented but unverified on final head |
-| REF-02 | Station A HYD-in-CSV content is recognised by signature and preserves Level · m · AD | `src/icm_workbench/parsers/csv.py` + unit/browser tests | Implemented but unverified on final head |
+| REF-01 | Real FDV/R/synthetic CSO reference inputs are exercised, not merely listed | reference manifest below + CI/browser/performance scripts | Implemented but unverified on final head |
+| REF-02 | synthetic CSO HYD-in-CSV content is recognised by signature and preserves Level · m · AD | `src/icm_workbench/parsers/csv.py` + unit/browser tests | Implemented but unverified on final head |
 | PERF-01 | Repeated same-runner FastPath baseline comparison with median/range and practical-file gate | `web/tests/baseline-comparison.mjs`, sample size 3 | Implemented but unverified on final head |
 | PERF-02 | Navigation/scatter responsiveness and memory evidence retained where available | performance evidence JSON/browser assertions | Implemented but unverified on final head |
 | FINAL-01 | Python/JS/build/reference validation green on exact final head | Workbench CI + Pages verify | Pending final exact-head run |
@@ -83,20 +83,20 @@ These approved repository references are the acceptance sources actually targete
 
 | Purpose | Repository path | Reference identity |
 |---|---|---|
-| FDV flow survey | `reference/current-tool/sample-data/fdv/FM01.fdv` through `FM08.fdv` | FM01 blob `aa5d10175f81dcc220d2e86197a65070a0cc1443` |
-| Rainfall .R | `reference/current-tool/sample-data/rainfall/RG01.R` through `RG04.R` | RG01 blob `c4f2f408b321653dd21e2e6e3ed34974c1c82e5b` |
+| FDV flow survey | `reference/current-tool/sample-data/fdv/FM7413.fdv` through `FM7307.fdv` | FM7413 blob `aa5d10175f81dcc220d2e86197a65070a0cc1443` |
+| Rainfall .R | `reference/current-tool/sample-data/rainfall/RG5097.R` through `RG4977.R` | RG5097 blob `c4f2f408b321653dd21e2e6e3ed34974c1c82e5b` |
 | Association workbook | `reference/current-tool/sample-data/rainfall/fm_rg_assoc.xlsx` | blob `e8631ef222acbac875a00eb4c649a0e19075a54d` |
-| Station A observed EDM | `reference/current-tool/sample-data/other/StationA_EDM.csv` | blob `6f34d8b7efe19643a3ba6dda9e9991a3e94743c7` |
-| Station A rainfall | `reference/current-tool/sample-data/other/StationA_Rainfall.csv` | blob `cb44651a2a124ff8385160702e8ac741597a11ad` |
-| Station A model | `reference/current-tool/sample-data/other/StationA_Modelled Data.zip` | blob `86b49f505f9314ac89f48972d276a1f40618fe6c` |
-| Station A reference reports | `reference/current-tool/reports/html/StationA_CSO_Spills_*.html` | repository reference set |
+| synthetic CSO observed EDM | `reference/current-tool/sample-data/other/CS2666_EDM.csv` | blob `6f34d8b7efe19643a3ba6dda9e9991a3e94743c7` |
+| synthetic CSO rainfall | `reference/current-tool/sample-data/other/CS2666_Rainfall.csv` | blob `cb44651a2a124ff8385160702e8ac741597a11ad` |
+| synthetic CSO model | `reference/current-tool/sample-data/other/CS2666_Modelled_Data.zip` | blob `86b49f505f9314ac89f48972d276a1f40618fe6c` |
+| synthetic CSO reference reports | `reference/current-tool/reports/html/CS2666_CSO_Spills_*.html` | repository reference set |
 | FDV visual reference | `reference/current-tool/reports/screenshots/FDV_Sample_Plots.png` | blob `30fdbf9a665affa0e50321a74720f5da4d217a48` |
 
-Station A threshold-chain acceptance selects the HYD payload by parsed hydraulic quantity, verifies Level / m / AD metadata, chooses a finite in-support threshold, then requires that identical value in the Time Series control/overlay, Spill calculation snapshot and exported report.
+synthetic CSO threshold-chain acceptance selects the HYD payload by parsed hydraulic quantity, verifies Level / m / AD metadata, chooses a finite in-support threshold, then requires that identical value in the Time Series control/overlay, Spill calculation snapshot and exported report.
 
 ## Close-out continuation record
 
-The successor branch contains cohesive commits covering: single navigation ownership; browser history/keyboard routing; quantity/reference-safe thresholds; model-only and rainfall-only workflows; complete result dependency signatures; late-result rejection; report section/scenario/scatter selection; semantic readiness states; workspace migration/reattachment safety; Station A HYD datum handling; malformed-import isolation; drag/drop/folder route continuity; multi-scenario/long-legend acceptance; repeated FastPath benchmarking; print/PDF checks; and explicit 200% zoom coverage.
+The successor branch contains cohesive commits covering: single navigation ownership; browser history/keyboard routing; quantity/reference-safe thresholds; model-only and rainfall-only workflows; complete result dependency signatures; late-result rejection; report section/scenario/scatter selection; semantic readiness states; workspace migration/reattachment safety; synthetic CSO HYD datum handling; malformed-import isolation; drag/drop/folder route continuity; multi-scenario/long-legend acceptance; repeated FastPath benchmarking; print/PDF checks; and explicit 200% zoom coverage.
 
 The latest pre-ledger browser findings were:
 - Firefox keyboard focus was restored to the correct rebuilt subtab but lacked a computed visible outline; corrected with a secondary-navigation cross-browser focus-ring fallback.

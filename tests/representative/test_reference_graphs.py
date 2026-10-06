@@ -1,4 +1,4 @@
-"""Regression cases supplied as examples, never production format assumptions."""
+"""Synthetic regression cases, never production format assumptions."""
 import json
 import shutil
 import tempfile
@@ -11,6 +11,7 @@ from icm_workbench.parsers import parse_file
 from icm_workbench.browser_api import series_data, clear_cache
 
 ROOT=Path(__file__).resolve().parents[2]/'reference/current-tool'
+MANIFEST=json.loads((ROOT/'synthetic-manifest.json').read_text())
 
 
 @unittest.skipUnless(ROOT.exists(), 'Reference example files are not available')
@@ -34,27 +35,27 @@ class ReferenceGraphTests(unittest.TestCase):
                 self.assertEqual(data['statistics']['unit'],'m³/s')
                 self.assertGreater(len(frame),2000)
 
-    def test_fm01_statistics_match_supplied_screenshot(self):
-        path=str(ROOT/'sample-data/fdv/FM01.fdv')
-        for col,minimum,maximum,average in [('flow',.039,.769,.1289),('depth',.113,.470,.1882),('velocity',.42,1.48,.8805)]:
-            s=json.loads(series_data(path,col,max_points=20))['statistics']
-            self.assertAlmostEqual(s['minimum'],minimum,places=6)
-            self.assertAlmostEqual(s['maximum'],maximum,places=6)
-            self.assertLess(abs(s['mean']-average),.00005)
+    def test_synthetic_statistics_match_independent_generator_arithmetic(self):
+        monitor=MANIFEST['monitors'][0]
+        path=str(ROOT/f'sample-data/fdv/{monitor}.fdv')
+        for col,expected in MANIFEST['fdv_statistics'][monitor].items():
+            actual=json.loads(series_data(path,col,max_points=20))['statistics']
+            for key in ['minimum','maximum','mean']:
+                self.assertAlmostEqual(actual[key],expected[key],places=10)
 
-    def test_rain_gauges_and_screenshot_85_mm(self):
+    def test_rain_gauges_and_independent_intensity_totals(self):
         for path in (ROOT/'sample-data/rainfall').glob('*.R'):
             frame=parse_file(path).frame
             expected=float(frame.rainfall.sum()*2/60)
             s=json.loads(series_data(str(path),'rainfall',max_points=20))['statistics']
             self.assertAlmostEqual(s['total'],expected,places=6)
-        s=json.loads(series_data(str(ROOT/'sample-data/rainfall/RG01.R'),'rainfall'))['statistics']
-        self.assertAlmostEqual(s['total'],85,places=6)
+        s=json.loads(series_data(str(ROOT/'sample-data/rainfall/RG5097.R'),'rainfall'))['statistics']
+        self.assertAlmostEqual(s['total'],MANIFEST['rainfall_statistics'][MANIFEST['gauges'][0]]['total'],places=6)
 
-    def test_station_a_csv_unit_and_support_contracts(self):
-        edm=ROOT/'sample-data/other/StationA_EDM.csv'
-        rain=ROOT/'sample-data/other/StationA_Rainfall.csv'
-        self.assertEqual(len(parse_file(edm).frame),105216)
+    def test_synthetic_cso_csv_unit_and_support_contracts(self):
+        edm=ROOT/'sample-data/other/CS2666_EDM.csv'
+        rain=ROOT/'sample-data/other/CS2666_Rainfall.csv'
+        self.assertEqual(len(parse_file(edm).frame),MANIFEST['edm_rows'])
         s=json.loads(series_data(str(rain),'1',max_points=20))['statistics']
         self.assertEqual(s['quantity'],'rainfall')
         self.assertIsNone(s['unit'])
@@ -76,7 +77,7 @@ class ReferenceGraphTests(unittest.TestCase):
             self.assertTrue(any(t.get('type')=='table' for t in traces))
 
     def test_model_archive_csvs_parse_without_schema_assumptions(self):
-        path=ROOT/'sample-data/other/StationA_Modelled Data.zip'
+        path=ROOT/'sample-data/other/CS2666_Modelled_Data.zip'
         if not path.exists():
             self.skipTest('Binary archive unavailable in this local session; full repository CI exercises it')
         with zipfile.ZipFile(path) as archive, tempfile.TemporaryDirectory() as directory:

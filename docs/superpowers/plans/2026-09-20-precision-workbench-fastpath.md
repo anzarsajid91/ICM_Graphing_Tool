@@ -48,7 +48,7 @@ Evidence used for this reconciliation includes the fully green hardened browser 
 **Produces:** Browser timing evidence for current authoritative-only import using checked-in reference files, retained as CI artifact/log output.
 
 - [x] Add a browser helper that records file size, known row count after authoritative parse, selection time, authoritative-ready time and first graph paint time for the existing path without changing runtime behavior.
-- [x] Exercise FM01 FDV and Station A observed CSV (plus the largest practical checked-in FDV/CSV if different).
+- [x] Exercise FM7413 FDV and synthetic CSO observed CSV (plus the largest practical checked-in FDV/CSV if different).
 - [x] Emit JSON under the existing evidence directory and upload it with browser evidence.
 - [x] Run PR CI and record measured baseline values in `docs/fastpath-performance.md`.
 - [x] Commit: `perf: capture baseline import-to-graph timings`.
@@ -63,7 +63,7 @@ Evidence used for this reconciliation includes the fully green hardened browser 
 **Produces:** RED tests for parser eligibility, canonical preview schema, FDV canonical conversion, CSV timestamp/unit conservatism, descriptive statistics and mismatch behavior.
 
 - [x] Add unit cases for valid FDV; incomplete FDV; unsupported FDV unit; ISO CSV; UK day-first CSV; quoted CSV; unresolved unit; duplicate timestamps; sentinel/missing values; malformed timestamp; ICM P_DATETIME.
-- [x] Add reference tests against checked-in FM01 and Station A EDM/rainfall samples.
+- [x] Add reference tests against checked-in FM7413 and synthetic CSO EDM/rainfall samples.
 - [ ] Run CI and confirm failure is specifically missing FastPath implementation. — Historical RED-run evidence was not retained; final contract tests are present and green.
 - [x] Commit: `test: lock fastpath parsing and preview contract`.
 
@@ -174,7 +174,7 @@ Evidence used for this reconciliation includes the fully green hardened browser 
 **Produces:** measured before/after matrix and reference-data regression evidence.
 
 - [x] Re-run identical FDV/CSV timing matrix and record T0-T6 values.
-- [x] Verify FM01/RG01 known reference values and Station A parser counts/periods through authoritative paths.
+- [x] Verify FM7413/RG5097 known reference values and synthetic CSO parser counts/periods through authoritative paths.
 - [x] Exercise multi-file and mixed supported import.
 - [x] Exercise rainfall R, Data Health/survey, observed/model comparison, spills/exclusions, workspace/report export.
 - [x] Inspect generated report in browser test for legend/rainfall/statistics/table containment.

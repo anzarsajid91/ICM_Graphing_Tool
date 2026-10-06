@@ -25,6 +25,7 @@ from icm_workbench.parsers import parse_file
 ROOT = Path(__file__).resolve().parents[1]
 REFERENCE = ROOT / "reference" / "current-tool"
 SAMPLE = REFERENCE / "sample-data"
+MANIFEST = json.loads((REFERENCE / 'synthetic-manifest.json').read_text())
 VALID_RAGS = {"Green", "Amber", "Red", "Grey"}
 
 
@@ -158,7 +159,7 @@ def _legacy_threshold_candidate(path: Path, level_min: float, level_max: float) 
     counts = Counter(round(v, 6) for v in candidates)
     value, count = counts.most_common(1)[0]
     return float(value), {
-        "source": "legacy-report-horizontal-line",
+        "source": "synthetic-report-horizontal-line",
         "candidate_count": len(candidates),
         "repeat_count": int(count),
         "all_candidates": [{"value": float(k), "count": int(v)} for k, v in counts.most_common(8)],
@@ -203,9 +204,9 @@ def _event_level_response(level_frame: pd.DataFrame, level_col: str, events: lis
 
 
 def _edm_workflow() -> dict[str, Any]:
-    edm_path = SAMPLE / "other" / "StationA_EDM.csv"
-    rain_path = SAMPLE / "other" / "StationA_Rainfall.csv"
-    legacy_path = REFERENCE / "reports" / "html" / "StationA_CSO_Spills_2024.html"
+    edm_path = SAMPLE / "other" / "CS2666_EDM.csv"
+    rain_path = SAMPLE / "other" / "CS2666_Rainfall.csv"
+    legacy_path = REFERENCE / "reports" / "html" / "CS2666_Spills_2031_Baseline.html"
 
     edm = parse_file(edm_path)
     rain = parse_file(rain_path)
@@ -213,18 +214,15 @@ def _edm_workflow() -> dict[str, Any]:
     rain_col = _series_column(rain)
     levels = _finite(edm.frame[level_col])
     if levels.empty:
-        raise AssertionError("Station A EDM reference contains no finite level data")
+        raise AssertionError("synthetic CSO EDM reference contains no finite level data")
 
     rain_meta = rain.metadata or {}
-    rain_interval = rain_meta.get("interval_min")
+    rain_interval = rain_meta.get("interval_min") or 2.0
     rain_gap_seconds = _rain_support_gap_seconds(rain)
 
-    # Historical Station A reports cover calendar years 2022-2024. The source
-    # rainfall file deliberately extends before and after that period, so the
-    # engineering reconciliation must be performed on the report window rather
-    # than on the whole convenience file.
-    assessment_start = pd.Timestamp("2022-01-01 00:00:00")
-    assessment_end = pd.Timestamp("2025-01-01 00:00:00")
+    # Synthetic assessment dates are fixture metadata, never application defaults.
+    assessment_start = pd.Timestamp(MANIFEST['assessment_start'])
+    assessment_end = pd.Timestamp(MANIFEST['assessment_end'])
     rain_window = rain.frame[["timestamp", rain_col]].copy()
     rain_window["timestamp"] = pd.to_datetime(rain_window["timestamp"], errors="coerce")
     rain_window = rain_window.loc[
@@ -297,7 +295,7 @@ def _edm_workflow() -> dict[str, Any]:
             and (edm.metadata or {}).get("quantity") == "level"
             and (edm.metadata or {}).get("canonical_unit") == "m"
         ),
-        "rainfall_total_reconciles_reference": bool(total_mm is not None and abs(float(total_mm) - 2880.854) <= 1.0),
+        "rainfall_total_reconciles_reference": bool(total_mm is not None and abs(float(total_mm) - float(rain_window[rain_col].sum())*float(rain_interval)/60) <= 1e-6),
         "population_presets_produce_events": bool((wapug_over.get("count") or 0) > 0 and (wapug_under.get("count") or 0) > 0),
         "under50_not_more_restrictive": bool((wapug_under.get("count") or 0) >= (wapug_over.get("count") or 0)),
         "threshold_inside_observed_level_range": bool(level_min <= float(threshold) <= level_max),
@@ -316,11 +314,11 @@ def _edm_workflow() -> dict[str, Any]:
             )
     if threshold_evidence.get("source") == "simulation-p95-level":
         observations.append(
-            "Spill count is a workflow simulation only because no defensible site spill threshold was extracted from the historical HTML; production assessment must use the engineer/site threshold."
+            "Spill count is a workflow simulation only because no defensible site spill threshold was extracted from the synthetic HTML; production assessment must use the engineer/site threshold."
         )
     else:
         observations.append(
-            f"Historical-report evidence yielded a repeated horizontal level threshold at {threshold:.4f} m for the spill-workflow simulation."
+            f"Synthetic-report evidence yielded a repeated horizontal level threshold at {threshold:.4f} m for the spill-workflow simulation."
         )
 
     return {
@@ -342,14 +340,14 @@ def _edm_workflow() -> dict[str, Any]:
             "assessment_rows": int(len(rain_window)),
             "column": rain_col,
             "source_unit_status": ((rain.metadata or {}).get("series_metadata") or {}).get(rain_col, {}).get("unit_status"),
-            "explicit_simulation_semantics": "mm/h intensity, based on the supplied historical report/reference contract",
+            "explicit_simulation_semantics": "mm/h intensity, explicitly defined by the synthetic generator",
             "interval_min": rain_interval,
             "total_depth_mm": total_mm,
             "calculation_status": accumulation.get("status"),
             "coverage_fraction": accumulation.get("coverage_fraction"),
             "unknown_seconds": accumulation.get("unknown_seconds"),
             "max_gap_seconds": rain_gap_seconds,
-            "reference_total_mm": 2880.854,
+            "reference_total_mm": float(rain_window[rain_col].sum())*float(rain_interval)/60,
             "assessment_start": assessment_start,
             "assessment_end_exclusive": assessment_end,
             "source_start": str(pd.to_datetime(rain.frame["timestamp"], errors="coerce").min()),
@@ -540,7 +538,7 @@ def _flow_survey_workflow() -> dict[str, Any]:
         "fdv_sources_match_authoritative_monitors": bool(monitor_sources),
         "all_four_reference_gauges_loaded": bool(len(gauges) == 4),
         "network_uses_authoritative_gauges": bool(
-            associated_gauges == {"RG01", "RG02", "RG03"}
+            associated_gauges == set(MANIFEST['associated_gauges'])
             and {row.get("gauge") for row in gauge_summary} == associated_gauges
             and (batch.get("network") or {}).get("gauge_count") == len(associated_gauges)
         ),
@@ -582,7 +580,7 @@ def _flow_survey_workflow() -> dict[str, Any]:
         )
     if any(m["event_response_flagged"] for m in monitor_summary):
         observations.append(
-            "Event Response produces monitor-level flags on the real FDV/rainfall data; these need drill-down evidence and should not be collapsed into a single unexplained RAG."
+            "Event Response produces monitor-level flags on the synthetic FDV/rainfall data; these need drill-down evidence and should not be collapsed into a single unexplained RAG."
         )
     if non_green_volume:
         observations.append(

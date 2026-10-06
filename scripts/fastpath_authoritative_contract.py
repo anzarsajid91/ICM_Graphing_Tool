@@ -6,9 +6,9 @@ from icm_workbench.browser_api import parse_source, series_data, clear_cache
 
 ROOT=Path(__file__).resolve().parents[1]
 FILES=[
-    ROOT/'reference/current-tool/sample-data/fdv/FM01.fdv',
-    ROOT/'reference/current-tool/sample-data/other/StationA_EDM.csv',
-    ROOT/'reference/current-tool/sample-data/other/StationA_Rainfall.csv',
+    ROOT/'reference/current-tool/sample-data/fdv/FM7413.fdv',
+    ROOT/'reference/current-tool/sample-data/other/CS2666_EDM.csv',
+    ROOT/'reference/current-tool/sample-data/other/CS2666_Rainfall.csv',
 ]
 
 out={}

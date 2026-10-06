@@ -19,7 +19,7 @@ for (let i = 0; i < malicious.length - 46; i++) {
 }
 assert.throws(() => reader.read(malicious), /expansion/);
 const book = sandbox.XLSX.utils.book_new();
-sandbox.XLSX.utils.book_append_sheet(book, sandbox.XLSX.utils.aoa_to_sheet([['Monitor', 'RG'], ['001', 'RG01']]), 'Association');
+sandbox.XLSX.utils.book_append_sheet(book, sandbox.XLSX.utils.aoa_to_sheet([['Monitor', 'RG'], ['001', 'RG5097']]), 'Association');
 const roundtrip = reader.read(sandbox.XLSX.write(book, {type:'array', bookType:'xlsx'}));
 assert.equal(roundtrip.Sheets.Association.A2.v, '001');
 console.log('Pinned workbook reader: reference, roundtrip, leading zeros, truncation and expansion limits passed.');

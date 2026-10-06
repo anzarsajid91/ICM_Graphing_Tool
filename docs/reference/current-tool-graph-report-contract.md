@@ -2,25 +2,17 @@
 
 Date: 2026-09-20
 
-This contract is derived from the user's uploaded examples under `reference/current-tool/`. The files are reference evidence, not production dependencies. Requirements below distinguish stable presentation principles from example-specific data values.
+This contract is a presentation specification exercised by synthetic fixtures under `reference/current-tool/`. The files are reference evidence, not production dependencies. Requirements below distinguish stable presentation principles from example-specific data values.
 
-## Source evidence reviewed
+## Synthetic source evidence
 
-- `reports/screenshots/FDV_Sample_Plots.png`
-- `reports/html/StationA_CSO_Spills_2022.html`
-- `reports/html/StationA_CSO_Spills_2023.html`
-- `reports/html/StationA_CSO_Spills_2024.html`
-- `reports/html/StationA_CSO_Spills_2024_Model_Updates_at_CSO.html`
-- `reports/html/StationA_CSO_Spills_2024_Model_Updates_at_tank.html`
-- FDV files `FM01.fdv` etc.
-- rainfall `.R` files `RG01.R` etc.
-- Station A observed EDM CSV, rainfall CSV and zipped model data.
+The original reference bundle has been replaced by independently generated fixtures. Current files and expected arithmetic are listed in `reference/current-tool/synthetic-manifest.json`. Original reports and screenshots are no longer part of the current tree. Presentation requirements below remain applicable; synthetic values are not production defaults.
 
 ## 1. Time-series composition
 
 ### FDV / flow-survey presentation
 
-The FDV reference screenshot establishes the preferred composition:
+The agreed FDV layout establishes the preferred composition:
 
 1. Rainfall at the top, inverted, with zero at the top.
 2. Flow.
@@ -32,22 +24,11 @@ All panels share one time scale. Only the bottom panel shows the normal date/tic
 
 Panel titles are simple and centred: **Rainfall**, **Flow**, **Depth**, **Velocity**, **Statistics**.
 
-The uploaded FM01/RG01 example exactly supports the visible reference statistics:
-
-| Series | Min | Max | Mean / average |
-|---|---:|---:|---:|
-| Flow | 0.039 m³/s | 0.769 m³/s | 0.128931 m³/s |
-| Depth | 0.113 m | 0.470 m | 0.188229 m |
-| Velocity | 0.420 m/s | 1.480 m/s | 0.880464 m/s |
-| Rainfall | 0 mm/h | 66 mm/h | 0.126482 mm/h |
-
-RG01 total depth over the sample period is 85 mm using its two-minute intensity timestep.
-
-These numeric values are sample regression evidence only; they must not be hard-coded into product logic.
+Numeric regression expectations now come from the independent synthetic generator, with raw-source integration checks in tests. No historical source statistics are retained here.
 
 ### General observed/model depth presentation
 
-The Station A HTML reports use:
+The synthetic CSO HTML reports use:
 
 - rainfall in a narrow inverted upper band;
 - observed depth and model depth together in the larger hydraulic band;
@@ -119,7 +100,7 @@ Graph titles identify the comparison and period, for example:
 - `Observed vs Simulated — Depth — 2024 Complete Period`
 - fixed period labels such as Jan-Apr, May-Aug and Sep-Dec.
 
-Product output should generate titles from the current mapping/period rather than hard-code Station A naming.
+Product output should generate titles from the current mapping/period rather than hard-code synthetic CSO naming.
 
 ## 6. Four-period annual report
 
@@ -150,20 +131,20 @@ The ICM Graphing Tool may add coverage, duration, exclusion and uncertainty info
 ## 8. Sample-data semantics
 
 ### FDV
-The uploaded FDV examples are fixed-width ASCII with:
+The synthetic FDV examples are fixed-width ASCII with:
 - Flow in L/s -> canonical m³/s
 - Depth in mm -> canonical m
 - Velocity in m/s
 - explicit start/end/interval metadata
 
 ### Rainfall R
-The uploaded R examples use intensity in mm/hr with explicit timestep.
+The synthetic R examples use intensity in mm/hr with explicit timestep.
 
-### Station A EDM CSV
+### synthetic CSO EDM CSV
 The observed file is an ICM HYD / `P_DATETIME` export and is level data in metres.
 
-### Station A rainfall CSV
-The example is a two-column, two-minute series whose filename identifies it as rainfall. The 2022-2024 subset integrates to approximately 2880.854 mm when values are treated as mm/h intensity at the actual two-minute timestep. This closely matches the 2881 mm reference-report total.
+### synthetic CSO rainfall CSV
+The synthetic two-column rainfall CSV deliberately has unresolved units and long gaps. Tests assign mm/h explicitly to exercise integration; production must withhold dimensional totals until units are established.
 
 The product must not assume all generic CSV rainfall files share this filename, timestep or unit. When unit semantics cannot be resolved from metadata/header, the UI must request/allow an explicit unit rather than silently assuming one.
 
@@ -172,7 +153,7 @@ The ZIP is repository convenience/reference storage. Product runtime ZIP ingesti
 
 ## 9. Performance and resolution
 
-Reference FDV screenshot contains roughly 20,161 two-minute samples per hydraulic/rainfall series across February 2026 and visibly preserves event detail.
+Synthetic FDV fixtures contain 23,041 two-minute samples spanning 32 days, preserving native-resolution and downsampling test coverage.
 
 Browser behavior:
 - full-period rendering may reduce points for responsiveness;
@@ -194,7 +175,7 @@ The implementation may export SVG/static figures for portable HTML reports, but 
 
 ## 11. Non-overfitting guardrail
 
-The uploaded data are examples, not a closed list of supported inputs.
+The synthetic data are examples, not a closed list of supported inputs.
 
 Implementation must remain quantity- and metadata-driven:
 - omit missing panels cleanly;
@@ -203,4 +184,4 @@ Implementation must remain quantity- and metadata-driven:
 - preserve multiple model scenarios;
 - preserve CSV/FDV/R parsing contracts;
 - withhold dimensional calculations where unit semantics are unresolved;
-- do not special-case Station A, FM01, RG01 or the reference filenames in production logic.
+- do not special-case synthetic CSO, FM7413, RG5097 or the reference filenames in production logic.

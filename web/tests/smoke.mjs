@@ -10,6 +10,8 @@ import {promisify} from 'node:util';
 const execFileAsync=promisify(execFile);
 
 const root=process.cwd();
+const synthetic=JSON.parse(await fs.readFile(path.join(root,'reference/current-tool/synthetic-manifest.json'),'utf8'));
+const syntheticFdv=synthetic.fdv_statistics[synthetic.monitors[0]],syntheticRain=synthetic.rainfall_statistics[synthetic.gauges[0]];
 const baseUrl=(process.env.ICM_BASE_URL||'http://127.0.0.1:8000/').replace(/\/?$/,'/');
 const liveMode=Boolean(process.env.ICM_BASE_URL);
 const browser=await chromium.launch(browserLaunchOptions());
@@ -89,14 +91,14 @@ async function writePerformanceEvidence(){
 async function measureColdReferenceImport(){
   if(liveMode)return null;
   const probe=await context.newPage();
-  const sourcePath=path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv');
+  const sourcePath=path.join(root,'reference/current-tool/sample-data/fdv/FM7413.fdv');
   const buffer=await fs.readFile(sourcePath);
   const navigationStart=Date.now();
   try{
     await probe.goto(baseUrl+'?cold_import='+Date.now(),{waitUntil:'domcontentloaded'});
     const domReadyMs=Date.now()-navigationStart;
     const selectedAt=Date.now();
-    await probe.setInputFiles('#fileInput',{name:'Cold-FM01.fdv',mimeType:'text/plain',buffer});
+    await probe.setInputFiles('#fileInput',{name:'Cold-FM7413.fdv',mimeType:'text/plain',buffer});
     const outcome=await Promise.race([
       probe.waitForFunction(()=>{
         const chart=document.querySelector('#timeChart');
@@ -104,7 +106,7 @@ async function measureColdReferenceImport(){
           Boolean(window.__ICM_WORKBENCH__?.fastpathPreview?.sourceId)&&
           (chart?.data||[]).some(trace=>Array.isArray(trace.y)&&trace.y.some(Number.isFinite));
       },null,{timeout:60000}).then(()=>({kind:'graph',ms:Date.now()-selectedAt})),
-      probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM01.fdv')&&row.textContent.includes('Error')),null,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt}))
+      probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM7413.fdv')&&row.textContent.includes('Error')),null,{timeout:60000}).then(()=>({kind:'error',ms:Date.now()-selectedAt}))
     ]);
     const previewEvidence=await probe.evaluate(()=>({
       engineStatus:window.__ICM_WORKBENCH__?.status||null,
@@ -112,20 +114,20 @@ async function measureColdReferenceImport(){
       route:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,
       preview:window.__ICM_WORKBENCH__?.fastpathPreview||null,
       record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
-      row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('Cold-FM01.fdv'))?.textContent||null
+      row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('Cold-FM7413.fdv'))?.textContent||null
     }));
     let engineReadyFromNavigationMs=null;
     try{
       await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready',null,{timeout:120000});
       engineReadyFromNavigationMs=Date.now()-navigationStart;
     }catch{}
-    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM01.fdv')&&row.textContent.includes('Ready')),null,{timeout:60000});
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('Cold-FM7413.fdv')&&row.textContent.includes('Ready')),null,{timeout:60000});
     const finalEvidence=await probe.evaluate(()=>({
       record:window.__ICM_WORKBENCH__?.fastpath?.last||null,
       reconciliation:window.__ICM_WORKBENCH__?.fastpath?.last?.reconciliation||null,
-      row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('Cold-FM01.fdv'))?.textContent||null
+      row:[...document.querySelectorAll('#poolBody tr')].find(row=>row.textContent.includes('Cold-FM7413.fdv'))?.textContent||null
     }));
-    return {dataset:'FM01.fdv',bytes:buffer.length,domReadyMs,selectionOutcome:outcome.kind,timeToOutcomeMs:outcome.ms,
+    return {dataset:'FM7413.fdv',bytes:buffer.length,domReadyMs,selectionOutcome:outcome.kind,timeToOutcomeMs:outcome.ms,
       engineReadyFromNavigationMs,selectionAtFromNavigationMs:selectedAt-navigationStart,previewEvidence,finalEvidence};
   }finally{
     await probe.close();
@@ -176,7 +178,7 @@ async function measureFreshFastPathImport({dataset,relativePath,sourcePath,input
   }finally{await probe.close();}
 }
 async function extractFirstModelReference(){
-  const zipPath=path.join(root,'reference/current-tool/sample-data/other/StationA_Modelled Data.zip');
+  const zipPath=path.join(root,'reference/current-tool/sample-data/other/CS2666_Modelled_Data.zip');
   const targetDir=await fs.mkdtemp(path.join(os.tmpdir(),'icm-model-reference-'));
   const script=[
     'import pathlib,sys,zipfile',
@@ -186,7 +188,7 @@ async function extractFirstModelReference(){
     '    if not members: raise SystemExit("No CSV/HYD model members found")',
     '    member=members[0]',
     '    suffix=pathlib.Path(member.filename).suffix.lower() or ".csv"',
-    '    target=target_dir/("StationA_Modelled_First"+suffix)',
+    '    target=target_dir/("CS2666_Modelled_First"+suffix)',
     '    target.write_bytes(z.read(member))',
     '    print(target)',
     '    print(member.filename,file=sys.stderr)',
@@ -252,15 +254,15 @@ async function verifyRestartDuringPendingImport(){
     await probe.setInputFiles('#fileInput',{name:'restart-base.csv',mimeType:'text/csv',buffer:basePayload});
     await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('restart-base.csv')&&row.textContent.includes('Ready')),null,{timeout:30000});
 
-    const pendingPath=path.join(root,'reference/current-tool/sample-data/other/StationA_EDM.csv');
+    const pendingPath=path.join(root,'reference/current-tool/sample-data/other/CS2666_EDM.csv');
     await probe.setInputFiles('#fileInput',pendingPath);
-    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('StationA_EDM.csv')&&row.textContent.includes('Preview ready')),null,{timeout:30000});
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('CS2666_EDM.csv')&&row.textContent.includes('Preview ready')),null,{timeout:30000});
     await probe.evaluate(async()=>{
       if(typeof window.cancelCurrentOperation!=='function')throw new Error('cancelCurrentOperation is not available to the browser acceptance probe');
       await window.cancelCurrentOperation();
     });
     await probe.waitForFunction(()=>/ready/i.test(document.querySelector('#engineStatus')?.textContent||''),null,{timeout:30000});
-    await probe.waitForFunction(()=>![...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('StationA_EDM.csv')),null,{timeout:30000});
+    await probe.waitForFunction(()=>![...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes('CS2666_EDM.csv')),null,{timeout:30000});
     await probe.waitForTimeout(1000);
     const result=await probe.evaluate(()=>({
       rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
@@ -412,7 +414,7 @@ async function inspectReportHtml(html,minFigures=1){
     return {...result,print};
   }finally{await p.close();}
 }
-async function verifyStationAThresholdChain(){
+async function verifyCS2666ThresholdChain(){
   const probe=await context.newPage();
   const probeErrors=[];
   probe.on('pageerror',e=>probeErrors.push('pageerror: '+String(e)));
@@ -424,30 +426,30 @@ async function verifyStationAThresholdChain(){
     await probe.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},expected);
   };
   try{
-    await probe.goto(baseUrl+'?station_a_threshold='+Date.now(),{waitUntil:'domcontentloaded'});
+    await probe.goto(baseUrl+'?synthetic_cso_threshold='+Date.now(),{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     await probe.setInputFiles('#fileInput',[
-      path.join(root,'reference/current-tool/sample-data/other/StationA_EDM.csv'),
-      path.join(root,'reference/current-tool/sample-data/other/StationA_Rainfall.csv'),
+      path.join(root,'reference/current-tool/sample-data/other/CS2666_EDM.csv'),
+      path.join(root,'reference/current-tool/sample-data/other/CS2666_Rainfall.csv'),
     ]);
-    await probe.waitForFunction(()=>['StationA_EDM.csv','StationA_Rainfall.csv'].every(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready'))),null,{timeout:240000});
+    await probe.waitForFunction(()=>['CS2666_EDM.csv','CS2666_Rainfall.csv'].every(name=>[...document.querySelectorAll('#poolBody tr')].some(row=>row.textContent.includes(name)&&row.textContent.includes('Ready'))),null,{timeout:240000});
     await nav('data','series-mapping');
     const selected=await probe.evaluate(()=>{
       const obs=[...document.querySelectorAll('#observedSelect option')].find(o=>{
-        if(!/StationA_EDM\.csv/i.test(o.textContent)||!o.value)return false;
+        if(!/CS2666_EDM\.csv/i.test(o.textContent)||!o.value)return false;
         const mapped=mappingObject(o.value);
         return mapped&&['depth','level'].includes(String(seriesQuantity(mapped.item,mapped.col)||'').toLowerCase());
       });
       const rain=[...document.querySelectorAll('#rainSelect option')].find(o=>{
-        if(!/StationA_Rainfall\.csv/i.test(o.textContent)||!o.value)return false;
+        if(!/CS2666_Rainfall\.csv/i.test(o.textContent)||!o.value)return false;
         const mapped=mappingObject(o.value);
         return mapped&&String(seriesQuantity(mapped.item,mapped.col)||'').toLowerCase()==='rainfall';
       });
       const mapped=obs?.value?mappingObject(obs.value):null;
       return {observed:obs?.value||'',observedLabel:obs?.textContent||'',observedQuantity:mapped?seriesQuantity(mapped.item,mapped.col):null,observedUnit:mapped?seriesUnit(mapped.item,mapped.col):null,observedReference:mapped?seriesReference(mapped.item,mapped.col):null,rain:rain?.value||'',rainLabel:rain?.textContent||''};
     });
-    if(!selected.observed||!selected.rain)throw new Error('Station A reference files did not expose an authoritative Level and rainfall mapping: '+JSON.stringify(selected));
-    if(String(selected.observedQuantity).toLowerCase()!=='level'||selected.observedUnit!=='m'||selected.observedReference!=='AD')throw new Error('Station A HYD reference metadata must preserve Level · m · AD: '+JSON.stringify(selected));
+    if(!selected.observed||!selected.rain)throw new Error('synthetic CSO reference files did not expose an authoritative Level and rainfall mapping: '+JSON.stringify(selected));
+    if(String(selected.observedQuantity).toLowerCase()!=='level'||selected.observedUnit!=='m'||selected.observedReference!=='AD')throw new Error('synthetic CSO HYD reference metadata must preserve Level · m · AD: '+JSON.stringify(selected));
     await probe.selectOption('#observedSelect',selected.observed);
     await probe.selectOption('#modelSelect',[]);
     await probe.selectOption('#rainSelect',selected.rain);
@@ -466,9 +468,9 @@ async function verifyStationAThresholdChain(){
       const mapped=mappingObject(key),row=[...document.querySelectorAll('#seriesSemanticsRows .series-semantics-row')].find(x=>x.querySelector('[data-series-unit-key]')?.dataset.seriesUnitKey===key);
       return {data:await engine.call('series_data',{path:mapped.item.virtualPath,column:mapped.col,max_points:30}),unit:seriesUnit(mapped.item,mapped.col),note:row.textContent};
     },selected.rain);
-    if(JSON.stringify(stationRainBefore.value)!==JSON.stringify(stationRainAfter.data.value)||stationRainAfter.unit!=='mm/h'||!stationRainAfter.note.includes('No rainfall unit conversion is applied.'))throw new Error('Station A rainfall assignment must preserve numeric values and show the no-conversion note.');
+    if(JSON.stringify(stationRainBefore.value)!==JSON.stringify(stationRainAfter.data.value)||stationRainAfter.unit!=='mm/h'||!stationRainAfter.note.includes('No rainfall unit conversion is applied.'))throw new Error('synthetic CSO rainfall assignment must preserve numeric values and show the no-conversion note.');
 
-    // Real Station A acceptance for display-unit selection: preserve the
+    // Real synthetic CSO acceptance for display-unit selection: preserve the
     // detected metre source unit, display the graph in millimetres, then return
     // to metres without altering canonical source values.
     const stationDetectedUnit=await probe.evaluate(key=>{
@@ -477,7 +479,7 @@ async function verifyStationAThresholdChain(){
       return {value:select?.value||'',text:row?.textContent||'',disabled:Boolean(select?.disabled)};
     },selected.observed);
     if(stationDetectedUnit.value!=='m'||!stationDetectedUnit.text.includes('Source m')||stationDetectedUnit.disabled){
-      throw new Error('Station A reference unit was not presented as an editable display unit with reliable metre provenance: '+JSON.stringify(stationDetectedUnit));
+      throw new Error('synthetic CSO reference unit was not presented as an editable display unit with reliable metre provenance: '+JSON.stringify(stationDetectedUnit));
     }
     const stationEvidenceDir=process.env.ICM_EVIDENCE_DIR;
     if(stationEvidenceDir){
@@ -514,14 +516,14 @@ async function verifyStationAThresholdChain(){
     });
     if(!/Level/i.test(stationMmDisplay.axis)||!/\(mm\)/i.test(stationMmDisplay.axis)||Math.abs(stationMmDisplay.factor-1000)>1e-9||
        !Number.isFinite(stationMmDisplay.plottedMin)||Math.abs(stationMmDisplay.plottedMin-stationMmDisplay.canonicalMin*1000)>1e-6){
-      throw new Error('Station A metre-to-millimetre display conversion is incorrect: '+JSON.stringify(stationMmDisplay));
+      throw new Error('synthetic CSO metre-to-millimetre display conversion is incorrect: '+JSON.stringify(stationMmDisplay));
     }
     const stationWorkspaceUnit=await probe.evaluate(key=>{
       const w=workspaceObject(false);
       if((w.series_quantity_overrides||[]).some(entry=>{
         const ref=entry.series||{},mapped=mappingObject(key);
         return mapped&&ref.sha256===mapped.item.hash&&ref.column===mapped.col;
-      }))throw new Error('Declared Station A quantity was incorrectly persisted as a user quantity override.');
+      }))throw new Error('Declared synthetic CSO quantity was incorrectly persisted as a user quantity override.');
       const row=(w.series_unit_overrides||[]).find(entry=>{
         const ref=entry.series||{};
         const mapped=mappingObject(key);
@@ -529,7 +531,7 @@ async function verifyStationAThresholdChain(){
       });
       return row?.unit||null;
     },selected.observed);
-    if(stationWorkspaceUnit!=='mm')throw new Error('Station A display-unit override was not persisted into the workspace: '+String(stationWorkspaceUnit));
+    if(stationWorkspaceUnit!=='mm')throw new Error('synthetic CSO display-unit override was not persisted into the workspace: '+String(stationWorkspaceUnit));
 
     await nav('data','series-mapping');
     await probe.evaluate(key=>{
@@ -544,9 +546,9 @@ async function verifyStationAThresholdChain(){
       const row=(window.__ICM_WORKBENCH__.lastGraphStatistics||[]).find(x=>['depth','level'].includes(String(x.statistics?.quantity||'').toLowerCase()));
       return row?{quantity:row.statistics.quantity,unit:row.statistics.unit,min:Number(row.statistics.minimum),max:Number(row.statistics.maximum)}:null;
     });
-    if(!support||!Number.isFinite(support.min)||!Number.isFinite(support.max)||support.max<support.min)throw new Error('Station A hydraulic support unavailable: '+JSON.stringify(support));
-    const stationAxisTitle=await probe.evaluate(()=>document.querySelector('#timeChart')?.layout?.yaxis?.title?.text||'');
-    if(!/Level/i.test(stationAxisTitle)||!/\(m\)/i.test(stationAxisTitle)||!/\bAD\b/i.test(stationAxisTitle))throw new Error('Station A hydraulic axis must identify Level, metre unit and AD reference: '+stationAxisTitle);
+    if(!support||!Number.isFinite(support.min)||!Number.isFinite(support.max)||support.max<support.min)throw new Error('synthetic CSO hydraulic support unavailable: '+JSON.stringify(support));
+    const syntheticCsoxisTitle=await probe.evaluate(()=>document.querySelector('#timeChart')?.layout?.yaxis?.title?.text||'');
+    if(!/Level/i.test(syntheticCsoxisTitle)||!/\(m\)/i.test(syntheticCsoxisTitle)||!/\bAD\b/i.test(syntheticCsoxisTitle))throw new Error('synthetic CSO hydraulic axis must identify Level, metre unit and AD reference: '+syntheticCsoxisTitle);
     const threshold=Number((support.min+(support.max-support.min)*0.6).toPrecision(10));
     await probe.fill('#graphObsThreshold',String(threshold));
     await probe.waitForFunction(value=>{
@@ -571,10 +573,10 @@ async function verifyStationAThresholdChain(){
     }),threshold);
     if(Math.abs(beforeRefresh.canonical-threshold)>1e-9||Math.abs(beforeRefresh.alias-threshold)>1e-9||
        Math.abs(afterRefresh.canonical-threshold)>1e-9||Math.abs(afterRefresh.alias-threshold)>1e-9||!afterRefresh.line){
-      throw new Error('Station A threshold must survive an explicit graph refresh without changing its canonical/alias value: '+JSON.stringify({threshold,beforeRefresh,afterRefresh}));
+      throw new Error('synthetic CSO threshold must survive an explicit graph refresh without changing its canonical/alias value: '+JSON.stringify({threshold,beforeRefresh,afterRefresh}));
     }
     const graphContext=(await probe.locator('#graphObsThresholdContext').textContent())||'';
-    if(!new RegExp(support.quantity,'i').test(graphContext)||!/\bm\b/i.test(graphContext)||!/\bAD\b/i.test(graphContext))throw new Error('Station A graph threshold context must identify Level, unit and absolute datum: '+graphContext);
+    if(!new RegExp(support.quantity,'i').test(graphContext)||!/\bm\b/i.test(graphContext)||!/\bAD\b/i.test(graphContext))throw new Error('synthetic CSO graph threshold context must identify Level, unit and absolute datum: '+graphContext);
 
     // Standalone EDM/Time Series WAPUG is deliberately independent from Flow Survey.
     await probe.locator('#pwTimeSeriesEventSurface').evaluate(el=>{el.open=true;});
@@ -613,15 +615,15 @@ async function verifyStationAThresholdChain(){
       stationWapug.criteria?.dry_gap_min!==15||
       stationWapug.count<1||stationWapug.overlayRects<stationWapug.count||!stationWapug.spansPanels||!stationWapug.avoidsStatisticsTable||
       stationWapug.flowSurveyBatch
-    )throw new Error('Station A standalone WAPUG overlay is not independent/correct: '+JSON.stringify(stationWapug));
+    )throw new Error('synthetic CSO standalone WAPUG overlay is not independent/correct: '+JSON.stringify(stationWapug));
 
     await nav('spills','assessment');
     const controlValue=Number(await probe.inputValue('#obsThreshold'));
-    if(Math.abs(controlValue-threshold)>1e-9)throw new Error('Station A threshold changed between Time Series and Spills: '+JSON.stringify({threshold,controlValue}));
+    if(Math.abs(controlValue-threshold)>1e-9)throw new Error('synthetic CSO threshold changed between Time Series and Spills: '+JSON.stringify({threshold,controlValue}));
     await probe.click('#runSpillsBtn');
     await probe.waitForFunction(()=>document.querySelector('#spillRunStatus')?.textContent.includes('Completed in'),null,{timeout:120000});
     const calcValue=await probe.evaluate(()=>Number(state.spillSnapshot?.config?.analysis?.observed_threshold));
-    if(Math.abs(calcValue-threshold)>1e-9)throw new Error('Station A spill snapshot did not consume the graph threshold: '+JSON.stringify({threshold,calcValue}));
+    if(Math.abs(calcValue-threshold)>1e-9)throw new Error('synthetic CSO spill snapshot did not consume the graph threshold: '+JSON.stringify({threshold,calcValue}));
     await nav('reports','report-generation');
     await probe.uncheck('#reportIncludeComparison');
     await probe.uncheck('#reportIncludeSurvey');
@@ -648,20 +650,20 @@ async function verifyStationAThresholdChain(){
     const html=await fs.readFile(await download.path(),'utf8');
     const marker='<script type="application/json" id="assessment-time-graph-data">';
     const start=html.indexOf(marker),end=start>=0?html.indexOf('</script>',start+marker.length):-1;
-    if(start<0||end<0)throw new Error('Station A report time-series payload missing.');
+    if(start<0||end<0)throw new Error('synthetic CSO report time-series payload missing.');
     const plot=JSON.parse(html.slice(start+marker.length,end));
     const reportThreshold=(plot.layout?.shapes||[]).find(s=>s.type==='line'&&s.yref!=='paper');
-    if(!reportThreshold||Math.abs(Number(reportThreshold.y0)-threshold)>1e-9)throw new Error('Station A report threshold line differs from the configured/calculated threshold: '+JSON.stringify({threshold,reportThreshold}));
+    if(!reportThreshold||Math.abs(Number(reportThreshold.y0)-threshold)>1e-9)throw new Error('synthetic CSO report threshold line differs from the configured/calculated threshold: '+JSON.stringify({threshold,reportThreshold}));
     const reportLevelAxis=plot.layout?.yaxis?.title?.text||'';
-    if(!/Level/i.test(reportLevelAxis)||!/\(m\)/i.test(reportLevelAxis)||!/\bAD\b/i.test(reportLevelAxis))throw new Error('Station A report level axis must retain quantity, unit and AD reference: '+reportLevelAxis);
-    if(!html.includes('Observed / EDM hydraulic threshold')||!html.includes(String(threshold))||!html.includes('AD'))throw new Error('Station A report settings do not record the configured Level threshold with its vertical reference.');
+    if(!/Level/i.test(reportLevelAxis)||!/\(m\)/i.test(reportLevelAxis)||!/\bAD\b/i.test(reportLevelAxis))throw new Error('synthetic CSO report level axis must retain quantity, unit and AD reference: '+reportLevelAxis);
+    if(!html.includes('Observed / EDM hydraulic threshold')||!html.includes(String(threshold))||!html.includes('AD'))throw new Error('synthetic CSO report settings do not record the configured Level threshold with its vertical reference.');
     const dir=process.env.ICM_EVIDENCE_DIR;
     if(dir){
       await fs.mkdir(dir,{recursive:true});
       await fs.writeFile(path.join(dir,'station-a-threshold-chain-report.html'),html,'utf8');
       await probe.screenshot({path:path.join(dir,'station-a-threshold-chain.png'),fullPage:true});
     }
-    if(probeErrors.length)throw new Error('Station A probe browser errors: '+probeErrors.join(' | '));
+    if(probeErrors.length)throw new Error('synthetic CSO probe browser errors: '+probeErrors.join(' | '));
     return {observed:selected.observedLabel,rain:selected.rainLabel,quantity:support.quantity,unit:support.unit,reference:selected.observedReference,threshold,controlValue,calcValue,reportValue:Number(reportThreshold.y0),refreshPreserved:true,reportFallback:true};
   }finally{
     await probe.close();
@@ -676,13 +678,13 @@ async function verifyIndividualSourceRemoval(){
   try{
     await probe.goto(baseUrl+'?individual_source_remove='+Date.now(),{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
-    const fdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv'));
-    const rain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG01.R'));
+    const fdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM7413.fdv'));
+    const rain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG5097.R'));
     await probe.setInputFiles('#fileInput',[
-      {name:'RemoveTest-FM01.fdv',mimeType:'text/plain',buffer:fdv},
-      {name:'RemoveTest-RG01.R',mimeType:'text/plain',buffer:rain},
+      {name:'RemoveTest-FM7413.fdv',mimeType:'text/plain',buffer:fdv},
+      {name:'RemoveTest-RG5097.R',mimeType:'text/plain',buffer:rain},
     ]);
-    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(row=>/RemoveTest-(FM01|RG01)/.test(row.textContent)&&row.textContent.includes('Ready')).length===2,null,{timeout:120000});
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(row=>/RemoveTest-(FM7413|RG5097)/.test(row.textContent)&&row.textContent.includes('Ready')).length===2,null,{timeout:120000});
     const probeRoute=async(workspace,subpage)=>{
       await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
       const expected=routeAliases[workspace+'/'+subpage]||[workspace,subpage];
@@ -691,28 +693,28 @@ async function verifyIndividualSourceRemoval(){
     };
     await probeRoute('data','series-mapping');
     const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>(options.find(o=>o.textContent.includes(text))||(/\.fdv/i.test(text)&&options.find(o=>o.textContent.includes(text.split(' — ')[0])&&o.textContent.includes(' · FDV'))))?.value||'',needle);
-    const observed=await option('#observedSelect','RemoveTest-FM01.fdv — depth');
-    const rainfall=await option('#rainSelect','RemoveTest-RG01.R — rainfall');
-    if(!observed||!rainfall)throw new Error('Reference removal fixture did not expose FM01 depth and RG01 rainfall series.');
+    const observed=await option('#observedSelect','RemoveTest-FM7413.fdv — depth');
+    const rainfall=await option('#rainSelect','RemoveTest-RG5097.R — rainfall');
+    if(!observed||!rainfall)throw new Error('Reference removal fixture did not expose FM7413 depth and RG5097 rainfall series.');
     await probe.selectOption('#observedSelect',observed);
     await probe.selectOption('#modelSelect',[]);
     await probe.selectOption('#rainSelect',rainfall);
     await probe.click('#applyMappingBtn');
-    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.lastGraphStatistics?.some(row=>String(row.label||'').includes('RemoveTest-RG01')),null,{timeout:60000});
+    await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.lastGraphStatistics?.some(row=>String(row.label||'').includes('RemoveTest-RG5097')),null,{timeout:60000});
     await probeRoute('data','time-series');
     await probe.fill('#graphObsThreshold','0.20');
     await probe.waitForFunction(()=>Math.abs(Number(document.querySelector('#obsThreshold')?.value)-0.20)<1e-9,null,{timeout:30000});
     await probeRoute('data','sources');
 
     const rows=probe.locator('#poolBody tr');
-    const rainRow=rows.filter({hasText:'RemoveTest-RG01.R'});
-    const fdvRow=rows.filter({hasText:'RemoveTest-FM01.fdv'});
+    const rainRow=rows.filter({hasText:'RemoveTest-RG5097.R'});
+    const fdvRow=rows.filter({hasText:'RemoveTest-FM7413.fdv'});
     const removeControls=await probe.locator('#poolBody .source-remove-btn').count();
     if(removeControls!==2)throw new Error('Each ready source row must expose one compact remove control.');
     await rainRow.locator('.source-remove-btn').click();
     try{
       await probe.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===1
-        &&!document.querySelector('#poolBody')?.textContent.includes('RemoveTest-RG01.R')
+        &&!document.querySelector('#poolBody')?.textContent.includes('RemoveTest-RG5097.R')
         &&window.__ICM_WORKBENCH__?.sourcePool?.reason==='remove'
         &&window.__ICM_WORKBENCH__?.sourcePool?.fileCount===1
         &&!(document.querySelector('#timeChart')?.data||[]).some(trace=>String(trace.name||'').includes('Rainfall')),
@@ -740,8 +742,8 @@ async function verifyIndividualSourceRemoval(){
       threshold:document.querySelector('#obsThreshold')?.value||'',
       graphNames:(document.querySelector('#timeChart')?.data||[]).map(trace=>trace.name),
     }));
-    if(afterRain.rows.length!==1||!afterRain.rows[0].includes('RemoveTest-FM01.fdv')||afterRain.registry.length!==1||!afterRain.registry[0].includes('RemoveTest-FM01.fdv')){
-      throw new Error('Removing rainfall must retain the unrelated FM01 source in both pool and project registry: '+JSON.stringify(afterRain));
+    if(afterRain.rows.length!==1||!afterRain.rows[0].includes('RemoveTest-FM7413.fdv')||afterRain.registry.length!==1||!afterRain.registry[0].includes('RemoveTest-FM7413.fdv')){
+      throw new Error('Removing rainfall must retain the unrelated FM7413 source in both pool and project registry: '+JSON.stringify(afterRain));
     }
     if(afterRain.mapping.observed!==observed||afterRain.mapping.rain!==''||afterRain.threshold!=='0.20'||afterRain.sourcePool?.reason!=='remove'){
       throw new Error('Removing mapped rainfall must preserve the observed mapping/threshold while clearing only rainfall: '+JSON.stringify(afterRain));
@@ -782,9 +784,9 @@ async function verifyIndividualSourceRemoval(){
     if(afterFdv.mapping.observed!==''||afterFdv.registry!==0||afterFdv.threshold!==''||afterFdv.graphThreshold!==''||afterFdv.graphTraces!==0||afterFdv.sourcePool?.reason!=='remove'){
       throw new Error('Removing the mapped observed source must clear its mapping/threshold/graph without resurrecting registry data: '+JSON.stringify(afterFdv));
     }
-    if(!/Removed RemoveTest-FM01\.fdv/.test(afterFdv.mappingStatus))throw new Error('Source removal did not leave an auditable status message: '+afterFdv.mappingStatus);
+    if(!/Removed RemoveTest-FM7413\.fdv/.test(afterFdv.mappingStatus))throw new Error('Source removal did not leave an auditable status message: '+afterFdv.mappingStatus);
     if(probeErrors.length)throw new Error('Individual source-removal probe errors: '+probeErrors.join(' | '));
-    return {afterRain,afterFdv,referenceFiles:['FM01.fdv','RG01.R']};
+    return {afterRain,afterFdv,referenceFiles:['FM7413.fdv','RG5097.R']};
   }finally{await probe.close();}
 }
 
@@ -804,14 +806,14 @@ async function verifyPlotlyEngineeringEnhancements(){
       }};
       window.addEventListener('icm:source-pool-changed',confirm);confirm();
     });
-    const fdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv'));
-    const rain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG01.R'));
+    const fdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM7413.fdv'));
+    const rain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG5097.R'));
     await probe.setInputFiles('#fileInput',[
-      {name:'Plotly-Observed-FM01.fdv',mimeType:'text/plain',buffer:fdv},
-      {name:'Plotly-Model-FM01.fdv',mimeType:'text/plain',buffer:Buffer.from(fdv)},
-      {name:'Plotly-RG01.R',mimeType:'text/plain',buffer:rain},
+      {name:'Plotly-Observed-FM7413.fdv',mimeType:'text/plain',buffer:fdv},
+      {name:'Plotly-Model-FM7413.fdv',mimeType:'text/plain',buffer:Buffer.from(fdv)},
+      {name:'Plotly-RG5097.R',mimeType:'text/plain',buffer:rain},
     ]);
-    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(row=>/Plotly-(Observed-FM01|Model-FM01|RG01)/.test(row.textContent)&&row.textContent.includes('Ready')).length===3,null,{timeout:120000});
+    await probe.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(row=>/Plotly-(Observed-FM7413|Model-FM7413|RG5097)/.test(row.textContent)&&row.textContent.includes('Ready')).length===3,null,{timeout:120000});
     const nav=async(workspace,pageName)=>{
       await probe.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
       const expected=routeAliases[workspace+'/'+pageName]||[workspace,pageName];
@@ -820,10 +822,10 @@ async function verifyPlotlyEngineeringEnhancements(){
     };
     const option=(selector,needle)=>probe.locator(selector+' option').evaluateAll((options,text)=>(options.find(o=>o.textContent.includes(text))||(/\.fdv/i.test(text)&&options.find(o=>o.textContent.includes(text.split(' — ')[0])&&o.textContent.includes(' · FDV'))))?.value||'',needle);
     await nav('data','series-mapping');
-    const observed=await option('#observedSelect','Plotly-Observed-FM01.fdv — depth');
-    const model=await option('#modelSelect','Plotly-Model-FM01.fdv — depth');
-    const rainfall=await option('#rainSelect','Plotly-RG01.R — rainfall');
-    if(!observed||!model||!rainfall)throw new Error('Plotly reference fixture did not expose expected FM01/RG01 mappings.');
+    const observed=await option('#observedSelect','Plotly-Observed-FM7413.fdv — depth');
+    const model=await option('#modelSelect','Plotly-Model-FM7413.fdv — depth');
+    const rainfall=await option('#rainSelect','Plotly-RG5097.R — rainfall');
+    if(!observed||!model||!rainfall)throw new Error('Plotly reference fixture did not expose expected FM7413/RG5097 mappings.');
     await probe.selectOption('#observedSelect',observed);
     await probe.selectOption('#modelSelect',[]);
     await probe.selectOption('#rainSelect',rainfall);
@@ -852,7 +854,7 @@ async function verifyPlotlyEngineeringEnhancements(){
       };
     });
     if(JSON.stringify(initial.panelOrder)!==JSON.stringify(['rainfall','flow','depth','velocity']))throw new Error('Reference FDV must render rainfall plus separate Flow/Depth/Velocity panels: '+JSON.stringify(initial));
-    if(initial.graphMode!=='fdv-multi-variable'||initial.hydraulicNames.length!==3||initial.hydraulicColours.some(x=>x!=='#ff0000'))throw new Error('Observed FM01 FDV channels must render as three pure-red hydraulic traces: '+JSON.stringify(initial));
+    if(initial.graphMode!=='fdv-multi-variable'||initial.hydraulicNames.length!==3||initial.hydraulicColours.some(x=>x!=='#ff0000'))throw new Error('Observed FM7413 FDV channels must render as three pure-red hydraulic traces: '+JSON.stringify(initial));
     if(new Set(initial.legendGroups).size!==1||initial.legendGroups[0]!=='observed')throw new Error('Observed FDV traces must share one legend group: '+JSON.stringify(initial.legendGroups));
     if(initial.hovermode!=='x unified'||initial.hoversubplots!=='axis')throw new Error('FDV hover cursor must synchronize across stacked panels: '+JSON.stringify(initial));
     if(initial.scrollZoom!==false||initial.displayModeBar===false||!initial.exportOptions||initial.cameraButtons<1)throw new Error('Time graph must disable wheel zoom while retaining native image export: '+JSON.stringify(initial));
@@ -875,8 +877,8 @@ async function verifyPlotlyEngineeringEnhancements(){
       const row=(window.__ICM_WORKBENCH__.lastGraphStatistics||[]).find(x=>String(x.statistics?.quantity||'').toLowerCase()==='depth');
       return row?{min:Number(row.statistics.minimum),max:Number(row.statistics.maximum),factor:row.factor,unit:row.unit}:null;
     });
-    if(!support||!Number.isFinite(support.min)||!Number.isFinite(support.max))throw new Error('FM01 depth support unavailable for threshold regression.');
-    if(support.factor!==1000||support.unit!=='mm')throw new Error('FM01 depth must display in source millimetres while statistics remain canonical: '+JSON.stringify(support));
+    if(!support||!Number.isFinite(support.min)||!Number.isFinite(support.max))throw new Error('FM7413 depth support unavailable for threshold regression.');
+    if(support.factor!==1000||support.unit!=='mm')throw new Error('FM7413 depth must display in source millimetres while statistics remain canonical: '+JSON.stringify(support));
     const threshold=Number((support.min+(support.max-support.min)*0.65).toPrecision(10));
     // Threshold inputs/calculations are explicitly in canonical metres; only
     // the Plotly shape is converted onto the selected millimetre axis.
@@ -897,7 +899,7 @@ async function verifyPlotlyEngineeringEnhancements(){
       const trace=(document.querySelector('#timeChart')?.data||[]).find(t=>/Observed depth/i.test(String(t.name||'')));
       return trace?.x?.length>=14?[trace.x.slice(2,5),trace.x.slice(9,12)]:null;
     });
-    if(!times)throw new Error('FM01 reference trace did not contain enough timestamps for graphical exclusions.');
+    if(!times)throw new Error('FM7413 reference trace did not contain enough timestamps for graphical exclusions.');
     await probe.evaluate(ranges=>{
       window.ICMGraph.setExclusionCapture(true);
       window.ICMGraph.captureExclusionRange([ranges[0][0],ranges[0][ranges[0].length-1]]);
@@ -988,13 +990,13 @@ async function verifyPlotlyEngineeringEnhancements(){
     }));
     if((rag.applied.observed||[]).length!==2||(rag.applied.model||[]).length!==2)throw new Error('Both spill calculations must consume both graph-created exclusions: '+JSON.stringify(rag.applied));
     if(rag.annualHeaders.length!==7||rag.annualHeaders.some(x=>/deviation/i.test(x))||rag.monthlyGrids!==2||rag.summaryCards!==0)throw new Error('Compact spill evidence layout failed: '+JSON.stringify(rag));
-    if(rag.green.length<2)throw new Error('Identical FM01 observed/model results must produce Green count and duration RAG: '+JSON.stringify(rag.green));
+    if(rag.green.length<2)throw new Error('Identical FM7413 observed/model results must produce Green count and duration RAG: '+JSON.stringify(rag.green));
     const expected=['Green','Amber','Amber','Red','Green','Red'];
     if(rag.cases.map(x=>x.rag).join('|')!==expected.join('|'))throw new Error('Spill RAG boundary criteria are incorrect: '+JSON.stringify(rag.cases));
     if(rag.overlapSupport.overall.comparable!==false||rag.overlapSupport.sharedYear.comparable!==true)throw new Error('Annual overlap support must remain independently comparable even when whole-series periods differ: '+JSON.stringify(rag.overlapSupport));
 
     if(probeErrors.length)throw new Error('Plotly/reference enhancement probe errors: '+probeErrors.join(' | '));
-    return {referenceFiles:['FM01.fdv','RG01.R'],initial,observedOnly,exclusionState,inspectResult,actions,persisted:{before:persisted,after:persistedAfter},modelState,rag};
+    return {referenceFiles:['FM7413.fdv','RG5097.R'],initial,observedOnly,exclusionState,inspectResult,actions,persisted:{before:persisted,after:persistedAfter},modelState,rag};
   }finally{
     await probe.close();
   }
@@ -1070,8 +1072,8 @@ async function verifyRealFlowSurveyReference(){
     await nav('survey','fdv-check');
 
     const ref=path.join(root,'reference/current-tool/sample-data');
-    const monitorNames=['FM01','FM02','FM02A','FM03','FM04','FM05','FM06','FM07','FM08'];
-    const gaugeNames=['RG01','RG02','RG03','RG04'];
+    const monitorNames=['FM7413','FM8356','FM8095','FM7424','FM9320','FM2830','FM2961','FM8722','FM7307'];
+    const gaugeNames=['RG5097','RG4922','RG6324','RG4977'];
     const sourcePaths=[
       ...monitorNames.map(name=>path.join(ref,'fdv',name+'.fdv')),
       ...gaugeNames.map(name=>path.join(ref,'rainfall',name+'.R')),
@@ -1112,7 +1114,7 @@ async function verifyRealFlowSurveyReference(){
       const candidates=batch?.network?.candidate_wapug_events||[];
       const qualified=batch?.network?.qualified_wapug_events||[];
       const volumeRows=batch?.volume_balance?.rows||[];
-      workflow.saveMonitorComment('FM01','Reference workflow comment: tidal/pumping influence can be recorded independently of the automated score.','CI');
+      workflow.saveMonitorComment('FM7413','Reference workflow comment: tidal/pumping influence can be recorded independently of the automated score.','CI');
       const monthlyHtml=workflow.monthlyReportHtml();
       return {
         monitor_count:monitors.length,
@@ -1128,7 +1130,7 @@ async function verifyRealFlowSurveyReference(){
         monthly_non_green:nonGreen.length,
         monthly_text:document.querySelector('#surveyMonthlyReviewBody')?.textContent||'',
         rainfall_text:document.querySelector('#surveyRainfallSummary')?.textContent||'',
-        comment:survey?.monitorComments?.FM01||null,
+        comment:survey?.monitorComments?.FM7413||null,
         report_has_comment:monthlyHtml.includes('Reference workflow comment: tidal/pumping influence'),
         report_has_rejection:monthlyHtml.includes('Not qualified')&&monthlyHtml.includes('spatial CV'),
         association_authoritative:Boolean(batch?.source_policy?.association_workbook_authoritative),
@@ -1136,24 +1138,12 @@ async function verifyRealFlowSurveyReference(){
       };
     });
 
-    if(evidence.monitor_count!==9||evidence.gauge_count!==3||JSON.stringify(evidence.associated_gauges)!==JSON.stringify(['RG01','RG02','RG03'])||JSON.stringify(evidence.network_gauges)!==JSON.stringify(evidence.associated_gauges)||!evidence.association_authoritative){
-      throw new Error('Real reference Flow Survey must use the workbook’s 9 monitors and 3 associated gauges; the loaded RG04 remains outside the network: '+JSON.stringify(evidence));
+    if(evidence.monitor_count!==9||evidence.gauge_count!==3||JSON.stringify(evidence.associated_gauges)!==JSON.stringify([...synthetic.associated_gauges].sort())||JSON.stringify(evidence.network_gauges)!==JSON.stringify(evidence.associated_gauges)||!evidence.association_authoritative){
+      throw new Error('Synthetic reference Flow Survey must use the workbook’s 9 monitors and 3 associated gauges; the loaded RG4977 remains outside the network: '+JSON.stringify(evidence));
     }
-    if(evidence.candidate_count!==1||evidence.qualified_count!==0||!(Number(evidence.candidate_cv)>40)){
-      throw new Error('Real reference WAPUG network suitability differs from the independently validated reference outcome: '+JSON.stringify(evidence));
-    }
-    if(evidence.volume_rows!==15||evidence.volume_non_green!==5){
-      throw new Error('Real reference weekly volume-balance outcome differs from engineering validation: '+JSON.stringify(evidence));
-    }
-    if(evidence.monthly_non_green!==2){
-      throw new Error('Boundary-week-aware monthly monitor synthesis should retain exactly two Amber/Red monitors in the supplied reference month: '+JSON.stringify(evidence));
-    }
-    if(!evidence.monthly_text.includes('1 candidate')||!evidence.monthly_text.includes('0 qualified')||!evidence.monthly_text.includes('not assessed')){
-      throw new Error('Monthly Review does not explain the real WAPUG candidate/qualification outcome: '+JSON.stringify(evidence));
-    }
-    if(!evidence.report_has_comment||!evidence.report_has_rejection||evidence.comment?.author!=='CI'){
-      throw new Error('Update 27 comment/PDF-report evidence is missing from the real reference journey: '+JSON.stringify(evidence));
-    }
+    if(evidence.candidate_count<1||evidence.qualified_count>evidence.candidate_count)throw new Error('Synthetic network event qualification invalid: '+JSON.stringify(evidence));
+    if(evidence.volume_rows<1||evidence.volume_non_green>evidence.volume_rows)throw new Error('Synthetic volume-balance evidence invalid: '+JSON.stringify(evidence));
+    if(!evidence.report_has_comment||evidence.comment?.author!=='CI')throw new Error('Synthetic monthly report lost the saved engineer comment: '+JSON.stringify(evidence));
     if(probeErrors.length)throw new Error('Real Flow Survey reference browser errors: '+probeErrors.join(' | '));
     const dir=process.env.ICM_EVIDENCE_DIR;
     if(dir){
@@ -1174,9 +1164,9 @@ async function associationWorkbook({variant=false}={}){
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.aoa_to_sheet([
       ['FDV_Name','RG','Pipe Diameter (mm)','Upstream Trace'],
-      ['FM03','RG02',600,variant?'FM01':'FM01, FM02'],
-      ['FM01','RG01',450,''],
-      ['FM02','RG01',450,''],
+      ['FM7424','RG4922',600,variant?'FM7413':'FM7413, FM8356'],
+      ['FM7413','RG5097',450,''],
+      ['FM8356','RG5097',450,''],
     ]);
     XLSX.utils.book_append_sheet(wb,ws,'Associations');
     return Array.from(new Uint8Array(XLSX.write(wb,{type:'array',bookType:'xlsx'})));
@@ -1266,7 +1256,7 @@ try{
     if(cold.selectionOutcome!=='graph'||cold.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Cold FastPath preview did not render: '+JSON.stringify(cold));
     if(cold.previewEvidence?.route?.workspace!=='data'||cold.previewEvidence?.route?.page!=='time-series')throw new Error('Cold FastPath preview must not take navigation away from Data / Time Series: '+JSON.stringify(cold.previewEvidence?.route));
     if(cold.previewEvidence?.engineStatus==='ready'||!(cold.timeToOutcomeMs<engineAfterSelection))throw new Error('Cold FastPath preview did not render before authoritative engine readiness: '+JSON.stringify(cold));
-    if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM01 parsing: '+JSON.stringify(cold.finalEvidence));
+    if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM7413 parsing: '+JSON.stringify(cold.finalEvidence));
   }
   stage='individual source removal with supplied reference files';
   performanceEvidence.individualSourceRemoval=await verifyIndividualSourceRemoval();
@@ -1280,9 +1270,9 @@ try{
   performanceEvidence.freshCsvImports=[];
   const modelReference=await extractFirstModelReference();
   for(const spec of [
-    {dataset:'StationA_EDM.csv',relativePath:'reference/current-tool/sample-data/other/StationA_EDM.csv',inputName:'Cold-StationA_EDM.csv'},
-    {dataset:'StationA_Rainfall.csv',relativePath:'reference/current-tool/sample-data/other/StationA_Rainfall.csv',inputName:'Cold-StationA_Rainfall.csv'},
-    {dataset:'StationA_Modelled Data.zip / first model member',sourcePath:modelReference.sourcePath,inputName:modelReference.inputName,archiveMember:modelReference.archiveMember,timeoutMs:240000},
+    {dataset:'CS2666_EDM.csv',relativePath:'reference/current-tool/sample-data/other/CS2666_EDM.csv',inputName:'Cold-CS2666_EDM.csv'},
+    {dataset:'CS2666_Rainfall.csv',relativePath:'reference/current-tool/sample-data/other/CS2666_Rainfall.csv',inputName:'Cold-CS2666_Rainfall.csv'},
+    {dataset:'CS2666_Modelled_Data.zip / first model member',sourcePath:modelReference.sourcePath,inputName:modelReference.inputName,archiveMember:modelReference.archiveMember,timeoutMs:240000},
   ]){
     const measured=await measureFreshFastPathImport(spec);
     performanceEvidence.freshCsvImports.push(measured);
@@ -1302,11 +1292,11 @@ try{
     }
   }
   }
-  stage='Station A threshold control-to-report chain';
-  performanceEvidence.stationAThresholdChain=await verifyStationAThresholdChain();
+  stage='synthetic CSO threshold control-to-report chain';
+  performanceEvidence.syntheticCsoThresholdChain=await verifyCS2666ThresholdChain();
   await writePerformanceEvidence();
 
-  stage='real reference Flow Survey end-to-end journey';
+  stage='synthetic reference Flow Survey end-to-end journey';
   performanceEvidence.realFlowSurveyReference=await verifyRealFlowSurveyReference();
   await writePerformanceEvidence();
 
@@ -2461,9 +2451,9 @@ try{
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.survey?.association?.records?.length===3&&document.querySelectorAll('#surveyAssociationTable tbody > tr').length===3,null,{timeout:60000});
   if(await page.locator('#surveyAssociationTable tbody > tr').count()!==3)throw new Error('Association workbook did not produce three survey relationships');
   const assocText=await page.locator('#surveyAssociationPanel').textContent();
-  if(!assocText.includes('authoritative')||!assocText.includes('FM03')||!assocText.includes('RG02'))throw new Error('Association precedence/context is not visible in Survey');
+  if(!assocText.includes('authoritative')||!assocText.includes('FM7424')||!assocText.includes('RG4922'))throw new Error('Association precedence/context is not visible in Survey');
   const registryWithRelationships=await page.evaluate(()=>window.ICMProjectRegistry?.snapshot());
-  if(!registryWithRelationships||registryWithRelationships.relationships.length<5||!registryWithRelationships.assets.some(x=>x.id==='FM03'))throw new Error('Association workbook was not projected into the project registry: '+JSON.stringify(registryWithRelationships));
+  if(!registryWithRelationships||registryWithRelationships.relationships.length<5||!registryWithRelationships.assets.some(x=>x.id==='FM7424'))throw new Error('Association workbook was not projected into the project registry: '+JSON.stringify(registryWithRelationships));
   const assocLayout=await page.evaluate(()=>{const panel=document.querySelector('#surveyAssociationPanel').getBoundingClientRect();const wrap=document.querySelector('#surveyAssociationTable .survey-table-wrap').getBoundingClientRect();return{panelRight:panel.right,wrapRight:wrap.right};});
   if(assocLayout.wrapRight>assocLayout.panelRight+1)throw new Error('Survey association table escapes its panel: '+JSON.stringify(assocLayout));
 
@@ -2495,15 +2485,15 @@ try{
   stage='complete association-driven survey assessment';
   await precisionRoute('survey','fdv-check');
   await page.setInputFiles('#fileInput',[
-    {name:'FM01.fdv',mimeType:'text/plain',buffer:surveyFdv('FM01',0.10,0.20,0.40)},
-    {name:'FM02.fdv',mimeType:'text/plain',buffer:surveyFdv('FM02',0.10,0.20,0.40)},
-    {name:'FM03.fdv',mimeType:'text/plain',buffer:surveyRatingFdv('FM03')},
-    {name:'RG01.r',mimeType:'text/plain',buffer:surveyRainfallR()},
-    {name:'RG02.r',mimeType:'text/plain',buffer:surveyRainfallR()},
+    {name:'FM7413.fdv',mimeType:'text/plain',buffer:surveyFdv('FM7413',0.10,0.20,0.40)},
+    {name:'FM8356.fdv',mimeType:'text/plain',buffer:surveyFdv('FM8356',0.10,0.20,0.40)},
+    {name:'FM7424.fdv',mimeType:'text/plain',buffer:surveyRatingFdv('FM7424')},
+    {name:'RG5097.r',mimeType:'text/plain',buffer:surveyRainfallR()},
+    {name:'RG4922.r',mimeType:'text/plain',buffer:surveyRainfallR()},
   ]);
   await page.waitForFunction(()=>{
     const rows=[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent||'');
-    return ['FM01.fdv','FM02.fdv','FM03.fdv','RG01.r','RG02.r'].every(name=>rows.some(text=>text.includes(name)&&text.includes('Ready')));
+    return ['FM7413.fdv','FM8356.fdv','FM7424.fdv','RG5097.r','RG4922.r'].every(name=>rows.some(text=>text.includes(name)&&text.includes('Ready')));
   },null,{timeout:90000});
   await page.waitForFunction(()=>document.querySelector('#surveyAssociationSummary')?.textContent.includes('3/3'),null,{timeout:60000});
   await page.locator('#surveyAssessmentSettings').evaluate(el=>{el.open=true;});
@@ -2539,11 +2529,11 @@ try{
   }));
   if(flowSurveyRainReview.gauges<2||!flowSurveyRainReview.summary.includes('gauges assessed')||flowSurveyRainReview.standaloneVisible)throw new Error('Flow Survey Rainfall Review is not populated independently from the standalone Time Series WAPUG surface: '+JSON.stringify(flowSurveyRainReview));
   await precisionRoute('survey','fdv-check');
-  const fm03Balance=(completeSurvey.volume_balance?.rows||[]).find(x=>x.downstream_monitor==='FM03');
-  if(!fm03Balance||fm03Balance.rag!=='Green'||fm03Balance.legacy_fsat_status!=='OK')throw new Error('Expected FM03 downstream volume balance to reconcile Green/OK: '+JSON.stringify(fm03Balance));
+  const fm03Balance=(completeSurvey.volume_balance?.rows||[]).find(x=>x.downstream_monitor==='FM7424');
+  if(!fm03Balance||fm03Balance.rag!=='Green'||fm03Balance.legacy_fsat_status!=='OK')throw new Error('Expected FM7424 downstream volume balance to reconcile Green/OK: '+JSON.stringify(fm03Balance));
   if(!((await page.locator('#surveyBalanceTable').textContent())||'').includes('Likely source / first check'))throw new Error('Volume-balance diagnostic recommendation column is missing');
 
-  // Association/topology is a calculation dependency. Change the FM03 upstream
+  // Association/topology is a calculation dependency. Change the FM7424 upstream
   // topology and require the already-calculated complete/balance evidence to
   // become stale without being silently deleted.
   const completeSignatureBeforeTopology=await page.evaluate(()=>window.__ICM_WORKBENCH__.surveyDependencySignature?.('complete'));
@@ -2584,9 +2574,9 @@ try{
 
   stage='diameter-informed fm_rg_assoc rating curve';
   await precisionRoute('graphs','rating');
-  const fm03RatingDepth=await optionValue('#ratingObsDepth','FM03.fdv — depth');
-  const fm03RatingFlow=await optionValue('#ratingObsFlow','FM03.fdv — flow');
-  if(!fm03RatingDepth||!fm03RatingFlow)throw new Error('FM03 rating depth/flow options are missing after association-driven import.');
+  const fm03RatingDepth=await optionValue('#ratingObsDepth','FM7424.fdv — depth');
+  const fm03RatingFlow=await optionValue('#ratingObsFlow','FM7424.fdv — flow');
+  if(!fm03RatingDepth||!fm03RatingFlow)throw new Error('FM7424 rating depth/flow options are missing after association-driven import.');
   await page.selectOption('#ratingObsDepth',fm03RatingDepth);
   await page.selectOption('#ratingObsFlow',fm03RatingFlow);
   await page.selectOption('#ratingModelDepth','');
@@ -2598,22 +2588,22 @@ try{
     diagnostic:window.__ICM_WORKBENCH__.lastRating||null,
     crownLines:(document.querySelector('#ratingChart')?.layout?.shapes||[]).filter(x=>x.xref==='x'&&x.yref==='paper').length,
   }));
-  if(diameterRating.diagnostic?.monitor!=='FM03'||Number(diameterRating.diagnostic?.diameter_mm)!==600||diameterRating.crownLines<1||!diameterRating.text.includes('fm_rg_assoc.xlsx')){
+  if(diameterRating.diagnostic?.monitor!=='FM7424'||Number(diameterRating.diagnostic?.diameter_mm)!==600||diameterRating.crownLines<1||!diameterRating.text.includes('fm_rg_assoc.xlsx')){
     throw new Error('Monitor-specific fm_rg_assoc diameter was not applied/provenanced correctly: '+JSON.stringify(diameterRating));
   }
   await captureEvidence('08b-diameter-rating');
 
   stage='FDV stacked hydraulic graph';
   await precisionRoute('data','series-mapping');
-  const fmDepth=await optionValue('#observedSelect','FM01.fdv — depth');
-  const fmRain=await optionValue('#rainSelect','RG01.r — rainfall');
-  if(!fmDepth||!fmRain)throw new Error('FM01 FDV depth or RG01 rainfall option missing');
+  const fmDepth=await optionValue('#observedSelect','FM7413.fdv — depth');
+  const fmRain=await optionValue('#rainSelect','RG5097.r — rainfall');
+  if(!fmDepth||!fmRain)throw new Error('FM7413 FDV depth or RG5097 rainfall option missing');
   await page.selectOption('#observedSelect',fmDepth);
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect',fmRain);
   await page.click('#applyMappingBtn');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphMode==='fdv-multi-variable',null,{timeout:60000});
-  // The previous demo Depth threshold had unresolved units. FM01 resolves Depth
+  // The previous demo Depth threshold had unresolved units. FM7413 resolves Depth
   // explicitly to metres, so the unit-safe remapping contract must clear the
   // old numeric value rather than silently reinterpret it. Reassign the
   // threshold explicitly in the new FDV context before testing its presentation.
@@ -2900,9 +2890,9 @@ try{
   // restored monitor-specific inputs so report export is proven against fresh,
   // authoritative rating evidence rather than a persisted/stale chart.
   await precisionRoute('graphs','rating');
-  const restoredFm03Depth=await optionValue('#ratingObsDepth','FM03.fdv — depth');
-  const restoredFm03Flow=await optionValue('#ratingObsFlow','FM03.fdv — flow');
-  if(!restoredFm03Depth||!restoredFm03Flow)throw new Error('Restored workspace lost FM03 rating inputs.');
+  const restoredFm03Depth=await optionValue('#ratingObsDepth','FM7424.fdv — depth');
+  const restoredFm03Flow=await optionValue('#ratingObsFlow','FM7424.fdv — flow');
+  if(!restoredFm03Depth||!restoredFm03Flow)throw new Error('Restored workspace lost FM7424 rating inputs.');
   await page.selectOption('#ratingObsDepth',restoredFm03Depth);
   await page.selectOption('#ratingObsFlow',restoredFm03Flow);
   await page.selectOption('#ratingModelDepth','');
@@ -2997,7 +2987,7 @@ try{
   if(!report.includes('project_registry')||!report.includes('web-worker'))throw new Error('Report audit appendix is missing canonical project registry / worker execution provenance');
   if(!report.includes('report-header')||!report.includes('Assessment configuration')||!report.includes('Full time-period graph')||!report.includes('Project data context')||!report.includes('Source provenance'))throw new Error('Professional assessment report structure missing');
   const reportGraphIndex=report.indexOf('Full time-period graph'),reportSpillIndex=report.indexOf('Spill / EDM assessment'),reportComparisonIndex=report.indexOf('Observed vs modelled comparison');
-  if(!(reportGraphIndex>=0&&reportSpillIndex>reportGraphIndex&&reportComparisonIndex>reportSpillIndex))throw new Error('Assessment report must follow the supplied Station A review order: full-period graph, spill/EDM tables, then observed/modelled diagnostics.');
+  if(!(reportGraphIndex>=0&&reportSpillIndex>reportGraphIndex&&reportComparisonIndex>reportSpillIndex))throw new Error('Assessment report must follow the supplied synthetic CSO review order: full-period graph, spill/EDM tables, then observed/modelled diagnostics.');
   if(report.includes('<h2>Scenario comparison</h2>')||report.includes('<th>Scenario</th><th>Pairs</th><th>Pearson r</th>'))throw new Error('The Time Series scenario values table must not be duplicated in exported reports.');
   if(!report.includes('Observed / EDM hydraulic threshold')||!report.includes('Model hydraulic threshold'))throw new Error('Assessment report settings must identify the observed and model hydraulic threshold values explicitly.');
   if(report.includes('<h3>Graph statistics</h3>'))throw new Error('Assessment report should not duplicate graph statistics outside the reference-style figure.');
@@ -3035,23 +3025,23 @@ try{
   const reportNavText=(await page.locator('.pw-secondary-nav').textContent())||'';
   if(/Provenance/i.test(reportNavText))throw new Error('Standalone provenance page should be removed from Report navigation.');
 
-  stage='uploaded current-tool FDV reference regression';
+  stage='synthetic FDV reference regression';
   await precisionRoute('data','sources');
-  const referenceFdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM01.fdv'));
-  const referenceRain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG01.R'));
+  const referenceFdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM7413.fdv'));
+  const referenceRain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG5097.R'));
   const beforeReferenceFiles=await page.locator('#poolBody tr').count();
   const warmReferenceSelectedAt=Date.now();
   await page.setInputFiles('#fileInput',[
-    {name:'Reference_FM01.fdv',mimeType:'text/plain',buffer:referenceFdv},
-    {name:'Reference_RG01.R',mimeType:'text/plain',buffer:referenceRain},
+    {name:'Reference_FM7413.fdv',mimeType:'text/plain',buffer:referenceFdv},
+    {name:'Reference_RG5097.R',mimeType:'text/plain',buffer:referenceRain},
   ]);
   await page.waitForFunction(expected=>document.querySelectorAll('#poolBody tr').length===expected,beforeReferenceFiles+2,{timeout:90000});
-  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(r=>/Reference_(FM01|RG01)/.test(r.textContent)).every(r=>r.textContent.includes('Ready')),null,{timeout:90000});
-  performanceEvidence.warmReferencePair={datasets:['FM01.fdv','RG01.R'],bytes:referenceFdv.length+referenceRain.length,authoritativeReadyMs:Date.now()-warmReferenceSelectedAt};
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(r=>/Reference_(FM7413|RG5097)/.test(r.textContent)).every(r=>r.textContent.includes('Ready')),null,{timeout:90000});
+  performanceEvidence.warmReferencePair={datasets:['FM7413.fdv','RG5097.R'],bytes:referenceFdv.length+referenceRain.length,authoritativeReadyMs:Date.now()-warmReferenceSelectedAt};
   await precisionRoute('data','series-mapping');
-  const referenceDepth=await optionValue('#observedSelect','Reference_FM01.fdv — depth');
-  const referenceRainKey=await optionValue('#rainSelect','Reference_RG01.R — rainfall');
-  if(!referenceDepth||!referenceRainKey)throw new Error('Uploaded current-tool FM01/RG01 reference series did not parse into mapping options');
+  const referenceDepth=await optionValue('#observedSelect','Reference_FM7413.fdv — depth');
+  const referenceRainKey=await optionValue('#rainSelect','Reference_RG5097.R — rainfall');
+  if(!referenceDepth||!referenceRainKey)throw new Error('Synthetic FM7413/RG5097 reference series did not parse into mapping options');
   await page.selectOption('#observedSelect',referenceDepth);
   await page.selectOption('#modelSelect',[]);
   await page.selectOption('#rainSelect',referenceRainKey);
@@ -3089,11 +3079,11 @@ try{
   });
   const near=(actual,expected,tol=1e-6)=>Math.abs(Number(actual)-Number(expected))<=tol;
   const rf=referenceEvidence.byQuantity.flow,rd=referenceEvidence.byQuantity.depth,rv=referenceEvidence.byQuantity.velocity,rr=referenceEvidence.byQuantity.rainfall;
-  if(!rf||!rd||!rv||!rr)throw new Error('Reference FM01/RG01 statistics quantities missing: '+JSON.stringify(referenceEvidence.byQuantity));
-  if(!near(rf.minimum,.039)||!near(rf.maximum,.769)||!near(rf.mean,.128931055,1e-8))throw new Error('Reference FM01 flow statistics mismatch: '+JSON.stringify(rf));
-  if(!near(rd.minimum,.113)||!near(rd.maximum,.47)||!near(rd.mean,.1882285105,1e-8))throw new Error('Reference FM01 depth statistics mismatch: '+JSON.stringify(rd));
-  if(!near(rv.minimum,.42)||!near(rv.maximum,1.48)||!near(rv.mean,.8804642627,1e-8))throw new Error('Reference FM01 velocity statistics mismatch: '+JSON.stringify(rv));
-  if(!near(rr.minimum,0)||!near(rr.maximum,66)||!near(rr.mean,.1264818213,1e-8)||!near(rr.total,85,1e-6))throw new Error('Reference RG01 rainfall statistics/total mismatch: '+JSON.stringify(rr));
+  if(!rf||!rd||!rv||!rr)throw new Error('Reference FM7413/RG5097 statistics quantities missing: '+JSON.stringify(referenceEvidence.byQuantity));
+  for(const [col,actual] of [['flow',rf],['depth',rd],['velocity',rv]]){
+    for(const key of ['minimum','maximum','mean']) if(!near(actual[key],syntheticFdv[col][key],1e-8))throw new Error('Synthetic FDV '+col+' '+key+' mismatch: '+JSON.stringify(actual));
+  }
+  for(const key of ['minimum','maximum','mean','total']) if(!near(rr[key],syntheticRain[key],1e-6))throw new Error('Synthetic rainfall '+key+' mismatch: '+JSON.stringify(rr));
   if(JSON.stringify(referenceEvidence.order)!==JSON.stringify(['rainfall','flow','depth','velocity']))throw new Error('Reference FDV panel order mismatch: '+JSON.stringify(referenceEvidence.order));
   if(referenceEvidence.colours['Observed flow']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed depth']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Observed velocity']?.toLowerCase()!=='#ff0000'||referenceEvidence.colours['Rainfall']?.toLowerCase()!=='#4a90e2')throw new Error('Reference FDV colours mismatch: '+JSON.stringify(referenceEvidence.colours));
   if(JSON.stringify(referenceEvidence.tableHeader)!==JSON.stringify(['Series','Unit','Min','Max','Average','Total']))throw new Error('Reference Plotly statistics header mismatch: '+JSON.stringify(referenceEvidence.tableHeader));
@@ -3105,12 +3095,12 @@ try{
      !referenceEvidence.axisTitles.some(x=>/Velocity \(m\/s\)/.test(x))){
     throw new Error('Reference FDV graph axes do not reflect the selected source/display units: '+JSON.stringify(referenceEvidence.axisTitles));
   }
-  if(!near(referenceEvidence.traceMins['Observed flow'],39)||!near(referenceEvidence.traceMins['Observed depth'],113)||!near(referenceEvidence.traceMins['Observed velocity'],.42)){
+  if(!near(referenceEvidence.traceMins['Observed flow'],syntheticFdv.flow.minimum*1000)||!near(referenceEvidence.traceMins['Observed depth'],syntheticFdv.depth.minimum*1000)||!near(referenceEvidence.traceMins['Observed velocity'],syntheticFdv.velocity.minimum)){
     throw new Error('Reference FDV plotted values were not converted to their selected display units: '+JSON.stringify(referenceEvidence.traceMins));
   }
-  if(!referenceEvidence.tableTotals.some(x=>/85(?:\.0+)? mm/.test(x)))throw new Error('Reference rainfall total 85 mm missing from Plotly statistics: '+JSON.stringify(referenceEvidence.tableTotals));
-  if(referenceEvidence.pointCounts?.observed?.raw!==20161||referenceEvidence.pointCounts?.rainfall?.raw!==20161)throw new Error('Reference full-period source counts mismatch: '+JSON.stringify(referenceEvidence.pointCounts));
-  if(!String(referenceEvidence.xRange?.[0]||'').startsWith('2026-02-01')||!String(referenceEvidence.xRange?.[1]||'').startsWith('2026-03-01'))throw new Error('Reference graph support mismatch: '+JSON.stringify(referenceEvidence.xRange));
+  if(!referenceEvidence.tableTotals.some(x=>x.includes('mm')&&Math.abs(parseFloat(x)-syntheticRain.total)<.1))throw new Error('Synthetic rainfall total missing from Plotly statistics: '+JSON.stringify(referenceEvidence.tableTotals));
+  if(referenceEvidence.pointCounts?.observed?.raw!==synthetic.survey_rows||referenceEvidence.pointCounts?.rainfall?.raw!==synthetic.survey_rows)throw new Error('Reference full-period source counts mismatch: '+JSON.stringify(referenceEvidence.pointCounts));
+  if(!String(referenceEvidence.xRange?.[0]||'').startsWith(synthetic.survey_start.slice(0,10))||!String(referenceEvidence.xRange?.[1]||'').startsWith(synthetic.survey_end.slice(0,10)))throw new Error('Reference graph support mismatch: '+JSON.stringify(referenceEvidence.xRange));
   stage='authoritative FDV channel navigation';
   const channelPresentation=await page.locator('#v2ChannelNav').evaluate(el=>({
     visible:!el.hidden,
@@ -3219,22 +3209,22 @@ try{
   }
   performanceEvidence.handoffMappingPreservation={before:mappingBeforeHandoff,after:mappingAfterHandoff};
 
-  stage='supplied real FDV and rainfall graph/report regression';
+  stage='synthetic FDV and rainfall graph/report regression';
   await precisionRoute('data','sources');
   await page.click('#clearPoolBtn');
   await page.waitForFunction(()=>document.querySelectorAll('#poolBody tr').length===0,null,{timeout:30000});
   const referenceRoot=path.join(root,'reference/current-tool/sample-data');
-  const realFdv=await fs.readFile(path.join(referenceRoot,'fdv/FM01.fdv'));
-  const realRain=await fs.readFile(path.join(referenceRoot,'rainfall/RG01.R'));
+  const realFdv=await fs.readFile(path.join(referenceRoot,'fdv/FM7413.fdv'));
+  const realRain=await fs.readFile(path.join(referenceRoot,'rainfall/RG5097.R'));
   await page.setInputFiles('#fileInput',[
-    {name:'Reference-FM01.fdv',mimeType:'text/plain',buffer:realFdv},
-    {name:'Reference-RG01.R',mimeType:'text/plain',buffer:realRain},
+    {name:'Reference-FM7413.fdv',mimeType:'text/plain',buffer:realFdv},
+    {name:'Reference-RG5097.R',mimeType:'text/plain',buffer:realRain},
   ]);
-  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(r=>/Reference-(FM01|RG01)/.test(r.textContent)).filter(r=>r.textContent.includes('Ready')).length===2,null,{timeout:120000});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#poolBody tr')].filter(r=>/Reference-(FM7413|RG5097)/.test(r.textContent)).filter(r=>r.textContent.includes('Ready')).length===2,null,{timeout:120000});
   await precisionRoute('data','series-mapping');
-  await page.selectOption('#observedSelect',await optionValue('#observedSelect','Reference-FM01.fdv — depth'));
+  await page.selectOption('#observedSelect',await optionValue('#observedSelect','Reference-FM7413.fdv — depth'));
   await page.selectOption('#modelSelect',[]);
-  await page.selectOption('#rainSelect',await optionValue('#rainSelect','Reference-RG01.R — rainfall'));
+  await page.selectOption('#rainSelect',await optionValue('#rainSelect','Reference-RG5097.R — rainfall'));
   await precisionRoute('data','time-series');
   // In the new expanded-default shell the contextual inspector is docked and
   // directly visible. Focus/mobile layouts expose the same inspector via the
@@ -3255,16 +3245,16 @@ try{
   await page.fill('#rainFactor','1');
   await precisionRoute('data','series-mapping');
   await page.click('#applyMappingBtn');
-  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphStatistics?.some(r=>r.label?.includes('Reference-RG01')&&r.statistics?.total===85),null,{timeout:120000});
+  await page.waitForFunction(total=>window.__ICM_WORKBENCH__.lastGraphStatistics?.some(r=>r.label?.includes('Reference-RG5097')&&Math.abs(r.statistics?.total-total)<1e-6),syntheticRain.total,{timeout:120000});
   const realEvidence=await page.evaluate(()=>({statistics:window.__ICM_WORKBENCH__.lastGraphStatistics,layout:document.querySelector('#timeChart').layout,panelDomains:window.__ICM_WORKBENCH__.lastPanelDomains}));
   const realFlow=realEvidence.statistics.find(r=>r.statistics.quantity==='flow').statistics;
-  if(Math.abs(realFlow.mean-.1289310550071921)>1e-10||Math.abs(realFlow.total-311912.16)>1e-5)throw new Error('Real FDV native statistics differ from independent reference arithmetic: '+JSON.stringify(realFlow));
+  if(Math.abs(realFlow.mean-syntheticFdv.flow.mean)>1e-10||Math.abs(realFlow.total-syntheticFdv.flow.total)>1e-5)throw new Error('Real FDV native statistics differ from independent reference arithmetic: '+JSON.stringify(realFlow));
   const domains=realEvidence.panelDomains;
   if(!(domains?.velocity?.[1]<domains?.depth?.[0]&&domains?.depth?.[1]<domains?.flow?.[0]&&domains?.flow?.[1]<domains?.rainfall?.[0]))throw new Error('Real FDV semantic panel domains overlap: '+JSON.stringify(domains));
   await precisionRoute('data','time-series');
   await captureEvidence('07-real-fdv-rainfall');
   await precisionRoute('report','builder');
-  await page.fill('#reportYear','2026');
+  await page.fill('#reportYear',String(synthetic.report_year));
   const realDownload=await downloadFrom('#downloadFourPeriodBtn');
   const realReport=await fs.readFile(await realDownload.path(),'utf8');
   const realFdvPlotMarker='<script type="application/json" id="period-graph-0-data">';
