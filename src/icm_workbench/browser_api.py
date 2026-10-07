@@ -1063,6 +1063,15 @@ def network_spill_result(path, column, threshold, years_json="null", exclusions_
     return json.dumps(_jsonable(result), ensure_ascii=False)
 
 
+def network_common_spill_result(path, column, threshold, start, end, exclusions_json="[]", max_gap_seconds=900.0, comparison="ge"):
+    """Explicit common-period review; preserve source warm-up and shared mappings."""
+    from icm_workbench.analysis.network_spills import common_period_assessment
+    parsed = _require_model_clock(_load(path), label="Network spill series")
+    result = common_period_assessment(parsed.frame, column, threshold, start, end,
+        max_gap_seconds=max_gap_seconds, comparison=comparison, exclusions=_exclusions(exclusions_json))
+    return json.dumps(_jsonable(result), ensure_ascii=False)
+
+
 def _storage_threshold_m(threshold,contract,threshold_unit=None):
     unit=threshold_unit or contract["original_unit"] or contract["canonical_unit"]
     resolved,factor=canonical_unit(contract["quantity"],unit)
