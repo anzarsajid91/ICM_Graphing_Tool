@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .spills import spill_assessment
+from .spills import spill_assessment, detect_spill_intervals
 
 
 def _uncertain_context(x, column, threshold, gap, start, reporting_start, exclusions, comparison="ge"):
@@ -117,3 +117,45 @@ def schematic_spill_assessment(frame, column, threshold, *, years=None, max_gap_
                 context_start=start.isoformat(), context_end=context_end.isoformat(),
                 policy="Schematic only: main year by date-span; overrides explicit; warm-up retained for counting context; no annualisation",
                 method=result["method"], exclusions=[e.to_dict() for e in exclusions])
+
+
+def common_period_assessment(frame, column, threshold, start, end, *, max_gap_seconds=900,
+                             exclusions=(), comparison="ge"):
+    """Assess an explicit within-year window, retaining preceding counting context.
+
+    Count timestamps are filtered from the full-context calculation. Cutting the
+    source at the requested start would restart the 12/24 sequence incorrectly.
+    Unsupported windows remain provisional; common dates do not prove support.
+    """
+    a, b = pd.Timestamp(start), pd.Timestamp(end)
+    if a.tzinfo is not None or b.tzinfo is not None or b <= a or (b-pd.Timedelta(nanoseconds=1)).year != a.year:
+        raise ValueError("Common period must be an increasing model-clock window within one reporting year.")
+    x = frame[["timestamp", column]].copy()
+    x["timestamp"] = pd.to_datetime(x.timestamp, errors="coerce")
+    if getattr(x.timestamp.dt, "tz", None) is not None:
+        raise ValueError("Resolve timestamps to the model clock before spill assessment.")
+    x = x.dropna(subset=["timestamp"]).sort_values("timestamp").drop_duplicates("timestamp", keep="last")
+    if len(x) < 2 or a < x.timestamp.iloc[0] or b > x.timestamp.iloc[-1]:
+        raise ValueError("Common period is outside this source's temporal support.")
+    context_start = x.timestamp.iloc[0]
+    result = spill_assessment(x, column, threshold, start=context_start, end=b,
+                             max_gap_seconds=max_gap_seconds, exclusions=exclusions, comparison=comparison)
+    coverage = detect_spill_intervals(x, column, threshold, start=a, end=b,
+                                     max_gap_seconds=max_gap_seconds, exclusions=exclusions, comparison=comparison)
+    stamps = [pd.Timestamp(t) for row in result["counting_windows"].to_dict("records") for t in row["count_timestamps"]]
+    count = sum(a <= t < b for t in stamps)
+    duration = sum(max(0, (min(b, pd.Timestamp(e["end"]))-max(a, pd.Timestamp(e["start"]))).total_seconds())
+                   for e in result["events"])/3600
+    valid = coverage["valid_seconds"]/3600
+    eligible = valid+1e-8 >= ((a+pd.DateOffset(months=3))-a).total_seconds()/3600
+    status = "unavailable" if not valid else "partial/unknown-gap" if coverage["unknown_seconds"] > 1e-6 else "partial/excluded-window" if coverage["excluded_seconds"] > 1e-6 else "definitive"
+    context_status = _uncertain_context(x, column, threshold, float(max_gap_seconds), context_start, a, exclusions, comparison)
+    if context_status and status == "definitive":
+        status = context_status
+    return dict(year=a.year, eligible=eligible, spill_count=count if eligible else None,
+                duration_hours=duration if eligible else None, analysis_start=a.isoformat(), analysis_end=b.isoformat(),
+                valid_hours=valid, unknown_hours=coverage["unknown_seconds"]/3600,
+                excluded_hours=coverage["excluded_seconds"]/3600, requested_hours=(b-a).total_seconds()/3600,
+                count_status=status, threshold=float(threshold), comparison=comparison,
+                counting_basis=result["count_policy"], context_start=context_start.isoformat(),
+                reason="" if eligible else "Less than three calendar months of valid reporting data", basis="common-period")

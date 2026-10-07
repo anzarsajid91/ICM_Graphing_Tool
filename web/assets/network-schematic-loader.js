@@ -7,7 +7,7 @@ const bridge={
   async open(){
     if(window.ICMNetworkSchematic!==bridge)return window.ICMNetworkSchematic.open();
     if(!pending)pending=(async()=>{
-      for(const name of ['network-schematic-core.js','network-schematic.js']){
+      for(const name of ['network-schematic-core.js','network-review-core.js','network-schematic.js']){
         await new Promise((resolve,reject)=>{
           const script=document.createElement('script');script.src='assets/'+name+'?v='+encodeURIComponent(buildToken);
           script.onload=resolve;script.onerror=()=>{script.remove();reject(new Error('Network schematic could not load. Try again.'));};

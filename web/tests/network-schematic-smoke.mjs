@@ -37,7 +37,7 @@ try{
   assert.equal(await page.locator('#nsDrawer [data-ns-binding]').count(),2,'Annual observed files assigned in one action');
   await field('nsModelDefault','1.2');await assign('model',['Baseline_2023.csv','Baseline_2024.csv']);
   await field('nsNewScenario','Model update');await assign('model',['Updated_2024.csv']);
-  await page.locator('#nsDrawer details summary').click();await field('nsGap','3700');await page.locator('#nsConfirmed').check();
+  await page.locator('#nsDrawer details summary').first().click();await field('nsGap','3700');await page.locator('#nsConfirmed').check();
   const before=await page.evaluate(()=>JSON.stringify({mapping:state.mapping,spills:state.spills,exclusions:state.exclusions,obsThreshold:document.getElementById('obsThreshold').value,modelThreshold:document.getElementById('modelThreshold').value}));
   await page.click('#nsCalculate');await page.waitForFunction(()=>window.ICMNetworkSchematic.snapshot().nodes[0].applied,null,{timeout:120000});
   const after=await page.evaluate(()=>JSON.stringify({mapping:state.mapping,spills:state.spills,exclusions:state.exclusions,obsThreshold:document.getElementById('obsThreshold').value,modelThreshold:document.getElementById('modelThreshold').value}));
@@ -50,7 +50,7 @@ try{
   await yearField.fill('invalid');await yearField.dispatchEvent('change');await page.click('#nsCalculate');
   assert.match(await page.locator('#nsStatus').innerText(),/Correct the invalid/);
   await yearField.fill('2023');await yearField.dispatchEvent('change');
-  await page.locator('#nsDrawer details summary').click();
+  await page.locator('#nsDrawer details summary').first().click();
   await field('nsGap','3800');assert.equal((await page.evaluate(()=>window.ICMNetworkSchematic.debug())).fresh[0].fresh,false,'Changed gap marks applied evidence stale');
   const toolbarBefore=await page.locator('.ns-main-toolbar').boundingBox();
   await page.locator('.ns-export-menu summary').click();
@@ -66,7 +66,7 @@ try{
   await page.click('#nsAddManhole');await field('nsName','MH01');await page.click('#nsAddManhole');await field('nsName','MH02');await page.click('#nsAddLabel');await field('nsName','Storm route');
   saved=await snapshot();const positions=[[160,140],[380,300],[620,130],[870,280],[870,450],[160,440],[320,140],[710,280],[660,460]];
   saved.nodes.forEach((n,i)=>{[n.x,n.y]=positions[i];});await page.evaluate(s=>window.ICMNetworkSchematic.restore(s),saved);await page.click('#nsFit');
-  const first=await page.locator('[data-ns-node="'+asset.id+'"]').boundingBox();
+  const first=await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').boundingBox();
   await page.mouse.move(first.x+first.width/2,first.y+first.height/2);await page.mouse.down();await page.mouse.move(first.x+first.width/2+40,first.y+first.height/2+30,{steps:5});await page.mouse.up();
   assert.notEqual((await snapshot()).nodes[0].x,saved.nodes[0].x,'Assets drag in world coordinates');
   await page.click('#nsConnect');await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();await page.locator('[data-ns-node="'+saved.nodes[6].id+'"]').click();
@@ -112,7 +112,7 @@ try{
   await page.screenshot({path:evidence+'/network-edit-'+name+'.png'});
   await page.click('#nsEdit');await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();
   await page.waitForSelector('#nsPopup:not([hidden])');
-  assert.equal(await page.locator('#nsPopup [data-ns-evidence-year]').count(),3,'One common-period row per model scenario/year');
+  assert.equal(await page.locator('#nsPopup [data-ns-evidence-year]').count(),4,'All reporting years retain missing-scenario rows explicitly');
   assert.equal(await page.locator('#nsPopup .ns-evidence-details').getAttribute('open'),null,'Audit text starts collapsed');
   assert.ok(await page.locator('[data-ns-direction]').count());
   assert.equal(await page.locator('[data-ns-wire]').first().evaluate(el=>(el.getAttribute('d').match(/L/g)||[]).length),2,'Manual bend is retained in review mode');
@@ -120,7 +120,7 @@ try{
   assert.ok(await page.locator('#nsPopup .ns-rag-green').count());assert.ok(await page.locator('#nsPopup .ns-rag-amber').count());assert.ok(await page.locator('#nsPopup .ns-rag-red').count());
   const containment=await page.evaluate(()=>{const p=document.getElementById('nsPopup').getBoundingClientRect(),c=document.getElementById('nsCanvas').getBoundingClientRect();return p.left>=c.left&&p.top>=c.top&&p.right<=c.right+1&&p.bottom<=c.bottom+1;});assert.ok(containment,'Popup stays inside capture area');
   const size=await page.locator('[data-ns-node] text').first().evaluate(el=>getComputedStyle(el).fontSize);await page.click('#nsZoomIn');assert.equal(await page.locator('[data-ns-node] text').first().evaluate(el=>getComputedStyle(el).fontSize),size,'Labels retain screen font size');await page.click('#nsFit');
-  const panBefore=(await snapshot()).camera;await page.click('#nsPan');const box=await page.locator('#nsCanvas').boundingBox();await page.mouse.move(box.x+box.width*.8,box.y+70);await page.mouse.down();await page.mouse.move(box.x+box.width*.8-60,box.y+110,{steps:4});await page.mouse.up();assert.notEqual((await snapshot()).camera.x,panBefore.x);await page.click('#nsPan');await page.click('#nsFit');
+  const panBefore=(await snapshot()).camera;await page.click('#nsPan');const box=await page.locator('#nsCanvas').boundingBox();await page.mouse.move(box.x+box.width*.08,box.y+70);await page.mouse.down();await page.mouse.move(box.x+box.width*.08+60,box.y+110,{steps:4});await page.mouse.up();assert.notEqual((await snapshot()).camera.x,panBefore.x);await page.click('#nsPan');await page.click('#nsFit');
   await page.screenshot({path:evidence+'/network-review-'+name+'.png'});
   const downloadPromise=page.waitForEvent('download');downloadPromise.catch(()=>{});await page.click('#nsCapture');const download=await downloadPromise;await download.saveAs(evidence+'/network-capture-'+name+'.png');const png=await fs.readFile(evidence+'/network-capture-'+name+'.png');assert.equal(png.subarray(1,4).toString(),'PNG');
   console.log(name+': capture complete; check responsive layout and saved evidence');
@@ -136,7 +136,7 @@ try{
   console.log(name+': verify zero-flow model rule and explicit per-source threshold override');
   await page.click('#nsEdit');await page.click('#nsAddAsset');await field('nsName','Zero-flow regression');
   await field('nsModelDefault','0');await assign('model',['ZeroFlow_2024.csv']);
-  await page.locator('#nsDrawer details summary').click();await field('nsGap','3700');
+  await page.locator('#nsDrawer details summary').first().click();await field('nsGap','3700');
   assert.equal(await page.locator('[data-ns-binding-field="comparison"]').inputValue(),'gt');
   await page.click('#nsCalculate');await page.waitForFunction(()=>window.ICMNetworkSchematic.snapshot().nodes.at(-1).applied,null,{timeout:120000});
   let flow=(await snapshot()).nodes.at(-1);assert.equal(flow.applied.rows[0].spill_count,1);assert.ok(flow.applied.rows[0].duration_hours<10);assert.equal(flow.applied.rows[0].comparison,'gt');
