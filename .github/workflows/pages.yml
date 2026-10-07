@@ -39,7 +39,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'push' && 'production' || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && 'production' || format('pr-checks-{0}', github.ref) }}
   cancel-in-progress: true
 
 jobs:
@@ -91,6 +91,8 @@ jobs:
           node --check web/assets/network-schematic-core.js
           node --check web/assets/network-schematic.js
           node web/tests/network-schematic-unit.mjs
+          node --check web/assets/network-review-core.js
+          node web/tests/network-review-unit.mjs
           node --check web/assets/precision-workbench.js
           node --check web/assets/detriment-workspace.js
           node web/tests/survey-source-unit.mjs
@@ -173,6 +175,9 @@ jobs:
   browser-smoke:
     runs-on: ubuntu-latest
     needs: verify
+    timeout-minutes: 45
+    env:
+      ICM_EVIDENCE_DIR: /tmp/icm-pr-evidence
     steps:
       - uses: actions/checkout@v6
         with:
@@ -190,13 +195,11 @@ jobs:
         run: |
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
-      - name: Exercise complete browser workflow
-        env:
-          ICM_EVIDENCE_DIR: /tmp/icm-pr-evidence
+      - name: Start browser acceptance server
         run: |
-          python -m http.server 8000 --directory _site >/tmp/icm-pages-http.log 2>&1 &
+          nohup python -m http.server 8000 --directory _site >/tmp/icm-pages-http.log 2>&1 </dev/null &
           SERVER_PID=$!
-          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          echo "$SERVER_PID" > "$RUNNER_TEMP/icm-browser-server.pid"
           READY=0
           for attempt in {1..30}; do
             if curl --fail --silent --show-error http://127.0.0.1:8000/ >/dev/null 2>&1; then
@@ -215,12 +218,24 @@ jobs:
             cat /tmp/icm-pages-http.log
             exit 1
           fi
-          node web/tests/cold-start-shell.mjs
-          node web/tests/detriment-smoke.mjs
-          node web/tests/detriment-reference-smoke.mjs
-          node web/tests/audit-release-smoke.mjs
-          node web/tests/smoke.mjs
-          node web/tests/schematic-review-smoke.mjs
+      - name: Verify cold-start shell
+        run: node web/tests/cold-start-shell.mjs
+      - name: Verify detriment workspace
+        run: node web/tests/detriment-smoke.mjs
+      - name: Verify detriment reference cases
+        run: node web/tests/detriment-reference-smoke.mjs
+      - name: Verify release audit regressions
+        run: node web/tests/audit-release-smoke.mjs
+      - name: Verify complete graph and assessment workflows
+        run: node web/tests/smoke.mjs
+      - name: Verify survey schematic review
+        run: node web/tests/schematic-review-smoke.mjs
+      - name: Stop browser acceptance server
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/icm-browser-server.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/icm-browser-server.pid")" 2>/dev/null || true
+          fi
 
       - name: Package exact review preview
         if: success()
@@ -388,6 +403,8 @@ jobs:
           done
           ICM_BROWSER=chromium node web/tests/workspace-interactions.mjs
           ICM_BROWSER=chromium node web/tests/network-schematic-smoke.mjs
+          node web/tests/network-review-smoke.mjs
+          node web/tests/network-layout-smoke.mjs
           ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs
           ICM_BROWSER=firefox node web/tests/network-schematic-smoke.mjs
       - name: Retain workspace interaction evidence

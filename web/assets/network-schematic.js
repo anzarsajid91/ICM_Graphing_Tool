@@ -1,8 +1,11 @@
 /* Network overview: own state, local source bindings and calendar spill results. */
 (()=>{'use strict';
-const C=ICMNetworkCore,NS='http://www.w3.org/2000/svg',STORE='hydra-network-schematic-v1';
+const C=ICMNetworkCore,R=ICMNetworkReviewCore,NS='http://www.w3.org/2000/svg',STORE='hydra-network-schematic-v1';
 const $=id=>document.getElementById(id),html=esc,uid=()=>crypto.randomUUID();
 let network=C.empty(),selected=null,editing=false,tool='select',colour='red',connectFrom=null,drag=null,busy=false,history=[],mounted=false,popupVisible=false,observer=null,saveTimer=null;
+let redo=[],multi=new Set(),highlight=null,hoverTimer=null,frame=null,analysisGeneration=0,analysisContext=null,analysisTimer=null;
+const freshness=new Map();
+const prefs=()=>R.preferences(network);
 const root=()=>$('tab-spill-network');
 const node=()=>network.nodes.find(n=>n.id===selected),edge=()=>network.edges.find(n=>n.id===selected);
 const asset=n=>n&&!['manhole','label','junction','outfall'].includes(n.type);
@@ -16,15 +19,15 @@ function sourceFor(b){
 }
 function contract(b){const item=sourceFor(b);return item?{quantity:seriesQuantity(item,b.column)||'',unit:seriesUnit(item,b.column)||'',datum:seriesReference(item,b.column)||''}:{};}
 function signature(n){return JSON.stringify({methodVersion:2,bindings:n.bindings.map(b=>({sha256:b.sha256,column:b.column,role:b.role,scenario:b.scenario,years:b.years,threshold:b.threshold,comparison:C.thresholdRule(b),quantity:b.quantity,unit:b.unit,datum:b.datum,current:contract(b),found:Boolean(sourceFor(b))})),defaults:n.defaults,gap:n.gap,exclusions:n.exclusions,confirmed:n.confirmed});}
-function isFresh(n){return Boolean(n.applied&&n.applied.signature===signature(n));}
-function checkpoint(){history.push(JSON.stringify(network));if(history.length>30)history.shift();}
+function isFresh(n){if(!freshness.has(n.id))freshness.set(n.id,Boolean(n.applied&&n.applied.signature===signature(n)));return freshness.get(n.id);}
+function checkpoint(){redo=[];history.push(JSON.stringify(network));if(history.length>30)history.shift();}
 function snapshot(){return JSON.parse(JSON.stringify(network));}
 function flushSave(){clearTimeout(saveTimer);try{localStorage.setItem(STORE,JSON.stringify(network));}catch(error){status('Browser save unavailable; use Save network to keep this layout.');}}
 function persist(){state.networkSchematicWorkspace=snapshot();clearTimeout(saveTimer);saveTimer=setTimeout(flushSave,250);}
 function status(message){if($('nsStatus'))$('nsStatus').textContent=message;}
-function changed(geometry=false){persist();renderCanvas();if(!geometry)renderFilters();}
+function changed(geometry=false){if(!geometry)freshness.clear();persist();renderCanvas();if(!geometry)renderFilters();renderReview();}
 function restore(value){
-  network=value?C.validateNetwork(value):C.empty();selected=null;popupVisible=false;history=[];
+  network=value?C.validateNetwork(value):C.empty();selected=null;popupVisible=false;history=[];redo=[];multi.clear();highlight=null;freshness.clear();
   state.networkSchematicWorkspace=snapshot();if(mounted){render();persist();}
 }
 function point(x,y){return {x:x*network.camera.zoom+network.camera.x,y:y*network.camera.zoom+network.camera.y};}
@@ -47,10 +50,13 @@ function badge(n){
   rows.sort((a,b)=>b.year-a.year);return rows.length?f(rows[0][network.metric],network.metric==='spill_count'?0:1)+(network.metric==='duration_hours'?' h':''):'—';
 }
 function badgeMarkup(n){
-  if(network.evidenceMode!=='combined'){
+  if(!n.bindings.length)return '';
+  if(prefs().detail==='minimal'||prefs().detail==='auto'&&network.camera.zoom<.55&&selected!==n.id&&!multi.has(n.id))return '';
+  if(network.evidenceMode!=='combined'||!n.applied){
     const value=badge(n);return '<g data-ns-badge="" transform="translate(38 -25)"><rect x="0" y="-12" width="'+Math.max(24,value.length*8+10)+'" height="22" rx="5" fill="white" stroke="#c7d2d9"/><text x="5" y="3" font-size="13" fill="#182732">'+html(value)+'</text></g>';
   }
-  const summary=C.summaryRows(n.applied?.rows||[],network.year,network.metric,n.confirmed,isFresh(n),n.bindings.filter(b=>b.role==='model').map(b=>b.scenario));
+  const chosen=prefs().scenarios,rows=(n.applied?.rows||[]).filter(r=>r.role==='observed'||chosen===null||chosen.includes(r.scenario));
+  const summary=C.summaryRows(rows,network.year,network.metric,n.confirmed,isFresh(n),n.bindings.filter(b=>b.role==='model'&&(chosen===null||chosen.includes(b.scenario))).map(b=>b.scenario));
   const lines=summary.items.map(item=>({...item,text:(item.label.length>24?'M ('+item.label.slice(3,-1).slice(0,18)+'…)':item.label)+': '+(item.stale&&n.applied?'↻':f(item.value,network.metric==='spill_count'?0:1))+(network.metric==='duration_hours'&&item.value!==null?' h':'')}));
   const width=Math.max(65,...lines.map(item=>item.text.length*7+16)),height=21+lines.length*21;
   const offset=C.labelOffset(n),box=C.bounds(n.type),vertical=Math.abs(offset.y)/box.y>=Math.abs(offset.x)/box.x;
@@ -60,16 +66,19 @@ function badgeMarkup(n){
 }
 function svgContent(includeHandles=true){
   const {width,height}=dimensions(),parts=[];
+  const shown=visibleNodes(),shownIds=new Set(shown.map(n=>n.id)),byId=new Map(network.nodes.map(n=>[n.id,n]));
   const routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y));
   for(const e of network.edges){
+    if(!shownIds.has(e.from)||!shownIds.has(e.to))continue;
     const route=routes.get(e.id);if(!route)continue;
-    const a=network.nodes.find(n=>n.id===e.from),b=network.nodes.find(n=>n.id===e.to),c=C.colours[e.colour];
-    parts.push('<g data-ns-edge="'+html(e.id)+'" tabindex="0" role="button" aria-label="Connector '+html(e.name||a.name+' to '+b.name)+'"><path d="'+route.path+'" fill="none" stroke="transparent" stroke-width="14"/><path data-ns-wire="" d="'+route.path+'" fill="none" stroke="'+c+'" stroke-width="'+(e.id===selected?3:2)+'"/>'+(e.arrow!==false?'<polygon data-ns-direction="" points="'+route.arrow.map(p=>p.x+','+p.y).join(' ')+'" fill="'+c+'"/>':'')+(e.name?'<text x="'+route.label.x+'" y="'+route.label.y+'" fill="'+c+'" font-size="13">'+html(e.name)+'</text>':'')+(includeHandles&&editing&&e.id===selected?route.points.slice(1,-1).map((p,i)=>'<circle data-ns-bend="'+i+'" cx="'+p.x+'" cy="'+p.y+'" r="7" fill="white" stroke="#087b82" stroke-width="2"/>').join('')+((e.bends||[]).length<32?route.points.slice(1).map((p,i)=>{const a=route.points[i],x=(a.x+p.x)/2,y=(a.y+p.y)/2;return '<g data-ns-add-bend="'+i+'" aria-label="Add bend"><circle cx="'+x+'" cy="'+y+'" r="8" fill="white" stroke="#087b82"/><path d="M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6" stroke="#087b82" pointer-events="none"/></g>';}).join(''):''):'')+'</g>');
+    const a=byId.get(e.from),b=byId.get(e.to),c=C.colours[e.colour];
+    parts.push('<g data-ns-edge="'+html(e.id)+'" tabindex="0" role="button" aria-label="Connector '+html(e.name||a.name+' to '+b.name)+'"><path d="'+route.path+'" fill="none" stroke="transparent" stroke-width="14"/><path data-ns-wire="" d="'+route.path+'" fill="none" stroke="'+c+'" stroke-width="'+(e.id===selected?3:2)+'"/>'+(e.arrow!==false?'<polygon data-ns-direction="" points="'+route.arrow.map(p=>p.x+','+p.y).join(' ')+'" fill="'+c+'"/>':'')+(e.name?'<text data-ns-edge-label="" x="'+(route.label.x+(e.labelOffset?.x||0))+'" y="'+(route.label.y+(e.labelOffset?.y||0))+'" fill="'+c+'" font-size="13">'+html(e.name)+'</text>':'')+(includeHandles&&editing&&e.id===selected?route.points.slice(1,-1).map((p,i)=>'<circle data-ns-bend="'+i+'" cx="'+p.x+'" cy="'+p.y+'" r="7" fill="white" stroke="#087b82" stroke-width="2"/>').join('')+((e.bends||[]).length<32?route.points.slice(1).map((p,i)=>{const a=route.points[i],x=(a.x+p.x)/2,y=(a.y+p.y)/2;return '<g data-ns-add-bend="'+i+'" aria-label="Add bend"><circle cx="'+x+'" cy="'+y+'" r="8" fill="white" stroke="#087b82"/><path data-ns-handle="" d="M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6" stroke="#087b82" pointer-events="none"/></g>';}).join(''):''):'')+'</g>');
   }
   for(const n of network.nodes){
+    if(!shownIds.has(n.id))continue;
     const p=point(n.x,n.y),c=C.colours[n.colour],box=C.bounds(n.type),offset=C.labelOffset(n),small=['manhole','label'].includes(n.type),leader=C.labelLeader(n);
     const label=(leader?'<path data-ns-leader="" d="M'+leader.start.x+' '+leader.start.y+'L'+leader.end.x+' '+leader.end.y+'" stroke="#82939f" stroke-width="1" fill="none"/><polygon points="'+leader.arrow.map(p=>p.x+','+p.y).join(' ')+'" fill="#82939f"/>':'')+'<text data-ns-label="'+html(n.id)+'" x="'+(offset.x+(small?5:0))+'" y="'+offset.y+'" text-anchor="'+(small?'start':'middle')+'" font-size="'+(small?13:14)+'" font-weight="'+(small?400:600)+'" fill="#182732">'+html(n.name)+'</text>';
-    parts.push('<g data-ns-node="'+html(n.id)+'" transform="translate('+p.x+' '+p.y+')" tabindex="0" role="button" aria-label="'+html(n.name)+' · '+html(C.types[n.type])+'"><title>'+html(n.name+' · '+C.types[n.type])+'</title>'+(selected===n.id?'<rect x="-42" y="-32" width="84" height="64" rx="8" fill="none" stroke="#0b8f96" stroke-width="2"/>':'')+(box.circle?'':'<rect data-ns-frame="" x="'+(-box.x)+'" y="'+(-box.y)+'" width="'+(box.x*2)+'" height="'+(box.y*2)+'" rx="6" fill="white" stroke="'+c+'" stroke-width="1.5"/>')+'<rect x="-37" y="-28" width="74" height="56" fill="transparent"/><g stroke="'+c+'" stroke-width="1.8" fill="white" stroke-linecap="round" stroke-linejoin="round">'+icon(n.type)+'</g>'+label+(asset(n)?badgeMarkup(n):'')+'</g>');
+    parts.push('<g data-ns-node="'+html(n.id)+'" transform="translate('+p.x+' '+p.y+')" tabindex="0" role="button" aria-label="'+html(n.name)+' · '+html(C.types[n.type])+'"><title>'+html(n.name+' · '+C.types[n.type])+'</title>'+(selected===n.id||multi.has(n.id)?'<rect x="-42" y="-32" width="84" height="64" rx="8" fill="none" stroke="#0b8f96" stroke-width="2"/>':'')+(box.circle?'':'<rect data-ns-frame="" x="'+(-box.x)+'" y="'+(-box.y)+'" width="'+(box.x*2)+'" height="'+(box.y*2)+'" rx="6" fill="white" stroke="'+c+'" stroke-width="1.5"/>')+'<rect x="-37" y="-28" width="74" height="56" fill="transparent"/><g stroke="'+c+'" stroke-width="1.8" fill="white" stroke-linecap="round" stroke-linejoin="round">'+icon(n.type)+'</g>'+label+(asset(n)?badgeMarkup(n):'')+'</g>');
   }
   if(!network.nodes.length)parts.push('<text x="'+width/2+'" y="'+height/2+'" text-anchor="middle" fill="#60717d" font-size="15">Choose Edit network, then add your site assets and manholes.</text>');
   return parts.join('');
@@ -78,6 +87,12 @@ function renderCanvas(){
   const svg=$('nsSvg');if(!svg)return;const d=dimensions();svg.setAttribute('viewBox','0 0 '+d.width+' '+d.height);svg.innerHTML=svgContent();
   $('nsZoom').textContent=Math.round(network.camera.zoom*100)+'%';$('nsUndo').disabled=!history.length||busy;
   renderPopup();
+  applyDecorations();
+}
+function renderGeometry(){
+  const edges=new Map(network.edges.map(e=>[e.id,e])),nodes=new Map(network.nodes.map(n=>[n.id,n])),routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y));
+  for(const g of $('nsSvg').querySelectorAll('[data-ns-node]')){const n=nodes.get(g.dataset.nsNode),p=point(n.x,n.y);g.setAttribute('transform','translate('+p.x+' '+p.y+')');}
+  for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]')){const route=routes.get(g.dataset.nsEdge);if(!route){g.style.visibility='hidden';continue;}g.style.visibility='';for(const path of g.querySelectorAll(':scope > path'))path.setAttribute('d',route.path);g.querySelector('[data-ns-direction]')?.setAttribute('points',route.arrow.map(p=>p.x+','+p.y).join(' '));const e=edges.get(g.dataset.nsEdge),offset=e.labelOffset||{x:0,y:0},label=g.querySelector('text');if(label){label.setAttribute('x',route.label.x+offset.x);label.setAttribute('y',route.label.y+offset.y);}for(const handle of g.querySelectorAll('[data-ns-bend]')){const p=route.points[Number(handle.dataset.nsBend)+1];handle.setAttribute('cx',p.x);handle.setAttribute('cy',p.y);}for(const handle of g.querySelectorAll('[data-ns-add-bend]')){const i=Number(handle.dataset.nsAddBend),a=route.points[i],b=route.points[i+1],x=(a.x+b.x)/2,y=(a.y+b.y)/2;handle.querySelector('circle').setAttribute('cx',x);handle.querySelector('circle').setAttribute('cy',y);handle.querySelector('path').setAttribute('d','M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6');}}
 }
 function fit(){
   const d=dimensions();if(!network.nodes.length){network.camera={x:0,y:0,zoom:1};changed(true);return;}
@@ -126,25 +141,25 @@ function renderDrawer(){
   if(!n&&!e){drawer.innerHTML='<h3>Edit network</h3><p>Add a point or select an existing asset to name it and assign imported evidence.</p><p>Use Connect and click two points to draw a directed wire. Drag points to arrange the site.</p>';return;}
   const common='<div class="ns-drawer-head"><h3>'+html(n?n.name:e.name||'Connector')+'</h3><button data-ns-close-selection aria-label="Close settings">×</button></div>'+
     fields('Name','<input id="nsName" value="'+html(n?n.name:e.name||'')+'" maxlength="160">')+fields('Network colour',colours((n||e).colour,'data-ns-object-colour'));
-  if(e){drawer.innerHTML=common+'<label class="ns-check"><input id="nsArrow" type="checkbox" '+(e.arrow!==false?'checked':'')+'> Show direction</label><p class="ns-note">Click + on the line to add a bend; drag the round handles to position it.</p><button id="nsAddBend" '+((e.bends||[]).length>=32?'disabled':'')+'>+ Add bend</button> <button id="nsStraighten" '+(!(e.bends||[]).length?'disabled':'')+'>Straighten</button>'+((e.bends||[]).length?'<div class="ns-bend-list">'+e.bends.map((p,i)=>'<button data-ns-remove-bend="'+i+'">Remove bend '+(i+1)+'</button>').join('')+'</div>':'')+'<button data-ns-delete class="ns-danger">Delete connector</button>';return;}
+  if(e){drawer.innerHTML=common+'<label class="ns-check"><input id="nsArrow" type="checkbox" '+(e.arrow!==false?'checked':'')+'> Show direction</label><p class="ns-note">Click + on the line to add a bend; drag the round handles to position it.</p><button id="nsAddBend" '+((e.bends||[]).length>=32?'disabled':'')+'>+ Add bend</button> <button id="nsStraighten" '+(!(e.bends||[]).length?'disabled':'')+'>Straighten</button>'+((e.bends||[]).length?'<div class="ns-bend-list">'+e.bends.map((p,i)=>'<button data-ns-remove-bend="'+i+'">Remove bend '+(i+1)+'</button>').join('')+'</div>':'')+reviewFields(e)+'<button data-ns-delete class="ns-danger">Delete connector</button>';return;}
   drawer.innerHTML=common+fields('Type',selectHtml('id="nsType"',Object.entries(C.types),n.type))+
-    '<div class="ns-two">'+fields('Label X','<input id="nsLabelX" type="number" min="-10000" max="10000" value="'+C.labelOffset(n).x+'">')+fields('Label Y','<input id="nsLabelY" type="number" min="-10000" max="10000" value="'+C.labelOffset(n).y+'">')+'</div><button id="nsResetLabel">Reset label</button><small>Drag the name or combined summary on the canvas. A leader arrow keeps the label tied to this point.</small>'+
+    '<label class="ns-check"><input id="nsPinned" type="checkbox" '+(n.pinned?'checked':'')+'> Pin position</label><div class="ns-two">'+fields('Label X','<input id="nsLabelX" type="number" min="-10000" max="10000" value="'+C.labelOffset(n).x+'">')+fields('Label Y','<input id="nsLabelY" type="number" min="-10000" max="10000" value="'+C.labelOffset(n).y+'">')+'</div><button id="nsResetLabel">Reset label</button><small>Drag the name or combined summary on the canvas. A leader arrow keeps the label tied to this point.</small>'+
     (asset(n)?'<section><h4>Observed</h4>'+fields('Shared threshold · blank rows inherit','<input id="nsObservedDefault" type="number" step="any" value="'+html(n.defaults?.observed??'')+'">')+bindingRows(n,'observed')+'<button data-ns-add-sources="observed">+ Add datasets</button></section>'+
       '<section><h4>Modelled scenarios</h4>'+fields('Scenario for new assignments','<input id="nsNewScenario" value="'+html(n.newScenario||'Baseline')+'" maxlength="100">')+fields('Shared model threshold · blank rows inherit','<input id="nsModelDefault" type="number" step="any" value="'+html(n.defaults?.model??'')+'">')+bindingRows(n,'model')+'<button data-ns-add-sources="model">+ Add datasets to scenario</button></section>'+
       '<details><summary>Assessment settings</summary>'+fields('Maximum valid gap (s)','<input id="nsGap" type="number" min="1" value="'+n.gap+'">')+fields('Exclusions · start, end, reason (one per line)','<textarea id="nsExclusions" rows="3" placeholder="2024-05-01T00:00, 2024-05-02T00:00, logger fault">'+html((n.exclusions||[]).map(x=>[x.start,x.end,x.reason].join(', ')).join('\n'))+'</textarea>')+'<small>Local to this asset. Use model-clock ISO dates. Other workspaces are unaffected.</small></details>'+
       '<label class="ns-check"><input id="nsConfirmed" type="checkbox" '+(n.confirmed?'checked':'')+'> Matching clocks, units/datum and model/rainfall basis confirmed for this asset’s comparisons</label>'+
       '<p class="ns-note">Each source defaults to its main reporting year; override years per row. At least three calendar months of valid reporting data are required.</p>'+
       '<button id="nsCalculate" class="ns-primary" '+(busy?'disabled':'')+'>'+(busy?'Calculating…':'Apply & calculate')+'</button>':'')+
-    '<button data-ns-delete class="ns-danger">Delete point</button>';
+    reviewFields(n)+'<button data-ns-delete class="ns-danger">Delete point</button>';
 }
 function popupTable(n){
-  if(!n.applied)return '<p>Assign evidence in Edit network, then Apply & calculate.</p>';
-  const fresh=isFresh(n),groups=C.evidenceRows(n.applied.rows||[],network.year);
+  if(!n.applied)return annualTable(n)+'<small>Assign datasets and calculate.</small>';
+  const fresh=isFresh(n),groups=R.annualGroups(n,prefs().scenarios);
   let table='<table><thead><tr><th>Year</th><th>Scenario</th><th>Observed<br>spills</th><th>Modelled<br>spills</th><th>Observed<br>hours</th><th>Modelled<br>hours</th></tr></thead><tbody>';
   const cell=(v,rag)=>'<td'+(rag?' class="ns-rag-'+rag+'"':'')+'>'+f(v,Number.isInteger(v)?0:2)+'</td>';
   for(const group of groups){
-    const o=group.observed,m=group.model,reason=m?(fresh?C.comparable(o,m,n.confirmed):'Recalculation required'):'',countRag=m&&!reason?C.rag(o?.spill_count,m.spill_count):null,durationRag=m&&!reason?C.rag(o?.duration_hours,m.duration_hours):null;
-    table+='<tr data-ns-evidence-year="'+group.year+'"><td>'+group.year+'</td><td>'+html(group.scenario)+([o,m].some(r=>r?.continuous_spill)?'<small class="ns-warning">Continuous spill — check threshold</small>':'')+'</td>'+cell(o?.spill_count)+cell(m?.spill_count,countRag)+cell(o?.duration_hours)+cell(m?.duration_hours,durationRag)+'</tr>';
+    const o=group.observed,m=group.model,reason=!fresh?'Recalculation required':m?C.comparable(o,m,n.confirmed):'No matching model evidence.',countRag=m&&!reason?C.rag(o?.spill_count,m.spill_count):null,durationRag=m&&!reason?C.rag(o?.duration_hours,m.duration_hours):null;
+    table+='<tr data-ns-evidence-year="'+group.year+'" title="'+html(reason)+'"><td>'+group.year+'</td><td>'+html(group.scenario)+([o,m].some(r=>r?.continuous_spill)?'<small class="ns-warning">Continuous spill — check threshold</small>':'')+'</td>'+cell(fresh?o?.spill_count:null)+cell(fresh?m?.spill_count:null,countRag)+cell(fresh?o?.duration_hours:null)+cell(fresh?m?.duration_hours:null,durationRag)+'</tr>';
   }
   table+='</tbody></table>'+(groups.length?'':'<p>No evidence for the selected year.</p>');
   const details=groups.map(g=>[g.observed,g.model].filter(Boolean).map(r=>'<p><strong>'+html(r.year+' · '+(r.role==='observed'?'Observed':r.scenario))+'</strong><br>'+html(r.analysis_start?r.analysis_start.slice(0,10)+' to '+r.analysis_end.slice(0,10):'No period')+(r.partial_year?' · partial year':'')+'<br>'+html(r.column)+' · '+(C.thresholdRule(r)==='gt'?'&gt;':'≥')+' '+f(r.threshold,6)+' '+html(r.unit||'')+'<br>Valid '+f(r.valid_hours,1)+' h · gaps '+f(r.unknown_hours,1)+' h · excluded '+f(r.excluded_hours,1)+' h'+(r.value_min!==undefined?'<br>Value range '+f(r.value_min,6)+' to '+f(r.value_max,6)+' '+html(r.unit||''):'')+(r.reason?'<br>'+html(r.reason):'')+(r.count_status&&r.count_status!=='definitive'?'<br>'+html(r.count_status):'')+(r.continuous_spill?'<br>All valid support is classified as spilling. Check channel, threshold, units and datum.':'')+'</p>').join('')+(g.model?'<p>'+html(fresh?C.comparable(g.observed,g.model,n.confirmed)||'Comparison eligible.':'Recalculation required.')+'</p>':'')).join('');
@@ -152,35 +167,36 @@ function popupTable(n){
 }
 function renderPopup(){
   const pop=$('nsPopup'),n=node();if(!pop)return;pop.hidden=editing||!popupVisible||!n;
-  if(pop.hidden)return;
-  pop.innerHTML='<div class="ns-popup-head"><div><h3>'+html(n.name)+'</h3><small>'+html(C.types[n.type])+' · yearly spill evidence</small></div><button data-ns-close-popup aria-label="Close spill evidence">×</button></div><div class="ns-popup-body">'+popupTable(n)+'</div><div class="ns-popup-footer"><button data-ns-edit-selected>Edit asset</button></div>';
+  if(pop.hidden){pop.replaceChildren();return;}
+  const oldScroll=pop.querySelector('.ns-popup-body')?.scrollTop||0;pop.innerHTML='<div class="ns-popup-head"><div><h3>'+html(n.name)+'</h3><small>'+html(C.types[n.type])+' · all reporting years</small></div><button data-ns-close-popup aria-label="Close spill evidence">×</button></div><div class="ns-popup-body">'+popupTable(n)+reviewFields(n)+'</div><div class="ns-popup-footer"><button data-ns-open-analysis="series">Time series</button><button data-ns-open-analysis="spills">Spill analysis</button><button data-ns-edit-selected>Edit asset</button></div>';pop.querySelector('.ns-popup-body').scrollTop=oldScroll;
   const d=dimensions(),p=point(n.x,n.y),w=Math.min(620,d.width-24);pop.style.width=w+'px';pop.style.maxHeight=(d.height-24)+'px';
   // Keep the camera controls reachable even with a long evidence table.
   pop.style.maxHeight=(d.height-82)+'px';
-  pop.style.left=Math.max(12,Math.min(d.width-w-12,p.x+45))+'px';
-  pop.style.top=Math.max(12,Math.min(d.height-pop.offsetHeight-72,p.y+20))+'px';
+  pop.style.left=Math.max(12,d.width-w-12)+'px';
+  pop.style.top='12px';
 }
 function render(){
   if(!mounted)return;
   $('nsEdit').textContent=editing?'Done editing':'Edit network';$('nsEdit').setAttribute('aria-pressed',String(editing));
   $('nsEditTools').hidden=!editing;$('nsLayout').classList.toggle('ns-editing',editing);
   $('nsPan').setAttribute('aria-pressed',String(tool==='pan'));$('nsConnect').setAttribute('aria-pressed',String(tool==='connect'));
-  $('nsColourChoices').innerHTML=colours(colour,'data-ns-colour');renderFilters();renderDrawer();renderCanvas();
+  $('nsColourChoices').innerHTML=colours(colour,'data-ns-colour');renderFilters();renderDrawer();renderCanvas();renderReview();
 }
 function add(type){
-  if(busy)return;checkpoint();const d=dimensions(),p=world(d.width*.35+network.nodes.length%4*30,d.height*.4+network.nodes.length%4*35);
-  const n={id:uid(),name:C.types[type]+' '+(network.nodes.filter(n=>n.type===type).length+1),type,colour,x:p.x,y:p.y,labelOffset:{x:30,y:-20},bindings:[],defaults:{observed:'',model:''},newScenario:'Baseline',gap:900,exclusions:[],confirmed:false,applied:null};
+  if(busy||prefs().locked)return;checkpoint();const d=dimensions(),p=world(d.width*.35+network.nodes.length%4*30,d.height*.4+network.nodes.length%4*35);
+  if(network.nodes.length>=2000){status('Maximum 2,000 points.');return;}const n={id:uid(),name:C.types[type]+' '+(network.nodes.filter(n=>n.type===type).length+1),type,colour,x:p.x,y:p.y,labelOffset:{x:30,y:-20},bindings:[],defaults:{observed:'',model:''},newScenario:'Baseline',gap:900,exclusions:[],confirmed:false,applied:null};
   network.nodes.push(n);selected=n.id;popupVisible=false;editing=true;changed();render();$('nsName')?.focus();
 }
 function selectPoint(id){
   if(tool==='connect'&&editing){
+    if(prefs().locked||busy)return;
     const n=network.nodes.find(n=>n.id===id);if(n?.type==='label'){status('Pointer labels do not connect. Select an asset or manhole.');return;}
     if(!connectFrom){connectFrom=id;status('Select the downstream point.');return;}
     if(connectFrom===id){connectFrom=null;status('Connection cancelled.');return;}
-    if(!network.edges.some(e=>e.from===connectFrom&&e.to===id)){checkpoint();network.edges.push({id:uid(),from:connectFrom,to:id,colour,name:'',arrow:true});changed();}
+    if(network.edges.length>=5000){status('Maximum 5,000 connectors.');connectFrom=null;return;}if(!network.edges.some(e=>e.from===connectFrom&&e.to===id)){checkpoint();network.edges.push({id:uid(),from:connectFrom,to:id,colour,name:'',arrow:true});changed();}
     connectFrom=null;status('Connector added. Connections do not alter spill calculations.');return;
   }
-  selected=id;popupVisible=!editing;renderDrawer();renderCanvas();
+  selected=id;if(!multi.has(id))multi=new Set([id]);popupVisible=!editing;hideHover();renderDrawer();renderCanvas();renderReview();
 }
 function showSourcePicker(role){
   const n=node();if(!n||busy)return;
@@ -232,11 +248,12 @@ async function calculate(){
       rows.push(...result.rows.map(row=>({...row,role:b.role,scenario:b.scenario,comparison,source_sha256:b.sha256,source_name:b.sourceName,column:b.column,quantity:b.quantity,unit:b.unit,datum:b.datum,exclusions:n.exclusions,context_start:result.context_start})));
     }
     if(sig!==signature(n))throw new Error('Asset inputs changed while calculating. Reapply the settings.');
-    n.applied={signature:sig,rows,settings:{gap:n.gap,confirmed:n.confirmed},calculated_at:new Date().toISOString()};persist();status('Applied '+assignments.length+' sources. Spill results are frozen to these settings.');
+    freshness.clear();n.applied={signature:sig,rows,settings:{gap:n.gap,confirmed:n.confirmed},calculated_at:new Date().toISOString()};persist();status('Applied '+assignments.length+' sources. Spill results are frozen to these settings.');
   }catch(error){status(String(error.message||error).split('\n').filter(x=>x.trim()).at(-1));}
   finally{busy=false;render();}
 }
 function updateField(target){
+  if(!target.closest('[data-ns-binding]')&&!['nsName','nsType','nsArrow','nsLabelX','nsLabelY','nsObservedDefault','nsModelDefault','nsNewScenario','nsGap','nsConfirmed','nsExclusions','nsPinned','nsReviewComment','nsReviewStatus'].includes(target.id))return;
   const n=node(),e=edge();if(!n&&!e)return;
   target.removeAttribute('aria-invalid');
   if(target.validity?.badInput){target.setAttribute('aria-invalid','true');status('Enter a valid number before calculating.');return;}
@@ -255,6 +272,9 @@ function updateField(target){
     if(target.id==='nsName')object.name=target.value.trim()||C.types[n?.type]||'Connector';
     else if(target.id==='nsType')n.type=target.value;
     else if(target.id==='nsArrow')e.arrow=target.checked;
+    else if(target.id==='nsPinned')n.pinned=target.checked;
+    else if(target.id==='nsReviewComment'){object.review={...R.review(object),comment:target.value.slice(0,10000)};}
+    else if(target.id==='nsReviewStatus'){object.review={...R.review(object),status:target.value};}
     else if(target.id==='nsLabelX'||target.id==='nsLabelY')n.nameOffset={...C.labelOffset(n),[target.id==='nsLabelX'?'x':'y']:Math.max(-10000,Math.min(10000,finite(target.value)))};
     else if(target.id==='nsObservedDefault')n.defaults.observed=target.value;
     else if(target.id==='nsModelDefault')n.defaults.model=target.value;
@@ -267,10 +287,10 @@ function updateField(target){
   }catch(error){status(error.message);target.setAttribute('aria-invalid','true');}
 }
 function removeSelected(){
-  if(busy)return;checkpoint();network.nodes=network.nodes.filter(n=>n.id!==selected);network.edges=network.edges.filter(e=>e.id!==selected&&e.from!==selected&&e.to!==selected);selected=null;popupVisible=false;changed();renderDrawer();
+  if(busy||prefs().locked)return;checkpoint();const ids=new Set([...multi,selected]);network.nodes=network.nodes.filter(n=>!ids.has(n.id));network.edges=network.edges.filter(e=>!ids.has(e.id)&&!ids.has(e.from)&&!ids.has(e.to));multi.clear();selected=null;popupVisible=false;changed();renderDrawer();
 }
 function addBend(e,index,p){
-  if(!e||busy||(e.bends||[]).length>=32)return false;
+  if(!e||busy||prefs().locked||(e.bends||[]).length>=32)return false;
   checkpoint();e.bends=e.bends||[];e.bends.splice(index,0,p);changed(true);renderDrawer();return true;
 }
 function onClick(event){
@@ -285,9 +305,9 @@ function onClick(event){
   if(t.closest('[data-ns-edit-selected]')){editing=true;popupVisible=false;render();return;}
   const swatch=t.closest('[data-ns-colour]');if(swatch){colour=swatch.dataset.nsColour;render();return;}
   const objectColour=t.closest('[data-ns-object-colour]');if(objectColour){checkpoint();(node()||edge()).colour=objectColour.dataset.nsObjectColour;changed();renderDrawer();return;}
-  if(t.id==='nsResetLabel'){checkpoint();delete node().nameOffset;delete node().labelOffset;changed(true);renderDrawer();return;}
-  if(t.id==='nsStraighten'){checkpoint();edge().bends=[];changed(true);renderDrawer();return;}
-  const removeBend=t.closest('[data-ns-remove-bend]');if(removeBend){checkpoint();edge().bends.splice(Number(removeBend.dataset.nsRemoveBend),1);changed(true);renderDrawer();return;}
+  if(t.id==='nsResetLabel'){if(prefs().locked)return;checkpoint();delete node().nameOffset;delete node().labelOffset;changed(true);renderDrawer();return;}
+  if(t.id==='nsStraighten'){if(prefs().locked)return;checkpoint();edge().bends=[];changed(true);renderDrawer();return;}
+  const removeBend=t.closest('[data-ns-remove-bend]');if(removeBend){if(prefs().locked)return;checkpoint();edge().bends.splice(Number(removeBend.dataset.nsRemoveBend),1);changed(true);renderDrawer();return;}
   if(t.id==='nsAddBend'){
     const e=edge(),route=C.connector(e,network.nodes,network.edges,n=>point(n.x,n.y));if(!route)return;
     const lengths=route.points.slice(1).map((p,i)=>Math.hypot(p.x-route.points[i].x,p.y-route.points[i].y)),i=lengths.indexOf(Math.max(...lengths)),a=route.points[i],b=route.points[i+1];
@@ -296,11 +316,12 @@ function onClick(event){
   if(t.id==='nsCalculate'){void calculate();return;}
 }
 function onPointerDown(event){
-  if(event.button!==0||event.target.closest('#nsPopup,#nsPicker,.ns-camera-tools'))return;
+  if(event.button!==0||event.target.closest('#nsPopup,#nsPicker,#nsHover,.ns-camera-tools'))return;
   const canvas=$('nsCanvas'),rect=canvas.getBoundingClientRect(),id=event.target.closest('[data-ns-node]')?.dataset.nsNode,wire=event.target.closest('[data-ns-edge]')?.dataset.nsEdge;
   if(wire&&editing&&tool!=='pan'){
-    selected=wire;const e=edge(),bend=event.target.closest('[data-ns-bend]'),add=event.target.closest('[data-ns-add-bend]');
-    if(tool==='select'&&!busy&&(bend||add)){
+    selected=wire;multi.clear();const e=edge(),edgeLabel=event.target.closest('[data-ns-edge-label]'),bend=event.target.closest('[data-ns-bend]'),add=event.target.closest('[data-ns-add-bend]');
+    if(tool==='select'&&!busy&&!prefs().locked&&edgeLabel){checkpoint();const offset=e.labelOffset||{x:0,y:0};drag={kind:'edge-label',id:wire,x:event.clientX,y:event.clientY,startX:offset.x,startY:offset.y};canvas.setPointerCapture(event.pointerId);event.preventDefault();}
+    if(tool==='select'&&!busy&&!prefs().locked&&(bend||add)){
       const index=Number(bend?.dataset.nsBend??add.dataset.nsAddBend);
       if(add){if(!addBend(e,index,world(event.clientX-rect.left,event.clientY-rect.top)))return;}else checkpoint();
       const p=e.bends[index];drag={kind:'bend',id:wire,index,x:event.clientX,y:event.clientY,startX:p.x,startY:p.y,moved:false};
@@ -309,21 +330,22 @@ function onPointerDown(event){
     renderDrawer();renderCanvas();return;
   }
   const label=event.target.closest('[data-ns-label],[data-ns-summary]');
-  if(id&&tool!=='pan'){selectPoint(id);if(!editing||tool==='connect'||busy)return;}
+  if(id&&tool!=='pan'){if(event.shiftKey&&tool==='select'){if(multi.has(id))multi.delete(id);else multi.add(id);selected=id;popupVisible=false;renderCanvas();renderReview();return;}selectPoint(id);if(!editing||tool==='connect'||busy)return;}
   const n=id?network.nodes.find(n=>n.id===id):null;
-  if(n&&editing&&tool==='select'){checkpoint();const offset=C.labelOffset(n);drag={kind:label?'label':'node',id,x:event.clientX,y:event.clientY,startX:label?offset.x:n.x,startY:label?offset.y:n.y,moved:false};}
+  if(n&&editing&&tool==='select'&&!prefs().locked&&(!n.pinned||label)){checkpoint();const offset=C.labelOffset(n);drag={kind:label?'label':'node',id,x:event.clientX,y:event.clientY,startX:label?offset.x:n.x,startY:label?offset.y:n.y,moved:false,group:network.nodes.filter(x=>multi.has(x.id)&&!x.pinned).map(x=>({id:x.id,x:x.x,y:x.y}))};}
   else{drag={kind:'pan',x:event.clientX,y:event.clientY,camera:{...network.camera},moved:false};}
   canvas.setPointerCapture(event.pointerId);event.preventDefault();
 }
 function onPointerMove(event){
   if(!drag)return;const dx=event.clientX-drag.x,dy=event.clientY-drag.y;drag.moved=drag.moved||Math.abs(dx)+Math.abs(dy)>3;
-  if(drag.kind==='node'){const n=network.nodes.find(n=>n.id===drag.id);if(n){n.x=drag.startX+dx/network.camera.zoom;n.y=drag.startY+dy/network.camera.zoom;}}
+  if(drag.kind==='node'){for(const saved of drag.group||[]){const n=network.nodes.find(n=>n.id===saved.id),step=prefs().snap?20:0;n.x=saved.x+dx/network.camera.zoom;n.y=saved.y+dy/network.camera.zoom;if(step){n.x=Math.round(n.x/step)*step;n.y=Math.round(n.y/step)*step;}}}
   else if(drag.kind==='label'){const n=network.nodes.find(n=>n.id===drag.id);if(n)n.nameOffset={x:Math.max(-10000,Math.min(10000,drag.startX+dx)),y:Math.max(-10000,Math.min(10000,drag.startY+dy))};}
+  else if(drag.kind==='edge-label'){const e=edge();if(e)e.labelOffset={x:Math.max(-10000,Math.min(10000,drag.startX+dx)),y:Math.max(-10000,Math.min(10000,drag.startY+dy))};}
   else if(drag.kind==='bend'){const e=network.edges.find(e=>e.id===drag.id);if(e?.bends[drag.index])e.bends[drag.index]={x:drag.startX+dx/network.camera.zoom,y:drag.startY+dy/network.camera.zoom};}
   else{network.camera.x=drag.camera.x+dx;network.camera.y=drag.camera.y+dy;}
-  renderCanvas();
+  if(frame===null)frame=requestAnimationFrame(()=>{frame=null;if(drag?.kind==='label')renderCanvas();else renderGeometry();});
 }
-function onPointerUp(event){if(!drag)return;drag=null;try{$('nsCanvas').releasePointerCapture(event.pointerId);}catch{}persist();if(editing)renderDrawer();}
+function onPointerUp(event){if(!drag)return;if(frame!==null){cancelAnimationFrame(frame);frame=null;}drag=null;renderCanvas();try{$('nsCanvas').releasePointerCapture(event.pointerId);}catch{}persist();if(editing)renderDrawer();}
 function exportRows(){
   const headers=['asset_id','asset_name','type','year','role','scenario','spill_count','duration_hours','eligible','analysis_start','analysis_end','valid_hours','unknown_hours','excluded_hours','count_status','counting_basis','source_name','source_sha256','column','threshold','comparison','continuous_spill','value_min','value_max','unit','quantity','context_start','max_gap_seconds','exclusions','comparison_basis_confirmed','calculated_at','current'];
   const rows=network.nodes.flatMap(n=>(n.applied?.rows||[]).map(r=>({...r,asset_id:n.id,asset_name:n.name,type:n.type,max_gap_seconds:n.applied.settings?.gap??'',exclusions:JSON.stringify(r.exclusions||[]),comparison_basis_confirmed:n.applied.settings?.confirmed??'',calculated_at:n.applied.calculated_at,current:isFresh(n)})));
@@ -364,6 +386,165 @@ async function capture(){
   try{await document.fonts?.ready;const image=new Image();image.src=url;await image.decode();const canvas=document.createElement('canvas');canvas.width=d.width*2;canvas.height=d.height*2;const ctx=canvas.getContext('2d');ctx.scale(2,2);ctx.drawImage(image,0,0);const png=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!png)throw new Error('Could not create screenshot.');const link=document.createElement('a'),pngUrl=URL.createObjectURL(png);link.href=pngUrl;link.download='hydra-network-schematic.png';link.click();setTimeout(()=>URL.revokeObjectURL(pngUrl),1000);status('Network PNG captured with the open evidence table.');}
   finally{URL.revokeObjectURL(url);}
 }
+function reviewFields(object){
+  const r=R.review(object);return '<details class="ns-review-notes"><summary>Review notes</summary>'+fields('Status',selectHtml('id="nsReviewStatus"',[['unreviewed','Unreviewed'],['in-review','In review'],['reviewed','Reviewed']],r.status))+fields('Comment','<textarea id="nsReviewComment" rows="3" maxlength="10000">'+html(r.comment)+'</textarea>')+'</details>';
+}
+function nodeHealth(n){return R.health(n,isFresh(n),n.bindings.every(b=>Boolean(sourceFor(b))));}
+function resultRag(n){
+  if(!isFresh(n))return null;
+  const groups=R.annualGroups(n,prefs().scenarios),year=network.year==='all'?Math.max(...groups.filter(g=>g.observed?.eligible||g.model?.eligible).map(g=>g.year)):Number(network.year);
+  const values=groups.filter(g=>g.year===year&&g.model&&!C.comparable(g.observed,g.model,n.confirmed)).map(g=>C.rag(g.observed[network.metric],g.model[network.metric]));
+  return values.includes('red')?'red':values.includes('amber')?'amber':values.includes('green')?'green':null;
+}
+function visibleNodes(){
+  const p=prefs();return network.nodes.filter(n=>(p.type==='all'||n.type===p.type)&&(p.health==='all'||nodeHealth(n)===p.health)&&(p.result==='all'||(resultRag(n)||'neutral')===p.result));
+}
+function applyDecorations(){
+  const byId=new Map(network.nodes.map(n=>[n.id,n]));
+  for(const g of $('nsSvg').querySelectorAll('[data-ns-node]')){const n=byId.get(g.dataset.nsNode);g.style.opacity=highlight&&!highlight.ids.has(n.id)?'.2':'1';g.classList.toggle('ns-multi-selected',multi.has(n.id));if(asset(n)){const h=nodeHealth(n);if(h!=='ready'){const dot=document.createElementNS(NS,'circle');dot.setAttribute('cx','-34');dot.setAttribute('cy','-24');dot.setAttribute('r','4');dot.setAttribute('fill',h==='stale'?'#9a6500':h==='missing'?'#b93838':'#82939f');const title=document.createElementNS(NS,'title');title.textContent=healthLabel(h);dot.append(title);g.append(dot);}}}
+  for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]'))g.style.opacity=highlight&&!highlight.wires.has(g.dataset.nsEdge)?'.15':'1';
+  const hidden=network.nodes.length-visibleNodes().length;if($('nsHiddenCount'))$('nsHiddenCount').textContent=hidden?hidden+' hidden':'';
+}
+function healthLabel(value){return {ready:'Ready',missing:'Reload source',stale:'Recalculate',short:'Short coverage',provisional:'Provisional count',unassigned:'No datasets',uncalculated:'Not calculated'}[value]||value;}
+function centre(id){const n=network.nodes.find(n=>n.id===id);if(!n)return;const d=dimensions();network.camera.x=d.width*.3-n.x*network.camera.zoom;network.camera.y=d.height*.5-n.y*network.camera.zoom;selected=id;multi=new Set([id]);popupVisible=!editing;persist();render();renderReview();}
+function hideHover(){clearTimeout(hoverTimer);if($('nsHover'))$('nsHover').hidden=true;}
+function hoverCard(id){
+  const n=network.nodes.find(n=>n.id===id);if(!n||!asset(n)||editing||drag||popupVisible)return;
+  const hover=$('nsHover'),d=dimensions(),p=point(n.x,n.y);hover.innerHTML='<strong>'+html(n.name)+'</strong><div class="ns-hover-table">'+annualTable(n,false)+'</div><small>Click asset to inspect</small>';hover.hidden=false;const w=Math.min(460,d.width-24);hover.style.width=w+'px';hover.style.left=Math.max(12,Math.min(d.width-w-12,p.x+45))+'px';hover.style.top=Math.max(12,Math.min(d.height-hover.offsetHeight-70,p.y+15))+'px';
+}
+function annualTable(n,differences=false,scenarios=prefs().scenarios){
+  const fresh=isFresh(n),groups=R.annualGroups(n,scenarios),cell=(value,rag)=>'<td'+(rag?' class="ns-rag-'+rag+'"':'')+'>'+f(value,Number.isInteger(value)?0:1)+'</td>';
+  const signed=value=>value===null?'—':(value>0?'+':'')+f(value,1);
+  return '<table class="ns-annual-table"><thead><tr><th>Year</th><th>Scenario</th><th>O count</th><th>M count</th><th>O h</th><th>M h</th>'+(differences?'<th>Δ count</th><th>Δ h</th>':'')+'</tr></thead><tbody>'+groups.map(g=>{
+    const reason=!fresh?'Recalculate':g.model?C.comparable(g.observed,g.model,n.confirmed):'No model evidence',valid=!reason,o=fresh?g.observed:null,m=fresh?g.model:null;
+    return '<tr data-ns-focus="'+html(n.id)+'" data-ns-year="'+g.year+'" title="'+html(reason)+'"><td>'+g.year+'</td><td>'+html(g.scenario)+'</td>'+cell(o?.spill_count)+cell(m?.spill_count,valid?C.rag(o.spill_count,m.spill_count):null)+cell(o?.duration_hours)+cell(m?.duration_hours,valid?C.rag(o.duration_hours,m.duration_hours):null)+(differences?'<td>'+signed(valid?R.delta(o.spill_count,m.spill_count):null)+'</td><td>'+signed(valid?R.delta(o.duration_hours,m.duration_hours):null)+'</td>':'')+'</tr>';
+  }).join('')+'</tbody></table>';
+}
+function renderReview(){
+  if(!$('nsReviewTools'))return;
+  const p=prefs(),names=[...new Set(network.nodes.flatMap(n=>n.bindings.filter(b=>b.role==='model').map(b=>b.scenario)))].sort();
+  $('nsTypeFilter').value=p.type;$('nsHealthFilter').value=p.health;$('nsResultFilter').value=p.result;$('nsDetail').value=p.detail;$('nsSnap').checked=p.snap;$('nsLocked').checked=p.locked;
+  $('nsRedo').disabled=!redo.length||busy;
+  $('nsScenarioChoices').innerHTML=names.map(name=>'<label><input type="checkbox" data-ns-scenario-choice="'+html(name)+'" '+(p.scenarios===null||p.scenarios.includes(name)?'checked':'')+'>'+html(name)+'</label>').join('')||'<small>No model scenarios assigned</small>';
+  $('nsViewSelect').innerHTML='<option value="">Saved views</option>'+network.views.map((v,i)=>'<option value="'+i+'">'+html(v.name)+'</option>').join('');
+  $('nsSnapshotSelect').innerHTML='<option value="">Review snapshots</option>'+network.reviewSnapshots.map((v,i)=>'<option value="'+i+'">'+html(v.name)+'</option>').join('');
+  $('nsSelectionCount').textContent=multi.size>1?multi.size+' selected':'';
+  if(!$('nsMatrix').hidden)renderMatrix();
+}
+function renderMatrix(){
+  const selectedOnly=$('nsMatrixSelected').checked,query=$('nsMatrixSearch').value.toLowerCase();
+  const nodes=network.nodes.filter(n=>asset(n)&&(!selectedOnly||multi.has(n.id))&&n.name.toLowerCase().includes(query));
+  $('nsMatrixBody').innerHTML=nodes.map(n=>'<section><button class="ns-asset-link" data-ns-centre="'+html(n.id)+'">'+html(n.name)+'</button>'+annualTable(n,true)+'</section>').join('')||'<p>No matching assets.</p>';
+}
+function undoEdit(forward=false){
+  if(busy)return;const source=forward?redo:history,dest=forward?history:redo;if(!source.length)return;dest.push(JSON.stringify(network));network=JSON.parse(source.pop());selected=null;multi.clear();highlight=null;popupVisible=false;freshness.clear();persist();render();renderReview();
+}
+function arrange(kind){
+  if(busy||prefs().locked)return;checkpoint();
+  if(kind==='auto'){const positions=R.autoLayout(network.nodes,network.edges);for(const n of network.nodes){const p=positions.get(n.id);n.x=p.x;n.y=p.y;}for(const e of network.edges){if(!network.nodes.find(n=>n.id===e.from)?.pinned&&!network.nodes.find(n=>n.id===e.to)?.pinned)e.bends=[];}}
+  else{const nodes=network.nodes.filter(n=>multi.has(n.id)&&!n.pinned);if(nodes.length<2){status('Shift-click two or more unpinned assets.');history.pop();return;}const axis=kind==='left'||kind==='horizontal'?'x':'y';if(kind==='left'||kind==='top'){const v=Math.min(...nodes.map(n=>n[axis]));nodes.forEach(n=>n[axis]=v);}else{const ordered=nodes.sort((a,b)=>a[axis]-b[axis]),min=ordered[0][axis],max=ordered.at(-1)[axis];ordered.forEach((n,i)=>n[axis]=min+(max-min)*i/(ordered.length-1));}}
+  changed(true);fit();renderReview();
+}
+function saveView(){
+  const name=$('nsViewName').value.trim();if(!name){status('Enter a view name.');return;}
+  checkpoint();network.views=network.views.filter(v=>v.name!==name);network.views.push({name:name.slice(0,100),camera:{...network.camera},year:network.year,scenario:network.scenario,evidenceMode:network.evidenceMode,metric:network.metric,preferences:{...prefs()},positions:network.nodes.map(n=>({id:n.id,x:n.x,y:n.y,nameOffset:n.nameOffset})),edges:network.edges.map(e=>({id:e.id,bends:e.bends,labelOffset:e.labelOffset}))});network.views=network.views.slice(-30);changed(true);status('View saved.');
+}
+function loadView(index){
+  const v=network.views[Number(index)];if(!v)return;checkpoint();for(const key of ['camera','year','scenario','evidenceMode','metric','preferences'])if(v[key]!==undefined)network[key]=JSON.parse(JSON.stringify(v[key]));const nodes=new Map(network.nodes.map(n=>[n.id,n])),edges=new Map(network.edges.map(e=>[e.id,e]));for(const p of v.positions){const n=nodes.get(p.id);if(n){n.x=p.x;n.y=p.y;n.nameOffset=p.nameOffset;}}for(const p of v.edges||[]){const e=edges.get(p.id);if(e){e.bends=p.bends||[];e.labelOffset=p.labelOffset;}}changed(true);render();
+}
+function saveReviewSnapshot(){
+  const name=$('nsViewName').value.trim()||new Date().toLocaleString(),copy=snapshot();delete copy.reviewSnapshots;delete copy.views;
+  checkpoint();network.reviewSnapshots.push({name:name.slice(0,100),saved_at:new Date().toISOString(),build:buildToken,method:'occupied 12/24; network method 2',network:copy});network.reviewSnapshots=network.reviewSnapshots.slice(-20);changed(true);status('Assessment snapshot saved.');
+}
+function downloadReviewSnapshot(index){const saved=network.reviewSnapshots[Number(index)];if(saved)downloadBlob('hydra-network-review-snapshot.json',JSON.stringify({...saved,network:C.validateNetwork(saved.network)},null,2),'application/json');}
+function wholeSceneSvg(){
+  const before={camera:network.camera,preferences:network.preferences},d=dimensions();let content,bounds;
+  try{network.camera={x:0,y:0,zoom:1};network.preferences={...prefs(),detail:'full',type:'all',health:'all',result:'all'};content=svgContent(false);const svg=document.createElementNS(NS,'svg');svg.innerHTML=content;svg.style.cssText='position:fixed;left:-100000px;top:0;width:1000px;height:1000px';document.body.append(svg);try{bounds=svg.getBBox();}finally{svg.remove();}}
+  finally{network.camera=before.camera;network.preferences=before.preferences;}
+  const width=Math.max(300,bounds.width+60),height=Math.max(200,bounds.height+100),x=bounds.x-30,y=bounds.y-30;
+  return '<svg xmlns="'+NS+'" width="'+Math.ceil(width)+'" height="'+Math.ceil(height)+'" viewBox="'+x+' '+y+' '+width+' '+height+'"><rect x="'+x+'" y="'+y+'" width="'+width+'" height="'+height+'" fill="white"/><g font-family="Arial, sans-serif" fill="#182732">'+content+'<text x="'+(x+12)+'" y="'+(y+height-32)+'" font-size="11">'+html('Hydra Bench · '+(network.year==='all'?'Latest available per asset':network.year)+' · '+(network.metric==='spill_count'?'Spill count':'Duration (h)'))+'</text><text x="'+(x+12)+'" y="'+(y+height-14)+'" font-size="10" fill="#60717d">Topology only · result RAG: ≤5% / ≤10% / >10% · network colours are user categories</text></g></svg>';
+}
+function exportReport(){
+  const report=window.open('','_blank');if(!report){status('Allow this report window to open.');return;}
+  const svg=wholeSceneSvg(),nodes=network.nodes.filter(asset),css='body{font:12px Arial,sans-serif;color:#182732;margin:24px}h1{font-size:21px}h2{font-size:16px}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{padding:7px;border-bottom:1px solid #dbe3e8;text-align:right}th:nth-child(2),td:nth-child(2){text-align:left}th{background:#f5f7f9}small,details{color:#60717d}.ns-rag-green{background:#eaf6ed}.ns-rag-amber{background:#fff4d9}.ns-rag-red{background:#fdebec}svg{width:100%;height:auto;max-height:80vh}section{break-inside:avoid;margin:24px 0}@page{size:A4 landscape;margin:12mm}@media print{button{display:none}svg{max-height:160mm}details:not([open])>*:not(summary){display:none!important}}';
+  report.document.open();report.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Network annual spill review</title><style>'+css+'</style></head><body><button id="printReport">Print / Save PDF</button><h1>Network annual spill review</h1><small>'+html(new Date().toISOString())+' · build '+html(buildToken)+' · counts: occupied 12/24 blocks · duration: hours · Δ = model − observed</small>'+svg+nodes.map(n=>'<section><h2>'+html(n.name)+'</h2>'+annualTable(n,true)+(R.review(n).comment?'<p>'+html(R.review(n).comment)+'</p>':'')+'<small>Review: '+html(R.review(n).status)+' · '+html(healthLabel(nodeHealth(n)))+'</small><details><summary>Assessment basis</summary>'+auditHtml(n)+'</details></section>').join('')+'<h2>Connector notes</h2>'+network.edges.filter(e=>R.review(e).comment).map(e=>'<p><strong>'+html(e.name||e.from+' → '+e.to)+'</strong>: '+html(R.review(e).comment)+'</p>').join('')+'<p>RAG describes agreement, not spill severity. Partial years are not annualised. Missing or provisional evidence remains qualified.</p><footer>Hydra Bench · Anzar Sajid</footer></body></html>');report.document.close();report.document.getElementById('printReport').onclick=()=>report.print();report.focus();status('Report opened. Use Print / Save PDF.');
+}
+function auditHtml(n){
+  return (n.applied?.rows||[]).map(r=>'<p>'+html(r.year+' · '+(r.role==='observed'?'Observed':r.scenario)+' · '+r.source_name+' · '+r.column)+'<br>'+html((r.analysis_start||'—')+' to '+(r.analysis_end||'—'))+' · '+html(r.partial_year?'partial year':'')+'<br>Threshold '+html(C.thresholdRule(r)==='gt'?'>':'≥')+' '+f(r.threshold,6)+' '+html(r.unit||'')+' · '+html(r.quantity||'')+' '+html(r.datum||'')+'<br>Valid '+f(r.valid_hours)+' h · unknown '+f(r.unknown_hours)+' h · excluded '+f(r.excluded_hours)+' h · '+html(r.count_status||'')+'<br>SHA-256 '+html(r.source_sha256||'')+'<br>Exclusions '+html(JSON.stringify(r.exclusions||[]))+'</p>').join('')+'<p>Calculated '+html(n.applied?.calculated_at||'—')+' · gap '+f(n.applied?.settings?.gap)+' s · comparison basis '+html(n.applied?.settings?.confirmed?'confirmed':'unconfirmed')+'</p>';
+}
+async function openAnalysis(mode='series'){
+  const n=node();if(!n||!asset(n))return;hideHover();const generation=++analysisGeneration,years=R.years(n),year=network.year==='all'?years.at(-1):Number(network.year);
+  if(!year){status('Assign reporting years first.');return;}
+  analysisContext={id:n.id,year,mode,signature:signature(n)};
+  $('nsAnalysis').hidden=false;$('nsCloseAnalysis').focus();$('nsAnalysisTitle').textContent=n.name;
+  $('nsAnalysisYear').innerHTML=years.map(y=>'<option '+(y===year?'selected':'')+'>'+y+'</option>').join('');
+  $('nsAnalysisCounts').innerHTML=annualTable(n,true);
+  $('nsAnalysisAudit').innerHTML=auditHtml(n);
+  $('nsAnalysisBasis').textContent='Annual evidence';$('nsCommonResult').innerHTML='';$('nsCommonResult').hidden=true;$('nsCommonMessage').textContent='';$('nsAnalysisMessage').textContent='';Plotly.purge('nsAnalysisPlot');
+  const names=[...new Set(n.bindings.filter(b=>b.role==='model').map(b=>b.scenario))].sort();$('nsCommonScenario').innerHTML=names.map(s=>'<option>'+html(s)+'</option>').join('');
+  $('nsCommonYear').innerHTML=years.map(y=>'<option '+(y===year?'selected':'')+'>'+y+'</option>').join('');
+  $('nsAnalysisPlot').hidden=mode==='spills';$('nsAnalysisMode').textContent=mode==='spills'?'Show time series':'Show annual spills';
+  if(mode==='series')await plotAnalysis(generation);
+}
+async function plotAnalysis(generation=analysisGeneration,range=null){
+  const context=analysisContext,n=network.nodes.find(n=>n.id===context?.id);if(!n)return;
+  const current=signature(n),year=Number($('nsAnalysisYear').value),start=range?.[0]||year+'-01-01T00:00:00',end=range?.[1]||(year+1)+'-01-01T00:00:00',chosen=prefs().scenarios;
+  const bindings=n.bindings.filter(b=>b.years.includes(year)&&(b.role==='observed'||chosen===null||chosen.includes(b.scenario)));
+  $('nsAnalysisMessage').textContent='Loading series…';
+  Plotly.purge('nsAnalysisPlot');
+  try{
+    const traces=[],shapes=[],groups=new Map(),colours=['#6554c0','#147d92','#d88925','#43854f'];
+    for(const b of bindings){
+      const source=sourceFor(b);if(!source)throw new Error('Reload '+b.sourceName);const key=b.quantity+'|'+b.unit+'|'+(b.datum||'');if(!groups.has(key))groups.set(key,groups.size);const axis=groups.get(key)+1,colour=b.role==='observed'?'#e33434':colours[traces.length%colours.length];
+      const data=await engine.call('series_data',{path:source.virtualPath,column:b.column,max_points:25000,start,end,end_exclusive:true,max_gap_seconds:n.gap,exclusions_json:JSON.stringify(n.exclusions)});
+      if(generation!==analysisGeneration||current!==signature(n))return;
+      traces.push({x:data.timestamp,y:data.value,type:'scatter',mode:'lines',name:b.role==='observed'?'Observed':b.scenario,line:{color:colour,width:1.4},connectgaps:false,xaxis:axis===1?'x':'x'+axis,yaxis:axis===1?'y':'y'+axis});
+      const threshold=C.effectiveThreshold(b,n.defaults);shapes.push({type:'line',xref:axis===1?'x domain':'x'+axis+' domain',x0:0,x1:1,yref:axis===1?'y':'y'+axis,y0:threshold.value,y1:threshold.value,line:{color:colour,dash:'dash',width:1}});
+    }
+    if(generation!==analysisGeneration||!traces.length){if(generation===analysisGeneration)$('nsAnalysisMessage').textContent='No assigned series for this year.';return;}
+    const layout={height:Math.max(350,groups.size*230),margin:{l:65,r:25,t:30,b:45},legend:{orientation:'h',y:1.1},shapes,template:'plotly_white',uirevision:n.id+'|'+year};
+    for(const [key,index] of groups){const axis=index+1,suffix=axis===1?'':axis;layout['yaxis'+suffix]={title:key.split('|').filter(Boolean).join(' · '),domain:[1-(index+1)/groups.size+.05,1-index/groups.size-.03],anchor:axis===1?'x':'x'+axis};layout['xaxis'+suffix]={type:'date',anchor:axis===1?'y':'y'+axis,range:[start,end],matches:axis===1?undefined:'x',showticklabels:axis===groups.size};for(const exc of n.exclusions)shapes.push({type:'rect',xref:axis===1?'x':'x'+axis,x0:exc.start,x1:exc.end,yref:axis===1?'y domain':'y'+axis+' domain',y0:0,y1:1,fillcolor:'#82939f',opacity:.15,line:{width:0},layer:'below'});}
+    const host=$('nsAnalysisPlot');host.removeAllListeners?.('plotly_relayout');await Plotly.react(host,traces,layout,plotConfig('network-'+n.name,{scrollZoom:false}));
+    if(generation!==analysisGeneration)return;
+    host.on('plotly_relayout',event=>{const key=Object.keys(event).find(k=>/^xaxis\d*\.(range\[0\]|autorange)$/.test(k));if(!key)return;const axis=key.split('.')[0],reset=event[axis+'.autorange']===true,a=event[axis+'.range[0]'],b=event[axis+'.range[1]'];if(reset||a&&b){clearTimeout(analysisTimer);analysisTimer=setTimeout(()=>void plotAnalysis(++analysisGeneration,reset?null:[a,b]),180);}});
+    $('nsAnalysisMessage').textContent='Dashed lines: thresholds · shaded periods: exclusions';
+  }catch(error){if(generation===analysisGeneration)$('nsAnalysisMessage').textContent=String(error.message||error);}
+}
+async function calculateCommon(){
+  const n=network.nodes.find(n=>n.id===analysisContext?.id);if(!n||busy)return;
+  const year=Number($('nsCommonYear').value),scenario=$('nsCommonScenario').value,rows=n.applied?.rows||[],o=rows.find(r=>r.year===year&&r.role==='observed'),m=rows.find(r=>r.year===year&&r.role==='model'&&r.scenario===scenario);
+  if(!isFresh(n)||!o?.analysis_start||!m?.analysis_start){$('nsCommonMessage').textContent='Calculate current observed and model evidence first.';return;}
+  const start=o.analysis_start>m.analysis_start?o.analysis_start:m.analysis_start,end=o.analysis_end<m.analysis_end?o.analysis_end:m.analysis_end;
+  if(start>=end){$('nsCommonMessage').textContent='No overlapping period in this year.';return;}
+  const sig=signature(n);busy=true;$('nsCommonCalculate').disabled=true;
+  try{
+    const output=[];for(const r of [o,m]){const b=n.bindings.find(b=>b.sha256===r.source_sha256&&b.column===r.column&&b.role===r.role&&b.scenario===r.scenario&&b.years.includes(year)),source=b&&sourceFor(b);if(!source)throw new Error('Reload matching evidence sources.');const value=await engine.call('network_common_spill_result',{path:source.virtualPath,column:b.column,threshold:r.threshold,start,end,max_gap_seconds:n.gap,comparison:C.thresholdRule(r),exclusions_json:JSON.stringify(n.exclusions)});output.push({...r,...value,exclusions:n.exclusions});}
+    if(sig!==signature(n))throw new Error('Settings changed. Recalculate.');
+    n.common={signature:sig,rows:output,calculated_at:new Date().toISOString()};persist();const proxy={...n,applied:{...n.applied,rows:output},bindings:n.bindings.filter(b=>b.years.includes(year)&&(b.role==='observed'||b.scenario===scenario))};
+    $('nsCommonResult').hidden=false;$('nsCommonResult').innerHTML='<strong>Common period · '+year+'</strong>'+annualTable(proxy,true,[scenario])+'<small>'+html(start+' to '+end)+'</small>';const reason=C.comparable(output[0],output[1],n.confirmed);$('nsCommonMessage').textContent=reason||'Comparable common-period evidence.';
+  }catch(error){$('nsCommonMessage').textContent=String(error.message||error);}
+  finally{busy=false;$('nsCommonCalculate').disabled=false;renderReview();}
+}
+function mountReview(){
+  $('nsWorkbench').querySelector('.ns-main-toolbar').insertAdjacentHTML('afterbegin','<input id="nsAssetSearch" type="search" placeholder="Find asset" aria-label="Find asset" list="nsAssetNames"><datalist id="nsAssetNames"></datalist>');
+  $('nsWorkbench').querySelector('.ns-main-toolbar').insertAdjacentHTML('beforeend','<button id="nsAnnualTable">Annual table</button><details id="nsReviewTools"><summary>Tools</summary><div class="ns-tool-panel"><div class="ns-tool-row"><label>Type'+selectHtml('id="nsTypeFilter"',[['all','All assets'],...Object.entries(C.types)],'all')+'</label><label>Evidence'+selectHtml('id="nsHealthFilter"',[['all','Any'],...['ready','missing','stale','provisional','short','unassigned','uncalculated'].map(s=>[s,healthLabel(s)])],'all')+'</label><label>Result'+selectHtml('id="nsResultFilter"',[['all','Any'],['green','Green'],['amber','Amber'],['red','Red'],['neutral','Neutral']],'all')+'</label><label>Detail'+selectHtml('id="nsDetail"',[['auto','Automatic'],['full','Full'],['minimal','Minimal']],'auto')+'</label></div><div class="ns-tool-row"><button data-ns-trace="up">Upstream</button><button data-ns-trace="down">Downstream</button><button id="nsClearTrace">Clear trace</button><button id="nsAudit">Connectivity</button><span id="nsHiddenCount"></span></div><details><summary>Scenarios</summary><div id="nsScenarioChoices"></div></details><details><summary>Layout</summary><div class="ns-tool-row"><label><input id="nsSnap" type="checkbox"> Snap</label><label><input id="nsLocked" type="checkbox"> Lock</label><button data-ns-arrange="auto">Auto layout</button><button data-ns-arrange="left">Align left</button><button data-ns-arrange="top">Align top</button><button data-ns-arrange="horizontal">Distribute horizontally</button><button data-ns-arrange="vertical">Distribute vertically</button><button id="nsRedo">Redo</button><span id="nsSelectionCount"></span></div><small>Shift-click to select several assets. Pinned assets stay in place.</small></details><details><summary>Views & snapshots</summary><div class="ns-tool-row"><input id="nsViewName" placeholder="View / review name" maxlength="100"><button id="nsSaveView">Save view</button><select id="nsViewSelect"></select><button id="nsSaveSnapshot">Save review snapshot</button><select id="nsSnapshotSelect"></select></div></details><p id="nsAuditResult"></p></div></details>');
+  $('nsWorkbench').querySelector('.ns-export-actions').insertAdjacentHTML('beforeend','<button id="nsSvgExport">Export SVG</button><button id="nsReportExport">Annual report / PDF</button>');
+  $('nsCanvas').insertAdjacentHTML('beforeend','<aside id="nsHover" hidden></aside>');
+  $('nsWorkbench').insertAdjacentHTML('beforeend','<section id="nsMatrix" hidden><div class="ns-matrix-toolbar"><strong>Annual comparison</strong><input id="nsMatrixSearch" type="search" placeholder="Filter assets"><label><input id="nsMatrixSelected" type="checkbox"> Selected only</label><small>Δ = M − O</small><button id="nsCloseMatrix">Close</button></div><div id="nsMatrixBody"></div></section><section id="nsAnalysis" role="dialog" aria-modal="true" aria-label="Asset analysis" hidden><div class="ns-analysis-toolbar"><strong id="nsAnalysisTitle"></strong><select id="nsAnalysisYear" aria-label="Graph year"></select><button id="nsAnalysisMode">Show annual spills</button><button id="nsCloseAnalysis">Close</button></div><div class="ns-analysis-body"><div id="nsAnalysisPlot"></div><small id="nsAnalysisMessage"></small><strong id="nsAnalysisBasis">Annual evidence</strong><div id="nsAnalysisCounts"></div><details><summary>Common-period comparison</summary><div class="ns-tool-row"><select id="nsCommonYear" aria-label="Common period year"></select><select id="nsCommonScenario" aria-label="Common period scenario"></select><button id="nsCommonCalculate">Calculate overlap</button></div><small id="nsCommonMessage">Annual totals remain unchanged.</small><div id="nsCommonResult" hidden></div></details><details><summary>Assessment details</summary><div id="nsAnalysisAudit"></div></details></div></section>');
+  $('nsAssetSearch').oninput=()=>{$('nsAssetNames').innerHTML=network.nodes.filter(n=>n.name.toLowerCase().includes($('nsAssetSearch').value.toLowerCase())).slice(0,30).map(n=>'<option value="'+html(n.name)+'"></option>').join('');};
+  $('nsAssetSearch').onchange=()=>{const query=$('nsAssetSearch').value.toLowerCase(),n=network.nodes.find(n=>n.name.toLowerCase()===query)||network.nodes.find(n=>n.name.toLowerCase().includes(query));if(n){network.preferences={...prefs(),type:'all',health:'all',result:'all'};centre(n.id);}else status('Asset not found.');};
+  for(const [id,key] of [['nsTypeFilter','type'],['nsHealthFilter','health'],['nsResultFilter','result'],['nsDetail','detail'],['nsSnap','snap'],['nsLocked','locked']])$(id).onchange=()=>{network.preferences={...prefs(),[key]:['snap','locked'].includes(key)?$(id).checked:$(id).value};changed(true);};
+  $('nsRedo').onclick=()=>undoEdit(true);$('nsSaveView').onclick=saveView;$('nsViewSelect').onchange=()=>loadView($('nsViewSelect').value);$('nsSaveSnapshot').onclick=saveReviewSnapshot;$('nsSnapshotSelect').onchange=()=>downloadReviewSnapshot($('nsSnapshotSelect').value);
+  $('nsAnnualTable').onclick=()=>{$('nsMatrix').hidden=!$('nsMatrix').hidden;renderMatrix();};$('nsCloseMatrix').onclick=()=>{$('nsMatrix').hidden=true;};$('nsMatrixSearch').oninput=renderMatrix;$('nsMatrixSelected').onchange=renderMatrix;
+  $('nsClearTrace').onclick=()=>{highlight=null;renderCanvas();};$('nsAudit').onclick=()=>{const a=R.audit(network.nodes,network.edges);$('nsAuditResult').textContent=a.components.length+' components · '+a.isolated.length+' isolated · '+a.cycleAffected.length+' cycle-affected';highlight={ids:new Set([...a.isolated,...a.cycleAffected]),wires:new Set()};if(!highlight.ids.size)highlight=null;renderCanvas();};
+  $('nsSvgExport').onclick=()=>{downloadBlob('hydra-network-schematic.svg',wholeSceneSvg(),'image/svg+xml');root().querySelector('.ns-export-menu').open=false;};$('nsReportExport').onclick=()=>{root().querySelector('.ns-export-menu').open=false;exportReport();};
+  root().addEventListener('click',event=>{const t=event.target,trace=t.closest('[data-ns-trace]'),arrangeButton=t.closest('[data-ns-arrange]'),focus=t.closest('[data-ns-centre],[data-ns-focus]'),analysis=t.closest('[data-ns-open-analysis]');if(trace&&selected){highlight=R.trace(network.nodes,network.edges,selected,trace.dataset.nsTrace);renderCanvas();}if(arrangeButton)arrange(arrangeButton.dataset.nsArrange);if(focus){if(focus.dataset.nsYear)network.year=focus.dataset.nsYear;centre(focus.dataset.nsCentre||focus.dataset.nsFocus);}if(analysis)void openAnalysis(analysis.dataset.nsOpenAnalysis);});
+  root().addEventListener('change',event=>{if(event.target.hasAttribute('data-ns-scenario-choice')){network.preferences={...prefs(),scenarios:[...$('nsScenarioChoices').querySelectorAll('input:checked')].map(x=>x.dataset.nsScenarioChoice)};changed(true);}});
+  $('nsSvg').addEventListener('pointerover',event=>{const id=event.target.closest('[data-ns-node]')?.dataset.nsNode;if(id){clearTimeout(hoverTimer);hoverTimer=setTimeout(()=>hoverCard(id),250);}});$('nsSvg').addEventListener('pointerout',event=>{if(!event.relatedTarget?.closest?.('[data-ns-node]'))hideHover();});
+  $('nsAnalysis').addEventListener('keydown',event=>{if(event.key==='Escape')$('nsCloseAnalysis').click();if(event.key==='Tab'){const controls=[...$('nsAnalysis').querySelectorAll('button,select,summary,input')].filter(el=>el.getClientRects().length),first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}});
+  $('nsCloseAnalysis').onclick=()=>{++analysisGeneration;clearTimeout(analysisTimer);$('nsAnalysis').hidden=true;Plotly.purge('nsAnalysisPlot');analysisContext=null;};$('nsAnalysisYear').onchange=()=>{if(analysisContext?.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsAnalysisMode').onclick=()=>{if(!analysisContext)return;analysisContext.mode=analysisContext.mode==='series'?'spills':'series';$('nsAnalysisPlot').hidden=analysisContext.mode==='spills';$('nsAnalysisMode').textContent=analysisContext.mode==='spills'?'Show time series':'Show annual spills';if(analysisContext.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsCommonCalculate').onclick=()=>void calculateCommon();
+  renderReview();
+}
 function mount(){
   const container=root();if(!container)return;
   container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / export</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network</button><button id="nsCsv">Export evidence CSV</button></div></details><input id="nsLoadInput" type="file" accept=".json" hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
@@ -374,7 +555,7 @@ function mount(){
   $('nsAddAsset').onclick=()=>add($('nsAddType').value);$('nsAddManhole').onclick=()=>add('manhole');$('nsAddLabel').onclick=()=>add('label');
   $('nsConnect').onclick=()=>{tool=tool==='connect'?'select':'connect';connectFrom=null;render();status('Click the upstream point, then the downstream point.');};
   $('nsPan').onclick=()=>{tool=tool==='pan'?'select':'pan';connectFrom=null;render();};
-  $('nsUndo').onclick=()=>{if(history.length){network=JSON.parse(history.pop());selected=null;changed();render();}};$('nsDelete').onclick=removeSelected;
+  $('nsUndo').onclick=()=>undoEdit();$('nsDelete').onclick=removeSelected;
   $('nsZoomIn').onclick=()=>zoom(1.25);$('nsZoomOut').onclick=()=>zoom(.8);$('nsFit').onclick=fit;
   for(const [id,key] of [['nsYear','year'],['nsMetric','metric']])$(id).onchange=()=>{network[key]=$(id).value;changed(true);};
   $('nsScenario').onchange=()=>{const value=$('nsScenario').value;network.evidenceMode=value==='combined'?'combined':'single';if(value!=='combined')network.scenario=value==='observed'?'observed':value.slice(6);changed(true);};
@@ -387,7 +568,7 @@ function mount(){
   const canvas=$('nsCanvas');canvas.addEventListener('pointerdown',onPointerDown);canvas.addEventListener('pointermove',onPointerMove);canvas.addEventListener('pointerup',onPointerUp);canvas.addEventListener('pointercancel',onPointerUp);
   canvas.addEventListener('keydown',event=>{if(event.target.closest('#nsPopup,#nsPicker'))return;const n=event.target.closest('[data-ns-node]'),e=event.target.closest('[data-ns-edge]');if(['Enter',' '].includes(event.key)&&(n||e)){event.preventDefault();if(n)selectPoint(n.dataset.nsNode);else{selected=e.dataset.nsEdge;renderDrawer();renderCanvas();}return;}
     if(event.key==='Escape'){connectFrom=null;popupVisible=false;$('nsPicker').hidden=true;renderPopup();return;}
-    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const target=editing&&node();if(target){checkpoint();target.x+=event.key==='ArrowLeft'?-10:event.key==='ArrowRight'?10:0;target.y+=event.key==='ArrowUp'?-10:event.key==='ArrowDown'?10:0;}else{network.camera.x+=event.key==='ArrowLeft'?30:event.key==='ArrowRight'?-30:0;network.camera.y+=event.key==='ArrowUp'?30:event.key==='ArrowDown'?-30:0;}changed(true);}
+    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const target=editing&&!prefs().locked&&!node()?.pinned&&node();if(target){checkpoint();target.x+=event.key==='ArrowLeft'?-10:event.key==='ArrowRight'?10:0;target.y+=event.key==='ArrowUp'?-10:event.key==='ArrowDown'?10:0;}else{network.camera.x+=event.key==='ArrowLeft'?30:event.key==='ArrowRight'?-30:0;network.camera.y+=event.key==='ArrowUp'?30:event.key==='ArrowDown'?-30:0;}changed(true);}
   });
   container.addEventListener('input',event=>{if(event.target.id==='nsSourceSearch'){const value=event.target.value.toLowerCase();container.querySelectorAll('[data-ns-file-name]').forEach(row=>row.hidden=!row.dataset.nsFileName.includes(value));}});
   observer=new ResizeObserver(()=>renderCanvas());observer.observe(canvas);
@@ -395,8 +576,8 @@ function mount(){
   // changes still waiting in the short autosave debounce.
   window.addEventListener('pagehide',flushSave);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSave();});
-  window.addEventListener('icm:source-pool-changed',()=>{renderCanvas();if(editing)renderDrawer();});
-  render();
+  window.addEventListener('icm:source-pool-changed',()=>{freshness.clear();if(analysisContext){++analysisGeneration;Plotly.purge('nsAnalysisPlot');$('nsAnalysisCounts').innerHTML=annualTable(network.nodes.find(n=>n.id===analysisContext.id)||{id:'missing',bindings:[]},true);$('nsCommonResult').hidden=true;$('nsAnalysisMessage').textContent='Sources changed. Reopen this analysis to refresh.';}renderCanvas();renderReview();if(editing)renderDrawer();});
+  mountReview();render();
 }
 async function open(){
   if(!mounted){let value=state.networkSchematicWorkspace;if(!value){try{value=JSON.parse(localStorage.getItem(STORE)||'null');}catch{}}

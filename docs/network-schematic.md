@@ -1,6 +1,9 @@
 # Network schematic
 
-Open **Spills → Network Schematic**. This is a manually arranged site overview.
+Open **Spills → Network Schematic**. This is an annual network assessment overview,
+with automatic layout and optional manual refinement. Spill count and duration
+are the primary information; evidence checks and engineering notes are disclosed
+on demand.
 Connectors describe the network; they never change spill calculations or imply
 that one asset caused another asset's spills.
 
@@ -30,7 +33,15 @@ labels and connectors use red, amber or blue, with red as the initial default.
 Those colours are user-defined network categories, independent of result RAG.
 
 Use Pan, +/− and Fit to navigate. Icon and label sizes remain readable in screen
-pixels while the network positions zoom. Undo keeps the last 30 editing states.
+pixels while the network positions zoom. Undo/Redo keep the last 30 editing states.
+Connector names can also be dragged without moving their wires.
+
+**Tools → Layout** offers snap, lock, align, distribute and automatic upstream-to-
+downstream layout. Shift-click to select several points for moving or comparing.
+Pin a point in its drawer to preserve its position during automatic layout. Layout
+handles directed cycles as groups; it is a topology layout, not a hydraulic solver.
+Automatic layout clears manual bends only on wires between unpinned points.
+Zooming far out hides numeric badges; use Detail → Full to retain them.
 
 ## Assign annual files and scenarios
 
@@ -81,8 +92,12 @@ source fingerprints, channels, reporting years, thresholds and assessment settin
 Changing those inputs marks the previous evidence stale; moving or renaming the
 point does not. No cross-asset period alignment or overlapping-spill analysis runs.
 
-Exit editing and select an asset to see its yearly observed/modelled table and
-one row per scenario and matching reporting period. Select **Observed + all models**
+Exit editing and hover or select an asset to see observed/modelled count and hours
+for every assigned reporting year. Missing scenario/year pairs remain explicit
+dashes. The inspector always includes all years, independently of the badge year.
+**Annual table** provides the asset/year/scenario matrix, signed model-minus-
+observed differences and a selected-assets-only option. Differences and RAG
+require comparable evidence. Select **Observed + all models**
 in Evidence for a compact asset badge showing **O: count** and **M (scenario): count**
 on separate lines. The selected Metric also supports duration in hours. The
 badge displays one year throughout; All years selects the latest eligible year
@@ -96,6 +111,22 @@ classify all valid support as spilling carry a concise threshold-check warning. 
 choose the canvas badges; All years badges show the latest eligible selected
 evidence for each asset. The pop-up remains inside the canvas and scrolls when
 needed, leaving the camera controls accessible.
+
+**Time series** opens the asset's assigned channels, with source-specific threshold
+lines and local exclusions. Distinct quantities/units/datums get separate axes.
+Select a graph year and zoom to retrieve detail. **Spill analysis** opens the same
+workspace focused on annual counts and duration. Both use local schematic settings;
+neither changes shared mappings, thresholds or the regular Spill Assessment.
+The optional **Common-period comparison** uses the date intersection of one
+observed/model scenario pair within one year. It reuses the native detector with
+preceding counting context and does not overwrite annual totals or annual RAG.
+
+**Find asset** centres a named point. **Tools** contains scenario visibility, asset
+type, evidence-state and result filters. Upstream/downstream tracing follows the
+drawn directed connections. Connectivity checks report disconnected components,
+isolated points and cycle-affected points. Traces never imply hydraulic causation.
+Small evidence-state dots have hover explanations; evidence diagnostics stay
+secondary to numeric results.
 
 Modelled count and duration cells use fixed absolute-deviation bands independently:
 green ≤5%, amber >5–10%, red >10%. Observed zero/modelled zero is green; observed
@@ -118,6 +149,22 @@ the currently visible portion of the open evidence table. Pan/zoom/Fit first to
 frame the desired overview. **Export evidence CSV** includes source fingerprints,
 thresholds, counting basis, coverage and original applied calculation settings;
 stale results are explicitly marked as previous evidence.
+
+**Tools → Views & snapshots** saves camera, geometry and display choices as named
+views. Review snapshots freeze layout, calculated evidence, fingerprints and
+settings with build and methodology metadata; source files are not embedded.
+Asset/connector review notes and status persist with the network. Schema 1 layouts
+load into schema 2 without discarding their previous evidence.
+
+**Export SVG** includes the whole network, regardless of camera and asset
+filters, with the chosen scenarios/year/metric. **Annual report / PDF** opens a
+printable vector schematic and all-year tables, differences and comments. Use its
+Print / Save PDF button. Assessment-basis sections remain collapsed unless opened.
+
+The test-branch preview lives at `preview/network-annual-review/` on the existing
+Pages site. Its workflow builds the current main release separately, verifies
+that staging changes none of those release files, and namespaces preview browser
+storage. Main's git branch and browser workspace are not changed by preview edits.
 
 ## Isolation and release checks
 
