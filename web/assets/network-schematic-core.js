@@ -107,9 +107,9 @@ function validateYears(value){
   if(!years.length||years.some(y=>!Number.isInteger(y)||y<1900||y>2200))throw new Error('Enter reporting years separated by commas (1900–2200).');
   return [...new Set(years)].sort((a,b)=>a-b);
 }
-function empty(){return {schema:1,nodes:[],edges:[],camera:{x:0,y:0,zoom:1},year:'all',scenario:'observed',evidenceMode:'single',metric:'spill_count'};}
+function empty(){return {schema:2,nodes:[],edges:[],camera:{x:0,y:0,zoom:1},year:'all',scenario:'observed',evidenceMode:'combined',metric:'spill_count',preferences:{snap:false,locked:false,detail:'auto',type:'all',health:'all',result:'all',scenarios:null},views:[],reviewSnapshots:[]};}
 function validateNetwork(value){
-  if(!value||value.schema!==1||!Array.isArray(value.nodes)||!Array.isArray(value.edges))throw new Error('Unsupported network schematic file.');
+  if(!value||![1,2].includes(value.schema)||!Array.isArray(value.nodes)||!Array.isArray(value.edges))throw new Error('Unsupported network schematic file.');
   if(value.nodes.length>2000||value.edges.length>5000)throw new Error('This overview supports up to 2,000 points and 5,000 connectors.');
   const ids=new Set();
   for(const n of value.nodes){
@@ -127,6 +127,23 @@ function validateNetwork(value){
   const edges=new Set();for(const e of value.edges){if(!e.id||edges.has(e.id)||!ids.has(e.from)||!ids.has(e.to)||e.from===e.to||!Object.hasOwn(colours,e.colour))throw new Error('Invalid connector.');if(e.bends!==undefined&&(!Array.isArray(e.bends)||e.bends.length>32||e.bends.some(p=>!p||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6))))throw new Error('Invalid connector bends (maximum 32).');edges.add(e.id);}
   if(value.evidenceMode!==undefined&&!['single','combined'].includes(value.evidenceMode))throw new Error('Invalid evidence display mode.');
   const result=JSON.parse(JSON.stringify(value));
+  result.schema=2;
+  result.preferences={snap:false,locked:false,detail:'auto',type:'all',health:'all',result:'all',scenarios:null,...result.preferences};
+  if(!['auto','full','minimal'].includes(result.preferences.detail)||!['all',...Object.keys(types)].includes(result.preferences.type)||!['all','ready','missing','stale','provisional','short','unassigned','uncalculated'].includes(result.preferences.health)||!['all','green','amber','red','neutral'].includes(result.preferences.result)||![result.preferences.snap,result.preferences.locked].every(v=>typeof v==='boolean')||result.preferences.scenarios!==null&&(!Array.isArray(result.preferences.scenarios)||result.preferences.scenarios.length>1000||result.preferences.scenarios.some(s=>typeof s!=='string'||s.length>100)))throw new Error('Invalid schematic display preferences.');
+  for(const n of result.nodes){if(n.pinned!==undefined&&typeof n.pinned!=='boolean')throw new Error('Invalid pinned point.');if(n.review&&(typeof n.review.comment!=='string'||n.review.comment.length>10000||!['unreviewed','in-review','reviewed'].includes(n.review.status)))throw new Error('Invalid review note.');}
+  for(const e of result.edges){if(e.labelOffset&&![e.labelOffset.x,e.labelOffset.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=10000))throw new Error('Invalid connector label placement.');if(e.review&&(typeof e.review.comment!=='string'||e.review.comment.length>10000||!['unreviewed','in-review','reviewed'].includes(e.review.status)))throw new Error('Invalid connector review.');}
+  result.views=result.views||[];result.reviewSnapshots=result.reviewSnapshots||[];
+  if(!Array.isArray(result.views)||result.views.length>30||!Array.isArray(result.reviewSnapshots)||result.reviewSnapshots.length>20)throw new Error('Invalid saved review views.');
+  for(const view of result.views)if(typeof view.name!=='string'||view.name.length>100||!Array.isArray(view.positions)||view.positions.length>2000||!view.camera||![view.camera.x,view.camera.y,view.camera.zoom].every(Number.isFinite)||view.camera.zoom<.2||view.camera.zoom>4||view.positions.some(p=>typeof p.id!=='string'||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)))throw new Error('Invalid saved view.');
+  for(const view of result.views){
+    if(view.edges!==undefined&&(!Array.isArray(view.edges)||view.edges.length>5000)||view.evidenceMode!==undefined&&!['single','combined'].includes(view.evidenceMode)||view.metric!==undefined&&!['spill_count','duration_hours'].includes(view.metric))throw new Error('Invalid saved view display.');
+    const test={...result,views:[],reviewSnapshots:[],camera:view.camera,preferences:view.preferences||result.preferences};
+    const positions=new Map(view.positions.map(p=>[p.id,p])),geometry=new Map((view.edges||[]).map(e=>[e.id,e]));
+    test.nodes=result.nodes.map(n=>({...n,...positions.get(n.id)}));test.edges=result.edges.map(e=>({...e,...geometry.get(e.id)}));
+    validateNetwork(test);
+  }
+  for(const saved of result.reviewSnapshots)if(typeof saved.name!=='string'||saved.name.length>100||typeof saved.saved_at!=='string'||!saved.network||!Array.isArray(saved.network.nodes)||!Array.isArray(saved.network.edges)||saved.network.nodes.length>2000||saved.network.edges.length>5000)throw new Error('Invalid review snapshot.');
+  for(const saved of result.reviewSnapshots){if(saved.network.views?.length||saved.network.reviewSnapshots?.length)throw new Error('Nested review snapshots are unsupported.');saved.network=validateNetwork(saved.network);}
   result.camera=result.camera||{x:0,y:0,zoom:1};
   if(![result.camera.x,result.camera.y,result.camera.zoom].every(Number.isFinite)||result.camera.zoom<.2||result.camera.zoom>4)throw new Error('Invalid schematic camera.');
   return result;

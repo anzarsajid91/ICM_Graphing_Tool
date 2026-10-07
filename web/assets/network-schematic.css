@@ -45,3 +45,52 @@
 #nsWorkbench #nsSvg [data-ns-add-bend]{cursor:crosshair}
 #nsWorkbench .ns-bend-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 #nsWorkbench .ns-bend-list button{font-size:12px;min-height:30px;padding:5px 8px}
+
+/* Counts and hours lead; review metadata stays behind disclosures. */
+#nsWorkbench #nsAssetSearch{width:145px;font-size:12px}
+#nsWorkbench .ns-main-toolbar{position:relative}
+#nsWorkbench #nsReviewTools{position:static;font-size:12px}
+#nsWorkbench #nsReviewTools>summary{padding:9px 10px;border:1px solid #c7d2d9;border-radius:6px;cursor:pointer;list-style:none}
+#nsWorkbench .ns-tool-panel{position:absolute;right:0;top:calc(100% + 6px);width:min(640px,calc(100vw - 70px));max-height:70vh;overflow:auto;background:white;border:1px solid #c7d2d9;border-radius:8px;padding:14px;box-shadow:0 7px 22px #0b294326;z-index:8}
+#nsWorkbench .ns-tool-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0}
+#nsWorkbench .ns-tool-panel label{display:flex;gap:6px;align-items:center}
+#nsWorkbench details>summary{cursor:pointer;font-size:12px}
+#nsWorkbench .ns-tool-panel details{padding:9px 0;border-top:1px solid #e8edf0}
+#nsWorkbench .ns-tool-panel input[type=checkbox],#nsWorkbench .ns-matrix-toolbar input[type=checkbox]{width:15px;min-height:15px;margin:0}
+#nsWorkbench #nsScenarioChoices{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0}
+#nsWorkbench #nsAuditResult:empty{display:none}
+#nsWorkbench #nsHover{position:absolute;z-index:3;padding:12px;background:white;border:1px solid #c7d2d9;border-radius:8px;box-shadow:0 7px 22px #0b294326;pointer-events:none;max-height:320px;overflow:hidden}
+#nsWorkbench .ns-hover-table{max-height:240px;overflow:hidden;margin:8px 0}
+#nsWorkbench #nsHover strong{font-size:14px}
+#nsWorkbench #nsPopup{max-width:calc(100% - 24px)}
+#nsWorkbench #nsPopup .ns-popup-footer{gap:6px;flex-wrap:wrap}
+#nsWorkbench #nsPopup .ns-popup-footer button{font-size:12px;padding:6px 9px}
+#nsWorkbench .ns-popup-body>table td,#nsWorkbench .ns-annual-table td{font-size:13px;font-variant-numeric:tabular-nums}
+#nsWorkbench .ns-review-notes{margin-top:12px;border-top:1px solid #e8edf0;padding-top:10px}
+#nsWorkbench #nsMatrix{border-top:1px solid #dbe3e8;padding:12px}
+#nsWorkbench .ns-matrix-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px}
+#nsWorkbench .ns-matrix-toolbar>small{margin-left:auto}
+#nsWorkbench .ns-matrix-toolbar>input{width:180px;flex:0 1 180px}
+#nsWorkbench .ns-matrix-toolbar>label,#nsWorkbench #nsScenarioChoices>label{display:flex!important;flex-direction:row!important;align-items:center;gap:6px;width:auto!important;margin:0!important}
+#nsWorkbench #nsMatrixBody{max-height:500px;overflow:auto}
+#nsWorkbench #nsMatrixBody section{margin:12px 0}
+#nsWorkbench .ns-asset-link{border:0;padding:4px 0;min-height:28px;font-size:13px;color:#087b82;font-weight:600;background:none}
+#nsWorkbench .ns-annual-table tbody tr{cursor:pointer}
+#nsWorkbench .ns-annual-table tbody tr:hover{outline:1px solid #c7d2d9}
+#nsWorkbench .ns-annual-table th{position:sticky;top:0;z-index:1;white-space:nowrap}
+#nsWorkbench .ns-multi-selected>rect:first-of-type{stroke:#087b82}
+#nsWorkbench [data-ns-edge-label]{cursor:grab}
+#nsWorkbench #nsAnalysis{position:fixed;inset:5vh 4vw;z-index:200;background:white;border:1px solid #c7d2d9;border-radius:10px;box-shadow:0 0 0 100vmax #102c4240;display:flex;flex-direction:column;overflow:hidden}
+#nsWorkbench .ns-analysis-toolbar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #dbe3e8}
+#nsWorkbench .ns-analysis-toolbar strong{margin-right:auto;font-size:17px;overflow-wrap:anywhere}
+#nsWorkbench #nsAnalysis .ns-analysis-toolbar select{width:100px;flex:0 0 100px}
+#nsWorkbench #nsAnalysis .ns-analysis-toolbar button{flex-shrink:0}
+#nsWorkbench .ns-analysis-body{overflow:auto;padding:16px}
+#nsWorkbench #nsAnalysisPlot{min-height:350px}
+#nsWorkbench #nsAnalysisCounts{margin:15px 0}
+#nsWorkbench .ns-analysis-body>details{border-top:1px solid #dbe3e8;padding:12px 0;color:#60717d}
+#nsWorkbench #nsCommonResult{margin-top:12px}
+#nsWorkbench #nsDrawer label.ns-check{display:flex!important;flex-direction:row!important;align-items:center}
+#nsWorkbench #nsAnalysisMessage{margin:8px 0 18px}
+#nsWorkbench .ns-network-legend{display:none}
+@media(max-width:850px){#nsWorkbench #nsAnalysis{inset:2vh 2vw}#nsWorkbench .ns-analysis-toolbar{flex-wrap:wrap}#nsWorkbench #nsMatrixBody{overflow:auto}#nsWorkbench .ns-annual-table{min-width:430px}#nsWorkbench .ns-popup-body{overflow:auto}}

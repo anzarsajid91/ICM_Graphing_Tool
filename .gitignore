@@ -37,3 +37,5 @@ tests/representative/manifest.local.json
 !reference/current-tool/reports/
 !reference/current-tool/reports/**
 *.egg-info/
+
+node_modules

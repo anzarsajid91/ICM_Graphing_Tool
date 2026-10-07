@@ -91,6 +91,8 @@ jobs:
           node --check web/assets/network-schematic-core.js
           node --check web/assets/network-schematic.js
           node web/tests/network-schematic-unit.mjs
+          node --check web/assets/network-review-core.js
+          node web/tests/network-review-unit.mjs
           node --check web/assets/precision-workbench.js
           node --check web/assets/detriment-workspace.js
           node web/tests/survey-source-unit.mjs
@@ -388,6 +390,8 @@ jobs:
           done
           ICM_BROWSER=chromium node web/tests/workspace-interactions.mjs
           ICM_BROWSER=chromium node web/tests/network-schematic-smoke.mjs
+          node web/tests/network-review-smoke.mjs
+          node web/tests/network-layout-smoke.mjs
           ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs
           ICM_BROWSER=firefox node web/tests/network-schematic-smoke.mjs
       - name: Retain workspace interaction evidence
