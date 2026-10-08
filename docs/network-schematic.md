@@ -58,8 +58,10 @@ default appear in each source row. **Spill when** selects `>` or `≥`; overflow
 defaults to `>` so zero flow at threshold zero remains dry. Depth, level and status
 retain `≥` by default. Changing quantity resets the rule to that quantity's default;
 review it before applying. The regular Spill Assessment workspace retains its existing
-rule. Thresholds use the source's canonical values: known source units cannot be
-silently reinterpreted. Level data also has a datum field. File bindings and
+rule. Thresholds use the selected values unit. Known parser units are converted locally
+for plots, and thresholds are converted back to stored units for calculation.
+Changing a known unit also converts its effective threshold; unresolved source units
+are assigned without changing values or thresholds. Level data also has a datum field. File bindings and
 semantic choices here do not update shared mappings or other assessments.
 One authoritative source per observed/scenario reporting year is required;
 duplicate assignments are blocked rather than silently double-counted.
@@ -100,20 +102,27 @@ observed differences and a selected-assets-only option. Differences and RAG
 require comparable evidence. Select **Observed + all models**
 in Evidence for a compact asset badge showing **O: count** and **M (scenario): count**
 on separate lines. The selected Metric also supports duration in hours. The
-badge displays one year throughout; All years selects the latest eligible year
-for that asset and shows the year in its header. Missing values display a dash;
+badge displays every assigned reporting year when All years is selected, with a
+separate year header and O/M rows. A single-year selection shows only that year. Missing values display a dash;
 stale values require recalculation. Model rows use the same comparison RAG bands
-as the evidence table. Unconfirmed or incompatible comparisons remain neutral;
+as the evidence table. RAG compares spill outcomes, so confirmed level/status/flow
+signals may use independent units, datums and rules. It still requires matching
+periods, temporal support and exclusion masks. Provisional counts stay neutral,
+while duration is assessed independently. Unconfirmed comparisons remain neutral;
 hover a row to see why. No value is borrowed from a different reporting year. Observed-only rows remain
 when no model shares that exact period. Coverage, channel, effective threshold,
 value range and comparison reasons sit in **Assessment details**. Results that
 classify all valid support as spilling carry a concise threshold-check warning. The top-level year/evidence/metric filters
-choose the canvas badges; All years badges show the latest eligible selected
-evidence for each asset. The pop-up remains inside the canvas and scrolls when
+choose the canvas badges; All years badges show every assigned year
+for each asset, with missing evidence shown as a dash. The pop-up remains inside the canvas and scrolls when
 needed, leaving the camera controls accessible.
 
 **Time series** opens the asset's assigned channels, with source-specific threshold
-lines and local exclusions. Distinct quantities/units/datums get separate axes.
+lines and local exclusions. **Channels, units & thresholds** lets users set the
+channel, quantity, values unit, threshold rule and level datum directly in this
+view, then **Apply & recalculate annual spills**. Known units convert values and
+thresholds together; assigning unknown units preserves existing numbers. Distinct
+quantities/units/datums get separate axes.
 Select a graph year and zoom to retrieve detail. **Spill analysis** opens the same
 workspace focused on annual counts and duration. Both use local schematic settings;
 neither changes shared mappings, thresholds or the regular Spill Assessment.
