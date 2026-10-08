@@ -46,7 +46,11 @@ export function requestViolation({url,method='GET',body=null,headers={},navigati
   const referrer=headers.referer||headers.Referer;
   if(referrer){
     const ref=new URL(referrer);
-    if(ref.search&&!navigations.has(ref.href))return 'Unapproved referrer query';
+    const refParams=[...ref.searchParams];
+    const fixedResource=ref.origin===base.origin&&ref.pathname.startsWith(base.pathname)
+      &&paths.has(decodeURIComponent(ref.pathname.slice(base.pathname.length)))
+      &&refParams.length===1&&refParams[0][0]==='v'&&refParams[0][1]===buildToken;
+    if(ref.search&&!navigations.has(ref.href)&&!fixedResource)return 'Unapproved referrer query';
   }
   return null;
 }

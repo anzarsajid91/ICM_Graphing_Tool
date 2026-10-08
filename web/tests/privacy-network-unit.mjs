@@ -5,6 +5,7 @@ const options={baseUrl:'https://example.test/tool/',paths:new Set(['','assets/ru
 const resource={url:'https://example.test/tool/assets/runtime.js?v=reviewed-sha'};
 assert.equal(requestViolation(resource,options),null);
 assert.equal(requestViolation({...resource,headers:{accept:'*/*',referer:'https://example.test/tool/'}},options),null);
+assert.equal(requestViolation({...resource,headers:{referer:resource.url}},options),null);
 for(const candidate of [
   {...resource,method:'POST',body:Buffer.from('synthetic-private-result')},
   {...resource,method:'GET',body:Buffer.alloc(0)},
