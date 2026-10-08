@@ -1,0 +1,37 @@
+name: Retired reference evidence cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/purge_retired_reference_evidence.py'
+      - '.github/workflows/reference-evidence-cleanup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: retired-reference-evidence-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Remove retired source evidence and logs only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REFERENCE_UPLOAD_NOT_BEFORE: '2026-09-20T13:11:47Z'
+        run: python scripts/purge_retired_reference_evidence.py

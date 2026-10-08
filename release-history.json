@@ -240,5 +240,6 @@
       "number": 71,
       "commit": "a148e92a532a08cd48c81f172a0181eef2c23f49"
     }
-  ]
+  ],
+  "reference_fixture_policy": "independently-generated-synthetic-data-only"
 }
