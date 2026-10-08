@@ -22,15 +22,15 @@ function rag(observed,modelled){
   return difference<=5+1e-9?'green':difference<=10+1e-9?'amber':'red';
 }
 function mask(exclusions,start,end){return (exclusions||[]).map(x=>[stamp(x.start)>start?stamp(x.start):start,stamp(x.end)<end?stamp(x.end):end]).filter(([a,b])=>a<b).sort();}
-function comparable(a,b,confirmed){
+function comparable(a,b,confirmed,metric='spill_count'){
   if(!a||!b||!a.eligible||!b.eligible)return 'Both sources need eligible reporting data.';
   if(!confirmed)return 'Confirm matching clocks and model/rainfall basis for this asset.';
-  if(a.count_status!=='definitive'||b.count_status!=='definitive')return 'Counts are provisional; resolve gaps, exclusions or initial context.';
+  if(metric==='spill_count'&&(a.count_status!=='definitive'||b.count_status!=='definitive'))return 'Counts are provisional; resolve gaps, exclusions or initial context.';
   if(stamp(a.analysis_start)!==stamp(b.analysis_start)||stamp(a.analysis_end)!==stamp(b.analysis_end))return 'Individual assessment periods differ.';
-  if(thresholdRule(a)!==thresholdRule(b))return 'Threshold rules differ.';
-  if(a.quantity!==b.quantity)return 'Observed and modelled quantities differ.';
-  if(!a.unit||!b.unit||a.unit!==b.unit)return 'Confirm matching source units.';
-  if(a.quantity==='level'&&a.datum!==b.datum)return 'Confirm matching level datums.';
+  // Compare spill outcomes (counts / hours), not the sensor values that
+  // establish spilling. Level, flow and binary status can describe the same
+  // discharge using independently defined units, datums and threshold rules.
+  if(!a.unit||!b.unit)return 'Assign units to both evidence sources.';
   for(const field of ['valid_hours','unknown_hours','excluded_hours'])if(Math.abs(Number(a[field])-Number(b[field]))>1/3600)return 'Temporal support differs.';
   const start=stamp(a.analysis_start),end=stamp(a.analysis_end);
   if(JSON.stringify(mask(a.exclusions,start,end))!==JSON.stringify(mask(b.exclusions,start,end)))return 'Exclusion masks differ.';
@@ -86,8 +86,26 @@ function summaryRows(rows,year,metric,confirmed,fresh,scenarios=[]){
   const selectedYear=year==='all'?Math.max(...rows.filter(r=>r.eligible).map(r=>r.year),...(!rows.some(r=>r.eligible)?rows.map(r=>r.year):[])):Number(year);
   const selected=rows.filter(r=>r.year===selectedYear),observed=selected.find(r=>r.role==='observed');
   const names=[...new Set([...scenarios,...rows.filter(r=>r.role==='model').map(r=>r.scenario)])].sort();
-  const item=(label,r,model=false)=>{const reason=!fresh?'Recalculation required.':!r?.eligible?'No eligible evidence for this year.':model?comparable(observed,r,confirmed):'';return {label,value:fresh&&r?.eligible?r[metric]:null,rag:model&&!reason?rag(observed[metric],r[metric]):null,reason,stale:!fresh};};
+  const item=(label,r,model=false)=>{const reason=!fresh?'Recalculation required.':!r?.eligible?'No eligible evidence for this year.':model?comparable(observed,r,confirmed,metric):'';return {label,value:fresh&&r?.eligible?r[metric]:null,rag:model&&!reason?rag(observed[metric],r[metric]):null,reason,stale:!fresh};};
   return {year:Number.isFinite(selectedYear)?selectedYear:null,items:[item('O',observed),...names.map(name=>item('M ('+name+')',selected.find(r=>r.role==='model'&&r.scenario===name),true))]};
+}
+function summaryYears(rows,year,metric,confirmed,fresh,scenarios=[],assignedYears=[]){
+  const years=year==='all'?[...new Set([...assignedYears,...rows.map(r=>r.year)])].sort((a,b)=>a-b):[Number(year)];
+  return years.map(y=>summaryRows(rows,y,metric,confirmed,fresh,scenarios));
+}
+function unitFactor(quantity,unit){
+  const u=String(unit||'').trim().toLowerCase().replace(/³/g,'3').replace(/\s/g,'');
+  if(quantity==='status')return u==='1'?1:null;
+  if(['depth','level'].includes(quantity))return {m:1,mm:.001}[u]??null;
+  if(quantity==='flow')return {'m3/s':1,'l/s':.001,'ml/d':1000/86400,'m3/d':1/86400}[u]??null;
+  return null;
+}
+function valueScale(quantity,storedUnit,selectedUnit){
+  const target=unitFactor(quantity,selectedUnit);if(target===null)throw new Error('Assign a supported unit for '+quantity+'.');
+  // Unknown units are an explicit assignment: preserve source numbers.
+  if(!storedUnit||quantity==='status')return 1;
+  const source=unitFactor(quantity,storedUnit);if(source===null)throw new Error('Source values are in '+storedUnit+'; select a matching quantity.');
+  return source/target;
 }
 function thresholdRule(b){return b.comparison||(b.quantity==='flow'?'gt':'ge');}
 function effectiveThreshold(b,defaults){
@@ -151,5 +169,5 @@ function validateNetwork(value){
 function reportingConflicts(rows){
   const seen=new Set();for(const row of rows){for(const y of row.years){const key=row.role+'|'+(row.role==='model'?row.scenario:'Observed')+'|'+y;if(seen.has(key))throw new Error('Overlapping assignments for '+(row.role==='model'?row.scenario:'Observed')+' in '+y+'. Keep one authoritative source per reporting year.');seen.add(key);}}
 }
-globalThis.ICMNetworkCore={colours,types,mainYear,rag,comparable,validateYears,empty,validateNetwork,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
+globalThis.ICMNetworkCore={colours,types,mainYear,rag,comparable,validateYears,empty,validateNetwork,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
 })();

@@ -102,8 +102,8 @@ try{
   assert.ok(await summary.evaluate(el=>{const a=el.getBoundingClientRect(),b=el.parentElement.querySelector('[data-ns-frame]').getBoundingClientRect();return a.right<=b.left||a.left>=b.right||a.bottom<=b.top||a.top>=b.bottom;}),'Combined callout does not cover its asset icon');
   assert.equal(await summary.locator('.ns-rag-amber').count(),1);assert.equal(await summary.locator('.ns-rag-green').count(),1);
   await page.selectOption('#nsYear','2023');assert.deepEqual(await summaryText(),['2023','O: 10','M (Baseline): 13','M (Model update): —']);assert.equal(await summary.locator('.ns-rag-red').count(),1);
-  await page.selectOption('#nsYear','all');assert.equal((await summaryText())[0],'2024','All years uses one latest year for the whole badge');
-  await page.selectOption('#nsMetric','duration_hours');assert.match((await summaryText())[1],/O: 116 h/);await page.selectOption('#nsMetric','spill_count');
+  await page.selectOption('#nsYear','all');assert.deepEqual(await summaryText(),['2023','O: 10','M (Baseline): 13','M (Model update): —','2024','O: 20','M (Baseline): 22','M (Model update): 21'],'All years renders every annual block');
+  await page.selectOption('#nsMetric','duration_hours');assert.match((await summaryText())[5],/O: 116 h/);await page.selectOption('#nsMetric','spill_count');
   await page.click('#nsFit');
   assert.ok(await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-summary]').evaluate(el=>{const r=el.getBoundingClientRect(),c=document.getElementById('nsCanvas').getBoundingClientRect();return r.left>=c.left&&r.right<=c.right&&r.top>=c.top&&r.bottom<=c.bottom;}),'Fit includes floating labels and summaries');
   await page.screenshot({path:evidence+'/network-combined-'+name+'.png'});
