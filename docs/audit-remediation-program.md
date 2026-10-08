@@ -1,6 +1,6 @@
 # Hydra Bench audit-remediation programme
 
-Baseline production revision: `2d5ef47748775afd978e7b95ac54998a0b4ef154`  
+Baseline production revision: `59245e20ce60d737efe3c584b960e1000ef8ef6e`  
 Programme start: 2026-10-04
 
 ## Architecture freeze

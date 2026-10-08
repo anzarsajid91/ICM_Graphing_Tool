@@ -1,7 +1,7 @@
 # Precision Workbench redesign implementation plan
 
 Date: 2026-09-20  
-Baseline main: `fc8e269f9743f4d2731d2e1fac4e51f0e86ad1bd`  
+Baseline main: `88598ca4035100809cb79d4a840b8328748523cf`  
 Branch: `feat/precision-workbench-redesign-2026-09-20`
 
 ## Contract

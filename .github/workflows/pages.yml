@@ -295,7 +295,7 @@ jobs:
       - name: Checkout pre-FastPath main baseline
         uses: actions/checkout@v6
         with:
-          ref: ea85d3f3a8322be2cba5616927490e1b443634f0
+          ref: 497fde37b25a3ab6864b161d288cb0aa45f99924
           path: baseline
       - uses: actions/setup-node@v6
         with:
@@ -308,7 +308,7 @@ jobs:
           cd current
           python scripts/build_pages.py
           cd ../baseline
-          GITHUB_SHA=ea85d3f3a8322be2cba5616927490e1b443634f0 python scripts/build_pages.py
+          GITHUB_SHA=497fde37b25a3ab6864b161d288cb0aa45f99924 python scripts/build_pages.py
       - name: Install Chromium comparison runner
         working-directory: current
         run: |
@@ -319,7 +319,7 @@ jobs:
         env:
           ICM_BASELINE_URL: http://127.0.0.1:8001/
           ICM_CURRENT_URL: http://127.0.0.1:8000/
-          ICM_BASELINE_SHA: ea85d3f3a8322be2cba5616927490e1b443634f0
+          ICM_BASELINE_SHA: 497fde37b25a3ab6864b161d288cb0aa45f99924
           ICM_BASELINE_EVIDENCE_DIR: /tmp/icm-baseline-evidence
         run: |
           python -m http.server 8000 --directory _site >/tmp/icm-current-http.log 2>&1 &

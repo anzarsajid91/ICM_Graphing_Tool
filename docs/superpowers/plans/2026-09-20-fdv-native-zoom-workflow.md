@@ -324,7 +324,7 @@ Reject the branch for clipping, overlapping labels, hidden units, scroll traps o
 
 - [ ] **Step 4: Run final code review**
 
-Review diff from `main@9aa5145...` to branch HEAD against the spec. Fix any Critical/Important issue via RED→GREEN test and rerun the full suite.
+Review diff from `main@d59a7640d616bb94fc3f4a3d186f6f4c7d4776d0...` to branch HEAD against the spec. Fix any Critical/Important issue via RED→GREEN test and rerun the full suite.
 
 - [ ] **Step 5: Merge to main**
 

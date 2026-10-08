@@ -4,7 +4,7 @@ Owner: Anzar Sajid. Copyright presentation: © 2026 Anzar Sajid.
 
 ## Outcome and limits
 
-Continued `fix/ui-performance-spill-parity` from `82b090e3f3ff1942e957fb07714bbc89867fb619`; main was `2833dbb71cdefe24ca560b57a972e6a3c56504fd`. PR #2 remains open. No merge or deployment was performed. No live-site change is claimed.
+Continued `fix/ui-performance-spill-parity` from `dd81a75ebbf4aa39673abf589e171d9b0b3f593e`; main was `2b6049acf0a482af5365116bc350c941793c3394`. PR #2 remains open. No merge or deployment was performed. No live-site change is claimed.
 
 Automatic approval review rejected the push of the first local commit `f575396` to `origin fix/ui-performance-spill-parity`, stating that the GitHub destination was not explicitly authorized. Do not route around this rejection through a connector. Obtain explicit authorization for the repository and branch before pushing the final local head.
 
@@ -37,7 +37,7 @@ The full consolidated plan is NOT complete. The requirements ledger distinguishe
 
 ## Exact next actions
 
-1. Review local head and diff against `82b090e`; preserve both local commits.
+1. Review local head and diff against `dd81a75ebbf4aa39673abf589e171d9b0b3f593e`; preserve both local commits.
 2. With explicit authorization, push `fix/ui-performance-spill-parity` to `https://github.com/anzarsajid91/ICM_Graphing_Tool.git`.
 3. Run Python and full staged Chromium CI. Fix the first browser failure without weakening assertions. Confirm all later smoke stages execute, inspect exported HTML, and retain screenshots.
 4. Continue WP2–WP6 gaps in `docs/requirements-ledger.md` before release review. Obtain representative CSV/HYD/FDV/R exports for the real-data gate.

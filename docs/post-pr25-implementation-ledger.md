@@ -2,7 +2,7 @@
 
 Branch: `fix/post-pr25-final-acceptance-closeout`  
 Pull request: #30 — **Post-PR25 final acceptance close-out**  
-Current main baseline for this close-out: `1136a116c31c331e8ce37d2531dcbf43534a0c32`  
+Current main baseline for this close-out: `f78268f35e3e23a69e3d1bdee4043cf422af4db8`  
 Successor purpose: close the mandatory requirements in `ICM_Post_PR25_Enhanced_Implementation_Prompt.md` after PR #28 without weakening the PR25 engineering/FastPath contracts.
 
 This ledger records repository evidence for the successor close-out. The exact final verified head and final workflow run IDs are intentionally recorded in the PR description/handoff after the last code/document commit, because writing them into this tracked file would itself create a newer unverified head.

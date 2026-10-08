@@ -1,7 +1,7 @@
 # FDV/CSV FastPath performance evidence
 
 PR: #25 — Precision Workbench UI/UX + FDV/CSV FastPath Architecture  
-Baseline main: `ea85d3f3a8322be2cba5616927490e1b443634f0`
+Baseline main: `497fde37b25a3ab6864b161d288cb0aa45f99924`
 
 ## Measurement contract
 
@@ -44,7 +44,7 @@ Lifecycle acceptance also covers:
 
 ## Formal pre-FastPath comparison
 
-The acceptance workflow checks out baseline `main` at `ea85d3f3a8322be2cba5616927490e1b443634f0` and the PR release artifact side-by-side, serves both locally, and measures them with the same Playwright Chromium runner. Baseline selection waits for its authoritative engine because that historical build rejects imports during worker startup. The PR selection remains cold so it exercises the intended FastPath-before-Pyodide path.
+The acceptance workflow checks out baseline `main` at `497fde37b25a3ab6864b161d288cb0aa45f99924` and the PR release artifact side-by-side, serves both locally, and measures them with the same Playwright Chromium runner. Baseline selection waits for its authoritative engine because that historical build rejects imports during worker startup. The PR selection remains cold so it exercises the intended FastPath-before-Pyodide path.
 
 The browser gate continues to compare useful preview ordering and large-file performance against the historical application using the same new synthetic fixtures on both sides. Current CI evidence provides the measurements.
 

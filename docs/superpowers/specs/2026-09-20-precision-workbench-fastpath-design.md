@@ -1,7 +1,7 @@
 # Precision Workbench + FastPath architecture — design contract
 
 Date: 2026-09-20  
-Baseline main: `ea85d3f3a8322be2cba5616927490e1b443634f0`  
+Baseline main: `497fde37b25a3ab6864b161d288cb0aa45f99924`  
 Branch: `feat/precision-workbench-fastpath`
 
 ## Goal

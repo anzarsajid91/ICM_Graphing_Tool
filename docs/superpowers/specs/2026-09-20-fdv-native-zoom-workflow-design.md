@@ -1,7 +1,7 @@
 # ICM Graphing Tool — FDV, Native Zoom, Mapping & Workflow Refinement Design
 
 Date: 2026-09-20  
-Base: `main@9aa5145ccbf994a2cbbd8f54216039347a1e8260`  
+Base: `main@d59a7640d616bb94fc3f4a3d186f6f4c7d4776d0`  
 Branch: `feat/fdv-native-zoom-workflow-2026-09-20`
 
 ## 1. Purpose
