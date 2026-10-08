@@ -1,0 +1,26 @@
+name: Data confidentiality
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  confidentiality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Enforce mandatory data-confidentiality source review
+        run: python scripts/verify_data_confidentiality.py
+      - name: Verify confidentiality guards reject prohibited transmissions
+        run: |
+          python -m unittest discover -s tests/privacy -v
+          node web/tests/privacy-network-unit.mjs

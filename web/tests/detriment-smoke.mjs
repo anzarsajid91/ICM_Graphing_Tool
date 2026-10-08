@@ -1,3 +1,4 @@
+import {installPrivacyGuard} from './privacy-network.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
@@ -9,6 +10,7 @@ const evidence=process.env.ICM_EVIDENCE_DIR||'/tmp/icm-detriment-evidence';
 await fs.mkdir(evidence,{recursive:true});
 const errors=[];page.on('pageerror',e=>errors.push(String(e)));
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
+const privacy=installPrivacyGuard(page.context(),base);
 const field=k=>page.locator('#dtForm [data-key="'+k+'"]');
 async function route(kind){await page.evaluate(k=>window.__ICM_PRECISION_WORKBENCH__.navigate('detriment',k,true),kind);}
 async function selectReport(slot,name){const id=await page.locator('#dtForm [data-key="'+slot+'.id"] option').evaluateAll((opts,n)=>opts.find(x=>x.textContent===n)?.value,name);assert.ok(id,'Source '+name);await field(slot+'.id').selectOption(id);}
@@ -143,4 +145,5 @@ try{
   for(const size of [{width:1440,height:1000},{width:390,height:844}]){await page.setViewportSize(size);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1));await page.screenshot({path:path.join(evidence,'about-'+size.width+'.png'),fullPage:false,animations:'disabled'});}
   await page.locator('[data-about-workspace="detriment"]').click();assert.equal(await page.locator('#dtAssetIds').isVisible(),true);
   assert.deepEqual(errors,[]);console.log('Detriment acceptance passed: Data Sources → 3 tabs → evidence/export, precision boundaries, restoration, source removal and responsive containment.');
+privacy.assertClean();
 }catch(error){await page.screenshot({path:path.join(evidence,'detriment-failure.png'),fullPage:true}).catch(()=>{});console.error('Detriment state:',await page.locator('#dtStatus').textContent().catch(()=>''),errors);throw error;}finally{await browser.close();}

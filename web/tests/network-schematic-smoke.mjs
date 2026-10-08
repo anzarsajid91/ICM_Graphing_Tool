@@ -1,3 +1,4 @@
+import {installPrivacyGuard} from './privacy-network.mjs';
 import {chromium,firefox} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import assert from 'node:assert/strict';
@@ -7,6 +8,7 @@ const page=await browser.newPage({...browserContextOptions(),viewport:{width:160
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const evidence=process.env.ICM_EVIDENCE_DIR||'/tmp/hydra-network-evidence';await fs.mkdir(evidence,{recursive:true});
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
+const privacy=installPrivacyGuard(page.context(),base);
 function csv(year,count){
   const start=Date.UTC(year-1,11,1),end=Date.UTC(year+1,0,1),rows=['timestamp,Depth (m)'];
   for(let time=start;time<=end;time+=3600000){
@@ -151,5 +153,6 @@ try{
   assert.match(await page.locator('#nsPopup').innerText(),/Continuous spill — check threshold/);
   await page.screenshot({path:evidence+'/network-threshold-warning-'+name+'.png'});
   assert.deepEqual(errors,[],'No browser runtime errors');console.log(name+': batch mapping, real Python counts, warm-up, isolation, RAG, editor, camera, capture and restore passed.');
+privacy.assertClean();
 }catch(error){await page.screenshot({path:evidence+'/network-failure-'+name+'.png',fullPage:true});throw error;}
 finally{await browser.close();}

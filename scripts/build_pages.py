@@ -71,6 +71,9 @@ def _inject_v2_assets(build_token: str) -> None:
 
 
 def build() -> None:
+    # Non-negotiable confidentiality rule: no artifact can bypass source review.
+    from verify_data_confidentiality import verify as verify_data_confidentiality
+    verify_data_confidentiality(ROOT)
     from app_version import release_version
     version = release_version()
     from verify_vendor import verify_vendor

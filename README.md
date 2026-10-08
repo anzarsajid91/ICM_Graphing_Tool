@@ -7,6 +7,12 @@ InfoWorks ICM and related hydraulic datasets. The GitHub Pages edition processes
 selected local exports through the shared Python engineering engine in Pyodide;
 source data is not intentionally uploaded to an application server.
 
+**Mandatory confidentiality rule:** imported data, identifying metadata and
+calculation inputs/results must never be transmitted over a network. This applies
+to every commit and release without debug, analytics, AI or support exceptions.
+See [SECURITY.md](SECURITY.md) and [AGENTS.md](AGENTS.md). Source-review checks run
+on every push/PR and before every Pages build; release browser tests check requests.
+
 Current capabilities include observed/model scenario plotting and comparison,
 rainfall/event assessment, DWF screening, telemetry/data-quality review,
 physical spill detection with separate 12/24 compatibility counting, reversible

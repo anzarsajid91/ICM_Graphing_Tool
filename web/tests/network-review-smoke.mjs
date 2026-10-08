@@ -1,3 +1,4 @@
+import {installPrivacyGuard} from './privacy-network.mjs';
 import {chromium} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import assert from 'node:assert/strict';
@@ -6,6 +7,7 @@ const browser=await chromium.launch(browserLaunchOptions()),page=await browser.n
 const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR:',e.message);});
 const evidence=process.env.ICM_EVIDENCE_DIR||'/tmp/hydra-annual-review';await fs.mkdir(evidence,{recursive:true});
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
+const privacy=installPrivacyGuard(page.context(),base);
 function csv(year,count,channel='Depth (m)',factor=1){const rows=['timestamp,'+channel];for(let t=Date.UTC(year-1,11,1);t<=Date.UTC(year+1,0,1);t+=3600000){const hour=(t-Date.UTC(year,0,10))/3600000,spill=hour>=0&&hour<300*count&&hour%300<6;rows.push(new Date(t).toISOString().slice(0,19)+','+(spill?2*factor:0));}return Buffer.from(rows.join('\n'));}
 const files=[['ReviewObserved2023.csv',2023,10],['ReviewObserved2024.csv',2024,20],['ReviewBaseline2023.csv',2023,13],['ReviewBaseline2024.csv',2024,22],['ReviewUpdate2024.csv',2024,21]].map(([name,y,n])=>({name,mimeType:'text/csv',buffer:csv(y,n,name==='ReviewBaseline2023.csv'?'Flow (L/s)':name==='ReviewBaseline2024.csv'?'Depth (mm)':'Depth (m)',name.includes('Baseline')?1000:1)}));
 files.push({name:'ReviewUnknownUnit2024.csv',mimeType:'text/csv',buffer:csv(2024,20,'Depth',1000)});
@@ -74,5 +76,6 @@ try{
   await page.reload();await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate);await page.evaluate(()=>__ICM_PRECISION_WORKBENCH__.navigate('spills','network',true));await page.waitForSelector('#nsEdit');const restored=await snapshot();assert.equal(restored.schema,2);assert.equal(restored.views.length,1);assert.equal(restored.reviewSnapshots.length,1);assert.equal(restored.nodes[0].review.status,'reviewed');assert.equal(restored.nodes[0].pinned,true);
   await page.setViewportSize({width:820,height:900});await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();await page.screenshot({path:evidence+'/annual-tablet.png'});assert(await page.locator('#nsPopup').isVisible());
   assert.deepEqual(errors,[],'No page runtime errors');console.log('Annual network review passed: all years, hover, graph thresholds, common-period isolation, scenarios, tracing, pinned layout, notes, snapshots, vector/PDF and restore.');
+privacy.assertClean();
 }catch(error){await page.screenshot({path:evidence+'/annual-review-failure.png',fullPage:true});throw error;}
 finally{await browser.close();}
