@@ -11,7 +11,7 @@ const row={eligible:true,count_status:'definitive',analysis_start:'2024-01-01T00
 assert.equal(C.comparable(row,row,true),'');assert.match(C.comparable(row,row,false),/Confirm/);
 assert.match(C.comparable(row,{...row,analysis_start:'2024-04-01T00:00:00'},true),/periods/);
 assert.match(C.comparable(row,{...row,count_status:'partial/unknown-gap'},true),/provisional/);
-assert.match(C.comparable(row,{...row,unit:'mm'},true),/units/);
+assert.equal(C.comparable(row,{...row,unit:'mm'},true),'');
 assert.throws(()=>C.reportingConflicts([{role:'observed',years:[2024]},{role:'observed',years:[2024]}]),/Overlapping/);
 C.reportingConflicts([{role:'observed',years:[2024]},{role:'model',scenario:'Baseline',years:[2024]},{role:'model',scenario:'Update',years:[2024]}]);
 assert.throws(()=>C.validateYears('2024, nope'));
@@ -25,7 +25,7 @@ assert.equal(C.effectiveThreshold({...binding,threshold:12},{model:0}).value,12)
 assert.equal(C.effectiveThreshold({...binding,threshold:0},{model:12}).value,0);
 assert.throws(()=>C.effectiveThreshold(binding,{model:''}),/finite threshold/);
 assert.throws(()=>C.effectiveThreshold({...binding,threshold:undefined},{model:undefined}),/finite threshold/);
-assert.match(C.comparable({...row,comparison:'gt'},{...row,comparison:'ge'},true),/rules differ/);
+assert.equal(C.comparable({...row,comparison:'gt'},{...row,comparison:'ge'},true),'');
 const obs={...row,role:'observed',year:2024},model={...row,role:'model',year:2024,scenario:'Baseline'};
 assert.equal(C.evidenceRows([obs,model]).length,1);
 assert.equal(C.evidenceRows([obs,model])[0].observed,obs);
@@ -74,3 +74,20 @@ assert.equal(C.validateNetwork(savedLayout).edges[0].bends.length,2);
 assert.throws(()=>C.validateNetwork({...savedLayout,edges:[{...bent,colour:'red',bends:[{x:NaN,y:0}]}]}),/bends/);
 assert.throws(()=>C.validateNetwork({...savedLayout,nodes:[{...validNode(nodes[0]),nameOffset:{x:Infinity,y:0}},...nodes.slice(1).map(validNode)]}),/label placement/);
 console.log('Manual bends, attached labels, saved geometry and same-year combined RAG summaries passed.');
+
+// Spill outcome comparisons are independent of the threshold signal's units.
+assert.equal(C.comparable(row,{...row,quantity:'flow',unit:'L/s',comparison:'gt'},true),'');
+assert.match(C.comparable(row,{...row,unit:''},true),/Assign units/);
+assert.equal(C.comparable(row,{...row,count_status:'partial/left-censored-context'},true,'duration_hours'),'');
+assert.match(C.comparable(row,{...row,count_status:'partial/left-censored-context'},true),/provisional/);
+const annual=C.summaryYears([{...obs,year:2023,spill_count:10},{...obs,spill_count:20},{...model,spill_count:22}], 'all','spill_count',true,true,['Baseline'],[2022,2023,2024]);
+assert.deepEqual(Array.from(annual,s=>s.year),[2022,2023,2024]);
+assert.equal(annual[0].items[0].value,null);assert.equal(annual[1].items[0].value,10);assert.equal(annual[1].items[1].rag,null);assert.equal(annual[2].items[1].rag,'amber');
+assert.equal(C.valueScale('depth','m','mm'),1000);
+assert.equal(C.valueScale('flow','m³/s','L/s'),1000);
+assert.equal(C.valueScale('flow','m³/s','Ml/d'),86.4);
+assert.equal(C.valueScale('depth','','mm'),1,'Unknown source units are assigned without rescaling');
+assert.equal(C.valueScale('status','m','1'),1);
+assert.throws(()=>C.valueScale('flow','m','L/s'),/matching quantity/);
+assert.throws(()=>C.valueScale('depth','m',''),/supported unit/);
+console.log('All assigned years, independent missing pairs, outcome RAG, duration eligibility and unit scaling passed.');
