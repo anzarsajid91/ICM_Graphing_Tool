@@ -57,6 +57,16 @@ def pages(path, key):
 
 if __name__ == '__main__':
     assert os.environ['GITHUB_REPOSITORY'] == REPO
+    # Stop superseded copies of this one-off maintenance job only.
+    own_run = int(os.environ['GITHUB_RUN_ID'])
+    older = request('/actions/workflows/reference-evidence-cleanup.yml/runs?per_page=100')['workflow_runs']
+    for run in older:
+        if run['id'] != own_run and run['status'] in ('in_progress', 'queued', 'pending'):
+            try:
+                request('/actions/runs/' + str(run['id']) + '/cancel', 'POST')
+            except urllib.error.HTTPError as error:
+                if error.code not in (409, 422):
+                    raise
     # Gather before deleting so pagination cannot skip entries as the list shrinks.
     artifacts = list(pages('/actions/artifacts', 'artifacts'))
     candidates = [a for a in artifacts
