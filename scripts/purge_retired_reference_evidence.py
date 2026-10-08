@@ -6,6 +6,7 @@ deployment and static Pages/preview artifacts are excluded. Run records remain.
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 import os
 import urllib.error
 import urllib.request
@@ -58,29 +59,44 @@ if __name__ == '__main__':
     assert os.environ['GITHUB_REPOSITORY'] == REPO
     # Gather before deleting so pagination cannot skip entries as the list shrinks.
     artifacts = list(pages('/actions/artifacts', 'artifacts'))
-    deleted_artifacts = 0
-    for artifact in artifacts:
-        name = artifact['name']
-        if (artifact['expired'] or artifact['created_at'] < EARLIEST_UPLOAD or
-                name == 'github-pages' or 'preview' in name):
-            continue
-        if original_sources(artifact['workflow_run']['head_sha']):
-            request('/actions/artifacts/' + str(artifact['id']), 'DELETE')
-            deleted_artifacts += 1
-    deleted_logs = 0
+    candidates = [a for a in artifacts
+                  if not a['expired'] and a['created_at'] >= EARLIEST_UPLOAD
+                  and a['name'] != 'github-pages' and 'preview' not in a['name']]
+    runs = []
     for run in pages('/actions/runs', 'workflow_runs'):
         if run['created_at'] < EARLIEST_UPLOAD:
             break
-        if run['status'] != 'completed':
-            continue
-        if original_sources(run['head_sha']):
-            try:
-                request('/actions/runs/' + str(run['id']) + '/logs', 'DELETE')
-            except urllib.error.HTTPError as error:
-                if error.code != 404:
-                    raise
-            else:
-                deleted_logs += 1
+        if run['status'] == 'completed':
+            runs.append(run)
+    heads = {a['workflow_run']['head_sha'] for a in candidates}
+    heads.update(r['head_sha'] for r in runs)
+    # Classifications are read-only and deduplicated before any deletion.
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(original_sources, sorted(heads)))
+    retired_artifacts = [a for a in candidates if cache[a['workflow_run']['head_sha']]]
+    retired_runs = [r for r in runs if cache[r['head_sha']]]
+    print(json.dumps({'classified_heads': len(heads),
+                      'remaining_retired_artifacts': len(retired_artifacts),
+                      'retired_runs_to_clear': len(retired_runs)}), flush=True)
+
+    def delete_artifact(artifact):
+        request('/actions/artifacts/' + str(artifact['id']), 'DELETE')
+        return 1
+
+    def delete_logs(run):
+        try:
+            request('/actions/runs/' + str(run['id']) + '/logs', 'DELETE')
+        except urllib.error.HTTPError as error:
+            if error.code != 404:
+                raise
+            return 0
+        return 1
+
+    # Independent evidence objects; a small pool keeps request concurrency low.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        deleted_artifacts = sum(pool.map(delete_artifact, retired_artifacts))
+        print(json.dumps({'retired_reference_artifacts_deleted': deleted_artifacts}), flush=True)
+        deleted_logs = sum(pool.map(delete_logs, retired_runs))
     print(json.dumps({'retired_reference_artifacts_deleted': deleted_artifacts,
                       'retired_reference_run_logs_deleted': deleted_logs,
-                      'current_deployment_and_static_site_artifacts_preserved': True}))
+                      'current_deployment_and_static_site_artifacts_preserved': True}), flush=True)
