@@ -40,6 +40,7 @@ try{
   const scaled=(await snapshot()).nodes[0].applied.rows.find(r=>r.role==='model'&&r.scenario==='Baseline'&&r.year===2024);
   assert.equal(scaled.spill_count,22);assert.equal(scaled.unit,'mm');assert.equal(scaled.threshold,1200);assert.equal(scaled.value_max,2000);
   await page.waitForFunction(()=>document.getElementById('nsAnalysisMessage').textContent.startsWith('Dashed lines'),null,{timeout:120000});
+  assert.deepEqual(await page.locator('#nsAnalysisPlot').evaluate(el=>[el._fullLayout.yaxis.title.text,el._fullLayout.yaxis2.title.text]),['depth · m','depth · mm'],'Rendered axes show quantities and actual value units');
   await page.screenshot({path:evidence+'/associated-unit-controls.png'});
   await page.locator('#nsAnalysisSettings > summary').click();await page.locator('#nsAnalysis .ns-analysis-body').evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:evidence+'/associated-time-series.png'});
