@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Baseline main SHA: `cb66e762b23c5cd59cf61b42a6c4b52655307cfc`.
+- Baseline main SHA: `ea85d3f3a8322be2cba5616927490e1b443634f0`.
 - Branch: `feat/precision-workbench-fastpath`.
 - Python/Pyodide remains authoritative for engineering calculations.
 - Native-resolution calculation data must not be replaced by preview/display arrays.
@@ -26,7 +26,7 @@
 
 The implementation/evidence record is reconciled against PR #25 rather than earlier chat status. All merge-relevant product, reference-data, browser, report, performance and regression outcomes below are implemented and evidenced. The original deliberately-RED test run was not retained and remains unchecked rather than reconstructed. A reproducible formal comparison against the fixed pre-FastPath `main` baseline is now retained and documented in `docs/fastpath-performance.md`.
 
-Evidence used for this reconciliation includes the fully green hardened browser run `35699755269` on product head `84309aafc1f3b296559ce6fd6e5c2c3ec17ac198` / tested merge build `64345aa1ab4d7af04300351f05da17021d1d8695`, plus green Ubuntu/Windows Workbench CI, Chromium complete workflow, Firefox shell and the same-run formal baseline comparison. Final PR-description/Ready-for-Review administration follows the documentation-only exact-head rerun.
+Evidence used for this reconciliation includes the fully green hardened browser run `35699755269` on product head `8629465fcab988fcf3a6b384d6ffee508c04cdb5` / tested merge build `64345aa1ab4d7af04300351f05da17021d1d8695`, plus green Ubuntu/Windows Workbench CI, Chromium complete workflow, Firefox shell and the same-run formal baseline comparison. Final PR-description/Ready-for-Review administration follows the documentation-only exact-head rerun.
 
 ## Review Focus
 

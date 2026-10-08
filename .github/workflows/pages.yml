@@ -8,15 +8,39 @@ on:
       - 'src/icm_workbench/**'
       - 'tests/**'
       - 'scripts/build_pages.py'
+      - 'scripts/app_version.py'
+      - 'release-history.json'
+      - 'reference/**'
+      - 'scripts/generate_synthetic_references.py'
+      - 'scripts/verify_vendor.py'
+      - 'scripts/verify_data_confidentiality.py'
+      - 'security/**'
+      - 'SECURITY.md'
+      - 'AGENTS.md'
+      - '.github/workflows/data-confidentiality.yml'
+      - 'scripts/reference_workflow_simulation.py'
+      - 'scripts/detriment_reference_cases.py'
       - '.github/workflows/pages.yml'
       - '.github/workflows/live-pages-verification.yml'
   pull_request:
-    branches: [main]
+    branches: [main, "audit/**"]
     paths:
       - 'web/**'
       - 'src/icm_workbench/**'
       - 'tests/**'
       - 'scripts/build_pages.py'
+      - 'scripts/app_version.py'
+      - 'release-history.json'
+      - 'reference/**'
+      - 'scripts/generate_synthetic_references.py'
+      - 'scripts/verify_vendor.py'
+      - 'scripts/verify_data_confidentiality.py'
+      - 'security/**'
+      - 'SECURITY.md'
+      - 'AGENTS.md'
+      - '.github/workflows/data-confidentiality.yml'
+      - 'scripts/reference_workflow_simulation.py'
+      - 'scripts/detriment_reference_cases.py'
       - '.github/workflows/pages.yml'
       - '.github/workflows/live-pages-verification.yml'
   workflow_dispatch:
@@ -25,7 +49,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'push' && 'production' || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && 'production' || format('pr-checks-{0}', github.ref) }}
   cancel-in-progress: true
 
 jobs:
@@ -33,6 +57,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
@@ -41,23 +68,72 @@ jobs:
           node-version: '22'
       - name: Install reference engine dependencies
         run: python -m pip install -e . pytest
+      - name: Enforce mandatory data confidentiality
+        run: |
+          python scripts/verify_data_confidentiality.py
+          python -m unittest discover -s tests/privacy -v
+          node web/tests/privacy-network-unit.mjs
       - name: Run Python regression suite
         run: python -m pytest
+      - name: Simulate synthetic EDM and Flow Survey reference workflows
+        run: |
+          mkdir -p /tmp/icm-reference-workflow
+          python scripts/reference_workflow_simulation.py \
+            --json /tmp/icm-reference-workflow/reference-workflow.json \
+            --markdown /tmp/icm-reference-workflow/reference-workflow.md
+      - name: Retain synthetic engineering workflow evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-workflow-evidence-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: /tmp/icm-reference-workflow/
       - name: Validate release browser source
         run: |
           node --check web/assets/runtime.release.js
           node --check web/assets/analysis-worker.js
+          node --check web/assets/fastpath-core.js
+          node --check web/assets/fastpath-worker.js
+          node --check web/assets/fastpath-preview.js
           node --check web/assets/domain-registry.js
           node --check web/assets/workbench-v2.js
           node --check web/assets/workbench-v2-domfix.js
           node --check web/assets/workbench-v3.js
           node --check web/assets/workbench-survey.js
+          node --check web/assets/workflow-26.js
+          node --check web/assets/network-schematic-loader.js
+          node --check web/assets/network-schematic-core.js
+          node --check web/assets/network-schematic.js
+          node web/tests/network-schematic-unit.mjs
+          node --check web/assets/network-review-core.js
+          node web/tests/network-review-unit.mjs
           node --check web/assets/precision-workbench.js
+          node --check web/assets/detriment-workspace.js
+          node web/tests/survey-source-unit.mjs
+          node web/tests/workbook-reader-unit.mjs
+          node web/tests/detriment-unit.mjs
+          node web/tests/engine-recovery-unit.mjs
+          node --check web/tests/detriment-reference-smoke.mjs
           node --check web/tests/smoke.mjs
           node --check web/tests/precision-shell.mjs
+          node --check web/tests/webkit-ios-shell.mjs
+          node --check web/tests/cold-start-shell.mjs
+          node --check web/tests/schematic-review-smoke.mjs
+          node --check web/tests/workspace-interactions.mjs
+          node --check web/tests/baseline-comparison.mjs
+          node web/tests/weekly-review-unit.mjs
+          node web/tests/graph-report-unit.mjs
+          node web/tests/spill-evidence-unit.mjs
+          node web/tests/rainfall-unit.mjs
           node web/tests/runtime-unit.mjs
           node web/tests/domain-registry-unit.mjs
-          python -m py_compile web/python_bridge.py web/advanced_bridge.py src/icm_workbench/browser_api.py src/icm_workbench/advanced_api.py scripts/build_pages.py scripts/validate_representative_exports.py
+          node --check web/tests/fastpath-unit.mjs
+          node --check web/tests/fastpath-reference.mjs
+          node web/tests/fastpath-unit.mjs
+          node web/tests/fastpath-reference.mjs
+          node web/tests/fastpath-equivalence.mjs
+          python -m py_compile web/python_bridge.py web/advanced_bridge.py src/icm_workbench/browser_api.py src/icm_workbench/advanced_api.py scripts/build_pages.py scripts/validate_representative_exports.py scripts/reference_workflow_simulation.py scripts/fastpath_authoritative_contract.py
       - name: Verify deterministic Pages package manifest and UX staging
         run: |
           python scripts/build_pages.py
@@ -79,21 +155,34 @@ jobs:
               'assets/app.css',
               'assets/workbench-v2.css',
               'assets/workbench-survey.css',
+              'assets/workflow-26.css',
               'assets/precision-workbench.css',
+              'assets/network-schematic.css',
               'assets/domain-registry.js',
               'assets/runtime.js',
               'assets/workbench-v2.js',
+              'assets/fastpath-preview.js',
               'assets/workbench-v2-domfix.js',
               'assets/workbench-v3.js',
               'assets/workbench-survey.js',
+              'assets/workflow-26.js',
               'assets/precision-workbench.js',
+              'assets/network-schematic-loader.js',
+              'assets/detriment-workspace.js',
+              'assets/detriment-workspace.css',
           ]
           for asset in versioned:
               assert f'{asset}?v={token}' in html, asset
           assert 'pyodide/v0.29.4/full/pyodide.js' not in html
           assert Path('_site/assets/analysis-worker.js').exists()
+          assert Path('_site/assets/fastpath-core.js').exists()
+          assert Path('_site/assets/fastpath-worker.js').exists()
+          assert Path('_site/assets/fastpath-preview.js').exists()
           assert Path('_site/assets/domain-registry.js').exists()
-          assert 'xlsx@0.18.5' in html
+          assert Path('_site/assets/network-schematic-core.js').exists()
+          assert Path('_site/assets/network-schematic.js').exists()
+          assert 'vendor/sheetjs-0.20.3/xlsx.full.min.js' in html
+          assert 'https://cdn.' not in html
           assert 'type="module" src="assets/runtime.js"' not in html
           print(f'Pages manifest verified: {len(actual)} Python modules; current browser UX staged exactly.')
           PY
@@ -101,8 +190,14 @@ jobs:
   browser-smoke:
     runs-on: ubuntu-latest
     needs: verify
+    timeout-minutes: 45
+    env:
+      ICM_EVIDENCE_DIR: /tmp/icm-pr-evidence
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
@@ -115,13 +210,11 @@ jobs:
         run: |
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
-      - name: Exercise complete browser workflow
-        env:
-          ICM_EVIDENCE_DIR: /tmp/icm-pr-evidence
+      - name: Start browser acceptance server
         run: |
-          python -m http.server 8000 --directory _site >/tmp/icm-pages-http.log 2>&1 &
+          nohup python -m http.server 8000 --directory _site >/tmp/icm-pages-http.log 2>&1 </dev/null &
           SERVER_PID=$!
-          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          echo "$SERVER_PID" > "$RUNNER_TEMP/icm-browser-server.pid"
           READY=0
           for attempt in {1..30}; do
             if curl --fail --silent --show-error http://127.0.0.1:8000/ >/dev/null 2>&1; then
@@ -140,7 +233,24 @@ jobs:
             cat /tmp/icm-pages-http.log
             exit 1
           fi
-          node web/tests/smoke.mjs
+      - name: Verify cold-start shell
+        run: node web/tests/cold-start-shell.mjs
+      - name: Verify detriment workspace
+        run: node web/tests/detriment-smoke.mjs
+      - name: Verify detriment reference cases
+        run: node web/tests/detriment-reference-smoke.mjs
+      - name: Verify release audit regressions
+        run: node web/tests/audit-release-smoke.mjs
+      - name: Verify complete graph and assessment workflows
+        run: node web/tests/smoke.mjs
+      - name: Verify survey schematic review
+        run: node web/tests/schematic-review-smoke.mjs
+      - name: Stop browser acceptance server
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/icm-browser-server.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/icm-browser-server.pid")" 2>/dev/null || true
+          fi
 
       - name: Package exact review preview
         if: success()
@@ -159,6 +269,7 @@ jobs:
           retention-days: 30
           path: |
             /tmp/icm-pr-evidence/
+            reference/current-tool/synthetic-manifest.json
 
       - name: Retain browser failure evidence
         if: failure()
@@ -169,11 +280,86 @@ jobs:
             /tmp/icm-workbench-failure.png
             /tmp/icm-pages-http.log
 
+
+  baseline-performance:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 30
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          path: current
+      - name: Checkout pre-FastPath main baseline
+        uses: actions/checkout@v6
+        with:
+          ref: ea85d3f3a8322be2cba5616927490e1b443634f0
+          path: baseline
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Build current and baseline release artifacts
+        run: |
+          cd current
+          python scripts/build_pages.py
+          cd ../baseline
+          GITHUB_SHA=ea85d3f3a8322be2cba5616927490e1b443634f0 python scripts/build_pages.py
+      - name: Install Chromium comparison runner
+        working-directory: current
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Measure pre-FastPath versus PR25 in one runner
+        working-directory: current
+        env:
+          ICM_BASELINE_URL: http://127.0.0.1:8001/
+          ICM_CURRENT_URL: http://127.0.0.1:8000/
+          ICM_BASELINE_SHA: ea85d3f3a8322be2cba5616927490e1b443634f0
+          ICM_BASELINE_EVIDENCE_DIR: /tmp/icm-baseline-evidence
+        run: |
+          python -m http.server 8000 --directory _site >/tmp/icm-current-http.log 2>&1 &
+          CURRENT_PID=$!
+          python -m http.server 8001 --directory ../baseline/_site >/tmp/icm-baseline-http.log 2>&1 &
+          BASELINE_PID=$!
+          trap 'kill "$CURRENT_PID" "$BASELINE_PID" 2>/dev/null || true' EXIT
+          for port in 8000 8001; do
+            READY=0
+            for attempt in {1..30}; do
+              if curl --fail --silent --show-error "http://127.0.0.1:$port/" >/dev/null 2>&1; then READY=1; break; fi
+              sleep 1
+            done
+            if [ "$READY" -ne 1 ]; then
+              echo "Comparison server on $port failed to start."
+              cat /tmp/icm-current-http.log /tmp/icm-baseline-http.log
+              exit 1
+            fi
+          done
+          node web/tests/baseline-comparison.mjs
+      - name: Retain formal baseline comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fastpath-baseline-comparison-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            /tmp/icm-baseline-evidence/
+            /tmp/icm-current-http.log
+            /tmp/icm-baseline-http.log
+
   browser-firefox-shell:
     runs-on: ubuntu-latest
     needs: verify
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
@@ -199,6 +385,97 @@ jobs:
           done
           node web/tests/precision-shell.mjs
 
+
+  browser-interactions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Assemble exact release artifact
+        run: python scripts/build_pages.py
+      - name: Install existing Chromium and Firefox acceptance runners
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium firefox
+      - name: Verify workspace interactions in Chromium and Firefox
+        env:
+          ICM_EVIDENCE_DIR: /tmp/icm-interaction-evidence
+        run: |
+          python -m http.server 8000 --directory _site >/tmp/icm-interactions-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:8000/ >/dev/null 2>&1 && break
+            sleep 1
+          done
+          ICM_BROWSER=chromium node web/tests/workspace-interactions.mjs
+          ICM_BROWSER=chromium node web/tests/network-schematic-smoke.mjs
+          node web/tests/network-review-smoke.mjs
+          node web/tests/network-layout-smoke.mjs
+          ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs
+          ICM_BROWSER=firefox node web/tests/network-schematic-smoke.mjs
+      - name: Retain workspace interaction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-interactions-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            /tmp/icm-interaction-evidence/
+            /tmp/icm-interactions-http.log
+
+  browser-webkit-ios-shell:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Assemble exact release artifact
+        run: python scripts/build_pages.py
+      - name: Install WebKit acceptance runner
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps webkit
+      - name: Verify iOS WebKit startup shell
+        env:
+          ICM_EVIDENCE_DIR: /tmp/icm-ios-webkit
+        run: |
+          python -m http.server 8000 --directory _site >/tmp/icm-webkit-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:8000/ >/dev/null 2>&1 && break
+            sleep 1
+          done
+          node web/tests/webkit-ios-shell.mjs
+      - name: Retain iOS WebKit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-webkit-shell-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            /tmp/icm-ios-webkit/
+            /tmp/icm-webkit-http.log
+
   build:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
@@ -206,9 +483,12 @@ jobs:
       pages: write
       id-token: write
     runs-on: ubuntu-latest
-    needs: browser-smoke
+    needs: [browser-smoke, baseline-performance, browser-firefox-shell, browser-webkit-ios-shell, browser-interactions]
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
