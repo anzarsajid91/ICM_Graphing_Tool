@@ -865,6 +865,10 @@ async function verifyPlotlyEngineeringEnhancements(){
 
     const chartBox=await probe.locator('#timeChart').boundingBox();
     if(chartBox){
+      // Navigation restores the saved document offset on the next frame.
+      // Let that frame finish before setting the wheel-test starting point;
+      // otherwise restoration can overwrite it between measurement and input.
+      await probe.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       await probe.evaluate(()=>{const chart=document.querySelector('#timeChart');window.scrollTo(0,Math.max(0,(chart?.getBoundingClientRect().top||0)+window.scrollY-90));});
       const beforeWheel=await probe.evaluate(()=>window.scrollY);
       const refreshedBox=await probe.locator('#timeChart').boundingBox();
