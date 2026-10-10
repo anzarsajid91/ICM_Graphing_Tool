@@ -6,7 +6,7 @@ Status: foundation and shell implemented; rendered candidate acceptance pending.
 
 Warm canvas #F0F0EE; surface #FCFCFC; elevated surface #FFFFFF;
 text #202221; secondary text #626660 (darkened from the reference proposal for
-small-text contrast); subtle border #E4E5E3; control border #ADB2AC (controls
+small-text contrast); subtle border #E4E5E3; control border #8A918A (controls
 must remain distinguishable). Primary action charcoal; restrained teal only for
 focus/link/selection context. Existing observed red, model purple-blue, rainfall,
 threshold and semantic RAG colours are retained. No external fonts or icon loads.

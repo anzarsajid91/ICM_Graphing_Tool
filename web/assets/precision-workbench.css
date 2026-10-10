@@ -33,7 +33,7 @@ body.precision-workbench{
 }
 .precision-workbench button,.precision-workbench input,.precision-workbench select,.precision-workbench textarea{font:inherit}
 .precision-workbench button,.precision-workbench select,.precision-workbench input:not([type="color"]):not([type="checkbox"]):not([type="radio"]){min-height:38px}
-.precision-workbench :focus-visible{outline:3px solid color-mix(in srgb,var(--pw-focus) 45%,transparent);outline-offset:2px}
+.precision-workbench :focus-visible{outline:3px solid var(--hb-focus);outline-offset:2px}
 .pw-app{min-height:100vh;display:grid;grid-template-columns:var(--pw-rail) minmax(0,1fr)}
 .pw-rail{
   position:sticky;top:0;height:100vh;z-index:50;overflow:auto;
@@ -104,7 +104,7 @@ body.precision-workbench{
    cross-browser fallback as well as the global :focus-visible rule so a
    keyboard-restored focused tab always has an explicit visible ring in
    Firefox, Chromium and Safari. */
-.pw-secondary-nav button:focus{outline:3px solid color-mix(in srgb,var(--pw-focus) 45%,transparent);outline-offset:2px}
+.pw-secondary-nav button:focus{outline:3px solid var(--hb-focus);outline-offset:2px}
 .pw-secondary-nav button[aria-current="page"]{color:var(--pw-text);background:var(--hb-elevated);box-shadow:var(--hb-shadow)}
 .pw-scopebar{
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--pw-surface-soft);

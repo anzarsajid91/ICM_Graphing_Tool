@@ -3,7 +3,7 @@
 const C=ICMNetworkCore,R=ICMNetworkReviewCore,NS='http://www.w3.org/2000/svg',STORE='hydra-network-schematic-v1';
 const $=id=>document.getElementById(id),html=esc,uid=()=>crypto.randomUUID();
 let network=C.empty(),selected=null,editing=false,tool='select',colour='red',connectFrom=null,drag=null,busy=false,history=[],mounted=false,popupVisible=false,observer=null,saveTimer=null;
-let redo=[],multi=new Set(),highlight=null,hoverTimer=null,frame=null,analysisGeneration=0,analysisContext=null,analysisTimer=null;
+let redo=[],multi=new Set(),highlight=null,hoverTimer=null,frame=null,analysisGeneration=0,analysisContext=null,analysisTimer=null,analysisReturnFocus=null,pickerReturnFocus=null;
 const freshness=new Map();
 const prefs=()=>R.preferences(network);
 const root=()=>$('tab-spill-network');
@@ -193,9 +193,15 @@ function selectPoint(id){
 function showSourcePicker(role){
   const n=node();if(!n||busy)return;
   const files=[...state.files.values()].filter(x=>x.status==='ready'&&!x.reportKind&&x.parsed?.columns?.length&&x.parsed?.start&&x.parsed?.end);
+  pickerReturnFocus=document.activeElement;
   const picker=$('nsPicker');picker.hidden=false;picker.dataset.role=role;
   picker.innerHTML='<div class="ns-popup-head"><h3>Add '+(role==='observed'?'observed datasets':'datasets to '+html(n.newScenario||'Baseline'))+'</h3><button data-ns-close-picker aria-label="Close source picker">×</button></div><input id="nsSourceSearch" type="search" placeholder="Search imported datasets" aria-label="Search imported datasets"><div class="ns-file-list">'+files.map(x=>'<label data-ns-file-name="'+html(x.displayName.toLowerCase())+'"><input type="checkbox" value="'+html(x.id)+'"><span>'+html(x.displayName)+'<small>'+html(x.parsed.start.slice(0,10)+' to '+x.parsed.end.slice(0,10))+'</small></span></label>').join('')+'</div>'+(files.length?'':'<p>Import time-series files in Data / Time Series first. Sources appear after authoritative parsing completes.</p>')+'<button id="nsAddSelected" class="ns-primary">Add selected files</button>';
   $('nsSourceSearch')?.focus();
+}
+function closeSourcePicker(){
+  const role=$('nsPicker').dataset.role;$('nsPicker').hidden=true;
+  const target=pickerReturnFocus?.isConnected?pickerReturnFocus:root().querySelector('[data-ns-add-sources="'+CSS.escape(role||'')+'"]')||$('nsCanvas');
+  target?.focus({preventScroll:true});pickerReturnFocus=null;
 }
 function addSelected(){
   const n=node(),role=$('nsPicker').dataset.role,ids=[...$('nsPicker').querySelectorAll('input[type="checkbox"]:checked')].map(x=>x.value);
@@ -208,7 +214,7 @@ function addSelected(){
     const quantity=seriesQuantity(item,col)||'depth';
     n.bindings.push({id:uid(),sourceId:id,sha256:item.hash,sourceName:item.displayName,column:col,role,scenario,years:year?[year]:[],threshold:'',quantity:['depth','level','flow'].includes(quantity)?quantity:'status',unit:seriesUnit(item,col)||'',datum:seriesReference(item,col)||''});
   }
-  $('nsPicker').hidden=true;changed();renderDrawer();status('Files assigned together. Review channels, reporting years, units and thresholds, then Apply & calculate.');
+  changed();renderDrawer();closeSourcePicker();status('Files assigned together. Review channels, reporting years, units and thresholds, then Apply & calculate.');
 }
 function parsedExclusions(text){
   return String(text).split('\n').filter(x=>x.trim()).map(line=>{const [start,end,...reason]=line.split(',').map(x=>x.trim());if(!/^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d)?$/.test(start)||!/^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d)?$/.test(end)||start>=end)throw new Error('Each exclusion needs model-clock ISO start, later end, and reason.');return {start,end,reason:reason.join(', ')||'Asset exclusion'};});
@@ -289,7 +295,7 @@ function addBend(e,index,p){
 }
 function onClick(event){
   const t=event.target;
-  if(t.closest('[data-ns-close-picker]')){$('nsPicker').hidden=true;return;}
+  if(t.closest('[data-ns-close-picker]')){closeSourcePicker();return;}
   if(t.id==='nsAddSelected'){addSelected();return;}
   const sources=t.closest('[data-ns-add-sources]');if(sources){showSourcePicker(sources.dataset.nsAddSources);return;}
   const remove=t.closest('[data-ns-remove-binding]');if(remove){checkpoint();node().bindings=node().bindings.filter(b=>b.id!==remove.dataset.nsRemoveBinding);changed();renderDrawer();return;}
@@ -404,14 +410,14 @@ function centre(id){const n=network.nodes.find(n=>n.id===id);if(!n)return;const 
 function hideHover(){clearTimeout(hoverTimer);if($('nsHover'))$('nsHover').hidden=true;}
 function hoverCard(id){
   const n=network.nodes.find(n=>n.id===id);if(!n||!asset(n)||editing||drag||popupVisible)return;
-  const hover=$('nsHover'),d=dimensions(),p=point(n.x,n.y);hover.innerHTML='<strong>'+html(n.name)+'</strong><div class="ns-hover-table">'+annualTable(n,false)+'</div><small>Click asset to inspect</small>';hover.hidden=false;const w=Math.min(460,d.width-24);hover.style.width=w+'px';hover.style.left=Math.max(12,Math.min(d.width-w-12,p.x+45))+'px';hover.style.top=Math.max(12,Math.min(d.height-hover.offsetHeight-70,p.y+15))+'px';
+  const hover=$('nsHover'),d=dimensions(),p=point(n.x,n.y);hover.innerHTML='<strong>'+html(n.name)+'</strong><div class="ns-hover-table">'+annualTable(n,false,prefs().scenarios,false)+'</div><small>Click asset to inspect</small>';hover.hidden=false;const w=Math.min(460,d.width-24);hover.style.width=w+'px';hover.style.left=Math.max(12,Math.min(d.width-w-12,p.x+45))+'px';hover.style.top=Math.max(12,Math.min(d.height-hover.offsetHeight-70,p.y+15))+'px';
 }
-function annualTable(n,differences=false,scenarios=prefs().scenarios){
+function annualTable(n,differences=false,scenarios=prefs().scenarios,interactive=true){
   const fresh=isFresh(n),groups=R.annualGroups(n,scenarios),cell=(value,rag)=>'<td'+(rag?' class="ns-rag-'+rag+'"':'')+'>'+f(value,Number.isInteger(value)?0:1)+'</td>';
   const signed=value=>value===null?'—':(value>0?'+':'')+f(value,1);
   return '<table class="ns-annual-table"><thead><tr><th>Year</th><th>Scenario</th><th>O count</th><th>M count</th><th>O h</th><th>M h</th>'+(differences?'<th>Δ count</th><th>Δ h</th>':'')+'</tr></thead><tbody>'+groups.map(g=>{
     const reason=metric=>!fresh?'Recalculate':g.model?C.comparable(g.observed,g.model,n.confirmed,metric):'No model evidence',countValid=!reason('spill_count'),durationValid=!reason('duration_hours'),o=fresh?g.observed:null,m=fresh?g.model:null;
-    return '<tr data-ns-focus="'+html(n.id)+'" data-ns-year="'+g.year+'" title="'+html(reason('spill_count')||reason('duration_hours'))+'"><td>'+g.year+'</td><td>'+html(g.scenario)+'</td>'+cell(o?.spill_count)+cell(m?.spill_count,countValid?C.rag(o.spill_count,m.spill_count):null)+cell(o?.duration_hours)+cell(m?.duration_hours,durationValid?C.rag(o.duration_hours,m.duration_hours):null)+(differences?'<td>'+signed(countValid?R.delta(o.spill_count,m.spill_count):null)+'</td><td>'+signed(durationValid?R.delta(o.duration_hours,m.duration_hours):null)+'</td>':'')+'</tr>';
+    return '<tr data-ns-focus="'+html(n.id)+'" data-ns-year="'+g.year+'" title="'+html(reason('spill_count')||reason('duration_hours'))+'"><td>'+(interactive?'<button type="button" class="ns-table-year" aria-label="Focus '+html(n.name)+' in '+g.year+'">'+g.year+'</button>':g.year)+'</td><td>'+html(g.scenario)+'</td>'+cell(o?.spill_count)+cell(m?.spill_count,countValid?C.rag(o.spill_count,m.spill_count):null)+cell(o?.duration_hours)+cell(m?.duration_hours,durationValid?C.rag(o.duration_hours,m.duration_hours):null)+(differences?'<td>'+signed(countValid?R.delta(o.spill_count,m.spill_count):null)+'</td><td>'+signed(durationValid?R.delta(o.duration_hours,m.duration_hours):null)+'</td>':'')+'</tr>';
   }).join('')+'</tbody></table>';
 }
 function renderReview(){
@@ -461,7 +467,7 @@ function wholeSceneSvg(){
 function exportReport(){
   const report=window.open('','_blank');if(!report){status('Allow this report window to open.');return;}
   const svg=wholeSceneSvg(),nodes=network.nodes.filter(asset),css='body{font:12px Inter,Segoe UI,Arial,sans-serif;color:#202221;margin:24px}h1{font-size:21px}h2{font-size:16px}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{padding:7px;border-bottom:1px solid #e4e5e3;text-align:right}th:nth-child(2),td:nth-child(2){text-align:left}th{background:#f5f5f3}small,details{color:#626660}.ns-rag-green{background:#eaf6ed}.ns-rag-amber{background:#fff4d9}.ns-rag-red{background:#fdebec}svg{width:100%;height:auto;max-height:80vh}section{break-inside:avoid;margin:24px 0}@page{size:A4 landscape;margin:12mm}@media print{button{display:none}svg{max-height:160mm}details:not([open])>*:not(summary){display:block!important}}';
-  report.document.open();report.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Network annual spill review</title><style>'+css+'</style></head><body><button id="printReport">Print / Save PDF</button><h1>Network annual spill review</h1><small>'+html(new Date().toISOString())+' · build '+html(buildToken)+' · counts: occupied 12/24 blocks · duration: hours · Δ = model − observed</small>'+svg+nodes.map(n=>'<section><h2>'+html(n.name)+'</h2>'+annualTable(n,true)+(R.review(n).comment?'<p>'+html(R.review(n).comment)+'</p>':'')+'<small>Review: '+html(R.review(n).status)+' · '+html(healthLabel(nodeHealth(n)))+'</small><details><summary>Assessment basis</summary>'+auditHtml(n)+'</details></section>').join('')+'<h2>Connector notes</h2>'+network.edges.filter(e=>R.review(e).comment).map(e=>'<p><strong>'+html(e.name||e.from+' → '+e.to)+'</strong>: '+html(R.review(e).comment)+'</p>').join('')+'<p>RAG describes agreement, not spill severity. Partial years are not annualised. Missing or provisional evidence remains qualified.</p><footer>Hydra Bench · Anzar Sajid</footer></body></html>');report.document.close();report.document.getElementById('printReport').onclick=()=>report.print();report.focus();status('Report opened. Use Print / Save PDF.');
+  report.document.open();report.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Network annual spill review</title><style>'+css+'</style></head><body><button id="printReport">Print / Save PDF</button><h1>Network annual spill review</h1><small>'+html(new Date().toISOString())+' · build '+html(buildToken)+' · counts: occupied 12/24 blocks · duration: hours · Δ = model − observed</small>'+svg+nodes.map(n=>'<section><h2>'+html(n.name)+'</h2>'+annualTable(n,true,prefs().scenarios,false)+(R.review(n).comment?'<p>'+html(R.review(n).comment)+'</p>':'')+'<small>Review: '+html(R.review(n).status)+' · '+html(healthLabel(nodeHealth(n)))+'</small><details open><summary>Assessment basis</summary>'+auditHtml(n)+'</details></section>').join('')+'<h2>Connector notes</h2>'+network.edges.filter(e=>R.review(e).comment).map(e=>'<p><strong>'+html(e.name||e.from+' → '+e.to)+'</strong>: '+html(R.review(e).comment)+'</p>').join('')+'<p>RAG describes agreement, not spill severity. Partial years are not annualised. Missing or provisional evidence remains qualified.</p><footer>Hydra Bench · Anzar Sajid</footer></body></html>');report.document.close();report.document.getElementById('printReport').onclick=()=>report.print();report.focus();status('Report opened. Use Print / Save PDF.');
 }
 function auditHtml(n){
   return (n.applied?.rows||[]).map(r=>'<p>'+html(r.year+' · '+(r.role==='observed'?'Observed':r.scenario)+' · '+r.source_name+' · '+r.column)+'<br>'+html((r.analysis_start||'—')+' to '+(r.analysis_end||'—'))+' · '+html(r.partial_year?'partial year':'')+'<br>Threshold '+html(C.thresholdRule(r)==='gt'?'>':'≥')+' '+f(r.threshold,6)+' '+html(r.unit||'')+' · '+html(r.quantity||'')+' '+html(r.datum||'')+'<br>Valid '+f(r.valid_hours)+' h · unknown '+f(r.unknown_hours)+' h · excluded '+f(r.excluded_hours)+' h · '+html(r.count_status||'')+'<br>SHA-256 '+html(r.source_sha256||'')+'<br>Exclusions '+html(JSON.stringify(r.exclusions||[]))+'</p>').join('')+'<p>Calculated '+html(n.applied?.calculated_at||'—')+' · gap '+f(n.applied?.settings?.gap)+' s · comparison basis '+html(n.applied?.settings?.confirmed?'confirmed':'unconfirmed')+'</p>';
@@ -477,6 +483,7 @@ async function openAnalysis(mode='series'){
   const n=node();if(!n||!asset(n))return;hideHover();const generation=++analysisGeneration,years=R.years(n),year=network.year==='all'?years.at(-1):Number(network.year);
   if(!year){status('Assign reporting years first.');return;}
   analysisContext={id:n.id,year,mode,signature:signature(n)};
+  analysisReturnFocus=document.activeElement;
   $('nsAnalysis').hidden=false;$('nsCloseAnalysis').focus();$('nsAnalysisTitle').textContent=n.name;
   $('nsAnalysisYear').innerHTML=years.map(y=>'<option '+(y===year?'selected':'')+'>'+y+'</option>').join('');
   renderAnalysisSettings(n);
@@ -543,8 +550,8 @@ function mountReview(){
   root().addEventListener('click',event=>{const t=event.target,trace=t.closest('[data-ns-trace]'),arrangeButton=t.closest('[data-ns-arrange]'),focus=t.closest('[data-ns-centre],[data-ns-focus]'),analysis=t.closest('[data-ns-open-analysis]');if(trace&&selected){highlight=R.trace(network.nodes,network.edges,selected,trace.dataset.nsTrace);renderCanvas();}if(arrangeButton)arrange(arrangeButton.dataset.nsArrange);if(focus){if(focus.dataset.nsYear)network.year=focus.dataset.nsYear;centre(focus.dataset.nsCentre||focus.dataset.nsFocus);}if(analysis)void openAnalysis(analysis.dataset.nsOpenAnalysis);});
   root().addEventListener('change',event=>{if(event.target.hasAttribute('data-ns-scenario-choice')){network.preferences={...prefs(),scenarios:[...$('nsScenarioChoices').querySelectorAll('input:checked')].map(x=>x.dataset.nsScenarioChoice)};changed(true);}});
   $('nsSvg').addEventListener('pointerover',event=>{const id=event.target.closest('[data-ns-node]')?.dataset.nsNode;if(id){clearTimeout(hoverTimer);hoverTimer=setTimeout(()=>hoverCard(id),250);}});$('nsSvg').addEventListener('pointerout',event=>{if(!event.relatedTarget?.closest?.('[data-ns-node]'))hideHover();});
-  $('nsAnalysis').addEventListener('keydown',event=>{if(event.key==='Escape')$('nsCloseAnalysis').click();if(event.key==='Tab'){const controls=[...$('nsAnalysis').querySelectorAll('button,select,summary,input')].filter(el=>el.getClientRects().length),first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}});
-  $('nsCloseAnalysis').onclick=()=>{++analysisGeneration;clearTimeout(analysisTimer);$('nsAnalysis').hidden=true;Plotly.purge('nsAnalysisPlot');analysisContext=null;};$('nsAnalysisYear').onchange=()=>{const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n)renderAnalysisSettings(n);if(analysisContext?.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsAnalysisMode').onclick=()=>{if(!analysisContext)return;analysisContext.mode=analysisContext.mode==='series'?'spills':'series';$('nsAnalysisPlot').hidden=analysisContext.mode==='spills';$('nsAnalysisMode').textContent=analysisContext.mode==='spills'?'Show time series':'Show annual spills';if(analysisContext.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsCommonCalculate').onclick=()=>void calculateCommon();
+  $('nsAnalysis').addEventListener('keydown',event=>{if(event.key==='Escape')$('nsCloseAnalysis').click();if(event.key==='Tab'){const controls=[...$('nsAnalysis').querySelectorAll('button,select,summary,input,textarea,a[href],[tabindex]')].filter(el=>el.getClientRects().length&&!el.disabled&&el.tabIndex>=0&&!el.closest('[hidden],[inert]')),first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}});
+  $('nsCloseAnalysis').onclick=()=>{++analysisGeneration;clearTimeout(analysisTimer);$('nsAnalysis').hidden=true;Plotly.purge('nsAnalysisPlot');analysisContext=null;const target=analysisReturnFocus?.isConnected?analysisReturnFocus:$('nsCanvas');target?.focus({preventScroll:true});analysisReturnFocus=null;};$('nsAnalysisYear').onchange=()=>{const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n)renderAnalysisSettings(n);if(analysisContext?.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsAnalysisMode').onclick=()=>{if(!analysisContext)return;analysisContext.mode=analysisContext.mode==='series'?'spills':'series';$('nsAnalysisPlot').hidden=analysisContext.mode==='spills';$('nsAnalysisMode').textContent=analysisContext.mode==='spills'?'Show time series':'Show annual spills';if(analysisContext.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsCommonCalculate').onclick=()=>void calculateCommon();
   $('nsAnalysisCalculate').onclick=async()=>{if(busy)return;await calculate();const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n){$('nsAnalysisCounts').innerHTML=annualTable(n,true);$('nsAnalysisAudit').innerHTML=auditHtml(n);if(analysisContext.mode==='series')await plotAnalysis(++analysisGeneration);}};
   renderReview();
 }
@@ -569,6 +576,7 @@ function mount(){
   root().addEventListener('keydown',event=>{if(event.key==='Escape'){const menu=root().querySelector('.ns-export-menu');if(menu?.open){menu.open=false;menu.querySelector('summary').focus();}}});
   $('nsCsv').onclick=()=>{root().querySelector('.ns-export-menu').open=false;exportRows();};$('nsCapture').onclick=()=>capture().catch(error=>status(error.message));
   const canvas=$('nsCanvas');canvas.addEventListener('pointerdown',onPointerDown);canvas.addEventListener('pointermove',onPointerMove);canvas.addEventListener('pointerup',onPointerUp);canvas.addEventListener('pointercancel',onPointerUp);
+  $('nsPicker').addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeSourcePicker();}});
   canvas.addEventListener('keydown',event=>{if(event.target.closest('#nsPopup,#nsPicker'))return;const n=event.target.closest('[data-ns-node]'),e=event.target.closest('[data-ns-edge]');if(['Enter',' '].includes(event.key)&&(n||e)){event.preventDefault();if(n)selectPoint(n.dataset.nsNode);else{selected=e.dataset.nsEdge;renderDrawer();renderCanvas();}return;}
     if(event.key==='Escape'){connectFrom=null;popupVisible=false;$('nsPicker').hidden=true;renderPopup();return;}
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const target=editing&&!prefs().locked&&!node()?.pinned&&node();if(target){checkpoint();target.x+=event.key==='ArrowLeft'?-10:event.key==='ArrowRight'?10:0;target.y+=event.key==='ArrowUp'?-10:event.key==='ArrowDown'?10:0;}else{network.camera.x+=event.key==='ArrowLeft'?30:event.key==='ArrowRight'?-30:0;network.camera.y+=event.key==='ArrowUp'?30:event.key==='ArrowDown'?-30:0;}changed(true);}

@@ -65,7 +65,7 @@ select[multiple]{min-height:76px}
 .tab{padding:10px 15px;font-size:12.5px;font-weight:750;letter-spacing:.01em;color:var(--hb-text);background:#fff;border:1px solid #d2dde6;border-radius:7px;box-shadow:0 1px 2px rgba(15,34,52,.035);transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;min-width:92px}
 .tab:hover{background:#f7fbfe;border-color:#aebfce;color:var(--hb-text)}
 .tab.active{color:#fff;background:var(--v2-blue);border-color:var(--v2-blue);box-shadow:0 3px 10px rgba(18,104,179,.22)}
-.tab:focus-visible{outline:3px solid rgba(18,104,179,.22);outline-offset:2px}
+.tab:focus-visible{outline:3px solid var(--hb-focus);outline-offset:2px}
 .tab-panel>.panel{min-height:120px}
 .subpanel{background:#f9fbfc;border-color:var(--hb-border);border-radius:7px;padding:11px 12px}
 details.subpanel>summary{cursor:pointer;color:#304c64;user-select:none}

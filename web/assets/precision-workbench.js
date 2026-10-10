@@ -383,7 +383,7 @@ function buildShell(){
     syncBrandToggle();
   };
   const toggleRail=()=>{
-    if(matchMedia('(max-width:620px)').matches){rail.classList.toggle('is-open');syncBrandToggle();return;}
+    if(matchMedia('(max-width:620px)').matches){rail.classList.toggle('is-open');syncBrandToggle();const target=rail.classList.contains('is-open')?qs('button[aria-current="page"]',rail):$('pwRailToggle');target?.focus({preventScroll:true});return;}
     const expanding=rail.getBoundingClientRect().width<100;
     if(expanding&&document.body.classList.contains('pw-focus-canvas')){
       focusPreference=false;
@@ -526,6 +526,7 @@ function parseHash(){
 function navigate(workspace,page,push=false){
   const resolved=canonicalRoute(workspace,page);if(!resolved)return;
   workspace=resolved.workspace;page=resolved.page;
+  const mobileRouteFocus=matchMedia('(max-width:620px)').matches&&Boolean(qs('.pw-rail.is-open')?.contains(document.activeElement));
   rememberRouteScroll();cancelScrollRestore();
   restoreDocked();
   current={workspace,page};
@@ -563,6 +564,7 @@ function navigate(workspace,page,push=false){
   // A route change must preserve the layout chosen by the engineer.
   qs('.pw-rail')?.classList.remove('is-open');
   applyFocusCanvas(false);
+  if(mobileRouteFocus)qs('button[aria-current="page"]',sn)?.focus({preventScroll:true});
   if(push){const h='#/'+workspace+'/'+page;if(location.hash!==h)history.pushState(null,'',h);}
   document.title=p.title+' · Hydra Bench';
   resizeVisuals();
@@ -600,9 +602,11 @@ function positionTabIndicator(previous=null){
 function isFocusRoute(){
   return true;
 }
+let resizeFrame=0,resizeTimer=0;
 function resizeVisuals(){
-  requestAnimationFrame(()=>{
-    setTimeout(()=>{
+  cancelAnimationFrame(resizeFrame);clearTimeout(resizeTimer);
+  resizeFrame=requestAnimationFrame(()=>{
+    resizeTimer=setTimeout(()=>{
       qsa('.js-plotly-plot').forEach(chart=>{
         const rect=chart.getBoundingClientRect();
         if(!chart.isConnected||chart.offsetParent===null||rect.width<2||rect.height<2)return;

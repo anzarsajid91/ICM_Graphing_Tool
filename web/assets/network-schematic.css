@@ -94,3 +94,5 @@
 #nsWorkbench #nsAnalysisMessage{margin:8px 0 18px}
 #nsWorkbench .ns-network-legend{display:none}
 @media(max-width:850px){#nsWorkbench #nsAnalysis{inset:2vh 2vw}#nsWorkbench .ns-analysis-toolbar{flex-wrap:wrap}#nsWorkbench #nsMatrixBody{overflow:auto}#nsWorkbench .ns-annual-table{min-width:430px}#nsWorkbench .ns-popup-body{overflow:auto}}
+
+#nsWorkbench .ns-table-year{font:inherit;color:inherit;border:0;background:transparent;min-height:28px;padding:2px 4px;text-decoration:underline;text-underline-offset:3px}

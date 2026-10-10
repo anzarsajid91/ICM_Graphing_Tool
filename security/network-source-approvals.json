@@ -21,8 +21,8 @@
       "review": "Reviewed lazy script URLs are the three fixed same-origin schematic assets plus the fixed release token; no source or calculation metadata is included."
     },
     "web/assets/network-schematic.js": {
-      "sha256": "8dca77375d90c16ece8c06dd4fe50e5d5fecd59d524085f535f89c9bc4b92eea",
-      "review": "Presentation review: diff changes standalone report CSS and chart font/background/hover defaults only. Print retains assessment basis. Same local blob image/download and blank report window paths; source bindings, worker calculations, storage and geometry unchanged."
+      "sha256": "8e19f953e4d2d13c755243885c86b72c301f558d1d32a00b091cb24d483863a4",
+      "review": "Reviewed presentation and keyboard-only changes: local chart/report CSS, source-picker Escape/focus return, analysis-dialog focus trap/return, year drill-down buttons, print-open assessment disclosures. Binding/calculation/geometry/persistence functions and fixed resource/blob/blank-window paths unchanged. No new requests or transmission."
     },
     "web/assets/runtime.js": {
       "sha256": "dce96793a3155e1be77ae4ec0be4ab3d6998e4460286336b1e326e4e9524655d",
