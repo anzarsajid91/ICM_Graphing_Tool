@@ -24,7 +24,7 @@ for p in paths:
         record['owners'].add(p.relative_to(ROOT).as_posix())
 out=ROOT/'docs/uiux/coverage-matrix.csv'
 with out.open('w',newline='') as f:
-    w=csv.writer(f)
+    w=csv.writer(f,lineterminator="\n")
     w.writerow(['Workspace / route','Component','DOM selector candidate','Owning sources','Existing functionality','Proposed treatment','Interaction contract','State dependencies','Accessibility requirements','Regression tests','Implementation status','Verification evidence'])
     for selector,r in sorted(records.items()):
         owners='; '.join(sorted(r['owners']))

@@ -168,7 +168,7 @@ body.precision-workbench{
   position:sticky;top:0;z-index:1;background:var(--hb-soft);color:var(--pw-muted);font-size:13px;line-height:18px;text-transform:none;
   letter-spacing:0;border-color:var(--pw-border);white-space:nowrap;font-weight:600
 }
-.precision-workbench .data-table{font-size:13px;line-height:20px}.precision-workbench .data-table th,.precision-workbench .data-table td{padding:9px 12px}.precision-workbench .data-table td{border-color:var(--pw-border);vertical-align:top}
+.precision-workbench .data-table{font-size:13px;line-height:20px}.precision-workbench .data-table th,.precision-workbench .data-table td{padding:8px 12px}.precision-workbench .data-table td{border-color:var(--pw-border);vertical-align:top}
 .precision-workbench .data-table tbody tr:hover{background:var(--hb-soft)}
 .precision-workbench .data-table td,.precision-workbench .metric .v,
 .precision-workbench .summary-box strong{font-variant-numeric:tabular-nums}
@@ -535,3 +535,5 @@ body.precision-workbench{
 .precision-workbench .metric .k{color:var(--hb-muted);text-transform:none;letter-spacing:0;font-size:12px}
 .precision-workbench .metric .v{font-size:22px;line-height:30px;letter-spacing:-.025em}
 .precision-workbench .modebar:focus-within{opacity:1}
+
+.pw-model-picker-popover,dialog[open]{animation:hb-reveal var(--hb-motion-control) var(--hb-ease)}

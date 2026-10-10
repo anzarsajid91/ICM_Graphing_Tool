@@ -33,8 +33,8 @@
       "review": "Presentation review: diff changes chart font/background/hover defaults and standalone report CSS only. Fixed same-origin Plotly bundle fetch, File buffers, worker calls, local blob downloads, report evidence and calculation inputs/results are unchanged. New chart helper has no network or state access."
     },
     "web/assets/workflow-26.js": {
-      "sha256": "6c1cf992f3d5b410733258ee888c9b09576846695ea60b1a25c8bf783fb50c5c",
-      "review": "Reviewed monthly PDF action opens a blank local document containing escaped generated report HTML and invokes browser printing. It has no external print or upload destination."
+      "sha256": "6da2fdcd8abe6cb78175eb33cd2ba7d404f55bb92bb85d90844a6a7bf4759de7",
+      "review": "Reviewed one presentation label change: readiness caption fm_rg_assoc becomes Association workbook. Workbook precedence, source identity, all assessment/review calculations, generated monthly report and blank local print window remain unchanged. No new network operations."
     }
   }
 }

@@ -579,7 +579,7 @@ function syncBrandToggle(){
   button.setAttribute('aria-label',expanded?'Collapse navigation':'Expand navigation');
   button.title=expanded?'Collapse navigation':'Expand navigation';
   if(rail)rail.inert=matchMedia('(max-width:620px)').matches&&!expanded;
-  const menu=$('pwRailToggle');if(menu){menu.setAttribute('aria-controls','pwNavigation');menu.setAttribute('aria-expanded',String(expanded));}
+  const menu=$('pwRailToggle');if(menu){menu.setAttribute('aria-controls','pwNavigation');menu.setAttribute('aria-expanded',String(expanded));if(matchMedia('(max-width:620px)').matches)menu.textContent=expanded?'Close menu':'Menu';}
 }
 function inspectorOverlay(){return matchMedia('(max-width:1260px)').matches||document.body.classList.contains('pw-focus-canvas');}
 function syncInspectorAccessibility(){
@@ -594,6 +594,9 @@ function positionTabIndicator(previous=null){
   if(!pill){pill=document.createElement('span');pill.className='pw-tab-indicator';pill.setAttribute('aria-hidden','true');nav.prepend(pill);}
   const left=active.offsetLeft,width=active.offsetWidth;
   pill.style.left=left+'px';pill.style.width=width+'px';nav.classList.add('pw-has-indicator');
+  // Keep the selected route discoverable without moving the document or charts.
+  if(left<nav.scrollLeft)nav.scrollLeft=left;
+  else if(left+width>nav.scrollLeft+nav.clientWidth)nav.scrollLeft=left+width-nav.clientWidth+4;
   if(previous&&width>0&&!matchMedia('(prefers-reduced-motion:reduce)').matches){
     pill.style.transformOrigin='left center';
     pill.animate([{transform:'translateX('+(previous.left-left)+'px) scaleX('+(previous.width/width)+')'},{transform:'none'}],{duration:200,easing:'cubic-bezier(.2,.8,.2,1)'});

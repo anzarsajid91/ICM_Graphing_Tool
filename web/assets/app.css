@@ -31,3 +31,5 @@ button[aria-busy="true"],button.is-busy{cursor:progress}
 input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="true"]{border-color:var(--hb-danger)}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 @media(forced-colors:active){button[aria-current="page"],button[aria-pressed="true"]{outline:2px solid Highlight;outline-offset:-2px}:focus-visible{outline:2px solid Highlight}}
+
+@keyframes hb-reveal{from{opacity:0}to{opacity:1}}
