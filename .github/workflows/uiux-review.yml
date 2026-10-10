@@ -2,17 +2,20 @@ name: UIUX baseline and candidate review
 on:
   push:
     branches: [feat/unified-premium-uiux]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   review:
-    if: github.ref == 'refs/heads/feat/unified-premium-uiux'
+    if: github.ref == 'refs/heads/feat/unified-premium-uiux' || github.head_ref == 'feat/unified-premium-uiux'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
