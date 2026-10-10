@@ -19,7 +19,7 @@ body{background:var(--v2-bg);color:var(--v2-ink);font-size:13px}
 .panel h2{font-size:16px;color:var(--v2-navy);letter-spacing:-.01em}
 .panel h3{color:#29445d}
 .btn{border-color:#bdcbd7;border-radius:6px;min-height:34px;padding:7px 12px;font-size:12px}
-.btn.primary{background:var(--v2-blue);border-color:var(--v2-blue)}
+.btn.primary{background:var(--hb-action);border-color:var(--hb-action)}
 .btn[disabled]{cursor:wait;opacity:.7}
 .btn.is-busy{position:relative;padding-left:30px}
 .btn.is-busy:before{content:"";position:absolute;left:11px;top:50%;width:11px;height:11px;margin-top:-6px;border:2px solid rgba(255,255,255,.55);border-top-color:#fff;border-radius:50%;animation:v2spin .75s linear infinite}

@@ -1,6 +1,6 @@
-# Unified design system — proposed specification
+# Unified design system
 
-Status: specification before rendered baseline review; not an implementation claim.
+Status: foundation and shell implemented; rendered candidate acceptance pending.
 
 ## Foundation
 
