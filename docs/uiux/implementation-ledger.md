@@ -2,8 +2,8 @@
 
 | Phase | Baseline contract | Transformation | Sources | Status | Evidence / remaining risk |
 |---|---|---|---|---|---|
-| 0 | Current main, all supported routes and functions | Architecture, control inventory, reference audit, baseline | docs/uiux, scripts, web/tests | In progress | Python/JS/source gates passed; browser CI pending |
-| 1 | Native controls retain IDs/events | Central tokens, component state showcase | Existing CSS owners; design tokens | Pending | Must verify all states |
+| 0 | Current main, all supported routes and functions | Architecture, control inventory, reference audit, baseline | docs/uiux, scripts, web/tests | Baseline captured; extended CI running | 295 Python tests + 100 subtests; JS/privacy/source gates pass; 17 live screenshots; Chromium/Firefox workspace interactions and shell plus WebKit startup pass in run 38083426601 |
+| 1 | Native controls retain IDs/events | Central tokens, component state showcase | app.css, workbench-v2.css, native showcase | Implemented; browser review pending | Central token aliases; source/privacy gates pass; no handlers or calculation changes |
 | 2 | Navigation/docking/scroll persistence | Light shell and coherent navigation | precision-workbench | Pending | Docking and focus high risk |
 | 3 | All 17 pages/conditional controls | Workspace-specific hierarchy and surfaces | v2/survey/workflow/network/detriment/report | Pending | Per-workspace browser evidence required |
 | 4 | No recalculation on cosmetic actions | Indicator/opacity motion, resize completion | presentation only | Pending | Reduced-motion and rapid interactions |
