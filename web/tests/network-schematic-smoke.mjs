@@ -1,3 +1,4 @@
+import {recordControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {chromium,firefox} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
@@ -108,10 +109,10 @@ try{
   await page.selectOption('#nsMetric','duration_hours');assert.match((await summaryText())[5],/O: 116 h/);await page.selectOption('#nsMetric','spill_count');
   await page.click('#nsFit');
   assert.ok(await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-summary]').evaluate(el=>{const r=el.getBoundingClientRect(),c=document.getElementById('nsCanvas').getBoundingClientRect();return r.left>=c.left&&r.right<=c.right&&r.top>=c.top&&r.bottom<=c.bottom;}),'Fit includes floating labels and summaries');
-  await page.screenshot({path:evidence+'/network-combined-'+name+'.png'});
+  await page.screenshot({path:evidence+'/network-combined-'+name+'.png'});await recordControls(page,evidence,'network-combined-'+name);
   assert.equal(await page.locator('[data-ns-node="'+saved.nodes[4].id+'"] [data-ns-frame]').count(),1,'Outfall has a white frame');
   await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();
-  await page.screenshot({path:evidence+'/network-edit-'+name+'.png'});
+  await page.screenshot({path:evidence+'/network-edit-'+name+'.png'});await recordControls(page,evidence,'network-edit-'+name);
   await page.click('#nsEdit');await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();
   await page.waitForSelector('#nsPopup:not([hidden])');
   assert.equal(await page.locator('#nsPopup [data-ns-evidence-year]').count(),4,'All reporting years retain missing-scenario rows explicitly');
@@ -123,7 +124,7 @@ try{
   const containment=await page.evaluate(()=>{const p=document.getElementById('nsPopup').getBoundingClientRect(),c=document.getElementById('nsCanvas').getBoundingClientRect();return p.left>=c.left&&p.top>=c.top&&p.right<=c.right+1&&p.bottom<=c.bottom+1;});assert.ok(containment,'Popup stays inside capture area');
   const size=await page.locator('[data-ns-node] text').first().evaluate(el=>getComputedStyle(el).fontSize);await page.click('#nsZoomIn');assert.equal(await page.locator('[data-ns-node] text').first().evaluate(el=>getComputedStyle(el).fontSize),size,'Labels retain screen font size');await page.click('#nsFit');
   const panBefore=(await snapshot()).camera;await page.click('#nsPan');const box=await page.locator('#nsCanvas').boundingBox();await page.mouse.move(box.x+box.width*.08,box.y+70);await page.mouse.down();await page.mouse.move(box.x+box.width*.08+60,box.y+110,{steps:4});await page.mouse.up();assert.notEqual((await snapshot()).camera.x,panBefore.x);await page.click('#nsPan');await page.click('#nsFit');
-  await page.screenshot({path:evidence+'/network-review-'+name+'.png'});
+  await page.screenshot({path:evidence+'/network-review-'+name+'.png'});await recordControls(page,evidence,'network-review-'+name);
   const downloadPromise=page.waitForEvent('download');downloadPromise.catch(()=>{});await page.click('#nsCapture');const download=await downloadPromise;await download.saveAs(evidence+'/network-capture-'+name+'.png');const png=await fs.readFile(evidence+'/network-capture-'+name+'.png');assert.equal(png.subarray(1,4).toString(),'PNG');
   console.log(name+': capture complete; check responsive layout and saved evidence');
   const w=await page.evaluate(()=>workspaceObject());assert.equal(w.network_schematic.nodes[0].bindings.length,5);

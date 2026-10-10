@@ -1,3 +1,4 @@
+import {recordControls} from './uiux-evidence.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
@@ -82,7 +83,7 @@ try{
     await fs.writeFile(path.join(evidence,'reference-'+kind+'.csv'),csv);
     await fs.writeFile(path.join(evidence,'reference-'+kind+'-result.json'),JSON.stringify(result,null,2));
     await page.waitForFunction(()=>['dtChart','dtPairedChart','dtDurationChart'].every(id=>{const el=document.getElementById(id);return !el?.data||Math.abs(el._fullLayout.width-el.getBoundingClientRect().width)<2;}));
-    await page.screenshot({path:path.join(evidence,'reference-'+kind+'.png'),fullPage:false});
+    await page.screenshot({path:path.join(evidence,'reference-'+kind+'.png'),fullPage:false});await recordControls(page,evidence,'reference-'+kind);
   }
   // A real worker-error event makes the subtle retry available without reload.
   const before=await page.evaluate(()=>({sources:[...state.files.keys()],route:window.__ICM_PRECISION_WORKBENCH__.route()}));
@@ -112,5 +113,5 @@ try{
   await failed.screenshot({path:path.join(evidence,'recovered-startup.png'),fullPage:false});await failed.close();
   assert.deepEqual(errors,[]);
   console.log('Reference browser acceptance passed: all three native CSVs, independent A/B results, chart arrays, PNG/CSV/HTML exports, retained sources on crash/retry and failed initial boot, desktop/mobile containment.');
-}catch(error){await page.screenshot({path:path.join(evidence,'reference-failure.png'),fullPage:true}).catch(()=>{});console.error(await page.locator('#dtStatus').textContent().catch(()=>''),errors);throw error;}
+}catch(error){await page.screenshot({path:path.join(evidence,'reference-failure.png'),fullPage:true}).catch(()=>{});await recordControls(page,evidence,'reference-failure');console.error(await page.locator('#dtStatus').textContent().catch(()=>''),errors);throw error;}
 finally{await browser.close();}
