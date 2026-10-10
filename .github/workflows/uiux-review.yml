@@ -41,7 +41,9 @@ jobs:
         run: |
           python -m http.server 8000 --directory _site >/tmp/hydra-uiux-http.log 2>&1 &
           SERVER_PID=$!
-          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          python -m http.server 8002 --directory web >/tmp/hydra-showcase-http.log 2>&1 &
+          SHOWCASE_PID=$!
+          trap 'kill "$SERVER_PID" "$SHOWCASE_PID" 2>/dev/null || true' EXIT
           for attempt in {1..30}; do
             curl --fail --silent http://127.0.0.1:8000/ >/dev/null 2>&1 && break
             sleep 1
@@ -49,6 +51,7 @@ jobs:
           export GITHUB_SHA="$(git rev-parse HEAD)"
           node web/tests/uiux-review.mjs
           node web/tests/uiux-contracts.mjs
+          node web/tests/uiux-showcase.mjs
           node web/tests/cold-start-shell.mjs
           node web/tests/precision-shell.mjs
           node web/tests/workspace-interactions.mjs
