@@ -1,3 +1,4 @@
+import {recordControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {assertReportActionSpacing} from './report-layout.mjs';
@@ -80,6 +81,7 @@ async function captureEvidence(name){
   const dir=process.env.ICM_EVIDENCE_DIR;
   if(!dir)return;
   await fs.mkdir(dir,{recursive:true});
+  await recordControls(page,dir,name);
   await page.screenshot({path:path.join(dir,`${name}.png`),fullPage:false});
   await page.screenshot({path:path.join(dir,`${name}-full.png`),fullPage:true});
 }

@@ -1,0 +1,125 @@
+name: Hydra Bench isolated UIUX preview
+on:
+  push:
+    branches: [feat/unified-premium-uiux]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: GitHub Pages Workbench-production
+  cancel-in-progress: false
+jobs:
+  preview:
+    if: github.ref == 'refs/heads/feat/unified-premium-uiux' || github.head_ref == 'feat/unified-premium-uiux'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: pages-release
+      url: ${{ steps.deployment.outputs.page_url }}preview/unified-uiux/
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: preview-source
+          fetch-depth: 0
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          path: production-source
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Verify presentation and confidentiality contracts
+        working-directory: preview-source
+        run: |
+          python -m pip install -e . pytest
+          python scripts/verify_data_confidentiality.py
+          python -m unittest discover -s tests/privacy -v
+          node web/tests/privacy-network-unit.mjs
+          python -m pytest
+          node --check web/assets/network-schematic.js
+          node web/tests/network-schematic-unit.mjs
+          node web/tests/network-review-unit.mjs
+          GITHUB_SHA="$(git rev-parse HEAD)" GITHUB_EVENT_NAME=pull_request python scripts/build_pages.py
+      - name: Exercise shell and network interactions
+        working-directory: preview-source
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+          python -m http.server 8000 --directory _site >/tmp/network-preview-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          export GITHUB_SHA="$(git rev-parse HEAD)"
+          node web/tests/uiux-contracts.mjs
+          ICM_BROWSER=chromium node web/tests/precision-shell.mjs
+          node web/tests/network-schematic-smoke.mjs
+          node web/tests/network-review-smoke.mjs
+          node web/tests/network-layout-smoke.mjs
+          node web/tests/workspace-interactions.mjs
+      - name: Preserve main release and add isolated preview
+        run: |
+          MAIN_SHA=$(git -C production-source rev-parse HEAD)
+          (cd production-source && GITHUB_SHA="$MAIN_SHA" GITHUB_EVENT_NAME=push python scripts/build_pages.py)
+          python preview-source/scripts/stage_network_preview.py production-source/_site preview-source/_site unified-uiux
+          test "$(git -C production-source ls-remote origin refs/heads/main | cut -f1)" = "$MAIN_SHA"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: production-source/_site
+      - name: Publish isolated preview alongside unchanged main
+        id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Verify served revisions and exercise the deployed preview
+        working-directory: preview-source
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          ICM_BROWSER: chromium
+          ICM_EVIDENCE_DIR: /tmp/hydra-live-uiux/workflows
+          ICM_UIUX_EVIDENCE: /tmp/hydra-live-uiux/routes
+        run: |
+          export TARGET_SHA="$(git rev-parse HEAD)"
+          export GITHUB_SHA="$TARGET_SHA"
+          export MAIN_SHA="$(git -C ../production-source rev-parse HEAD)"
+          export ICM_BASE_URL="${PAGE_URL}preview/unified-uiux/"
+          python - <<'PY'
+          import os, re, time, urllib.request
+          for attempt in range(60):
+              try:
+                  for url, expected in [(os.environ['ICM_BASE_URL'], os.environ['TARGET_SHA']), (os.environ['PAGE_URL'], os.environ['MAIN_SHA'])]:
+                      html = urllib.request.urlopen(url, timeout=20).read().decode()
+                      actual = re.search(r'name="icm-build-sha" content="([a-f0-9]+)"', html)
+                      assert actual and actual.group(1) == expected, 'Served revision mismatch'
+                  break
+              except Exception:
+                  if attempt == 59: raise
+                  time.sleep(2)
+          print('Exact preview and unchanged main revisions verified.')
+          PY
+          node web/tests/uiux-contracts.mjs
+          node web/tests/uiux-review.mjs
+          node web/tests/precision-shell.mjs
+          node web/tests/workspace-interactions.mjs
+          node web/tests/network-schematic-smoke.mjs
+          node web/tests/network-review-smoke.mjs
+          node web/tests/network-layout-smoke.mjs
+          node web/tests/smoke.mjs
+          node web/tests/detriment-smoke.mjs
+          node web/tests/detriment-reference-smoke.mjs
+          node web/tests/schematic-review-smoke.mjs
+      - name: Retain deployed preview acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uiux-live-preview-${{ github.event.pull_request.head.sha || github.sha }}
+          retention-days: 30
+          path: /tmp/hydra-live-uiux/

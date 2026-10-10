@@ -1,3 +1,4 @@
+import {recordControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {chromium} from 'playwright';
@@ -65,7 +66,7 @@ try{
   assert.equal(await page.evaluate(()=>JSON.stringify(window.ICMDetriment.result())),unfiltered);
   let subsetCsv=await exportText('#dtExportCsv');assert.match(subsetCsv,/asset_selection_ids/);assert.doesNotMatch(subsetCsv,/"003"/);assert.match(subsetCsv,/"A-only","unmatched","5",""/);
   let subsetHtml=await exportText('#dtExportHtml');assert.match(subsetHtml,/Applied manhole \/ link IDs/);assert.match(subsetHtml,/Absent IDs: ABSENT/);assert.doesNotMatch(subsetHtml,/<td>003<\/td>/);
-  await page.screenshot({path:path.join(evidence,'detriment-selected.png'),fullPage:false,animations:'disabled'});
+  await page.screenshot({path:path.join(evidence,'detriment-selected.png'),fullPage:false,animations:'disabled'});await recordControls(page,evidence,'detriment-selected');
   await page.locator('#dtAssetIds').fill('MISSING');await page.click('#dtApplyIds');
   assert.equal(await page.locator('#dtTable tbody tr').count(),0);assert.deepEqual(await page.locator('#dtChart').evaluate(el=>el.data[0].y),[]);
   assert.match(await page.locator('.dt-metrics').innerText(),/—/);
@@ -84,7 +85,7 @@ try{
   await page.click('[data-asset="001"]');assert.ok(await page.locator('#dtDrawer').evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.top<window.innerHeight&&r.right<=window.innerWidth;}),'Asset evidence opens in viewport');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1),'Selected drawer containment');assert.match(await page.locator('#dtDrawer').innerText(),/30y-120min/);
   const csv=await exportText('#dtExportCsv');assert.match(csv,/"001"/);assert.match(csv,/source_a_sha256/);assert.match(csv,/"5"/);
   assert.match(await exportText('#dtExportHtml'),/Assessment criteria and source provenance/);
-  await page.screenshot({path:path.join(evidence,'detriment-flooding.png'),fullPage:false});
+  await page.screenshot({path:path.join(evidence,'detriment-flooding.png'),fullPage:false});await recordControls(page,evidence,'detriment-flooding');
   await page.locator('#dtResults [data-key="filter"]').selectOption('new_flooding');assert.equal(await page.locator('#dtTable tbody tr').count(),1);assert.match(await page.locator('#dtTable').innerText(),/002/);
   await page.locator('#dtResults [data-key="filter"]').selectOption('all');assert.equal(await page.locator('#dtTable tbody tr').count(),6);
   await page.locator('#dtResults [data-key="search"]').fill('only');assert.equal(await page.locator('#dtTable tbody tr').count(),2);
@@ -102,7 +103,7 @@ try{
   await page.click('#dtClearIds');
 
   assert.equal(await page.locator('#dtPairedChart .plot-container').count(),1);await page.click('[data-asset="MH01"]');assert.equal(await page.locator('#dtSectionChart .plot-container').count(),1);assert.match(await exportText('#dtExportCsv'),/AOD/);
-  await page.screenshot({path:path.join(evidence,'detriment-level.png'),fullPage:false});
+  await page.screenshot({path:path.join(evidence,'detriment-level.png'),fullPage:false});await recordControls(page,evidence,'detriment-level');
   await page.getByText('Separate common ground-level table (optional)',{exact:true}).click();await selectReport('ground','ground.csv');r=await run();assert.equal(r.rows[0].freeboard_b,.35);
   await route('spill');await selectReport('a','spill-a.csv');await selectReport('b','spill-b.csv');await scope();await field('period_start').fill('2025-01-01');await field('period_end').fill('2026-01-01');await field('template').fill('UK12/24 identical threshold and integral');
   r=await run();assert.equal(r.rows[0].delta,3);assert.equal(r.rows[0].duration_delta_hours,4);assert.equal(r.rows[1].status,'risk');assert.ok(r.rows[1].flags.includes('mixed_result'));
@@ -114,7 +115,7 @@ try{
   await page.click('#dtClearIds');
 
   await page.getByText('Optional exceedance detail for evidence',{exact:true}).click();await selectReport('detail_a','detail-a.csv');assert.equal(await field('detail_b.id').isVisible(),true,'Optional detail stays open after selecting A');await selectReport('detail_b','detail-b.csv');r=await run();assert.equal(r.rows[0].details_b.length,2);await page.click('[data-asset="CSO01"]');assert.match(await page.locator('#dtDrawer').innerText(),/2025-02-01/);assert.equal(await page.locator('#dtTimelineChart .plot-container').count(),1);assert.equal(await page.locator('#dtPairedChart .plot-container').count(),1);assert.match(await exportText('#dtExportHtml'),/detail_source_b/);
-  await page.screenshot({path:path.join(evidence,'detriment-spill.png'),fullPage:false});
+  await page.screenshot({path:path.join(evidence,'detriment-spill.png'),fullPage:false});await recordControls(page,evidence,'detriment-spill');
   await field('counting_mode').selectOption('block-rows');await selectReport('a','detail-a.csv');await selectReport('b','detail-b.csv');r=await run();assert.equal(r.rows[0].delta,1);assert.equal(r.rows[0].duration_delta_hours,2);assert.equal(r.counting_mode,'block-rows');
   for(const size of [{width:1366,height:768},{width:390,height:844}]){await page.setViewportSize(size);await route('flooding');const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);assert.ok(overflow<=1,'Document overflow '+overflow);await page.screenshot({path:path.join(evidence,'detriment-'+size.width+'.png'),fullPage:false});}
   await page.setViewportSize({width:1440,height:1000});
@@ -146,4 +147,4 @@ try{
   await page.locator('[data-about-workspace="detriment"]').click();assert.equal(await page.locator('#dtAssetIds').isVisible(),true);
   assert.deepEqual(errors,[]);console.log('Detriment acceptance passed: Data Sources → 3 tabs → evidence/export, precision boundaries, restoration, source removal and responsive containment.');
 privacy.assertClean();
-}catch(error){await page.screenshot({path:path.join(evidence,'detriment-failure.png'),fullPage:true}).catch(()=>{});console.error('Detriment state:',await page.locator('#dtStatus').textContent().catch(()=>''),errors);throw error;}finally{await browser.close();}
+}catch(error){await page.screenshot({path:path.join(evidence,'detriment-failure.png'),fullPage:true}).catch(()=>{});await recordControls(page,evidence,'detriment-failure');console.error('Detriment state:',await page.locator('#dtStatus').textContent().catch(()=>''),errors);throw error;}finally{await browser.close();}

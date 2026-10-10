@@ -364,7 +364,7 @@ function buildShell(){
   });
   const stage=document.createElement('div');stage.className='pw-stage';
   const context=document.createElement('section');context.className='pw-context';
-  context.innerHTML='<div class="pw-context-head"><div><div class="pw-breadcrumb"><span id="pwBreadcrumbWorkspace"></span><span>›</span><strong id="pwBreadcrumbPage"></strong></div><h2 class="pw-page-title" id="pwPageTitle"></h2><p class="pw-page-description" id="pwPageDescription"></p></div><div class="pw-context-actions"><button class="pw-focus-toggle" id="pwFocusToggle" type="button" aria-pressed="false" hidden>Focus canvas</button><button class="pw-rail-toggle" id="pwRailToggle" type="button">Menu</button><button class="pw-inspector-toggle" id="pwInspectorToggle" type="button">Inspector</button></div></div><nav class="pw-secondary-nav" id="pwSecondaryNav" aria-label="Workspace pages"></nav>';
+  context.innerHTML='<div class="pw-context-head"><div><div class="pw-breadcrumb"><span id="pwBreadcrumbWorkspace"></span><span>›</span><strong id="pwBreadcrumbPage"></strong></div><h2 class="pw-page-title" id="pwPageTitle"></h2><p class="pw-page-description" id="pwPageDescription"></p></div><div class="pw-context-actions"><button class="pw-focus-toggle" id="pwFocusToggle" type="button" aria-pressed="false" hidden>Focus canvas</button><button class="pw-rail-toggle" id="pwRailToggle" type="button">Menu</button><button class="pw-inspector-toggle" id="pwInspectorToggle" type="button" aria-controls="pwInspector" aria-expanded="false">Inspector</button></div></div><nav class="pw-secondary-nav" id="pwSecondaryNav" aria-label="Workspace pages"></nav>';
   const workarea=document.createElement('div');workarea.className='pw-workarea';
   const inspector=document.createElement('aside');inspector.className='pw-inspector';inspector.id='pwInspector';inspector.innerHTML='<div class="pw-inspector-head"><div><strong>Inspector</strong><span id="pwInspectorSubtitle">Context and settings</span></div><button class="pw-inspector-drawer-close" id="pwInspectorClose" type="button" aria-label="Close inspector">×</button></div><div class="pw-inspector-body" id="pwInspectorBody"></div>';
   const parent=topbar?.parentNode||document.body;
@@ -383,7 +383,7 @@ function buildShell(){
     syncBrandToggle();
   };
   const toggleRail=()=>{
-    if(matchMedia('(max-width:620px)').matches){rail.classList.toggle('is-open');syncBrandToggle();return;}
+    if(matchMedia('(max-width:620px)').matches){rail.classList.toggle('is-open');syncBrandToggle();const target=rail.classList.contains('is-open')?qs('button[aria-current="page"]',rail):$('pwRailToggle');target?.focus({preventScroll:true});return;}
     const expanding=rail.getBoundingClientRect().width<100;
     if(expanding&&document.body.classList.contains('pw-focus-canvas')){
       focusPreference=false;
@@ -399,12 +399,16 @@ function buildShell(){
   applyRailState();
   $('pwInspectorToggle')?.addEventListener('click',()=>{
     document.body.classList.remove('pw-inspector-collapsed');
-    inspector.classList.add('is-open');resizeVisuals();
+    inspector.classList.add('is-open');syncInspectorAccessibility();resizeVisuals();
+    if(inspectorOverlay())$('pwInspectorClose')?.focus({preventScroll:true});
   });
   $('pwInspectorClose')?.addEventListener('click',()=>{
     inspector.classList.remove('is-open');
-    document.body.classList.add('pw-inspector-collapsed');resizeVisuals();
+    document.body.classList.add('pw-inspector-collapsed');syncInspectorAccessibility();resizeVisuals();
+    $('pwInspectorToggle')?.focus({preventScroll:true});
   });
+  inspector.addEventListener('keydown',event=>{if(event.key==='Escape'&&inspectorOverlay()&&inspector.classList.contains('is-open')){event.preventDefault();$('pwInspectorClose')?.click();}});
+  inspector.addEventListener('transitionend',event=>{if(event.target===inspector&&event.propertyName==='transform')resizeVisuals();});
   $('pwFocusToggle')?.addEventListener('click',()=>{
     const next=!document.body.classList.contains('pw-focus-canvas');
     focusPreference=next;
@@ -488,6 +492,7 @@ function inspectorContext(page){
   document.body.classList.toggle('pw-has-inspector',useful);
   if(inspector){inspector.hidden=!useful;if(!useful)inspector.classList.remove('is-open');}
   if(toggle)toggle.hidden=!useful;
+  syncInspectorAccessibility();
   if(useful){const note=document.createElement('div');note.className='pw-shell-note';note.textContent='Settings shown here use the existing canonical browser/Python calculation paths.';body.appendChild(note);}
 }
 
@@ -521,6 +526,7 @@ function parseHash(){
 function navigate(workspace,page,push=false){
   const resolved=canonicalRoute(workspace,page);if(!resolved)return;
   workspace=resolved.workspace;page=resolved.page;
+  const mobileRouteFocus=matchMedia('(max-width:620px)').matches&&Boolean(qs('.pw-rail.is-open')?.contains(document.activeElement));
   rememberRouteScroll();cancelScrollRestore();
   restoreDocked();
   current={workspace,page};
@@ -548,17 +554,30 @@ function navigate(workspace,page,push=false){
   applyPageComposition();
   qsa('.pw-primary-nav button,.pw-about-nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.workspace===workspace?'page':'false'));
   $('pwBreadcrumbWorkspace').textContent=spec.label;$('pwBreadcrumbPage').textContent=p.label;$('pwPageTitle').textContent=p.title;$('pwPageDescription').textContent=p.description;
-  const sn=$('pwSecondaryNav');sn.innerHTML='';
+  const sn=$('pwSecondaryNav');
+  const previous=sn.dataset.workspace===workspace?qs('button[aria-current="page"]',sn):null;
+  const previousPill=previous?{left:previous.offsetLeft,width:previous.offsetWidth}:null;
+  sn.innerHTML='';sn.dataset.workspace=workspace;
   Object.entries(spec.pages).forEach(([key,entry])=>{const b=document.createElement('button');b.type='button';b.dataset.page=key;b.textContent=entry.label;b.setAttribute('aria-current',key===page?'page':'false');b.addEventListener('click',()=>navigate(workspace,key,true));sn.appendChild(b);});
+  positionTabIndicator(previousPill);
   inspectorContext(p);refreshScope();renderAssets();
   // A route change must preserve the layout chosen by the engineer.
   qs('.pw-rail')?.classList.remove('is-open');
   applyFocusCanvas(false);
+  if(mobileRouteFocus)qs('button[aria-current="page"]',sn)?.focus({preventScroll:true});
   if(push){const h='#/'+workspace+'/'+page;if(location.hash!==h)history.pushState(null,'',h);}
   document.title=p.title+' · Hydra Bench';
   resizeVisuals();
   window.dispatchEvent(new CustomEvent('icm:route-changed',{detail:{workspace,page}}));
-  if(workspace==='spills'&&page==='network')void window.ICMNetworkSchematic?.open();
+  if(workspace==='spills'&&page==='network'){
+    const networkRoot=$('tab-spill-network');
+    if(networkRoot&&!networkRoot.children.length){
+      const loading=document.createElement('p');loading.className='pw-empty-state';
+      loading.setAttribute('role','status');loading.textContent='Opening network schematic…';
+      networkRoot.appendChild(loading);
+    }
+    void window.ICMNetworkSchematic?.open();
+  }
   routeMounted=true;restoreRouteScroll();
 }
 function syncBrandToggle(){
@@ -567,13 +586,38 @@ function syncBrandToggle(){
   button.setAttribute('aria-expanded',String(expanded));
   button.setAttribute('aria-label',expanded?'Collapse navigation':'Expand navigation');
   button.title=expanded?'Collapse navigation':'Expand navigation';
+  if(rail)rail.inert=matchMedia('(max-width:620px)').matches&&!expanded;
+  const menu=$('pwRailToggle');if(menu){menu.setAttribute('aria-controls','pwNavigation');menu.setAttribute('aria-expanded',String(expanded));if(matchMedia('(max-width:620px)').matches)menu.textContent=expanded?'Close menu':'Menu';}
+}
+function inspectorOverlay(){return matchMedia('(max-width:1260px)').matches||document.body.classList.contains('pw-focus-canvas');}
+function syncInspectorAccessibility(){
+  const inspector=$('pwInspector'),toggle=$('pwInspectorToggle');if(!inspector)return;
+  const expanded=!inspector.hidden&&(inspectorOverlay()?inspector.classList.contains('is-open'):!document.body.classList.contains('pw-inspector-collapsed'));
+  inspector.inert=!expanded;
+  toggle?.setAttribute('aria-expanded',String(expanded));
+}
+function positionTabIndicator(previous=null){
+  const nav=$('pwSecondaryNav'),active=nav&&qs('button[aria-current="page"]',nav);if(!active)return;
+  let pill=qs('.pw-tab-indicator',nav);
+  if(!pill){pill=document.createElement('span');pill.className='pw-tab-indicator';pill.setAttribute('aria-hidden','true');nav.prepend(pill);}
+  const left=active.offsetLeft,width=active.offsetWidth;
+  pill.style.left=left+'px';pill.style.width=width+'px';nav.classList.add('pw-has-indicator');
+  // Keep the selected route discoverable without moving the document or charts.
+  if(left<nav.scrollLeft)nav.scrollLeft=left;
+  else if(left+width>nav.scrollLeft+nav.clientWidth)nav.scrollLeft=left+width-nav.clientWidth+4;
+  if(previous&&width>0&&!matchMedia('(prefers-reduced-motion:reduce)').matches){
+    pill.style.transformOrigin='left center';
+    pill.animate([{transform:'translateX('+(previous.left-left)+'px) scaleX('+(previous.width/width)+')'},{transform:'none'}],{duration:200,easing:'cubic-bezier(.2,.8,.2,1)'});
+  }
 }
 function isFocusRoute(){
   return true;
 }
+let resizeFrame=0,resizeTimer=0;
 function resizeVisuals(){
-  requestAnimationFrame(()=>{
-    setTimeout(()=>{
+  cancelAnimationFrame(resizeFrame);clearTimeout(resizeTimer);
+  resizeFrame=requestAnimationFrame(()=>{
+    resizeTimer=setTimeout(()=>{
       qsa('.js-plotly-plot').forEach(chart=>{
         const rect=chart.getBoundingClientRect();
         if(!chart.isConnected||chart.offsetParent===null||rect.width<2||rect.height<2)return;
@@ -603,7 +647,7 @@ function applyFocusCanvas(userInitiated=false){
   if(railToggle)railToggle.hidden=active;
   const inspector=$('pwInspector');
   if(!active&&userInitiated)inspector?.classList.remove('is-open');
-  syncBrandToggle();
+  syncBrandToggle();syncInspectorAccessibility();
   resizeVisuals();
 }
 function selectionLabel(id,fallback='—'){
@@ -672,6 +716,9 @@ function wireContextUpdates(){
   const focusMedia=matchMedia('(min-width:901px)');
   focusMedia.addEventListener?.('change',()=>applyFocusCanvas(false));
   matchMedia('(max-width:620px)').addEventListener?.('change',syncBrandToggle);
+  matchMedia('(max-width:1260px)').addEventListener?.('change',syncInspectorAccessibility);
+  new ResizeObserver(()=>positionTabIndicator()).observe(secondary);
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&qs('.pw-rail.is-open')){qs('.pw-rail').classList.remove('is-open');syncBrandToggle();$('pwRailToggle')?.focus({preventScroll:true});}});
 }
 function buildAboutPage(){
   if($('tab-about'))return;

@@ -1,3 +1,4 @@
+import {recordControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {chromium} from 'playwright';import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';import fs from 'node:fs/promises';import assert from 'node:assert/strict';
 const root=process.cwd(),baseUrl=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/',evidence=(process.env.ICM_EVIDENCE_DIR||'/tmp/icm-pr-evidence')+'/schematic-weekly-review';await fs.mkdir(evidence,{recursive:true});
@@ -31,7 +32,7 @@ try{
  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.survey.batch&&window.__ICM_WORKBENCH__.surveyFresh('complete'),null,{timeout:600000});
  const current=await page.evaluate(()=>({monitors:window.__ICM_WORKBENCH__.survey.batch.monitors.length,weeks:window.__ICM_WORKBENCH__.survey.batch.monitors.find(m=>m.monitor==='FM7413').weekly.weeks.length,gaugeWeeks:window.__ICM_WORKBENCH__.survey.batch.network.gauge_weekly.length}));await fs.writeFile(evidence+'/assessment.json',JSON.stringify(await page.evaluate(()=>window.__ICM_WORKBENCH__.survey.batch)));console.log('REFERENCE',JSON.stringify(current));assert.equal(current.monitors,9);assert(current.weeks>1);assert(current.gaugeWeeks>1);
  await page.locator('#assessmentSchematic-fdv').scrollIntoViewIfNeeded();
- await page.screenshot({path:evidence+'/fdv-schematic.png',fullPage:false});
+ await page.screenshot({path:evidence+'/fdv-schematic.png',fullPage:false});await recordControls(page,evidence,'fdv-schematic');
  assert(await page.locator('#assessmentSchematic-fdv [data-survey-node="FM7413"]').isVisible());
  assert(!await page.locator('#pwInspector').isVisible());assert(!await page.locator('#pwDataHealthSummary .tool-collapse-body').isVisible());
  assert(await page.locator('#assessmentMatrix-fdv .w26-week-matrix').isVisible());
@@ -56,7 +57,7 @@ try{
  }
  await checkPan('fdv');
 
- await page.screenshot({path:evidence+'/week-matrix-drawer.png',fullPage:false});
+ await page.screenshot({path:evidence+'/week-matrix-drawer.png',fullPage:false});await recordControls(page,evidence,'week-matrix-drawer');
  // The schematic initially selects the first full week, which can be the
  // second matrix column when the survey starts midweek. Review two explicit
  // matrix weeks so this journey verifies restoration of distinct records.
@@ -97,11 +98,11 @@ try{
  });
  await page.evaluate(()=>window.__ICM_WORKBENCH__.workflow26.selectMonitor('FM7413'));
  const weekData=await page.evaluate(()=>Object.values(window.__ICM_WORKBENCH__.survey.reviews).filter(r=>r.kind==='monitor-week').map(r=>({week:r.week_ending,reason:r.reason,reviewer:r.reviewer})));assert.equal(weekData.length,2);assert.notEqual(weekData[0].week,weekData[1].week);
- await page.screenshot({path:evidence+'/weekly-review.png',fullPage:false});
+ await page.screenshot({path:evidence+'/weekly-review.png',fullPage:false});await recordControls(page,evidence,'weekly-review');
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','rainfall-check',false));assert(await page.locator('#assessmentMatrix-rain .w26-week-matrix').isVisible());await checkPan('rain');await page.locator('#assessmentSchematic-rain [data-survey-gauge="RG5097"]').click();assert((await page.locator('#assessmentDrawer-rain').innerText()).includes('RG5097'));await page.locator('#assessmentDrawer-rain [data-drawer-tab="audit"]').click();await page.locator('#assessmentDrawer-rain .weekly-reviewer').fill('Rain reviewer');await page.locator('#assessmentDrawer-rain .weekly-comment').fill('Gauge inspection completed.');await page.locator('#assessmentDrawer-rain [data-week-save]').click();
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','monthly-review',false));assert(await page.locator('#surveyMonthlyReview').isVisible());assert(!await page.locator('#completeSurveyPanel').isVisible());assert((await page.locator('#surveyMonthlyReviewBody').innerText()).includes('Tidal impact noted.'));
  const popupPromise=page.waitForEvent('popup');await page.click('#surveyMonthlyPdfBtn');const printable=await popupPromise;await printable.waitForLoadState();assert((await printable.locator('body').innerText()).includes('Pumping influence noted.'));await printable.pdf({path:evidence+'/monthly.pdf',format:'A4',landscape:true,printBackground:true});await printable.close();
- await page.screenshot({path:evidence+'/monthly-review.png',fullPage:false});
+ await page.screenshot({path:evidence+'/monthly-review.png',fullPage:false});await recordControls(page,evidence,'monthly-review');
  console.log('STEP model selectors and route boundaries');
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
  const csv=['timestamp,Depth (m),Flow (m3/s)',...Array.from({length:72},(_,i)=>`2013-05-24T${String(Math.floor(i/6)).padStart(2,'0')}:${String(i%6*10).padStart(2,'0')}:00,${.4+i/1000},${.01+i/10000}`)].join('\n');
@@ -133,7 +134,7 @@ try{
 },'data:image/png;base64,'+(await fs.readFile(evidence+'/annual.png')).toString('base64'));
  assert.equal(imageEvidence.width,3200);assert.equal(imageEvidence.height,config.height*2);assert(imageEvidence.rainfallColouredPixels>100,'Export must retain visible rainfall pixels in the rainfall panel');
 await report.screenshot({path:evidence+'/annual-html.png',fullPage:false});await report.close();
- await page.setViewportSize({width:780,height:900});await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));assert(await page.locator('#assessmentMatrix-fdv').isVisible());assert(await page.locator('#assessmentDrawer-fdv').isVisible());await page.screenshot({path:evidence+'/narrow.png',fullPage:false});
+ await page.setViewportSize({width:780,height:900});await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));assert(await page.locator('#assessmentMatrix-fdv').isVisible());assert(await page.locator('#assessmentDrawer-fdv').isVisible());await page.screenshot({path:evidence+'/narrow.png',fullPage:false});await recordControls(page,evidence,'narrow');
  assert.equal(errors.length,0,errors.join('\n'));await fs.writeFile(evidence+'/result.json',JSON.stringify({current,weekData,config,imageEvidence,errors},null,2));console.log('PASS schematic/weekly/PDF/selectors/export browser acceptance');
 privacy.assertClean();
-}catch(error){console.log('FAIL STATE',await page.evaluate(()=>({status:document.getElementById('workspaceStatus')?.textContent,mapping:state.mapping,errors:window.__ICM_WORKBENCH__?.lastError})));await page.screenshot({path:evidence+'/failure.png',fullPage:false});throw error;}finally{await browser.close();}
+}catch(error){console.log('FAIL STATE',await page.evaluate(()=>({status:document.getElementById('workspaceStatus')?.textContent,mapping:state.mapping,errors:window.__ICM_WORKBENCH__?.lastError})));await page.screenshot({path:evidence+'/failure.png',fullPage:false});await recordControls(page,evidence,'failure');throw error;}finally{await browser.close();}

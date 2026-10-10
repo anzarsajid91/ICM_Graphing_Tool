@@ -1,42 +1,42 @@
 /* Every rule is scoped to the new schematic; shared workspace styling is untouched. */
-#nsWorkbench{color:#182732;font-size:14px;background:#fff;border:1px solid #dbe3e8;border-radius:8px;overflow:hidden}
-#nsWorkbench button,#nsWorkbench input,#nsWorkbench select,#nsWorkbench textarea{font:inherit;min-width:0;border:1px solid #c7d2d9;border-radius:6px;background:#fff;color:#182732;padding:7px 10px;min-height:36px}
-#nsWorkbench button{cursor:pointer;font-weight:550}#nsWorkbench button:hover{background:#f5f7f9}#nsWorkbench button:disabled{opacity:.5;cursor:default}
+#nsWorkbench{color:var(--hb-text);font-size:14px;background:#fff;border:1px solid var(--hb-border);border-radius:var(--hb-radius-card);overflow:hidden}
+#nsWorkbench button,#nsWorkbench input,#nsWorkbench select,#nsWorkbench textarea{font:inherit;min-width:0;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-control);background:#fff;color:var(--hb-text);padding:7px 10px;min-height:36px}
+#nsWorkbench button{cursor:pointer;font-weight:550}#nsWorkbench button:hover{background:var(--hb-soft)}#nsWorkbench button:disabled{opacity:.5;cursor:default}
 #nsWorkbench [hidden]{display:none!important}
-#nsWorkbench .ns-main-toolbar,#nsWorkbench .ns-edit-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px;border-bottom:1px solid #dbe3e8;background:#fff}
-#nsWorkbench .ns-main-toolbar label{display:flex;flex-direction:row;align-items:center;gap:6px;font-size:12px;color:#60717d}#nsWorkbench .ns-main-toolbar select{font-size:13px;max-width:170px;width:auto;font-weight:400}
+#nsWorkbench .ns-main-toolbar,#nsWorkbench .ns-edit-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px;border-bottom:1px solid var(--hb-border);background:#fff}
+#nsWorkbench .ns-main-toolbar label{display:flex;flex-direction:row;align-items:center;gap:6px;font-size:12px;color:var(--hb-muted)}#nsWorkbench .ns-main-toolbar select{font-size:13px;max-width:170px;width:auto;font-weight:400}
 #nsWorkbench #nsAddType{width:170px;flex:0 0 170px;font-size:13px;font-weight:400}
-#nsWorkbench #nsEdit[aria-pressed=true],#nsWorkbench .ns-primary{background:#087b82;color:white;border-color:#087b82}#nsWorkbench .ns-primary:hover{background:#086970}
+#nsWorkbench #nsEdit[aria-pressed=true],#nsWorkbench .ns-primary{background:var(--hb-action);color:white;border-color:var(--hb-action)}#nsWorkbench .ns-primary:hover{background:var(--hb-action-hover)}
 #nsWorkbench #nsConnect[aria-pressed=true],#nsWorkbench #nsPan[aria-pressed=true]{background:#e9f8f8;border-color:#0b8f96;color:#087b82}
-#nsWorkbench .ns-network-legend{display:flex;align-items:center;gap:5px;margin-left:auto;font-size:12px;color:#60717d}#nsWorkbench .ns-network-legend i{width:20px;height:2px;display:inline-block;margin-left:5px}#nsWorkbench .ns-red{background:#b93838}#nsWorkbench .ns-amber{background:#b88112}#nsWorkbench .ns-blue{background:#356fa8}
-#nsWorkbench .ns-swatches{display:flex;align-items:center;gap:8px}#nsWorkbench .ns-swatches button{background:var(--swatch);border:4px solid white;border-radius:50%;width:27px;height:27px;min-height:27px;padding:0;box-shadow:0 0 0 1px #dbe3e8}#nsWorkbench .ns-swatches button[aria-pressed=true]{box-shadow:0 0 0 2px #0b8f96}
+#nsWorkbench .ns-network-legend{display:flex;align-items:center;gap:5px;margin-left:auto;font-size:12px;color:var(--hb-muted)}#nsWorkbench .ns-network-legend i{width:20px;height:2px;display:inline-block;margin-left:5px}#nsWorkbench .ns-red{background:#b93838}#nsWorkbench .ns-amber{background:#b88112}#nsWorkbench .ns-blue{background:#356fa8}
+#nsWorkbench .ns-swatches{display:flex;align-items:center;gap:8px}#nsWorkbench .ns-swatches button{background:var(--swatch);border:4px solid white;border-radius:50%;width:27px;height:27px;min-height:27px;padding:0;box-shadow:0 0 0 1px var(--hb-border)}#nsWorkbench .ns-swatches button[aria-pressed=true]{box-shadow:0 0 0 2px #0b8f96}
 #nsWorkbench #nsLayout{display:grid;grid-template-columns:minmax(0,1fr)}#nsWorkbench #nsLayout.ns-editing{grid-template-columns:minmax(0,1fr) 350px}
 #nsWorkbench #nsCanvas{position:relative;min-width:0;height:660px;max-height:calc(100vh - 245px);min-height:400px;overflow:hidden;background:#fff;touch-action:none}
 #nsWorkbench #nsSvg{display:block;width:100%;height:100%;user-select:none}#nsWorkbench #nsSvg [data-ns-node],#nsWorkbench #nsSvg [data-ns-edge]{cursor:pointer}#nsWorkbench #nsSvg [data-ns-node]:focus{outline:none}#nsWorkbench #nsSvg [data-ns-node]:focus-visible>rect{stroke:#0b8f96;stroke-width:3}
-#nsWorkbench .ns-camera-tools{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.95);padding:4px;border-radius:6px;border:1px solid #dbe3e8}#nsWorkbench .ns-camera-tools span{min-width:46px;text-align:center;font-size:13px}#nsWorkbench .ns-camera-tools button{min-width:36px}
-#nsWorkbench .ns-canvas-note{position:absolute;left:12px;bottom:17px;font-size:11px;color:#60717d;pointer-events:none}
-#nsWorkbench #nsDrawer{border-left:1px solid #dbe3e8;padding:14px;max-height:660px;overflow:auto;min-width:0;background:#fff}#nsWorkbench #nsDrawer h3{margin:0;font-size:18px}#nsWorkbench #nsDrawer h4{margin:0 0 10px;font-size:14px}#nsWorkbench #nsDrawer section{border-top:1px solid #dbe3e8;padding-top:14px;margin-top:14px}
+#nsWorkbench .ns-camera-tools{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.95);padding:4px;border-radius:var(--hb-radius-control);border:1px solid var(--hb-border)}#nsWorkbench .ns-camera-tools span{min-width:46px;text-align:center;font-size:13px}#nsWorkbench .ns-camera-tools button{min-width:36px}
+#nsWorkbench .ns-canvas-note{position:absolute;left:12px;bottom:17px;font-size:11px;color:var(--hb-muted);pointer-events:none}
+#nsWorkbench #nsDrawer{border-left:1px solid var(--hb-border);padding:14px;max-height:660px;overflow:auto;min-width:0;background:#fff}#nsWorkbench #nsDrawer h3{margin:0;font-size:18px}#nsWorkbench #nsDrawer h4{margin:0 0 10px;font-size:14px}#nsWorkbench #nsDrawer section{border-top:1px solid var(--hb-border);padding-top:14px;margin-top:14px}
 #nsWorkbench .ns-drawer-head,#nsWorkbench .ns-source-title,#nsWorkbench .ns-popup-head{display:flex;align-items:start;justify-content:space-between;gap:8px}#nsWorkbench .ns-drawer-head{margin-bottom:12px}#nsWorkbench .ns-drawer-head button,#nsWorkbench .ns-source-title button,#nsWorkbench .ns-popup-head button{border:0;padding:0;min-height:28px;min-width:28px;font-size:20px}
-#nsWorkbench .ns-field{display:grid;gap:5px;margin:9px 0;color:#60717d;font-size:12px}#nsWorkbench .ns-field input,#nsWorkbench .ns-field select,#nsWorkbench .ns-field textarea{width:100%;font-size:13px;color:#182732;font-weight:400}#nsWorkbench .ns-two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
-#nsWorkbench .ns-source-row{padding:10px;margin:10px 0;border:1px solid #dbe3e8;border-radius:6px;background:#f8fafb}#nsWorkbench .ns-source-title strong{min-width:0;overflow-wrap:anywhere;font-size:12px}#nsWorkbench small{display:block;font-size:11px;line-height:1.5;color:#60717d;overflow-wrap:anywhere}#nsWorkbench .ns-source-row .ns-field{margin:7px 0}
+#nsWorkbench .ns-field{display:grid;gap:5px;margin:9px 0;color:var(--hb-muted);font-size:12px}#nsWorkbench .ns-field input,#nsWorkbench .ns-field select,#nsWorkbench .ns-field textarea{width:100%;font-size:13px;color:var(--hb-text);font-weight:400}#nsWorkbench .ns-two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+#nsWorkbench .ns-source-row{padding:10px;margin:10px 0;border:1px solid var(--hb-border);border-radius:var(--hb-radius-control);background:var(--hb-soft)}#nsWorkbench .ns-source-title strong{min-width:0;overflow-wrap:anywhere;font-size:12px}#nsWorkbench small{display:block;font-size:11px;line-height:1.5;color:var(--hb-muted);overflow-wrap:anywhere}#nsWorkbench .ns-source-row .ns-field{margin:7px 0}
 #nsWorkbench .ns-check{display:flex;align-items:start;gap:7px;font-size:12px;line-height:1.5;margin:14px 0}#nsWorkbench .ns-check input{min-height:0;margin:3px 0;width:15px;height:15px;flex:0 0 auto}
-#nsWorkbench .ns-note{font-size:12px;line-height:1.5;color:#60717d;background:#f5f7f9;padding:9px;border-radius:5px}#nsWorkbench #nsCalculate{width:100%}#nsWorkbench .ns-danger{margin-top:12px;color:#b93838!important}
-#nsWorkbench #nsStatus{margin:0;padding:9px 12px;border-top:1px solid #dbe3e8;font-size:12px;color:#60717d;min-height:36px}
-#nsWorkbench #nsPopup{position:absolute;z-index:4;display:flex;flex-direction:column;border:1px solid #c7d2d9;border-radius:8px;background:#fff;box-shadow:0 7px 22px #0b294326;overflow:hidden;touch-action:auto}
-#nsWorkbench .ns-popup-head{padding:12px 14px;border-bottom:1px solid #dbe3e8}#nsWorkbench .ns-popup-head h3{margin:0;font-size:18px}#nsWorkbench .ns-popup-body{padding:10px 14px;overflow:auto;min-height:0}#nsWorkbench .ns-popup-footer{padding:8px 14px;border-top:1px solid #dbe3e8;display:flex;justify-content:flex-end}
-#nsWorkbench table{width:100%;border-collapse:collapse;font-size:12px}#nsWorkbench th,#nsWorkbench td{padding:8px 6px;text-align:right;border-bottom:1px solid #e8edf0;vertical-align:top}#nsWorkbench th{background:#f5f7f9;color:#60717d;font-size:11px}#nsWorkbench th:nth-child(2),#nsWorkbench td:nth-child(2){text-align:left}#nsWorkbench td:nth-child(2){max-width:150px;overflow-wrap:anywhere}
-#nsWorkbench .ns-period td{text-align:left!important;font-size:10px;line-height:1.5;color:#60717d;background:#fafbfc}#nsWorkbench .ns-rag-green{background:#eaf6ed;color:#267044}#nsWorkbench .ns-rag-amber{background:#fff4d9;color:#9a6500}#nsWorkbench .ns-rag-red{background:#fdebec;color:#b93838}#nsWorkbench .ns-rag-legend{display:flex;gap:8px;margin:12px 0 6px;flex-wrap:wrap;font-size:11px}#nsWorkbench .ns-rag-legend span{padding:3px 5px;border-radius:3px}
-#nsWorkbench #nsPicker{position:absolute;inset:12px;z-index:5;margin:auto;max-width:500px;max-height:540px;border:1px solid #c7d2d9;border-radius:8px;box-shadow:0 7px 22px #0b294326;background:#fff;display:flex;flex-direction:column;padding:12px;touch-action:auto}#nsWorkbench #nsPicker>.ns-popup-head{padding:0 0 10px}#nsWorkbench #nsPicker>.ns-primary{margin-top:10px}#nsWorkbench .ns-file-list{overflow:auto;flex:1;min-height:0;margin-top:10px}#nsWorkbench .ns-file-list label{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #e8edf0;font-size:13px}#nsWorkbench .ns-file-list input{width:16px;height:16px;min-height:0;flex:0 0 auto}
-#nsWorkbench .ns-export-menu{position:relative;font-size:12px}#nsWorkbench .ns-export-menu summary{cursor:pointer;border:1px solid #c7d2d9;border-radius:6px;padding:9px 10px;list-style:none}#nsWorkbench .ns-export-menu[open]{background:white;z-index:6}#nsWorkbench .ns-export-menu[open] button{display:block;width:100%;font-size:12px;margin-top:4px}
+#nsWorkbench .ns-note{font-size:12px;line-height:1.5;color:var(--hb-muted);background:var(--hb-soft);padding:9px;border-radius:5px}#nsWorkbench #nsCalculate{width:100%}#nsWorkbench .ns-danger{margin-top:12px;color:#b93838!important}
+#nsWorkbench #nsStatus{margin:0;padding:9px 12px;border-top:1px solid var(--hb-border);font-size:12px;color:var(--hb-muted);min-height:36px}
+#nsWorkbench #nsPopup{position:absolute;z-index:4;display:flex;flex-direction:column;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-card);background:#fff;box-shadow:var(--hb-shadow-popover);overflow:hidden;touch-action:auto}
+#nsWorkbench .ns-popup-head{padding:12px 14px;border-bottom:1px solid var(--hb-border)}#nsWorkbench .ns-popup-head h3{margin:0;font-size:18px}#nsWorkbench .ns-popup-body{padding:10px 14px;overflow:auto;min-height:0}#nsWorkbench .ns-popup-footer{padding:8px 14px;border-top:1px solid var(--hb-border);display:flex;justify-content:flex-end}
+#nsWorkbench table{width:100%;border-collapse:collapse;font-size:12px}#nsWorkbench th,#nsWorkbench td{padding:8px 6px;text-align:right;border-bottom:1px solid var(--hb-border);vertical-align:top}#nsWorkbench th{background:var(--hb-soft);color:var(--hb-muted);font-size:11px}#nsWorkbench th:nth-child(2),#nsWorkbench td:nth-child(2){text-align:left}#nsWorkbench td:nth-child(2){max-width:150px;overflow-wrap:anywhere}
+#nsWorkbench .ns-period td{text-align:left!important;font-size:10px;line-height:1.5;color:var(--hb-muted);background:var(--hb-soft)}#nsWorkbench .ns-rag-green{background:#eaf6ed;color:#267044}#nsWorkbench .ns-rag-amber{background:#fff4d9;color:#9a6500}#nsWorkbench .ns-rag-red{background:#fdebec;color:#b93838}#nsWorkbench .ns-rag-legend{display:flex;gap:8px;margin:12px 0 6px;flex-wrap:wrap;font-size:11px}#nsWorkbench .ns-rag-legend span{padding:3px 5px;border-radius:3px}
+#nsWorkbench #nsPicker{position:absolute;inset:12px;z-index:5;margin:auto;max-width:500px;max-height:540px;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-card);box-shadow:var(--hb-shadow-popover);background:#fff;display:flex;flex-direction:column;padding:12px;touch-action:auto}#nsWorkbench #nsPicker>.ns-popup-head{padding:0 0 10px}#nsWorkbench #nsPicker>.ns-primary{margin-top:10px}#nsWorkbench .ns-file-list{overflow:auto;flex:1;min-height:0;margin-top:10px}#nsWorkbench .ns-file-list label{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--hb-border);font-size:13px}#nsWorkbench .ns-file-list input{width:16px;height:16px;min-height:0;flex:0 0 auto}
+#nsWorkbench .ns-export-menu{position:relative;font-size:12px}#nsWorkbench .ns-export-menu summary{cursor:pointer;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-control);padding:9px 10px;list-style:none}#nsWorkbench .ns-export-menu[open]{background:white;z-index:6}#nsWorkbench .ns-export-menu[open] button{display:block;width:100%;font-size:12px;margin-top:4px}
 @media(max-width:1150px){#nsWorkbench #nsLayout.ns-editing{grid-template-columns:minmax(0,1fr) 300px}#nsWorkbench .ns-network-legend{margin-left:0}}
-@media(max-width:850px){#nsWorkbench #nsLayout.ns-editing{grid-template-columns:minmax(0,1fr)}#nsWorkbench #nsDrawer{border-left:0;border-top:1px solid #dbe3e8;max-height:none}#nsWorkbench #nsCanvas{height:540px;max-height:none}#nsWorkbench .ns-canvas-note{bottom:64px}}
+@media(max-width:850px){#nsWorkbench #nsLayout.ns-editing{grid-template-columns:minmax(0,1fr)}#nsWorkbench #nsDrawer{border-left:0;border-top:1px solid var(--hb-border);max-height:none}#nsWorkbench #nsCanvas{height:540px;max-height:none}#nsWorkbench .ns-canvas-note{bottom:64px}}
 
-#nsWorkbench .ns-export-actions{position:absolute;top:calc(100% + 6px);left:0;width:185px;padding:6px;background:white;border:1px solid #c7d2d9;border-radius:8px;box-shadow:0 6px 18px #0b294326}
+#nsWorkbench .ns-export-actions{position:absolute;top:calc(100% + 6px);left:0;width:185px;padding:6px;background:white;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-card);box-shadow:var(--hb-shadow-popover)}
 #nsWorkbench .ns-export-menu[open] .ns-export-actions button{margin:0;text-align:left;border:0;background:white}
-#nsWorkbench .ns-export-menu[open] .ns-export-actions button:hover{background:#f5f7f9}
-#nsWorkbench .ns-evidence-details{margin:12px 0;font-size:11px;color:#60717d}
+#nsWorkbench .ns-export-menu[open] .ns-export-actions button:hover{background:var(--hb-soft)}
+#nsWorkbench .ns-evidence-details{margin:12px 0;font-size:11px;color:var(--hb-muted)}
 #nsWorkbench .ns-evidence-details summary{cursor:pointer;font-size:12px}
-#nsWorkbench .ns-evidence-details p{padding:6px 0;border-bottom:1px solid #e8edf0;line-height:1.6}
+#nsWorkbench .ns-evidence-details p{padding:6px 0;border-bottom:1px solid var(--hb-border);line-height:1.6}
 #nsWorkbench .ns-warning{color:#9a6500;max-width:160px}
 #nsWorkbench .ns-export-menu>summary{margin:0;background:white;min-height:36px}
 #nsWorkbench .ns-export-menu[open]>summary{margin:0}
@@ -50,24 +50,24 @@
 #nsWorkbench #nsAssetSearch{width:145px;font-size:12px}
 #nsWorkbench .ns-main-toolbar{position:relative}
 #nsWorkbench #nsReviewTools{position:static;font-size:12px}
-#nsWorkbench #nsReviewTools>summary{padding:9px 10px;border:1px solid #c7d2d9;border-radius:6px;cursor:pointer;list-style:none}
-#nsWorkbench .ns-tool-panel{position:absolute;right:0;top:calc(100% + 6px);width:min(640px,calc(100vw - 70px));max-height:70vh;overflow:auto;background:white;border:1px solid #c7d2d9;border-radius:8px;padding:14px;box-shadow:0 7px 22px #0b294326;z-index:8}
+#nsWorkbench #nsReviewTools>summary{padding:9px 10px;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-control);cursor:pointer;list-style:none}
+#nsWorkbench .ns-tool-panel{position:absolute;right:0;top:calc(100% + 6px);width:min(640px,calc(100vw - 70px));max-height:70vh;overflow:auto;background:white;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-card);padding:14px;box-shadow:var(--hb-shadow-popover);z-index:8}
 #nsWorkbench .ns-tool-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0}
 #nsWorkbench .ns-tool-panel label{display:flex;gap:6px;align-items:center}
 #nsWorkbench details>summary{cursor:pointer;font-size:12px}
-#nsWorkbench .ns-tool-panel details{padding:9px 0;border-top:1px solid #e8edf0}
+#nsWorkbench .ns-tool-panel details{padding:9px 0;border-top:1px solid var(--hb-border)}
 #nsWorkbench .ns-tool-panel input[type=checkbox],#nsWorkbench .ns-matrix-toolbar input[type=checkbox]{width:15px;min-height:15px;margin:0}
 #nsWorkbench #nsScenarioChoices{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0}
 #nsWorkbench #nsAuditResult:empty{display:none}
-#nsWorkbench #nsHover{position:absolute;z-index:3;padding:12px;background:white;border:1px solid #c7d2d9;border-radius:8px;box-shadow:0 7px 22px #0b294326;pointer-events:none;max-height:320px;overflow:hidden}
+#nsWorkbench #nsHover{position:absolute;z-index:3;padding:12px;background:white;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-card);box-shadow:var(--hb-shadow-popover);pointer-events:none;max-height:320px;overflow:hidden}
 #nsWorkbench .ns-hover-table{max-height:240px;overflow:hidden;margin:8px 0}
 #nsWorkbench #nsHover strong{font-size:14px}
 #nsWorkbench #nsPopup{max-width:calc(100% - 24px)}
 #nsWorkbench #nsPopup .ns-popup-footer{gap:6px;flex-wrap:wrap}
 #nsWorkbench #nsPopup .ns-popup-footer button{font-size:12px;padding:6px 9px}
 #nsWorkbench .ns-popup-body>table td,#nsWorkbench .ns-annual-table td{font-size:13px;font-variant-numeric:tabular-nums}
-#nsWorkbench .ns-review-notes{margin-top:12px;border-top:1px solid #e8edf0;padding-top:10px}
-#nsWorkbench #nsMatrix{border-top:1px solid #dbe3e8;padding:12px}
+#nsWorkbench .ns-review-notes{margin-top:12px;border-top:1px solid var(--hb-border);padding-top:10px}
+#nsWorkbench #nsMatrix{border-top:1px solid var(--hb-border);padding:12px}
 #nsWorkbench .ns-matrix-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px}
 #nsWorkbench .ns-matrix-toolbar>small{margin-left:auto}
 #nsWorkbench .ns-matrix-toolbar>input{width:180px;flex:0 1 180px}
@@ -76,21 +76,25 @@
 #nsWorkbench #nsMatrixBody section{margin:12px 0}
 #nsWorkbench .ns-asset-link{border:0;padding:4px 0;min-height:28px;font-size:13px;color:#087b82;font-weight:600;background:none}
 #nsWorkbench .ns-annual-table tbody tr{cursor:pointer}
-#nsWorkbench .ns-annual-table tbody tr:hover{outline:1px solid #c7d2d9}
+#nsWorkbench .ns-annual-table tbody tr:hover{outline:1px solid var(--hb-control-border)}
 #nsWorkbench .ns-annual-table th{position:sticky;top:0;z-index:1;white-space:nowrap}
 #nsWorkbench .ns-multi-selected>rect:first-of-type{stroke:#087b82}
 #nsWorkbench [data-ns-edge-label]{cursor:grab}
-#nsWorkbench #nsAnalysis{position:fixed;inset:5vh 4vw;z-index:200;background:white;border:1px solid #c7d2d9;border-radius:10px;box-shadow:0 0 0 100vmax #102c4240;display:flex;flex-direction:column;overflow:hidden}
-#nsWorkbench .ns-analysis-toolbar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #dbe3e8}
+#nsWorkbench #nsAnalysis{position:fixed;inset:5vh 4vw;z-index:200;background:white;border:1px solid var(--hb-control-border);border-radius:10px;box-shadow:0 0 0 100vmax #102c4240;display:flex;flex-direction:column;overflow:hidden}
+#nsWorkbench .ns-analysis-toolbar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--hb-border)}
 #nsWorkbench .ns-analysis-toolbar strong{margin-right:auto;font-size:17px;overflow-wrap:anywhere}
 #nsWorkbench #nsAnalysis .ns-analysis-toolbar select{width:100px;flex:0 0 100px}
 #nsWorkbench #nsAnalysis .ns-analysis-toolbar button{flex-shrink:0}
 #nsWorkbench .ns-analysis-body{overflow:auto;padding:16px}
 #nsWorkbench #nsAnalysisPlot{min-height:350px}
 #nsWorkbench #nsAnalysisCounts{margin:15px 0}
-#nsWorkbench .ns-analysis-body>details{border-top:1px solid #dbe3e8;padding:12px 0;color:#60717d}
+#nsWorkbench .ns-analysis-body>details{border-top:1px solid var(--hb-border);padding:12px 0;color:var(--hb-muted)}
 #nsWorkbench #nsCommonResult{margin-top:12px}
 #nsWorkbench #nsDrawer label.ns-check{display:flex!important;flex-direction:row!important;align-items:center}
 #nsWorkbench #nsAnalysisMessage{margin:8px 0 18px}
 #nsWorkbench .ns-network-legend{display:none}
 @media(max-width:850px){#nsWorkbench #nsAnalysis{inset:2vh 2vw}#nsWorkbench .ns-analysis-toolbar{flex-wrap:wrap}#nsWorkbench #nsMatrixBody{overflow:auto}#nsWorkbench .ns-annual-table{min-width:430px}#nsWorkbench .ns-popup-body{overflow:auto}}
+
+#nsWorkbench .ns-table-year{font:inherit;color:inherit;border:0;background:transparent;min-height:28px;padding:2px 4px;text-decoration:underline;text-underline-offset:3px}
+
+#nsWorkbench :is(#nsPicker,#nsPopup,#nsAnalysis):not([hidden]){animation:hb-reveal var(--hb-motion-control) var(--hb-ease)}

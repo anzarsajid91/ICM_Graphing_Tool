@@ -1052,7 +1052,7 @@
     const balanceState = !survey.balance ? statusPill('Not run','neutral') : balanceFresh ? statusPill('Current','good') : statusPill('Stale','warn');
     root.innerHTML =
       '<div><span>Assessment period</span><strong>'+esc(surveyPeriodText())+'</strong></div>' +
-      '<div><span>fm_rg_assoc</span><strong>'+associationState+' '+associationCount+' monitor'+(associationCount===1?'':'s')+'</strong></div>' +
+      '<div><span>Association workbook</span><strong>'+associationState+' '+associationCount+' monitor'+(associationCount===1?'':'s')+'</strong></div>' +
       '<div><span>Monitor assessment</span><strong>'+monitorState+' '+monitors+' loaded</strong></div>' +
       '<div><span>Rainfall assessment</span><strong>'+rainState+' '+gauges+' gauge'+(gauges===1?'':'s')+'</strong></div>' +
       '<div><span>Volume balance</span><strong>'+balanceState+'</strong></div>';

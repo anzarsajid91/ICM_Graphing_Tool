@@ -1,0 +1,50 @@
+name: UIUX same-runner baseline comparison
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  comparison:
+    if: github.head_ref == 'feat/unified-premium-uiux' || github.ref == 'refs/heads/feat/unified-premium-uiux'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: candidate
+          fetch-depth: 0
+      - uses: actions/checkout@v6
+        with:
+          ref: dff8ff593e61dbfea142007b5ac32b0d66787f0a
+          path: baseline
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Build exact baseline and candidate
+        run: |
+          (cd baseline && GITHUB_SHA="$(git rev-parse HEAD)" GITHUB_EVENT_NAME=pull_request python scripts/build_pages.py)
+          (cd candidate && GITHUB_SHA="$(git rev-parse HEAD)" GITHUB_EVENT_NAME=pull_request python scripts/build_pages.py)
+      - name: Compare on one runner
+        working-directory: candidate
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+          python -m http.server 8000 --directory _site >/tmp/uiux-candidate-http.log 2>&1 &
+          CANDIDATE_SERVER=$!
+          python -m http.server 8001 --directory ../baseline/_site >/tmp/uiux-baseline-http.log 2>&1 &
+          BASELINE_SERVER=$!
+          trap 'kill "$CANDIDATE_SERVER" "$BASELINE_SERVER" 2>/dev/null || true' EXIT
+          TARGET_SHA="$(git rev-parse HEAD)" node web/tests/uiux-performance.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: uiux-same-runner-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/hydra-uiux-performance/
+          retention-days: 30
