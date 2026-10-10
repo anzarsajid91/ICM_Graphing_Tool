@@ -19,6 +19,10 @@ try{
  assert.equal(await toggle.evaluate(el=>document.activeElement===el),true);
  await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'true');
  await page.setViewportSize({width:1024,height:1000});await painted();
+ // An already open docked inspector stays open when it becomes an overlay.
+ assert.equal(await toggle.getAttribute('aria-expanded'),'true');
+ await page.locator('#pwInspectorClose').press('Escape');
+ assert.equal(await toggle.getAttribute('aria-expanded'),'false');
  await toggle.click();assert.equal(await page.locator('#pwInspectorClose').evaluate(el=>document.activeElement===el),true);
  await page.locator('#pwInspectorClose').press('Escape');
  assert.equal(await toggle.getAttribute('aria-expanded'),'false');
