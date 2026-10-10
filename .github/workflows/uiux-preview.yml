@@ -58,6 +58,8 @@ jobs:
           python -m http.server 8000 --directory _site >/tmp/network-preview-http.log 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          export GITHUB_SHA="$(git rev-parse HEAD)"
+          node web/tests/uiux-contracts.mjs
           ICM_BROWSER=chromium node web/tests/precision-shell.mjs
           node web/tests/network-schematic-smoke.mjs
           node web/tests/network-review-smoke.mjs

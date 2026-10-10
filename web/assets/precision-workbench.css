@@ -87,7 +87,7 @@ body.precision-workbench{
 .pw-context-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
 .pw-breadcrumb{display:flex;gap:8px;align-items:center;color:var(--pw-muted);font-size:12px;margin-bottom:4px}
 .pw-breadcrumb strong{color:var(--pw-text);font-weight:650}
-.pw-page-title{font-size:22px;line-height:30px;margin:0;font-weight:680;letter-spacing:-.015em}
+.pw-page-title{font-size:24px;line-height:32px;margin:0;font-weight:680;letter-spacing:-.015em}
 .pw-page-description{margin:4px 0 0;color:var(--pw-muted);max-width:900px;font-size:14px;line-height:21px}
 .pw-context-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .pw-rail-toggle,.pw-inspector-toggle,.pw-focus-toggle{display:none;border:1px solid var(--pw-border);background:#fff;border-radius:var(--hb-radius-control);padding:8px 12px;cursor:pointer;font-weight:650;color:var(--pw-text)}
@@ -524,7 +524,7 @@ body.precision-workbench{
 /* A decorative pill moves independently; button hit areas, focus and route content never move. */
 .pw-secondary-nav.pw-has-indicator button[aria-current="page"]{background:transparent;box-shadow:none}
 .pw-tab-indicator{position:absolute;z-index:0;pointer-events:none;top:4px;bottom:4px;border-radius:var(--hb-radius-pill);background:var(--hb-elevated);box-shadow:var(--hb-shadow)}
-.pw-primary-nav button,.pw-about-nav button{font-size:14px;border-radius:var(--hb-radius-control)}
+.pw-primary-nav button,.pw-about-nav button{font-size:15px;border-radius:var(--hb-radius-control)}
 .pw-primary-nav button[aria-current="page"] .pw-nav-icon,.pw-about-nav button[aria-current="page"] .pw-nav-icon{color:var(--hb-accent)}
 .pw-brand-icon{background:var(--hb-text);border-radius:12px}
 .pw-context{background:transparent;border-bottom:0;padding-bottom:0}

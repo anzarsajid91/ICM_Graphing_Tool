@@ -1,7 +1,7 @@
 /* Hydra Bench foundation. Owners alias these tokens; engineering series/RAG colours stay independent. */
 :root{
   --hb-canvas:#f0f0ee;--hb-surface:#fcfcfc;--hb-elevated:#fff;--hb-soft:#f5f5f3;
-  --hb-text:#202221;--hb-muted:#626660;--hb-border:#e4e5e3;--hb-control-border:#8a918a;
+  --hb-text:#202221;--hb-muted:#626660;--hb-border:#e4e5e3;--hb-control-border:#858d85;
   --hb-action:#202221;--hb-action-hover:#373c37;--hb-accent:#26716b;--hb-accent-hover:#1c5752;--hb-selection:#edf3f0;
   --hb-focus:#176b8a;--hb-success:#267044;--hb-warning:#895b00;--hb-danger:#b93838;
   --hb-radius-card:16px;--hb-radius-control:10px;--hb-radius-pill:999px;

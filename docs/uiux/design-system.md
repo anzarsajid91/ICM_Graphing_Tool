@@ -6,13 +6,13 @@ Status: foundation and shell implemented; rendered candidate acceptance pending.
 
 Warm canvas #F0F0EE; surface #FCFCFC; elevated surface #FFFFFF;
 text #202221; secondary text #626660 (darkened from the reference proposal for
-small-text contrast); subtle border #E4E5E3; control border #8A918A (controls
+small-text contrast); subtle border #E4E5E3; control border #858D85 (controls
 must remain distinguishable). Primary action charcoal; restrained teal only for
 focus/link/selection context. Existing observed red, model purple-blue, rainfall,
 threshold and semantic RAG colours are retained. No external fonts or icon loads.
 System sans-serif with Inter only when already installed. Tabular numerals for
 engineering results; units never hidden. 13–14 px body; 12 px supporting text;
-20–22 px page title; 16–18 px section headings. Spacing 4/8/12/16/24/32 px.
+24 px desktop page title (18 px narrow); 16–18 px section headings. Spacing 4/8/12/16/24/32 px.
 Surface radii 16 px; inputs/buttons 10 px; pills 999 px. Thin neutral borders and
 one restrained elevation style. Status remains text + semantic colour, never
 colour alone. Warning/error contrast takes precedence over subtle styling.

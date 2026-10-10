@@ -32,7 +32,7 @@ jobs:
           python -m unittest discover -s tests/privacy -v
           python -m pytest
           for f in web/tests/*unit.mjs; do node "$f"; done
-          GITHUB_EVENT_NAME=pull_request python scripts/build_pages.py
+          GITHUB_SHA="$(git rev-parse HEAD)" GITHUB_EVENT_NAME=pull_request python scripts/build_pages.py
       - name: Render all routes and exercise supported workflows
         env:
           ICM_BROWSER: chromium
@@ -46,7 +46,9 @@ jobs:
             curl --fail --silent http://127.0.0.1:8000/ >/dev/null 2>&1 && break
             sleep 1
           done
+          export GITHUB_SHA="$(git rev-parse HEAD)"
           node web/tests/uiux-review.mjs
+          node web/tests/uiux-contracts.mjs
           node web/tests/cold-start-shell.mjs
           node web/tests/precision-shell.mjs
           node web/tests/workspace-interactions.mjs
