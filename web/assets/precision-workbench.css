@@ -443,6 +443,18 @@ body.precision-workbench{
   background:transparent;
 }
 .pw-page-surface > .subpanel{box-shadow:none}
+/* Empty charts explain their next action without covering any Plotly content. */
+.precision-workbench :is(#scatterChart,#residualChart,#cumulativeChart,#exceedanceChart,#ratingChart):empty{position:relative}
+.precision-workbench :is(#scatterChart,#residualChart,#cumulativeChart,#exceedanceChart,#ratingChart):empty::before{position:absolute;inset:24px;display:grid;place-items:center;text-align:center;color:var(--hb-muted);font-size:13px;line-height:20px;pointer-events:none}
+.precision-workbench #scatterChart:empty::before{content:'Assign observed and modelled series, then generate the comparison.'}
+.precision-workbench #residualChart:empty::before{content:'Residual evidence appears with the comparison.'}
+.precision-workbench #cumulativeChart:empty::before{content:'Cumulative volume evidence appears with the comparison.'}
+.precision-workbench #exceedanceChart:empty::before{content:'Exceedance evidence appears with the comparison.'}
+.precision-workbench #ratingChart:empty::before{content:'Select matching vertical quantities, then fit the diagnostic.'}
+.pw-route-graphs-dwf .subhead>h3{flex:1 1 240px;min-width:0}
+.pw-route-graphs-dwf .subhead>button{flex:0 0 auto}
+.pw-route-reports-workspace #pwWorkspaceSurface{margin-block:0}
+.pw-route-reports-report-generation #pwReportOptions{border:0;box-shadow:none;background:transparent}
 .pw-route-data-time-series #tab-graph > .panel,
 .pw-route-survey-data-health #tab-data-health > .panel,
 .pw-route-rainfall-events #tab-rain-events > .panel,

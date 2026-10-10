@@ -569,7 +569,15 @@ function navigate(workspace,page,push=false){
   document.title=p.title+' · Hydra Bench';
   resizeVisuals();
   window.dispatchEvent(new CustomEvent('icm:route-changed',{detail:{workspace,page}}));
-  if(workspace==='spills'&&page==='network')void window.ICMNetworkSchematic?.open();
+  if(workspace==='spills'&&page==='network'){
+    const networkRoot=$('tab-spill-network');
+    if(networkRoot&&!networkRoot.children.length){
+      const loading=document.createElement('p');loading.className='pw-empty-state';
+      loading.setAttribute('role','status');loading.textContent='Opening network schematic…';
+      networkRoot.appendChild(loading);
+    }
+    void window.ICMNetworkSchematic?.open();
+  }
   routeMounted=true;restoreRouteScroll();
 }
 function syncBrandToggle(){
