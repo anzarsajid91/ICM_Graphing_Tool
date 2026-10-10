@@ -677,7 +677,7 @@
         align:['left','center','right','right','right','right'],
         fill:{color:'#f2f4f7'},
         line:{color:'#d9e1e8',width:1},
-        font:{family:'Arial, sans-serif',size:11,color:'#263746'},
+        font:{family:'Inter, Segoe UI, Arial, sans-serif',size:11,color:'#202221'},
         height:27,
       },
       cells:{
@@ -688,7 +688,7 @@
         align:['left','center','right','right','right','right'],
         fill:{color:'#ffffff'},
         line:{color:'#e4e9ed',width:1},
-        font:{family:'Arial, sans-serif',size:10.5,color:'#253746'},
+        font:{family:'Inter, Segoe UI, Arial, sans-serif',size:10.5,color:'#253746'},
         height:25,
       },
       hoverinfo:'skip',
@@ -952,18 +952,18 @@
       let traces=[],layout,panelOrder=[];
 
       const commonLayout={
-        template:'plotly_white',
-        title:{text:options.title||graphTitle(multiPanelMode,observedEntries,modelEntries),x:.01,xanchor:'left',font:{size:18,color:'#263746'}},
+        template:'plotly_white',...(window.HydraDesign?.chartLayout()||{}),
+        title:{text:options.title||graphTitle(multiPanelMode,observedEntries,modelEntries),x:.01,xanchor:'left',font:{size:18,color:'#202221'}},
         margin:{l:86,r:42,t:106,b:38},
         hovermode:'x unified',
         hoversubplots:'axis',
         dragmode:ui.exclusionCapture?'select':'zoom',
         selectdirection:'h',
         legend:{orientation:'h',y:1.025,x:1,xanchor:'right',yanchor:'bottom',font:{size:11},traceorder:'normal',groupclick:'togglegroup'},
-        xaxis:{title:null,autorange:!displayRange,showgrid:false,zeroline:false,anchor:'free',position:axisPosition,side:'bottom',rangeslider:{visible:false},automargin:true,tickfont:{size:10,color:'#506272'},showspikes:true,spikemode:'across',spikesnap:'cursor',spikedash:'dot',spikethickness:1,spikecolor:'#9fb0bd'},
-        annotations:[...v2GraphAnnotations(),{xref:'paper',x:.5,yref:'paper',y:statsTop+.018,text:'<b>Statistics</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}}],
+        xaxis:{title:null,autorange:!displayRange,showgrid:false,zeroline:false,anchor:'free',position:axisPosition,side:'bottom',rangeslider:{visible:false},automargin:true,tickfont:{size:10,color:'#626660'},showspikes:true,spikemode:'across',spikesnap:'cursor',spikedash:'dot',spikethickness:1,spikecolor:'#9fb0bd'},
+        annotations:[...v2GraphAnnotations(),{xref:'paper',x:.5,yref:'paper',y:statsTop+.018,text:'<b>Statistics</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#202221'}}],
         uirevision:'icm-reference-plot-v2',
-        paper_bgcolor:'#ffffff',plot_bgcolor:'#ffffff',
+        paper_bgcolor:'#fcfcfc',plot_bgcolor:'#fcfcfc',
       };
       if(displayRange?.length===2){commonLayout.xaxis.range=displayRange;commonLayout.xaxis.autorange=false;}
 
@@ -986,16 +986,16 @@
           const label={flow:'Flow',depth:'Depth',level:'Level',velocity:'Velocity'}[panel]||panel;
           const defaultUnit={flow:'m³/s',depth:'m',level:'m',velocity:'m/s'}[panel]||'';
           const title=label+' ('+(unit||defaultUnit)+')'+(reference?' · '+reference:'');
-          layout[axisKey]={title:{text:title,standoff:10},domain:[bottom,top],anchor:'x',showgrid:true,gridcolor:'#e8eef3',gridwidth:1,zeroline:false,automargin:true,tickfont:{size:10,color:'#506272'},titlefont:{size:11,color:'#263746'},ticks:'outside',ticklen:3,tickcolor:'#9fb0bd'};
-          layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:top,text:'<b>'+title.replace(/ \(.+\)$/,'')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
+          layout[axisKey]={title:{text:title,standoff:10},domain:[bottom,top],anchor:'x',showgrid:true,gridcolor:'#e4e5e3',gridwidth:1,zeroline:false,automargin:true,tickfont:{size:10,color:'#626660'},titlefont:{size:11,color:'#202221'},ticks:'outside',ticklen:3,tickcolor:'#9fb0bd'};
+          layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:top,text:'<b>'+title.replace(/ \(.+\)$/,'')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#202221'}});
           if(index>0){const separator=Math.min(1,top+hydGap/2);panelDecorations.push({type:'line',xref:'paper',x0:0,x1:1,yref:'paper',y0:separator,y1:separator,line:{color:'#dfe7ec',width:1},layer:'below'});}
           top=bottom-hydGap;
         });
         if(rainEntry){
           axisByPanel.rainfall='y';
           panelDomains.rainfall=[rainBottom,1];
-          layout.yaxis={title:{text:rainfallAxisTitle,standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:true,gridcolor:'#edf2f6',showline:true,linecolor:'#a8b7c4',linewidth:1,ticks:'outside',tickcolor:'#a8b7c4',zeroline:false,automargin:true,tickfont:{size:10,color:'#506272'},titlefont:{size:11,color:'#263746'}};
-          layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
+          layout.yaxis={title:{text:rainfallAxisTitle,standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:true,gridcolor:'#e4e5e3',showline:true,linecolor:'#a8b7c4',linewidth:1,ticks:'outside',tickcolor:'#a8b7c4',zeroline:false,automargin:true,tickfont:{size:10,color:'#626660'},titlefont:{size:11,color:'#202221'}};
+          layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#202221'}});
           traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:'y',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} '+(rainEntry.unit||'unit unresolved')+'<extra></extra>'});
         }
         for(const quantity of canonical){
@@ -1039,20 +1039,20 @@
         const quantityTitle=quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):(primary?.source?.col||'Value');
         const hydraulicAxisTitle=quantityTitle+(primaryUnit?' ('+primaryUnit+')':'')+(quantity==='level'&&primaryReference?' · '+primaryReference:'');
         layout.yaxis=rainfallOnly
-          ?{title:{text:rainfallAxisTitle,standoff:10},domain:[plotBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:true,gridcolor:'#edf2f6',showline:true,linecolor:'#a8b7c4',linewidth:1,ticks:'outside',tickcolor:'#a8b7c4',zeroline:false,automargin:true}
-          :{title:{text:hydraulicAxisTitle,standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e8eef3',zeroline:false,automargin:true};
+          ?{title:{text:rainfallAxisTitle,standoff:10},domain:[plotBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:true,gridcolor:'#e4e5e3',showline:true,linecolor:'#a8b7c4',linewidth:1,ticks:'outside',tickcolor:'#a8b7c4',zeroline:false,automargin:true}
+          :{title:{text:hydraulicAxisTitle,standoff:10},domain:hydDomain,anchor:'x',showgrid:true,gridcolor:'#e4e5e3',zeroline:false,automargin:true};
         if(obs){
           traces.push({x:obs.source.data.timestamp,y:scaledValues(obs.source.data.value,primaryDisplayFactor),name:'Observed '+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):obs.source.col),uid:traceUid('observed',obs.source.item.id,obs.source.col),legendgroup:'observed',type:traceType(obs.source.data),mode:'lines',connectgaps:false,line:{color:$('obsColor').value,width:2.2},yaxis:'y',hovertemplate:'%{x}<br>%{y:.4g} '+(primaryUnit||'')+'<extra></extra>'});
         }
         for(const item of modelEntries){
           traces.push({x:item.source.data.timestamp,y:scaledValues(item.source.data.value,primaryDisplayFactor),name:`Simulated: ${item.source.col}`,uid:traceUid('model',item.source.item.id,item.source.col),legendgroup:'model:'+item.source.item.id,meta:item.source.item.displayName,type:traceType(item.source.data),mode:'lines',connectgaps:false,line:{color:state.modelColours[item.key]||palette[item.index%palette.length],width:2},yaxis:'y',hovertemplate:'%{x}<br>%{y:.4g} '+(primaryUnit||'')+'<extra></extra>'});
         }
-        if(primary)layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:hydraulicTop,text:'<b>'+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):'Hydraulic')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
+        if(primary)layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:hydraulicTop,text:'<b>'+(quantity?quantity.charAt(0).toUpperCase()+quantity.slice(1):'Hydraulic')+'</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#202221'}});
         if(rainEntry){
           if(!rainfallOnly){
-            layout.yaxis2={title:{text:rainfallAxisTitle,standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:true,gridcolor:'#edf2f6',showline:true,linecolor:'#a8b7c4',linewidth:1,ticks:'outside',tickcolor:'#a8b7c4',zeroline:false,automargin:true};
+            layout.yaxis2={title:{text:rainfallAxisTitle,standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:true,gridcolor:'#e4e5e3',showline:true,linecolor:'#a8b7c4',linewidth:1,ticks:'outside',tickcolor:'#a8b7c4',zeroline:false,automargin:true};
           }
-          layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#263746'}});
+          layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#202221'}});
           traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:rainfallOnly?'y':'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} '+(rainEntry.unit||'unit unresolved')+'<extra></extra>'});
         }
         // ICM HYD exports commonly describe the vertical hydraulic series as

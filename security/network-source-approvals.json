@@ -21,16 +21,16 @@
       "review": "Reviewed lazy script URLs are the three fixed same-origin schematic assets plus the fixed release token; no source or calculation metadata is included."
     },
     "web/assets/network-schematic.js": {
-      "sha256": "8838b517930b3cf7b5078fe4b2bd3f06d55e86ca5aed2d5659665de6dbfbd2bf",
-      "review": "Reviewed images and export links use local blob URLs; report popups open blank documents and embed locally generated content. Saved evidence uses localStorage; calculations use the browser worker."
+      "sha256": "8dca77375d90c16ece8c06dd4fe50e5d5fecd59d524085f535f89c9bc4b92eea",
+      "review": "Presentation review: diff changes standalone report CSS and chart font/background/hover defaults only. Print retains assessment basis. Same local blob image/download and blank report window paths; source bindings, worker calculations, storage and geometry unchanged."
     },
     "web/assets/runtime.js": {
       "sha256": "dce96793a3155e1be77ae4ec0be4ab3d6998e4460286336b1e326e4e9524655d",
       "review": "Legacy source is replaced by runtime.release.js during Pages build. Its historical CDN fetches download runtime resources only; no upload path. It is not the active release runtime."
     },
     "web/assets/runtime.release.js": {
-      "sha256": "5206bb2873fc2e442b1fc958783a594dadc72463cf04f8cd21ddc1493da9d0df",
-      "review": "Reviewed import/analysis paths use browser File buffers and worker messages only. The sole fetch retrieves the fixed local Plotly bundle for an embedded report. Blob links download locally."
+      "sha256": "8afd5404cffdb7d74fdbc632f1b75ee6d409c877e5352d64d9a0309862ea8e2e",
+      "review": "Presentation review: diff changes chart font/background/hover defaults and standalone report CSS only. Fixed same-origin Plotly bundle fetch, File buffers, worker calls, local blob downloads, report evidence and calculation inputs/results are unchanged. New chart helper has no network or state access."
     },
     "web/assets/workflow-26.js": {
       "sha256": "6c1cf992f3d5b410733258ee888c9b09576846695ea60b1a25c8bf783fb50c5c",

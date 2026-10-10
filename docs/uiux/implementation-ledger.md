@@ -10,3 +10,13 @@
 | 5 | Exports retain evidence and units | Print/report/accessibility/responsive finish | presentation/report CSS | Pending | No WCAG compliance claim without audit |
 | 6 | Exact baseline engineering outputs | Independent verification pass | test harness | Pending | Browser/latency/memory coverage |
 | 7 | Main remains live unchanged | Feature PR and same-host preview | existing Pages pattern | Pending | Served revision and production-byte verification |
+
+Chart/report pass: `design-system.js` provides fresh presentation-only layout
+objects; existing Plotly template, trace colours, coordinates, axes, native zoom,
+rangeslider suppression and uirevision remain intact. Export styles match the
+neutral palette; network print exposes assessment-basis evidence. Two approved
+network-capable source diffs were reviewed and their hashes/rationales updated;
+resource fetches and all local export paths remain unchanged. Local candidate:
+296 Python tests + 100 subtests pass (17.47 s); every JS unit suite passes.
+Browser acceptance remains pending. Preview-prefix regression was caught and
+fixed without weakening its existing test; added distinct-preview/path checks.
