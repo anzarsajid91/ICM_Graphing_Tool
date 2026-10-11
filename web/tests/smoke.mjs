@@ -1,4 +1,4 @@
-import {recordControls} from './uiux-evidence.mjs';
+import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {assertReportActionSpacing} from './report-layout.mjs';
@@ -20,6 +20,7 @@ const browser=await chromium.launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000},acceptDownloads:true,timezoneId:'Asia/Kolkata'});
 const privacy=installPrivacyGuard(context,baseUrl);
 const page=await context.newPage();
+await observeControls(page);
 const consoleErrors=[];
 const failedRequests=[];
 let stage='startup';

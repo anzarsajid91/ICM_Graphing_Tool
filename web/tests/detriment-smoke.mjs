@@ -1,4 +1,4 @@
-import {recordControls} from './uiux-evidence.mjs';
+import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {chromium} from 'playwright';
@@ -7,6 +7,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 const browser=await chromium.launch(browserLaunchOptions());
 const page=await browser.newPage({...browserContextOptions(),viewport:{width:1440,height:1000},acceptDownloads:true});
+await observeControls(page);
 const evidence=process.env.ICM_EVIDENCE_DIR||'/tmp/icm-detriment-evidence';
 await fs.mkdir(evidence,{recursive:true});
 const errors=[];page.on('pageerror',e=>errors.push(String(e)));

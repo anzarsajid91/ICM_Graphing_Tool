@@ -1,9 +1,10 @@
-import {recordControls} from './uiux-evidence.mjs';
+import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {chromium} from 'playwright';import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';import fs from 'node:fs/promises';import assert from 'node:assert/strict';
 const root=process.cwd(),baseUrl=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/',evidence=(process.env.ICM_EVIDENCE_DIR||'/tmp/icm-pr-evidence')+'/schematic-weekly-review';await fs.mkdir(evidence,{recursive:true});
 const browser=await chromium.launch(browserLaunchOptions());
-const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true,...browserContextOptions()});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true,...browserContextOptions()});const page=await context.newPage();
+await observeControls(page);const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
 const privacy=installPrivacyGuard(context,baseUrl);
 try{
  await page.goto(baseUrl,{waitUntil:'domcontentloaded'});

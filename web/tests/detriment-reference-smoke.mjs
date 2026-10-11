@@ -1,4 +1,4 @@
-import {recordControls} from './uiux-evidence.mjs';
+import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
@@ -14,6 +14,7 @@ await fs.mkdir(evidence,{recursive:true});
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browser=await chromium.launch(browserLaunchOptions());
 const page=await browser.newPage({viewport:{width:1440,height:1000},acceptDownloads:true});
+await observeControls(page);
 const errors=[];page.on('pageerror',e=>errors.push(String(e)));
 const field=key=>page.locator('#dtForm [data-key="'+key+'"]');
 const route=kind=>page.evaluate(k=>window.__ICM_PRECISION_WORKBENCH__.navigate('detriment',k,true),kind);

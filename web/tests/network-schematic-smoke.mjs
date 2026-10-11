@@ -1,4 +1,4 @@
-import {recordControls} from './uiux-evidence.mjs';
+import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {chromium,firefox} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const name=process.env.ICM_BROWSER||'chromium',browser=await (name==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 const page=await browser.newPage({...browserContextOptions(),viewport:{width:1600,height:1050},acceptDownloads:true});
+await observeControls(page);
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const evidence=process.env.ICM_EVIDENCE_DIR||'/tmp/hydra-network-evidence';await fs.mkdir(evidence,{recursive:true});
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
