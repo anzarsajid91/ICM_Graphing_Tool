@@ -21,6 +21,7 @@ export async function recordControls(page,directory,state){
 // Capture intermediate synthetic popovers, busy controls and conditional panels in tested journeys.
 // Never loaded by the product; bounded and deduplicated; does not alter app state or handlers.
 export async function observeControls(page){
+ if(process.env.ICM_UIUX_OBSERVE==='0')return;
  await page.addInitScript(()=>{
   const records=new Map();let timer;
   const capture=()=>{
