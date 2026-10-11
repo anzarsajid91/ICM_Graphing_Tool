@@ -23,7 +23,7 @@
       <input id="folderInput" type="file" webkitdirectory multiple hidden />
       <div class="dropzone" id="dropzone"><strong>Drop survey files or a folder here</strong><span>Recognised data: .CSV, .FDV, .R · survey association: fm_rg_assoc.xlsx</span></div>
       <div class="pool-summary" id="poolSummary">No files loaded.</div>
-      <div class="table-wrap"><table class="data-table"><thead><tr><th>File</th><th>Format</th><th>Rows</th><th>Period</th><th>Audit</th><th>Status</th><th class="source-remove-head" aria-label="Remove source"></th></tr></thead><tbody id="poolBody"></tbody></table></div>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Source files table"><table class="data-table"><thead><tr><th>File</th><th>Format</th><th>Rows</th><th>Period</th><th>Audit</th><th>Status</th><th class="source-remove-head" aria-label="Remove source"></th></tr></thead><tbody id="poolBody"></tbody></table></div>
     </section>
 
     <section class="panel mapping-panel">
@@ -105,7 +105,7 @@
 
         <section class="subpanel" id="scenarioComparisonTable">
           <div class="subhead"><div><h3>Scenario comparison</h3><p class="appearance-hint">Detailed observed-versus-modelled calibration statistics for each selected model scenario.</p></div></div>
-          <div class="table-wrap"><table class="data-table"><thead><tr><th>Scenario</th><th>Pairs</th><th>Observed mean</th><th>Modelled mean</th><th>Observed peak</th><th>Modelled peak</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Valid support</th></tr></thead><tbody id="scenarioBody"></tbody></table></div>
+          <div class="table-wrap" id="scenarioComparisonScroll" tabindex="0" role="region" aria-label="Scenario comparison table"><table class="data-table"><thead><tr><th>Scenario</th><th>Pairs</th><th>Observed mean</th><th>Modelled mean</th><th>Observed peak</th><th>Modelled peak</th><th>Pearson r</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Valid support</th></tr></thead><tbody id="scenarioBody"></tbody></table></div>
         </section>
 
         <div class="subpanel"><div class="subhead"><div><h3>Depth / level agreement and flow–depth rating diagnostics</h3><p class="appearance-hint">For agreement, select like-for-like vertical quantities: Depth ↔ Depth or absolute Level ↔ absolute Level. Depth and absolute Level are not interchangeable. Add the corresponding flow channels to fit empirical hydraulic Q = aHᵇ rating curves.</p></div><button class="btn" id="runRatingBtn">Fit selected diagnostic</button></div>
@@ -142,15 +142,15 @@
           <label class="check-label"><input id="showEventOverlay" type="checkbox" checked />Show event bands/labels on graph</label>
         </div>
         <div id="rainEventSummary"></div>
-        <div class="table-wrap"><table class="data-table"><thead><tr><th>Event</th><th>Start</th><th>End</th><th>Duration min</th><th>Total depth mm</th><th>Peak intensity</th><th>Intensity streak min</th></tr></thead><tbody id="rainEventBody"></tbody></table></div>
-        <h3>Hydraulic response for selected observed / first model scenario</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Event</th><th>Rain start</th><th>Rain depth</th><th>Obs baseline</th><th>Obs uplift</th><th>Model uplift</th><th>Uplift error %</th><th>Peak lag min</th></tr></thead><tbody id="eventResponseBody"></tbody></table></div>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Rainfall events table"><table class="data-table"><thead><tr><th>Event</th><th>Start</th><th>End</th><th>Duration min</th><th>Total depth mm</th><th>Peak intensity</th><th>Intensity streak min</th></tr></thead><tbody id="rainEventBody"></tbody></table></div>
+        <h3>Hydraulic response for selected observed / first model scenario</h3><div class="table-wrap" tabindex="0" role="region" aria-label="Hydraulic event response table"><table class="data-table"><thead><tr><th>Event</th><th>Rain start</th><th>Rain depth</th><th>Obs baseline</th><th>Obs uplift</th><th>Model uplift</th><th>Uplift error %</th><th>Peak lag min</th></tr></thead><tbody id="eventResponseBody"></tbody></table></div>
       </div>
     </section>
 
     <section class="tab-panel" id="tab-data-health">
       <div class="panel">
         <div class="panel-head"><div><h2>Flow-survey data assessment</h2><p>Fast source QA plus professional rainfall-response assessment derived from the Flow-Survey-Assessment-Tools workflow.</p></div><button class="btn primary" id="runHealthBtn">Assess all source files</button></div>
-        <div class="table-wrap"><table class="data-table"><thead><tr><th>File</th><th>Week ending</th><th>Channel</th><th>Coverage %</th><th>Min</th><th>Mean</th><th>Max</th><th>Zero %</th><th>Flatline h</th><th>Out of range</th><th>Large gaps</th><th>RAG</th><th>Comment</th></tr></thead><tbody id="healthBody"></tbody></table></div>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Weekly data health table"><table class="data-table"><thead><tr><th>File</th><th>Week ending</th><th>Channel</th><th>Coverage %</th><th>Min</th><th>Mean</th><th>Max</th><th>Zero %</th><th>Flatline h</th><th>Out of range</th><th>Large gaps</th><th>RAG</th><th>Comment</th></tr></thead><tbody id="healthBody"></tbody></table></div>
 
         <div class="subpanel survey-professional">
           <div class="subhead">
@@ -172,13 +172,13 @@
           <div id="professionalSurveySummary"></div>
 
           <h3>Rain-gauge status and fault evidence</h3>
-          <div class="table-wrap"><table class="data-table survey-table"><thead><tr><th>Gauge</th><th>Operational coverage</th><th>Event strikes</th><th>Daily strikes</th><th>Dynamic status</th><th>First fault</th><th>Recovery</th><th>Suggested cutoff</th><th>RAG</th></tr></thead><tbody id="professionalGaugeBody"></tbody></table></div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Rainfall gauge health table"><table class="data-table survey-table"><thead><tr><th>Gauge</th><th>Operational coverage</th><th>Event strikes</th><th>Daily strikes</th><th>Dynamic status</th><th>First fault</th><th>Recovery</th><th>Suggested cutoff</th><th>RAG</th></tr></thead><tbody id="professionalGaugeBody"></tbody></table></div>
 
           <h3>Network WAPUG candidate events</h3>
-          <div class="table-wrap"><table class="data-table survey-table"><thead><tr><th>Event</th><th>Start</th><th>End</th><th>Duration min</th><th>Operational gauges</th><th>Mean depth mm</th><th>Spatial CV %</th><th>Network qualified</th></tr></thead><tbody id="professionalRainEventBody"></tbody></table></div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Professional rainfall events table"><table class="data-table survey-table"><thead><tr><th>Event</th><th>Start</th><th>End</th><th>Duration min</th><th>Operational gauges</th><th>Mean depth mm</th><th>Spatial CV %</th><th>Network qualified</th></tr></thead><tbody id="professionalRainEventBody"></tbody></table></div>
 
           <h3>Weekly monitor performance</h3>
-          <div class="table-wrap"><table class="data-table survey-table wide"><thead><tr><th>Week ending</th><th>Rain mm</th><th>WAPUG</th><th>IW suitable</th><th>Depth cov %</th><th>D corr</th><th>D lag min</th><th>D linked</th><th>D score</th><th>V corr</th><th>V lag min</th><th>V linked</th><th>V score</th><th>Q linked</th><th>Q score</th><th>RAG</th><th>Decision path</th></tr></thead><tbody id="professionalWeeklyBody"></tbody></table></div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Weekly survey evidence table"><table class="data-table survey-table wide"><thead><tr><th>Week ending</th><th>Rain mm</th><th>WAPUG</th><th>IW suitable</th><th>Depth cov %</th><th>D corr</th><th>D lag min</th><th>D linked</th><th>D score</th><th>V corr</th><th>V lag min</th><th>V linked</th><th>V score</th><th>Q linked</th><th>Q score</th><th>RAG</th><th>Decision path</th></tr></thead><tbody id="professionalWeeklyBody"></tbody></table></div>
 
           <details class="survey-method"><summary>Assessment method and thresholds</summary><div id="professionalSurveyMethod" class="method-grid"></div></details>
         </div>
@@ -192,7 +192,7 @@
         <div class="subpanel"><div class="subhead"><h3>Exclusion periods</h3><button class="btn" id="addExclusionBtn">Add period</button></div><div id="exclusionRows"></div></div>
         <div class="two-col"><div><h3>Observed</h3><div id="obsSpillSummary"></div><div id="obsMonthly"></div></div><div><h3>Modelled</h3><div id="modelSpillSummary"></div><div id="modelMonthly"></div></div></div>
         <h3>Observed vs modelled comparison</h3><div id="spillComparison"></div>
-        <h3>Physical spill intervals</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Dataset</th><th>Start</th><th>End</th><th>Duration hr</th></tr></thead><tbody id="eventBody"></tbody></table></div>
+        <h3>Physical spill intervals</h3><div class="table-wrap" tabindex="0" role="region" aria-label="Physical spill intervals table"><table class="data-table"><thead><tr><th>Dataset</th><th>Start</th><th>End</th><th>Duration hr</th></tr></thead><tbody id="eventBody"></tbody></table></div>
       </div>
     </section>
 
@@ -205,7 +205,7 @@
         <h3>Monthly modelled spill volume</h3><div id="monthlyVolume"></div>
         <h3>Calendar-year discharge volume</h3><div id="storageCalendarVolume"></div>
         <p class="privacy-note">Calendar totals split physical discharge at 1 January. Episode volumes and counts retain their counting-year attribution, so an episode crossing New Year can appear in a different year from part of its discharge.</p>
-        <h3>Counting episodes</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Episode year</th><th>Episode</th><th>Start</th><th>End</th><th>Volume m³</th><th>Discharge coverage</th><th>Status</th><th>Physical discharges</th><th>12/24 count</th></tr></thead><tbody id="storageBody"></tbody></table></div>
+        <h3>Counting episodes</h3><div class="table-wrap" id="storageEpisodesScroll" tabindex="0" role="region" aria-label="Storage counting episodes table"><table class="data-table"><thead><tr><th>Episode year</th><th>Episode</th><th>Start</th><th>End</th><th>Volume m³</th><th>Discharge coverage</th><th>Status</th><th>Physical discharges</th><th>12/24 count</th></tr></thead><tbody id="storageBody"></tbody></table></div>
       </div>
     </section>
 

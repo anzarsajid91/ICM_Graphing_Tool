@@ -12,6 +12,19 @@ try{
  await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__));
  const fonts=await page.evaluate(async()=>{const loaded=[];for(const weight of [400,500,600]){const faces=await document.fonts.load(weight+' 14px Inter','Hydra Bench 0123456789');loaded.push(faces.some(f=>f.family.replaceAll('"','')==='Inter'&&f.status==='loaded'));}return {loaded,family:getComputedStyle(document.body).fontFamily,numeric:getComputedStyle(document.body).fontVariantNumeric};});
  assert.deepEqual(fonts.loaded,[true,true,true],'Bundled Inter loaded at all three weights');assert.match(fonts.family,/Inter/);assert.equal(fonts.numeric,'tabular-nums');
+ // Owner styles load after the shared typography rules. Verify the rendered
+ // cascade, including lazy network controls and the assessment paste field.
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('spills','network',false));
+ await page.waitForSelector('#nsSvg');
+ const networkWeights=await page.locator('#nsWorkbench button').evaluateAll(buttons=>buttons.map(button=>getComputedStyle(button).fontWeight));
+ assert.ok(networkWeights.length>0,'Network toolbar is present');
+ assert.ok(networkWeights.every(weight=>weight==='600'),'Every network button uses requested weight 600');
+ assert.match(await page.locator('#dtPasteGrid').evaluate(el=>getComputedStyle(el).fontFamily),/Inter/,'Assessment paste field uses the single requested typeface');
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','monthly-review',false));
+ assert.equal(await page.locator('#runCompleteSurveyBtn').textContent(),'Run flow survey assessment');
+ assert.equal(await page.locator('#surveyMonthlyReviewBtn').textContent(),'Monthly review');
+ assert.equal(await page.locator('#surveyMonthlyPdfBtn').textContent(),'Export monthly PDF');
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
  await page.evaluate(()=>window.HydraDesign.prepareReportFont());
  const offline=await context.newPage();await context.setOffline(true);
  try{await offline.setContent(await page.evaluate(()=>reportShell('Synthetic font export','Offline typography','<p>0123456789 · hydraulic units</p>')));assert.equal(await offline.evaluate(async()=>{await document.fonts.load('400 14px Inter');return [...document.fonts].some(f=>f.family==='Inter'&&f.status==='loaded');}),true,'Portable local report retains Inter offline');}finally{await context.setOffline(false);await offline.close();}
@@ -63,6 +76,19 @@ try{
  const luminance=hex=>{const v=hex.replace('#','').match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4);return .2126*v[0]+.7152*v[1]+.0722*v[2];};
  const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
  for(const surface of ['surface','soft']){assert.ok(contrast(tokenColours.text,tokenColours[surface])>=4.5);assert.ok(contrast(tokenColours.muted,tokenColours[surface])>=4.5);assert.ok(contrast(tokenColours['control-border'],tokenColours[surface])>=3);assert.ok(contrast(tokenColours.focus,tokenColours[surface])>=3);}
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
+ for(const selector of ['#dropzone > span','#graphStatistics > .v2-empty','.w26-section-head p']){
+  assert.equal(await page.locator(selector).first().evaluate(el=>getComputedStyle(el).color),'rgb(98, 102, 96)','Helper text uses the reviewed contrast token');
+ }
+ for(const [workspace,route,id] of [['graphs','comparison','scenarioComparisonScroll'],['spills','storage','storageEpisodesScroll']]){
+  await page.evaluate(([workspace,route])=>window.__ICM_PRECISION_WORKBENCH__.navigate(workspace,route,false),[workspace,route]);
+  const region=page.locator('#'+id);
+  assert.equal(await region.getAttribute('tabindex'),'0');
+  await region.evaluate(el=>{el.focus();el.scrollLeft=0;});
+  assert.equal(await region.evaluate(el=>document.activeElement===el),true,'Wide evidence table accepts keyboard focus');
+  await region.press('ArrowRight');
+  await page.waitForFunction(id=>document.getElementById(id).scrollLeft>0,id);
+ }
  assert.deepEqual(errors,[]);privacy.assertClean();
  console.log('UIUX contracts passed: inspector, mobile focus, keyboard pill, reduced motion, governed token contrast.');
 }finally{await browser.close();}

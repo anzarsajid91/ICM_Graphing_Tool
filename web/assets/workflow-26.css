@@ -48,7 +48,7 @@
 .w26-detail-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:16px;margin-top:16px}
 .w26-detail-grid>section{min-width:0;padding:12px;border:1px solid #e8ebee;border-radius:10px}
 .w26-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:4px 0 12px}
-.w26-section-head h4,.w26-section-head h5{margin:0 0 4px}.w26-section-head p{margin:0;color:#78828c;font-size:12px}
+.w26-section-head h4,.w26-section-head h5{margin:0 0 4px}.w26-section-head p{margin:0;color:var(--hb-muted);font-size:12px}
 .w26-review-form{display:grid;gap:8px}.w26-review-form label{display:grid;gap:4px;font-size:12px;font-weight:500}
 .w26-review-form input,.w26-review-form select,.w26-review-form textarea{width:100%}
 .w26-review-reason{grid-column:1/-1}.w26-review-meta{font-size:11px;color:var(--hb-muted)}.w26-review-error{min-height:16px;color:#a42831;font-size:12px}

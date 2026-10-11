@@ -129,7 +129,7 @@
       'data-health': {
         label: 'Flow Survey · FDV Check',
         description: 'Assess flow-survey completeness, response and network context using the survey association workbook where supplied.',
-        tools: ['fm_rg_assoc', 'Data health', 'FSAT Event Response', 'Flow continuity / volume balance'],
+        tools: ['fm_rg_assoc', 'Data health', 'FSAT event response', 'Flow continuity / volume balance'],
       },
       'rain-events': {
         label: 'Flow Survey · Rainfall Check',
@@ -223,11 +223,11 @@
       '<p>Runs the mapped network rainfall qualification and FSAT-derived weekly monitor assessment across the survey, then applies the workbook diameter to Event Response criteria.</p></div>' +
       '<button class="btn" id="runCompleteSurveyBtn" type="button">Run complete survey assessment</button></div>' +
       '<div class="survey-control-grid">' +
-      '<label>Volume-balance Amber tolerance (%)<input id="surveyBalanceTolerance" type="number" min="0" max="50" step="1" value="10"></label>' +
+      '<label>Volume-balance amber tolerance (%)<input id="surveyBalanceTolerance" type="number" min="0" max="50" step="1" value="10"></label>' +
       '<div class="survey-control-note">Analysis start/end and maximum gap use the shared workbench controls. Exclusions remain scoped: Observed / EDM applies to survey hydraulics; Rainfall applies to .R data. Antecedent source data remains available to Event Response diagnostics.</div></div>' +
       '<div id="completeSurveyStatus" class="pool-summary">Load survey files and fm_rg_assoc.xlsx to begin.</div>' +
       '<div id="completeSurveySummary"></div><div id="completeSurveyMonitors"></div>' +
-      '<h3>FSAT Event Response</h3><div id="surveyEventResponse"></div>';
+      '<h3>FSAT event response</h3><div id="surveyEventResponse"></div>';
     association.insertAdjacentElement('afterend', full);
 
     const balance = document.createElement('div');

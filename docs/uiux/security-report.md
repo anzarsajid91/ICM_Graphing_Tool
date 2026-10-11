@@ -1,5 +1,11 @@
 # Confidentiality verification
 
+Current release status (11 October 2026): PR76 is merged as `65b0be8` and v1.063 is live.
+Final candidate `11fba20` passed review, performance and isolated-preview gates;
+production deployment and exact-revision live verification passed.
+See [current requirements audit](2026-10-11-requirements-audit.md).
+Older candidate/pending statements below are historical checkpoints, not current blockers.
+
 Scope: presentation changes on `feat/unified-premium-uiux`. Canonical Python,
 analysis worker, FastPath worker, domain registry, source bytes and persistence
 schemas are unchanged from main `dff8ff593e61dbfea142007b5ac32b0d66787f0a`.

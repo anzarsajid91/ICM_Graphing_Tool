@@ -530,8 +530,8 @@
           '<label class="w26-review-reason">Engineering reason<textarea class="w26-review-reason-input" rows="3" placeholder="Required when the reviewed assessment differs from the calculated result.">'+esc(review?.reason || '')+'</textarea></label>'+
           '<div class="w26-review-meta">'+(review ? 'Last reviewed '+esc(new Date(review.reviewed_at).toLocaleString())+' · calculated at review '+esc(review.calculated_status_at_review) : 'No engineer review recorded.')+'</div>'+
           '<div class="w26-review-error" role="alert"></div>'+
-          '<div class="actions left"><button type="button" class="btn" data-w26-review-apply>Apply Engineer Review</button>'+
-          (review ? '<button type="button" class="btn" data-w26-review-revert>Revert to Calculated</button>' : '')+'</div>'+
+          '<div class="actions left"><button type="button" class="btn" data-w26-review-apply>Apply engineer review</button>'+
+          (review ? '<button type="button" class="btn" data-w26-review-revert>Revert to calculated</button>' : '')+'</div>'+
         '</div>'+
       '</div>';
   }
@@ -579,7 +579,7 @@
     if(!name)return '<div class="w26-drawer-empty"><strong>Select a matrix cell or schematic node.</strong><p>The selected week’s evidence and engineer review remain here while you move through the survey.</p></div>';
     const rows=weekRows(kind,name),row=rows.find(r=>weekKey(name,r)===survey.reviewContext.weekKey)||rows.find(r=>weekValue(r)===survey.schematicWeek)||rows[0];if(!row)return '<div class="w26-drawer-empty">No weekly evidence for '+esc(name)+'.</div>';
     const state=reviewedWeekState(kind,name,row),tab=survey.reviewContext.drawerTab||'overview',monitor=kind==='monitor-week'?monitorByName(name):null,gauge=kind==='gauge-week'?gaugeByName(name):null;
-    const tabs=['overview','evidence','weekly','audit'].map(value=>'<button type="button" data-drawer-tab="'+value+'" class="'+(tab===value?'is-active':'')+'">'+(value==='audit'?'Edit / Audit':value.charAt(0).toUpperCase()+value.slice(1))+'</button>').join('');
+    const tabs=['overview','evidence','weekly','audit'].map(value=>'<button type="button" data-drawer-tab="'+value+'" class="'+(tab===value?'is-active':'')+'">'+(value==='audit'?'Edit / audit':value.charAt(0).toUpperCase()+value.slice(1))+'</button>').join('');
     let body='';
     if(tab==='overview')body='<div class="w26-drawer-status"><span>Calculated '+ragPill(state.calculated)+'</span><span>Reported '+ragPill(state.reviewed)+'</span></div><dl class="weekly-evidence"><dt>Week ending</dt><dd>'+esc(weekLabel(weekValue(row)))+'</dd><dt>Reviewer</dt><dd>'+esc(state.review?.reviewer||'Not reviewed')+'</dd><dt>Review state</dt><dd>'+esc(state.historical_review?'Needs reconfirmation':state.review?'Current':'Calculated only')+'</dd></dl>'+(monitor?'<div class="pool-summary">Rain gauge '+esc(monitor.rain_gauge||'—')+' · pipe diameter '+(monitor.diameter_mm==null?'—':fmt(monitor.diameter_mm,0)+' mm')+'</div>':'')+(gauge?'<div class="pool-summary">Operational coverage '+fmt(gauge.operational_coverage_percent,1)+'% · '+Number(gauge.event_strike_count||0)+' event strike(s).</div>':'');
     else if(tab==='evidence')body=scalarEvidence(row)+(monitor?'<details class="w26-technical-evidence" open><summary>Event response evidence</summary>'+monitorEventEvidence(monitor)+'</details>':'')+(gauge?'<details class="w26-technical-evidence" open><summary>Gauge evidence</summary>'+scalarEvidence(gauge)+'</details>':'');
@@ -765,24 +765,24 @@
     header.id = 'surveyReviewHeader';
     header.className = 'w26-survey-header';
     header.innerHTML =
-      '<div class="w26-survey-title-row"><div><span class="w26-eyebrow">Flow Survey</span><h3>Assessment review</h3><p>Select a monitor or gauge, review its week, and record your rating and comment.</p></div><div class="w26-header-actions" id="surveyReviewActions"></div></div>' +
+      '<div class="w26-survey-title-row"><div><span class="w26-eyebrow">Flow survey</span><h3>Assessment review</h3><p>Select a monitor or gauge, review its week, and record your rating and comment.</p></div><div class="w26-header-actions" id="surveyReviewActions"></div></div>' +
       '<div class="w26-readiness" id="surveyReviewReadiness"></div>' +
       '<details class="w26-assessment-settings" id="surveyAssessmentSettings"><summary>Assessment settings &amp; methodology</summary><div class="w26-settings-grid" id="surveyAssessmentSettingsBody"></div></details>' +
-      '<details class="w26-monthly-review" id="surveyMonthlyReview"><summary><span>Monthly Review</span><small>Survey synthesis and engineering actions</small></summary><div id="surveyMonthlyReviewBody"></div></details>';
+      '<details class="w26-monthly-review" id="surveyMonthlyReview"><summary><span>Monthly review</span><small>Survey synthesis and engineering actions</small></summary><div id="surveyMonthlyReviewBody"></div></details>';
     panel.prepend(header);
 
     const actions = $('surveyReviewActions');
     const run = $('runCompleteSurveyBtn');
     if (run) {
       run.classList.add('primary');
-      run.textContent = 'Run Flow Survey Assessment';
+      run.textContent = 'Run flow survey assessment';
       actions.appendChild(run);
     }
     const monthlyButton = document.createElement('button');
     monthlyButton.type = 'button';
     monthlyButton.className = 'btn';
     monthlyButton.id = 'surveyMonthlyReviewBtn';
-    monthlyButton.textContent = 'Monthly Review';
+    monthlyButton.textContent = 'Monthly review';
     monthlyButton.addEventListener('click', () => {
 
       window.__ICM_PRECISION_WORKBENCH__?.navigate('survey','monthly-review',true);
@@ -798,7 +798,7 @@
     pdfButton.type = 'button';
     pdfButton.className = 'btn';
     pdfButton.id = 'surveyMonthlyPdfBtn';
-    pdfButton.textContent = 'Export Monthly PDF';
+    pdfButton.textContent = 'Export monthly PDF';
     pdfButton.title = 'Opens the browser print dialog with an A4 monthly assessment; choose Save as PDF.';
     pdfButton.addEventListener('click', async () => {
       try {
@@ -854,7 +854,7 @@
         const evidence = document.createElement('details');
         evidence.id = 'surveyAllEventEvidence';
         evidence.className = 'w26-technical-evidence';
-        evidence.innerHTML = '<summary>All-monitor Event Response evidence</summary>';
+        evidence.innerHTML = '<summary>All-monitor event response evidence</summary>';
         if (oldTitle?.matches('h3')) oldTitle.remove();
         eventTarget.insertAdjacentElement('beforebegin', evidence);
         evidence.appendChild(eventTarget);
@@ -865,10 +865,10 @@
     rainfall.id = 'surveyRainfallReview';
     rainfall.className = 'subpanel w26-rainfall-review';
     rainfall.innerHTML =
-      '<div class="subhead"><div><h3>Rainfall Review</h3><p>Flow Survey network rainfall assessment. This is separate from the standalone Data / Time Series WAPUG overlay.</p></div></div>' +
+      '<div class="subhead"><div><h3>Rainfall review</h3><p>Flow Survey network rainfall assessment. This is separate from the standalone Data / Time Series WAPUG overlay.</p></div></div>' +
       '<div id="surveyRainfallSummary"></div>' +
-      '<div class="w26-review-section"><div class="w26-section-head"><div><h4>Gauge Review</h4><p>Operational support and fault evidence.</p></div></div><div id="surveyGaugeReview"></div><div id="surveyGaugeDetail" class="w26-monitor-detail"></div></div>' +
-      '<div class="w26-review-section"><div class="w26-section-head"><div><h4>Event Review</h4><p>Candidate events and network WAPUG qualification.</p></div></div><div id="surveyEventReview"></div></div>' +
+      '<div class="w26-review-section"><div class="w26-section-head"><div><h4>Gauge review</h4><p>Operational support and fault evidence.</p></div></div><div id="surveyGaugeReview"></div><div id="surveyGaugeDetail" class="w26-monitor-detail"></div></div>' +
+      '<div class="w26-review-section"><div class="w26-section-head"><div><h4>Event review</h4><p>Candidate events and network WAPUG qualification.</p></div></div><div id="surveyEventReview"></div></div>' +
       '<details class="w26-technical-evidence" id="surveyRainfallTechnical"><summary>Technical / single-monitor evidence</summary></details>';
     const balance = $('surveyBalancePanel');
     if (balance) balance.insertAdjacentElement('beforebegin', rainfall);
@@ -1063,7 +1063,7 @@
     if (!target) return;
     const monitors = survey.batch?.monitors || [];
     if (!monitors.length) {
-      target.innerHTML = '<div class="pool-summary">Run Flow Survey Assessment to populate monitor review.</div>';
+      target.innerHTML = '<div class="pool-summary">Run flow survey assessment to populate monitor review.</div>';
       renderMonitorDetail();
       return;
     }
@@ -1096,7 +1096,7 @@
         '<td>'+ragPill(state.calculated)+'</td>'+
         '<td>'+reviewText+'</td>'+
         '<td>'+commentText+'</td>'+
-        '<td><button type="button" class="btn quiet w26-review-button" data-w26-monitor="'+esc(monitor.monitor)+'">Details / Review</button></td>'+
+        '<td><button type="button" class="btn quiet w26-review-button" data-w26-monitor="'+esc(monitor.monitor)+'">Details / review</button></td>'+
         '</tr>';
     }).join('');
     target.innerHTML =
@@ -1126,7 +1126,7 @@
     if (!summary || !gaugesTarget || !eventsTarget) return;
     const network = survey.batch?.network;
     if (!network) {
-      summary.innerHTML = '<div class="pool-summary">Run Flow Survey Assessment to calculate the network rainfall review.</div>';
+      summary.innerHTML = '<div class="pool-summary">Run flow survey assessment to calculate the network rainfall review.</div>';
       gaugesTarget.innerHTML = '';
       eventsTarget.innerHTML = '';
       renderGaugeDetail();
@@ -1162,7 +1162,7 @@
             '<td>'+Number(row.event_strike_count || 0)+'</td><td>'+esc(row.current_dynamic_status || '—')+'</td>'+
             '<td>'+esc(row.suggested_fault_cutoff ? 'Suggested cutoff '+row.suggested_fault_cutoff : row.recovery_date ? 'Recovered '+row.recovery_date : 'No cutoff evidence')+'</td>'+
             '<td>'+ragPill(state.calculated)+'</td><td>'+reviewed+'</td>'+
-            '<td><button type="button" class="btn quiet w26-review-button" data-w26-gauge="'+esc(row.gauge)+'">Details / Review</button></td></tr>';
+            '<td><button type="button" class="btn quiet w26-review-button" data-w26-gauge="'+esc(row.gauge)+'">Details / review</button></td></tr>';
         }).join('')+'</tbody></table></div>'
       : '<div class="pool-summary">No assessable rain gauges.</div>';
     eventsTarget.innerHTML = candidates.length
@@ -1207,7 +1207,7 @@
         return '<tr><td>'+esc(row.week_ending || '—')+'</td><td><strong>'+esc(path)+'</strong></td>'+
           '<td>'+ragPill(state.calculated)+'</td><td>'+reviewed+'</td>'+
           '<td>'+esc(row.recommendation || row.likely_source || '—')+'</td>'+
-          '<td><button type="button" class="btn quiet w26-review-button" data-w26-balance="'+esc(key)+'">Details / Review</button></td></tr>';
+          '<td><button type="button" class="btn quiet w26-review-button" data-w26-balance="'+esc(key)+'">Details / review</button></td></tr>';
       }).join('')+'</tbody></table></div>';
     if (!survey.selectedBalanceKey || !balanceRowByKey(survey.selectedBalanceKey)) {
       survey.selectedBalanceKey = balanceRowKey(rows[0]);
@@ -1297,7 +1297,7 @@
     const root = $('surveyMonthlyReviewBody');
     if (!root) return;
     if (!survey.batch) {
-      root.innerHTML = '<div class="pool-summary">Monthly Review becomes available after Flow Survey Assessment is run.</div>';
+      root.innerHTML = '<div class="pool-summary">Monthly review becomes available after Flow Survey Assessment is run.</div>';
       return;
     }
     const monitorCounts = {Green:0,Amber:0,Red:0,Grey:0};
@@ -1366,7 +1366,7 @@
   }
 
   function monthlyReportHtml() {
-    if (!survey.batch) throw new Error('Run Flow Survey Assessment before exporting the monthly report.');
+    if (!survey.batch) throw new Error('Run flow survey assessment before exporting the monthly report.');
     if (!surveyFresh('complete')) throw new Error('Flow Survey results are stale. Re-run the assessment before exporting the monthly PDF.');
     if (survey.balance && !surveyFresh('balance')) throw new Error('Volume-balance results are stale. Recalculate before exporting the monthly PDF.');
 
@@ -1452,9 +1452,9 @@
       '<h2>Audit note</h2><p class="muted">This monthly output is intended as a concise engineering hand-off. Detailed weekly calculations, Event Response evidence, raw gauge evidence, exclusions and source provenance remain available in the workbench/full HTML report.</p>';
 
     if (typeof reportShell === 'function') {
-      return reportShell('Hydra Bench — Monthly Flow Survey Assessment', surveyPeriodText(), body, true).replace('</head>','<style>@media print{.table-wrap{break-inside:auto;overflow:visible;border-radius:0}thead{display:table-header-group}tr{break-inside:avoid}h2,h3{break-after:avoid}table{min-width:0}th,td{font-size:9px;padding:4px 6px}.report-header{margin-bottom:12px}.note{margin-bottom:12px}}</style></head>');
+      return reportShell('Hydra Bench — Monthly flow survey assessment', surveyPeriodText(), body, true).replace('</head>','<style>@media print{.table-wrap{break-inside:auto;overflow:visible;border-radius:0}thead{display:table-header-group}tr{break-inside:avoid}h2,h3{break-after:avoid}table{min-width:0}th,td{font-size:9px;padding:4px 6px}.report-header{margin-bottom:12px}.note{margin-bottom:12px}}</style></head>');
     }
-    return '<!doctype html><html><head><meta charset="utf-8"><title>Monthly Flow Survey Assessment</title></head><body>'+body+'</body></html>';
+    return '<!doctype html><html><head><meta charset="utf-8"><title>Monthly flow survey assessment</title></head><body>'+body+'</body></html>';
   }
 
   async function exportMonthlyPdf() {

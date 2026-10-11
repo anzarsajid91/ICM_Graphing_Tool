@@ -235,6 +235,8 @@ jobs:
           fi
       - name: Verify cold-start shell
         run: node web/tests/cold-start-shell.mjs
+      - name: Verify shared design and typography contracts
+        run: node web/tests/uiux-contracts.mjs
       - name: Verify detriment workspace
         run: node web/tests/detriment-smoke.mjs
       - name: Verify detriment reference cases

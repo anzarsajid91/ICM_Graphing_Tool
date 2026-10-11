@@ -232,7 +232,7 @@ function ensureDataHealthSurface(){
   section.classList.add('pw-data-health-summary');
   const head=qs('.pw-surface-head',section),run=$('runHealthBtn');if(run){run.classList.remove('primary');run.textContent='Run data health assessment';head.appendChild(run);}
   const empty=document.createElement('div');empty.id='pwHealthSummaryEmpty';empty.className='pw-empty-state';empty.textContent='Run data health to review source coverage and quality.';
-  const wrap=document.createElement('div');wrap.className='table-wrap pw-summary-table-wrap';wrap.innerHTML='<table class="data-table pw-summary-table"><thead><tr><th>Monitor / source</th><th>Minimum coverage</th><th>Finding severity</th><th>Affected quantity</th><th>Next action</th></tr></thead><tbody id="pwHealthSummaryBody"></tbody></table>';
+  const wrap=document.createElement('div');wrap.className='table-wrap pw-summary-table-wrap';wrap.tabIndex=0;wrap.setAttribute('role','region');wrap.setAttribute('aria-label','Flow survey health summary table');wrap.innerHTML='<table class="data-table pw-summary-table"><thead><tr><th>Monitor / source</th><th>Minimum coverage</th><th>Finding severity</th><th>Affected quantity</th><th>Next action</th></tr></thead><tbody id="pwHealthSummaryBody"></tbody></table>';
   const details=document.createElement('details');details.id='pwDataHealthDetails';details.className='pw-evidence-details';details.innerHTML='<summary>Channel / week evidence</summary><p>Full native assessment records remain available for audit and export.</p>';
   details.appendChild(raw);section.append(empty,wrap,details);host.prepend(section);
   new MutationObserver(refreshHealthSummary).observe(body,{childList:true,subtree:true});refreshHealthSummary();
