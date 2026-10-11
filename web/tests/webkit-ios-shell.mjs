@@ -33,9 +33,9 @@ try{
   assert.match(initial.title,/Hydra Bench/);
   assert.equal(initial.deferred,true,'iOS should defer the heavyweight Python runtime until data is actually needed');
   assert.equal(initial.status,'idle');
-  assert.match(initial.body,/Data \/ Time Series/);
-  assert.match(initial.body,/Flow Survey/);
-  assert.match(initial.body,/Detriment Assessment/);
+  assert.match(initial.body,/Data \/ time series/);
+  assert.match(initial.body,/Flow survey/);
+  assert.match(initial.body,/Detriment assessment/);
 
   for(const [route,tab] of [['data','time-series'],['spills','spill-assessment'],['survey','fdv-check'],['detriment','flooding'],['graphs','scatter'],['reports','report-generation']]){
     await page.evaluate(([r,t])=>window.__ICM_PRECISION_WORKBENCH__.navigate(r,t,false),[route,tab]);

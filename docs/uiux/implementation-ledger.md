@@ -77,3 +77,5 @@ Local product commits: `69fd15e` (references/Inter), `f42fad3` (sentence case).
 - Independent PDF font inventory confirmed embedded InterVariable in exported engineering reports. New font metrics alter wrapping/pagination; historical baseline page-count evidence must not be reused as the new font's pagination result.
 - No protected canonical engine, domain registry or worker source changed. No new same-runner performance comparison, exhaustive assistive-technology review or deployed new-head acceptance is claimed.
 - Push to the existing feature branch was blocked by automatic approval review: explicit authorization to publish these recovered changes to GitHub was not established. Remote PR76/preview and main remain at their previously verified revisions. Owner approval of this specific push is required before remote CI/deployment can run.
+
+The first final-head CI cold-start gate caught stale title-case caption assertions in legacy browser fixtures. Updated exact navigation/subtab/reattachment wording to the requested sentence case; no workflow/order/structure assertion removed or made case-insensitive. Full new-head gates rerun before merge.
