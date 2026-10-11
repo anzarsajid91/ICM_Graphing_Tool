@@ -1,0 +1,450 @@
+{
+  "schema": 1,
+  "environment": "one Ubuntu CI runner; Chromium 140; alternating cold contexts; 1440×1000; 3 repetitions per source/target",
+  "rows": [
+    {
+      "target": "baseline",
+      "sha": "dff8ff593e61dbfea142007b5ac32b0d66787f0a",
+      "round": 0,
+      "fixture": "reference/current-tool/sample-data/fdv/FM7413.fdv",
+      "bytes": 268283,
+      "shellReadyMs": 939,
+      "firstUsefulGraphMs": 1078,
+      "authoritativeReadyMs": 6042,
+      "routes": [
+        {
+          "route": "spills/assessment",
+          "ms": 76.09999999997672
+        },
+        {
+          "route": "graphs/comparison",
+          "ms": 44.60000000000582
+        },
+        {
+          "route": "survey/fdv-check",
+          "ms": 51.90000000002328
+        },
+        {
+          "route": "reports/workspace",
+          "ms": 41.89999999999418
+        },
+        {
+          "route": "data/time-series",
+          "ms": 40.29999999998836
+        }
+      ],
+      "nativeZoomMs": 312,
+      "nativeHash": "f6b4b9ae4d3f9d042dd200b9b998446db11c41345f59b824bb36c2b49510c4de",
+      "heapBytes": 53500000,
+      "focusToPaintMs": 40,
+      "focusChartResizeMs": 233
+    },
+    {
+      "target": "candidate",
+      "sha": "4e685ef5e6d12c0cb796bb16e7a065bc48518f90",
+      "round": 0,
+      "fixture": "reference/current-tool/sample-data/fdv/FM7413.fdv",
+      "bytes": 268283,
+      "shellReadyMs": 879,
+      "firstUsefulGraphMs": 921,
+      "authoritativeReadyMs": 6796,
+      "routes": [
+        {
+          "route": "spills/assessment",
+          "ms": 84.79999999998836
+        },
+        {
+          "route": "graphs/comparison",
+          "ms": 53.29999999998836
+        },
+        {
+          "route": "survey/fdv-check",
+          "ms": 75.5
+        },
+        {
+          "route": "reports/workspace",
+          "ms": 54.10000000000582
+        },
+        {
+          "route": "data/time-series",
+          "ms": 78.10000000000582
+        }
+      ],
+      "nativeZoomMs": 334,
+      "nativeHash": "f6b4b9ae4d3f9d042dd200b9b998446db11c41345f59b824bb36c2b49510c4de",
+      "heapBytes": 56800000,
+      "focusToPaintMs": 52,
+      "focusChartResizeMs": 246
+    },
+    {
+      "target": "baseline",
+      "sha": "dff8ff593e61dbfea142007b5ac32b0d66787f0a",
+      "round": 0,
+      "fixture": "reference/current-tool/sample-data/other/CS2666_EDM.csv",
+      "bytes": 2838553,
+      "shellReadyMs": 936,
+      "firstUsefulGraphMs": 936,
+      "authoritativeReadyMs": 6367,
+      "routes": [
+        {
+          "route": "spills/assessment",
+          "ms": 59.79999999998836
+        },
+        {
+          "route": "graphs/comparison",
+          "ms": 57.19999999998254
+        },
+        {
+          "route": "survey/fdv-check",
+          "ms": 51.10000000000582
+        },
+        {
+          "route": "reports/workspace",
+          "ms": 49.19999999998254
+        },
+        {
+          "route": "data/time-series",
+          "ms": 407.29999999998836
+        }
+      ],
+      "nativeZoomMs": 260,
+      "nativeHash": "08cbc5196fd2c6160d56c2cdd3ff626aaf2cbca5fff298d8bc3c44f647248762",
+      "heapBytes": 44700000,
+      "focusToPaintMs": 48,
+      "focusChartResizeMs": 235
+    },
+    {
+      "target": "candidate",
+      "sha": "4e685ef5e6d12c0cb796bb16e7a065bc48518f90",
+      "round": 0,
+      "fixture": "reference/current-tool/sample-data/other/CS2666_EDM.csv",
+      "bytes": 2838553,
+      "shellReadyMs": 890,
+      "firstUsefulGraphMs": 966,
+      "authoritativeReadyMs": 6472,
+      "routes": [
+        {
+          "route": "spills/assessment",
+          "ms": 66.70000000001164
+        },
+        {
+          "route": "graphs/comparison",
+          "ms": 40.79999999998836
+        },
+        {
+          "route": "survey/fdv-check",
+          "ms": 39.40000000002328
+        },
+        {
+          "route": "reports/workspace",
+          "ms": 39
+        },
+        {
+          "route": "data/time-series",
+          "ms": 599.7000000000116
+        }
+      ],
+      "nativeZoomMs": 258,
+      "nativeHash": "08cbc5196fd2c6160d56c2cdd3ff626aaf2cbca5fff298d8bc3c44f647248762",
+      "heapBytes": 44700000,
+      "focusToPaintMs": 48,
+      "focusChartResizeMs": 234
+    },
+    {
+      "target": "candidate",
+      "sha": "4e685ef5e6d12c0cb796bb16e7a065bc48518f90",
+      "round": 1,
+      "fixture": "reference/current-tool/sample-data/fdv/FM7413.fdv",
+      "bytes": 268283,
+      "shellReadyMs": 892,
+      "firstUsefulGraphMs": 885,
+      "authoritativeReadyMs": 5682,
+      "routes": [
+        {
+          "route": "spills/assessment",
+          "ms": 55.70000000001164
+        },
+        {
+          "route": "graphs/comparison",
+          "ms": 36.40000000002328
+        },
+        {
+          "route": "survey/fdv-check",
+          "ms": 46.70000000001164
+        },
+        {
+          "route": "reports/workspace",
+          "ms": 38.90000000002328
+        },
+        {
+          "route": "data/time-series",
+          "ms": 44.899999999965075
+        }
+      ],
+      "nativeZoomMs": 305,
+      "nativeHash": "f6b4b9ae4d3f9d042dd200b9b998446db11c41345f59b824bb36c2b49510c4de",
+      "heapBytes": 53500000,
+      "focusToPaintMs": 49,
+      "focusChartResizeMs": 243
+    },
+    {
+      "target": "baseline",
+      "sha": "dff8ff593e61dbfea142007b5ac32b0d66787f0a",
+      "round": 1,
+      "fixture": "reference/current-tool/sample-data/fdv/FM7413.fdv",
+      "bytes": 268283,
+      "shellReadyMs": 883,
+      "firstUsefulGraphMs": 887,
+      "authoritativeReadyMs": 5869,
+      "routes": [
+        {
+          "route": "spills/assessment",
+          "ms": 56.600000000034925
+        },
+        {
+          "route": "graphs/comparison",
+          "ms": 42.899999999965075
+        },
+        {
+          "route": "survey/fdv-check",
+          "ms": 54.399999999965075
+        },
+        {
+          "route": "reports/workspace",
+          "ms": 34.29999999998836
+        },
+        {
+          "route": "data/time-series",
+          "ms": 35.399999999965075
+        }
+      ],
+      "nativeZoomMs": 319,
+      "nativeHash": "f6b4b9ae4d3f9d042dd200b9b998446db11c41345f59b824bb36c2b49510c4de",
+      "heapBytes": 53500000,
+      "focusToPaintMs": 58,
+      "focusChartResizeMs": 252
+    },
+    {
+      "target": "candidate",
+      "sha": "4e685ef5e6d12c0cb796bb16e7a065bc48518f90",
+      "round": 1,
+      "fixture": "reference/current-tool/sample-data/other/CS2666_EDM.csv",
+      "bytes": 2838553,
+      "shellReadyMs": 884,
+      "firstUsefulGraphMs": 919,
+      "authoritativeReadyMs": 6483,
+      "routes": [
+        {
+          "route": "spills/assessment",
+          "ms": 49.59999999997672
+        },
+        {
+          "route": "graphs/comparison",
+          "ms": 43.59999999997672
+        },
+        {
+          "route": "survey/fdv-check",
+          "ms": 51.899999999965075
+        },
+        {
+          "route": "reports/workspace",
+          "ms": 36.20000000001164
+        },
+        {
+          "route": "data/time-series",
+          "ms": 593
+        }
+      ],
+      "nativeZoomMs": 254,
+      "nativeHash": "08cbc5196fd2c6160d56c2cdd3ff626aaf2cbca5fff298d8bc3c44f647248762",
+      "heapBytes": 44700000,
+      "focusToPaintMs": 49,
+      "focusChartResizeMs": 236
+    },
+    {
+      "target": "baseline",
+      "sha": "dff8ff593e61dbfea142007b5ac32b0d66787f0a",
+      "round": 1,
+      "fixture": "reference/current-tool/sample-data/other/CS2666_EDM.csv",
+      "bytes": 2838553,
+      "shellReadyMs": 860,
+      "firstUsefulGraphMs": 1002,
+      "authoritativeReadyMs": 6574,
+      "routes": [
+        {
+          "route": "spills/assessment",
+          "ms": 47.899999999965075
+        },
+        {
+          "route": "graphs/comparison",
+          "ms": 46.5
+        },
+        {
+          "route": "survey/fdv-check",
+          "ms": 96.30000000004657
+        },
+        {
+          "route": "reports/workspace",
+          "ms": 127.29999999998836
+        },
+        {
+          "route": "data/time-series",
+          "ms": 413.5999999999767
+        }
+      ],
+      "nativeZoomMs": 261,
+      "nativeHash": "08cbc5196fd2c6160d56c2cdd3ff626aaf2cbca5fff298d8bc3c44f647248762",
+      "heapBytes": 44700000,
+      "focusToPaintMs": 47,
+      "focusChartResizeMs": 240
+    },
+    {
+      "target": "baseline",
+      "sha": "dff8ff593e61dbfea142007b5ac32b0d66787f0a",
+      "round": 2,
+      "fixture": "reference/current-tool/sample-data/fdv/FM7413.fdv",
+      "bytes": 268283,
+      "shellReadyMs": 867,
+      "firstUsefulGraphMs": 864,
+      "authoritativeReadyMs": 5831,
+      "routes": [
+        {
+          "route": "spills/assessment",
+          "ms": 63
+        },
+        {
+          "route": "graphs/comparison",
+          "ms": 57.59999999997672
+        },
+        {
+          "route": "survey/fdv-check",
+          "ms": 54.899999999965075
+        },
+        {
+          "route": "reports/workspace",
+          "ms": 49.90000000002328
+        },
+        {
+          "route": "data/time-series",
+          "ms": 58.09999999997672
+        }
+      ],
+      "nativeZoomMs": 296,
+      "nativeHash": "f6b4b9ae4d3f9d042dd200b9b998446db11c41345f59b824bb36c2b49510c4de",
+      "heapBytes": 56800000,
+      "focusToPaintMs": 42,
+      "focusChartResizeMs": 236
+    },
+    {
+      "target": "candidate",
+      "sha": "4e685ef5e6d12c0cb796bb16e7a065bc48518f90",
+      "round": 2,
+      "fixture": "reference/current-tool/sample-data/fdv/FM7413.fdv",
+      "bytes": 268283,
+      "shellReadyMs": 904,
+      "firstUsefulGraphMs": 897,
+      "authoritativeReadyMs": 5801,
+      "routes": [
+        {
+          "route": "spills/assessment",
+          "ms": 61.899999999965075
+        },
+        {
+          "route": "graphs/comparison",
+          "ms": 39.40000000002328
+        },
+        {
+          "route": "survey/fdv-check",
+          "ms": 65.90000000002328
+        },
+        {
+          "route": "reports/workspace",
+          "ms": 44.20000000001164
+        },
+        {
+          "route": "data/time-series",
+          "ms": 40.70000000001164
+        }
+      ],
+      "nativeZoomMs": 304,
+      "nativeHash": "f6b4b9ae4d3f9d042dd200b9b998446db11c41345f59b824bb36c2b49510c4de",
+      "heapBytes": 56800000,
+      "focusToPaintMs": 48,
+      "focusChartResizeMs": 241
+    },
+    {
+      "target": "baseline",
+      "sha": "dff8ff593e61dbfea142007b5ac32b0d66787f0a",
+      "round": 2,
+      "fixture": "reference/current-tool/sample-data/other/CS2666_EDM.csv",
+      "bytes": 2838553,
+      "shellReadyMs": 865,
+      "firstUsefulGraphMs": 919,
+      "authoritativeReadyMs": 6322,
+      "routes": [
+        {
+          "route": "spills/assessment",
+          "ms": 59.5
+        },
+        {
+          "route": "graphs/comparison",
+          "ms": 80.79999999998836
+        },
+        {
+          "route": "survey/fdv-check",
+          "ms": 59.5
+        },
+        {
+          "route": "reports/workspace",
+          "ms": 83
+        },
+        {
+          "route": "data/time-series",
+          "ms": 391.9000000000233
+        }
+      ],
+      "nativeZoomMs": 259,
+      "nativeHash": "08cbc5196fd2c6160d56c2cdd3ff626aaf2cbca5fff298d8bc3c44f647248762",
+      "heapBytes": 44700000,
+      "focusToPaintMs": 48,
+      "focusChartResizeMs": 236
+    },
+    {
+      "target": "candidate",
+      "sha": "4e685ef5e6d12c0cb796bb16e7a065bc48518f90",
+      "round": 2,
+      "fixture": "reference/current-tool/sample-data/other/CS2666_EDM.csv",
+      "bytes": 2838553,
+      "shellReadyMs": 874,
+      "firstUsefulGraphMs": 905,
+      "authoritativeReadyMs": 6293,
+      "routes": [
+        {
+          "route": "spills/assessment",
+          "ms": 68.89999999996508
+        },
+        {
+          "route": "graphs/comparison",
+          "ms": 61.09999999997672
+        },
+        {
+          "route": "survey/fdv-check",
+          "ms": 60.40000000002328
+        },
+        {
+          "route": "reports/workspace",
+          "ms": 129.5
+        },
+        {
+          "route": "data/time-series",
+          "ms": 399.9000000000233
+        }
+      ],
+      "nativeZoomMs": 253,
+      "nativeHash": "08cbc5196fd2c6160d56c2cdd3ff626aaf2cbca5fff298d8bc3c44f647248762",
+      "heapBytes": 44700000,
+      "focusToPaintMs": 50,
+      "focusChartResizeMs": 236
+    }
+  ]
+}

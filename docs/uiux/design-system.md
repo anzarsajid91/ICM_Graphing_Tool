@@ -1,6 +1,6 @@
 # Unified design system
 
-Status: foundation and shell implemented; rendered candidate acceptance pending.
+Status: common foundation, shell, workspace owners and reports implemented; final-head verification and exhaustive accessibility/state acceptance remain bounded by reports.
 
 ## Foundation
 
@@ -35,7 +35,7 @@ colour alone. Warning/error contrast takes precedence over subtle styling.
 | Status/validation | Small semantic pill/inline message | Current/Stale/Partial/Unknown/Blocked/Error all distinct |
 | Popover/menu | White surface, fine border, restrained shadow | Escape close and focus return; no clipping behind panels |
 | Inspector/drawer | Same surface/control rules as main content | Focus safety; no redraw/recalculation on cosmetic selection |
-| Dialog | Clear labelled heading, close, contained overflow | Native dialog where already used; focus/restoration tested |
+| Dialog | Clear labelled heading, close, contained overflow | Native modal isolation for asset analysis; focus/close/route-exit tests |
 | Alerts/notifications | Small purposeful surface | No warning hidden by polish; local status announcements |
 | Progress | Existing authoritative progress/cancel | No invented percentage; reduce motion preserves visible busy text |
 | Loading/empty/error | Contextual concise state text | Never portray stale evidence as current; no fake metric skeleton |
@@ -83,3 +83,5 @@ claim blanket compliance from screenshots or source inspection.
 Revert presentation commits together. Keep protected kernel/registry/worker/source
 files unchanged and preserve all legacy selectors. Rebuild from the baseline
 release pipeline. No stored-project migration is introduced by this redesign.
+
+Visual examples: [native component showcase](evidence/components/components-default.png), [focus/validation](evidence/components/components-focus-validation.png), [narrow](evidence/components/components-390.png), [all-workspace gallery](evidence/index.html). The native modal uses the browser top layer and backdrop; its coordinate-free visual skin does not alter network layout.

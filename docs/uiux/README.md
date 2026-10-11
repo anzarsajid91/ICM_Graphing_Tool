@@ -17,7 +17,7 @@ There are 17 pages across seven workspaces.
 replaces development `runtime.js` with `runtime.release.js` and injects overlays.
 The effective CSS order is app → v2 → survey → workflow-26 → detriment →
 precision → network. Classic scripts share lexical engine/state bindings.
-Domain registry loads before runtime; FastPath worker accelerates display;
+Presentation-only design-system.js loads first; domain registry loads before runtime; FastPath worker accelerates display;
 analysis-worker serialises canonical Python calls. Precision builds the shell,
 reparents existing controls with markers, owns routes and restores per-route
 scroll. v2 owns native zoom/threshold display; workflow-26 owns survey review;
@@ -75,4 +75,29 @@ No local browser performance or visual acceptance is claimed.
 6. Separate QA pass; compare baseline/candidate, rerun affected gates.
 7. Exact-head PR and same-host isolated preview; verify build SHA; no merge.
 
-Status: Phase 0 in progress. No visual implementation yet. See ledger and inventory.
+Status: design implementation spans all 17 routes. Baseline and full deployed
+browser evidence are established; final candidate acceptance and component/state
+coverage refinement remain in progress. Main is unchanged and must not be merged.
+
+## Review documents
+
+- [Design system](design-system.md)
+- [Source coverage matrix](coverage-matrix.csv) and [rendered controls](runtime-controls.csv)
+- [Implementation ledger](implementation-ledger.md)
+- [Before/after evidence](visual-evidence.md) and [offline gallery](evidence/index.html)
+- [Functional regression](functional-regression-report.md)
+- [Performance](performance-report.md)
+- [Accessibility](accessibility-report.md)
+- [Confidentiality](security-report.md)
+- [Independent candidate review](independent-candidate-review.md)
+
+Draft [PR76](https://github.com/anzarsajid91/ICM_Graphing_Tool/pull/76).
+Verified [isolated preview](https://anzarsajid91.github.io/ICM_Graphing_Tool/preview/unified-uiux/).
+Read the evidence scope and remaining acceptance gaps; design appearance alone
+is not release approval.
+
+- [Coverage and acceptance gaps](coverage-report.md)
+- [Confidentiality verification](security-report.md)
+- [Independent candidate review](independent-candidate-review.md)
+
+Review via [draft PR76](https://github.com/anzarsajid91/ICM_Graphing_Tool/pull/76) and the real [isolated preview](https://anzarsajid91.github.io/ICM_Graphing_Tool/preview/unified-uiux/). This is a review candidate; the strict master definition of done and blanket accessibility certification are not inferred from suite-level coverage. Keep main unchanged until explicit approval.

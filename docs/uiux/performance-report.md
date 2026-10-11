@@ -29,3 +29,23 @@ Native graph x/y/unit hashes match exactly across all twelve samples, two fixtur
 The largest median increase is focus-to-paint in the small FDV sample (52 ms versus 49 ms); final chart resize differs by 5 ms. FDV sampled JS heap rises 3.3 MB; EDM heap is unchanged. Heap sampling is Chromium approximate JS heap, not total worker/process memory or a leak study. No material import/graph latency regression is evident in this sample. Further profiling is required for arbitrary network sizes, maximum supported imports, sustained editing, export latency and memory retention.
 
 Earlier route captures included a fixed 250 ms settling wait and are not used as navigation benchmarks. Earlier baseline full-smoke performance is retained in the baseline artifact for context, not mixed with this runner comparison.
+
+## Newer controlled comparison
+
+[Run 38122112501](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/38122112501) passed at candidate `4e685ef5`. Same environment/method, fresh three-repetition contexts; [raw comparison](evidence/performance-comparison-latest.json).
+
+| Measurement | Baseline | Candidate |
+|---|---:|---:|
+| FDV shell median, ms | 883 | 892 |
+| FDV first useful graph, ms | 887 | 897 |
+| FDV authoritative ready, ms | 5869 | 5801 |
+| FDV native zoom, ms | 312 | 305 |
+| EDM shell median, ms | 865 | 884 |
+| EDM first useful graph, ms | 936 | 919 |
+| EDM authoritative ready, ms | 6367 | 6472 |
+| EDM native zoom, ms | 260 | 254 |
+| Complete nine-monitor survey worker elapsed, seconds | 118.2134 | 119.7618 |
+
+Complete survey used the same CI runner and fixtures, with test-side control observation disabled. Authoritative objects match after excluding only the performance member; normalized SHA-256 values are identical in [survey comparison](evidence/survey-performance-comparison.json). One survey pair is a bounded observation (+1.3%), not a distribution or universal guarantee.
+
+A route-specific exception remains under investigation: returning to Data with the large EDM fixture measured 407/414/392 ms at baseline versus 600/593/400 ms at 4e. Import, zoom and focus resize remain close, but the two slower return samples prevent an unconditional navigation non-regression claim. Later same-runner runs and synchronous-versus-paint instrumentation distinguish synchronous work from pending chart repaint. Do not average this exception away into a global route median or claim universal 60 FPS. Maximum-size retained memory and sustained schematic/edit/export profiling remain bounded gaps.

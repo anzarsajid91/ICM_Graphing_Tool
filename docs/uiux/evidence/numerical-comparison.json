@@ -1,0 +1,55 @@
+[
+  {
+    "name": "reference-level-result.json",
+    "equivalent_after_explicit_metadata_exclusions": true,
+    "excluded_paths": [
+      "/scenario_a/id",
+      "/scenario_a/path",
+      "/scenario_b/id",
+      "/scenario_b/path"
+    ],
+    "raw_objects_equal": false
+  },
+  {
+    "name": "reference-spill-result.json",
+    "equivalent_after_explicit_metadata_exclusions": true,
+    "excluded_paths": [
+      "/scenario_a/id",
+      "/scenario_a/path",
+      "/scenario_b/id",
+      "/scenario_b/path"
+    ],
+    "raw_objects_equal": false
+  },
+  {
+    "name": "reference-flooding-result.json",
+    "equivalent_after_explicit_metadata_exclusions": true,
+    "excluded_paths": [
+      "/scenario_a/id",
+      "/scenario_a/path",
+      "/scenario_b/id",
+      "/scenario_b/path"
+    ],
+    "raw_objects_equal": false
+  },
+  {
+    "name": "spill-calendar-allocation.json",
+    "equivalent_after_explicit_metadata_exclusions": true,
+    "excluded_paths": [],
+    "raw_objects_equal": true
+  },
+  {
+    "name": "schematic-weekly-review/assessment.json",
+    "equivalent_after_explicit_metadata_exclusions": true,
+    "excluded_paths": [
+      "/performance"
+    ],
+    "raw_objects_equal": false
+  },
+  {
+    "name": "schematic-weekly-review/result.json",
+    "equivalent_after_explicit_metadata_exclusions": true,
+    "excluded_paths": [],
+    "raw_objects_equal": true
+  }
+]

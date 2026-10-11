@@ -5,7 +5,7 @@ export async function recordControls(page,directory,state){
  if(!directory)return;
  const rows=await page.evaluate(state=>{
   const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();
-  return [...document.querySelectorAll('[id],button,input,select,textarea,summary,a[href],[role="button"],dialog,[role="dialog"],.chart,.table-wrap')].filter(el=>(!(el instanceof SVGElement)||el.id==='nsSvg'||el.matches('[role="button"]'))&&el.getClientRects().length&&!el.closest('[hidden],[inert]')&&getComputedStyle(el).visibility!=='hidden').map(el=>({
+  return [...document.querySelectorAll('[id],table,[data-ns-binding],[data-ns-summary-row],[data-ns-summary],[data-ns-effective-threshold],[data-review-id],[data-review-kind],[data-week-row],[data-state],[data-result],[data-source-id],button,input,select,textarea,summary,a[href],[role="button"],dialog,[role="dialog"],.chart,.table-wrap')].filter(el=>(!(el instanceof SVGElement)||el.id==='nsSvg'||el.matches('[role="button"]'))&&el.getClientRects().length&&!el.closest('[hidden],[inert]')&&getComputedStyle(el).visibility!=='hidden').map(el=>({
    route:route?route.workspace+'/'+route.page:'legacy',state,tag:el.tagName,id:el.id,classes:el.className?.baseVal??el.className,
    label:el.getAttribute('aria-label')||el.labels?.[0]?.textContent?.trim()||el.textContent?.trim().slice(0,120)||el.title,
    role:el.getAttribute('role'),disabled:Boolean(el.disabled),expanded:el.getAttribute('aria-expanded'),current:el.getAttribute('aria-current'),
@@ -26,7 +26,7 @@ export async function observeControls(page){
   const records=new Map();let timer;
   const capture=()=>{
    const route=window.__ICM_PRECISION_WORKBENCH__?.route?.();
-   for(const el of document.querySelectorAll('[id],button,input,select,textarea,summary,a[href],[role="button"],[role="dialog"]')){
+   for(const el of document.querySelectorAll('[id],table,[data-ns-binding],[data-ns-summary-row],[data-ns-summary],[data-ns-effective-threshold],[data-review-id],[data-review-kind],[data-week-row],[data-state],[data-result],[data-source-id],button,input,select,textarea,summary,a[href],[role="button"],[role="dialog"]')){
     if((el instanceof SVGElement)&&el.id!=='nsSvg'&&!el.matches('[role="button"]'))continue;
     if(!el.getClientRects().length||el.closest('[hidden],[inert]')||getComputedStyle(el).visibility==='hidden')continue;
     const row={route:route?route.workspace+'/'+route.page:'startup',state:'intermediate interaction',tag:el.tagName,id:el.id,classes:el.className?.baseVal??el.className,label:el.getAttribute('aria-label')||el.labels?.[0]?.textContent?.trim()||el.textContent?.trim().slice(0,120)||el.title,role:el.getAttribute('role'),disabled:Boolean(el.disabled),expanded:el.getAttribute('aria-expanded'),current:el.getAttribute('aria-current'),logicalRoot:el.closest('.pw-page-surface,.tab-panel,.pw-inspector,.pw-rail')?.id||'',attributes:[...el.attributes].filter(a=>a.name.startsWith('data-')).map(a=>[a.name,a.value])};
@@ -36,7 +36,8 @@ export async function observeControls(page){
    window.__uiuxControlEvidence=[...records.values()];
   };
   const schedule=()=>{clearTimeout(timer);timer=setTimeout(capture,150);};
-  for(const event of ['click','change','focusin','keyup'])document.addEventListener(event,schedule,{passive:true});
+  document.addEventListener('click',()=>{clearTimeout(timer);timer=setTimeout(capture,0);},{passive:true});
+  for(const event of ['change','focusin','keyup'])document.addEventListener(event,schedule,{passive:true});
   document.addEventListener('DOMContentLoaded',()=>{capture();new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['hidden','disabled','aria-expanded','aria-current']});});
  });
 }

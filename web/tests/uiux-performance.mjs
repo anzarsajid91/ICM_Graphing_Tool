@@ -27,7 +27,7 @@ try{
    assert.equal(await page.evaluate(()=>window.__ICM_WORKBENCH__.fastpath.last.reconciliation?.status),'matched');
    const routes=[];
    for(const [workspace,tab] of [['spills','assessment'],['graphs','comparison'],['survey','fdv-check'],['reports','workspace'],['data','time-series']]){
-    const start=await page.evaluate(()=>performance.now());await page.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,tab]);routes.push({route:workspace+'/'+tab,ms:(await paint(page))-start});
+    const start=await page.evaluate(()=>performance.now());const synchronousMs=await page.evaluate(([w,p])=>{const start=performance.now();window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false);return performance.now()-start;},[workspace,tab]);routes.push({route:workspace+'/'+tab,ms:(await paint(page))-start,synchronousMs});
    }
    await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphMode!=='fastpath-preview',null,{timeout:60000});
    const range=await page.evaluate(()=>{const x=document.querySelector('#timeChart').data.find(t=>t.x?.length&&t.y?.some(Number.isFinite)).x;return [x[0],new Date(Date.parse(x[0])+7200000).toISOString().slice(0,19)];});

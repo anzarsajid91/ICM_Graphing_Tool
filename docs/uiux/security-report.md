@@ -42,3 +42,5 @@ are excluded from the production release. CI artifacts expire after 30 days;
 selected synthetic screenshots and reports are retained with this documentation.
 No guarantee is made about arbitrary external browser extensions or workflows
 outside the observed request guard; no confidential engineering data was used.
+
+Newer [confidentiality gates at 4e](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/38122112493) and [full synthetic browser review](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/38122112522) passed. Exact-head native-dialog fix [source/privacy CI](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/38122848122) also passed. Final head and served-revision acceptance are available from PR76 checks; cancelled superseded jobs are not treated as security passes.
