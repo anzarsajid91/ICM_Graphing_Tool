@@ -2454,7 +2454,7 @@ try{
   const flowSurveySubtabs=await page.locator('.pw-secondary-nav button').allTextContents();
   if(flowSurveySubtabs.map(x=>x.trim()).join('|')!=='FDV check|Rainfall check|Volume balance|Monthly review')throw new Error('Unexpected Flow survey subtab sequence: '+JSON.stringify(flowSurveySubtabs));
   const workflowGuide=await page.locator('#workflowGuide').textContent();
-  if(!workflowGuide.includes('Workflow')||!workflowGuide.includes('Survey')||!workflowGuide.includes('FSAT Event Response')||!workflowGuide.includes('volume balance'))throw new Error('Contextual Survey workflow guide is incomplete: '+workflowGuide);
+  if(!workflowGuide.includes('Workflow')||!workflowGuide.includes('Survey')||!workflowGuide.includes('FSAT event response')||!workflowGuide.includes('volume balance'))throw new Error('Contextual Survey workflow guide is incomplete: '+workflowGuide);
   const activeTabStyle=await page.locator('.pw-primary-nav button[aria-current="page"]').evaluate(el=>({fontWeight:getComputedStyle(el).fontWeight,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
   if(Number(activeTabStyle.fontWeight)<600||activeTabStyle.background==='rgba(0, 0, 0, 0)')throw new Error('Active Precision workspace does not visually stand out: '+JSON.stringify(activeTabStyle));
   await page.setInputFiles('#assocFileInput',await associationWorkbook());
@@ -3006,7 +3006,7 @@ try{
   if(!report.includes('Complete flow-survey context')||!report.includes('Flow continuity / volume balance')||!report.includes('fm_rg_assoc.xlsx'))throw new Error('Association-driven complete survey context missing from exported report');
   if(!report.includes('Diameter-informed empirical Q–H rating curve')||!report.includes('rating_diagnostic')||!report.includes('600 mm'))throw new Error('Fresh diameter-informed rating chart/provenance missing from exported report');
   if(!report.includes('Observed vs modelled log₁₀ scatter')||!report.includes('Positive observed/modelled pairs only'))throw new Error('Report-selected log scatter and its positive-only population note are missing.');
-  if(!report.includes('Storage Assessment'))throw new Error('Selected Storage Assessment section is missing from the report.');
+  if(!report.includes('Storage assessment'))throw new Error('Selected Storage assessment section is missing from the report.');
   if(report.includes('Cumulative-volume diagnostic where dimensional flow support is available.')||report.includes('Time-weighted exceedance diagnostic where available.'))throw new Error('Unavailable flow-only diagnostics must not be exported as blank report figures');
 
   if(!report.includes('report-grid')||!report.includes('table-wrap'))throw new Error('Professional report layout classes missing');

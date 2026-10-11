@@ -6,8 +6,8 @@ The interrupted transformation was completed and released through PR76. All 17
 routes use the shared design system, and the additional sidebar/block references
 and local Inter refinement reached main. The audited production revision is
 `65b0be81245e628b617304266fe29ac0e77f81d4`, v1.063. No missing workspace or critical
-functional regression was found in the inspected/tested scope. Two typography
-exceptions and stale completion documentation were found and corrected in this
+functional regression was found in the inspected/tested scope. Typography exceptions, remaining title-case captions
+and stale completion documentation were found and corrected in this
 follow-up. This is bounded acceptance, not a claim that every possible state or
 device has been verified.
 
@@ -44,7 +44,7 @@ features.
 | Separate task/evidence blocks | Included | Independent configuration/evidence panels with shared 16 px geometry; compact technical tables retained |
 | Inter as single typeface with exact fallback stack | Corrected | Bundled Inter 4.1/OFL; detriment paste textarea still forced monospace and now inherits shared Inter |
 | Body 400, UI labels 500, headings/buttons 600 | Corrected for confirmed button exception | Shared weights present; 24 visible network toolbar/canvas buttons rendered at 500, now 600; owner-cascade test added |
-| Sentence case, heading tracking and tabular numbers | Included | No forced uppercase captions, approximately -1.5% large-heading tracking, body tabular numerals; technical identifiers preserved |
+| Sentence case, heading tracking and tabular numbers | Caption exceptions corrected | Loaded survey/report/assessment headings and buttons still retained title/upper case; normalized literal captions, with WAPUG/FSAT/PDF and technical identifiers preserved. Approximately -1.5% large-heading tracking and tabular numerals were already present |
 | Every workspace considered | Included | 17 pages across Data, Spills/Network, Flow Survey, Detriment, Plots, Reports and About |
 | Graph-first/focus and inspector | Included | Focus mode/collapsible navigation, preserved source controls, Inspector focus/inert and Escape contracts; desktop data setup remains deliberately accessible |
 | Smooth restrained motion | Included, bounded | 120–220 ms interaction tokens, sliding pill, reduced motion, no animated engineering values; universal 60 FPS unproved |
@@ -78,6 +78,15 @@ features.
 - Annual network review passed: 112 requests, zero violations.
 - Network 400-asset/399-wire layout passed before and after fixes (49 ms in this
   runner), including incremental pan, multi-select alignment and layout lock.
+- Complete fresh main browser acceptance passed: 1,255 requests with zero
+  confidentiality violations, covering imports/drop/mappings/units, native graphs,
+  rainfall, scatter/rating/DWF, exclusions, spills/storage, survey and report/workspace
+  outputs. The nine-monitor weekly/monthly/offline HTML/PNG/PDF review also passed
+  (86 requests, zero violations). These loaded screenshots exposed additional
+  title-case captions; caption corrections are protected by exact rendered tests.
+- Modified network-capable presentation files received a fresh diff/source review
+  and explicit SHA/rationale approval: only literal captions changed; fixed-resource
+  downloads, local blobs/popups, handlers and calculations are unchanged.
 - Extra rendered audit after fixes: 119 route/width states, no document overflow
   and no visible button/heading/input typeface exception in the inspected empty
   states. Widths include 640 px reflow, not a physical browser-zoom claim.
@@ -85,8 +94,8 @@ features.
   workflows; it now runs in the ordinary Pages browser gate so future PRs and
   main deployments execute the typography, offline-font and accessibility contracts.
 - Protected Python, domain registry and worker sources are unchanged between
-  the redesign baseline and PR76; follow-up modifies only two owning CSS rules,
-  a rendered regression contract, its production CI invocation and documentation.
+  the redesign baseline and PR76; follow-up modifies two owning CSS rules,
+  literal UI/report captions, rendered regression contracts, the production CI invocation and documentation.
 
 ## Remaining limits that affect an “everything complete” claim
 

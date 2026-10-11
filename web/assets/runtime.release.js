@@ -2602,7 +2602,7 @@ async function downloadReport(){
     body+='<h3>Observed spills by month</h3>'+reportSpillCountMatrix(state.spills.observed);
     body+='<h3>Model spills by month</h3>'+reportSpillCountMatrix(state.spills.model);
     body+='<h3>Observed vs modelled monthly spill comparison</h3>'+reportMonthlySpillComparison(state.spills.observed,state.spills.modelled||state.spills.model);
-    body+='<h2>Storage Assessment</h2>'+reportStorageHtml();
+    body+='<h2>Storage assessment</h2>'+reportStorageHtml();
   }
 
   if(options.include_comparison){

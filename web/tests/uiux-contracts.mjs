@@ -20,6 +20,10 @@ try{
  assert.ok(networkWeights.length>0,'Network toolbar is present');
  assert.ok(networkWeights.every(weight=>weight==='600'),'Every network button uses requested weight 600');
  assert.match(await page.locator('#dtPasteGrid').evaluate(el=>getComputedStyle(el).fontFamily),/Inter/,'Assessment paste field uses the single requested typeface');
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','monthly-review',false));
+ assert.equal(await page.locator('#runCompleteSurveyBtn').textContent(),'Run flow survey assessment');
+ assert.equal(await page.locator('#surveyMonthlyReviewBtn').textContent(),'Monthly review');
+ assert.equal(await page.locator('#surveyMonthlyPdfBtn').textContent(),'Export monthly PDF');
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
  await page.evaluate(()=>window.HydraDesign.prepareReportFont());
  const offline=await context.newPage();await context.setOffline(true);
