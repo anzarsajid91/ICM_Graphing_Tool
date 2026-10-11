@@ -29,6 +29,7 @@ try{
   network=await snapshot();const [a,b,c]=network.nodes;a.x=480;a.y=300;b.x=180;b.y=300;c.x=790;c.y=300;network.edges=[{id:'up',from:b.id,to:a.id,colour:'blue',name:'Rising main',arrow:true},{id:'down',from:a.id,to:c.id,colour:'red',arrow:true}];await page.evaluate(n=>ICMNetworkSchematic.restore(n),network);await page.click('#nsFit');await page.click('#nsEdit');
   await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').hover();await page.waitForSelector('#nsHover:not([hidden])');assert.match(await page.locator('#nsHover').innerText(),/2023/);assert.match(await page.locator('#nsHover').innerText(),/2024/);
   await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();await page.selectOption('#nsYear','2024');assert.equal(await page.locator('#nsPopup [data-ns-evidence-year="2023"]').count(),2,'Annual inspector retains every year when overlay year changes');
+  assert.match(await page.locator('#nsPopup [data-ns-evidence-year="2023"] .ns-rag-red').first().innerText(),/13\s+Red agreement/,'Agreement remains available without colour');
   assert.equal(await page.locator('#nsPopup [data-ns-evidence-year="2023"] .ns-rag-red').count(),2,'Level/flow outcome comparison highlights count and duration');
   assert.equal(await page.locator('#nsPopup [data-ns-evidence-year="2023"] .ns-rag-red').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(253, 235, 236)');
   await page.screenshot({path:evidence+'/annual-inspector.png'});await recordControls(page,evidence,'annual-inspector');
