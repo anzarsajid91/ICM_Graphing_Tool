@@ -1,3 +1,4 @@
+import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
@@ -13,6 +14,7 @@ await fs.mkdir(evidence,{recursive:true});
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browser=await chromium.launch(browserLaunchOptions());
 const page=await browser.newPage({viewport:{width:1440,height:1000},acceptDownloads:true});
+await observeControls(page);
 const errors=[];page.on('pageerror',e=>errors.push(String(e)));
 const field=key=>page.locator('#dtForm [data-key="'+key+'"]');
 const route=kind=>page.evaluate(k=>window.__ICM_PRECISION_WORKBENCH__.navigate('detriment',k,true),kind);
@@ -24,7 +26,7 @@ try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.ICMDetriment&&window.__ICM_PRECISION_WORKBENCH__),null,{timeout:30000});
   assert.match(await page.title(),/Hydra Bench/);
-  assert.deepEqual((await page.locator('.pw-primary-nav .pw-nav-label').allTextContents()).map(x=>x.trim()),['Data / Time Series','Spills','Flow Survey','Detriment Assessment','Plots','Reports']);
+  assert.deepEqual((await page.locator('.pw-primary-nav .pw-nav-label').allTextContents()).map(x=>x.trim()),['Data / time series','Spills','Flow survey','Detriment assessment','Plots','Reports']);
   const note=await page.locator('#dropzone span').textContent();
   assert.match(note,/\.CSV, \.FDV, \.R/);assert.match(note,/fm_rg_assoc.xlsx/);assert.doesNotMatch(note,/\.txt|\.FTV/i);
   const files=Object.values(cases).flatMap(c=>[c.original,...c.paths]);
@@ -82,7 +84,7 @@ try{
     await fs.writeFile(path.join(evidence,'reference-'+kind+'.csv'),csv);
     await fs.writeFile(path.join(evidence,'reference-'+kind+'-result.json'),JSON.stringify(result,null,2));
     await page.waitForFunction(()=>['dtChart','dtPairedChart','dtDurationChart'].every(id=>{const el=document.getElementById(id);return !el?.data||Math.abs(el._fullLayout.width-el.getBoundingClientRect().width)<2;}));
-    await page.screenshot({path:path.join(evidence,'reference-'+kind+'.png'),fullPage:false});
+    await page.screenshot({path:path.join(evidence,'reference-'+kind+'.png'),fullPage:false});await recordControls(page,evidence,'reference-'+kind);
   }
   // A real worker-error event makes the subtle retry available without reload.
   const before=await page.evaluate(()=>({sources:[...state.files.keys()],route:window.__ICM_PRECISION_WORKBENCH__.route()}));
@@ -112,5 +114,5 @@ try{
   await failed.screenshot({path:path.join(evidence,'recovered-startup.png'),fullPage:false});await failed.close();
   assert.deepEqual(errors,[]);
   console.log('Reference browser acceptance passed: all three native CSVs, independent A/B results, chart arrays, PNG/CSV/HTML exports, retained sources on crash/retry and failed initial boot, desktop/mobile containment.');
-}catch(error){await page.screenshot({path:path.join(evidence,'reference-failure.png'),fullPage:true}).catch(()=>{});console.error(await page.locator('#dtStatus').textContent().catch(()=>''),errors);throw error;}
+}catch(error){await page.screenshot({path:path.join(evidence,'reference-failure.png'),fullPage:true}).catch(()=>{});await recordControls(page,evidence,'reference-failure');console.error(await page.locator('#dtStatus').textContent().catch(()=>''),errors);throw error;}
 finally{await browser.close();}

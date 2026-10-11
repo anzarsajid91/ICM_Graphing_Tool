@@ -1,9 +1,11 @@
+import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {chromium} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const browser=await chromium.launch(browserLaunchOptions()),page=await browser.newPage({...browserContextOptions(),viewport:{width:1600,height:1050},acceptDownloads:true});
+await observeControls(page);
 const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR:',e.message);});
 const evidence=process.env.ICM_EVIDENCE_DIR||'/tmp/hydra-annual-review';await fs.mkdir(evidence,{recursive:true});
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
@@ -13,7 +15,7 @@ const files=[['ReviewObserved2023.csv',2023,10],['ReviewObserved2024.csv',2024,2
 files.push({name:'ReviewUnknownUnit2024.csv',mimeType:'text/csv',buffer:csv(2024,20,'Depth',1000)});
 const snapshot=()=>page.evaluate(()=>ICMNetworkSchematic.snapshot());
 async function field(id,value){await page.locator('#'+id).fill(value);await page.locator('#'+id).dispatchEvent('change');}
-async function assign(role,names){await page.click('[data-ns-add-sources="'+role+'"]');for(const name of names)await page.locator('#nsPicker .ns-file-list label').filter({hasText:name}).locator('input').check();await page.click('#nsAddSelected');}
+async function assign(role,names){await page.click('[data-ns-add-sources="'+role+'"]');for(const name of names)await page.locator('#nsPicker .ns-file-list label').filter({hasText:name}).locator('input').check();await recordControls(page,evidence,'source-picker-'+role);await page.click('#nsAddSelected');}
 try{
   await page.goto(base,{waitUntil:'domcontentloaded'});assert.match(await page.title(),/Hydra Bench/);await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate);
   await page.setInputFiles('#fileInput',files);await page.waitForFunction(()=>[...state.files.values()].filter(x=>x.status==='ready').length===6,null,{timeout:120000});
@@ -27,10 +29,11 @@ try{
   network=await snapshot();const [a,b,c]=network.nodes;a.x=480;a.y=300;b.x=180;b.y=300;c.x=790;c.y=300;network.edges=[{id:'up',from:b.id,to:a.id,colour:'blue',name:'Rising main',arrow:true},{id:'down',from:a.id,to:c.id,colour:'red',arrow:true}];await page.evaluate(n=>ICMNetworkSchematic.restore(n),network);await page.click('#nsFit');await page.click('#nsEdit');
   await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').hover();await page.waitForSelector('#nsHover:not([hidden])');assert.match(await page.locator('#nsHover').innerText(),/2023/);assert.match(await page.locator('#nsHover').innerText(),/2024/);
   await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();await page.selectOption('#nsYear','2024');assert.equal(await page.locator('#nsPopup [data-ns-evidence-year="2023"]').count(),2,'Annual inspector retains every year when overlay year changes');
+  assert.match(await page.locator('#nsPopup [data-ns-evidence-year="2023"] .ns-rag-red').first().innerText(),/13\s+Red agreement/,'Agreement remains available without colour');
   assert.equal(await page.locator('#nsPopup [data-ns-evidence-year="2023"] .ns-rag-red').count(),2,'Level/flow outcome comparison highlights count and duration');
   assert.equal(await page.locator('#nsPopup [data-ns-evidence-year="2023"] .ns-rag-red').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(253, 235, 236)');
-  await page.screenshot({path:evidence+'/annual-inspector.png'});
-  await page.click('[data-ns-open-analysis="series"]');await page.waitForFunction(()=>document.getElementById('nsAnalysisPlot')?.data?.length===3,null,{timeout:120000});assert.equal(await page.locator('#nsAnalysisAudit').isVisible(),false,'Quality basis starts collapsed');
+  await page.screenshot({path:evidence+'/annual-inspector.png'});await recordControls(page,evidence,'annual-inspector');
+  await page.click('[data-ns-open-analysis="series"]');await page.waitForFunction(()=>document.getElementById('nsAnalysisPlot')?.data?.length===3,null,{timeout:120000});assert.equal(await page.locator('#nsAnalysisAudit').isVisible(),false,'Quality basis starts collapsed');assert.equal(await page.locator('#nsAnalysis').evaluate(el=>el.matches(':modal')),true,'Analysis uses native modal background isolation');await page.mouse.click(5,5);assert.equal(await page.locator('#nsAnalysis').evaluate(el=>el.open),true,'Backdrop click preserves analysis');assert.equal(await page.locator('#nsAnalysis').evaluate(el=>el.contains(document.activeElement)),true,'Backdrop cannot focus background controls');
   assert.equal(await page.locator('#nsAnalysisPlot').evaluate(el=>el.layout.shapes.filter(s=>s.type==='line').length),3,'Source-specific thresholds are present');
   await page.locator('#nsAnalysisSettings > summary').click();
   const modelSettings=page.locator('#nsAnalysisSources [data-ns-binding]').filter({hasText:'ReviewBaseline2024.csv'});
@@ -43,13 +46,13 @@ try{
   assert.equal(scaled.spill_count,22);assert.equal(scaled.unit,'mm');assert.equal(scaled.threshold,1200);assert.equal(scaled.value_max,2000);
   await page.waitForFunction(()=>document.getElementById('nsAnalysisMessage').textContent.startsWith('Dashed lines'),null,{timeout:120000});
   assert.deepEqual(await page.locator('#nsAnalysisPlot').evaluate(el=>[el._fullLayout.yaxis.title.text,el._fullLayout.yaxis2.title.text]),['depth · m','depth · mm'],'Rendered axes show quantities and actual value units');
-  await page.screenshot({path:evidence+'/associated-unit-controls.png'});
+  await page.screenshot({path:evidence+'/associated-unit-controls.png'});await recordControls(page,evidence,'associated-unit-controls');
   await page.locator('#nsAnalysisSettings > summary').click();await page.locator('#nsAnalysis .ns-analysis-body').evaluate(el=>el.scrollTop=0);
-  await page.screenshot({path:evidence+'/associated-time-series.png'});
-  await page.locator('#nsAnalysis details:not(#nsAnalysisSettings) summary').first().click();await page.click('#nsCommonCalculate');await page.waitForSelector('#nsCommonResult:not([hidden])',{timeout:120000});assert.match(await page.locator('#nsCommonResult').innerText(),/20/);assert.match(await page.locator('#nsCommonMessage').innerText(),/Comparable/);
+  await page.screenshot({path:evidence+'/associated-time-series.png'});await recordControls(page,evidence,'associated-time-series');
+  await page.locator('#nsAnalysis details:not(#nsAnalysisSettings) summary').first().click();await page.click('#nsCommonCalculate');await page.waitForSelector('#nsCommonResult:not([hidden])',{timeout:120000});assert.match(await page.locator('#nsCommonResult').innerText(),/20/);assert.match(await page.locator('#nsCommonMessage').innerText(),/Comparable/);await recordControls(page,evidence,'common-period');
   assert.equal((await snapshot()).nodes[0].applied.rows.length,5,'Common-period results do not replace annual totals');await page.click('#nsCloseAnalysis');
   const sharedAfter=await page.evaluate(()=>JSON.stringify({mapping:state.mapping,spills:state.spills,exclusions:state.exclusions,obs:document.getElementById('obsThreshold').value,model:document.getElementById('modelThreshold').value}));assert.equal(sharedAfter,sharedBefore,'Drill-down/common-period analysis leave shared workspaces untouched');
-  await page.click('#nsAnnualTable');assert.match(await page.locator('#nsMatrixBody').innerText(),/2023/);assert.match(await page.locator('#nsMatrixBody').innerText(),/2024/);assert.match(await page.locator('#nsMatrixBody').innerText(),/\+2/);
+  await page.click('#nsAnnualTable');assert.match(await page.locator('#nsMatrixBody').innerText(),/2023/);assert.match(await page.locator('#nsMatrixBody').innerText(),/2024/);assert.match(await page.locator('#nsMatrixBody').innerText(),/\+2/);await recordControls(page,evidence,'annual-matrix');await page.locator('#nsMatrixSearch').fill('Annual review');assert.equal(await page.locator('#nsMatrixBody tbody tr').count()>0,true);await page.locator('#nsMatrixSelected').check();await page.locator('#nsMatrixSelected').uncheck();await page.locator('#nsMatrixSearch').fill('');
   await page.click('#nsReviewTools > summary');await page.click('[data-ns-trace="up"]');assert.equal(await page.locator('[data-ns-node="'+c.id+'"]').evaluate(el=>Number(el.style.opacity)),.2);await page.click('#nsClearTrace');
   await page.locator('#nsReviewTools details summary').filter({hasText:'Scenarios'}).click();
   await page.locator('[data-ns-scenario-choice="Update"]').uncheck();assert.equal(await page.locator('#nsMatrixBody').getByText('Update',{exact:true}).count(),0);assert.equal((await snapshot()).nodes[0].applied.rows.length,5);
@@ -62,7 +65,7 @@ try{
   await page.click('#nsReviewTools > summary');await page.click('#nsUndo');await page.click('#nsReviewTools > summary');await page.click('#nsRedo');assert.equal((await snapshot()).nodes[0].x,pinned.x);
   await page.click('#nsReviewTools > summary');await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();await page.locator('#nsDrawer .ns-review-notes summary').click();await field('nsReviewComment','Review annual count and duration; inspect upstream response.');await page.selectOption('#nsReviewStatus','reviewed');
   await page.click('#nsEdit');await page.locator('.ns-export-menu summary').click();const svgDownload=page.waitForEvent('download');await page.click('#nsSvgExport');const svg=await svgDownload;await svg.saveAs(evidence+'/network-review.svg');assert.match(await fs.readFile(evidence+'/network-review.svg','utf8'),/Rising main/);
-  await page.locator('.ns-export-menu summary').click();const reportPromise=page.waitForEvent('popup');await page.click('#nsReportExport');const report=await reportPromise;await report.waitForLoadState();assert.match(await report.locator('body').innerText(),/2023/);assert.match(await report.locator('body').innerText(),/2024/);assert.match(await report.locator('body').innerText(),/Review annual count/);await report.pdf({path:evidence+'/annual-network-report.pdf',format:'A4',landscape:true});await report.close();
+  await page.locator('.ns-export-menu summary').click();const reportPromise=page.waitForEvent('popup');await page.click('#nsReportExport');const report=await reportPromise;await report.waitForLoadState();assert.match(await report.locator('body').innerText(),/2023/);assert.match(await report.locator('body').innerText(),/2024/);assert.match(await report.locator('body').innerText(),/Review annual count/);await recordControls(report,evidence,'annual-report');await report.emulateMedia({media:'print'}); const basis=report.locator('details').filter({hasText:'Assessment basis'}); assert.equal(await basis.count(),3); for(const detail of await basis.all()){assert.equal(await detail.getAttribute('open'),''); assert.equal(await detail.locator('p').first().isVisible(),true,'Printed assessment basis remains visible');} await report.pdf({path:evidence+'/annual-network-report.pdf',format:'A4',landscape:true});await report.close();
   const savedReview=await snapshot();
   await page.evaluate(()=>{const current=ICMNetworkSchematic.snapshot(),source=[...state.files.values()].find(x=>x.displayName==='ReviewUnknownUnit2024.csv');current.nodes.push({id:'unknown-unit-check',name:'Unknown-unit CSO',type:'cso',colour:'blue',x:600,y:300,defaults:{observed:1200,model:''},gap:3700,exclusions:[],confirmed:false,bindings:[{id:'unknown-binding',sourceId:source.id,sha256:source.hash,sourceName:source.displayName,column:'Depth',role:'observed',scenario:'Observed',years:[2024],threshold:'',quantity:'depth',unit:'',datum:''}]});ICMNetworkSchematic.restore(current);});
   await field('nsAssetSearch','Unknown-unit CSO');await page.click('#nsPopup [data-ns-open-analysis="series"]');
@@ -72,10 +75,10 @@ try{
   assert.equal(await page.locator('#nsAnalysisPlot').evaluate(el=>el.layout.shapes[0].y0),1200,'Unknown unit assignment retains source numbers and threshold');
   await page.click('#nsAnalysisCalculate');await page.waitForFunction(()=>ICMNetworkSchematic.debug().fresh.at(-1).fresh,null,{timeout:120000});
   assert.equal((await snapshot()).nodes.at(-1).applied.rows[0].spill_count,20);
-  await page.click('#nsCloseAnalysis');await page.evaluate(n=>ICMNetworkSchematic.restore(n),savedReview);
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('about','overview',false));assert.equal(await page.locator('#nsAnalysis').evaluate(el=>el.open),false,'Leaving network releases modal isolation');await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('spills','network',false));await page.evaluate(n=>ICMNetworkSchematic.restore(n),savedReview);
   await page.reload();await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate);await page.evaluate(()=>__ICM_PRECISION_WORKBENCH__.navigate('spills','network',true));await page.waitForSelector('#nsEdit');const restored=await snapshot();assert.equal(restored.schema,2);assert.equal(restored.views.length,1);assert.equal(restored.reviewSnapshots.length,1);assert.equal(restored.nodes[0].review.status,'reviewed');assert.equal(restored.nodes[0].pinned,true);
-  await page.setViewportSize({width:820,height:900});await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();await page.screenshot({path:evidence+'/annual-tablet.png'});assert(await page.locator('#nsPopup').isVisible());
+  await page.setViewportSize({width:820,height:900});await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();await page.screenshot({path:evidence+'/annual-tablet.png'});await recordControls(page,evidence,'annual-tablet');assert(await page.locator('#nsPopup').isVisible());
   assert.deepEqual(errors,[],'No page runtime errors');console.log('Annual network review passed: all years, hover, graph thresholds, common-period isolation, scenarios, tracing, pinned layout, notes, snapshots, vector/PDF and restore.');
 privacy.assertClean();
-}catch(error){await page.screenshot({path:evidence+'/annual-review-failure.png',fullPage:true});throw error;}
+}catch(error){await page.screenshot({path:evidence+'/annual-review-failure.png',fullPage:true});await recordControls(page,evidence,'annual-review-failure');throw error;}
 finally{await browser.close();}

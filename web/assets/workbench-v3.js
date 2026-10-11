@@ -137,7 +137,7 @@
       hovertemplate:`%{x}<br>${esc(item.displayName)}<br>Cumulative %{y:.3f} mm<extra></extra>`,
     }));
     await Plotly.react(chart, traces, {
-      template:'plotly_white',
+      template:'plotly_white',...(window.HydraDesign?.chartLayout()||{}),
       title:{text:'Cumulative rainfall depth by source .R file',font:{size:15}},
       xaxis:{title:'Time',showgrid:false},
       yaxis:{title:'Cumulative rainfall depth (mm)',rangemode:'tozero',gridcolor:'#e8eef3'},

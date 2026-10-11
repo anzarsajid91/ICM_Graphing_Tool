@@ -1,3 +1,4 @@
+import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {assertReportActionSpacing} from './report-layout.mjs';
@@ -19,6 +20,7 @@ const browser=await chromium.launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000},acceptDownloads:true,timezoneId:'Asia/Kolkata'});
 const privacy=installPrivacyGuard(context,baseUrl);
 const page=await context.newPage();
+await observeControls(page);
 const consoleErrors=[];
 const failedRequests=[];
 let stage='startup';
@@ -80,6 +82,7 @@ async function captureEvidence(name){
   const dir=process.env.ICM_EVIDENCE_DIR;
   if(!dir)return;
   await fs.mkdir(dir,{recursive:true});
+  await recordControls(page,dir,name);
   await page.screenshot({path:path.join(dir,`${name}.png`),fullPage:false});
   await page.screenshot({path:path.join(dir,`${name}-full.png`),fullPage:true});
 }
@@ -580,7 +583,7 @@ async function verifyCS2666ThresholdChain(){
     const graphContext=(await probe.locator('#graphObsThresholdContext').textContent())||'';
     if(!new RegExp(support.quantity,'i').test(graphContext)||!/\bm\b/i.test(graphContext)||!/\bAD\b/i.test(graphContext))throw new Error('synthetic CSO graph threshold context must identify Level, unit and absolute datum: '+graphContext);
 
-    // Standalone EDM/Time Series WAPUG is deliberately independent from Flow Survey.
+    // Standalone EDM/Time Series WAPUG is deliberately independent from Flow survey.
     await probe.locator('#pwTimeSeriesEventSurface').evaluate(el=>{el.open=true;});
     await probe.selectOption('#rainCriteriaMode','wapug');
     await probe.click('#runRainEventsBtn');
@@ -1145,12 +1148,12 @@ async function verifyRealFlowSurveyReference(){
     });
 
     if(evidence.monitor_count!==9||evidence.gauge_count!==3||JSON.stringify(evidence.associated_gauges)!==JSON.stringify([...synthetic.associated_gauges].sort())||JSON.stringify(evidence.network_gauges)!==JSON.stringify(evidence.associated_gauges)||!evidence.association_authoritative){
-      throw new Error('Synthetic reference Flow Survey must use the workbook’s 9 monitors and 3 associated gauges; the loaded RG4977 remains outside the network: '+JSON.stringify(evidence));
+      throw new Error('Synthetic reference Flow survey must use the workbook’s 9 monitors and 3 associated gauges; the loaded RG4977 remains outside the network: '+JSON.stringify(evidence));
     }
     if(evidence.candidate_count<1||evidence.qualified_count>evidence.candidate_count)throw new Error('Synthetic network event qualification invalid: '+JSON.stringify(evidence));
     if(evidence.volume_rows<1||evidence.volume_non_green>evidence.volume_rows)throw new Error('Synthetic volume-balance evidence invalid: '+JSON.stringify(evidence));
     if(!evidence.report_has_comment||evidence.comment?.author!=='CI')throw new Error('Synthetic monthly report lost the saved engineer comment: '+JSON.stringify(evidence));
-    if(probeErrors.length)throw new Error('Real Flow Survey reference browser errors: '+probeErrors.join(' | '));
+    if(probeErrors.length)throw new Error('Real Flow survey reference browser errors: '+probeErrors.join(' | '));
     const dir=process.env.ICM_EVIDENCE_DIR;
     if(dir){
       await fs.mkdir(dir,{recursive:true});
@@ -1261,7 +1264,7 @@ try{
   if(!liveMode){
     const cold=performanceEvidence.coldImport,engineAfterSelection=Number(cold.engineReadyFromNavigationMs)-Number(cold.selectionAtFromNavigationMs);
     if(cold.selectionOutcome!=='graph'||cold.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Cold FastPath preview did not render: '+JSON.stringify(cold));
-    if(cold.previewEvidence?.route?.workspace!=='data'||cold.previewEvidence?.route?.page!=='time-series')throw new Error('Cold FastPath preview must not take navigation away from Data / Time Series: '+JSON.stringify(cold.previewEvidence?.route));
+    if(cold.previewEvidence?.route?.workspace!=='data'||cold.previewEvidence?.route?.page!=='time-series')throw new Error('Cold FastPath preview must not take navigation away from Data / time series: '+JSON.stringify(cold.previewEvidence?.route));
     if(cold.previewEvidence?.engineStatus==='ready'||!(cold.timeToOutcomeMs<engineAfterSelection))throw new Error('Cold FastPath preview did not render before authoritative engine readiness: '+JSON.stringify(cold));
     if(cold.finalEvidence?.reconciliation?.status!=='matched')throw new Error('Cold FastPath preview did not reconcile exactly with authoritative FM7413 parsing: '+JSON.stringify(cold.finalEvidence));
   }
@@ -1285,7 +1288,7 @@ try{
     performanceEvidence.freshCsvImports.push(measured);
     await writePerformanceEvidence();
     if(measured.selectionOutcome!=='graph'||measured.previewEvidence?.graphMode!=='fastpath-preview')throw new Error('Fresh CSV FastPath preview did not render: '+JSON.stringify(measured));
-    if(measured.previewEvidence?.route?.workspace!=='data'||measured.previewEvidence?.route?.page!=='time-series')throw new Error('Fresh FastPath preview must prepare the graph without changing the user-selected Data / Time Series page: '+JSON.stringify(measured.previewEvidence?.route));
+    if(measured.previewEvidence?.route?.workspace!=='data'||measured.previewEvidence?.route?.page!=='time-series')throw new Error('Fresh FastPath preview must prepare the graph without changing the user-selected Data / time series page: '+JSON.stringify(measured.previewEvidence?.route));
     // Engine boot is independent of per-file parsing: a large CSV can show
     // its preview after Python has booted and still precede validation by
     // seconds. Compare source milestones measured on the same browser clock.
@@ -1303,7 +1306,7 @@ try{
   performanceEvidence.syntheticCsoThresholdChain=await verifyCS2666ThresholdChain();
   await writePerformanceEvidence();
 
-  stage='synthetic reference Flow Survey end-to-end journey';
+  stage='synthetic reference Flow survey end-to-end journey';
   performanceEvidence.realFlowSurveyReference=await verifyRealFlowSurveyReference();
   await writePerformanceEvidence();
 
@@ -1331,7 +1334,7 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
   const primaryLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(primaryLabels.map(x=>x.trim()).join('|')!=='Data / Time Series|Spills|Flow Survey|Detriment Assessment|Plots|Reports')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
+  if(primaryLabels.map(x=>x.trim()).join('|')!=='Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
   for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080}]){
     await page.setViewportSize(size);
     await precisionRoute('data','sources');
@@ -1756,7 +1759,7 @@ try{
     workerDetail:window.__ICM_WORKBENCH__?.worker?.detail||null,
   }));
   if(unifiedRouteAnalysis.route?.workspace!=='data'||unifiedRouteAnalysis.route?.page!=='time-series'||!unifiedRouteAnalysis.setupVisible||!unifiedRouteAnalysis.chartVisible||unifiedRouteAnalysis.traceCount!==2){
-    throw new Error('Unified Data / Time Series must keep interpretation controls and analysis on the same route without navigation side effects: '+JSON.stringify(unifiedRouteAnalysis));
+    throw new Error('Unified Data / time series must keep interpretation controls and analysis on the same route without navigation side effects: '+JSON.stringify(unifiedRouteAnalysis));
   }
 
   stage='observed-only mapping with rainfall';
@@ -2446,10 +2449,10 @@ try{
   stage='association workbook and canonical survey navigation';
   await precisionRoute('survey','fdv-check');
   const navLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(navLabels.map(x=>x.trim()).join('|')!=='Data / Time Series|Spills|Flow Survey|Detriment Assessment|Plots|Reports')throw new Error('Unexpected Precision navigation: '+JSON.stringify(navLabels));
+  if(navLabels.map(x=>x.trim()).join('|')!=='Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Unexpected Precision navigation: '+JSON.stringify(navLabels));
   if(navLabels.some(x=>/storage/i.test(x)))throw new Error('Storage must remain a Spills subtab, not a primary workspace: '+JSON.stringify(navLabels));
   const flowSurveySubtabs=await page.locator('.pw-secondary-nav button').allTextContents();
-  if(flowSurveySubtabs.map(x=>x.trim()).join('|')!=='FDV Check|Rainfall Check|Volume Balance|Monthly Review')throw new Error('Unexpected Flow Survey subtab sequence: '+JSON.stringify(flowSurveySubtabs));
+  if(flowSurveySubtabs.map(x=>x.trim()).join('|')!=='FDV check|Rainfall check|Volume balance|Monthly review')throw new Error('Unexpected Flow survey subtab sequence: '+JSON.stringify(flowSurveySubtabs));
   const workflowGuide=await page.locator('#workflowGuide').textContent();
   if(!workflowGuide.includes('Workflow')||!workflowGuide.includes('Survey')||!workflowGuide.includes('FSAT Event Response')||!workflowGuide.includes('volume balance'))throw new Error('Contextual Survey workflow guide is incomplete: '+workflowGuide);
   const activeTabStyle=await page.locator('.pw-primary-nav button[aria-current="page"]').evaluate(el=>({fontWeight:getComputedStyle(el).fontWeight,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
@@ -2525,7 +2528,7 @@ try{
     monthly:document.querySelector('#surveyMonthlyReviewBody')?.textContent||'',
     standaloneVisible:Boolean(document.querySelector('#pwTimeSeriesEventSurface')?.getClientRects().length),
   }));
-  if(reviewFirstSurvey.monitorRows!==3||!reviewFirstSurvey.header.includes('fm_rg_assoc')||!reviewFirstSurvey.monthly.includes('Engineering action register')||reviewFirstSurvey.standaloneVisible)throw new Error('Review-first Flow Survey composition is incomplete after the authoritative batch: '+JSON.stringify(reviewFirstSurvey));
+  if(reviewFirstSurvey.monitorRows!==3||!reviewFirstSurvey.header.includes('fm_rg_assoc')||!reviewFirstSurvey.monthly.includes('Engineering action register')||reviewFirstSurvey.standaloneVisible)throw new Error('Review-first Flow survey composition is incomplete after the authoritative batch: '+JSON.stringify(reviewFirstSurvey));
   await precisionRoute('survey','rainfall-check');
   await page.waitForFunction(()=>document.querySelectorAll('#surveyGaugeReview tbody tr').length>=2,null,{timeout:30000});
   const flowSurveyRainReview=await page.evaluate(()=>({
@@ -2534,7 +2537,7 @@ try{
     events:document.querySelectorAll('#surveyEventReview tbody tr').length,
     standaloneVisible:Boolean(document.querySelector('#pwTimeSeriesEventSurface')?.getClientRects().length),
   }));
-  if(flowSurveyRainReview.gauges<2||!flowSurveyRainReview.summary.includes('gauges assessed')||flowSurveyRainReview.standaloneVisible)throw new Error('Flow Survey Rainfall Review is not populated independently from the standalone Time Series WAPUG surface: '+JSON.stringify(flowSurveyRainReview));
+  if(flowSurveyRainReview.gauges<2||!flowSurveyRainReview.summary.includes('gauges assessed')||flowSurveyRainReview.standaloneVisible)throw new Error('Flow survey Rainfall Review is not populated independently from the standalone Time Series WAPUG surface: '+JSON.stringify(flowSurveyRainReview));
   await precisionRoute('survey','fdv-check');
   const fm03Balance=(completeSurvey.volume_balance?.rows||[]).find(x=>x.downstream_monitor==='FM7424');
   if(!fm03Balance||fm03Balance.rag!=='Green'||fm03Balance.legacy_fsat_status!=='OK')throw new Error('Expected FM7424 downstream volume balance to reconcile Green/OK: '+JSON.stringify(fm03Balance));

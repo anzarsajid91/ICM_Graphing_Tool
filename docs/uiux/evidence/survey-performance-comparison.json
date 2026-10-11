@@ -1,0 +1,133 @@
+{
+  "baseline_sha": "dff8ff593e61dbfea142007b5ac32b0d66787f0a",
+  "candidate_sha": "4e685ef5e6d12c0cb796bb16e7a065bc48518f90",
+  "run_url": "https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/38122112501",
+  "observer_disabled": true,
+  "assessment_equal_excluding_only_performance": true,
+  "baseline_normalized_sha256": "128adafded32fe525b0fee9c9aca90a08e939efb10ada389770e254143a0edcf",
+  "candidate_normalized_sha256": "128adafded32fe525b0fee9c9aca90a08e939efb10ada389770e254143a0edcf",
+  "baseline_performance": {
+    "rain_source_load_seconds": 0.0015000000000000568,
+    "network_rainfall_seconds": 60.477399999999996,
+    "monitor_seconds": {
+      "FM7413": {
+        "hydraulic_bundle_seconds": 0.013900000000006685,
+        "weekly_assessment_seconds": 6.277699999999996,
+        "event_response_seconds": 0.07849999999999113,
+        "total_seconds": 6.370699999999999
+      },
+      "FM8356": {
+        "hydraulic_bundle_seconds": 0.012600000000006162,
+        "weekly_assessment_seconds": 6.158100000000005,
+        "event_response_seconds": 0.07809999999999206,
+        "total_seconds": 6.249300000000005
+      },
+      "FM8095": {
+        "hydraulic_bundle_seconds": 0.013400000000004297,
+        "weekly_assessment_seconds": 6.280299999999997,
+        "event_response_seconds": 0.09080000000000155,
+        "total_seconds": 6.3851999999999975
+      },
+      "FM7424": {
+        "hydraulic_bundle_seconds": 0.012500000000002842,
+        "weekly_assessment_seconds": 6.147400000000005,
+        "event_response_seconds": 0.07500000000000284,
+        "total_seconds": 6.235600000000005
+      },
+      "FM9320": {
+        "hydraulic_bundle_seconds": 0.01290000000000191,
+        "weekly_assessment_seconds": 6.097499999999997,
+        "event_response_seconds": 0.077699999999993,
+        "total_seconds": 6.188599999999994
+      },
+      "FM2830": {
+        "hydraulic_bundle_seconds": 0.01290000000000191,
+        "weekly_assessment_seconds": 6.140899999999988,
+        "event_response_seconds": 0.0882000000000005,
+        "total_seconds": 6.242599999999996
+      },
+      "FM2961": {
+        "hydraulic_bundle_seconds": 0.014100000000013324,
+        "weekly_assessment_seconds": 6.20089999999999,
+        "event_response_seconds": 0.07830000000001291,
+        "total_seconds": 6.294000000000011
+      },
+      "FM8722": {
+        "hydraulic_bundle_seconds": 0.01310000000000855,
+        "weekly_assessment_seconds": 6.328900000000004,
+        "event_response_seconds": 0.07720000000000482,
+        "total_seconds": 6.419700000000006
+      },
+      "FM7307": {
+        "hydraulic_bundle_seconds": 0.013599999999996726,
+        "weekly_assessment_seconds": 6.156100000000009,
+        "event_response_seconds": 0.07699999999999818,
+        "total_seconds": 6.247299999999996
+      }
+    },
+    "volume_balance_seconds": 1.1012000000000057,
+    "total_seconds": 118.2134
+  },
+  "candidate_performance": {
+    "rain_source_load_seconds": 0.001300000000000523,
+    "network_rainfall_seconds": 61.6302,
+    "monitor_seconds": {
+      "FM7413": {
+        "hydraulic_bundle_seconds": 0.021599999999992292,
+        "weekly_assessment_seconds": 6.327299999999994,
+        "event_response_seconds": 0.07760000000000389,
+        "total_seconds": 6.4273000000000025
+      },
+      "FM8356": {
+        "hydraulic_bundle_seconds": 0.01279999999999859,
+        "weekly_assessment_seconds": 6.205799999999996,
+        "event_response_seconds": 0.07500000000000284,
+        "total_seconds": 6.2941
+      },
+      "FM8095": {
+        "hydraulic_bundle_seconds": 0.01279999999999859,
+        "weekly_assessment_seconds": 6.202500000000001,
+        "event_response_seconds": 0.0759999999999934,
+        "total_seconds": 6.291899999999998
+      },
+      "FM7424": {
+        "hydraulic_bundle_seconds": 0.012500000000002842,
+        "weekly_assessment_seconds": 6.281599999999997,
+        "event_response_seconds": 0.07540000000000191,
+        "total_seconds": 6.370199999999997
+      },
+      "FM9320": {
+        "hydraulic_bundle_seconds": 0.013400000000004297,
+        "weekly_assessment_seconds": 6.318999999999988,
+        "event_response_seconds": 0.07450000000000045,
+        "total_seconds": 6.4073999999999955
+      },
+      "FM2830": {
+        "hydraulic_bundle_seconds": 0.01290000000000191,
+        "weekly_assessment_seconds": 6.210199999999986,
+        "event_response_seconds": 0.0735000000000241,
+        "total_seconds": 6.297200000000018
+      },
+      "FM2961": {
+        "hydraulic_bundle_seconds": 0.01269999999999527,
+        "weekly_assessment_seconds": 6.226300000000009,
+        "event_response_seconds": 0.07630000000000337,
+        "total_seconds": 6.315899999999999
+      },
+      "FM8722": {
+        "hydraulic_bundle_seconds": 0.01279999999999859,
+        "weekly_assessment_seconds": 6.302799999999991,
+        "event_response_seconds": 0.07570000000001187,
+        "total_seconds": 6.391799999999989
+      },
+      "FM7307": {
+        "hydraulic_bundle_seconds": 0.013299999999986767,
+        "weekly_assessment_seconds": 6.183400000000006,
+        "event_response_seconds": 0.07329999999998904,
+        "total_seconds": 6.270499999999998
+      }
+    },
+    "volume_balance_seconds": 1.0635000000000048,
+    "total_seconds": 119.76180000000002
+  }
+}

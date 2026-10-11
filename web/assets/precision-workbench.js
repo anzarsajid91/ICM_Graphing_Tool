@@ -4,38 +4,38 @@ const qs=(sel,root=document)=>root.querySelector(sel);
 const qsa=(sel,root=document)=>[...root.querySelectorAll(sel)];
 const ROUTES={
   data:{
-    label:'Data / Time Series',
+    label:'Data / time series',
     icon:'data',
     pages:{
-      'time-series':{label:'Time Series',title:'Data / Time Series',description:'Upload, interpret and assign local sources, then review hydraulic traces, thresholds, rainfall overlays and auditable statistics in one continuous workspace.',tab:'graph',root:()=>$('tab-graph')}
+      'time-series':{label:'Time series',title:'Data / time series',description:'Upload, interpret and assign local sources, then review hydraulic traces, thresholds, rainfall overlays and auditable statistics in one continuous workspace.',tab:'graph',root:()=>$('tab-graph')}
     }
   },
   spills:{
     label:'Spills',
     icon:'spills',
     pages:{
-      assessment:{label:'Spill Assessment',title:'EDM / model spill assessment',description:'Configure thresholds and exclusions, then review physical spill intervals, 12/24 counts and observed/model evidence.',tab:'spills',root:()=>$('tab-spills')},
-      storage:{label:'Storage Assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')},
-      network:{label:'Network Schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')}
+      assessment:{label:'Spill assessment',title:'EDM / model spill assessment',description:'Configure thresholds and exclusions, then review physical spill intervals, 12/24 counts and observed/model evidence.',tab:'spills',root:()=>$('tab-spills')},
+      storage:{label:'Storage assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')},
+      network:{label:'Network schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')}
     }
   },
   survey:{
-    label:'Flow Survey',
+    label:'Flow survey',
     icon:'survey',
     pages:{
-      'fdv-check':{label:'FDV Check',title:'FDV check',description:'Select a monitor on the schematic to review its weekly data quality, rating and comments.',tab:'data-health',root:()=>$('tab-data-health')},
-      'rainfall-check':{label:'Rainfall Check',title:'Rainfall check',description:'Review Flow Survey gauge health, network WAPUG qualification and event evidence without depending on the standalone Time Series rainfall-event workflow.',tab:'data-health',root:()=>$('tab-data-health')},
-      'volume-balance':{label:'Volume Balance',title:'Volume balance',description:'Assess upstream/downstream flow continuity on common valid temporal support with explicit assumptions.',tab:'data-health',root:()=>$('tab-data-health')},
-      'monthly-review':{label:'Monthly Review',title:'Monthly survey review',description:'Review effective weekly outcomes, engineering comments and actions, then export the monthly PDF.',tab:'data-health',root:()=>$('tab-data-health')}
+      'fdv-check':{label:'FDV check',title:'FDV check',description:'Select a monitor on the schematic to review its weekly data quality, rating and comments.',tab:'data-health',root:()=>$('tab-data-health')},
+      'rainfall-check':{label:'Rainfall check',title:'Rainfall check',description:'Review Flow survey gauge health, network WAPUG qualification and event evidence without depending on the standalone Time series rainfall-event workflow.',tab:'data-health',root:()=>$('tab-data-health')},
+      'volume-balance':{label:'Volume balance',title:'Volume balance',description:'Assess upstream/downstream flow continuity on common valid temporal support with explicit assumptions.',tab:'data-health',root:()=>$('tab-data-health')},
+      'monthly-review':{label:'Monthly review',title:'Monthly survey review',description:'Review effective weekly outcomes, engineering comments and actions, then export the monthly PDF.',tab:'data-health',root:()=>$('tab-data-health')}
     }
   },
-  detriment:{...window.ICMDetriment.routes,icon:'detriment'},
+  detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},
   graphs:{
     label:'Plots',
     icon:'verify',
     pages:{
-      comparison:{label:'Observed vs Modelled',title:'Observed versus modelled diagnostics',description:'Compare scenarios using the canonical bounded-alignment engine, scatter views and verification statistics.',tab:'compare',root:()=>$('tab-compare')},
-      rating:{label:'Depth / Rating',title:'Depth agreement and flow–depth diagnostics',description:'Inspect depth agreement and Q/H rating evidence with sample support and validity limitations.',tab:'compare',root:()=>$('tab-compare')},
+      comparison:{label:'Observed vs modelled',title:'Observed versus modelled diagnostics',description:'Compare scenarios using the canonical bounded-alignment engine, scatter views and verification statistics.',tab:'compare',root:()=>$('tab-compare')},
+      rating:{label:'Depth / rating',title:'Depth agreement and flow–depth diagnostics',description:'Inspect depth agreement and Q/H rating evidence with sample support and validity limitations.',tab:'compare',root:()=>$('tab-compare')},
       dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
     }
   },
@@ -47,8 +47,8 @@ const ROUTES={
     label:'Reports',
     icon:'report',
     pages:{
-      'report-generation':{label:'Report Generation',title:'Report generation',description:'Review result readiness and export a coherent snapshot of current authoritative analyses.',tab:'workspace',root:()=>$('tab-workspace')},
-      workspace:{label:'Workspace Save / Restore',title:'Workspace save and restore',description:'Persist configuration and source fingerprints without embedding raw engineering files.',tab:'workspace',root:()=>$('tab-workspace')}
+      'report-generation':{label:'Report generation',title:'Report generation',description:'Review result readiness and export a coherent snapshot of current authoritative analyses.',tab:'workspace',root:()=>$('tab-workspace')},
+      workspace:{label:'Workspace save / restore',title:'Workspace save and restore',description:'Persist configuration and source fingerprints without embedding raw engineering files.',tab:'workspace',root:()=>$('tab-workspace')}
     }
   }
 };
@@ -189,12 +189,12 @@ function ensureDataTimeSeriesSurface(){
       events=document.createElement('details');
       events.id='pwTimeSeriesEventSurface';
       events.className='pw-page-surface pw-timeseries-event-surface';
-      events.innerHTML='<summary><span><strong>Rainfall events on Time Series</strong><small>WAPUG presets or manual event criteria</small></span><span class="pw-disclosure-hint">Settings and overlay</span></summary>';
+      events.innerHTML='<summary><span><strong>Rainfall events on Time series</strong><small>WAPUG presets or manual event criteria</small></span><span class="pw-disclosure-hint">Settings and overlay</span></summary>';
       events.open=true;
       legacy.classList.add('pw-embedded-panel');
       const title=qs('.panel-head h2',legacy),copy=qs('.panel-head p',legacy);
-      if(title)title.textContent='Time Series WAPUG / manual rainfall events';
-      if(copy)copy.textContent='Detect events from the rainfall mapped in this Time Series workspace and overlay them through the hydraulic graph. These results are independent of Flow Survey Rainfall Check, while using the same validated event engine.';
+      if(title)title.textContent='Time series WAPUG / manual rainfall events';
+      if(copy)copy.textContent='Detect events from the rainfall mapped in this Time series workspace and overlay them through the hydraulic graph. These results are independent of Flow survey Rainfall check, while using the same validated event engine.';
       events.appendChild(legacy);
       graphPanel.appendChild(events);
     }
@@ -271,7 +271,7 @@ function refreshReportScenarioOptions(){
 }
 function ensureReportSurfaces(){
   const panel=qs('#tab-workspace .panel');if(!panel||$('pwWorkspaceSurface'))return;
-  const builder=ensureSection('pwReportBuilderSurface','Report Generation','Check result readiness, choose the report sections/scenarios and report view, then export the engineering report.');
+  const builder=ensureSection('pwReportBuilderSurface','Report generation','Check result readiness, choose the report sections/scenarios and report view, then export the engineering report.');
   const workspace=ensureSection('pwWorkspaceSurface','Workspace save / restore','Save local configuration and source fingerprints without embedding raw engineering files.');
   const workspaceName=$('workspaceName')?.closest('label'),named=$('namedWorkspaceSelect')?.closest('.actions');if(workspaceName)workspace.appendChild(workspaceName);if(named)workspace.appendChild(named);
   const wsActions=makeActionGroup();for(const id of ['downloadWorkspaceBtn','loadWorkspaceBtn']){const b=$(id);if(b){b.classList.remove('primary');b.textContent=id==='downloadWorkspaceBtn'?'Export workspace JSON':'Load workspace JSON';wsActions.appendChild(b);}}workspace.appendChild(wsActions);
@@ -280,7 +280,7 @@ function ensureReportSurfaces(){
   const options=document.createElement('section');options.id='pwReportOptions';options.className='subpanel pw-report-options';
   options.innerHTML='<div class="subhead"><div><h3>Report options</h3><p>Select the authoritative sections and model scenarios to include. These settings are saved with the workspace.</p></div></div>'+
     '<div class="mapping-grid compact-wide">'+
-      '<label><span>Sections</span><span class="pw-check-stack"><span><input id="reportIncludeTimeSeries" type="checkbox" checked> Full-period time series</span><span><input id="reportIncludeSpillsStorage" type="checkbox" checked> Spills & storage</span><span><input id="reportIncludeComparison" type="checkbox" checked> Comparison diagnostics</span><span><input id="reportIncludeSurvey" type="checkbox" checked> Flow-survey evidence</span></span></label>'+
+      '<div class="pw-report-sections" role="group" aria-labelledby="pwReportSectionsLabel"><span id="pwReportSectionsLabel">Sections</span><div class="pw-check-stack"><label><input id="reportIncludeTimeSeries" type="checkbox" checked> Full-period time series</label><label><input id="reportIncludeSpillsStorage" type="checkbox" checked> Spills & storage</label><label><input id="reportIncludeComparison" type="checkbox" checked> Comparison diagnostics</label><label><input id="reportIncludeSurvey" type="checkbox" checked> Flow-survey evidence</label></div></div>'+
       '<label>Scatter view<select id="reportScatterScale"><option value="current">Current Plots view</option><option value="linear">Linear</option><option value="log">Log₁₀ (positive pairs only)</option></select><small>Report statistics follow the eligible pair population for this selected view.</small></label>'+
       '<label>Comparison scenarios<select id="reportScenarioSelect" multiple size="4"></select><small>Only currently mapped model scenarios are available.</small></label>'+
     '</div>';
@@ -364,7 +364,7 @@ function buildShell(){
   });
   const stage=document.createElement('div');stage.className='pw-stage';
   const context=document.createElement('section');context.className='pw-context';
-  context.innerHTML='<div class="pw-context-head"><div><div class="pw-breadcrumb"><span id="pwBreadcrumbWorkspace"></span><span>›</span><strong id="pwBreadcrumbPage"></strong></div><h2 class="pw-page-title" id="pwPageTitle"></h2><p class="pw-page-description" id="pwPageDescription"></p></div><div class="pw-context-actions"><button class="pw-focus-toggle" id="pwFocusToggle" type="button" aria-pressed="false" hidden>Focus canvas</button><button class="pw-rail-toggle" id="pwRailToggle" type="button">Menu</button><button class="pw-inspector-toggle" id="pwInspectorToggle" type="button">Inspector</button></div></div><nav class="pw-secondary-nav" id="pwSecondaryNav" aria-label="Workspace pages"></nav>';
+  context.innerHTML='<div class="pw-context-head"><div><div class="pw-breadcrumb"><span id="pwBreadcrumbWorkspace"></span><span>›</span><strong id="pwBreadcrumbPage"></strong></div><h2 class="pw-page-title" id="pwPageTitle"></h2><p class="pw-page-description" id="pwPageDescription"></p></div><div class="pw-context-actions"><button class="pw-focus-toggle" id="pwFocusToggle" type="button" aria-pressed="false" hidden>Focus canvas</button><button class="pw-rail-toggle" id="pwRailToggle" type="button">Menu</button><button class="pw-inspector-toggle" id="pwInspectorToggle" type="button" aria-controls="pwInspector" aria-expanded="false">Inspector</button></div></div><nav class="pw-secondary-nav" id="pwSecondaryNav" aria-label="Workspace pages"></nav>';
   const workarea=document.createElement('div');workarea.className='pw-workarea';
   const inspector=document.createElement('aside');inspector.className='pw-inspector';inspector.id='pwInspector';inspector.innerHTML='<div class="pw-inspector-head"><div><strong>Inspector</strong><span id="pwInspectorSubtitle">Context and settings</span></div><button class="pw-inspector-drawer-close" id="pwInspectorClose" type="button" aria-label="Close inspector">×</button></div><div class="pw-inspector-body" id="pwInspectorBody"></div>';
   const parent=topbar?.parentNode||document.body;
@@ -383,7 +383,7 @@ function buildShell(){
     syncBrandToggle();
   };
   const toggleRail=()=>{
-    if(matchMedia('(max-width:620px)').matches){rail.classList.toggle('is-open');syncBrandToggle();return;}
+    if(matchMedia('(max-width:620px)').matches){rail.classList.toggle('is-open');syncBrandToggle();const target=rail.classList.contains('is-open')?qs('button[aria-current="page"]',rail):$('pwRailToggle');target?.focus({preventScroll:true});return;}
     const expanding=rail.getBoundingClientRect().width<100;
     if(expanding&&document.body.classList.contains('pw-focus-canvas')){
       focusPreference=false;
@@ -399,12 +399,16 @@ function buildShell(){
   applyRailState();
   $('pwInspectorToggle')?.addEventListener('click',()=>{
     document.body.classList.remove('pw-inspector-collapsed');
-    inspector.classList.add('is-open');resizeVisuals();
+    inspector.classList.add('is-open');syncInspectorAccessibility();resizeVisuals();
+    if(inspectorOverlay())$('pwInspectorClose')?.focus({preventScroll:true});
   });
   $('pwInspectorClose')?.addEventListener('click',()=>{
     inspector.classList.remove('is-open');
-    document.body.classList.add('pw-inspector-collapsed');resizeVisuals();
+    document.body.classList.add('pw-inspector-collapsed');syncInspectorAccessibility();resizeVisuals();
+    $('pwInspectorToggle')?.focus({preventScroll:true});
   });
+  inspector.addEventListener('keydown',event=>{if(event.key==='Escape'&&inspectorOverlay()&&inspector.classList.contains('is-open')){event.preventDefault();$('pwInspectorClose')?.click();}});
+  inspector.addEventListener('transitionend',event=>{if(event.target===inspector&&event.propertyName==='transform')resizeVisuals();});
   $('pwFocusToggle')?.addEventListener('click',()=>{
     const next=!document.body.classList.contains('pw-focus-canvas');
     focusPreference=next;
@@ -488,6 +492,7 @@ function inspectorContext(page){
   document.body.classList.toggle('pw-has-inspector',useful);
   if(inspector){inspector.hidden=!useful;if(!useful)inspector.classList.remove('is-open');}
   if(toggle)toggle.hidden=!useful;
+  syncInspectorAccessibility();
   if(useful){const note=document.createElement('div');note.className='pw-shell-note';note.textContent='Settings shown here use the existing canonical browser/Python calculation paths.';body.appendChild(note);}
 }
 
@@ -521,6 +526,7 @@ function parseHash(){
 function navigate(workspace,page,push=false){
   const resolved=canonicalRoute(workspace,page);if(!resolved)return;
   workspace=resolved.workspace;page=resolved.page;
+  const mobileRouteFocus=matchMedia('(max-width:620px)').matches&&Boolean(qs('.pw-rail.is-open')?.contains(document.activeElement));
   rememberRouteScroll();cancelScrollRestore();
   restoreDocked();
   current={workspace,page};
@@ -548,17 +554,30 @@ function navigate(workspace,page,push=false){
   applyPageComposition();
   qsa('.pw-primary-nav button,.pw-about-nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.workspace===workspace?'page':'false'));
   $('pwBreadcrumbWorkspace').textContent=spec.label;$('pwBreadcrumbPage').textContent=p.label;$('pwPageTitle').textContent=p.title;$('pwPageDescription').textContent=p.description;
-  const sn=$('pwSecondaryNav');sn.innerHTML='';
+  const sn=$('pwSecondaryNav');
+  const previous=sn.dataset.workspace===workspace?qs('button[aria-current="page"]',sn):null;
+  const previousPill=previous?{left:previous.offsetLeft,width:previous.offsetWidth}:null;
+  sn.innerHTML='';sn.dataset.workspace=workspace;
   Object.entries(spec.pages).forEach(([key,entry])=>{const b=document.createElement('button');b.type='button';b.dataset.page=key;b.textContent=entry.label;b.setAttribute('aria-current',key===page?'page':'false');b.addEventListener('click',()=>navigate(workspace,key,true));sn.appendChild(b);});
+  positionTabIndicator(previousPill);
   inspectorContext(p);refreshScope();renderAssets();
   // A route change must preserve the layout chosen by the engineer.
   qs('.pw-rail')?.classList.remove('is-open');
   applyFocusCanvas(false);
+  if(mobileRouteFocus)qs('button[aria-current="page"]',sn)?.focus({preventScroll:true});
   if(push){const h='#/'+workspace+'/'+page;if(location.hash!==h)history.pushState(null,'',h);}
   document.title=p.title+' · Hydra Bench';
   resizeVisuals();
   window.dispatchEvent(new CustomEvent('icm:route-changed',{detail:{workspace,page}}));
-  if(workspace==='spills'&&page==='network')void window.ICMNetworkSchematic?.open();
+  if(workspace==='spills'&&page==='network'){
+    const networkRoot=$('tab-spill-network');
+    if(networkRoot&&!networkRoot.children.length){
+      const loading=document.createElement('p');loading.className='pw-empty-state';
+      loading.setAttribute('role','status');loading.textContent='Opening network schematic…';
+      networkRoot.appendChild(loading);
+    }
+    void window.ICMNetworkSchematic?.open();
+  }
   routeMounted=true;restoreRouteScroll();
 }
 function syncBrandToggle(){
@@ -567,13 +586,38 @@ function syncBrandToggle(){
   button.setAttribute('aria-expanded',String(expanded));
   button.setAttribute('aria-label',expanded?'Collapse navigation':'Expand navigation');
   button.title=expanded?'Collapse navigation':'Expand navigation';
+  if(rail)rail.inert=matchMedia('(max-width:620px)').matches&&!expanded;
+  const menu=$('pwRailToggle');if(menu){menu.setAttribute('aria-controls','pwNavigation');menu.setAttribute('aria-expanded',String(expanded));if(matchMedia('(max-width:620px)').matches)menu.textContent=expanded?'Close menu':'Menu';}
+}
+function inspectorOverlay(){return matchMedia('(max-width:1260px)').matches||document.body.classList.contains('pw-focus-canvas');}
+function syncInspectorAccessibility(){
+  const inspector=$('pwInspector'),toggle=$('pwInspectorToggle');if(!inspector)return;
+  const expanded=!inspector.hidden&&(inspectorOverlay()?inspector.classList.contains('is-open'):!document.body.classList.contains('pw-inspector-collapsed'));
+  inspector.inert=!expanded;
+  toggle?.setAttribute('aria-expanded',String(expanded));
+}
+function positionTabIndicator(previous=null){
+  const nav=$('pwSecondaryNav'),active=nav&&qs('button[aria-current="page"]',nav);if(!active)return;
+  let pill=qs('.pw-tab-indicator',nav);
+  if(!pill){pill=document.createElement('span');pill.className='pw-tab-indicator';pill.setAttribute('aria-hidden','true');nav.prepend(pill);}
+  const left=active.offsetLeft,width=active.offsetWidth;
+  pill.style.left=left+'px';pill.style.width=width+'px';nav.classList.add('pw-has-indicator');
+  // Keep the selected route discoverable without moving the document or charts.
+  if(left<nav.scrollLeft)nav.scrollLeft=left;
+  else if(left+width>nav.scrollLeft+nav.clientWidth)nav.scrollLeft=left+width-nav.clientWidth+4;
+  if(previous&&width>0&&!matchMedia('(prefers-reduced-motion:reduce)').matches){
+    pill.style.transformOrigin='left center';
+    pill.animate([{transform:'translateX('+(previous.left-left)+'px) scaleX('+(previous.width/width)+')'},{transform:'none'}],{duration:200,easing:'cubic-bezier(.2,.8,.2,1)'});
+  }
 }
 function isFocusRoute(){
   return true;
 }
+let resizeFrame=0,resizeTimer=0;
 function resizeVisuals(){
-  requestAnimationFrame(()=>{
-    setTimeout(()=>{
+  cancelAnimationFrame(resizeFrame);clearTimeout(resizeTimer);
+  resizeFrame=requestAnimationFrame(()=>{
+    resizeTimer=setTimeout(()=>{
       qsa('.js-plotly-plot').forEach(chart=>{
         const rect=chart.getBoundingClientRect();
         if(!chart.isConnected||chart.offsetParent===null||rect.width<2||rect.height<2)return;
@@ -603,7 +647,7 @@ function applyFocusCanvas(userInitiated=false){
   if(railToggle)railToggle.hidden=active;
   const inspector=$('pwInspector');
   if(!active&&userInitiated)inspector?.classList.remove('is-open');
-  syncBrandToggle();
+  syncBrandToggle();syncInspectorAccessibility();
   resizeVisuals();
 }
 function selectionLabel(id,fallback='—'){
@@ -672,14 +716,17 @@ function wireContextUpdates(){
   const focusMedia=matchMedia('(min-width:901px)');
   focusMedia.addEventListener?.('change',()=>applyFocusCanvas(false));
   matchMedia('(max-width:620px)').addEventListener?.('change',syncBrandToggle);
+  matchMedia('(max-width:1260px)').addEventListener?.('change',syncInspectorAccessibility);
+  new ResizeObserver(()=>positionTabIndicator()).observe(secondary);
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&qs('.pw-rail.is-open')){qs('.pw-rail').classList.remove('is-open');syncBrandToggle();$('pwRailToggle')?.focus({preventScroll:true});}});
 }
 function buildAboutPage(){
   if($('tab-about'))return;
   const summaries=[
-    ['data','time-series','Data / Time Series','Upload CSV, FDV and rainfall R files, association workbooks and ICM assessment reports into a shared source pool. Assign observed, modelled and rainfall series, confirm their quantities and units, and review hydraulic traces, thresholds, rainfall events and source statistics. This is the starting point for supplying and checking the evidence used by the other workspaces.'],
-    ['spills','assessment','Spills','Assess observed and modelled spills using explicit thresholds, exclusions and valid temporal support. Review physical spill intervals, UK 12/24 counts and yearly or monthly comparisons. Storage Assessment provides idealised storage screening and modelled spill-volume evidence to support further engineering investigation.'],
-    ['survey','fdv-check','Flow Survey','Review monitor and rain-gauge weeks from their schematics, record a rating and comment for each week, and check flow continuity in Volume Balance. Monthly Review brings the outcomes and actions together for PDF export.'],
-    ['detriment','flooding','Detriment Assessment','Compare baseline Scenario A with proposed Scenario B using exported ICM report evidence. The Flooding, Level and Spill tabs assess changes in flood volume, maximum water-level elevation and freeboard, or spill counts and actual durations. Explicit criteria, raw asset evidence and optional manhole / link ID lists support a focused, traceable assessment.'],
+    ['data','time-series','Data / time series','Upload CSV, FDV and rainfall R files, association workbooks and ICM assessment reports into a shared source pool. Assign observed, modelled and rainfall series, confirm their quantities and units, and review hydraulic traces, thresholds, rainfall events and source statistics. This is the starting point for supplying and checking the evidence used by the other workspaces.'],
+    ['spills','assessment','Spills','Assess observed and modelled spills using explicit thresholds, exclusions and valid temporal support. Review physical spill intervals, UK 12/24 counts and yearly or monthly comparisons. Storage assessment provides idealised storage screening and modelled spill-volume evidence to support further engineering investigation.'],
+    ['survey','fdv-check','Flow survey','Review monitor and rain-gauge weeks from their schematics, record a rating and comment for each week, and check flow continuity in Volume balance. Monthly review brings the outcomes and actions together for PDF export.'],
+    ['detriment','flooding','Detriment assessment','Compare baseline Scenario A with proposed Scenario B using exported ICM report evidence. The Flooding, Level and Spill tabs assess changes in flood volume, maximum water-level elevation and freeboard, or spill counts and actual durations. Explicit criteria, raw asset evidence and optional manhole / link ID lists support a focused, traceable assessment.'],
     ['graphs','comparison','Plots','Explore observed versus modelled agreement, depth and flow–depth rating diagnostics, and dry-weather-flow baselines. Use scatter views, fitted relationships and verification statistics to understand model performance and hydraulic behaviour, with sample support and data-validity limitations retained.'],
     ['reports','report-generation','Reports','Export engineering assessments and graph reports from the current analysis, and save or restore a workspace with its configuration and source fingerprints. Reports carry the relevant criteria, units and evidence so results can be reviewed and shared; saved workspaces reference the original files without embedding their raw data.']
   ];

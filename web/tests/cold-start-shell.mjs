@@ -38,9 +38,9 @@ try{
   assert.equal(initial.engineReadyAt,null,'authoritative engine must not be ready before a workflow needs it');
   assert.equal(pyodideRequests.length,0,'cold page open must not request Pyodide');
   assert.ok(shellReadyMs<5000,'desktop shell should become navigable within the 5 s local release budget');
-  assert.match(initial.body,/Data \/ Time Series/);
-  assert.match(initial.body,/Flow Survey/);
-  assert.match(initial.body,/Detriment Assessment/);
+  assert.match(initial.body,/Data \/ time series/);
+  assert.match(initial.body,/Flow survey/);
+  assert.match(initial.body,/Detriment assessment/);
 
   for(const [route,tab] of [['data','time-series'],['spills','spill-assessment'],['survey','fdv-check'],['detriment','flooding'],['graphs','scatter'],['reports','report-generation']]){
     await page.evaluate(([r,t])=>window.__ICM_PRECISION_WORKBENCH__.navigate(r,t,false),[route,tab]);

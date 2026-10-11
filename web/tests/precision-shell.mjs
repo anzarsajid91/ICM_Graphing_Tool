@@ -16,7 +16,7 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
   console.log('SHELL STEP navigation shell');
   const labels=(await page.locator('.pw-primary-nav button').allTextContents()).map(x=>x.replace(/^[^A-Za-z]+/,'').trim());
-  if(labels.join('|')!=='Data / Time Series|Spills|Flow Survey|Detriment Assessment|Plots|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
+  if(labels.join('|')!=='Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
   const navigationOwnership=await page.evaluate(()=>({
     legacyDisplay:getComputedStyle(document.querySelector('nav.tabs')).display,
     precisionVisible:[...document.querySelectorAll('.pw-primary-nav button')].filter(x=>x.getClientRects().length>0).length,
@@ -25,10 +25,10 @@ try{
   if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==6)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const surveyTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
-  if(surveyTabs.join('|')!=='FDV Check|Rainfall Check|Volume Balance|Monthly Review')throw new Error('Flow Survey subtab order mismatch: '+JSON.stringify(surveyTabs));
+  if(surveyTabs.join('|')!=='FDV check|Rainfall check|Volume balance|Monthly review')throw new Error('Flow survey subtab order mismatch: '+JSON.stringify(surveyTabs));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
   const dataTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
-  if(dataTabs.join('|')!=='Time Series')throw new Error('Data workspace must be one continuous Time Series workflow: '+JSON.stringify(dataTabs));
+  if(dataTabs.join('|')!=='Time series')throw new Error('Data workspace must be one continuous Time series workflow: '+JSON.stringify(dataTabs));
   const unifiedData=await page.evaluate(()=>{
     const visible=el=>Boolean(el)&&!el.hidden&&el.getClientRects().length>0&&getComputedStyle(el).display!=='none';
     return {
@@ -40,7 +40,7 @@ try{
       eventParent:document.querySelector('#runRainEventsBtn')?.closest('#pwTimeSeriesEventSurface')?.id||null,
     };
   });
-  if(!unifiedData.setup||!unifiedData.sources||!unifiedData.mapping||!unifiedData.graph||!unifiedData.standaloneEvents||unifiedData.eventParent!=='pwTimeSeriesEventSurface')throw new Error('Upload → assign → graph → standalone WAPUG must share the Data / Time Series workspace: '+JSON.stringify(unifiedData));
+  if(!unifiedData.setup||!unifiedData.sources||!unifiedData.mapping||!unifiedData.graph||!unifiedData.standaloneEvents||unifiedData.eventParent!=='pwTimeSeriesEventSurface')throw new Error('Upload → assign → graph → standalone WAPUG must share the Data / time series workspace: '+JSON.stringify(unifiedData));
   const wapugPresets=await page.evaluate(()=>{
     const select=document.querySelector('#rainCriteriaMode');
     const values=[...select.options].map(x=>x.value);
@@ -55,7 +55,7 @@ try{
   if(wapugPresets.values.join('|')!=='wapug|wapug-under50|manual'||wapugPresets.under?.minimum_intensity_duration_min!==4||wapugPresets.under?.minimum_event_duration_min!==30||wapugPresets.over?.minimum_intensity_duration_min!==6||wapugPresets.over?.minimum_event_duration_min!==60||wapugPresets.underVisible.streak!=='4'||wapugPresets.underVisible.duration!=='30'||wapugPresets.overVisible.streak!=='6'||wapugPresets.overVisible.duration!=='60')throw new Error('Standalone WAPUG population presets are incorrect or visually inconsistent: '+JSON.stringify(wapugPresets));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation',false));
   const reportTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
-  if(reportTabs[0]!=='Report Generation')throw new Error('Reports must land on Report Generation first: '+JSON.stringify(reportTabs));
+  if(reportTabs[0]!=='Report generation')throw new Error('Reports must land on Report generation first: '+JSON.stringify(reportTabs));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('verification','storage',false));
   const migrated=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
   if(migrated.workspace!=='spills'||migrated.page!=='storage')throw new Error('Legacy Storage route did not migrate: '+JSON.stringify(migrated));
@@ -122,12 +122,12 @@ try{
   if(!continuityComposition.balance||continuityComposition.completeSurvey||continuityComposition.rawHealth||continuityComposition.professional)throw new Error('Flow continuity route ownership is incorrect: '+JSON.stringify(continuityComposition));
 
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
-  if(await page.locator('#pwDataHealthSummary').count()!==1)throw new Error('FDV Check must lead with a monitor/source triage summary before raw channel/week detail.');
+  if(await page.locator('#pwDataHealthSummary').count()!==1)throw new Error('FDV check must lead with a monitor/source triage summary before raw channel/week detail.');
   const healthComposition=await page.evaluate(()=>({
     summaryVisible:getComputedStyle(document.querySelector('#pwDataHealthSummary')).display!=='none',
     rawInsideDetails:Boolean(document.querySelector('#pwDataHealthDetails #healthBody')),
   }));
-  if(!healthComposition.summaryVisible||!healthComposition.rawInsideDetails)throw new Error('FDV Check summary/detail composition is incomplete: '+JSON.stringify(healthComposition));
+  if(!healthComposition.summaryVisible||!healthComposition.rawInsideDetails)throw new Error('FDV check summary/detail composition is incomplete: '+JSON.stringify(healthComposition));
 
   console.log('SHELL STEP review ledger and monthly evidence');
   const reviewLayer=await page.evaluate(()=>{
@@ -249,7 +249,7 @@ try{
       standaloneTimeSeriesEvents:visible(document.querySelector('#pwTimeSeriesEventSurface')),
     };
   });
-  if(!rainfallSeparation.flowSurveyRain||!rainfallSeparation.statusHeader||rainfallSeparation.standaloneTimeSeriesEvents)throw new Error('Flow Survey rainfall and standalone Time Series WAPUG state/surfaces are not separated: '+JSON.stringify(rainfallSeparation));
+  if(!rainfallSeparation.flowSurveyRain||!rainfallSeparation.statusHeader||rainfallSeparation.standaloneTimeSeriesEvents)throw new Error('Flow survey rainfall and standalone Time series WAPUG state/surfaces are not separated: '+JSON.stringify(rainfallSeparation));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   console.log('SHELL STEP typography');
   const typeScale=await page.evaluate(()=>({
@@ -402,7 +402,7 @@ try{
     outline:getComputedStyle(document.activeElement).outlineStyle,
     outlineWidth:getComputedStyle(document.activeElement).outlineWidth,
   }));
-  if(keyboardFocus.activeText!=='Rainfall Check'||keyboardFocus.outline==='none'||Number.parseFloat(keyboardFocus.outlineWidth||'0')<=0)throw new Error('Keyboard subtab focus/navigation failed: '+JSON.stringify(keyboardFocus));
+  if(keyboardFocus.activeText!=='Rainfall check'||keyboardFocus.outline==='none'||Number.parseFloat(keyboardFocus.outlineWidth||'0')<=0)throw new Error('Keyboard subtab focus/navigation failed: '+JSON.stringify(keyboardFocus));
   await page.keyboard.press('End');
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='monthly-review');
   await page.keyboard.press('Home');
@@ -410,14 +410,14 @@ try{
 
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',true));
   await page.waitForFunction(()=>location.hash==='#/survey/fdv-check');
-  if((await page.locator('#pwPageTitle').textContent())?.trim()!=='FDV check')throw new Error('Canonical FDV Check deep-link title mismatch');
+  if((await page.locator('#pwPageTitle').textContent())?.trim()!=='FDV check')throw new Error('Canonical FDV check deep-link title mismatch');
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='fdv-check',null,{timeout:30000});
   // Legacy PR25-era deep links remain accepted, but resolve to the new canonical route.
   await page.evaluate(()=>{location.hash='#/survey/data-health';});
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='fdv-check',null,{timeout:30000});
-  if((await page.locator('#pwPageTitle').textContent())?.trim()!=='FDV check')throw new Error('Legacy Data Health deep link did not migrate to FDV Check.');
+  if((await page.locator('#pwPageTitle').textContent())?.trim()!=='FDV check')throw new Error('Legacy Data Health deep link did not migrate to FDV check.');
   if(errors.length)throw new Error('Browser errors: '+errors.join(' | '));
   console.log(browserName+' Precision Workbench shell acceptance passed.');
 }finally{
