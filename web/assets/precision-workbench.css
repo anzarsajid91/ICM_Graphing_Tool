@@ -147,6 +147,7 @@ body.precision-workbench{
 .precision-workbench input,.precision-workbench select,.precision-workbench textarea{
   border:1px solid var(--pw-border-strong);border-radius:var(--hb-radius-control);background:#fff;color:var(--pw-text)
 }
+.precision-workbench :is(input,select,textarea)[aria-invalid="true"]{border-color:var(--hb-danger)}
 .precision-workbench input:not([type="checkbox"]):not([type="color"]),
 .precision-workbench select,.precision-workbench textarea{padding:8px 8px}
 .precision-workbench select:not([multiple]){

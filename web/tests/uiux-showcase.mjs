@@ -19,6 +19,7 @@ try{
  assert.equal(await page.getByRole('button',{name:'Unavailable'}).isDisabled(),true);
  assert.equal(await page.getByRole('button',{name:'Calculating'}).getAttribute('aria-busy'),'true');
  assert.equal(await page.getByLabel('Unknown unit').getAttribute('aria-invalid'),'true');
+ assert.equal(await page.getByLabel('Unknown unit').evaluate(el=>getComputedStyle(el).borderTopColor),'rgb(185, 56, 56)','Invalid control border survives owner CSS cascade');
  await page.screenshot({path:out+'/components-focus-validation.png',fullPage:true});
  await page.getByText('Methodology and advanced settings').click();
  assert.equal(await page.locator('details').getAttribute('open'),'');
