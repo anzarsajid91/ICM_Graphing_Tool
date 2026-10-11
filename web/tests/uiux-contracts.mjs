@@ -12,6 +12,15 @@ try{
  await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__));
  const fonts=await page.evaluate(async()=>{const loaded=[];for(const weight of [400,500,600]){const faces=await document.fonts.load(weight+' 14px Inter','Hydra Bench 0123456789');loaded.push(faces.some(f=>f.family.replaceAll('"','')==='Inter'&&f.status==='loaded'));}return {loaded,family:getComputedStyle(document.body).fontFamily,numeric:getComputedStyle(document.body).fontVariantNumeric};});
  assert.deepEqual(fonts.loaded,[true,true,true],'Bundled Inter loaded at all three weights');assert.match(fonts.family,/Inter/);assert.equal(fonts.numeric,'tabular-nums');
+ // Owner styles load after the shared typography rules. Verify the rendered
+ // cascade, including lazy network controls and the assessment paste field.
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('spills','network',false));
+ await page.waitForSelector('#nsSvg');
+ const networkWeights=await page.locator('#nsWorkbench button').evaluateAll(buttons=>buttons.map(button=>getComputedStyle(button).fontWeight));
+ assert.ok(networkWeights.length>0,'Network toolbar is present');
+ assert.ok(networkWeights.every(weight=>weight==='600'),'Every network button uses requested weight 600');
+ assert.match(await page.locator('#dtPasteGrid').evaluate(el=>getComputedStyle(el).fontFamily),/Inter/,'Assessment paste field uses the single requested typeface');
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
  await page.evaluate(()=>window.HydraDesign.prepareReportFont());
  const offline=await context.newPage();await context.setOffline(true);
  try{await offline.setContent(await page.evaluate(()=>reportShell('Synthetic font export','Offline typography','<p>0123456789 · hydraulic units</p>')));assert.equal(await offline.evaluate(async()=>{await document.fonts.load('400 14px Inter');return [...document.fonts].some(f=>f.family==='Inter'&&f.status==='loaded');}),true,'Portable local report retains Inter offline');}finally{await context.setOffline(false);await offline.close();}

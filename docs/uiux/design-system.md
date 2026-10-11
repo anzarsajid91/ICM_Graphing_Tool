@@ -1,5 +1,11 @@
 # Unified design system
 
+Current release status (11 October 2026): PR76 is merged as `65b0be8` and v1.063 is live.
+Final candidate `11fba20` passed review, performance and isolated-preview gates;
+production deployment and exact-revision live verification passed.
+See [current requirements audit](2026-10-11-requirements-audit.md).
+Older candidate/pending statements below are historical checkpoints, not current blockers.
+
 Status: common foundation, shell, workspace owners and reports implemented; final-head verification and exhaustive accessibility/state acceptance remain bounded by reports.
 
 ## Foundation

@@ -1,5 +1,11 @@
 # Performance comparison
 
+Current release status (11 October 2026): PR76 is merged as `65b0be8` and v1.063 is live.
+Final candidate `11fba20` passed review, performance and isolated-preview gates;
+production deployment and exact-revision live verification passed.
+See [current requirements audit](2026-10-11-requirements-audit.md).
+Older candidate/pending statements below are historical checkpoints, not current blockers.
+
 Exact baseline `dff8ff593e61dbfea142007b5ac32b0d66787f0a`; candidate `6ed4f4c785cad4a350705b6832a208b053e6ffcc`.
 [Successful same-runner run](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/38085106112). Raw measurements: [performance-comparison.json](evidence/performance-comparison.json).
 

@@ -1,5 +1,11 @@
 # Additional references — 11 October 2026
 
+Current release status (11 October 2026): PR76 is merged as `65b0be8` and v1.063 is live.
+Final candidate `11fba20` passed review, performance and isolated-preview gates;
+production deployment and exact-revision live verification passed.
+See [current requirements audit](2026-10-11-requirements-audit.md).
+Older candidate/pending statements below are historical checkpoints, not current blockers.
+
 Reviewed the supplied Brightdesk JPEG and both recordings directly from the attached files. These supplement the original Threads reference; they do not replace the completed design system or engineering workflows. No original design files or source code were available.
 
 ## Observed product UI
