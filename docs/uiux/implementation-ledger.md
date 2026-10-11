@@ -53,3 +53,5 @@ Repeated controlled measurements did not reproduce the earlier large EDM navigat
 Final independent live QA found three unnamed report-section checkboxes and an overly broad first label. Replaced the wrapping label with a named group and individual native labels; control IDs, saved settings and export handlers unchanged. Browser contracts now require each exact accessible name.
 
 Independent native-name audit of visible controls on all 17 default routes at served `56c16bfb` found only the report-section label group and unnamed saved-workspace select. Both fixed with native per-control labels / a Saved workspace accessible name and exact-name browser assertions. IDs and persistence/export behaviour retained. Closed disclosures and loaded conditional controls were not covered by this final name audit.
+
+Final report-name assertions passed at 8d3950db; strict shell spacing then caught the new group’s inherited 5 px gap. Corrected to the governed 4 px rhythm in CSS. No assertion relaxed; preview stopped before deployment.

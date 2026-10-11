@@ -265,7 +265,7 @@ body.precision-workbench{
 .pw-report-options{display:grid;gap:16px;padding:16px}
 .pw-report-options .mapping-grid{align-items:start}
 .pw-check-stack{display:grid;gap:8px;padding-top:4px}
-.pw-report-sections{font-size:13px;line-height:20px;font-weight:600;display:grid;gap:5px}
+.pw-report-sections{font-size:13px;line-height:20px;font-weight:600;display:grid;gap:4px}
 .pw-check-stack>label{display:flex;flex-direction:row;align-items:center;gap:8px;font-weight:500}
 .pw-report-options select[multiple]{min-height:112px}
 .pw-domain-provenance{margin-top:0}
