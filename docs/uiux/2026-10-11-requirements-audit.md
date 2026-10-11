@@ -81,9 +81,12 @@ features.
 - Extra rendered audit after fixes: 119 route/width states, no document overflow
   and no visible button/heading/input typeface exception in the inspected empty
   states. Widths include 640 px reflow, not a physical browser-zoom claim.
+- The design-contract suite was previously limited to the original feature-branch
+  workflows; it now runs in the ordinary Pages browser gate so future PRs and
+  main deployments execute the typography, offline-font and accessibility contracts.
 - Protected Python, domain registry and worker sources are unchanged between
   the redesign baseline and PR76; follow-up modifies only two owning CSS rules,
-  a rendered regression contract and documentation.
+  a rendered regression contract, its production CI invocation and documentation.
 
 ## Remaining limits that affect an “everything complete” claim
 
