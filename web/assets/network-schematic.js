@@ -148,7 +148,7 @@ function popupTable(n){
   if(!n.applied)return annualTable(n)+'<small>Assign datasets and calculate.</small>';
   const fresh=isFresh(n),groups=R.annualGroups(n,prefs().scenarios);
   let table='<table><thead><tr><th>Year</th><th>Scenario</th><th>Observed<br>spills</th><th>Modelled<br>spills</th><th>Observed<br>hours</th><th>Modelled<br>hours</th></tr></thead><tbody>';
-  const cell=(v,rag)=>'<td'+(rag?' class="ns-rag-'+rag+'"':'')+'>'+f(v,Number.isInteger(v)?0:2)+'</td>';
+  const cell=(v,rag)=>'<td'+(rag?' class="ns-rag-'+rag+'"':'')+'>'+f(v,Number.isInteger(v)?0:2)+(rag?'<small class="ns-rag-label">'+html(rag[0].toUpperCase()+rag.slice(1))+' agreement</small>':'')+'</td>';
   for(const group of groups){
     const o=group.observed,m=group.model,reason=!fresh?'Recalculation required':m?C.comparable(o,m,n.confirmed):'No matching model evidence.',countRag=m&&!reason?C.rag(o?.spill_count,m.spill_count):null,durationRag=fresh&&m&&!C.comparable(o,m,n.confirmed,'duration_hours')?C.rag(o?.duration_hours,m.duration_hours):null;
     table+='<tr data-ns-evidence-year="'+group.year+'" title="'+html(reason)+'"><td>'+group.year+'</td><td>'+html(group.scenario)+([o,m].some(r=>r?.continuous_spill)?'<small class="ns-warning">Continuous spill — check threshold</small>':'')+'</td>'+cell(fresh?o?.spill_count:null)+cell(fresh?m?.spill_count:null,countRag)+cell(fresh?o?.duration_hours:null)+cell(fresh?m?.duration_hours:null,durationRag)+'</tr>';
@@ -413,7 +413,7 @@ function hoverCard(id){
   const hover=$('nsHover'),d=dimensions(),p=point(n.x,n.y);hover.innerHTML='<strong>'+html(n.name)+'</strong><div class="ns-hover-table">'+annualTable(n,false,prefs().scenarios,false)+'</div><small>Click asset to inspect</small>';hover.hidden=false;const w=Math.min(460,d.width-24);hover.style.width=w+'px';hover.style.left=Math.max(12,Math.min(d.width-w-12,p.x+45))+'px';hover.style.top=Math.max(12,Math.min(d.height-hover.offsetHeight-70,p.y+15))+'px';
 }
 function annualTable(n,differences=false,scenarios=prefs().scenarios,interactive=true){
-  const fresh=isFresh(n),groups=R.annualGroups(n,scenarios),cell=(value,rag)=>'<td'+(rag?' class="ns-rag-'+rag+'"':'')+'>'+f(value,Number.isInteger(value)?0:1)+'</td>';
+  const fresh=isFresh(n),groups=R.annualGroups(n,scenarios),cell=(value,rag)=>'<td'+(rag?' class="ns-rag-'+rag+'"':'')+'>'+f(value,Number.isInteger(value)?0:1)+(rag?'<small class="ns-rag-label">'+html(rag[0].toUpperCase()+rag.slice(1))+' agreement</small>':'')+'</td>';
   const signed=value=>value===null?'—':(value>0?'+':'')+f(value,1);
   return '<table class="ns-annual-table"><thead><tr><th>Year</th><th>Scenario</th><th>O count</th><th>M count</th><th>O h</th><th>M h</th>'+(differences?'<th>Δ count</th><th>Δ h</th>':'')+'</tr></thead><tbody>'+groups.map(g=>{
     const reason=metric=>!fresh?'Recalculate':g.model?C.comparable(g.observed,g.model,n.confirmed,metric):'No model evidence',countValid=!reason('spill_count'),durationValid=!reason('duration_hours'),o=fresh?g.observed:null,m=fresh?g.model:null;
