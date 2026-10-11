@@ -34,6 +34,10 @@ try{
     for(const [w,p] of routes){
       await page.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[w,p]);
       await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+      if(w==='spills'&&p==='network'&&width===390){
+        const fits=await page.locator('#nsSvg').evaluate(svg=>{const bounds=svg.viewBox.baseVal;return [...svg.querySelectorAll('tspan')].every(line=>{const box=line.getBBox();return box.x>=0&&box.x+box.width<=bounds.width;});});
+        if(!fits)throw new Error('Network empty instruction clips at 390 px');
+      }
       await page.screenshot({path:path.join(out,w+'-'+p+'-'+width+'.png')});
     }
   }

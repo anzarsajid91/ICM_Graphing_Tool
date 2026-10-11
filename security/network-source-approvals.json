@@ -21,8 +21,8 @@
       "review": "Reviewed lazy script URLs are the three fixed same-origin schematic assets plus the fixed release token; no source or calculation metadata is included."
     },
     "web/assets/network-schematic.js": {
-      "sha256": "6abc0b5ea75523f0acda9cff54b694da3a99a6044b419bb273e53b0a21af6e3a",
-      "review": "Reviewed presentation and keyboard-only changes: local chart/report CSS, source-picker Escape/focus return, analysis-dialog focus trap/return, year drill-down buttons, print-open assessment disclosures. Binding/calculation/geometry/persistence functions and fixed resource/blob/blank-window paths unchanged. No new requests or transmission. Reviewed colour-independent agreement text in table cells only; calls and results of existing RAG functions unchanged, no SVG geometry changes and no network sink changes."
+      "sha256": "c679f3b68855ded1b6a9fbbbb3ddb579c1fa6b7576926365f6cdf9538902cfac",
+      "review": "Reviewed presentation and keyboard-only changes: local chart/report CSS, source-picker Escape/focus return, analysis-dialog focus trap/return, year drill-down buttons, print-open assessment disclosures. Binding/calculation/geometry/persistence functions and fixed resource/blob/blank-window paths unchanged. No new requests or transmission. Reviewed colour-independent agreement text in table cells only; calls and results of existing RAG functions unchanged, no SVG geometry changes and no network sink changes. Reviewed empty-canvas instruction split into two centred text lines for narrow screens; existing network coordinates, transforms, editing and network paths untouched."
     },
     "web/assets/runtime.js": {
       "sha256": "dce96793a3155e1be77ae4ec0be4ab3d6998e4460286336b1e326e4e9524655d",
