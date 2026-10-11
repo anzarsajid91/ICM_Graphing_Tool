@@ -43,3 +43,5 @@ runner without control-inventory instrumentation (118.2 vs119.8 seconds; normali
 requires the final candidate gates and review gaps to be considered explicitly.
 
 Later local commits c99327d (narrow empty instruction), 2179705 (native modal background isolation) and 8348c08 (separate synchronous/paint timing) are individually reviewable. Remaining navigation timing exception and exhaustive acceptance gaps are explicit in performance/coverage/accessibility reports.
+
+A live accessibility-tree check revealed plot-only empty guidance exposed outside Plots. Route-scoped pseudo content now prevents irrelevant guidance on Data/assessments; a new contract asserts absence on Data and presence on empty Comparison. No display/route/Plotly handler changed.

@@ -10,6 +10,10 @@ const painted=()=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>req
 try{
  await page.goto(base,{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__));
+ assert.equal(await page.locator('#scatterChart').evaluate(el=>getComputedStyle(el,'::before').content),'none','Plot instructions are absent from Data');
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','comparison',false));
+ assert.match(await page.locator('#scatterChart').evaluate(el=>getComputedStyle(el,'::before').content),/Assign observed/,'Empty comparison explains its next action');
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
  const toggle=page.locator('#pwInspectorToggle');
  assert.equal(await toggle.getAttribute('aria-controls'),'pwInspector');
  assert.equal(await toggle.getAttribute('aria-expanded'),'true');
