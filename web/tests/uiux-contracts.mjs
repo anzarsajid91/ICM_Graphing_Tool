@@ -14,6 +14,13 @@ try{
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','comparison',false));
  assert.match(await page.locator('#scatterChart').evaluate(el=>getComputedStyle(el,'::before').content),/Assign observed/,'Empty comparison explains its next action');
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation',false));
+ for(const [id,name] of [['reportIncludeTimeSeries','Full-period time series'],['reportIncludeSpillsStorage','Spills & storage'],['reportIncludeComparison','Comparison diagnostics'],['reportIncludeSurvey','Flow-survey evidence']]){
+  const control=page.getByRole('checkbox',{name,exact:true});assert.equal(await control.count(),1);assert.equal(await control.getAttribute('id'),id);
+ }
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','workspace',false));
+ assert.equal(await page.getByRole('combobox',{name:'Saved workspace',exact:true}).getAttribute('id'),'namedWorkspaceSelect');
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
  const toggle=page.locator('#pwInspectorToggle');
  assert.equal(await toggle.getAttribute('aria-controls'),'pwInspector');
  assert.equal(await toggle.getAttribute('aria-expanded'),'true');

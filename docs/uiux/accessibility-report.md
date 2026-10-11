@@ -38,3 +38,5 @@ PDF conformance is not claimed. The token and keyboard tests do not close these
 gaps. These require a dedicated acceptance pass before an unrestricted AA claim.
 
 Asset analysis now uses native modal background isolation and a true backdrop, with cancellation and route exit releasing it. The browser suite explicitly checks :modal, outside-pointer focus isolation and route-close. Final branch checks, rather than earlier screenshots, are authoritative for this later change. The empty schematic instruction is split into two lines and its SVG bounds tested at 390 px.
+
+Independent native-name audit of visible controls on all 17 default routes at served `56c16bfb` found only the report-section label group and unnamed saved-workspace select. Both fixed with native per-control labels / a Saved workspace accessible name and exact-name browser assertions. IDs and persistence/export behaviour retained. Closed disclosures and loaded conditional controls were not covered by this final name audit.

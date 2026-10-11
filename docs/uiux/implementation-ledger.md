@@ -49,3 +49,7 @@ A live accessibility-tree check revealed plot-only empty guidance exposed outsid
 The reusable invalid-input state was hardened against the owner border shorthand: aria-invalid controls retain the governed danger border, and the showcase now asserts its rendered colour in addition to semantic state. Final local Python rerun passed after restoring the scratch test dependencies; no application dependency was changed.
 
 Repeated controlled measurements did not reproduce the earlier large EDM navigation delay. Navigation benchmark now separates steady-state route paint from an in-flight authoritative graph redraw; both original and repeated raw samples remain retained, no slow sample discarded. Native modal/narrow rendered independent QA and full browser gates passed at 0b6172a; final token/cascade/layout checks remain in exact-head CI.
+
+Final independent live QA found three unnamed report-section checkboxes and an overly broad first label. Replaced the wrapping label with a named group and individual native labels; control IDs, saved settings and export handlers unchanged. Browser contracts now require each exact accessible name.
+
+Independent native-name audit of visible controls on all 17 default routes at served `56c16bfb` found only the report-section label group and unnamed saved-workspace select. Both fixed with native per-control labels / a Saved workspace accessible name and exact-name browser assertions. IDs and persistence/export behaviour retained. Closed disclosures and loaded conditional controls were not covered by this final name audit.
