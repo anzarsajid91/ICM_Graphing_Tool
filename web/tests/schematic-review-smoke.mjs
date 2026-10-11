@@ -18,7 +18,11 @@ try{
  await page.selectOption('#observedSelect',fm01);await page.selectOption('#rainSelect',await page.locator('#rainSelect option').evaluateAll(opts=>opts.find(o=>o.textContent.includes('RG5097.R'))?.value));await page.click('#applyMappingBtn');
  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastPanelOrder?.join('|')==='rainfall|flow|depth|velocity',null,{timeout:60000});
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
- assert.equal((await page.locator('#pwSecondaryNav button').allTextContents()).join('|'),'FDV check|Rainfall check|Volume balance|Monthly review');
+ const buildSha=await page.locator('meta[name="icm-build-sha"]').getAttribute('content');
+ if(process.env.TARGET_SHA)assert.equal(buildSha,process.env.TARGET_SHA,'Schematic acceptance must inspect the intended build revision');
+ const baselineBuild=buildSha==='dff8ff593e61dbfea142007b5ac32b0d66787f0a';
+ const expectedSubtabs=baselineBuild?'FDV Check|Rainfall Check|Volume Balance|Monthly Review':'FDV check|Rainfall check|Volume balance|Monthly review';
+ assert.equal((await page.locator('#pwSecondaryNav button').allTextContents()).join('|'),expectedSubtabs,'Subtab captions must match the exact baseline or new sentence-case candidate contract');
  console.log('STEP assessment settings remain clickable at desktop and narrow widths');
  for(const width of [1440,780]){
   await page.setViewportSize({width,height:1000});await page.locator('#surveyAssessmentSettings > summary').click();
