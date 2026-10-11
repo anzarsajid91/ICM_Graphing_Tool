@@ -755,7 +755,7 @@
         '<td>'+metric(q,'kge_2009')+'</td>'+
         '<td>'+metric(q,'correlation')+'</td></tr>';
     }).join('');
-    target.innerHTML='<div class="table-wrap"><table class="data-table"><thead><tr><th>Model scenario</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Pearson r</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    target.innerHTML='<div class="table-wrap" tabindex="0" role="region" aria-label="Model scenario diagnostics table"><table class="data-table"><thead><tr><th>Model scenario</th><th>Regression R²</th><th>Slope</th><th>Intercept</th><th>RMSE</th><th>MAE</th><th>Bias (M−O)</th><th>NSE</th><th>KGE</th><th>Pearson r</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
 
   function timeSeriesRouteActive(){
@@ -1216,12 +1216,12 @@
         return `<td class="${rag?.rag?'spill-month-'+rag.rag.toLowerCase():''}" title="${esc(title)}">${row&&value!=null?fmt(value,field==='spill_count'?0:2):'—'}${rag?.rag?`<small>${esc(rag.rag)}</small>`:''}</td>`;
       }).join('')}</tr>`;
     })).join('');
-    return '<div class="table-wrap spill-month-grid"><table class="data-table"><thead><tr><th>Year / series</th>'+spillMonths.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+    return '<div class="table-wrap spill-month-grid" tabindex="0" role="region" aria-label="Monthly spill evidence table"><table class="data-table"><thead><tr><th>Year / series</th>'+spillMonths.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
   function annualTable(result) {
     if (!result) return '<div class="v2-empty">Not calculated for this dataset.</div>';
     const rows=annualRows(result);
-    const annual=rows.length?'<div class="table-wrap spill-year-summary"><table class="data-table"><thead><tr><th>Year</th><th>12/24 count</th><th>Duration (h)</th></tr></thead><tbody>'+rows.map(x=>`<tr title="${esc(x.count_status||'')}"><td>${x.year}</td><td>${fmt(x.spill_count,0)}</td><td>${fmt(x.duration_hours,2)}</td></tr>`).join('')+'</tbody></table></div>':'<div class="v2-empty">No assessed calendar years.</div>';
+    const annual=rows.length?'<div class="table-wrap spill-year-summary" tabindex="0" role="region" aria-label="Annual spill evidence table"><table class="data-table"><thead><tr><th>Year</th><th>12/24 count</th><th>Duration (h)</th></tr></thead><tbody>'+rows.map(x=>`<tr title="${esc(x.count_status||'')}"><td>${x.year}</td><td>${fmt(x.spill_count,0)}</td><td>${fmt(x.duration_hours,2)}</td></tr>`).join('')+'</tbody></table></div>':'<div class="v2-empty">No assessed calendar years.</div>';
     return '<div class="v2-yearly-title"><h4>Yearly spill summary</h4></div>'+annual+'<details class="v2-monthly-detail"><summary>Monthly detail</summary><h4>12/24 spill count</h4>'+spillMonthlyGrid([['Count',result]],'spill_count')+'<h4>Spill duration (h)</h4>'+spillMonthlyGrid([['Duration',result]],'duration_hours')+'</details>';
   }
 
@@ -1314,7 +1314,7 @@
       const duration=support.comparable?spillDeviationRag(o?.duration_hours,m?.duration_hours):null;
       return `<tr><td>${year}</td><td>${fmt(o?.spill_count,0)}</td><td>${fmt(m?.spill_count,0)}</td><td>${spillRagCell(count,support.reason)}</td><td>${fmt(o?.duration_hours,2)}</td><td>${fmt(m?.duration_hours,2)}</td><td>${spillRagCell(duration,support.reason)}</td></tr>`;
     }).join('');
-    return '<p class="spill-rag-method">RAG: Green ≤5%, Amber ≤10%, Red &gt;10% absolute difference from observed. Common years/months are checked independently; hover a withheld result for its reason.</p><div class="table-wrap spill-annual-compare"><table class="data-table"><thead><tr><th>Year</th><th>Observed count</th><th>Modelled count</th><th>Count RAG</th><th>Observed h</th><th>Modelled h</th><th>Duration RAG</th></tr></thead><tbody>'+rows+'</tbody></table></div><h4>Monthly comparison · 12/24 spill count</h4>'+spillMonthlyGrid([['Observed',observed],['Modelled',model]],'spill_count',true)+'<h4>Monthly comparison · spill duration (h)</h4>'+spillMonthlyGrid([['Observed',observed],['Modelled',model]],'duration_hours',true);
+    return '<p class="spill-rag-method">RAG: Green ≤5%, Amber ≤10%, Red &gt;10% absolute difference from observed. Common years/months are checked independently; hover a withheld result for its reason.</p><div class="table-wrap spill-annual-compare" tabindex="0" role="region" aria-label="Annual spill comparison table"><table class="data-table"><thead><tr><th>Year</th><th>Observed count</th><th>Modelled count</th><th>Count RAG</th><th>Observed h</th><th>Modelled h</th><th>Duration RAG</th></tr></thead><tbody>'+rows+'</tbody></table></div><h4>Monthly comparison · 12/24 spill count</h4>'+spillMonthlyGrid([['Observed',observed],['Modelled',model]],'spill_count',true)+'<h4>Monthly comparison · spill duration (h)</h4>'+spillMonthlyGrid([['Observed',observed],['Modelled',model]],'duration_hours',true);
   }
 
   function spillPeriodSupport(o,m,observed,model){

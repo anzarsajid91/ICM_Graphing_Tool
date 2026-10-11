@@ -7,7 +7,7 @@ routes use the shared design system, and the additional sidebar/block references
 and local Inter refinement reached main. The audited production revision is
 `65b0be81245e628b617304266fe29ac0e77f81d4`, v1.063. No missing workspace or critical
 functional regression was found in the inspected/tested scope. Typography exceptions, remaining title-case captions
-and stale completion documentation were found and corrected in this
+stale completion documentation, helper-text contrast and keyboard table access were found and corrected in this
 follow-up. This is bounded acceptance, not a claim that every possible state or
 device has been verified.
 
@@ -48,6 +48,7 @@ features.
 | Every workspace considered | Included | 17 pages across Data, Spills/Network, Flow Survey, Detriment, Plots, Reports and About |
 | Graph-first/focus and inspector | Included | Focus mode/collapsible navigation, preserved source controls, Inspector focus/inert and Escape contracts; desktop data setup remains deliberately accessible |
 | Smooth restrained motion | Included, bounded | 120–220 ms interaction tokens, sliding pill, reduced motion, no animated engineering values; universal 60 FPS unproved |
+| Helper contrast and keyboard table access | Corrected | Three helper text rules now use the reviewed muted token; static and dynamically generated evidence tables accept keyboard focus with named regions and a visible focus ring. Two table regions were tested with actual ArrowRight scrolling; axe scans of 34 empty route/width states returned zero detected violations, with incomplete/manual checks retained |
 | Responsive structure | Passed sampled states | Fresh 17-route/six-width screenshots; extra 119 empty route/width states including 640 px reflow with no page overflow or font/button-weight exception after fixes |
 | Imports, roles, quantities/units and thresholds | Passed existing final/live suites | Canonical engine/registry/workers unchanged; CI loaded FDV/CSV/rainfall and interpretation/threshold regressions pass |
 | FDV panels, native zoom, rainfall, comparisons/rating/DWF | Passed existing final/live suites | Stacked layout, no wheel zoom/slider, native data/units and supported graph diagnostics covered; styling does not alter arrays |
@@ -93,8 +94,9 @@ features.
 - The design-contract suite was previously limited to the original feature-branch
   workflows; it now runs in the ordinary Pages browser gate so future PRs and
   main deployments execute the typography, offline-font and accessibility contracts.
+- Supplementary WCAG 2 A/AA and 2.1 A/AA axe checks covered all 17 empty routes at 1440 and 390 px. Initial scans detected low-contrast helper text and inaccessible horizontal table scrolling; these were fixed in their owning styles/markup. The repeated 34-state scan detected zero violations. Axe incomplete results and loaded/conditional states still require manual assessment; this is not accessibility certification. Rendered contracts verify actual helper colors, keyboard focus and ArrowRight movement of comparison/storage tables.
 - Protected Python, domain registry and worker sources are unchanged between
-  the redesign baseline and PR76; follow-up modifies two owning CSS rules,
+  the redesign baseline and PR76; follow-up modifies owning typography/contrast CSS rules and table accessibility markup,
   literal UI/report captions, rendered regression contracts, the production CI invocation and documentation.
 
 ## Remaining limits that affect an “everything complete” claim
