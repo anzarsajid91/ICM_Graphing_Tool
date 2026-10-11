@@ -25,6 +25,10 @@ try{
    await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='ready'&&window.__ICM_WORKBENCH__?.fastpath?.last?.status==='ready',null,{timeout:120000});
    const authoritativeReadyMs=Date.now()-selected;
    assert.equal(await page.evaluate(()=>window.__ICM_WORKBENCH__.fastpath.last.reconciliation?.status),'matched');
+   // Navigation starts after the authoritative plot settles, separating route cost
+   // from an in-flight reconciliation redraw; parse/preview timings stay independent.
+   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.lastGraphMode!=='fastpath-preview',null,{timeout:60000});
+   await paint(page);
    const routes=[];
    for(const [workspace,tab] of [['spills','assessment'],['graphs','comparison'],['survey','fdv-check'],['reports','workspace'],['data','time-series']]){
     const start=await page.evaluate(()=>performance.now());const synchronousMs=await page.evaluate(([w,p])=>{const start=performance.now();window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false);return performance.now()-start;},[workspace,tab]);routes.push({route:workspace+'/'+tab,ms:(await paint(page))-start,synchronousMs});

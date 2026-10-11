@@ -47,3 +47,5 @@ Later local commits c99327d (narrow empty instruction), 2179705 (native modal ba
 A live accessibility-tree check revealed plot-only empty guidance exposed outside Plots. Route-scoped pseudo content now prevents irrelevant guidance on Data/assessments; a new contract asserts absence on Data and presence on empty Comparison. No display/route/Plotly handler changed.
 
 The reusable invalid-input state was hardened against the owner border shorthand: aria-invalid controls retain the governed danger border, and the showcase now asserts its rendered colour in addition to semantic state. Final local Python rerun passed after restoring the scratch test dependencies; no application dependency was changed.
+
+Repeated controlled measurements did not reproduce the earlier large EDM navigation delay. Navigation benchmark now separates steady-state route paint from an in-flight authoritative graph redraw; both original and repeated raw samples remain retained, no slow sample discarded. Native modal/narrow rendered independent QA and full browser gates passed at 0b6172a; final token/cascade/layout checks remain in exact-head CI.
