@@ -19,6 +19,11 @@
         "pytz",
         "six"
       ]
+    },
+    "Inter": {
+      "version": "4.1",
+      "source": "https://github.com/rsms/inter/tree/e3a3d4c57d5ecc01453a575621882a384c1995a3",
+      "license": "SIL Open Font License 1.1"
     }
   },
   "files": [
@@ -121,6 +126,16 @@
       "path": "sheetjs-0.20.3/xlsx.full.min.js",
       "bytes": 951904,
       "sha256": "cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41"
+    },
+    {
+      "path": "inter-4.1/InterVariable.woff2",
+      "bytes": 352240,
+      "sha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3"
+    },
+    {
+      "path": "inter-4.1/LICENSE.txt",
+      "bytes": 4380,
+      "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
     }
   ]
 }

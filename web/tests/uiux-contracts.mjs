@@ -10,6 +10,11 @@ const painted=()=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>req
 try{
  await page.goto(base,{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__));
+ const fonts=await page.evaluate(async()=>{const loaded=[];for(const weight of [400,500,600]){const faces=await document.fonts.load(weight+' 14px Inter','Hydra Bench 0123456789');loaded.push(faces.some(f=>f.family.replaceAll('"','')==='Inter'&&f.status==='loaded'));}return {loaded,family:getComputedStyle(document.body).fontFamily,numeric:getComputedStyle(document.body).fontVariantNumeric};});
+ assert.deepEqual(fonts.loaded,[true,true,true],'Bundled Inter loaded at all three weights');assert.match(fonts.family,/Inter/);assert.equal(fonts.numeric,'tabular-nums');
+ await page.evaluate(()=>window.HydraDesign.prepareReportFont());
+ const offline=await context.newPage();await context.setOffline(true);
+ try{await offline.setContent(await page.evaluate(()=>reportShell('Synthetic font export','Offline typography','<p>0123456789 · hydraulic units</p>')));assert.equal(await offline.evaluate(async()=>{await document.fonts.load('400 14px Inter');return [...document.fonts].some(f=>f.family==='Inter'&&f.status==='loaded');}),true,'Portable local report retains Inter offline');}finally{await context.setOffline(false);await offline.close();}
  assert.equal(await page.locator('#scatterChart').evaluate(el=>getComputedStyle(el,'::before').content),'none','Plot instructions are absent from Data');
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','comparison',false));
  assert.match(await page.locator('#scatterChart').evaluate(el=>getComputedStyle(el,'::before').content),/Assign observed/,'Empty comparison explains its next action');

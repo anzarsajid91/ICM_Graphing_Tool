@@ -10,7 +10,7 @@ small-text contrast); subtle border #E4E5E3; control border #858D85 (controls
 must remain distinguishable). Primary action charcoal; restrained teal only for
 focus/link/selection context. Existing observed red, model purple-blue, rainfall,
 threshold and semantic RAG colours are retained. No external fonts or icon loads.
-System sans-serif with Inter only when already installed. Tabular numerals for
+Bundled Inter with the documented system fallback stack. Tabular numerals for
 engineering results; units never hidden. 13–14 px body; 12 px supporting text;
 24 px desktop page title (18 px narrow); 16–18 px section headings. Spacing 4/8/12/16/24/32 px.
 Surface radii 16 px; inputs/buttons 10 px; pills 999 px. Thin neutral borders and
@@ -85,3 +85,9 @@ files unchanged and preserve all legacy selectors. Rebuild from the baseline
 release pipeline. No stored-project migration is introduced by this redesign.
 
 Visual examples: [native component showcase](evidence/components/components-default.png), [focus/validation](evidence/components/components-focus-validation.png), [narrow](evidence/components/components-390.png), [all-workspace gallery](evidence/index.html). The native modal uses the browser top layer and backdrop; its coordinate-free visual skin does not alter network layout.
+
+## Additional reference and typography refinement
+
+See [additional reference review](additional-reference-review.md). Inter 4.1 is bundled under SIL OFL 1.1 in `web/vendor/inter-4.1`; no external font requests. The exact fallback stack is `"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`. Body: 400; UI labels: 500; headings/buttons: 600. Tabular numerals apply throughout technical content. Large headings tighten tracking by approximately 1.5%; CSS does not force uppercase captions. Native input values, units, identifiers and engineering acronyms are preserved.
+
+Desktop navigation is inset 12 px with a 16 px radius. The existing grid, collapsed/focus modes, mobile overlay, keyboard and chart-resize contracts remain. Independent workspace evidence blocks use the shared card geometry; nested controls retain their smaller radius. Export font preparation is lazy, cached and same-origin; local HTML/print/SVG embed the font so offline output retains the typeface.

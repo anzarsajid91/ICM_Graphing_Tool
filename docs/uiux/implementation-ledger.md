@@ -55,3 +55,25 @@ Final independent live QA found three unnamed report-section checkboxes and an o
 Independent native-name audit of visible controls on all 17 default routes at served `56c16bfb` found only the report-section label group and unnamed saved-workspace select. Both fixed with native per-control labels / a Saved workspace accessible name and exact-name browser assertions. IDs and persistence/export behaviour retained. Closed disclosures and loaded conditional controls were not covered by this final name audit.
 
 Final report-name assertions passed at 8d3950db; strict shell spacing then caught the new group’s inherited 5 px gap. Corrected to the governed 4 px rhythm in CSS. No assertion relaxed; preview stopped before deployment.
+
+### Continuation: additional sidebar/block references and Inter
+
+- Baseline: verified interruption-point remote `e45b4af4fdb06ca7931bdc2ebc907e7960ada2a9`; full review 38124703158, actual live acceptance 38124701433 and performance 38124703165 succeeded. Existing gallery/evidence describes the earlier candidate.
+- Transformation: assessed both additional recordings and the sidebar JPEG; documented observed versus inferred treatments. Inset desktop rail, tonal active navigation and independent 16 px evidence blocks preserve existing DOM/event/layout ownership.
+- Typography: pinned official Inter 4.1 variable WOFF2 and OFL licence; exact requested stack and 400/500/600 weights; tabular numbers, reduced heading tracking and no forced-uppercase CSS. Lazy fixed-resource font embedding for explicit local reports/prints/PNG/SVG; capture report/view before waiting, retain freshness checks and synchronous popup creation.
+- Files: existing owner CSS; design-system helper; runtime report CSS/export presentation; survey print; detriment report; schematic capture/report; reviewed dependency manifest/source approvals; new font unit and rendered/offline font contracts.
+- Local evidence: confidentiality source gate (22 vendor files, 9 reviewed sources), five Python privacy tests and JavaScript privacy contracts passed. Font unit covers no eager request, fixed URL/options, retry, concurrent caching and binary embedding. Python suite and all 15 JavaScript unit suites passed locally on continuation; build succeeded. Candidate rendered browser/visual, export and performance checks are pending until their results are recorded.
+- Risks: font metrics can change wrapping and print pagination; desktop inset can affect compact rail content bounds. New rendered visual and export acceptance must pass before release. Canonical Python, registry, workers and hydraulic calculations remain unchanged.
+
+Continuation typography review also normalised sidebar, subtab, breadcrumb and report-group captions to sentence case; hydraulic acronyms and route/control IDs remain unchanged. The shell test retains exact ordered caption assertions using the updated visible wording.
+
+### Recovered continuation verification
+
+Local product commits: `69fd15e` (references/Inter), `f42fad3` (sentence case).
+- Python suite, all 15 JavaScript unit suites, five privacy source tests and required confidentiality gate passed; Pages build succeeded.
+- Rendered contracts passed: Inter faces loaded at 400/500/600, tabular figures, embedded offline report face, keyboard/focus/reduced-motion and contrast checks.
+- All 17 routes captured at six widths with zero page errors and zero privacy violations. Final sentence-case shell and 400-node/399-edge geometry/pan/alignment/lock checks passed.
+- Loaded synthetic browser acceptance passed against the recovered Inter refinement, including imports/mappings/thresholds/spills/storage/workspaces and offline interactive/printed reports. Request observer recorded 393 requests with zero violations. Existing live-mode harness was pointed at a local build; this is **local evidence**, not a deployed acceptance claim. That build carried the interruption-point metadata token for its privacy test configuration; it included the recovered refinement source. Final caption build was separately reviewed with token `f42fad3`.
+- Independent PDF font inventory confirmed embedded InterVariable in exported engineering reports. New font metrics alter wrapping/pagination; historical baseline page-count evidence must not be reused as the new font's pagination result.
+- No protected canonical engine, domain registry or worker source changed. No new same-runner performance comparison, exhaustive assistive-technology review or deployed new-head acceptance is claimed.
+- Push to the existing feature branch was blocked by automatic approval review: explicit authorization to publish these recovered changes to GitHub was not established. Remote PR76/preview and main remain at their previously verified revisions. Owner approval of this specific push is required before remote CI/deployment can run.

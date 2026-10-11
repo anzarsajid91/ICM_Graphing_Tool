@@ -677,7 +677,7 @@
         align:['left','center','right','right','right','right'],
         fill:{color:'#f2f4f7'},
         line:{color:'#d9e1e8',width:1},
-        font:{family:'Inter, Segoe UI, Arial, sans-serif',size:11,color:'#202221'},
+        font:{family:window.HydraDesign?.family||'"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',size:11,color:'#202221'},
         height:27,
       },
       cells:{
@@ -688,7 +688,7 @@
         align:['left','center','right','right','right','right'],
         fill:{color:'#ffffff'},
         line:{color:'#e4e9ed',width:1},
-        font:{family:'Inter, Segoe UI, Arial, sans-serif',size:10.5,color:'#253746'},
+        font:{family:window.HydraDesign?.family||'"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',size:10.5,color:'#253746'},
         height:25,
       },
       hoverinfo:'skip',

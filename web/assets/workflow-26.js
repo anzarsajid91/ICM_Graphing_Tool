@@ -800,9 +800,9 @@
     pdfButton.id = 'surveyMonthlyPdfBtn';
     pdfButton.textContent = 'Export Monthly PDF';
     pdfButton.title = 'Opens the browser print dialog with an A4 monthly assessment; choose Save as PDF.';
-    pdfButton.addEventListener('click', () => {
+    pdfButton.addEventListener('click', async () => {
       try {
-        exportMonthlyPdf();
+        await exportMonthlyPdf();
       } catch (err) {
         const status = $('completeSurveyStatus');
         if (status) status.textContent = String(err?.message || err);
@@ -1457,14 +1457,16 @@
     return '<!doctype html><html><head><meta charset="utf-8"><title>Monthly Flow Survey Assessment</title></head><body>'+body+'</body></html>';
   }
 
-  function exportMonthlyPdf() {
-    const html = monthlyReportHtml();
-    const printable = html.replace(
-      '</body>',
-      '<script>window.addEventListener("load",function(){setTimeout(function(){window.focus();window.print();},250);});<\/script></body>'
-    );
+  async function exportMonthlyPdf() {
     const win = window.open('', '_blank');
     if (!win) throw new Error('The browser blocked the monthly PDF window. Allow pop-ups for this site and retry.');
+    const snapshotHtml = monthlyReportHtml();
+    try { await window.HydraDesign.prepareReportFont(); } catch (error) { win.close(); throw error; }
+    const html = snapshotHtml.replace('</head>', '<style>'+window.HydraDesign.reportFontCss()+'</style></head>');
+    const printable = html.replace(
+      '</body>',
+      '<script>window.addEventListener("load",function(){document.fonts.ready.then(function(){window.focus();window.print();});});<\/script></body>'
+    );
     win.document.open();
     win.document.write(printable);
     win.document.close();

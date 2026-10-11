@@ -11,7 +11,7 @@
 }
 body{background:var(--v2-bg);color:var(--v2-ink);font-size:13px}
 .topbar{padding:14px 30px;border-bottom:1px solid var(--v2-border);box-shadow:0 1px 0 rgba(15,34,52,.02)}
-.topbar h1{font-size:21px;color:var(--v2-navy);font-weight:700}
+.topbar h1{font-size:21px;color:var(--v2-navy);font-weight:600}
 .topbar p{font-size:12px}
 .shell{max-width:1600px;padding:18px 26px 48px}
 .panel{border-color:var(--v2-border);border-radius:8px;box-shadow:var(--v2-shadow);padding:18px 20px;margin-bottom:12px}
@@ -62,7 +62,7 @@ select,input{min-height:34px;border-color:var(--hb-border);border-radius:6px;fon
 select[multiple]{min-height:76px}
 #modelSelect{min-height:76px}
 .tabs{position:sticky;top:69px;z-index:15;background:rgba(244,247,250,.97);margin:14px 0 10px;padding:7px;gap:7px;border:1px solid #c8d6e1;border-radius:10px;box-shadow:0 4px 16px rgba(24,50,74,.06);backdrop-filter:blur(8px)}
-.tab{padding:10px 15px;font-size:12.5px;font-weight:750;letter-spacing:.01em;color:var(--hb-text);background:#fff;border:1px solid #d2dde6;border-radius:7px;box-shadow:0 1px 2px rgba(15,34,52,.035);transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;min-width:92px}
+.tab{padding:10px 15px;font-size:12.5px;font-weight:600;letter-spacing:.01em;color:var(--hb-text);background:#fff;border:1px solid #d2dde6;border-radius:7px;box-shadow:0 1px 2px rgba(15,34,52,.035);transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;min-width:92px}
 .tab:hover{background:#f7fbfe;border-color:#aebfce;color:var(--hb-text)}
 .tab.active{color:#fff;background:var(--v2-blue);border-color:var(--v2-blue);box-shadow:0 3px 10px rgba(18,104,179,.22)}
 .tab:focus-visible{outline:3px solid var(--hb-focus);outline-offset:2px}
@@ -95,11 +95,11 @@ details.subpanel[open]>summary{margin-bottom:12px}
 .v2-period-summary strong{display:block;margin-top:2px;color:var(--hb-text);font-size:12.5px;line-height:18px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .v2-stats-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;color:var(--hb-text)}
 .v2-stats-head strong{display:block;font-size:12.5px}.v2-stats-head span{display:block;color:var(--hb-muted);font-size:10.5px;margin-top:1px}
-.v2-stats-table{min-width:620px}.v2-stats-table td:first-child{min-width:210px}.v2-stats-table.compact th,.v2-stats-table.compact td{padding:7px 10px}.v2-stats-table.compact td:first-child{font-weight:650;color:var(--hb-text)}
+.v2-stats-table{min-width:620px}.v2-stats-table td:first-child{min-width:210px}.v2-stats-table.compact th,.v2-stats-table.compact td{padding:7px 10px}.v2-stats-table.compact td:first-child{font-weight:600;color:var(--hb-text)}
 .data-table{font-size:12px}
 .data-table th{background:#f1f5f8;color:#566b7d;font-size:10.5px;padding:7px 9px}
 .data-table td{padding:7px 9px}
-.file-name{font-weight:650;color:#243e55}
+.file-name{font-weight:600;color:#243e55}
 .table-wrap{border-radius:6px;border-color:#d8e2ea}
 .metric-grid{gap:7px}.metric{border-radius:6px;background:var(--hb-soft);padding:9px}.metric .v{font-size:16px}
 .summary-box{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
@@ -119,7 +119,7 @@ details.subpanel[open]>summary{margin-bottom:12px}
 .v2-empty{padding:14px;border:1px dashed #d4dee6;border-radius:6px;color:#718393;background:var(--hb-soft);font-size:11.5px}
 .spill-annual-compare .data-table{min-width:620px}
 .spill-compare-summary strong{font-size:13px}
-.spill-rag{display:inline-flex;align-items:center;justify-content:center;min-width:92px;padding:3px 7px;border-radius:999px;font-size:10.5px;font-weight:750;line-height:1.25}
+.spill-rag{display:inline-flex;align-items:center;justify-content:center;min-width:92px;padding:3px 7px;border-radius:999px;font-size:10.5px;font-weight:600;line-height:1.25}
 .spill-rag-green{background:#eaf7ef;color:#22603d;border:1px solid #c7e5d2}
 .spill-rag-amber{background:#fff6df;color:#7b5b0c;border:1px solid #edd9a0}
 .spill-rag-red{background:#fff0ef;color:#8b3430;border:1px solid #ebcbc8}
@@ -157,7 +157,7 @@ footer{max-width:1600px;padding:0 26px}
 .survey-table{min-width:1080px}
 .survey-table.wide{min-width:1850px}
 .survey-method{margin-top:12px;border-top:1px solid var(--hb-border);padding-top:10px}
-.survey-method summary{cursor:pointer;color:#36556e;font-size:12px;font-weight:650}
+.survey-method summary{cursor:pointer;color:#36556e;font-size:12px;font-weight:600}
 .survey-method .method-grid{margin-top:8px}
 #professionalSurveyStatus{margin:10px 0}
 @media(max-width:1200px){.survey-mapping{grid-template-columns:repeat(2,minmax(180px,1fr))}.survey-summary{grid-template-columns:repeat(3,minmax(120px,1fr))}}

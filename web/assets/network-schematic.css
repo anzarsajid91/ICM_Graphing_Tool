@@ -1,7 +1,7 @@
 /* Every rule is scoped to the new schematic; shared workspace styling is untouched. */
 #nsWorkbench{color:var(--hb-text);font-size:14px;background:#fff;border:1px solid var(--hb-border);border-radius:var(--hb-radius-card);overflow:hidden}
 #nsWorkbench button,#nsWorkbench input,#nsWorkbench select,#nsWorkbench textarea{font:inherit;min-width:0;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-control);background:#fff;color:var(--hb-text);padding:7px 10px;min-height:36px}
-#nsWorkbench button{cursor:pointer;font-weight:550}#nsWorkbench button:hover{background:var(--hb-soft)}#nsWorkbench button:disabled{opacity:.5;cursor:default}
+#nsWorkbench button{cursor:pointer;font-weight:500}#nsWorkbench button:hover{background:var(--hb-soft)}#nsWorkbench button:disabled{opacity:.5;cursor:default}
 #nsWorkbench [hidden]{display:none!important}
 #nsWorkbench .ns-main-toolbar,#nsWorkbench .ns-edit-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px;border-bottom:1px solid var(--hb-border);background:#fff}
 #nsWorkbench .ns-main-toolbar label{display:flex;flex-direction:row;align-items:center;gap:6px;font-size:12px;color:var(--hb-muted)}#nsWorkbench .ns-main-toolbar select{font-size:13px;max-width:170px;width:auto;font-weight:400}

@@ -4,38 +4,38 @@ const qs=(sel,root=document)=>root.querySelector(sel);
 const qsa=(sel,root=document)=>[...root.querySelectorAll(sel)];
 const ROUTES={
   data:{
-    label:'Data / Time Series',
+    label:'Data / time series',
     icon:'data',
     pages:{
-      'time-series':{label:'Time Series',title:'Data / Time Series',description:'Upload, interpret and assign local sources, then review hydraulic traces, thresholds, rainfall overlays and auditable statistics in one continuous workspace.',tab:'graph',root:()=>$('tab-graph')}
+      'time-series':{label:'Time series',title:'Data / time series',description:'Upload, interpret and assign local sources, then review hydraulic traces, thresholds, rainfall overlays and auditable statistics in one continuous workspace.',tab:'graph',root:()=>$('tab-graph')}
     }
   },
   spills:{
     label:'Spills',
     icon:'spills',
     pages:{
-      assessment:{label:'Spill Assessment',title:'EDM / model spill assessment',description:'Configure thresholds and exclusions, then review physical spill intervals, 12/24 counts and observed/model evidence.',tab:'spills',root:()=>$('tab-spills')},
-      storage:{label:'Storage Assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')},
-      network:{label:'Network Schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')}
+      assessment:{label:'Spill assessment',title:'EDM / model spill assessment',description:'Configure thresholds and exclusions, then review physical spill intervals, 12/24 counts and observed/model evidence.',tab:'spills',root:()=>$('tab-spills')},
+      storage:{label:'Storage assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')},
+      network:{label:'Network schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')}
     }
   },
   survey:{
-    label:'Flow Survey',
+    label:'Flow survey',
     icon:'survey',
     pages:{
-      'fdv-check':{label:'FDV Check',title:'FDV check',description:'Select a monitor on the schematic to review its weekly data quality, rating and comments.',tab:'data-health',root:()=>$('tab-data-health')},
-      'rainfall-check':{label:'Rainfall Check',title:'Rainfall check',description:'Review Flow Survey gauge health, network WAPUG qualification and event evidence without depending on the standalone Time Series rainfall-event workflow.',tab:'data-health',root:()=>$('tab-data-health')},
-      'volume-balance':{label:'Volume Balance',title:'Volume balance',description:'Assess upstream/downstream flow continuity on common valid temporal support with explicit assumptions.',tab:'data-health',root:()=>$('tab-data-health')},
-      'monthly-review':{label:'Monthly Review',title:'Monthly survey review',description:'Review effective weekly outcomes, engineering comments and actions, then export the monthly PDF.',tab:'data-health',root:()=>$('tab-data-health')}
+      'fdv-check':{label:'FDV check',title:'FDV check',description:'Select a monitor on the schematic to review its weekly data quality, rating and comments.',tab:'data-health',root:()=>$('tab-data-health')},
+      'rainfall-check':{label:'Rainfall check',title:'Rainfall check',description:'Review Flow survey gauge health, network WAPUG qualification and event evidence without depending on the standalone Time series rainfall-event workflow.',tab:'data-health',root:()=>$('tab-data-health')},
+      'volume-balance':{label:'Volume balance',title:'Volume balance',description:'Assess upstream/downstream flow continuity on common valid temporal support with explicit assumptions.',tab:'data-health',root:()=>$('tab-data-health')},
+      'monthly-review':{label:'Monthly review',title:'Monthly survey review',description:'Review effective weekly outcomes, engineering comments and actions, then export the monthly PDF.',tab:'data-health',root:()=>$('tab-data-health')}
     }
   },
-  detriment:{...window.ICMDetriment.routes,icon:'detriment'},
+  detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},
   graphs:{
     label:'Plots',
     icon:'verify',
     pages:{
-      comparison:{label:'Observed vs Modelled',title:'Observed versus modelled diagnostics',description:'Compare scenarios using the canonical bounded-alignment engine, scatter views and verification statistics.',tab:'compare',root:()=>$('tab-compare')},
-      rating:{label:'Depth / Rating',title:'Depth agreement and flow–depth diagnostics',description:'Inspect depth agreement and Q/H rating evidence with sample support and validity limitations.',tab:'compare',root:()=>$('tab-compare')},
+      comparison:{label:'Observed vs modelled',title:'Observed versus modelled diagnostics',description:'Compare scenarios using the canonical bounded-alignment engine, scatter views and verification statistics.',tab:'compare',root:()=>$('tab-compare')},
+      rating:{label:'Depth / rating',title:'Depth agreement and flow–depth diagnostics',description:'Inspect depth agreement and Q/H rating evidence with sample support and validity limitations.',tab:'compare',root:()=>$('tab-compare')},
       dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
     }
   },
@@ -47,8 +47,8 @@ const ROUTES={
     label:'Reports',
     icon:'report',
     pages:{
-      'report-generation':{label:'Report Generation',title:'Report generation',description:'Review result readiness and export a coherent snapshot of current authoritative analyses.',tab:'workspace',root:()=>$('tab-workspace')},
-      workspace:{label:'Workspace Save / Restore',title:'Workspace save and restore',description:'Persist configuration and source fingerprints without embedding raw engineering files.',tab:'workspace',root:()=>$('tab-workspace')}
+      'report-generation':{label:'Report generation',title:'Report generation',description:'Review result readiness and export a coherent snapshot of current authoritative analyses.',tab:'workspace',root:()=>$('tab-workspace')},
+      workspace:{label:'Workspace save / restore',title:'Workspace save and restore',description:'Persist configuration and source fingerprints without embedding raw engineering files.',tab:'workspace',root:()=>$('tab-workspace')}
     }
   }
 };
@@ -189,12 +189,12 @@ function ensureDataTimeSeriesSurface(){
       events=document.createElement('details');
       events.id='pwTimeSeriesEventSurface';
       events.className='pw-page-surface pw-timeseries-event-surface';
-      events.innerHTML='<summary><span><strong>Rainfall events on Time Series</strong><small>WAPUG presets or manual event criteria</small></span><span class="pw-disclosure-hint">Settings and overlay</span></summary>';
+      events.innerHTML='<summary><span><strong>Rainfall events on Time series</strong><small>WAPUG presets or manual event criteria</small></span><span class="pw-disclosure-hint">Settings and overlay</span></summary>';
       events.open=true;
       legacy.classList.add('pw-embedded-panel');
       const title=qs('.panel-head h2',legacy),copy=qs('.panel-head p',legacy);
-      if(title)title.textContent='Time Series WAPUG / manual rainfall events';
-      if(copy)copy.textContent='Detect events from the rainfall mapped in this Time Series workspace and overlay them through the hydraulic graph. These results are independent of Flow Survey Rainfall Check, while using the same validated event engine.';
+      if(title)title.textContent='Time series WAPUG / manual rainfall events';
+      if(copy)copy.textContent='Detect events from the rainfall mapped in this Time series workspace and overlay them through the hydraulic graph. These results are independent of Flow survey Rainfall check, while using the same validated event engine.';
       events.appendChild(legacy);
       graphPanel.appendChild(events);
     }
@@ -271,7 +271,7 @@ function refreshReportScenarioOptions(){
 }
 function ensureReportSurfaces(){
   const panel=qs('#tab-workspace .panel');if(!panel||$('pwWorkspaceSurface'))return;
-  const builder=ensureSection('pwReportBuilderSurface','Report Generation','Check result readiness, choose the report sections/scenarios and report view, then export the engineering report.');
+  const builder=ensureSection('pwReportBuilderSurface','Report generation','Check result readiness, choose the report sections/scenarios and report view, then export the engineering report.');
   const workspace=ensureSection('pwWorkspaceSurface','Workspace save / restore','Save local configuration and source fingerprints without embedding raw engineering files.');
   const workspaceName=$('workspaceName')?.closest('label'),named=$('namedWorkspaceSelect')?.closest('.actions');if(workspaceName)workspace.appendChild(workspaceName);if(named)workspace.appendChild(named);
   const wsActions=makeActionGroup();for(const id of ['downloadWorkspaceBtn','loadWorkspaceBtn']){const b=$(id);if(b){b.classList.remove('primary');b.textContent=id==='downloadWorkspaceBtn'?'Export workspace JSON':'Load workspace JSON';wsActions.appendChild(b);}}workspace.appendChild(wsActions);
@@ -723,10 +723,10 @@ function wireContextUpdates(){
 function buildAboutPage(){
   if($('tab-about'))return;
   const summaries=[
-    ['data','time-series','Data / Time Series','Upload CSV, FDV and rainfall R files, association workbooks and ICM assessment reports into a shared source pool. Assign observed, modelled and rainfall series, confirm their quantities and units, and review hydraulic traces, thresholds, rainfall events and source statistics. This is the starting point for supplying and checking the evidence used by the other workspaces.'],
-    ['spills','assessment','Spills','Assess observed and modelled spills using explicit thresholds, exclusions and valid temporal support. Review physical spill intervals, UK 12/24 counts and yearly or monthly comparisons. Storage Assessment provides idealised storage screening and modelled spill-volume evidence to support further engineering investigation.'],
-    ['survey','fdv-check','Flow Survey','Review monitor and rain-gauge weeks from their schematics, record a rating and comment for each week, and check flow continuity in Volume Balance. Monthly Review brings the outcomes and actions together for PDF export.'],
-    ['detriment','flooding','Detriment Assessment','Compare baseline Scenario A with proposed Scenario B using exported ICM report evidence. The Flooding, Level and Spill tabs assess changes in flood volume, maximum water-level elevation and freeboard, or spill counts and actual durations. Explicit criteria, raw asset evidence and optional manhole / link ID lists support a focused, traceable assessment.'],
+    ['data','time-series','Data / time series','Upload CSV, FDV and rainfall R files, association workbooks and ICM assessment reports into a shared source pool. Assign observed, modelled and rainfall series, confirm their quantities and units, and review hydraulic traces, thresholds, rainfall events and source statistics. This is the starting point for supplying and checking the evidence used by the other workspaces.'],
+    ['spills','assessment','Spills','Assess observed and modelled spills using explicit thresholds, exclusions and valid temporal support. Review physical spill intervals, UK 12/24 counts and yearly or monthly comparisons. Storage assessment provides idealised storage screening and modelled spill-volume evidence to support further engineering investigation.'],
+    ['survey','fdv-check','Flow survey','Review monitor and rain-gauge weeks from their schematics, record a rating and comment for each week, and check flow continuity in Volume balance. Monthly review brings the outcomes and actions together for PDF export.'],
+    ['detriment','flooding','Detriment assessment','Compare baseline Scenario A with proposed Scenario B using exported ICM report evidence. The Flooding, Level and Spill tabs assess changes in flood volume, maximum water-level elevation and freeboard, or spill counts and actual durations. Explicit criteria, raw asset evidence and optional manhole / link ID lists support a focused, traceable assessment.'],
     ['graphs','comparison','Plots','Explore observed versus modelled agreement, depth and flow–depth rating diagnostics, and dry-weather-flow baselines. Use scatter views, fitted relationships and verification statistics to understand model performance and hydraulic behaviour, with sample support and data-validity limitations retained.'],
     ['reports','report-generation','Reports','Export engineering assessments and graph reports from the current analysis, and save or restore a workspace with its configuration and source fingerprints. Reports carry the relevant criteria, units and evidence so results can be reviewed and shared; saved workspaces reference the original files without embedding their raw data.']
   ];

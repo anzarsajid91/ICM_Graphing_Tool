@@ -2,7 +2,7 @@
   "schema_version": 1,
   "reviewed_release": "511af5bc068f29c609f258cf74e00e37222c527d",
   "rule": "Fixed application-resource downloads only; no data-upload exceptions. Do not auto-rebaseline.",
-  "vendor_manifest_sha256": "6d336bfefadbf6c8ea41a9dc01ce85b0b373280a11f23b758fed4be31e89075a",
+  "vendor_manifest_sha256": "bb70a1f4497a0f6307f836828522015ebb60293e91df66ac3778f986f2d96b82",
   "sources": {
     "web/assets/analysis-worker.js": {
       "sha256": "adb36e7e3384a0dd171b11964fe4502851c479c777f3c7c5f8dc6a553111a2eb",
@@ -21,20 +21,24 @@
       "review": "Reviewed lazy script URLs are the three fixed same-origin schematic assets plus the fixed release token; no source or calculation metadata is included."
     },
     "web/assets/network-schematic.js": {
-      "sha256": "d7e0613ba81cd0eb77b9eeaa21b246e61e9e0b9db3ea6a3d6e87aeb8c8e8bd8c",
-      "review": "Reviewed presentation and keyboard-only changes: local chart/report CSS, source-picker Escape/focus return, analysis-dialog focus trap/return, year drill-down buttons, print-open assessment disclosures. Binding/calculation/geometry/persistence functions and fixed resource/blob/blank-window paths unchanged. No new requests or transmission. Reviewed colour-independent agreement text in table cells only; calls and results of existing RAG functions unchanged, no SVG geometry changes and no network sink changes. Reviewed empty-canvas instruction split into two centred text lines for narrow screens; existing network coordinates, transforms, editing and network paths untouched. Reviewed native dialog showModal/close/cancel and route-close focus lifecycle only. Browser-native modal isolation replaces visual-only backdrop; calculation functions and generation guards retained."
+      "sha256": "7ad3112a7640d9f3f672e717c36d5c88d463953c0239680296cac46335734082",
+      "review": "Reviewed same-origin font helper calls on explicit PNG/SVG/local annual report exports. View/SVG/report evidence snapshot captured before await; font embedded locally, failure reported locally. Existing Image src and download href remain blob URLs, window remains blank local popup. Only font-family strings changed in SVG; coordinates, transforms, hit tests, calculation and topology code unchanged."
     },
     "web/assets/runtime.js": {
       "sha256": "dce96793a3155e1be77ae4ec0be4ab3d6998e4460286336b1e326e4e9524655d",
       "review": "Legacy source is replaced by runtime.release.js during Pages build. Its historical CDN fetches download runtime resources only; no upload path. It is not the active release runtime."
     },
     "web/assets/runtime.release.js": {
-      "sha256": "8afd5404cffdb7d74fdbc632f1b75ee6d409c877e5352d64d9a0309862ea8e2e",
-      "review": "Presentation review: diff changes chart font/background/hover defaults and standalone report CSS only. Fixed same-origin Plotly bundle fetch, File buffers, worker calls, local blob downloads, report evidence and calculation inputs/results are unchanged. New chart helper has no network or state access."
+      "sha256": "7d70a7b9649f8c86d7a50a64e5f1d01896a624d3c7aeeab3e2c2c600dbaf0218",
+      "review": "Reviewed Inter font stack, 400/500/600 report weights and fixed-font preparation on explicit HTML report exports. Existing freshness guards retained after await. Chart/report presentation only; source bytes, worker messages, calculations, fixed Plotly fetch and local blob export paths unchanged."
     },
     "web/assets/workflow-26.js": {
-      "sha256": "6da2fdcd8abe6cb78175eb33cd2ba7d404f55bb92bb85d90844a6a7bf4759de7",
-      "review": "Reviewed one presentation label change: readiness caption fm_rg_assoc becomes Association workbook. Workbook precedence, source identity, all assessment/review calculations, generated monthly report and blank local print window remain unchanged. No new network operations."
+      "sha256": "3b9715eae41278e50cbd278b8ab33cb093ad2779f53825960184d310ede5b09c",
+      "review": "Reviewed monthly local print font preparation and embedded font. Popup still opened synchronously in the user gesture; report snapshot captured before await, failed font preparation closes blank popup and reports locally, printing waits for local document fonts. No input, scoring, review, workbook precedence or network sink changes."
+    },
+    "web/assets/design-system.js": {
+      "sha256": "5cb15f592dc42404e531f89e9b70b986938dacce447c72daa405a8639647b450",
+      "review": "Reviewed fixed Inter 4.1 WOFF2 download only, resolved against this static script URL, same-origin mode, credentials omitted, no referrer, no input-derived URL, headers or body. Download occurs only for explicit local exports; font bytes become an in-memory data URL embedded in local HTML/SVG. No data transmission or external font service. Binary from pinned official rsms/inter tag commit, SIL OFL licence and exact sizes/hashes reviewed in vendor manifest."
     }
   }
 }
