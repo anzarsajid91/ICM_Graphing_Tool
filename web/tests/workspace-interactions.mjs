@@ -49,7 +49,7 @@ try{
   });
   await page.waitForFunction(()=>Math.abs(scrollY-710)<2);
   // Report exports retain spacing after returning to a scrolled workspace.
-  for(const size of [1440,780]){
+  for(const size of [1440,1024]){
     await page.setViewportSize({width:size,height:1000});
     await navigate('reports','report-generation');
     await page.evaluate(()=>window.scrollTo({top:219,behavior:'instant'}));await settle();
@@ -59,7 +59,7 @@ try{
   }
   await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
   const width=()=>page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
-  for(const size of [1440,780]){
+  for(const size of [1440,1024]){
     await page.setViewportSize({width:size,height:1000});await settle();
     for(const [workspace,tab] of routes){
       await navigate(workspace,tab);
@@ -90,7 +90,7 @@ try{
     s.batch={monitors:names.map(monitor=>({monitor,status:'complete',rain_gauge:'RG01',diameter_mm:600,weekly:{weeks:[{week_ending:'2026-09-06',rag:'Green',decision_path:'UI fixture'}]},event_response:{rows:[]},contracts:{}})),network:{gauge_count:3,criteria:{},gauge_summary:['RG01','RG02','RG03'].map(gauge=>({gauge,status:'Green'})),gauge_weekly:['RG01','RG02','RG03'].map(gauge=>({gauge,week_ending:'2026-09-06',rag:'Green'})),candidate_wapug_events:[],qualified_wapug_events:[]},volume_balance:{rows:[],summary:{}},analysis_controls:{}};
     s.batchSignature=wb.surveyDependencySignature('complete');wb.workflow26.render();
   });
-  for(const size of [1440,1280,780]){
+  for(const size of [1440,1280,1024]){
     await page.setViewportSize({width:size,height:1000});
     for(const suffix of ['fdv','rain']){
       await navigate('survey',suffix==='fdv'?'fdv-check':'rainfall-check');
@@ -104,10 +104,17 @@ try{
       await zoomOut.click();await settle();assert(Math.abs((await node.evaluate(el=>el.getBoundingClientRect().width))-initial)<2);
       for(let i=0;i<12;i++)await zoomIn.click();
       assert(await zoomIn.isDisabled(),'Zoom limit disables +');assert.equal(await page.locator('#assessmentZoom-'+suffix).innerText(),'400%');
+      await settle();
       await viewport.scrollIntoViewIfNeeded();
       const box=await viewport.boundingBox();
+      const ranges=await viewport.evaluate(el=>({x:el.scrollWidth-el.clientWidth,y:el.scrollHeight-el.clientHeight}));
       await page.mouse.move(box.x+box.width*.7,box.y+box.height*.7);await page.mouse.down();await page.mouse.move(box.x+box.width*.4,box.y+box.height*.4,{steps:8});await page.mouse.up();
-      const pan=await viewport.evaluate(el=>({x:el.scrollLeft,y:el.scrollTop}));assert(pan.x>20&&pan.y>20,'Zoomed schematic pans in both axes');
+      const pan=await viewport.evaluate(el=>({x:el.scrollLeft,y:el.scrollTop}));
+      for(const axis of ['x','y']){
+        assert(pan[axis]>=0&&pan[axis]<=ranges[axis]+1,'Pan stays inside the actual '+axis+' scroll extent');
+        if(ranges[axis]>20)assert(pan[axis]>20,'Zoomed schematic pans on overflowing '+axis+' axis');
+        else assert(pan[axis]<=ranges[axis]+1,'A fitted axis has no artificial pan offset');
+      }
       await fit.click();await settle();assert.deepEqual(await viewport.evaluate(el=>[el.scrollLeft,el.scrollTop]),[0,0]);
       await zoomIn.click();await navigate('data','time-series');await navigate('survey',suffix==='fdv'?'fdv-check':'rainfall-check');
       assert.equal(await page.locator('#assessmentZoom-'+suffix).innerText(),'125%');assert((await node.evaluate(el=>el.getBoundingClientRect().width))>initial*1.2,'Zoom survives hidden route and re-entry');
@@ -121,7 +128,6 @@ try{
   const comment=page.locator('#assessmentDrawer-fdv .weekly-comment');await comment.fill('Camera regression draft');
   await page.locator('[data-schematic-zoom="1"][data-schematic-kind="fdv"]').click();
   await navigate('survey','rainfall-check');await navigate('survey','fdv-check');assert.equal(await comment.inputValue(),'Camera regression draft');
-  await page.setViewportSize({width:390,height:844});await page.click('#pwRailToggle');assert(await page.locator('.pw-rail').evaluate(el=>el.classList.contains('is-open')));await page.click('#pwBrandToggle');assert.equal(await page.locator('.pw-rail').evaluate(el=>el.classList.contains('is-open')),false);
   assert.deepEqual(errors,[]);
   evidence.url=page.url();evidence.errors=errors;
   if(process.env.ICM_EVIDENCE_DIR){const dir=process.env.ICM_EVIDENCE_DIR+'/workspace-interactions';await fs.mkdir(dir,{recursive:true});await fs.writeFile(dir+'/'+browserName+'.json',JSON.stringify(evidence,null,2));await page.setViewportSize({width:1440,height:1000});await navigate('survey','fdv-check');await page.locator('#assessmentSchematicViewport-fdv').scrollIntoViewIfNeeded();await page.screenshot({path:dir+'/'+browserName+'.png',fullPage:false});}

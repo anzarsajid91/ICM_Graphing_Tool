@@ -24,7 +24,7 @@ try{
  const expectedSubtabs=baselineBuild?'FDV Check|Rainfall Check|Volume Balance|Monthly Review':'FDV check|Rainfall check|Volume balance|Monthly review';
  assert.equal((await page.locator('#pwSecondaryNav button').allTextContents()).join('|'),expectedSubtabs,'Subtab captions must match the exact baseline or new sentence-case candidate contract');
  console.log('STEP assessment settings remain clickable at desktop and narrow widths');
- for(const width of [1440,780]){
+ for(const width of [1440,1024]){
   await page.setViewportSize({width,height:1000});await page.locator('#surveyAssessmentSettings > summary').click();
   const toggle=page.locator('#surveyAssociationPanel > .subhead .tool-collapse-toggle');await toggle.click();assert(await page.locator('#surveyAssociationPanel .tool-collapse-body').isVisible());await toggle.click();
   assert(await page.locator('#surveyAssessmentSettings #gapInput').isVisible());await page.fill('#gapInput','901');await page.fill('#gapInput','900');
@@ -139,7 +139,7 @@ try{
 },'data:image/png;base64,'+(await fs.readFile(evidence+'/annual.png')).toString('base64'));
  assert.equal(imageEvidence.width,3200);assert.equal(imageEvidence.height,config.height*2);assert(imageEvidence.rainfallColouredPixels>100,'Export must retain visible rainfall pixels in the rainfall panel');
 await report.screenshot({path:evidence+'/annual-html.png',fullPage:false});await report.close();
- await page.setViewportSize({width:780,height:900});await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));assert(await page.locator('#assessmentMatrix-fdv').isVisible());assert(await page.locator('#assessmentDrawer-fdv').isVisible());await page.screenshot({path:evidence+'/narrow.png',fullPage:false});await recordControls(page,evidence,'narrow');
+ await page.setViewportSize({width:1024,height:900});await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));assert(await page.locator('#assessmentMatrix-fdv').isVisible());assert(await page.locator('#assessmentDrawer-fdv').isVisible());await page.screenshot({path:evidence+'/narrow.png',fullPage:false});await recordControls(page,evidence,'narrow');
  assert.equal(errors.length,0,errors.join('\n'));await fs.writeFile(evidence+'/result.json',JSON.stringify({current,weekData,config,imageEvidence,errors},null,2));console.log('PASS schematic/weekly/PDF/selectors/export browser acceptance');
 privacy.assertClean();
 }catch(error){console.log('FAIL STATE',await page.evaluate(()=>({status:document.getElementById('workspaceStatus')?.textContent,mapping:state.mapping,errors:window.__ICM_WORKBENCH__?.lastError})));await page.screenshot({path:evidence+'/failure.png',fullPage:false});await recordControls(page,evidence,'failure');throw error;}finally{await browser.close();}

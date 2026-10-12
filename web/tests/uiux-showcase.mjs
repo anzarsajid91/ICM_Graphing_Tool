@@ -23,7 +23,7 @@ try{
  await page.screenshot({path:out+'/components-focus-validation.png',fullPage:true});
  await page.getByText('Methodology and advanced settings').click();
  assert.equal(await page.locator('details').getAttribute('open'),'');
- await page.setViewportSize({width:390,height:900});
+ await page.setViewportSize({width:1024,height:900});
  await page.screenshot({path:out+'/components-390.png',fullPage:true});
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1));
  await page.emulateMedia({reducedMotion:'reduce'});

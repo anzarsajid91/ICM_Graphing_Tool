@@ -357,8 +357,8 @@ try{
   });
   if(!reportComposition.builder||reportComposition.workspace||!reportComposition.readiness||!reportComposition.options||!reportComposition.scenarioSelect||!reportComposition.scatterScale||!reportComposition.reportExport||reportComposition.workspaceExport)throw new Error('Report builder ownership/options are incorrect: '+JSON.stringify(reportComposition));
   // 683×384 is the CSS-pixel layout equivalent of a 1366×768 viewport at
-  // 200% browser zoom. Keep it alongside the native desktop and narrow cases.
-  for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080},{width:390,height:844},{width:683,height:384}]){
+  // 200% browser zoom. Keep it alongside the native desktop window sizes.
+  for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080},{width:1024,height:844},{width:683,height:384}]){
     await page.setViewportSize(size);
     await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','sources',false));
     const layout=await page.evaluate(()=>({

@@ -1,0 +1,89 @@
+{
+  "environment": "Chromium 140 headless, 1440x1000, 4x CDP CPU throttle, 24 synthetic monitors /12 weeks, alternating fresh contexts, 3 repetitions; not physical-device FPS",
+  "rows": [
+    {
+      "name": "baseline",
+      "round": 0,
+      "redraws": 3,
+      "contentHash": "b02815bce654423d06a2b2ec8de3015a9bd336b476a0c1c75468adc45d25924b",
+      "TaskDurationMs": 6530.805,
+      "ScriptDurationMs": 6223.413,
+      "LayoutDurationMs": 164.373,
+      "RecalcStyleDurationMs": 87.174,
+      "frames": 104,
+      "frameP95Ms": 16.700000000000728,
+      "framesAbove33ms": 0,
+      "scrollY": 1500
+    },
+    {
+      "name": "candidate",
+      "round": 0,
+      "redraws": 1,
+      "contentHash": "b02815bce654423d06a2b2ec8de3015a9bd336b476a0c1c75468adc45d25924b",
+      "TaskDurationMs": 277.732,
+      "ScriptDurationMs": 128.825,
+      "LayoutDurationMs": 74.045,
+      "RecalcStyleDurationMs": 44.903999999999996,
+      "frames": 104,
+      "frameP95Ms": 16.700000000000273,
+      "framesAbove33ms": 0,
+      "scrollY": 1500
+    },
+    {
+      "name": "candidate",
+      "round": 1,
+      "redraws": 1,
+      "contentHash": "b02815bce654423d06a2b2ec8de3015a9bd336b476a0c1c75468adc45d25924b",
+      "TaskDurationMs": 217.122,
+      "ScriptDurationMs": 91.071,
+      "LayoutDurationMs": 56.934,
+      "RecalcStyleDurationMs": 31.252000000000002,
+      "frames": 105,
+      "frameP95Ms": 16.700000000000273,
+      "framesAbove33ms": 0,
+      "scrollY": 1500
+    },
+    {
+      "name": "baseline",
+      "round": 1,
+      "redraws": 3,
+      "contentHash": "b02815bce654423d06a2b2ec8de3015a9bd336b476a0c1c75468adc45d25924b",
+      "TaskDurationMs": 6454.617,
+      "ScriptDurationMs": 6148.048,
+      "LayoutDurationMs": 155.19299999999998,
+      "RecalcStyleDurationMs": 95.066,
+      "frames": 105,
+      "frameP95Ms": 16.700000000000728,
+      "framesAbove33ms": 0,
+      "scrollY": 1500
+    },
+    {
+      "name": "baseline",
+      "round": 2,
+      "redraws": 3,
+      "contentHash": "b02815bce654423d06a2b2ec8de3015a9bd336b476a0c1c75468adc45d25924b",
+      "TaskDurationMs": 5934.398,
+      "ScriptDurationMs": 5685.1539999999995,
+      "LayoutDurationMs": 140.33200000000002,
+      "RecalcStyleDurationMs": 65.80999999999999,
+      "frames": 104,
+      "frameP95Ms": 16.700000000000728,
+      "framesAbove33ms": 0,
+      "scrollY": 1500
+    },
+    {
+      "name": "candidate",
+      "round": 2,
+      "redraws": 1,
+      "contentHash": "b02815bce654423d06a2b2ec8de3015a9bd336b476a0c1c75468adc45d25924b",
+      "TaskDurationMs": 197.84799999999998,
+      "ScriptDurationMs": 88.926,
+      "LayoutDurationMs": 43.851,
+      "RecalcStyleDurationMs": 24.552,
+      "frames": 106,
+      "frameP95Ms": 16.700000000000273,
+      "framesAbove33ms": 0,
+      "scrollY": 1500
+    }
+  ]
+}

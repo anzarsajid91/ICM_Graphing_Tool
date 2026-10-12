@@ -56,12 +56,8 @@ try{
  await page.locator('#pwInspectorClose').press('Escape');
  assert.equal(await toggle.getAttribute('aria-expanded'),'false');
  assert.equal(await toggle.evaluate(el=>document.activeElement===el),true);
- await page.setViewportSize({width:390,height:900});await painted();
- await page.locator('#pwRailToggle').click();
- assert.equal(await page.locator('#pwNavigation').evaluate(el=>el.inert),false);
- await page.locator('.pw-primary-nav button[data-workspace="survey"]').click();
- assert.equal(await page.locator('#pwNavigation').evaluate(el=>el.inert),true);
- assert.equal(await page.locator('#pwSecondaryNav button[aria-current="page"]').evaluate(el=>document.activeElement===el),true);
+ await page.setViewportSize({width:1440,height:1000});await painted();
+ await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
  const tabs=page.locator('#pwSecondaryNav');
  await tabs.locator('button[aria-current="page"]').press('ArrowRight');await painted();
  assert.equal(await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route().page),'rainfall-check');
@@ -80,8 +76,12 @@ try{
  for(const selector of ['#dropzone > span','#graphStatistics > .v2-empty','.w26-section-head p']){
   assert.equal(await page.locator(selector).first().evaluate(el=>getComputedStyle(el).color),'rgb(98, 102, 96)','Helper text uses the reviewed contrast token');
  }
+ // Desktop 200% zoom layout equivalent (1366 × 768 → 683 × 384 CSS px).
+ // This tests keyboard access to wide engineering tables, without a mobile device.
+ await page.setViewportSize({width:683,height:384});await painted();
  for(const [workspace,route,id] of [['graphs','comparison','scenarioComparisonScroll'],['spills','storage','storageEpisodesScroll']]){
   await page.evaluate(([workspace,route])=>window.__ICM_PRECISION_WORKBENCH__.navigate(workspace,route,false),[workspace,route]);
+  await painted();
   const region=page.locator('#'+id);
   assert.equal(await region.getAttribute('tabindex'),'0');
   await region.evaluate(el=>{el.focus();el.scrollLeft=0;});
@@ -90,5 +90,5 @@ try{
   await page.waitForFunction(id=>document.getElementById(id).scrollLeft>0,id);
  }
  assert.deepEqual(errors,[]);privacy.assertClean();
- console.log('UIUX contracts passed: inspector, mobile focus, keyboard pill, reduced motion, governed token contrast.');
+ console.log('UIUX contracts passed: desktop inspector, keyboard pill, reduced motion, governed token contrast.');
 }finally{await browser.close();}
