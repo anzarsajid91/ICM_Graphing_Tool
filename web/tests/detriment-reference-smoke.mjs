@@ -77,9 +77,9 @@ try{
     const html=await download('#dtExportHtml');assert.match(html,/Hydra Bench/);assert.match(html,/data:image\/png;base64/);assert.match(html,/Anzar Sajid/);
     if(kind==='level')assert.match(html,/Freeboard A \/ B/);
     if(kind==='spill')assert.match(html,/Actual duration A \/ B/);
-    const report=await browser.newPage({viewport:{width:390,height:844}});await report.setContent(html);
+    const report=await browser.newPage({viewport:{width:1024,height:844}});await report.setContent(html);
     await report.waitForFunction(()=>[...document.images].every(img=>img.complete&&img.naturalWidth>0));
-    assert.ok(await report.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1),'Exported report contains mobile tables and images');await report.close();
+    assert.ok(await report.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1),'Exported report contains tables and images at compact desktop width');await report.close();
     await fs.writeFile(path.join(evidence,'reference-'+kind+'.html'),html);
     await fs.writeFile(path.join(evidence,'reference-'+kind+'.csv'),csv);
     await fs.writeFile(path.join(evidence,'reference-'+kind+'-result.json'),JSON.stringify(result,null,2));
@@ -94,7 +94,7 @@ try{
   assert.deepEqual(await page.evaluate(()=>({sources:[...state.files.keys()],route:window.__ICM_PRECISION_WORKBENCH__.route()})),before);
   assert.equal((await run()).rows[0].duration_delta_hours,2);
   assert.equal(await page.locator('#engineRetryBtn').count(),0);
-  for(const viewport of [{width:1366,height:768},{width:390,height:844}]){
+  for(const viewport of [{width:1366,height:768},{width:1024,height:844}]){
     await page.setViewportSize(viewport);await route('level');await run();
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1),'No horizontal page overflow');
     await page.screenshot({path:path.join(evidence,'reference-level-'+viewport.width+'.png'),fullPage:false});
@@ -113,6 +113,6 @@ try{
   await failed.waitForFunction(()=>[...state.files.values()].some(x=>x.status==='ready'&&x.parsed.metadata.report_kind==='spill_detail'),null,{timeout:120000});
   await failed.screenshot({path:path.join(evidence,'recovered-startup.png'),fullPage:false});await failed.close();
   assert.deepEqual(errors,[]);
-  console.log('Reference browser acceptance passed: all three native CSVs, independent A/B results, chart arrays, PNG/CSV/HTML exports, retained sources on crash/retry and failed initial boot, desktop/mobile containment.');
+  console.log('Reference browser acceptance passed: all three native CSVs, independent A/B results, chart arrays, PNG/CSV/HTML exports, retained sources on crash/retry and failed initial boot, desktop containment.');
 }catch(error){await page.screenshot({path:path.join(evidence,'reference-failure.png'),fullPage:true}).catch(()=>{});await recordControls(page,evidence,'reference-failure');console.error(await page.locator('#dtStatus').textContent().catch(()=>''),errors);throw error;}
 finally{await browser.close();}

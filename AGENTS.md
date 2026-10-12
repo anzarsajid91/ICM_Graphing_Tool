@@ -32,6 +32,13 @@ If a proposed feature conflicts with the rule, redesign it to run locally or sto
 that feature. Do not weaken the rule or its checks to complete the change.
 Use synthetic data only in committed fixtures, CI evidence and shared debugging.
 
+## Supported interface and validation scope
+
+Hydra Bench is a desktop browser engineering workbench. Validate desktop Chromium
+and Firefox, desktop window sizes and browser zoom/keyboard accessibility. Do not
+run iPhone, iOS WebKit or mobile-device appropriateness checks as release gates.
+Retain every engineering, data-confidentiality and desktop regression gate.
+
 Release browser tests must retain the request assertions in
 `web/tests/privacy-network.mjs`. Passing CI is evidence for tested code and flows,
 not a universal security guarantee. Maintainer-controlled GitHub required checks

@@ -28,7 +28,7 @@ try{
     return {before,after:[...state.files.values()].find(x=>x.displayName==='audit-hydraulic.csv').hash};
   });
   assert.equal(restored.before,restored.after);assert.match(restored.before,/^[a-f0-9]{64}$/);
-  for(const size of [{width:1440,height:1000},{width:1366,height:768},{width:780,height:900}]){
+  for(const size of [{width:1440,height:1000},{width:1366,height:768},{width:1024,height:900}]){
     await page.setViewportSize(size);
     for(const [route,tab] of [['data','time-series'],['spills','spill-assessment'],['survey','fdv-check'],['detriment','flooding'],['graphs','scatter'],['reports','report-generation']]){
       await page.evaluate(([r,t])=>window.__ICM_PRECISION_WORKBENCH__.navigate(r,t,false),[route,tab]);
@@ -41,6 +41,6 @@ try{
   }
   assert.deepEqual(remote,[],'Core workflows must make no third-party requests');
   assert.deepEqual(errors,[]);
-  await fs.writeFile(evidence+'/result.json',JSON.stringify({page:await page.url(),viewports:[1440,1366,780],restored,remote,errors},null,2));
+  await fs.writeFile(evidence+'/result.json',JSON.stringify({page:await page.url(),viewports:[1440,1366,1024],restored,remote,errors},null,2));
   console.log('PASS audit release: CDN blocked, worker boot/import, source fingerprint restore, six workspaces and three viewports.');
 }finally{await browser.close();}

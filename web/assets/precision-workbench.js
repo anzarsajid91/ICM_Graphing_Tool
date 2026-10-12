@@ -257,7 +257,12 @@ function ensureSpillSurfaces(){
   const resultNodes=[];
   const two=qs('#tab-spills .two-col');if(two)resultNodes.push(two);
   const cmp=$('spillComparison');if(cmp){const h=cmp.previousElementSibling;if(h?.matches('h3'))resultNodes.push(h);resultNodes.push(cmp);}
-  const event=$('eventBody')?.closest('.table-wrap');if(event){const h=event.previousElementSibling;if(h?.matches('h3'))resultNodes.push(h);resultNodes.push(event);}
+  const event=$('eventBody')?.closest('.table-wrap');if(event){
+    const heading=event.previousElementSibling;if(heading?.matches('h3'))heading.remove();
+    const records=document.createElement('details');records.id='spillRecordDetails';records.className='pw-evidence-details spill-record-details';
+    records.innerHTML='<summary>Spill records · observed and modelled <span class="spill-record-show">Show records</span><span class="spill-record-hide">Hide records</span></summary>';
+    records.appendChild(event);resultNodes.push(records);
+  }
   resultNodes.forEach(x=>result.appendChild(x));
   panel.append(threshold,result);
 }

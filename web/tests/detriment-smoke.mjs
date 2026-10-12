@@ -27,7 +27,7 @@ try{
   await page.waitForFunction(()=>[...state.files.values()].filter(x=>x.status==='ready'&&x.parsed?.metadata?.source_kind==='detriment_report').length===9,null,{timeout:120000});
   assert.equal(await page.evaluate(()=>allSeries().length),0,'Report-only pool has no hydraulic series');
   // Optional scope text never blocks; incomplete mandatory criteria still do.
-  for(const width of [1440,390]){
+  for(const width of [1440,1024]){
     await page.setViewportSize({width,height:1000});await route('flooding');
     await selectReport('a','flood-a.csv');await selectReport('b','flood-b.csv');
     await field('scope').fill('');await field('scope_confirmed').check();
@@ -118,7 +118,7 @@ try{
   await page.getByText('Optional exceedance detail for evidence',{exact:true}).click();await selectReport('detail_a','detail-a.csv');assert.equal(await field('detail_b.id').isVisible(),true,'Optional detail stays open after selecting A');await selectReport('detail_b','detail-b.csv');r=await run();assert.equal(r.rows[0].details_b.length,2);await page.click('[data-asset="CSO01"]');assert.match(await page.locator('#dtDrawer').innerText(),/2025-02-01/);assert.equal(await page.locator('#dtTimelineChart .plot-container').count(),1);assert.equal(await page.locator('#dtPairedChart .plot-container').count(),1);assert.match(await exportText('#dtExportHtml'),/detail_source_b/);
   await page.screenshot({path:path.join(evidence,'detriment-spill.png'),fullPage:false});await recordControls(page,evidence,'detriment-spill');
   await field('counting_mode').selectOption('block-rows');await selectReport('a','detail-a.csv');await selectReport('b','detail-b.csv');r=await run();assert.equal(r.rows[0].delta,1);assert.equal(r.rows[0].duration_delta_hours,2);assert.equal(r.counting_mode,'block-rows');
-  for(const size of [{width:1366,height:768},{width:390,height:844}]){await page.setViewportSize(size);await route('flooding');const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);assert.ok(overflow<=1,'Document overflow '+overflow);await page.screenshot({path:path.join(evidence,'detriment-'+size.width+'.png'),fullPage:false});}
+  for(const size of [{width:1366,height:768},{width:1024,height:844}]){await page.setViewportSize(size);await route('flooding');const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);assert.ok(overflow<=1,'Document overflow '+overflow);await page.screenshot({path:path.join(evidence,'detriment-'+size.width+'.png'),fullPage:false});}
   await page.setViewportSize({width:1440,height:1000});
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',true));
   await page.locator('#dtPasteName').fill('Pasted flooding');await page.locator('#dtPasteGrid').fill('Node ID\tFlood volume (m³)\n009\t4');await page.click('#dtPasteBtn');
@@ -144,7 +144,7 @@ try{
   await about.click();assert.equal(await page.title(),'About Hydra Bench · Hydra Bench');
   assert.equal(await page.locator('#tab-about').isVisible(),true);assert.equal(await page.locator('#tab-detriment').isVisible(),false);
   assert.equal(await page.locator('.pw-about-workspaces section').count(),6);assert.match(await page.locator('.pw-about-author').innerText(),/Built by Anzar Sajid/);
-  for(const size of [{width:1440,height:1000},{width:390,height:844}]){await page.setViewportSize(size);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1));await page.screenshot({path:path.join(evidence,'about-'+size.width+'.png'),fullPage:false,animations:'disabled'});}
+  for(const size of [{width:1440,height:1000},{width:1024,height:844}]){await page.setViewportSize(size);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1));await page.screenshot({path:path.join(evidence,'about-'+size.width+'.png'),fullPage:false,animations:'disabled'});}
   await page.locator('[data-about-workspace="detriment"]').click();assert.equal(await page.locator('#dtAssetIds').isVisible(),true);
   assert.deepEqual(errors,[]);console.log('Detriment acceptance passed: Data Sources → 3 tabs → evidence/export, precision boundaries, restoration, source removal and responsive containment.');
 privacy.assertClean();

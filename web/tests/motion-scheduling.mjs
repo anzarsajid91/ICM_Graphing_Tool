@@ -72,15 +72,6 @@ try{
   assert.ok((await page.locator('body').innerText()).length>100);
   await fs.mkdir('/tmp/hydra-motion-evidence',{recursive:true});
   await page.screenshot({path:'/tmp/hydra-motion-evidence/desktop.png'});
-  await page.setViewportSize({width:390,height:844});await settle();
-  await page.evaluate(()=>window.motionCounts.resize=0);
-  await page.click('#pwRailToggle');await settle();
-  assert.equal(await page.locator('#pwRailToggle').getAttribute('aria-expanded'),'true');
-  assert.equal(await page.evaluate(()=>window.motionCounts.resize),0,'Mobile menu overlay does not redraw the chart');
-  await page.screenshot({path:'/tmp/hydra-motion-evidence/mobile-menu.png'});
-  await page.keyboard.press('Escape');await settle();
-  assert.equal(await page.locator('#pwRailToggle').getAttribute('aria-expanded'),'false');
-  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,'Mobile shell has no horizontal document overflow');
   await context.close();
   assert.deepEqual(errors,[]);privacy.assertClean();
   console.log('Motion scheduling, real width resize, stable selection and confidentiality passed.');

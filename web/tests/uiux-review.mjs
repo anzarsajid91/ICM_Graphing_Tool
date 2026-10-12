@@ -29,15 +29,11 @@ try{
     inventory.push(...await page.evaluate(route=>[...document.querySelectorAll('button,input,select,textarea,summary,[role="button"],[role="dialog"],dialog,a[href],.chart,.table-wrap')].map((el,index)=>({route,tag:el.tagName,id:el.id,classes:el.className?.baseVal??el.className,label:el.getAttribute('aria-label')||el.labels?.[0]?.textContent?.trim()||el.textContent?.trim().slice(0,120)||el.title,type:el.getAttribute('type'),role:el.getAttribute('role'),expanded:el.getAttribute('aria-expanded'),current:el.getAttribute('aria-current'),attributes:[...el.attributes].filter(a=>a.name.startsWith('data-')).map(a=>[a.name,a.value]),visible:Boolean(el.getClientRects().length)&&getComputedStyle(el).visibility!=='hidden'&&!el.closest('[hidden],[inert]'),state:'empty',disabled:Boolean(el.disabled),index})),w+'/'+p));
     await page.screenshot({path:path.join(out,w+'-'+p+'-empty.png'),fullPage:true});
   }
-  for(const width of [1920,1440,1280,1024,768,390]){
+  for(const width of [1920,1440,1280,1024]){
     await page.setViewportSize({width,height:1000});
     for(const [w,p] of routes){
       await page.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[w,p]);
       await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
-      if(w==='spills'&&p==='network'&&width===390){
-        const fits=await page.locator('#nsSvg').evaluate(svg=>{const bounds=svg.viewBox.baseVal;const lines=[...svg.querySelectorAll('tspan')];return lines.length===2&&lines.every(line=>{const box=line.getBBox();return box.x>=0&&box.x+box.width<=bounds.width;});});
-        if(!fits)throw new Error('Network empty instruction clips at 390 px');
-      }
       await page.screenshot({path:path.join(out,w+'-'+p+'-'+width+'.png')});
     }
   }
@@ -47,5 +43,5 @@ try{
   await fs.writeFile(path.join(out,'errors.json'),JSON.stringify(errors,null,2));
   privacy.assertClean();
   if(errors.length)throw new Error(JSON.stringify(errors));
-  console.log('UIUX route inventory/screenshots: 17 routes, 6 widths; privacy clean');
+  console.log('UIUX route inventory/screenshots: 17 routes, 4 desktop widths; privacy clean');
 }finally{await context.close();await browser.close();}
