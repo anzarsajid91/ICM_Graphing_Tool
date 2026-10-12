@@ -237,6 +237,8 @@ jobs:
         run: node web/tests/cold-start-shell.mjs
       - name: Verify shared design and typography contracts
         run: node web/tests/uiux-contracts.mjs
+      - name: Verify motion scheduling and responsive chart resizing
+        run: node web/tests/motion-scheduling.mjs
       - name: Verify detriment workspace
         run: node web/tests/detriment-smoke.mjs
       - name: Verify detriment reference cases

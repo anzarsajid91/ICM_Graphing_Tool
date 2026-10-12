@@ -555,10 +555,17 @@ function navigate(workspace,page,push=false){
   qsa('.pw-primary-nav button,.pw-about-nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.workspace===workspace?'page':'false'));
   $('pwBreadcrumbWorkspace').textContent=spec.label;$('pwBreadcrumbPage').textContent=p.label;$('pwPageTitle').textContent=p.title;$('pwPageDescription').textContent=p.description;
   const sn=$('pwSecondaryNav');
-  const previous=sn.dataset.workspace===workspace?qs('button[aria-current="page"]',sn):null;
-  const previousPill=previous?{left:previous.offsetLeft,width:previous.offsetWidth}:null;
-  sn.innerHTML='';sn.dataset.workspace=workspace;
-  Object.entries(spec.pages).forEach(([key,entry])=>{const b=document.createElement('button');b.type='button';b.dataset.page=key;b.textContent=entry.label;b.setAttribute('aria-current',key===page?'page':'false');b.addEventListener('click',()=>navigate(workspace,key,true));sn.appendChild(b);});
+  const sameWorkspace=sn.dataset.workspace===workspace;
+  const previous=sameWorkspace?qs('.pw-tab-indicator',sn):null;
+  // Retain the pill and controls within a workspace. Capture the currently
+  // painted position so a rapid second selection continues from mid-motion.
+  const previousRect=previous?.getBoundingClientRect(),navRect=previous?sn.getBoundingClientRect():null;
+  const previousPill=previousRect?{left:previousRect.left-navRect.left-sn.clientLeft+sn.scrollLeft,width:previousRect.width}:null;
+  if(!sameWorkspace){
+    sn.innerHTML='';sn.dataset.workspace=workspace;
+    Object.entries(spec.pages).forEach(([key,entry])=>{const b=document.createElement('button');b.type='button';b.dataset.page=key;b.textContent=entry.label;b.addEventListener('click',()=>navigate(workspace,key,true));sn.appendChild(b);});
+  }
+  qsa('button',sn).forEach(b=>b.setAttribute('aria-current',b.dataset.page===page?'page':'false'));
   positionTabIndicator(previousPill);
   inspectorContext(p);refreshScope();renderAssets();
   // A route change must preserve the layout chosen by the engineer.
@@ -605,7 +612,9 @@ function positionTabIndicator(previous=null){
   // Keep the selected route discoverable without moving the document or charts.
   if(left<nav.scrollLeft)nav.scrollLeft=left;
   else if(left+width>nav.scrollLeft+nav.clientWidth)nav.scrollLeft=left+width-nav.clientWidth+4;
-  if(previous&&width>0&&!matchMedia('(prefers-reduced-motion:reduce)').matches){
+  const reducedMotion=matchMedia('(prefers-reduced-motion:reduce)').matches;
+  if(previous||reducedMotion)pill.getAnimations().forEach(animation=>animation.cancel());
+  if(previous&&width>0&&!reducedMotion){
     pill.style.transformOrigin='left center';
     pill.animate([{transform:'translateX('+(previous.left-left)+'px) scaleX('+(previous.width/width)+')'},{transform:'none'}],{duration:200,easing:'cubic-bezier(.2,.8,.2,1)'});
   }
@@ -613,21 +622,26 @@ function positionTabIndicator(previous=null){
 function isFocusRoute(){
   return true;
 }
-let resizeFrame=0,resizeTimer=0;
+let resizeFrame=0;
 function resizeVisuals(){
-  cancelAnimationFrame(resizeFrame);clearTimeout(resizeTimer);
+  if(resizeFrame)return;
   resizeFrame=requestAnimationFrame(()=>{
-    resizeTimer=setTimeout(()=>{
-      qsa('.js-plotly-plot').forEach(chart=>{
-        const rect=chart.getBoundingClientRect();
-        if(!chart.isConnected||chart.offsetParent===null||rect.width<2||rect.height<2)return;
-        try{
-          const pending=window.Plotly?.Plots?.resize?.(chart);
-          if(pending&&typeof pending.catch==='function')pending.catch(()=>{});
-        }catch{}
-      });
-      window.dispatchEvent(new Event('resize'));
-    },90);
+    resizeFrame=0;
+    // Read geometry together before Plotly writes. Overlays do not change the
+    // canvas size; avoid repainting every chart while a drawer is animating.
+    const changed=qsa('.js-plotly-plot').filter(chart=>{
+      if(!chart.isConnected||chart.offsetParent===null)return false;
+      const width=chart.clientWidth,height=chart.clientHeight,layout=chart._fullLayout;
+      return width>1&&height>1&&layout&&(Math.abs(layout.width-width)>1||Math.abs(layout.height-height)>1);
+    });
+    changed.forEach(chart=>{
+      try{
+        const pending=window.Plotly?.Plots?.resize?.(chart);
+        if(pending&&typeof pending.catch==='function')pending.catch(()=>{});
+      }catch{}
+    });
+    // Plotly responsive listeners already handle real window resizes. Sending
+    // a synthetic event here repeats the same expensive work a second time.
   });
 }
 function applyFocusCanvas(userInitiated=false){
@@ -708,8 +722,7 @@ function wireContextUpdates(){
     event.preventDefault();
     const targetPage=buttons[index].dataset.page;
     buttons[index].click();
-    // navigate() is synchronous and rebuilds the secondary navigation before
-    // returning. Restore focus immediately so keyboard state is deterministic
+    // navigate() is synchronous. Restore focus immediately so keyboard state is deterministic
     // across Firefox/Chromium and does not depend on animation-frame timing.
     qs('#pwSecondaryNav button[data-page="'+CSS.escape(targetPage)+'"]')?.focus({preventScroll:true});
   });
@@ -718,6 +731,7 @@ function wireContextUpdates(){
   matchMedia('(max-width:620px)').addEventListener?.('change',syncBrandToggle);
   matchMedia('(max-width:1260px)').addEventListener?.('change',syncInspectorAccessibility);
   new ResizeObserver(()=>positionTabIndicator()).observe(secondary);
+  matchMedia('(prefers-reduced-motion:reduce)').addEventListener?.('change',()=>positionTabIndicator());
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&qs('.pw-rail.is-open')){qs('.pw-rail').classList.remove('is-open');syncBrandToggle();$('pwRailToggle')?.focus({preventScroll:true});}});
 }
 function buildAboutPage(){

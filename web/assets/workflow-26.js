@@ -470,12 +470,22 @@
     revertReview('monitor', name);
   }
 
+  let renderFreshness=null;
+  function withFreshnessSnapshot(render) {
+    if(renderFreshness)return render();
+    // A synchronous presentation pass cannot receive new user/worker inputs.
+    // Scope repeated signature reads to this call only, never across actions.
+    renderFreshness=new Map();
+    try{return render();}finally{renderFreshness=null;}
+  }
   function surveyFresh(kind='complete') {
+    if(renderFreshness?.has(kind))return renderFreshness.get(kind);
+    let fresh=false;
     try {
-      return Boolean(wb.surveyFresh?.(kind));
-    } catch {
-      return false;
-    }
+      fresh=Boolean(wb.surveyFresh?.(kind));
+    } catch {}
+    renderFreshness?.set(kind,fresh);
+    return fresh;
   }
 
   function surveyPeriodText() {
@@ -647,7 +657,7 @@
       if(offsets[event.key]){event.preventDefault();viewport.scrollBy(...offsets[event.key]);}
     });
   }
-  function renderAllMatrices(){renderReviewMatrix('monitor-week');renderReviewMatrix('gauge-week');}
+  function renderAllMatrices(){return withFreshnessSnapshot(()=>{renderReviewMatrix('monitor-week');renderReviewMatrix('gauge-week');});}
   function balanceMatrixHtml(){
     const rows=balanceRows();if(!rows.length)return '<div class="pool-summary">No weekly volume-balance matrix available.</div>';
     const weeks=[...new Set(rows.map(r=>String(r.week_ending||'')).filter(Boolean))].sort(),paths=new Map();
@@ -1030,12 +1040,12 @@
 
     const observed = [$('completeSurveySummary'), $('surveyBalanceSummary'), $('surveyAssociationStatus')].filter(Boolean);
     for (const node of observed) {
-      new MutationObserver(() => queueMicrotask(renderAll)).observe(node,{childList:true,subtree:true,characterData:true});
+      new MutationObserver(scheduleRender).observe(node,{childList:true,subtree:true,characterData:true});
     }
     ['analysisStart','analysisEnd','surveyPopulation','surveyApplyFaultCutoff','surveyBalanceTolerance'].forEach(id => {
-      $(id)?.addEventListener('change', () => queueMicrotask(renderAll));
+      $(id)?.addEventListener('change', scheduleRender);
     });
-    window.addEventListener('icm:source-pool-changed', () => queueMicrotask(renderAll));
+    window.addEventListener('icm:source-pool-changed', scheduleRender);
   }
 
   function renderHeader() {
@@ -1355,14 +1365,25 @@
     }
   }
 
+  let renderFrame=0;
+  function scheduleRender() {
+    // Summary observers often fire together. Render once with the latest state
+    // after the current task, rather than rebuilding all survey DOM per signal.
+    if(!renderFrame)renderFrame=requestAnimationFrame(()=>{renderFrame=0;renderAll();});
+  }
   function renderAll() {
-    renderHeader();
-    renderMonitorReview();
-    renderRainfallReview();
-    renderBalanceReview();
-    renderMonthlyReview();
-    renderAssessmentSchematics();
-    renderAllMatrices();
+    // Explicit review actions retain synchronous rendering and supersede any
+    // pending notification redraw; calculations and freshness are unchanged.
+    if(renderFrame){cancelAnimationFrame(renderFrame);renderFrame=0;}
+    return withFreshnessSnapshot(()=>{
+      renderHeader();
+      renderMonitorReview();
+      renderRainfallReview();
+      renderBalanceReview();
+      renderMonthlyReview();
+      renderAssessmentSchematics();
+      renderAllMatrices();
+    });
   }
 
   function monthlyReportHtml() {
