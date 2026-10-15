@@ -137,3 +137,21 @@ def test_negative_support_terminates_event_and_conserves_coverage():
     events = detect_rainfall_events(frame, semantics='incremental_depth', declared_interval_minutes=5,
         minimum_intensity=5, minimum_intensity_duration_min=0, minimum_depth_mm=0, minimum_event_duration_min=0)
     assert len(events) == 2
+
+
+def test_declared_intensity_at_threshold_survives_uneven_window_clip():
+    frame = pd.DataFrame({'timestamp': pd.to_datetime(['2026-01-01']), 'rainfall': [5.]})
+    events = detect_rainfall_events(frame, semantics='intensity', declared_interval_minutes=1,
+        start='2026-01-01 00:00:01', end='2026-01-01 00:00:24', minimum_intensity=5,
+        minimum_intensity_duration_min=23/60, minimum_depth_mm=0, minimum_event_duration_min=0)
+    assert len(events) == 1
+    assert events[0]['peak_intensity'] == 5
+
+
+def test_incremental_intensity_at_threshold_keeps_original_support():
+    frame = pd.DataFrame({'timestamp': pd.to_datetime(['2026-01-01']), 'rainfall': [1.]})
+    events = detect_rainfall_events(frame, semantics='incremental_depth', declared_interval_minutes=5,
+        start='2026-01-01 00:00:01', end='2026-01-01 00:00:42', minimum_intensity=12,
+        minimum_intensity_duration_min=41/60, minimum_depth_mm=0, minimum_event_duration_min=0)
+    assert len(events) == 1
+    assert events[0]['peak_intensity'] == 12

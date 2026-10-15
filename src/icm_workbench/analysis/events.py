@@ -91,7 +91,9 @@ def detect_rainfall_events(
             seconds = max(0.0, float((b - a).total_seconds()))
             if seconds <= 0:
                 continue
-            intensity = float(seg["depth_mm"]) * 3600.0 / float(seg["support_seconds"])
+            # Keep the native rate through exclusion/window splits. Rebuilding
+            # it from prorated depth can round below an inclusive threshold.
+            intensity = float(seg["intensity_mm_h"])
             peak = max(peak, intensity)
             total_depth += float(seg["depth_mm"]) * seconds / float(seg["support_seconds"])
             if intensity >= float(minimum_intensity):

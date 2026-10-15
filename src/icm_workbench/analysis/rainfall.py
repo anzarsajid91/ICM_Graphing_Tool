@@ -53,6 +53,7 @@ def rainfall_support_segments(
         "start",
         "end",
         "value",
+        "intensity_mm_h",
         "support_seconds",
         "depth_mm",
         "valid",
@@ -97,6 +98,8 @@ def rainfall_support_segments(
 
         raw_value = row[value_col]
         finite = bool(pd.notna(raw_value) and np.isfinite(float(raw_value)))
+        intensity = (float(raw_value) if semantics == "intensity" else
+                     float(raw_value) * 3600.0 / full_support) if finite else np.nan
         base_status = "valid"
         base_valid = finite
         if max_gap_seconds is not None and full_support > float(max_gap_seconds):
@@ -122,6 +125,7 @@ def rainfall_support_segments(
                         "start": piece_start,
                         "end": piece_end,
                         "value": None if not finite else float(raw_value),
+                        "intensity_mm_h": intensity,
                         "support_seconds": support,
                         "depth_mm": np.nan,
                         "valid": False,
@@ -142,6 +146,7 @@ def rainfall_support_segments(
                     "start": piece_start,
                     "end": piece_end,
                     "value": None if not finite else float(raw_value),
+                    "intensity_mm_h": intensity,
                     "support_seconds": support,
                     "depth_mm": depth,
                     "valid": base_valid,
