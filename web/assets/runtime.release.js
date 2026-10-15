@@ -792,6 +792,7 @@ function renderSeriesSemanticsOverrides(){
     const key=select.dataset.rainfallSemanticsKey,value=String(select.value||'unresolved');
     if(value==='unresolved')state.rainfallSemanticsOverrides.delete(key);else state.rainfallSemanticsOverrides.set(key,value);
     invalidateRainEvents('Rainfall semantics changed.');invalidateDwf('Rainfall semantics changed.');renderSeriesSemanticsOverrides();
+    window.dispatchEvent(new CustomEvent('icm:rainfall-interpretation-changed'));
   }));
   target.querySelectorAll('[data-series-quantity-key],[data-series-unit-key],[data-rainfall-semantics-key]').forEach(select=>{
     const key=select.dataset.seriesQuantityKey||select.dataset.seriesUnitKey;
@@ -839,6 +840,7 @@ async function applySeriesQuantityOverride(key,quantity,{refresh=true,unit=null}
   details.unit_status=result.unit_status||'unresolved';
   quantityByColumn[mapped.col]=result.quantity??null;
   window.ICMProjectRegistry?.registerSource(mapped.item);
+  if(requested==='rainfall')window.dispatchEvent(new CustomEvent('icm:rainfall-interpretation-changed'));
   if(refresh){
     renderSeriesSemanticsOverrides();
     autoSuggestAdvanced(allSeries());

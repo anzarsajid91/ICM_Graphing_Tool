@@ -125,6 +125,8 @@ jobs:
           node web/tests/graph-report-unit.mjs
           node web/tests/spill-evidence-unit.mjs
           node web/tests/rainfall-unit.mjs
+          node web/tests/rainfall-cumulative-unit.mjs
+          node --check web/tests/rainfall-audit-smoke.mjs
           node web/tests/runtime-unit.mjs
           node web/tests/domain-registry-unit.mjs
           node --check web/tests/fastpath-unit.mjs
@@ -245,7 +247,9 @@ jobs:
       - name: Verify detriment reference cases
         run: node web/tests/detriment-reference-smoke.mjs
       - name: Verify release audit regressions
-        run: node web/tests/audit-release-smoke.mjs
+        run: |
+          node web/tests/audit-release-smoke.mjs
+          node web/tests/rainfall-audit-smoke.mjs
       - name: Verify complete graph and assessment workflows
         run: node web/tests/smoke.mjs
       - name: Verify survey schematic review

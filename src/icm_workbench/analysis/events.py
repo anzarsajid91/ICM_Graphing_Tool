@@ -19,6 +19,8 @@ def detect_rainfall_events(
     semantics="intensity",
     declared_interval_minutes=None,
     max_gap_seconds=None,
+    start=None,
+    end=None,
 ):
     """Detect rainfall events using actual timestamp support.
 
@@ -38,6 +40,19 @@ def detect_rainfall_events(
     )
     if segments.empty:
         return []
+
+    # Build native support before clipping. Interval depth and its effective
+    # rate must retain the original support even when exclusions/window split it.
+    clipped = []
+    for row in segments.to_dict("records"):
+        a = max(row["start"], pd.Timestamp(start)) if start is not None else row["start"]
+        b = min(row["end"], pd.Timestamp(end)) if end is not None else row["end"]
+        if b <= a:
+            continue
+        seconds = float((b - a).total_seconds())
+        clipped.append({**row, "start": a, "end": b,
+                        "depth_mm": row["depth_mm"] * seconds / row["support_seconds"],
+                        "support_seconds": seconds})
 
     events: list[dict] = []
     active: list[dict] = []
@@ -76,13 +91,10 @@ def detect_rainfall_events(
             seconds = max(0.0, float((b - a).total_seconds()))
             if seconds <= 0:
                 continue
-            value = float(seg["value"])
-            peak = max(peak, value)
-            if semantics == "intensity":
-                total_depth += max(value, 0.0) * seconds / 3600.0
-            else:
-                total_depth += max(float(seg["depth_mm"]), 0.0) * seconds / float(seg["support_seconds"])
-            if value >= float(minimum_intensity):
+            intensity = float(seg["depth_mm"]) * 3600.0 / float(seg["support_seconds"])
+            peak = max(peak, intensity)
+            total_depth += float(seg["depth_mm"]) * seconds / float(seg["support_seconds"])
+            if intensity >= float(minimum_intensity):
                 streak += seconds / 60.0
                 best_streak = max(best_streak, streak)
             else:
@@ -117,7 +129,7 @@ def detect_rainfall_events(
         dry_start = None
         dry_seconds = 0.0
 
-    for row in segments.to_dict("records"):
+    for row in clipped:
         if not bool(row["valid"]):
             if active:
                 close(pd.Timestamp(row["start"]))

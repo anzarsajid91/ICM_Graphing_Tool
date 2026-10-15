@@ -201,7 +201,18 @@ def rating_sources_result(
         payload["exponent_difference"] = modelled["b"] - observed["b"]
     return json.dumps(python_bridge._jsonable(payload), ensure_ascii=False)
 
-def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.0,minimum_intensity_duration_min=6.0,minimum_depth_mm=5.0,minimum_event_duration_min=60.0,dry_gap_min=15.0,exclusions_json="[]",start=None,end=None,rainfall_semantics="intensity"):
+def _resolved_rainfall_semantics(parsed, column, override=None):
+    """Resolve explicit/source meaning; never silently assume intensity."""
+    metadata = getattr(parsed, "metadata", {}) or {}
+    detail = (metadata.get("series_metadata") or {}).get(column, {})
+    semantics = str(override or detail.get("rainfall_semantics")
+                    or metadata.get("rainfall_semantics") or "unresolved").lower()
+    if semantics not in {"intensity", "incremental_depth"}:
+        raise ValueError("Rainfall semantics unresolved; confirm intensity (mm/h) or incremental depth (mm).")
+    return semantics
+
+
+def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.0,minimum_intensity_duration_min=6.0,minimum_depth_mm=5.0,minimum_event_duration_min=60.0,dry_gap_min=15.0,exclusions_json="[]",start=None,end=None,rainfall_semantics=None):
     parsed=python_bridge._load(path)
     frame=parsed.frame.copy()
     frame[column]=pd.to_numeric(frame[column],errors="coerce")*float(conversion_factor)
@@ -210,10 +221,7 @@ def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.
     analysis_end=python_bridge._model_clock_timestamp(end)
     if analysis_start is not None and analysis_end is not None and analysis_end<=analysis_start:
         raise ValueError("Analysis end must be after analysis start.")
-    if analysis_start is not None:
-        frame=frame.loc[frame["timestamp"]>=pd.Timestamp(analysis_start)].copy()
-    if analysis_end is not None:
-        frame=frame.loc[frame["timestamp"]<pd.Timestamp(analysis_end)].copy()
+    rainfall_semantics=_resolved_rainfall_semantics(parsed,column,rainfall_semantics)
     metadata=getattr(parsed,"metadata",{}) or {}
     interval=metadata.get("interval_min")
     events=detect_rainfall_events(
@@ -228,6 +236,8 @@ def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.
         semantics=rainfall_semantics,
         declared_interval_minutes=float(interval) if interval else None,
         max_gap_seconds=python_bridge._rain_support_gap_seconds(parsed),
+        start=analysis_start,
+        end=analysis_end,
     )
     return json.dumps(python_bridge._jsonable({
         "events":events,
@@ -247,7 +257,7 @@ def rainfall_event_scaled(path,column,conversion_factor=1.0,minimum_intensity=5.
         }
     }),ensure_ascii=False)
 
-def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_points=5000,rainfall_semantics="intensity",exclusions_json="[]"):
+def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_points=5000,rainfall_semantics=None,exclusions_json="[]"):
     """Return support-aware cumulative rainfall depth from the native series."""
     parsed=python_bridge._load(path)
     frame=parsed.frame.copy()
@@ -255,6 +265,7 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
         value_cols=[c for c in frame.columns if c!="timestamp"]
         if not value_cols:raise ValueError("Rainfall source contains no value series")
         column=value_cols[0]
+    rainfall_semantics=_resolved_rainfall_semantics(parsed,column,rainfall_semantics)
     x=frame[["timestamp",column]].copy()
     x["timestamp"]=pd.to_datetime(x["timestamp"],errors="coerce")
     x[column]=pd.to_numeric(x[column],errors="coerce")*float(conversion_factor)
@@ -312,6 +323,7 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
         "valid_seconds":result["valid_seconds"],
         "unknown_seconds":result["unknown_seconds"],
         "missing_seconds":result.get("missing_seconds",0.0),
+        "invalid_seconds":result.get("invalid_seconds",0.0),
         "validity":result.get("validity"),
         "conversion_factor":float(conversion_factor),
         "interval_min":float(interval) if interval else None,
@@ -319,7 +331,7 @@ def cumulative_rainfall_series(path,column="rainfall",conversion_factor=1.0,max_
         "excluded_seconds":result.get("excluded_seconds",0.0),
         "start":pd.Timestamp(x["timestamp"].iloc[0]).isoformat(),
         "end":pd.Timestamp(x["timestamp"].iloc[-1]).isoformat(),
-        "integration_method":"actual-support interval-average intensity × elapsed time; gaps above the defensible source-support limit are unknown; declared interval used only for final support",
+        "integration_method":("incremental interval depth apportioned by native support" if rainfall_semantics=="incremental_depth" else "interval-average intensity × elapsed support")+"; raw-source total (exclusions only when explicitly supplied); negative rainfall invalid; unsupported gaps unknown",
         "max_gap_seconds":rain_gap_seconds,
     }
     return json.dumps(python_bridge._jsonable(payload),ensure_ascii=False)
@@ -336,7 +348,8 @@ def multi_gauge_rainfall_result(sources_json,conversion_factor=1.0):
             column=columns[0]
         frame[column]=pd.to_numeric(frame[column],errors="coerce")*float(conversion_factor)
         interval=(getattr(parsed,"metadata",{}) or {}).get("interval_min")
-        gauges[str(source.get("name") or source["path"])]=(frame,column,float(interval) if interval else None)
+        semantics=_resolved_rainfall_semantics(parsed,column,source.get("rainfall_semantics"))
+        gauges[str(source.get("name") or source["path"])]=(frame,column,float(interval) if interval else None,semantics)
     result=multi_gauge_rainfall_assessment(gauges);result["conversion_factor"]=float(conversion_factor)
     return json.dumps(python_bridge._jsonable(result),ensure_ascii=False)
 
@@ -555,6 +568,7 @@ def professional_flow_survey_result(
     start=None,
     end=None,
     max_gap_seconds=900.0,
+    rainfall_semantics=None,
 ):
     """Run the advanced Flow-Survey-Assessment-Tools workflow in browser-local Python."""
     from icm_workbench.analysis.survey_assessment import (
@@ -613,12 +627,9 @@ def professional_flow_survey_result(
     if not rain_path:
         raise ValueError("Select the rainfall gauge associated with this monitor.")
     rain_parsed = python_bridge._load(rain_path)
-    rain = rain_parsed.frame.copy()
+    rain, rain_interval, _ = _survey_rain_source(rain_path,rain_col,rain_factor,rainfall_semantics)
     if rain_col not in rain.columns:
         raise ValueError(f"Mapped rainfall column {rain_col!r} is unavailable.")
-    rain[rain_col] = (
-        pd.to_numeric(rain[rain_col], errors="coerce") * float(rain_factor)
-    )
     rain_meta = getattr(rain_parsed, "metadata", {}) or {}
     rain_interval = rain_meta.get("interval_min")
     rain_interval = float(rain_interval) if rain_interval else None
@@ -661,9 +672,7 @@ def professional_flow_survey_result(
             if not columns:
                 continue
             column = columns[0]
-        frame[column] = (
-            pd.to_numeric(frame[column], errors="coerce") * float(rain_factor)
-        )
+        frame, _, _ = _survey_rain_source(path,column,rain_factor,source.get("rainfall_semantics"))
         for exc in rainfall_exclusions:
             stamp = pd.to_datetime(frame["timestamp"], errors="coerce")
             frame.loc[

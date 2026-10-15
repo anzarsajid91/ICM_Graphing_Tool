@@ -1,0 +1,26 @@
+import vm from 'node:vm';
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const nodes=new Map(['cumulativeRainChart','cumulativeRainSummary','cumulativeRainTotals','multiGaugeRainSummary','multiGaugeRainTable','rainFactor'].map(id=>[id,{value:'1',innerHTML:'',textContent:''}]));
+const listeners=new Map(),calls=[];
+const sandbox={console,setTimeout,clearTimeout,window:{},document:{querySelector:()=>null,getElementById:id=>nodes.get(id)||null},
+  Plotly:{purge(){},async react(...args){sandbox.plot=args;}}};
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync('web/assets/runtime.release.js','utf8').replace(/start\(\);\s*$/,''),sandbox);
+vm.runInContext(`engine.ready=true; engine.call=async(name,args)=>{ globalThis.calls.push({name,args});return name==='multi_gauge_rainfall_result'?{gauge_count:2,non_uniform_day_count:0,criteria:{variability_cv_limit_percent:40,strikes_required:2,rolling_window_days:7},gauges:[]}:{timestamp:[],value:[],raw_count:12,missing_count:0,negative_count:0,complete:true,final_total_mm:12,rainfall_semantics:args.rainfall_semantics};};
+state.files.set('r',{id:'r',status:'ready',virtualPath:'/r.R',displayName:'r.R',parsed:{format:'rainfall_r_ascii',columns:['rainfall'],metadata:{interval_min:5,rainfall_semantics:'incremental_depth'}}});`,Object.assign(sandbox,{calls}));
+let source=fs.readFileSync('web/assets/workbench-v3.js','utf8');
+source=source.slice(0,source.lastIndexOf('  ensureCopyrightFooter();'))+'window.rainTest={renderCumulativeRainfall,wireAutomaticCumulativeRefresh,scheduleCumulativeRainfall};})();';
+vm.runInContext(source,sandbox);
+await sandbox.window.rainTest.renderCumulativeRainfall();
+assert.equal(calls[0].args.rainfall_semantics,'incremental_depth','UI must pass resolved semantics');
+assert.equal(sandbox.plot[3].scrollZoom,false,'Wheel scrolling must not zoom rainfall');
+assert.match(nodes.get('cumulativeRainSummary').textContent,/incremental|per.source/i);
+vm.runInContext(`state.files.set('i',{id:'i',status:'ready',virtualPath:'/i.R',displayName:'i.R',parsed:{format:'rainfall_r_ascii',columns:['rainfall'],metadata:{rainfall_semantics:'intensity'}}});`,sandbox);
+await sandbox.window.rainTest.renderCumulativeRainfall();
+const quality=calls.findLast(x=>x.name==='multi_gauge_rainfall_result');
+assert.deepEqual(JSON.parse(quality.args.sources_json).map(x=>x.rainfall_semantics),['incremental_depth','intensity']);
+vm.runInContext(`state.rainfallSemanticsOverrides.set(sourceKey('r','rainfall'),'intensity')`,sandbox);
+await sandbox.window.rainTest.renderCumulativeRainfall();
+assert.equal(calls.filter(x=>x.name==='cumulative_rainfall_series').at(-2).args.rainfall_semantics,'intensity');
+console.log('PASS cumulative rainfall UI: source semantics, mixed gauges, interpretation override and shared wheel config.');

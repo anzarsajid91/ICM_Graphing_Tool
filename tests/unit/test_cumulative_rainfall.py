@@ -17,7 +17,7 @@ import python_bridge  # noqa: E402
 
 def _write_r(path: Path, values: str) -> Path:
     path.write_text(
-        "*CSTART\n2601010000 2601010006 2\n*CEND\n" + values + "\n",
+        "**UNITS: 1,mm/h\n*CSTART\n2601010000 2601010006 2\n*CEND\n" + values + "\n",
         encoding="utf-8",
     )
     return path
@@ -36,12 +36,12 @@ def test_cumulative_rainfall_integrates_full_interval_series_before_display_samp
     assert result["interval_min"] == pytest.approx(2.0)
     assert result["final_total_mm"] == pytest.approx(1.4)
     assert result["complete"] is True
-    assert result["integration_method"] == "actual-support interval-average intensity × elapsed time; gaps above the defensible source-support limit are unknown; declared interval used only for final support"
+    assert result["integration_method"].startswith("interval-average intensity × elapsed support")
 
 
 def test_cumulative_rainfall_flags_sentinel_intervals_as_partial(tmp_path):
     source = _write_r(tmp_path / "storm-missing.R", "6 9999 0 3")
-    result = json.loads(advanced_bridge.cumulative_rainfall_series(str(source)))
+    result = json.loads(advanced_bridge.cumulative_rainfall_series(str(source), rainfall_semantics="intensity"))
 
     assert result["missing_count"] == 1
     assert result["complete"] is False
@@ -71,7 +71,7 @@ def test_cumulative_rainfall_treats_long_generic_csv_gaps_as_unknown_support(tmp
         "2026-01-01T00:22:00,6\n",
         encoding="utf-8",
     )
-    result=json.loads(advanced_bridge.cumulative_rainfall_series(str(source)))
+    result=json.loads(advanced_bridge.cumulative_rainfall_series(str(source), rainfall_semantics="intensity"))
 
     # Median source timestep is 2 min, so the 18 min discontinuity is unknown
     # support rather than 1.8 mm of invented continuous rainfall.
