@@ -42,7 +42,7 @@
       <div class="subhead">
         <div>
           <h3>Cumulative rainfall — all .R files</h3>
-          <p>Every parsed .R / .R.txt rainfall file in the source pool is plotted automatically. Cumulative depth is integrated from the complete native interval series before chart downsampling.</p>
+          <p>Every parsed .R rainfall file is plotted using its source interpretation before chart downsampling. Raw-source totals include all intervals; assessment exclusions are not applied here.</p>
         </div>
         <button class="btn" id="refreshCumulativeRainBtn" type="button">Refresh cumulative plot</button>
       </div>
@@ -71,10 +71,10 @@
 
   function rainfallTotalsTable(results) {
     if (!results.length) return '';
-    return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Rainfall file</th><th>Period</th><th>Interval</th><th>Native samples</th><th>Cumulative depth</th><th>Status</th></tr></thead><tbody>${results.map(({item,data}) => {
-      const status = data.complete ? 'Complete' : `Partial — ${data.missing_count} missing interval(s)`;
+    return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Rainfall file</th><th>Period</th><th>Interval</th><th>Interpretation</th><th>Native samples</th><th>Cumulative depth</th><th>Status</th></tr></thead><tbody>${results.map(({item,semantics,data}) => {
+      const status = data.error || (data.complete ? 'Complete' : `${data.calculation_status || 'Partial'} — ${data.missing_count || 0} missing, ${data.negative_count || 0} negative sample(s)`);
       const period = data.start && data.end ? `${esc(modelClock(data.start))} → ${esc(modelClock(data.end))}` : '—';
-      return `<tr><td>${esc(item.displayName)}</td><td>${period}</td><td>${fmt(data.interval_min,2)} min</td><td>${data.raw_count ?? '—'}</td><td><strong>${fmt(data.final_total_mm,3)} mm</strong></td><td class="${data.complete?'audit-good':'audit-warn'}">${esc(status)}</td></tr>`;
+      return `<tr><td>${esc(item.displayName)}</td><td>${period}</td><td>${fmt(data.interval_min,2)} min</td><td>${semantics==='incremental_depth'?'Incremental depth (mm)':semantics==='intensity'?'Intensity (mm/h)':'Unresolved'}</td><td>${data.raw_count ?? '—'}</td><td><strong>${fmt(data.final_total_mm,3)} mm</strong></td><td class="${data.complete?'audit-good':'audit-warn'}">${esc(status)}</td></tr>`;
     }).join('')}</tbody></table></div>`;
   }
 
@@ -117,14 +117,22 @@
     for (const item of items) {
       const column = (item.parsed?.columns || [])[0];
       if (!column) continue;
-      const data = await engine.call('cumulative_rainfall_series', {
+      const semantics = rainfallSemanticsFor(item,column);
+      let data;
+      try {
+        if (!['intensity','incremental_depth'].includes(semantics)) throw new Error('Confirm rainfall interpretation before calculating this source.');
+        data = await engine.call('cumulative_rainfall_series', {
         path:item.virtualPath,
         column,
+        rainfall_semantics:semantics,
         conversion_factor:factor,
         max_points:RAIN_DISPLAY_POINTS,
       }, 'advanced_bridge');
+      } catch (error) {
+        data = {timestamp:[],value:[],final_total_mm:null,complete:false,calculation_status:'unavailable',error:String(error.message || error)};
+      }
       if (generation !== v3.rainGeneration) return;
-      results.push({item,column,data});
+      results.push({item,column,semantics,data});
     }
 
     const traces = results.map(({item,data}, index) => ({
@@ -145,15 +153,19 @@
       legend:{orientation:'h',y:1.12,x:0},
       margin:{l:65,r:25,t:70,b:55},
       uirevision:'icm-cumulative-rainfall-v1',
-    }, {responsive:true,displaylogo:false,scrollZoom:true});
+    }, plotConfig('cumulative-rainfall'));
+
+    if (generation !== v3.rainGeneration) return;
 
     const incomplete = results.filter(x => !x.data.complete).length;
-    summary.textContent = `${results.length} rainfall .R file(s) plotted · conversion factor ${factor} · cumulative depth uses interval-average intensity × interval duration. ${incomplete ? `${incomplete} trace(s) contain missing rainfall intervals and are flagged partial.` : 'All plotted rainfall intervals are complete.'}`;
+    summary.textContent = `${results.length} rainfall .R file(s) · factor ${factor} · per-source interpretation: mm/h × elapsed support, or incremental mm summed over native intervals. Raw-source totals include assessment exclusions. ${incomplete ? `${incomplete} source(s) partial or unavailable; review status below.` : 'All plotted rainfall intervals are complete.'}`;
     totals.innerHTML = rainfallTotalsTable(results);
     if(qaSummary&&qaTable){
-      if(results.length<2){qaSummary.textContent='One rainfall gauge loaded; cross-gauge variability and zero-response screening require at least two.';qaTable.innerHTML='';}
+      const resolved=results.filter(x=>!x.data.error);
+      if(resolved.length<2){qaSummary.textContent='Cross-gauge screening requires at least two sources with confirmed rainfall interpretation.';qaTable.innerHTML='';window.__ICM_WORKBENCH__.lastRainfallQuality=null;}
       else{
-        const quality=await engine.call('multi_gauge_rainfall_result',{sources_json:JSON.stringify(results.map(({item,column})=>({path:item.virtualPath,column,name:item.displayName}))),conversion_factor:factor},'advanced_bridge');
+        const quality=await engine.call('multi_gauge_rainfall_result',{sources_json:JSON.stringify(resolved.map(({item,column,semantics})=>({path:item.virtualPath,column,name:item.displayName,rainfall_semantics:semantics}))),conversion_factor:factor},'advanced_bridge');
+        if (generation !== v3.rainGeneration) return;
         qaSummary.textContent=`${quality.gauge_count} gauges assessed · ${quality.non_uniform_day_count} operational day(s) exceed the ${quality.criteria.variability_cv_limit_percent}% spatial CV screen. Repeated zero response is flagged after ${quality.criteria.strikes_required} strike days within ${quality.criteria.rolling_window_days} days; flags require engineering review and do not remove data.`;
         qaTable.innerHTML=rainfallQualityTable(quality);
         window.__ICM_WORKBENCH__.lastRainfallQuality=quality;
@@ -168,12 +180,16 @@
   }
 
   function scheduleCumulativeRainfall(delay=350) {
+    v3.rainGeneration += 1;
+    window.__ICM_WORKBENCH__.lastCumulativeRainfall = null;
+    window.__ICM_WORKBENCH__.lastRainfallQuality = null;
     clearTimeout(v3.rainTimer);
-    v3.rainTimer = setTimeout(() => void renderCumulativeRainfall(false), delay);
+    v3.rainTimer = setTimeout(() => void guarded('cumulativeRainSummary',()=>renderCumulativeRainfall(false)), delay);
   }
 
   function wireAutomaticCumulativeRefresh() {
     window.addEventListener('icm:source-pool-changed', () => scheduleCumulativeRainfall(120));
+    window.addEventListener('icm:rainfall-interpretation-changed', () => scheduleCumulativeRainfall(120));
     document.addEventListener('change', event => {
       if (event.target?.id === 'rainFactor') scheduleCumulativeRainfall(120);
     }, true);
@@ -218,6 +234,7 @@
   let professionalGeneration=0;
   function professionalSurveySignature(){
     const selector=id=>$(id)?.value||'';
+    const rain=mappingObject(selector('surveyRainSelect'));
     return JSON.stringify({
       analysis:typeof analysisSignature==='function'?analysisSignature():null,
       source_pool_revision:window.__ICM_WORKBENCH__.sourcePoolRevision||0,
@@ -228,7 +245,8 @@
       population:selector('surveyPopulation'),
       apply_fault_cutoff:Boolean($('surveyApplyFaultCutoff')?.checked),
       rain_factor:Number($('rainFactor')?.value||1),
-      rainfall_sources:rainfallRItems().map(item=>({hash:item.hash||null,name:item.displayName,columns:item.parsed?.columns||[]})),
+      rain_semantics:rain?rainfallSemanticsFor(rain.item,rain.col):'unresolved',
+      rainfall_sources:rainfallRItems().map(item=>({hash:item.hash||null,name:item.displayName,columns:item.parsed?.columns||[],semantics:(item.parsed?.columns||[]).map(col=>rainfallSemanticsFor(item,col))})),
     });
   }
   window.__ICM_WORKBENCH__.professionalSurveyFresh=()=>Boolean(
@@ -376,6 +394,7 @@
       path:item.virtualPath,
       column:(item.parsed?.columns || [])[0],
       name:item.displayName,
+      rainfall_semantics:rainfallSemanticsFor(item,(item.parsed?.columns || [])[0]),
     })).filter(x => x.column);
 
     const args = {
@@ -387,6 +406,7 @@
       flow_col:flow?.col || null,
       rain_path:rain.item.virtualPath,
       rain_col:rain.col,
+      rainfall_semantics:rainfallSemanticsFor(rain.item,rain.col),
       network_sources_json:JSON.stringify(networkSources),
       population_above_50k:$('surveyPopulation').value === 'over50',
       apply_fault_cutoff:Boolean($('surveyApplyFaultCutoff').checked),
@@ -430,6 +450,10 @@
       if (hadResult && $('professionalSurveyStatus')) {
         $('professionalSurveyStatus').textContent = 'Source pool changed. Previous professional-survey results are stale; re-run before relying on or exporting them.';
       }
+    });
+    window.addEventListener('icm:rainfall-interpretation-changed', () => {
+      professionalGeneration+=1;
+      if(window.__ICM_WORKBENCH__.lastProfessionalSurvey&&$('professionalSurveyStatus'))$('professionalSurveyStatus').textContent='Rainfall interpretation changed. Previous professional-survey results are stale; re-run before exporting.';
     });
     document.addEventListener('click', event => {
       if (event.target?.closest?.('.tab[data-tab="data-health"]')) {

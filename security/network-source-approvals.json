@@ -29,8 +29,8 @@
       "review": "Legacy source is replaced by runtime.release.js during Pages build. Its historical CDN fetches download runtime resources only; no upload path. It is not the active release runtime."
     },
     "web/assets/runtime.release.js": {
-      "sha256": "9ca4ec336756921298c092ecee61dabb3a9f90b890bb6b0ac5e346b941c1b3f9",
-      "review": "Reviewed Inter font stack, 400/500/600 report weights and fixed-font preparation on explicit HTML report exports. Existing freshness guards retained after await. Chart/report presentation only; source bytes, worker messages, calculations, fixed Plotly fetch and local blob export paths unchanged. Post-release sentence-case audit: reviewed diff changes only literal UI/report captions. Existing fixed same-origin resource/font downloads, blank local print windows and blob exports are unchanged; no URL, request, handler, worker, source value or calculation code changed."
+      "sha256": "6e995d52cf78993a2737662720b7a19ab910a92ca0099d373958c1430929544a",
+      "review": "Reviewed Inter font stack, 400/500/600 report weights and fixed-font preparation on explicit HTML report exports. Existing freshness guards retained after await. Chart/report presentation only; source bytes, worker messages, calculations, fixed Plotly fetch and local blob export paths unchanged. Post-release sentence-case audit: reviewed diff changes only literal UI/report captions. Existing fixed same-origin resource/font downloads, blank local print windows and blob exports are unchanged; no URL, request, handler, worker, source value or calculation code changed. October rainfall audit correction: reviewed two added DOM-only CustomEvent dispatches after rainfall semantics/unit interpretation changes. These carry no detail, trigger browser-local recalculation, and introduce no network sink. Existing worker URLs, fixed same-origin Plotly/font downloads, blank local print windows and blob exports are unchanged."
     },
     "web/assets/workflow-26.js": {
       "sha256": "c6862968d4c4a7bf62e511e5f13d44565a4c54353d3054dadfe41bfc0ce7f7bf",

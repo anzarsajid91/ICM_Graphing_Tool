@@ -1026,7 +1026,7 @@ function denseCsv(){
   return Buffer.from(lines.join('\n'),'utf8');
 }
 function rainfallR(values){
-  return Buffer.from(`*CSTART\n2601010000 2601010006 2\n*CEND\n${values.join(' ')}\n`,'utf8');
+  return Buffer.from(`**FIELD: 1,RAINFALL\n**UNITS: 1,mm/h\n*CSTART\n2601010000 2601010006 2\n*CEND\n${values.join(' ')}\n`,'utf8');
 }
 function surveyFdv(monitor,flow,depth,velocity,count=200){
   const header=[
@@ -1247,6 +1247,22 @@ async function verifySpillCalendarAllocation(){
     }
     console.log('SPILL_CALENDAR_ALLOCATION_PASS: observed/modelled monthly counts 9/30/25; duration 178.38/720/601.27 h; total 64; rendered comparison matches.');
     return {counts:[9,30,25],duration_hours:[178.38,720,601.27],total:64,rendered:evidence.rendered,url:await probe.url(),title:evidence.title,console_errors:errors};
+  }catch(error){
+    // Capture the actual isolated page before it is closed. The outer page
+    // has not imported these fixtures and cannot diagnose this readiness wait.
+    const diagnostic=await probe.evaluate(()=>({
+      engineStatus:document.querySelector('#engineStatus')?.textContent||null,
+      status:window.__ICM_WORKBENCH__?.status||null,
+      queue:window.__ICM_WORKBENCH__?.processQueue||null,
+      sources:typeof state==='undefined'?[]:[...state.files.values()].map(item=>({status:item.status,error:item.error||null})),
+    })).catch(()=>({unavailable:true}));
+    console.error('SPILL_CALENDAR_PROBE_FAILURE '+JSON.stringify({diagnostic,errors}));
+    if(process.env.ICM_EVIDENCE_DIR){
+      await fs.mkdir(process.env.ICM_EVIDENCE_DIR,{recursive:true});
+      await fs.writeFile(path.join(process.env.ICM_EVIDENCE_DIR,'spill-calendar-failure.json'),JSON.stringify({diagnostic,errors},null,2)+'\n');
+      await probe.screenshot({path:path.join(process.env.ICM_EVIDENCE_DIR,'spill-calendar-failure.png'),fullPage:true}).catch(()=>{});
+    }
+    throw error;
   }finally{await isolated.close();}
 }
 

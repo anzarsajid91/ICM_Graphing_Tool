@@ -53,6 +53,7 @@ def rainfall_support_segments(
         "start",
         "end",
         "value",
+        "intensity_mm_h",
         "support_seconds",
         "depth_mm",
         "valid",
@@ -97,6 +98,8 @@ def rainfall_support_segments(
 
         raw_value = row[value_col]
         finite = bool(pd.notna(raw_value) and np.isfinite(float(raw_value)))
+        intensity = (float(raw_value) if semantics == "intensity" else
+                     float(raw_value) * 3600.0 / full_support) if finite else np.nan
         base_status = "valid"
         base_valid = finite
         if max_gap_seconds is not None and full_support > float(max_gap_seconds):
@@ -104,6 +107,11 @@ def rainfall_support_segments(
             base_status = "unknown"
         elif not finite:
             base_status = "missing"
+        elif float(raw_value) < 0:
+            # A logger correction requires explicit engineer intervention;
+            # negative measurements are never evidence of dry weather.
+            base_valid = False
+            base_status = "invalid"
 
         for piece_start, piece_end, excluded in _split_support_interval(
             start, end, exclusions
@@ -117,6 +125,7 @@ def rainfall_support_segments(
                         "start": piece_start,
                         "end": piece_end,
                         "value": None if not finite else float(raw_value),
+                        "intensity_mm_h": intensity,
                         "support_seconds": support,
                         "depth_mm": np.nan,
                         "valid": False,
@@ -127,7 +136,7 @@ def rainfall_support_segments(
 
             depth = np.nan
             if base_valid:
-                value = max(float(raw_value), 0.0)
+                value = float(raw_value)
                 if semantics == "intensity":
                     depth = value * support / 3600.0
                 else:
@@ -137,6 +146,7 @@ def rainfall_support_segments(
                     "start": piece_start,
                     "end": piece_end,
                     "value": None if not finite else float(raw_value),
+                    "intensity_mm_h": intensity,
                     "support_seconds": support,
                     "depth_mm": depth,
                     "valid": base_valid,
@@ -171,6 +181,7 @@ def rainfall_accumulation(
             "valid_seconds": 0.0,
             "unknown_seconds": 0.0,
             "missing_seconds": 0.0,
+            "invalid_seconds": 0.0,
             "excluded_seconds": 0.0,
             "requested_seconds": 0.0,
             "coverage_fraction": None,
@@ -184,6 +195,7 @@ def rainfall_accumulation(
     requested = float(seg["support_seconds"].sum())
     valid = float(seg.loc[seg["valid"], "support_seconds"].sum())
     missing = float(seg.loc[seg["status"].eq("missing"), "support_seconds"].sum())
+    invalid = float(seg.loc[seg["status"].eq("invalid"), "support_seconds"].sum())
     explicit_unknown = float(seg.loc[seg["status"].eq("unknown"), "support_seconds"].sum())
     excluded = float(seg.loc[seg["status"].eq("excluded"), "support_seconds"].sum())
     total = float(seg.loc[seg["valid"], "depth_mm"].sum())
@@ -193,6 +205,7 @@ def rainfall_accumulation(
         valid_seconds=valid,
         excluded_seconds=excluded,
         missing_seconds=missing,
+        invalid_seconds=invalid,
         unknown_seconds=explicit_unknown,
         uncovered_seconds=0.0,
     )
@@ -201,6 +214,7 @@ def rainfall_accumulation(
         "valid_seconds": valid,
         "unknown_seconds": float(validity["unknown_seconds"]),
         "missing_seconds": missing,
+        "invalid_seconds": invalid,
         "excluded_seconds": excluded,
         "requested_seconds": requested,
         "coverage_fraction": validity["coverage_fraction"],
@@ -235,6 +249,7 @@ def daily_rainfall_support(
         "depth_mm",
         "valid_seconds",
         "missing_seconds",
+        "invalid_seconds",
         "unknown_seconds",
         "excluded_seconds",
         "coverage_fraction",
@@ -258,6 +273,7 @@ def daily_rainfall_support(
                     "depth_mm": 0.0,
                     "valid_seconds": 0.0,
                     "missing_seconds": 0.0,
+                    "invalid_seconds": 0.0,
                     "unknown_seconds": 0.0,
                     "excluded_seconds": 0.0,
                 },
@@ -267,6 +283,8 @@ def daily_rainfall_support(
                 rec["depth_mm"] += float(row.depth_mm) * seconds / float(row.support_seconds)
             elif row.status == "missing":
                 rec["missing_seconds"] += seconds
+            elif row.status == "invalid":
+                rec["invalid_seconds"] += seconds
             elif row.status == "excluded":
                 rec["excluded_seconds"] += seconds
             else:
@@ -279,6 +297,7 @@ def daily_rainfall_support(
         represented = (
             rec["valid_seconds"]
             + rec["missing_seconds"]
+            + rec["invalid_seconds"]
             + rec["unknown_seconds"]
             + rec["excluded_seconds"]
         )
@@ -288,6 +307,7 @@ def daily_rainfall_support(
             valid_seconds=rec["valid_seconds"],
             excluded_seconds=rec["excluded_seconds"],
             missing_seconds=rec["missing_seconds"],
+            invalid_seconds=rec["invalid_seconds"],
             unknown_seconds=rec["unknown_seconds"],
             uncovered_seconds=uncovered,
         )
@@ -297,6 +317,7 @@ def daily_rainfall_support(
                 "depth_mm": float(rec["depth_mm"]),
                 "valid_seconds": float(rec["valid_seconds"]),
                 "missing_seconds": float(rec["missing_seconds"]),
+                "invalid_seconds": float(rec["invalid_seconds"]),
                 "unknown_seconds": float(validity["unknown_seconds"]),
                 "excluded_seconds": float(rec["excluded_seconds"]),
                 "coverage_fraction": validity["coverage_fraction"],
@@ -318,14 +339,16 @@ def multi_gauge_rainfall_assessment(
 ) -> dict:
     """Screen multi-gauge rainfall coverage, spatial CV and repeated zero response.
 
-    ``gauges`` maps a gauge label to ``(frame, value_column, interval_minutes)``.
+    ``gauges`` maps a gauge label to ``(frame, value_column, interval_minutes,
+    semantics)``. Legacy three-item tuples explicitly retain intensity semantics.
     Flags are review evidence only and never remove or impute source data.
     """
     daily_by_gauge={}
     for name,spec in gauges.items():
-        frame,column,interval=spec
+        frame,column,interval=spec[:3]
+        semantics=spec[3] if len(spec)>3 else "intensity"
         daily=daily_rainfall_support(
-            frame,column,semantics="intensity",declared_interval_minutes=interval,
+            frame,column,semantics=semantics,declared_interval_minutes=interval,
             max_gap_seconds=(float(interval)*90.0 if interval else None),
         )
         if not daily.empty:daily_by_gauge[str(name)]=daily.set_index("day")

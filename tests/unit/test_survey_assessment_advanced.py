@@ -455,7 +455,7 @@ def test_standalone_rainfall_events_respect_selected_analysis_period(tmp_path):
     values[720:730] = 12.0
     source = tmp_path / "RG-period.R"
     source.write_text(
-        "*CSTART\n2601010000 2601030000 2\n*CEND\n"
+        "**UNITS: 1,mm/h\n*CSTART\n2601010000 2601030000 2\n*CEND\n"
         + " ".join(str(float(v)) for v in values)
         + "\n",
         encoding="utf-8",
