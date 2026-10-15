@@ -1026,7 +1026,7 @@ function denseCsv(){
   return Buffer.from(lines.join('\n'),'utf8');
 }
 function rainfallR(values){
-  return Buffer.from(`*CSTART\n2601010000 2601010006 2\n*CEND\n${values.join(' ')}\n`,'utf8');
+  return Buffer.from(`**FIELD: 1,RAINFALL\n**UNITS: 1,mm/h\n*CSTART\n2601010000 2601010006 2\n*CEND\n${values.join(' ')}\n`,'utf8');
 }
 function surveyFdv(monitor,flow,depth,velocity,count=200){
   const header=[
