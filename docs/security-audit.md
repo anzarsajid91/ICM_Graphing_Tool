@@ -87,6 +87,19 @@ The later [CodeQL source-path review](https://github.com/anzarsajid91/ICM_Graphi
 
 Release remains conditional on effective administrator rules, all mandatory checks, static-analysis review and exact-artifact validation. The owner authorised single-maintainer release on 2026-10-18; no independent human review is represented. Historical-data, licensing and wider hosting assurance limitations remain open and are not claims of confirmed data egress. See security-governance.md for exact settings and rollback procedure. No employer-specific policy or approval is claimed.
 
+## Downloaded-artifact acceptance finding
+
+HB-13 (Medium, high confidence): independent archive inspection found that the
+passing preview upload omitted the hidden `.nojekyll` deployment control. All
+other bytes matched. Current Pages returns 404 for that control, so treating it
+as an HTTP resource would also prevent valid live acceptance. The correction
+retains and verifies every packaged file after upload/download, explicitly
+classifies only empty `.nojekyll` as a deployment control, and keeps every HTTP
+asset mandatory. There is no generic 404 exception or arbitrary exemption. See
+[artifact evidence, scope and regression results](security-artifact-review.md).
+Final-head CI and actual post-deployment verification remain mandatory; this
+finding does not establish engineering-data disclosure or change calculations.
+
 ## 2026-10-18 maintainer disposition and policy revision
 
 The owner explicitly authorised single-maintainer governance and release subject to passing checks. Independent human review is unavailable; AI-assisted scrutiny is not represented as independent approval. HB-01's missing-settings condition is remediated: GitHub reports active ruleset 25314721, protected main, fourteen required GitHub Actions checks, strict up-to-date policy, mandatory PRs, conversation resolution, no bypass actors, deletion/force-push protection and CodeQL high/error alert blocking. The production gate must also verify effective rules for the released revision. The pages-release environment permits main only, with administrator protection-rule bypass disabled. HB-02 automation boundaries still prohibit automatic merge and test relaxation. HB-05 affects only CSV string serialization; typed numeric outputs and hydraulic methods are unchanged and require regression evidence.
