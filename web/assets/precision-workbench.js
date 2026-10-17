@@ -41,7 +41,7 @@ const ROUTES={
   },
   about:{
     label:'About',icon:'about',
-    pages:{overview:{label:'Overview',title:'About Hydra Bench',description:'A practical workbench for hydraulic evidence, model verification and scenario assessment.',root:()=>$('tab-about')}}
+    pages:{overview:{label:'Overview',title:'About Hydra Bench',description:'A practical workbench for hydraulic evidence, model verification and scenario assessment.',root:()=>$('tab-about')},security:{label:'IT Security',title:'IT Security',description:'Data handling, implemented controls and verification limits.',root:()=>$('tab-security')}}
   },
   reports:{
     label:'Reports',
@@ -567,10 +567,10 @@ function navigate(workspace,page,push=false){
   const previousRect=previous?.getBoundingClientRect(),navRect=previous?sn.getBoundingClientRect():null;
   const previousPill=previousRect?{left:previousRect.left-navRect.left-sn.clientLeft+sn.scrollLeft,width:previousRect.width}:null;
   if(!sameWorkspace){
-    sn.innerHTML='';sn.dataset.workspace=workspace;
-    Object.entries(spec.pages).forEach(([key,entry])=>{const b=document.createElement('button');b.type='button';b.dataset.page=key;b.textContent=entry.label;b.addEventListener('click',()=>navigate(workspace,key,true));sn.appendChild(b);});
+    sn.innerHTML='';sn.dataset.workspace=workspace;sn.setAttribute('role','tablist');sn.setAttribute('aria-label',spec.label+' pages');
+    Object.entries(spec.pages).forEach(([key,entry])=>{const b=document.createElement('button');b.type='button';b.dataset.page=key;b.textContent=entry.label;b.id='pw-tab-'+workspace+'-'+key;b.setAttribute('role','tab');b.addEventListener('click',()=>navigate(workspace,key,true));sn.appendChild(b);});
   }
-  qsa('button',sn).forEach(b=>b.setAttribute('aria-current',b.dataset.page===page?'page':'false'));
+  qsa('button',sn).forEach(b=>{const active=b.dataset.page===page;b.setAttribute('aria-current',active?'page':'false');b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;const target=spec.pages[b.dataset.page].root?.();if(target){b.setAttribute('aria-controls',target.id);target.setAttribute('role','tabpanel');if(active)target.setAttribute('aria-labelledby',b.id);}});
   positionTabIndicator(previousPill);
   inspectorContext(p);refreshScope();renderAssets();
   // A route change must preserve the layout chosen by the engineer.
@@ -754,9 +754,29 @@ function buildAboutPage(){
   qs('main.shell').appendChild(panel);
   qsa('[data-about-workspace]',panel).forEach(button=>button.addEventListener('click',()=>navigate(button.dataset.aboutWorkspace,button.dataset.aboutPage,true)));
 }
+function buildSecurityPage(){
+  const panel=document.createElement('section');panel.id='tab-security';panel.className='tab-panel';panel.hidden=true;
+  const article=document.createElement('article');article.className='panel pw-about-page';
+  const heading=document.createElement('h2');heading.textContent='IT Security';article.appendChild(heading);
+  const identity=document.createElement('p');identity.id='securityBuildIdentity';identity.textContent='Version '+(document.querySelector('meta[name="hydra-bench-version"]')?.content||'unavailable')+' · Revision '+(document.querySelector('meta[name="icm-build-sha"]')?.content||'unavailable');article.appendChild(identity);
+  let register;try{register=JSON.parse($('securityClaims')?.textContent||'null');}catch{}
+  if(register){
+    const scope=document.createElement('p');scope.textContent='Assessment: '+register.assessment;article.appendChild(scope);
+    const cards=document.createElement('div');cards.className='pw-security-cards';
+    for(const claim of register.claims){
+      const card=document.createElement('section');card.dataset.claimId=claim.id;
+      const title=document.createElement('h3');title.textContent=claim.title;
+      const copy=document.createElement('p');copy.textContent=claim.statement;
+      card.append(title,copy);cards.appendChild(card);
+    }
+    article.appendChild(cards);
+  }else{const message=document.createElement('p');message.textContent='Security information is unavailable for this build.';article.appendChild(message);}
+  const links=document.createElement('p');links.innerHTML='<a href="security/dependencies.json">Dependency inventory</a> · <a href="security/security-audit.md">Assessment and limitations</a> · <a href="security/claims.json">Claim–evidence register</a> · <a href="security/SECURITY.md">Security disclosure guidance</a>';article.appendChild(links);
+  panel.appendChild(article);qs('main.shell').appendChild(panel);
+}
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
-  buildAboutPage();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
+  buildAboutPage();buildSecurityPage();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||{workspace:'data',page:'time-series'};navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }

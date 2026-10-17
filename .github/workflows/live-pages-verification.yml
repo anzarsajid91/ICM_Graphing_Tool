@@ -51,11 +51,12 @@ jobs:
           echo "Resolved live verification target: $target"
 
       - name: Check out the deployed revision
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
 
@@ -82,9 +83,16 @@ jobs:
           curl -fsSL "${SITE_URL}build.json?final=${TARGET_SHA}" || true
           exit 1
 
+      - name: Rebuild and compare all fixed live asset bytes
+        env:
+          GITHUB_SHA: ${{ env.TARGET_SHA }}
+        run: |
+          python3 scripts/build_pages.py
+          python3 scripts/verify_live_integrity.py _site "$SITE_URL" "$TARGET_SHA"
+
       - name: Install Chromium acceptance runner
         run: |
-          npm install --no-save playwright@1.55.0
+          npm ci --ignore-scripts
           npx playwright install --with-deps chromium
 
       - name: Prepare live smoke harness
@@ -101,9 +109,14 @@ jobs:
           node web/tests/detriment-reference-smoke.mjs 2>&1 | tee /tmp/icm-live-detriment-reference.log
           node web/tests/workspace-interactions.mjs 2>&1 | tee /tmp/icm-live-workspace-interactions.log
 
+      - name: Verify IT Security transparency on the live build
+        env:
+          ICM_BASE_URL: ${{ env.SITE_URL }}
+        run: node web/tests/security-about-smoke.mjs
+
       - name: Capture live verification evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: live-pages-verification-${{ env.TARGET_SHA }}
           if-no-files-found: ignore
@@ -119,7 +132,7 @@ jobs:
 
       - name: Create or update live-regression issue
         if: failure()
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           EXPECTED_SHA: ${{ env.TARGET_SHA }}
           SITE_URL: ${{ env.SITE_URL }}
@@ -150,9 +163,9 @@ jobs:
               'The workflow artifact contains the browser log, live build metadata, and a full-page failure screenshot when the browser test reached the application.',
               '',
               '### Repair policy',
-              'A repair may be made automatically when it is confined to UI/CSS, browser integration, ingestion, plotting, report presentation, deployment, or implementation performance **without changing engineering results**.',
+              'Every automated repair must use a PR, pass mandatory checks and receive independent review. No direct pushes or unreviewed automatic merges are permitted.',
               '',
-              'Do **not** auto-merge a repair that changes hydraulic methodology, WAPUG/FSAT criteria, spill-counting rules, volume-balance equations, validity semantics, unit contracts, or engineering thresholds. Those changes require engineering review.',
+              'Do **not** auto-merge a repair that changes hydraulic methodology, WAPUG/FSAT criteria, spill-counting rules, volume-balance equations, validity semantics, unit contracts, or engineering thresholds. Networking, dependencies, storage, file processing, security and deployment changes also require independent security review.',
               '',
               'Every repair must add or strengthen a regression test and must pass Python, JavaScript, release-artifact, Chromium, and subsequent live-Pages verification before this issue is closed.'
             ].join('\n');
@@ -170,7 +183,7 @@ jobs:
 
       - name: Close resolved live-regression issue
         if: success()
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           VERIFIED_SHA: ${{ env.TARGET_SHA }}
         with:

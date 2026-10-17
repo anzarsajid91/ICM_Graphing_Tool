@@ -13,3 +13,17 @@ Describe the user-visible change and the checks actually run.
 - [ ] Fixtures and shared evidence contain synthetic data only.
 
 Do not merge or release with an unresolved confidentiality failure.
+
+## Security impact and release evidence
+
+- Change class and reason (labels never suppress mandatory checks):
+- Network/storage/dependency/file-processing impact:
+- Engineering methodology/output changes (separate approval if any):
+- Claim IDs/evidence affected; independent reviewer:
+- Exact tests actually run, failures and limitations:
+- Synthetic browser request evidence and IT Security screenshots:
+- Dependency/licence/advisory disposition and SBOM links:
+- Effective server-side rules verified (otherwise Not Enforced):
+- Approved final head, release/rollback plan and actual live SHA after deployment:
+
+No confidential data in this PR or its evidence. No automatic repair grants merge authority.

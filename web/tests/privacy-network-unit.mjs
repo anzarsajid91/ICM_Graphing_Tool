@@ -33,3 +33,7 @@ assert.throws(()=>monitor.assertClean(),/Data-confidentiality network violations
 const popup=new EventEmitter();context.emit('page',popup);popup.emit('websocket',{});
 assert.throws(()=>monitor.assertClean(),/Data-confidentiality network violations/);
 console.log('Privacy network negative/positive contracts passed.');
+
+const protectedOptions={...options,canaries:['hydra-canary-314159']};
+assert.ok(requestViolation({...resource,headers:{accept:'hydra-canary-314159'}},protectedOptions));
+assert.equal(requestViolation(resource,protectedOptions),null);

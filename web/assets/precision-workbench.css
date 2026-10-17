@@ -558,3 +558,12 @@ body.precision-workbench{
 
 /* Additional reference: inset desktop navigation, with existing collapse/focus geometry. */
 @media(min-width:901px){.pw-rail{top:12px;height:calc(100vh - 24px);margin:12px 0 12px 12px;border:1px solid var(--pw-border);border-radius:var(--hb-radius-card)}.precision-workbench.pw-rail-collapsed .pw-rail,.precision-workbench.pw-focus-canvas .pw-rail{padding-inline:8px}.pw-rail-collapsed .pw-primary-nav button,.pw-focus-canvas .pw-primary-nav button,.pw-rail-collapsed .pw-about-nav button,.pw-focus-canvas .pw-about-nav button{padding-inline:8px}}
+
+/* About security transparency: static, local, compact cards. */
+.pw-security-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px;margin:20px 0}
+.pw-security-cards section{border:1px solid var(--border,#deded8);border-radius:16px;padding:16px;min-width:0}
+.pw-security-cards h3{margin:0 0 8px;font-weight:600}
+.pw-security-cards p{margin:0;line-height:1.65;overflow-wrap:anywhere}
+#securityBuildIdentity{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+
+body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}

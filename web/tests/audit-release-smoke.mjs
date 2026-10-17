@@ -1,4 +1,6 @@
 import {chromium} from 'playwright';
+import {installPrivacyGuard} from './privacy-network.mjs';
+import {createHash} from 'node:crypto';
 import {browserLaunchOptions, browserContextOptions} from './browser-environment.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -7,6 +9,8 @@ const evidence=(process.env.ICM_EVIDENCE_DIR||'/tmp/icm-pr-evidence')+'/audit-re
 await fs.mkdir(evidence,{recursive:true});
 const browser=await chromium.launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000}});
+const canary='audit-hydraulic-canary-314159.csv';
+const privacy=installPrivacyGuard(context,base,{canaries:[canary,encodeURIComponent(canary),Buffer.from(canary).toString('base64'),createHash('sha256').update(canary).digest('hex')]});
 const remote=[],errors=[];
 await context.route('**/*',route=>{
   const url=new URL(route.request().url());
@@ -20,12 +24,12 @@ try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
   assert.match(await page.title(),/Hydra Bench/);
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
-  await page.setInputFiles('#fileInput',{name:'audit-hydraulic.csv',mimeType:'text/csv',buffer:Buffer.from('Time,Flow (m3/s)\n2025-01-01 00:00:00,0.02\n2025-01-01 00:05:00,0.03\n2025-01-01 00:10:00,0.04\n')});
-  await page.waitForFunction(()=>[...state.files.values()].some(x=>x.displayName==='audit-hydraulic.csv'&&x.status==='ready'));
+  await page.setInputFiles('#fileInput',{name:'audit-hydraulic-canary-314159.csv',mimeType:'text/csv',buffer:Buffer.from('Time,Flow (m3/s)\n2025-01-01 00:00:00,0.02\n2025-01-01 00:05:00,0.03\n2025-01-01 00:10:00,0.04\n')});
+  await page.waitForFunction(()=>[...state.files.values()].some(x=>x.displayName==='audit-hydraulic-canary-314159.csv'&&x.status==='ready'));
   const restored=await page.evaluate(async()=>{
-    const item=[...state.files.values()].find(x=>x.displayName==='audit-hydraulic.csv');
+    const item=[...state.files.values()].find(x=>x.displayName==='audit-hydraulic-canary-314159.csv');
     const before=item.hash,snapshot=workspaceObject();await applyWorkspace(snapshot);
-    return {before,after:[...state.files.values()].find(x=>x.displayName==='audit-hydraulic.csv').hash};
+    return {before,after:[...state.files.values()].find(x=>x.displayName==='audit-hydraulic-canary-314159.csv').hash};
   });
   assert.equal(restored.before,restored.after);assert.match(restored.before,/^[a-f0-9]{64}$/);
   for(const size of [{width:1440,height:1000},{width:1366,height:768},{width:1024,height:900}]){
@@ -39,6 +43,7 @@ try{
     await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
     await page.screenshot({path:evidence+'/survey-'+size.width+'.png',fullPage:false});
   }
+  privacy.assertClean();
   assert.deepEqual(remote,[],'Core workflows must make no third-party requests');
   assert.deepEqual(errors,[]);
   await fs.writeFile(evidence+'/result.json',JSON.stringify({page:await page.url(),viewports:[1440,1366,1024],restored,remote,errors},null,2));

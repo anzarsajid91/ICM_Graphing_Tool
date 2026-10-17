@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export function resourcePaths(root=process.cwd()){
-  const paths=new Set(['','index.html','build.json','python/package-manifest.json']);
+  const paths=new Set(['','index.html','build.json','python/package-manifest.json','release-integrity.json','security/claims.json','security/dependencies.json','security/security-audit.md','security/SECURITY.md']);
   function walk(dir,prefix){
     for(const entry of fs.readdirSync(dir,{withFileTypes:true})){
       if(entry.name==='tests'||entry.name==='__pycache__')continue;
@@ -19,7 +19,8 @@ export function resourcePaths(root=process.cwd()){
 }
 
 export function requestViolation({url,method='GET',body=null,headers={},navigation=false},
-  {baseUrl,paths,buildToken,navigations=new Set()}){
+  {baseUrl,paths,buildToken,navigations=new Set(),canaries=[]}){
+  if(canaries.some(token=>[url,String(body??''),...Object.values(headers)].some(value=>String(value).includes(token))))return 'Protected canary detected in request';
   const target=new URL(url),base=new URL(baseUrl);
   if(['blob:','data:','about:','file:'].includes(target.protocol))return null;
   if(!['http:','https:'].includes(target.protocol))return 'Unapproved network protocol';
@@ -55,8 +56,8 @@ export function requestViolation({url,method='GET',body=null,headers={},navigati
   return null;
 }
 
-export function installPrivacyGuard(context,baseUrl,{buildToken=process.env.TARGET_SHA||process.env.GITHUB_SHA||'local',paths=resourcePaths()}={}){
-  const violations=[],navigations=new Set(),options={baseUrl,paths,buildToken,navigations};
+export function installPrivacyGuard(context,baseUrl,{buildToken=process.env.TARGET_SHA||process.env.GITHUB_SHA||'local',paths=resourcePaths(),canaries=[]}={}){
+  const violations=[],navigations=new Set(),options={baseUrl,paths,buildToken,navigations,canaries};
   let checked=0;
   function attach(target){
     target.on('request',request=>{
