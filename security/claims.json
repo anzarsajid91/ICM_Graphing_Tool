@@ -128,8 +128,8 @@
     "web/tests/privacy-network.mjs": "cee5e4702b48869bbb1824ea2f934e091a56a53a163f941d1868c3d2109dcd43",
     "tests/privacy/test_source_gate.py": "d684e98611d756764ef5f268a1bb0c808b52e7ddb5e5f47939017c4c0b735c1b",
     "scripts/app_version.py": "9671833607cc1a38690a9e3586cb1a9c00a05a632d4da9253461fed0e962e506",
-    "docs/security-audit.md": "547171c84ac558cb7fd017993a18b846a5077db642189e05ad0dc803cbd6d925",
+    "docs/security-audit.md": "8b787e17be8d9c057aaa42580985b08a0ae94d3df4d1f9a8dac664b02ca1809e",
     "AGENTS.md": "4f54bc69115e55eacf5650a0375b5a175eb73d7e408a151af5fcff3086ab2e5c",
-    "docs/security-governance.md": "deac87483e8ef022d369678d9a88cc1b94290214d7054c4bbca23dfa0d6fc767"
+    "docs/security-governance.md": "d504e2751433083d37454553d59ff1e7c2f6bfe8f14c741e1de1861742cbea0a"
   }
 }

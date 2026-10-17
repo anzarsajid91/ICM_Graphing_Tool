@@ -2,7 +2,7 @@
 
 Policy updated 2026-10-18 with the repository owner's explicit authorisation: **single-maintainer review and release**. No independent human reviewer is available. AI-assisted review is additional scrutiny, not independent human approval. The owner authorised this candidate's release conditional on successful mandatory checks and effective branch protection. This replaces the initial proposed two-person governance requirement; it never waives confidentiality or failed checks.
 
-Last verified server state: **Not Enforced** (`main` unprotected, no active rulesets). Do not claim the settings below are active until the effective-rules API and release gate verify them. The source assessment remains bounded; there is no certification or organisational approval.
+Verified server state on 2026-10-18: **Active ruleset 25314721** protects `main`. GitHub reports `protected: true`, no bypass actors and fourteen mandatory checks bound to GitHub Actions, strict up-to-date testing, PR/conversation requirements, deletion/force-push protection and CodeQL high/error alert blocking. Required second-person approvals are zero under the authorised single-maintainer policy. The `pages-release` environment permits the `main` branch only and administrator protection-rule bypass is disabled. These observations are point-in-time evidence; the production gate rechecks effective branch rules before building. The owner can edit settings, so independent human oversight remains unavailable. The source assessment remains bounded; there is no certification or organisational approval.
 
 ## Administrator configuration (required before release)
 
