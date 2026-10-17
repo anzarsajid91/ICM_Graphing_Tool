@@ -83,6 +83,8 @@ Dependency review failed because GitHub Dependency graph is disabled/unsupported
 
 ## Release decision
 
+The later [CodeQL source-path review](https://github.com/anzarsajid91/ICM_Graphing_Tool/blob/main/docs/security-codeql-review.md) records an additional **High** finding: a malformed imported schematic gap could break out of an unescaped input attribute. The renderer now escapes that attribute and numeric-label attributes, with hostile import/render/export regression coverage. SVG camera offsets are explicitly numeric at the presentation boundary. No hydraulic calculation source is changed. Predictable synthetic-evidence writes and misleading regex text stripping were also corrected. No scanner query, threshold or path coverage was disabled; final scan and browser results must establish acceptance. The release outcome and exact tested revision are recorded in PR #81 rather than inferred from this document.
+
 Release remains conditional on effective administrator rules, all mandatory checks, static-analysis review and exact-artifact validation. The owner authorised single-maintainer release on 2026-10-18; no independent human review is represented. Historical-data, licensing and wider hosting assurance limitations remain open and are not claims of confirmed data egress. See security-governance.md for exact settings and rollback procedure. No employer-specific policy or approval is claimed.
 
 ## 2026-10-18 maintainer disposition and policy revision
