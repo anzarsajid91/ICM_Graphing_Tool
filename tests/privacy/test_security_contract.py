@@ -28,6 +28,26 @@ class SecurityContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'evidence changed'):
                 verify_claims(root)
 
+    def test_canonical_bytes_survive_autocrlf_checkout(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'.gitattributes').write_bytes((ROOT/'.gitattributes').read_bytes())
+            source = root/'web/assets/synthetic.js'
+            vendor = root/'web/vendor/synthetic.bin'
+            source.parent.mkdir(parents=True)
+            vendor.parent.mkdir(parents=True)
+            source.write_bytes(b'const synthetic = 1;\n')
+            vendor.write_bytes(b'fixed\r\nbytes\x00')
+            for command in [
+                ['git', 'init', '-q'],
+                ['git', '-c', 'core.autocrlf=true', 'add', '.'],
+                ['git', '-c', 'core.autocrlf=true', 'checkout-index', '--all', '--force', '--prefix=out/'],
+            ]:
+                subprocess.run(command, cwd=root, check=True, capture_output=True)
+            self.assertEqual((root/'out/web/assets/synthetic.js').read_bytes(), source.read_bytes())
+            self.assertEqual((root/'out/web/vendor/synthetic.bin').read_bytes(), vendor.read_bytes())
+
     def test_artifact_tamper_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             site = Path(tmp)

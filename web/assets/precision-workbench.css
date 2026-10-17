@@ -561,8 +561,8 @@ body.precision-workbench{
 
 /* About security transparency: static, local, compact cards. */
 .pw-security-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px;margin:20px 0}
-.pw-security-cards section{border:1px solid var(--border,#deded8);border-radius:16px;padding:18px;min-width:0}
-.pw-security-cards h3{margin:0 0 10px;font-weight:600}
+.pw-security-cards section{border:1px solid var(--border,#deded8);border-radius:16px;padding:16px;min-width:0}
+.pw-security-cards h3{margin:0 0 8px;font-weight:600}
 .pw-security-cards p{margin:0;line-height:1.65;overflow-wrap:anywhere}
 #securityBuildIdentity{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 

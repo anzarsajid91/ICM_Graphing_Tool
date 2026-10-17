@@ -1,6 +1,6 @@
 # Security governance and contributor procedure
 
-Status on 2026-10-17: **Not Enforced** at GitHub. `main` returned `protected: false`; the rulesets collection was empty. The GitHub connector cannot configure administration. Files in this PR are proposed controls pending independent review. No coding agent may approve this PR, approve its own security-control changes or update a network-source approval merely to clear a failure.
+Status on 2026-10-17: **Not Enforced** at GitHub. `main` returned `protected: false`; the rulesets collection was empty. The GitHub connector cannot configure administration. The signed-in browser can access administration: Dependency graph was enabled and saved, but saving the prepared production ruleset requires account reauthentication. No active ruleset is verified. Files in this PR are proposed controls pending independent review. No coding agent may approve this PR, approve its own security-control changes or update a network-source approval merely to clear a failure.
 
 ## Administrator configuration (required before release)
 

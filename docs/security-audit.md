@@ -75,11 +75,11 @@ Primary references reviewed: [GitHub rulesets](https://docs.github.com/en/reposi
 
 ## First executed candidate CI findings
 
-The initial PR run executed confidentiality successfully and produced inspectable scan evidence and SBOMs. It identified a real **CI-tooling** dependency issue: the first pinned CycloneDX toolchain resolved lxml 5.4.0, flagged by PYSEC-2026-87 / CVE-2026-41066 (untrusted XML entity resolution; fixed in 6.1.0). The candidate updates pip-audit to 2.10.1, cyclonedx-bom to 7.5.0 and explicitly pins lxml 6.1.0. This does not change the browser's Pyodide runtime or engineering dependencies. The rerun must confirm remediation; no advisory is ignored.
+The initial PR run executed confidentiality successfully and produced inspectable scan evidence and SBOMs. It identified a real **CI-tooling** dependency issue: the first pinned CycloneDX toolchain resolved lxml 5.4.0, flagged by PYSEC-2026-87 / CVE-2026-41066 (untrusted XML entity resolution; fixed in 6.1.0). The candidate updates pip-audit to 2.10.1, cyclonedx-bom to 7.5.0 and explicitly pins lxml 6.1.0. This does not change the browser's Pyodide runtime or engineering dependencies. The executed rerun confirmed the Python audit passes after this remediation; no advisory is ignored.
 
-The initial secret job failed while installing Gitleaks because its historic Go module declares github.com/zricethezav/gitleaks/v8 despite the repository's current organisation name. The module path is corrected at the same pinned version; the scan itself still needs an executed result.
+The initial secret job failed while installing Gitleaks because its historic Go module declares github.com/zricethezav/gitleaks/v8 despite the repository's current organisation name. The module path is corrected at the same pinned version; the executed rerun passed the full reachable-history secret scan. This does not certify absence of authentic historical engineering data.
 
-Dependency review failed because GitHub Dependency graph is disabled/unsupported in the current repository settings. **Administrator action remains required**; the job is retained and failing, not skipped. The new dependency-review job name is unique to avoid ambiguity with the existing optional UIUX review job.
+Dependency review failed because GitHub Dependency graph is disabled/unsupported in the current repository settings. Dependency graph was subsequently enabled through the signed-in browser and its saved setting verified. The dependency-review rerun passed after enablement; it was never silently skipped. The new dependency-review job name is unique to avoid ambiguity with the existing optional UIUX review job.
 
 ## Release decision
 

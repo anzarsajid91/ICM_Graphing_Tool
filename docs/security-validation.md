@@ -28,3 +28,15 @@ Sources for scan evidence use public package names/versions only. Fixtures are i
 The About test is committed for Chromium/Firefox CI execution. Actual Chromium screenshots are in docs/security-evidence; they show a staging fixture (v1.059 / revision local), not an approved release. Additional Chromium import regression passed: worker/Pyodide boot, CSV import, workspace fingerprint restore, six workspaces and three widths, with 82 observed fixed-resource requests and zero confidentiality violations. Four isolated browser probes (data query, POST body, Beacon and external destination) were intercepted before transport and correctly rejected by the observer. The synthetic EDM/flow-survey reference simulation returned passed=true.
 
 GitHub Actions is the required full-history environment for the version test and candidate release build. Approval must follow final-diff review, executed CI evidence and actual ruleset verification.
+
+## Executed CI on 70ad982 (PR merge revision 150c6bf)
+
+- Data confidentiality, CodeQL (both languages), full reachable-history secret scan, Linux Workbench CI, Pages Python/JS verification, complete Chromium browser-smoke, cross-browser workspace interactions and baseline-performance comparison **passed**. The full-history environment resolved the local versioning-test limitation.
+- Audit-tool upgrade remediation was verified: Python dependency audit, npm audit and both SBOM-generation steps passed. Security assurance remained failed solely on the two SheetJS advisory matches; they were not ignored.
+- Windows ran 314 tests successfully but the new claim digest check failed because checkout converted JS line endings. Candidate correction adds canonical LF source attributes while retaining exact vendor/reference bytes; hashes are not normalised or bypassed.
+- Firefox shell validation rejected the new card's 18 px padding and 10 px heading margin against the existing 8/4 px spacing contract. Candidate correction uses 16 px and 8 px; the spacing test is retained unchanged. Rerun required.
+- Dependency graph was enabled and the saved setting was observed through the signed-in browser. Dependency review rerun passed (job 117451538455); its earlier failure predates enablement. Existing GitHub secret protection and push protection were observed enabled.
+- The complete production ruleset was prepared, including eleven GitHub Actions checks and CodeQL high/critical alert blocking, but saving requires GitHub account reauthentication. The secure request timed out; subsequent API reads still return main protected=false and no rulesets. **Not Enforced.**
+- Additional Dependabot alert/private vulnerability-reporting changes were blocked by automatic approval review due their notification/access scope. They were not enabled. Independent approval and a nominated second reviewer remain outstanding.
+
+No production merge or deployment occurred. The latest correction's CI outcomes must be inspected before treating these fixes as verified.
