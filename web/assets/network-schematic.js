@@ -3,7 +3,7 @@
 const C=ICMNetworkCore,R=ICMNetworkReviewCore,NS='http://www.w3.org/2000/svg',STORE='hydra-network-schematic-v1';
 const $=id=>document.getElementById(id),uid=()=>crypto.randomUUID();
 // Keep escaping explicit in this module so static analysis resolves every sink.
-function html(value){return String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');}
+function html(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 let network=C.empty(),selected=null,editing=false,tool='select',colour='red',connectFrom=null,drag=null,busy=false,history=[],mounted=false,popupVisible=false,observer=null,saveTimer=null;
 let redo=[],multi=new Set(),highlight=null,hoverTimer=null,frame=null,analysisGeneration=0,analysisContext=null,analysisTimer=null,analysisReturnFocus=null,pickerReturnFocus=null;
 const freshness=new Map();
@@ -32,7 +32,7 @@ function restore(value){
   network=value?C.validateNetwork(value):C.empty();selected=null;popupVisible=false;history=[];redo=[];multi.clear();highlight=null;freshness.clear();
   state.networkSchematicWorkspace=snapshot();if(mounted){render();persist();}
 }
-function point(x,y){return {x:x*network.camera.zoom+network.camera.x,y:y*network.camera.zoom+network.camera.y};}
+function point(x,y){return {x:x*network.camera.zoom+Number(network.camera.x),y:y*network.camera.zoom+Number(network.camera.y)};}
 function world(x,y){return {x:(x-network.camera.x)/network.camera.zoom,y:(y-network.camera.y)/network.camera.zoom};}
 function dimensions(){return {width:Math.max(240,$('nsCanvas')?.clientWidth||1000),height:Math.max(360,$('nsCanvas')?.clientHeight||620)};}
 function icon(type){
@@ -140,7 +140,7 @@ function renderDrawer(){
     '<label class="ns-check"><input id="nsPinned" type="checkbox" '+(n.pinned?'checked':'')+'> Pin position</label><div class="ns-two">'+fields('Label X','<input id="nsLabelX" type="number" min="-10000" max="10000" value="'+C.labelOffset(n).x+'">')+fields('Label Y','<input id="nsLabelY" type="number" min="-10000" max="10000" value="'+C.labelOffset(n).y+'">')+'</div><button id="nsResetLabel">Reset label</button><small>Drag the name or combined summary on the canvas. A leader arrow keeps the label tied to this point.</small>'+
     (asset(n)?'<section><h4>Observed</h4>'+fields('Shared threshold · blank rows inherit','<input id="nsObservedDefault" type="number" step="any" value="'+html(n.defaults?.observed??'')+'">')+bindingRows(n,'observed')+'<button data-ns-add-sources="observed">+ Add datasets</button></section>'+
       '<section><h4>Modelled scenarios</h4>'+fields('Scenario for new assignments','<input id="nsNewScenario" value="'+html(n.newScenario||'Baseline')+'" maxlength="100">')+fields('Shared model threshold · blank rows inherit','<input id="nsModelDefault" type="number" step="any" value="'+html(n.defaults?.model??'')+'">')+bindingRows(n,'model')+'<button data-ns-add-sources="model">+ Add datasets to scenario</button></section>'+
-      '<details><summary>Assessment settings</summary>'+fields('Maximum valid gap (s)','<input id="nsGap" type="number" min="1" value="'+n.gap+'">')+fields('Exclusions · start, end, reason (one per line)','<textarea id="nsExclusions" rows="3" placeholder="2024-05-01T00:00, 2024-05-02T00:00, logger fault">'+html((n.exclusions||[]).map(x=>[x.start,x.end,x.reason].join(', ')).join('\n'))+'</textarea>')+'<small>Local to this asset. Use model-clock ISO dates. Other workspaces are unaffected.</small></details>'+
+      '<details><summary>Assessment settings</summary>'+fields('Maximum valid gap (s)','<input id="nsGap" type="number" min="1" value="'+html(n.gap)+'">')+fields('Exclusions · start, end, reason (one per line)','<textarea id="nsExclusions" rows="3" placeholder="2024-05-01T00:00, 2024-05-02T00:00, logger fault">'+html((n.exclusions||[]).map(x=>[x.start,x.end,x.reason].join(', ')).join('\n'))+'</textarea>')+'<small>Local to this asset. Use model-clock ISO dates. Other workspaces are unaffected.</small></details>'+
       '<label class="ns-check"><input id="nsConfirmed" type="checkbox" '+(n.confirmed?'checked':'')+'> Matching clocks, units/datum and model/rainfall basis confirmed for this asset’s comparisons</label>'+
       '<p class="ns-note">Each source defaults to its main reporting year; override years per row. At least three calendar months of valid reporting data are required.</p>'+
       '<button id="nsCalculate" class="ns-primary" '+(busy?'disabled':'')+'>'+(busy?'Calculating…':'Apply & calculate')+'</button>':'')+

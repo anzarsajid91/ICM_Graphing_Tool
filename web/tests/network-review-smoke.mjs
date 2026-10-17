@@ -71,6 +71,7 @@ try{
   const injection='<img class="hydra-security-injection" src="https://collector.invalid/c">&\'"';
   const injected=structuredClone(beforeInjection);injected.nodes[0].name='Name '+injection;
   injected.nodes[0].review.comment='Comment '+injection;
+  injected.nodes[0].gap='\"><img class="hydra-security-injection" src="https://collector.invalid/gap">';
   for(const binding of injected.nodes[0].bindings)if(binding.role==='model')binding.scenario='Scenario '+injection;
   for(const row of injected.nodes[0].applied.rows)if(row.role==='model')row.scenario='Scenario '+injection;
   await page.evaluate(n=>ICMNetworkSchematic.restore(n),injected);
@@ -79,6 +80,7 @@ try{
   await page.click('#nsEdit');await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();
   assert.equal(await page.locator('#nsName').inputValue(),'Name '+injection);
   assert.equal(await page.locator('#nsReviewComment').inputValue(),'Comment '+injection);
+  assert.equal(await page.locator('#nsGap').inputValue(),'','Malformed numeric gap cannot create markup');
   assert.equal(await page.locator('.hydra-security-injection').count(),0);
   await page.click('#nsEdit');
   await page.locator('.ns-export-menu summary').click();const injectedSvgPromise=page.waitForEvent('download');await page.click('#nsSvgExport');

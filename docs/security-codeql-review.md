@@ -9,12 +9,18 @@ and no query, severity threshold or path coverage is disabled.
 
 The four schematic HTML/SVG findings were traced through the global `esc` helper.
 It encodes ampersand, both angle brackets and both quote characters. Dynamic
-labels/comments/scenarios use this helper; geometry is validated numeric input
-and presentation types/colors are constrained enumerations. The separate AI
-review found no demonstrated exploit in these cited sinks. For explicit local
-analysis, the alias is replaced by a local five-character encoder with identical
-output. Browser regression injects a hostile label, comment and scenario and
-checks canvas, local SVG and local HTML output, with request observation enabled.
+labels/comments/scenarios use this helper; presentation types/colors are
+constrained enumerations. A deeper dataflow trace identified one real injection
+surface (High severity, high source confidence): a malformed imported asset gap was interpolated without escaping into
+an input attribute. The renderer now escapes that field and both label-offset
+attributes; valid numeric text is unchanged. Camera offsets are explicitly
+numeric at the SVG coordinate boundary, preventing string concatenation from
+introducing markup. No hydraulic equations or calculation inputs are changed.
+The alias is replaced by a local five-character encoder with identical output.
+Browser regression injects hostile labels, comments, scenarios and a malformed
+numeric gap, checking the settings drawer, canvas, local SVG and local HTML
+output with request observation enabled. Source review alone is insufficient;
+the final scan and browser regression must establish the tested correction.
 
 The report-image title finding used regex tag removal before `setAttribute` on
 the non-executable alt attribute. Tag stripping was unnecessary and is removed;
