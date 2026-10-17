@@ -1,0 +1,53 @@
+[
+  {
+    "ecosystem": "npm",
+    "name": "plotly.js",
+    "version": "3.1.0",
+    "vulnerabilities": []
+  },
+  {
+    "ecosystem": "npm",
+    "name": "xlsx",
+    "version": "0.20.3",
+    "vulnerabilities": [
+      "GHSA-4r6h-8v6p-xvw6",
+      "GHSA-5pgg-2g8v-p4x9"
+    ]
+  },
+  {
+    "ecosystem": "PyPI",
+    "name": "pyodide",
+    "version": "0.29.4",
+    "vulnerabilities": []
+  },
+  {
+    "ecosystem": "PyPI",
+    "name": "numpy",
+    "version": "2.2.5",
+    "vulnerabilities": []
+  },
+  {
+    "ecosystem": "PyPI",
+    "name": "pandas",
+    "version": "2.3.3",
+    "vulnerabilities": []
+  },
+  {
+    "ecosystem": "PyPI",
+    "name": "python-dateutil",
+    "version": "2.9.0.post0",
+    "vulnerabilities": []
+  },
+  {
+    "ecosystem": "PyPI",
+    "name": "pytz",
+    "version": "2025.2",
+    "vulnerabilities": []
+  },
+  {
+    "ecosystem": "PyPI",
+    "name": "six",
+    "version": "1.17.0",
+    "vulnerabilities": []
+  }
+]

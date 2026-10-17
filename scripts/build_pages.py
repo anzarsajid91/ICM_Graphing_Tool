@@ -29,9 +29,9 @@ def _inject_v2_assets(build_token: str) -> None:
     )
     html = html.replace(
         '<script type="module" src="assets/runtime.js"></script>',
-        '<script src="assets/design-system.js"></script>\n  <script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/fastpath-preview.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="vendor/sheetjs-0.20.3/xlsx.full.min.js"></script>\n  <script src="assets/workbook-reader.js"></script>\n  <script src="assets/workbench-survey.js"></script>\n  <script src="assets/workflow-26.js"></script>\n  <script src="assets/detriment-workspace.js"></script>\n  <script src="assets/network-schematic-loader.js"></script>\n  <script src="assets/precision-workbench.js"></script>',
+        '<script src="assets/csv-output.js"></script>\n  <script src="assets/design-system.js"></script>\n  <script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/fastpath-preview.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="vendor/sheetjs-0.20.3/xlsx.full.min.js"></script>\n  <script src="assets/workbook-reader.js"></script>\n  <script src="assets/workbench-survey.js"></script>\n  <script src="assets/workflow-26.js"></script>\n  <script src="assets/detriment-workspace.js"></script>\n  <script src="assets/network-schematic-loader.js"></script>\n  <script src="assets/precision-workbench.js"></script>',
     )
-    required = ["design-system.js", "domain-registry.js", "workbench-v2.css", "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "workflow-26.css", "workflow-26.js", "precision-workbench.css", "precision-workbench.js", "detriment-workspace.css", "detriment-workspace.js", "vendor/sheetjs-0.20.3/xlsx.full.min.js"]
+    required = ["csv-output.js", "design-system.js", "domain-registry.js", "workbench-v2.css", "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "workflow-26.css", "workflow-26.js", "precision-workbench.css", "precision-workbench.js", "detriment-workspace.css", "detriment-workspace.js", "vendor/sheetjs-0.20.3/xlsx.full.min.js"]
     required.extend(["network-schematic.css", "network-schematic-loader.js"])
     if not all(name in html for name in required):
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
@@ -50,6 +50,7 @@ def _inject_v2_assets(build_token: str) -> None:
         "assets/precision-workbench.css",
         "assets/network-schematic.css",
         "assets/workbook-reader.js",
+        "assets/csv-output.js",
         "assets/design-system.js",
         "assets/domain-registry.js",
         "assets/runtime.js",
@@ -72,6 +73,8 @@ def _inject_v2_assets(build_token: str) -> None:
 
 
 def build() -> None:
+    from verify_security_claims import verify_claims
+    verify_claims(ROOT)
     # Non-negotiable confidentiality rule: no artifact can bypass source review.
     from verify_data_confidentiality import verify as verify_data_confidentiality
     verify_data_confidentiality(ROOT)
@@ -83,9 +86,17 @@ def build() -> None:
         shutil.rmtree(SITE)
     shutil.copytree(WEB, SITE, ignore=shutil.ignore_patterns("tests"))
 
+    security_root = SITE / 'security'
+    security_root.mkdir()
+    for source, target in [('security/claims.json','claims.json'),('web/vendor/manifest.json','dependencies.json'),('docs/security-audit.md','security-audit.md'),('SECURITY.md','SECURITY.md')]:
+        shutil.copy2(ROOT / source, security_root / target)
+    claim_data = (ROOT / 'security/claims.json').read_text().replace('<', '\\u003c')
+    index = SITE / 'index.html'
+    index.write_text(index.read_text().replace('</head>', '<script id="securityClaims" type="application/json">'+claim_data+'</script>\n</head>'))
+
     python_root = SITE / "python"
     python_root.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(PACKAGE, python_root / "icm_workbench")
+    shutil.copytree(PACKAGE, python_root / "icm_workbench", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 
     shutil.copy2(WEB / "assets" / "runtime.release.js", SITE / "assets" / "runtime.js")
     build_token = os.environ.get("GITHUB_SHA", "local")
@@ -130,6 +141,8 @@ def build() -> None:
 
     if not manifest:
         raise RuntimeError("No Python modules were discovered for the Pages artifact")
+    from release_integrity import write_manifest
+    write_manifest(SITE)
     print(f"Built {SITE} with {len(manifest)} Python modules")
 
 

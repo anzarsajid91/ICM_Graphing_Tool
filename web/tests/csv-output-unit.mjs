@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const context={};vm.createContext(context);vm.runInContext(fs.readFileSync('web/assets/csv-output.js','utf8'),context);
+const cell=context.ICMSafeCSV.cell;
+for(const value of ['=1+1','+CMD','-CMD','@SUM(A1)','\t=1','\r\n=2','\u0000=3','  =4'])assert.equal(cell(value),'"\''+value+'"');
+for(const value of [0,1.5,-2.5])assert.equal(cell(value),'"'+value+'"');
+assert.equal(cell('asset "A"'),'"asset ""A"""');assert.equal(cell(null),'""');
+for(const file of ['web/assets/runtime.release.js','web/assets/network-schematic.js'])assert.ok(fs.readFileSync(file,'utf8').includes('ICMSafeCSV.cell'));
+console.log('PASS spreadsheet formula text neutralisation; numeric values and quote escaping preserved.');

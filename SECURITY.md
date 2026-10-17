@@ -66,3 +66,13 @@ Do not publish client data, credentials or sensitive evidence in a public issue.
 Contact the repository owner through an established private channel. If a change
 could violate this contract, stop its release, investigate with synthetic data,
 and restore a reviewed version. Follow applicable employer/client incident rules.
+
+## Continuous assurance and transparency
+
+See [security governance](docs/security-governance.md), the bounded
+[assessment](docs/security-audit.md) and the [claim register](security/claims.json).
+Run `python scripts/security_preflight.py` for local feedback; hooks do not enforce
+server-side review. Security-control and claim changes require independent review.
+Candidate controls are not represented as production-enforced until settings and
+executed checks are verified. Never use a scanner false-positive assumption to
+silence a failure without documented independent applicability review.

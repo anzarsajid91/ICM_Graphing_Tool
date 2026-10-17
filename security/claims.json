@@ -1,0 +1,133 @@
+{
+  "schema": 1,
+  "assessment": "2026-10-17 / upstream 8c7f59f; see assessment for verification limits",
+  "claims": [
+    {
+      "id": "SC-01",
+      "title": "Data processing and confidentiality",
+      "statement": "The browser application parses imported engineering files and calculates results locally using JavaScript and a Pyodide worker. Its data-confidentiality policy prohibits sending imported data, identifying metadata or derived outputs over a network.",
+      "evidence": [
+        "web/assets/analysis-worker.js",
+        "web/assets/fastpath-worker.js",
+        "SECURITY.md"
+      ],
+      "scope": "Browser release architecture; policy is a requirement, not proof of all execution paths.",
+      "limitation": "Runtime observations cover exercised flows; compromised code or endpoints remain outside this statement.",
+      "status": "conditional",
+      "owner": "Repository maintainer"
+    },
+    {
+      "id": "SC-02",
+      "title": "Network connectivity",
+      "statement": "Application code, fonts and fixed runtime libraries are served from the application origin. Opening the site requires connectivity; the hosting service and network infrastructure receive ordinary asset-request information. Local file processing is distinct from resource downloading.",
+      "evidence": [
+        "scripts/build_pages.py",
+        "web/assets/analysis-worker.js",
+        "web/vendor/manifest.json"
+      ],
+      "scope": "Production Pages build; same-origin assets.",
+      "limitation": "Offline operation after a cold start is not guaranteed; caches are browser managed.",
+      "status": "verified",
+      "owner": "Repository maintainer"
+    },
+    {
+      "id": "SC-03",
+      "title": "Data storage and retention",
+      "statement": "Selected files and calculations use browser memory and the worker virtual filesystem. Named workspaces and network layouts can persist in localStorage; interface preferences use sessionStorage. To remove retained site data, use your browser\u2019s site-data controls for this origin and reload. Manage exported files separately.",
+      "evidence": [
+        "web/assets/runtime.release.js",
+        "web/assets/network-schematic.js",
+        "web/assets/precision-workbench.js",
+        "web/assets/analysis-worker.js"
+      ],
+      "scope": "Browser storage calls in the reviewed source.",
+      "limitation": "Clearing site data can also clear other applications on the same origin. Closing a tab does not erase downloads, caches or saved layouts.",
+      "status": "verified",
+      "owner": "Repository maintainer"
+    },
+    {
+      "id": "SC-04",
+      "title": "Application security controls",
+      "statement": "The source confidentiality gate detects changes to reviewed network-capable files. Dependency files are checked against a maintained hash inventory. Browser request tests reject unapproved destinations, resource queries, request bodies and network sockets in tested flows. These checks require enforced repository review and release rules to prevent bypass.",
+      "evidence": [
+        "scripts/verify_data_confidentiality.py",
+        "scripts/verify_vendor.py",
+        "web/tests/privacy-network.mjs",
+        "tests/privacy/test_source_gate.py"
+      ],
+      "scope": "Implemented source and test controls.",
+      "limitation": "Source scanning is a conservative change detector, not a sandbox. Repository enforcement is a separate administrator setting.",
+      "status": "conditional",
+      "owner": "Repository maintainer"
+    },
+    {
+      "id": "SC-05",
+      "title": "Software dependencies",
+      "statement": "Runtime components include Pyodide for Python execution, NumPy and pandas for analysis, Plotly for charts, SheetJS for association workbooks and Inter for typography. Their maintained inventory records versions, hashes and licence files. Dependency changes require security and compatibility review.",
+      "evidence": [
+        "web/vendor/manifest.json",
+        "scripts/verify_vendor.py"
+      ],
+      "scope": "Checked-in browser dependencies.",
+      "limitation": "An inventory and matching hashes do not establish absence of vulnerabilities or a licence approval.",
+      "status": "verified",
+      "owner": "Repository maintainer"
+    },
+    {
+      "id": "SC-06",
+      "title": "Security verification",
+      "statement": "Verification status is not available for this build. Release metadata identifies the source revision and application version; it does not by itself certify security. Consult the assessment and workflow evidence for the exact revision.",
+      "evidence": [
+        "scripts/build_pages.py",
+        "scripts/app_version.py",
+        "docs/security-audit.md"
+      ],
+      "scope": "Neutral build identity only.",
+      "limitation": "No live workflow lookup or independently verified security badge is performed by this page.",
+      "status": "unverified",
+      "owner": "Repository maintainer"
+    },
+    {
+      "id": "SC-07",
+      "title": "Limitations and responsible use",
+      "statement": "Tests cover defined workflows and supported desktop browsers. Browser extensions, endpoint security and subsequent handling of exported files remain outside the application\u2019s control. Apply your organisation\u2019s data-handling requirements. Passing tests is not a universal security guarantee.",
+      "evidence": [
+        "AGENTS.md",
+        "SECURITY.md"
+      ],
+      "scope": "Desktop browser support and assurance boundary.",
+      "limitation": "No organisational approval or certification is implied.",
+      "status": "verified",
+      "owner": "Repository maintainer"
+    },
+    {
+      "id": "SC-08",
+      "title": "Security issues and reporting",
+      "statement": "Follow the security disclosure guidance. Do not place confidential datasets, credentials or sensitive evidence in public issues. Use an established private channel to the repository owner.",
+      "evidence": [
+        "SECURITY.md"
+      ],
+      "scope": "Existing disclosure mechanism.",
+      "limitation": "No private contact address is invented; an established channel is needed.",
+      "status": "verified",
+      "owner": "Repository maintainer"
+    }
+  ],
+  "evidence_sha256": {
+    "web/assets/analysis-worker.js": "adb36e7e3384a0dd171b11964fe4502851c479c777f3c7c5f8dc6a553111a2eb",
+    "web/assets/fastpath-worker.js": "3ceb0560eca8035a05c1d45c5687bd094740e13e3d3a3a96cc550c1cbbe516ef",
+    "SECURITY.md": "6772f1c2373ae6bf2e286b8e1ed42fbd2b1a66ce6ad581f1591d13268ea8a976",
+    "scripts/build_pages.py": "254c2cc2874779f1bee268c77d5759eb40e4112607513d12593bd30babab247a",
+    "web/vendor/manifest.json": "bb70a1f4497a0f6307f836828522015ebb60293e91df66ac3778f986f2d96b82",
+    "web/assets/runtime.release.js": "c110c220aea922a3711d928624dfe29924ae0874f87e868c7f3cd274061493ab",
+    "web/assets/network-schematic.js": "1c77ee2c51fb6f0445cdfb8bf418633a4035e13b0cfd64cce7459680ec997457",
+    "web/assets/precision-workbench.js": "82012ffc4b3f27724c0df0feb17859b348f6165bcd280552d90806abbd0b0064",
+    "scripts/verify_data_confidentiality.py": "6aac0bd0fbd78f84f49c39be4f2ecd08b6812dd0974579df9178fd61c27801cb",
+    "scripts/verify_vendor.py": "26272a33a524532c21d591a917a45096f79eccd7761690dcf73499804f8824c2",
+    "web/tests/privacy-network.mjs": "cee5e4702b48869bbb1824ea2f934e091a56a53a163f941d1868c3d2109dcd43",
+    "tests/privacy/test_source_gate.py": "d684e98611d756764ef5f268a1bb0c808b52e7ddb5e5f47939017c4c0b735c1b",
+    "scripts/app_version.py": "9671833607cc1a38690a9e3586cb1a9c00a05a632d4da9253461fed0e962e506",
+    "docs/security-audit.md": "472bc3c623165b9acee42041853b6d218d83d9322e130002bfe525e1865d37f5",
+    "AGENTS.md": "189e6d01e6a8cecfd5c7546f96387b00653f8d3ddf9af4f2fad66d70219d1048"
+  }
+}
