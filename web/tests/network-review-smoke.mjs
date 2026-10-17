@@ -70,6 +70,7 @@ try{
   const beforeInjection=await snapshot();
   const injection='<img class="hydra-security-injection" src="https://collector.invalid/c">&\'"';
   const injected=structuredClone(beforeInjection);injected.nodes[0].name='Name '+injection;
+  injected.preferences.scenarios=null; // Exercise hostile scenario labels in annual tables as well as assessment details.
   injected.nodes[0].review.comment='Comment '+injection;
   injected.nodes[0].gap='\"><img class="hydra-security-injection" src="https://collector.invalid/gap">';
   for(const binding of injected.nodes[0].bindings)if(binding.role==='model')binding.scenario='Scenario '+injection;
