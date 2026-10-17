@@ -19,4 +19,5 @@ def test_post_deployment_verification_still_uses_workflow_run_head():
     assert "github.event.workflow_run.conclusion == 'success'" in text
     assert "github.event.workflow_run.head_branch == 'main'" in text
     assert "github.event.workflow_run.event == 'push'" in text
+    assert "github.event.workflow_run.event == 'workflow_dispatch'" in text
     assert 'ref: ${{ env.TARGET_SHA }}' in text

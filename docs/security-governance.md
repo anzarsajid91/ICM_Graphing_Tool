@@ -15,7 +15,7 @@ Verified server state on 2026-10-18: **Active ruleset 25314721** protects `main`
 7. Enable dependency graph, Dependabot alerts and secret scanning/push protection where available. Review account MFA, collaborators, GitHub Apps, token scopes, deploy keys and workflow permissions privately. Do not copy credentials into audit evidence.
 8. Verify effective rules via `GET /repos/{owner}/{repo}/rules/branches/main` and individual ruleset reads. Attempt a harmless rejected direct update in a controlled administration test; do not rewrite production history. Retain redacted setting evidence. Re-run the production-governance gate. Lack of access is failure, not approval.
 
-The production job checks effective rules, mandatory status names, absence of active ruleset bypass actors and an owner-merged PR at its validated head. It deliberately fails closed if settings cannot be verified. This is defence in depth: an unprotected workflow can itself be replaced. Server-side checks remain essential; the account owner can still edit repository settings.
+The production job checks effective rules, mandatory status names, conversation resolution, CodeQL high/error thresholds, absence of active ruleset bypass actors and an owner-merged PR at its validated head. It deliberately fails closed if settings cannot be verified. Environment restrictions are separately verified through administration; this script does not continuously monitor environment-setting drift because its token has no administration authority. This is defence in depth: an unprotected workflow can itself be replaced. Server-side checks remain essential; the account owner can still edit repository settings.
 
 ## Change classes
 

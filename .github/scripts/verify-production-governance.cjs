@@ -8,6 +8,11 @@ module.exports = async ({github, context, core}) => {
   for (const type of ['deletion','non_fast_forward','pull_request','required_status_checks'])
     if(!byType(type)) throw new Error('Missing effective production rule: '+type);
   const checks=byType('required_status_checks').parameters;
+  if(byType('pull_request').parameters.required_review_thread_resolution!==true)
+    throw new Error('Pull request conversation resolution is not enforced');
+  const codeql=byType('code_scanning')?.parameters?.code_scanning_tools?.find(tool=>tool.tool==='CodeQL');
+  if(codeql?.security_alerts_threshold!=='high_or_higher' || codeql?.alerts_threshold!=='errors')
+    throw new Error('Required CodeQL high/error alert protection is not enforced');
   if(!checks.strict_required_status_checks_policy)throw new Error('Require branch up to date before merge');
   const contexts=new Set(checks.required_status_checks.filter(x=>x.integration_id===15368).map(x=>x.context));
   for(const name of ['confidentiality','security','secrets','dependency-review','verify','browser-smoke','browser-firefox-shell','browser-interactions','baseline-performance','analyze (javascript-typescript)','analyze (python)','test (ubuntu-latest, 3.12)','test (windows-latest, 3.12)','security-release / security'])
