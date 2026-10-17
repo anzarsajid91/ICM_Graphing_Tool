@@ -2,5 +2,5 @@
   "name": "hydra-bench-browser-assurance",
   "private": true,
   "version": "0.0.0",
-  "devDependencies": {"playwright": "1.55.1"}
+  "devDependencies": {"playwright": "1.64.1"}
 }
