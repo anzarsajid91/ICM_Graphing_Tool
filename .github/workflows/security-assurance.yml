@@ -30,7 +30,7 @@ jobs:
           python -m unittest discover -s tests/privacy -v
           node web/tests/privacy-network-unit.mjs
       - name: Install pinned audit tooling and application environment
-        run: python -m pip install pip-audit==2.9.0 cyclonedx-bom==6.0.0 -e . pytest
+        run: python -m pip install pip-audit==2.10.1 cyclonedx-bom==7.5.0 lxml==6.1.0 -e . pytest
       - name: Audit resolved Python dependencies
         if: ${{ !cancelled() }}
         run: pip-audit --local --format=json --output=python-dependency-audit.json

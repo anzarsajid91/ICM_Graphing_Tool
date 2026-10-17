@@ -14,7 +14,7 @@ module.exports = async ({github, context, core}) => {
   const checks=byType('required_status_checks').parameters;
   if(!checks.strict_required_status_checks_policy)throw new Error('Require branch up to date before merge');
   const contexts=new Set(checks.required_status_checks.map(x=>x.context));
-  for(const name of ['confidentiality','security','secrets','review','verify','browser-smoke','browser-firefox-shell','browser-interactions','baseline-performance','analyze (javascript-typescript)','analyze (python)'])
+  for(const name of ['confidentiality','security','secrets','dependency-review','verify','browser-smoke','browser-firefox-shell','browser-interactions','baseline-performance','analyze (javascript-typescript)','analyze (python)'])
     if(!contexts.has(name))throw new Error('Required status missing: '+name);
   const {data:sets}=await github.request('GET /repos/{owner}/{repo}/rulesets',{owner,repo,includes_parents:true});
   if(!sets.length)throw new Error('Ruleset evidence unavailable');

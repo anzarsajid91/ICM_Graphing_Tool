@@ -73,6 +73,14 @@ Python development/desktop requirements use bounded ranges, not complete reprodu
 
 Primary references reviewed: [GitHub rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets), [Pyodide 0.29.4](https://pyodide.org/en/0.29.4/), [SheetJS ReDoS advisory record](https://osv.dev/vulnerability/GHSA-5pgg-2g8v-p4x9), [prototype-pollution advisory record](https://osv.dev/vulnerability/GHSA-4r6h-8v6p-xvw6). Scan applicability needs independent adjudication; raw scanner matches are not silently suppressed.
 
+## First executed candidate CI findings
+
+The initial PR run executed confidentiality successfully and produced inspectable scan evidence and SBOMs. It identified a real **CI-tooling** dependency issue: the first pinned CycloneDX toolchain resolved lxml 5.4.0, flagged by PYSEC-2026-87 / CVE-2026-41066 (untrusted XML entity resolution; fixed in 6.1.0). The candidate updates pip-audit to 2.10.1, cyclonedx-bom to 7.5.0 and explicitly pins lxml 6.1.0. This does not change the browser's Pyodide runtime or engineering dependencies. The rerun must confirm remediation; no advisory is ignored.
+
+The initial secret job failed while installing Gitleaks because its historic Go module declares github.com/zricethezav/gitleaks/v8 despite the repository's current organisation name. The module path is corrected at the same pinned version; the scan itself still needs an executed result.
+
+Dependency review failed because GitHub Dependency graph is disabled/unsupported in the current repository settings. **Administrator action remains required**; the job is retained and failing, not skipped. The new dependency-review job name is unique to avoid ambiguity with the existing optional UIUX review job.
+
 ## Release decision
 
 **Do not release this candidate yet.** Verify administrator rules, independent review, all CI conclusions and static-analysis findings; disposition dependency matches without blanket exceptions; review the candidate CSV remediation; finish missing historical/hosting review and execute exact-artifact validation. See security-governance.md for exact settings and rollback procedure. No employer-specific policy or approval is claimed.
