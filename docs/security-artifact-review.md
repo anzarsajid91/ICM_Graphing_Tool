@@ -18,6 +18,14 @@ The browser gate downloads its own uploaded preview, compares the original
 tested manifest byte-for-byte and verifies every packaged file before passing.
 The existing production build also retains its tested-manifest comparison.
 
+The pinned Pages uploader itself explicitly removes dotfiles when constructing
+`artifact.tar` ([reviewed source](https://github.com/actions/upload-pages-artifact/blob/7b1f4a764d45c48632c6b24a0339c27f5614fb0b/action.yml)).
+The production build now downloads that exact same-run publication archive and
+checks every served file and the unchanged manifest before deployment. It rejects
+missing/changed/extra files, links, path traversal and duplicate file entries.
+Consequently a future hidden runtime asset omitted by the upstream packager
+fails; only the explicitly classified empty build control is not published.
+
 The current GitHub Pages endpoint returned HTTP 404 for `.nojekyll` during the
 same assessment. This empty file is a deployment control, not an HTTP resource.
 Integrity schema 2 records it explicitly in `deployment_controls`, while keeping
@@ -29,12 +37,16 @@ Other dotfiles remain ordinary HTTP assets; no generic 404 tolerance is added.
 Live verification first validates all local packaged files and control metadata,
 then requires an identical live manifest and exact hashes for every HTTP asset.
 It reports HTTP-resource counts separately from controls verified in the
-packaged artifact. It does not claim the control file was retrieved over HTTP.
+complete review build/preview. The Pages archive excludes that build control;
+it is not represented as a published or HTTP-verified file.
 
 Regression evidence: the downloaded original preview failed full integrity;
-three new contract checks failed before correction. After correction all 17
+three new contract checks failed before correction. The additional actual-tar
+CLI test also failed before implementation because a missing runtime asset was
+not being examined. After correction all 18
 privacy/claim/artifact/applicability tests pass locally, including forged control
 exemptions, hidden-file loss, nonempty controls, tampered HTTP bytes and missing
-ordinary HTTP assets. Full final-head CI, round-trip archive verification and
+ordinary HTTP assets. Tar tests cover valid, missing, changed, unexpected-control,
+symlink, traversal and duplicate cases. Full final-head CI, round-trip archive verification and
 post-deployment live checks remain required. No application runtime, hydraulic
 method, user-data destination or confidentiality exception changes.

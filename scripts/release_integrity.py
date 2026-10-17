@@ -3,9 +3,10 @@
 Hashes detect corruption and mixed assets; they are not a signature or approval.
 """
 import hashlib
+import argparse
 import json
-import sys
-from pathlib import Path
+import tarfile
+from pathlib import Path, PurePosixPath
 
 
 def entries(site):
@@ -47,5 +48,37 @@ def verify(site):
     print(f'Artifact integrity: {len(manifest["files"])} files; {manifest["commit"]}')
 
 
+def verify_pages_tar(site, archive):
+    verify(site)
+    manifest = json.loads((site/'release-integrity.json').read_text())
+    expected = {**served_entries(manifest), 'release-integrity.json':
+                hashlib.sha256((site/'release-integrity.json').read_bytes()).hexdigest()}
+    actual = {}
+    with tarfile.open(archive, 'r:') as bundle:
+        for member in bundle.getmembers():
+            name = PurePosixPath(member.name)
+            if name.is_absolute() or '..' in name.parts or '\\' in member.name:
+                raise ValueError('Unsafe Pages package path')
+            if member.isdir():
+                continue
+            if not member.isfile():
+                raise ValueError('Non-regular Pages package entry')
+            relative = name.as_posix()
+            if relative in actual:
+                raise ValueError('Duplicate Pages package entry')
+            with bundle.extractfile(member) as content:
+                actual[relative] = hashlib.file_digest(content, 'sha256').hexdigest()
+    if actual != expected:
+        raise ValueError('Pages package files do not match the tested HTTP assets and manifest')
+    print(f'Pages publication archive verified: {len(actual)} files; {manifest["commit"]}')
+
+
 if __name__ == '__main__':
-    verify(Path(sys.argv[1]))
+    parser = argparse.ArgumentParser()
+    parser.add_argument('site', type=Path)
+    parser.add_argument('--pages-tar', type=Path)
+    args = parser.parse_args()
+    if args.pages_tar:
+        verify_pages_tar(args.site, args.pages_tar)
+    else:
+        verify(args.site)

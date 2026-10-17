@@ -150,3 +150,45 @@ class SecurityContractTests(unittest.TestCase):
                 remote.pop('index.html')
                 with self.assertRaises(HTTPError):
                     verify_live(site, 'https://synthetic.invalid/app/', commit)
+
+    def test_pages_publication_cli_checks_actual_tar_bytes(self):
+        import io
+        import subprocess
+        import tarfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            site = root/'site'
+            site.mkdir()
+            (site/'build.json').write_text(json.dumps({'commit':'synthetic','app_version':'v1.000'}))
+            (site/'index.html').write_text('synthetic')
+            (site/'.hidden.js').write_text('fixed synthetic asset')
+            (site/'.nojekyll').touch()
+            write_manifest(site)
+            names = ['build.json', 'index.html', '.hidden.js', 'release-integrity.json']
+            for mode in ['valid', 'missing', 'changed', 'unexpected-control', 'symlink', 'traversal', 'duplicate']:
+                archive = root/(mode+'.tar')
+                with tarfile.open(archive, 'w') as bundle:
+                    for name in names:
+                        if mode == 'missing' and name == '.hidden.js':
+                            continue
+                        if name == 'index.html' and mode in ('changed','symlink','traversal'):
+                            entry = tarfile.TarInfo('../index.html' if mode == 'traversal' else './index.html')
+                            if mode == 'symlink':
+                                entry.type = tarfile.SYMTYPE
+                                entry.linkname = '/outside'
+                                bundle.addfile(entry)
+                            else:
+                                entry.size = 7
+                                bundle.addfile(entry, io.BytesIO(b'changed'))
+                        else:
+                            bundle.add(site/name, arcname='./'+name, recursive=False)
+                    if mode == 'unexpected-control':
+                        bundle.add(site/'.nojekyll', arcname='./.nojekyll')
+                    if mode == 'duplicate':
+                        bundle.add(site/'index.html', arcname='./index.html')
+                result = subprocess.run([sys.executable, str(ROOT/'scripts/release_integrity.py'),
+                    str(site), '--pages-tar', str(archive)], capture_output=True, text=True)
+                if mode == 'valid':
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                else:
+                    self.assertNotEqual(result.returncode, 0, mode+' package was incorrectly accepted')

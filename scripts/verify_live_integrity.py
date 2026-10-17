@@ -37,7 +37,7 @@ def verify(site, base, commit):
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         list(executor.map(check, served_entries(expected).items()))
     print(f'Live artifact verified: {commit}, {len(served_entries(expected))} HTTP resources; '
-          f'{len(expected["deployment_controls"])} deployment controls verified in the local packaged artifact, not over HTTP')
+          f'{len(expected["deployment_controls"])} deployment controls verified in the review build, not published as HTTP assets')
 
 
 if __name__ == '__main__':
