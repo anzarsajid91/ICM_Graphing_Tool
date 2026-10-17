@@ -235,7 +235,19 @@ jobs:
         with:
           name: precision-workbench-preview-${{ github.sha }}
           retention-days: 30
+          include-hidden-files: true
           path: _site/
+
+      - name: Download packaged review preview from this run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: precision-workbench-preview-${{ github.sha }}
+          path: ${{ runner.temp }}/tested-review-preview
+
+      - name: Verify packaged review preview retains every tested file
+        run: |
+          cmp _site/release-integrity.json "$RUNNER_TEMP/tested-review-preview/release-integrity.json"
+          python scripts/release_integrity.py "$RUNNER_TEMP/tested-review-preview"
 
       - name: Retain browser review evidence
         if: always()

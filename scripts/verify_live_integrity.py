@@ -10,11 +10,13 @@ import sys
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
+from release_integrity import verify as verify_artifact, served_entries
 
 
 def verify(site, base, commit):
     if urlsplit(base).scheme != 'https' or not base.endswith('/'):
         raise ValueError('An HTTPS application root is required')
+    verify_artifact(site)
     expected = json.loads((site/'release-integrity.json').read_text())
     if expected['commit'] != commit or len(commit) != 40:
         raise ValueError('Expected artifact revision mismatch')
@@ -33,8 +35,9 @@ def verify(site, base, commit):
         if hashlib.sha256(download(relative)).hexdigest() != expected_hash:
             raise ValueError('Live fixed asset mismatch: '+relative)
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
-        list(executor.map(check, expected['files'].items()))
-    print(f'Live artifact verified: {commit}, {len(expected["files"])} fixed files')
+        list(executor.map(check, served_entries(expected).items()))
+    print(f'Live artifact verified: {commit}, {len(served_entries(expected))} HTTP resources; '
+          f'{len(expected["deployment_controls"])} deployment controls verified in the local packaged artifact, not over HTTP')
 
 
 if __name__ == '__main__':
