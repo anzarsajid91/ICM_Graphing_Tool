@@ -1,3 +1,4 @@
+import {writeEvidence} from './evidence-output.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
@@ -164,7 +165,7 @@ try{
       faster_than_baseline_first_graph:current.firstGraphMs<baseline.firstGraphMs
     };
     output.datasets.push(result);
-    await fs.writeFile(path.join(evidenceDir,'baseline-fastpath-comparison.json'),JSON.stringify(output,null,2)+'\n','utf8');
+    await writeEvidence(path.join(evidenceDir,'baseline-fastpath-comparison.json'),JSON.stringify(output,null,2)+'\n','utf8');
     // Preserve the practical-file gate against the pre-FastPath baseline. Tiny
     // files can legitimately finish a warm authoritative parse before a preview.
     if(stat.size>=1_000_000&&!result.faster_than_baseline_first_graph){

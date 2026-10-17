@@ -1,3 +1,4 @@
+import {writeEvidence} from './evidence-output.mjs';
 import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {chromium} from 'playwright';
@@ -80,9 +81,9 @@ try{
     const report=await browser.newPage({viewport:{width:1024,height:844}});await report.setContent(html);
     await report.waitForFunction(()=>[...document.images].every(img=>img.complete&&img.naturalWidth>0));
     assert.ok(await report.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1),'Exported report contains tables and images at compact desktop width');await report.close();
-    await fs.writeFile(path.join(evidence,'reference-'+kind+'.html'),html);
-    await fs.writeFile(path.join(evidence,'reference-'+kind+'.csv'),csv);
-    await fs.writeFile(path.join(evidence,'reference-'+kind+'-result.json'),JSON.stringify(result,null,2));
+    await writeEvidence(path.join(evidence,'reference-'+kind+'.html'),html);
+    await writeEvidence(path.join(evidence,'reference-'+kind+'.csv'),csv);
+    await writeEvidence(path.join(evidence,'reference-'+kind+'-result.json'),JSON.stringify(result,null,2));
     await page.waitForFunction(()=>['dtChart','dtPairedChart','dtDurationChart'].every(id=>{const el=document.getElementById(id);return !el?.data||Math.abs(el._fullLayout.width-el.getBoundingClientRect().width)<2;}));
     await page.screenshot({path:path.join(evidence,'reference-'+kind+'.png'),fullPage:false});await recordControls(page,evidence,'reference-'+kind);
   }

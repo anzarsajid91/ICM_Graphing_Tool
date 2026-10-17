@@ -1,3 +1,4 @@
+import {writeEvidence} from './evidence-output.mjs';
 // Synthetic/no-data review harness. Never part of the deployed application.
 import {chromium} from 'playwright';
 import fs from 'node:fs/promises';
@@ -37,10 +38,10 @@ try{
       await page.screenshot({path:path.join(out,w+'-'+p+'-'+width+'.png')});
     }
   }
-  await fs.writeFile(path.join(out,'revision.json'),JSON.stringify(await page.evaluate(()=>({build:document.querySelector('meta[name="icm-build-sha"]')?.content,version:document.querySelector('#appVersion')?.textContent})),null,2));
-  await fs.writeFile(path.join(out,'inventory.json'),JSON.stringify(inventory,null,2));
-  await fs.writeFile(path.join(out,'performance.json'),JSON.stringify(timings,null,2));
-  await fs.writeFile(path.join(out,'errors.json'),JSON.stringify(errors,null,2));
+  await writeEvidence(path.join(out,'revision.json'),JSON.stringify(await page.evaluate(()=>({build:document.querySelector('meta[name="icm-build-sha"]')?.content,version:document.querySelector('#appVersion')?.textContent})),null,2));
+  await writeEvidence(path.join(out,'inventory.json'),JSON.stringify(inventory,null,2));
+  await writeEvidence(path.join(out,'performance.json'),JSON.stringify(timings,null,2));
+  await writeEvidence(path.join(out,'errors.json'),JSON.stringify(errors,null,2));
   privacy.assertClean();
   if(errors.length)throw new Error(JSON.stringify(errors));
   console.log('UIUX route inventory/screenshots: 17 routes, 4 desktop widths; privacy clean');

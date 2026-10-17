@@ -1,3 +1,4 @@
+import {writeEvidence} from './evidence-output.mjs';
 // Same-runner, alternating baseline/candidate measurements using repository synthetic fixtures.
 import {chromium} from 'playwright';
 import fs from 'node:fs/promises';
@@ -53,6 +54,6 @@ try{
  }
  for(const fixture of fixtures){const values=rows.filter(r=>r.fixture===fixture);assert.equal(new Set(values.map(r=>r.nativeHash)).size,1,'Native-resolution x/y values and units must match baseline for '+fixture);}
  const out=process.env.ICM_UIUX_EVIDENCE||'/tmp/hydra-uiux-performance';await fs.mkdir(out,{recursive:true});
- await fs.writeFile(path.join(out,'comparison.json'),JSON.stringify({schema:1,environment:'one Ubuntu CI runner; Chromium 140; alternating cold contexts; 1440×1000; 3 repetitions per source/target',rows},null,2));
+ await writeEvidence(path.join(out,'comparison.json'),JSON.stringify({schema:1,environment:'one Ubuntu CI runner; Chromium 140; alternating cold contexts; 1440×1000; 3 repetitions per source/target',rows},null,2));
  console.log('Same-runner UIUX performance and native graph equivalence captured.');
 }finally{await browser.close();}

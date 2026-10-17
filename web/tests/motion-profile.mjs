@@ -1,3 +1,4 @@
+import {writeEvidence} from './evidence-output.mjs';
 // Optional same-runner probe. Run baseline and candidate servers on 8001/8000.
 // Synthetic survey content; local CDP counters and frame timings never enter app code.
 import {chromium} from 'playwright';
@@ -42,5 +43,5 @@ try{
  }
  assert.equal(new Set(rows.map(row=>row.contentHash)).size,1,'The displayed synthetic monthly evidence matches baseline');
  const result={environment:'Chromium 140 headless, 1440x1000, 4x CDP CPU throttle, 24 synthetic monitors /12 weeks, alternating fresh contexts, 3 repetitions; not physical-device FPS',rows};
- await fs.writeFile(process.env.ICM_MOTION_EVIDENCE||'/tmp/hydra-motion-profile.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+ await writeEvidence(process.env.ICM_MOTION_EVIDENCE||'/tmp/hydra-motion-profile.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{await browser.close();}

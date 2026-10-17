@@ -2415,7 +2415,7 @@ async function staticReportFallbackHtml(html,reason='Interactive Plotly runtime 
       const uri=await Plotly.toImage(host,{format:'svg',width,height});
       const img=doc.createElement('img');
       img.setAttribute('src',uri);
-      img.setAttribute('alt',(payload.layout?.title?.text||placeholder.id||'Engineering graph').replace(/<[^>]+>/g,''));
+      img.setAttribute('alt',String(payload.layout?.title?.text||placeholder.id||'Engineering graph'));
       img.setAttribute('class','report-static-plot');
       placeholder.replaceWith(img);
       payloadNode.remove();

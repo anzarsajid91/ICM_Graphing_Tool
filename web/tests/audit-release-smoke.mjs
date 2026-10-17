@@ -1,3 +1,4 @@
+import {writeEvidence} from './evidence-output.mjs';
 import {chromium} from 'playwright';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {createHash} from 'node:crypto';
@@ -46,6 +47,6 @@ try{
   privacy.assertClean();
   assert.deepEqual(remote,[],'Core workflows must make no third-party requests');
   assert.deepEqual(errors,[]);
-  await fs.writeFile(evidence+'/result.json',JSON.stringify({page:await page.url(),viewports:[1440,1366,1024],restored,remote,errors},null,2));
+  await writeEvidence(evidence+'/result.json',JSON.stringify({page:await page.url(),viewports:[1440,1366,1024],restored,remote,errors},null,2));
   console.log('PASS audit release: CDN blocked, worker boot/import, source fingerprint restore, six workspaces and three viewports.');
 }finally{await browser.close();}

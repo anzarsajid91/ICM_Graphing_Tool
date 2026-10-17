@@ -1,3 +1,4 @@
+import {writeEvidence} from './evidence-output.mjs';
 // Test-side inventory of rendered synthetic workflows. Never shipped in the release.
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -15,7 +16,7 @@ export async function recordControls(page,directory,state){
  },state);
  await fs.mkdir(directory,{recursive:true});
  const observed=await page.evaluate(()=>window.__uiuxControlEvidence||[]);
- await fs.writeFile(path.join(directory,state+'-controls.json'),JSON.stringify([...observed,...rows],null,2));
+ await writeEvidence(path.join(directory,state+'-controls.json'),JSON.stringify([...observed,...rows],null,2));
 }
 
 // Capture intermediate synthetic popovers, busy controls and conditional panels in tested journeys.

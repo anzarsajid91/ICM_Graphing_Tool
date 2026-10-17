@@ -1,7 +1,9 @@
 /* Network overview: own state, local source bindings and calendar spill results. */
 (()=>{'use strict';
 const C=ICMNetworkCore,R=ICMNetworkReviewCore,NS='http://www.w3.org/2000/svg',STORE='hydra-network-schematic-v1';
-const $=id=>document.getElementById(id),html=esc,uid=()=>crypto.randomUUID();
+const $=id=>document.getElementById(id),uid=()=>crypto.randomUUID();
+// Keep escaping explicit in this module so static analysis resolves every sink.
+function html(value){return String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');}
 let network=C.empty(),selected=null,editing=false,tool='select',colour='red',connectFrom=null,drag=null,busy=false,history=[],mounted=false,popupVisible=false,observer=null,saveTimer=null;
 let redo=[],multi=new Set(),highlight=null,hoverTimer=null,frame=null,analysisGeneration=0,analysisContext=null,analysisTimer=null,analysisReturnFocus=null,pickerReturnFocus=null;
 const freshness=new Map();
