@@ -1,3 +1,4 @@
+import {writeEvidence} from './evidence-output.mjs';
 import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {chromium} from 'playwright';import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';import fs from 'node:fs/promises';import assert from 'node:assert/strict';
@@ -35,7 +36,7 @@ try{
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));assert.equal(await page.locator('#gapInput').count(),1);
  await page.click('#runCompleteSurveyBtn');
  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.survey.batch&&window.__ICM_WORKBENCH__.surveyFresh('complete'),null,{timeout:600000});
- const current=await page.evaluate(()=>({monitors:window.__ICM_WORKBENCH__.survey.batch.monitors.length,weeks:window.__ICM_WORKBENCH__.survey.batch.monitors.find(m=>m.monitor==='FM7413').weekly.weeks.length,gaugeWeeks:window.__ICM_WORKBENCH__.survey.batch.network.gauge_weekly.length}));await fs.writeFile(evidence+'/assessment.json',JSON.stringify(await page.evaluate(()=>window.__ICM_WORKBENCH__.survey.batch)));console.log('REFERENCE',JSON.stringify(current));assert.equal(current.monitors,9);assert(current.weeks>1);assert(current.gaugeWeeks>1);
+ const current=await page.evaluate(()=>({monitors:window.__ICM_WORKBENCH__.survey.batch.monitors.length,weeks:window.__ICM_WORKBENCH__.survey.batch.monitors.find(m=>m.monitor==='FM7413').weekly.weeks.length,gaugeWeeks:window.__ICM_WORKBENCH__.survey.batch.network.gauge_weekly.length}));await writeEvidence(evidence+'/assessment.json',JSON.stringify(await page.evaluate(()=>window.__ICM_WORKBENCH__.survey.batch)));console.log('REFERENCE',JSON.stringify(current));assert.equal(current.monitors,9);assert(current.weeks>1);assert(current.gaugeWeeks>1);
  await page.locator('#assessmentSchematic-fdv').scrollIntoViewIfNeeded();
  await page.screenshot({path:evidence+'/fdv-schematic.png',fullPage:false});await recordControls(page,evidence,'fdv-schematic');
  assert(await page.locator('#assessmentSchematic-fdv [data-survey-node="FM7413"]').isVisible());
@@ -140,6 +141,6 @@ try{
  assert.equal(imageEvidence.width,3200);assert.equal(imageEvidence.height,config.height*2);assert(imageEvidence.rainfallColouredPixels>100,'Export must retain visible rainfall pixels in the rainfall panel');
 await report.screenshot({path:evidence+'/annual-html.png',fullPage:false});await report.close();
  await page.setViewportSize({width:1024,height:900});await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));assert(await page.locator('#assessmentMatrix-fdv').isVisible());assert(await page.locator('#assessmentDrawer-fdv').isVisible());await page.screenshot({path:evidence+'/narrow.png',fullPage:false});await recordControls(page,evidence,'narrow');
- assert.equal(errors.length,0,errors.join('\n'));await fs.writeFile(evidence+'/result.json',JSON.stringify({current,weekData,config,imageEvidence,errors},null,2));console.log('PASS schematic/weekly/PDF/selectors/export browser acceptance');
+ assert.equal(errors.length,0,errors.join('\n'));await writeEvidence(evidence+'/result.json',JSON.stringify({current,weekData,config,imageEvidence,errors},null,2));console.log('PASS schematic/weekly/PDF/selectors/export browser acceptance');
 privacy.assertClean();
 }catch(error){console.log('FAIL STATE',await page.evaluate(()=>({status:document.getElementById('workspaceStatus')?.textContent,mapping:state.mapping,errors:window.__ICM_WORKBENCH__?.lastError})));await page.screenshot({path:evidence+'/failure.png',fullPage:false});await recordControls(page,evidence,'failure');throw error;}finally{await browser.close();}

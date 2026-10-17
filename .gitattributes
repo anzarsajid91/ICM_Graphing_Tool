@@ -1,3 +1,6 @@
+# Canonical source bytes keep review digests stable on Linux and Windows.
+* text=auto eol=lf
+
 # Pinned upstream artifacts must retain their exact bytes on every platform.
 web/vendor/** -text
 

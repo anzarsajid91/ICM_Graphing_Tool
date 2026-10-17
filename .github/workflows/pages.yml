@@ -3,46 +3,7 @@ name: GitHub Pages Workbench
 on:
   push:
     branches: [main]
-    paths:
-      - 'web/**'
-      - 'src/icm_workbench/**'
-      - 'tests/**'
-      - 'scripts/build_pages.py'
-      - 'scripts/app_version.py'
-      - 'release-history.json'
-      - 'reference/**'
-      - 'scripts/generate_synthetic_references.py'
-      - 'scripts/verify_vendor.py'
-      - 'scripts/verify_data_confidentiality.py'
-      - 'security/**'
-      - 'SECURITY.md'
-      - 'AGENTS.md'
-      - '.github/workflows/data-confidentiality.yml'
-      - 'scripts/reference_workflow_simulation.py'
-      - 'scripts/detriment_reference_cases.py'
-      - '.github/workflows/pages.yml'
-      - '.github/workflows/live-pages-verification.yml'
   pull_request:
-    branches: [main, "audit/**"]
-    paths:
-      - 'web/**'
-      - 'src/icm_workbench/**'
-      - 'tests/**'
-      - 'scripts/build_pages.py'
-      - 'scripts/app_version.py'
-      - 'release-history.json'
-      - 'reference/**'
-      - 'scripts/generate_synthetic_references.py'
-      - 'scripts/verify_vendor.py'
-      - 'scripts/verify_data_confidentiality.py'
-      - 'security/**'
-      - 'SECURITY.md'
-      - 'AGENTS.md'
-      - '.github/workflows/data-confidentiality.yml'
-      - 'scripts/reference_workflow_simulation.py'
-      - 'scripts/detriment_reference_cases.py'
-      - '.github/workflows/pages.yml'
-      - '.github/workflows/live-pages-verification.yml'
   workflow_dispatch:
 
 permissions:
@@ -53,17 +14,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  security-release:
+    uses: ./.github/workflows/security-assurance.yml
+
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
       - name: Install reference engine dependencies
@@ -73,6 +37,8 @@ jobs:
           python scripts/verify_data_confidentiality.py
           python -m unittest discover -s tests/privacy -v
           node web/tests/privacy-network-unit.mjs
+          node web/tests/production-governance-unit.mjs
+          python scripts/verify_security_claims.py
       - name: Run Python regression suite
         run: python -m pytest
       - name: Simulate synthetic EDM and Flow Survey reference workflows
@@ -83,7 +49,7 @@ jobs:
             --markdown /tmp/icm-reference-workflow/reference-workflow.md
       - name: Retain synthetic engineering workflow evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: synthetic-workflow-evidence-${{ github.sha }}
           if-no-files-found: warn
@@ -195,21 +161,21 @@ jobs:
     env:
       ICM_EVIDENCE_DIR: /tmp/icm-pr-evidence
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
       - name: Assemble exact release artifact
         run: python scripts/build_pages.py
       - name: Install Chromium acceptance runner
         run: |
-          npm install --no-save playwright@1.55.0
+          npm ci --ignore-scripts
           npx playwright install --with-deps chromium
       - name: Start browser acceptance server
         run: |
@@ -248,6 +214,8 @@ jobs:
         run: node web/tests/detriment-reference-smoke.mjs
       - name: Verify release audit regressions
         run: |
+          node web/tests/security-about-smoke.mjs
+          node web/tests/privacy-probes.mjs
           node web/tests/audit-release-smoke.mjs
           node web/tests/rainfall-audit-smoke.mjs
       - name: Verify complete graph and assessment workflows
@@ -263,15 +231,27 @@ jobs:
 
       - name: Package exact review preview
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: precision-workbench-preview-${{ github.sha }}
           retention-days: 30
+          include-hidden-files: true
           path: _site/
+
+      - name: Download packaged review preview from this run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: precision-workbench-preview-${{ github.sha }}
+          path: ${{ runner.temp }}/tested-review-preview
+
+      - name: Verify packaged review preview retains every tested file
+        run: |
+          cmp _site/release-integrity.json "$RUNNER_TEMP/tested-review-preview/release-integrity.json"
+          python scripts/release_integrity.py "$RUNNER_TEMP/tested-review-preview"
 
       - name: Retain browser review evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: precision-workbench-evidence-${{ github.sha }}
           if-no-files-found: warn
@@ -282,7 +262,7 @@ jobs:
 
       - name: Retain browser failure evidence
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: browser-failure-${{ github.sha }}
           path: |
@@ -290,26 +270,34 @@ jobs:
             /tmp/icm-pages-http.log
 
 
+      - name: Retain tested release manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tested-pages-manifest
+          path: _site/release-integrity.json
+          if-no-files-found: error
+          retention-days: 30
+
   baseline-performance:
     runs-on: ubuntu-latest
     needs: verify
     timeout-minutes: 30
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           path: current
       - name: Checkout pre-FastPath main baseline
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: 497fde37b25a3ab6864b161d288cb0aa45f99924
           path: baseline
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
       - name: Build current and baseline release artifacts
@@ -321,7 +309,7 @@ jobs:
       - name: Install Chromium comparison runner
         working-directory: current
         run: |
-          npm install --no-save playwright@1.55.0
+          npm ci --ignore-scripts
           npx playwright install --with-deps chromium
       - name: Measure pre-FastPath versus PR25 in one runner
         working-directory: current
@@ -351,7 +339,7 @@ jobs:
           node web/tests/baseline-comparison.mjs
       - name: Retain formal baseline comparison
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: fastpath-baseline-comparison-${{ github.sha }}
           if-no-files-found: warn
@@ -365,21 +353,21 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
       - name: Assemble exact release artifact
         run: python scripts/build_pages.py
       - name: Install Firefox acceptance runner
         run: |
-          npm install --no-save playwright@1.55.0
+          npm ci --ignore-scripts
           npx playwright install --with-deps firefox
       - name: Verify Precision shell in Firefox
         env:
@@ -393,26 +381,27 @@ jobs:
             sleep 1
           done
           node web/tests/precision-shell.mjs
+          node web/tests/security-about-smoke.mjs
 
 
   browser-interactions:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
       - name: Assemble exact release artifact
         run: python scripts/build_pages.py
       - name: Install existing Chromium and Firefox acceptance runners
         run: |
-          npm install --no-save playwright@1.55.0
+          npm ci --ignore-scripts
           npx playwright install --with-deps chromium firefox
       - name: Verify workspace interactions in Chromium and Firefox
         env:
@@ -433,7 +422,7 @@ jobs:
           ICM_BROWSER=firefox node web/tests/network-schematic-smoke.mjs
       - name: Retain workspace interaction evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: workspace-interactions-${{ github.sha }}
           if-no-files-found: warn
@@ -446,24 +435,48 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
+      pull-requests: read
       pages: write
       id-token: write
     runs-on: ubuntu-latest
-    needs: [browser-smoke, baseline-performance, browser-firefox-shell, browser-interactions]
+    needs: [verify, security-release, browser-smoke, baseline-performance, browser-firefox-shell, browser-interactions]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
+      - name: Verify production review and server-side enforcement
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const verify = require('./.github/scripts/verify-production-governance.cjs');
+            await verify({github, context, core});
       - name: Build exact verified Pages artifact
         run: python scripts/build_pages.py
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
+      - name: Download the tested artifact manifest from this workflow run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: tested-pages-manifest
+          path: /tmp/tested-pages-manifest
+      - name: Compare released files with the tested artifact
+        run: cmp _site/release-integrity.json /tmp/tested-pages-manifest/release-integrity.json
+      - name: Verify release artifact hashes
+        run: python scripts/release_integrity.py _site
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
           path: _site
+
+      - name: Download exact Pages publication archive
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/published-pages
+      - name: Verify all published archive bytes before deployment
+        run: python scripts/release_integrity.py _site --pages-tar "$RUNNER_TEMP/published-pages/artifact.tar"
 
   deploy:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
@@ -478,4 +491,4 @@ jobs:
     steps:
       - name: Deploy GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

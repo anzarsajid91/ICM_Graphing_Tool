@@ -1,63 +1,7 @@
 # Live deployment improvement loop
 
-The workbench uses two independent release gates:
+Pre-deployment tests and the existing live verifier use synthetic engineering inputs. Live verification waits for the expected source revision in build.json and retains non-sensitive evidence. Failure creates a visible live-regression signal for investigation.
 
-1. **Pre-deployment verification** builds the exact GitHub Pages artifact and runs Python, JavaScript and Chromium acceptance tests against that artifact.
-2. **Post-deployment verification** waits until the public GitHub Pages site advertises the exact deployed commit in `build.json`, then runs the same end-to-end Chromium workflow against the live URL.
+Every repair, including AI-generated CSS, ingestion or deployment changes, must use a pull request, pass all mandatory checks and receive documented maintainer review under the single-maintainer policy. There is no unreviewed automatic merge or direct push to production. Networking, runtime dependencies, storage, imports, engineering methods, security controls and release configuration require relevant authorised review.
 
-The live verifier is implemented in `.github/workflows/live-pages-verification.yml`.
-
-## Triggering
-
-Live verification runs:
-
-- after a successful `GitHub Pages Workbench` production push on `main`;
-- every six hours as an external-health regression check; and
-- manually through `workflow_dispatch`.
-
-For a production deployment the verifier does not begin functional testing until the public `build.json` reports the exact commit SHA that triggered the Pages deployment. This prevents a stale CDN/site revision from being mistaken for the new release.
-
-## Evidence and failure signal
-
-Every live run retains an artifact containing the live build metadata, browser log and selected full-page screenshots. A failed browser stage also captures a full-page failure screenshot.
-
-A failing live verification creates or updates one open GitHub issue labelled `live-regression`. A later successful live verification closes that signal.
-
-This issue is the durable hand-off point for an automated repair agent: it contains the expected deployed SHA, workflow run link and engineering repair policy.
-
-## Automated repair boundary
-
-Low-risk fixes may be implemented and merged automatically when they are confined to:
-
-- browser/UI integration;
-- CSS/layout and accessibility;
-- drag/drop and file-ingestion plumbing;
-- graph rendering and report presentation;
-- deployment/workflow configuration; or
-- implementation performance where numerical results are unchanged.
-
-The automated cycle must not silently alter:
-
-- hydraulic methodology;
-- WAPUG/FSAT criteria;
-- spill-counting rules;
-- volume-balance equations;
-- engineering thresholds;
-- validity/exclusion semantics;
-- unit contracts; or
-- any other rule capable of changing an engineering conclusion.
-
-Any repair that enters those areas must stop at a reviewable pull request.
-
-## Regression-first repair rule
-
-Every defect repaired through the loop must first be represented by a regression check, or strengthen an existing one. A repair is considered complete only when:
-
-1. Python tests pass;
-2. JavaScript/browser source validation passes;
-3. local release-artifact Chromium acceptance passes;
-4. the PR is merged to `main`;
-5. GitHub Pages deploys that exact SHA; and
-6. the subsequent live Pages verification passes.
-
-This makes the deployed application, rather than the repository alone, the final acceptance boundary.
+A failed live test must trigger investigation and, if necessary, a controlled rollback; never a relaxed test or network exception. Follow [security governance](security-governance.md). The issue text does not confer merge authority. The scope and success of the actual live run must be checked before closing the incident. A green run is evidence for exercised flows, not universal assurance.

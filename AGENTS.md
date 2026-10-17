@@ -43,3 +43,13 @@ Release browser tests must retain the request assertions in
 `web/tests/privacy-network.mjs`. Passing CI is evidence for tested code and flows,
 not a universal security guarantee. Maintainer-controlled GitHub required checks
 and protected branches are additionally needed to prevent bypassing merge checks.
+
+## Maintainer review and security transparency
+
+All changes, including AI repairs, use PRs and identical checks. Read
+`docs/security-governance.md`. No direct production push or unreviewed automatic
+merge is permitted. Networking, dependencies, storage, security controls/claims,
+workflows and deployment are high risk. Never fabricate independent review. The owner authorised single-maintainer governance on 2026-10-18; security/control changes require documented impact review and owner-authorised release. Do not
+blindly refresh approval hashes. Changes to claim evidence require semantic
+review; a matching digest alone does not establish truth. Record tests actually
+executed and leave missing settings/approvals explicitly Not Enforced.

@@ -1,0 +1,63 @@
+name: Security assurance
+on:
+  push:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: '43 5 * * 1'
+permissions:
+  contents: read
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Verify security contracts and synthetic negative tests
+        run: |
+          python scripts/verify_data_confidentiality.py
+          python scripts/verify_security_claims.py
+          python -m unittest discover -s tests/privacy -v
+          node web/tests/privacy-network-unit.mjs
+      - name: Install pinned audit tooling and application environment
+        run: python -m pip install pip-audit==2.10.1 cyclonedx-bom==7.5.0 lxml==6.1.0 -e . pytest
+      - name: Audit resolved Python dependencies
+        if: ${{ !cancelled() }}
+        run: pip-audit --local --format=json --output=python-dependency-audit.json
+      - name: Audit fixed browser package identities
+        if: ${{ !cancelled() }}
+        run: python scripts/audit_browser_dependencies.py
+      - name: Audit locked browser test tooling
+        if: ${{ !cancelled() }}
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=low --json > npm-dependency-audit.json
+      - name: Produce resolved Python SBOM
+        if: ${{ !cancelled() }}
+        run: cyclonedx-py environment --output-file python-sbom.cdx.json
+      - name: Produce browser SBOM
+        if: ${{ !cancelled() }}
+        run: python scripts/browser_sbom.py > browser-sbom.cdx.json
+      - name: Retain non-sensitive inventory and scan evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: security-assurance-${{ github.run_id }}-${{ github.job }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            npm-dependency-audit.json
+            python-dependency-audit.json
+            browser-dependency-audit.json
+            python-sbom.cdx.json
+            browser-sbom.cdx.json

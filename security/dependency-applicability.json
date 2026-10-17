@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "review_date": "2026-10-18",
+  "review_basis": "Single-maintainer applicability review authorised by repository owner; no independent human review. Not a vulnerability waiver.",
+  "package": {
+    "ecosystem": "npm",
+    "name": "xlsx",
+    "vendor_version": "0.20.3",
+    "path": "web/vendor/sheetjs-0.20.3/xlsx.full.min.js",
+    "sha256": "cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41"
+  },
+  "advisories": [
+    {
+      "id": "GHSA-4r6h-8v6p-xvw6",
+      "source": "https://github.com/advisories/GHSA-4r6h-8v6p-xvw6",
+      "disposition": "not_affected",
+      "reason": "Vendored CE 0.20.3 is above the documented affected range; npm has no maintained patched release. Exact vendor bytes and current advisory fields must match this review.",
+      "reviewed_fields": {
+        "id": "GHSA-4r6h-8v6p-xvw6",
+        "modified": "2025-09-19T15:23:40Z",
+        "details": "All versions of SheetJS CE through 0.19.2 are vulnerable to \"Prototype Pollution\" when reading specially crafted files. Workflows that do not read arbitrary files (for example, exporting data to spreadsheet files) are unaffected.\n\nA non-vulnerable version cannot be found via npm, as the repository hosted on GitHub and the npm package `xlsx` are no longer maintained. Version 0.19.3 can be downloaded via https://cdn.sheetjs.com/.",
+        "affected": [
+          {
+            "package": {
+              "name": "xlsx",
+              "ecosystem": "npm",
+              "purl": "pkg:npm/xlsx"
+            },
+            "ranges": [
+              {
+                "type": "SEMVER",
+                "events": [
+                  {
+                    "introduced": "0"
+                  }
+                ]
+              }
+            ],
+            "database_specific": {
+              "last_known_affected_version_range": "< 0.19.3",
+              "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2023/04/GHSA-4r6h-8v6p-xvw6/GHSA-4r6h-8v6p-xvw6.json"
+            }
+          }
+        ]
+      },
+      "upstream_reviewed_fields": {
+        "id": "GHSA-4r6h-8v6p-xvw6",
+        "modified": "2025-09-19T15:23:40Z",
+        "details": "All versions of SheetJS CE through 0.19.2 are vulnerable to \"Prototype Pollution\" when reading specially crafted files. Workflows that do not read arbitrary files (for example, exporting data to spreadsheet files) are unaffected.\n\nA non-vulnerable version cannot be found via npm, as the repository hosted on GitHub and the npm package `xlsx` are no longer maintained. Version 0.19.3 can be downloaded via https://cdn.sheetjs.com/.",
+        "affected": [
+          {
+            "package": {
+              "ecosystem": "npm",
+              "name": "xlsx"
+            },
+            "ranges": [
+              {
+                "type": "ECOSYSTEM",
+                "events": [
+                  {
+                    "introduced": "0"
+                  }
+                ]
+              }
+            ],
+            "database_specific": {
+              "last_known_affected_version_range": "< 0.19.3"
+            }
+          }
+        ]
+      },
+      "mirror_review": "OSV adds package purl/source, converts npm range type to SEMVER and may use its mirror modification time. Advisory text and last-known affected bounds agree with the linked GitHub record."
+    },
+    {
+      "id": "GHSA-5pgg-2g8v-p4x9",
+      "source": "https://github.com/advisories/GHSA-5pgg-2g8v-p4x9",
+      "disposition": "not_affected",
+      "reason": "Vendored CE 0.20.3 is above the documented affected range; npm has no maintained patched release. Exact vendor bytes and current advisory fields must match this review.",
+      "reviewed_fields": {
+        "id": "GHSA-5pgg-2g8v-p4x9",
+        "modified": "2026-09-10T03:49:18.872216794Z",
+        "details": "SheetJS Community Edition before 0.20.2 is vulnerable.to Regular Expression Denial of Service (ReDoS).\n\nA non-vulnerable version cannot be found via npm, as the repository hosted on GitHub and the npm package `xlsx` are no longer maintained. Version 0.20.2 can be downloaded via https://cdn.sheetjs.com/.",
+        "affected": [
+          {
+            "package": {
+              "name": "xlsx",
+              "ecosystem": "npm",
+              "purl": "pkg:npm/xlsx"
+            },
+            "ranges": [
+              {
+                "type": "SEMVER",
+                "events": [
+                  {
+                    "introduced": "0"
+                  }
+                ]
+              }
+            ],
+            "database_specific": {
+              "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/04/GHSA-5pgg-2g8v-p4x9/GHSA-5pgg-2g8v-p4x9.json",
+              "last_known_affected_version_range": "< 0.20.2"
+            }
+          }
+        ]
+      },
+      "upstream_reviewed_fields": {
+        "id": "GHSA-5pgg-2g8v-p4x9",
+        "modified": "2025-09-19T15:23:24Z",
+        "details": "SheetJS Community Edition before 0.20.2 is vulnerable.to Regular Expression Denial of Service (ReDoS).\n\nA non-vulnerable version cannot be found via npm, as the repository hosted on GitHub and the npm package `xlsx` are no longer maintained. Version 0.20.2 can be downloaded via https://cdn.sheetjs.com/.",
+        "affected": [
+          {
+            "package": {
+              "ecosystem": "npm",
+              "name": "xlsx"
+            },
+            "ranges": [
+              {
+                "type": "ECOSYSTEM",
+                "events": [
+                  {
+                    "introduced": "0"
+                  }
+                ]
+              }
+            ],
+            "database_specific": {
+              "last_known_affected_version_range": "< 0.20.2"
+            }
+          }
+        ]
+      },
+      "mirror_review": "OSV adds package purl/source, converts npm range type to SEMVER and may use its mirror modification time. Advisory text and last-known affected bounds agree with the linked GitHub record."
+    }
+  ]
+}

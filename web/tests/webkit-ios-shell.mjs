@@ -1,3 +1,4 @@
+import {writeEvidence} from './evidence-output.mjs';
 import {webkit} from 'playwright';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -44,7 +45,7 @@ try{
 
   await page.screenshot({path:evidence+'/ios-shell.png',fullPage:false});
   assert.deepEqual(errors,[]);
-  await fs.writeFile(evidence+'/result.json',JSON.stringify({initial,errors,url:await page.url()},null,2));
+  await writeEvidence(evidence+'/result.json',JSON.stringify({initial,errors,url:await page.url()},null,2));
   console.log('PASS iOS WebKit shell: workbench opens before Pyodide boot and all primary workspaces navigate.');
 } finally {
   await browser.close();

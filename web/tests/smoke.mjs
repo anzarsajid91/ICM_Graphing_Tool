@@ -142,9 +142,11 @@ async function measureFreshFastPathImport({dataset,relativePath,sourcePath,input
   if(liveMode)return null;
   const probe=await context.newPage();
   const resolvedPath=sourcePath||path.join(root,relativePath);
-  const sourceStat=await fs.stat(resolvedPath);
+  const sourceHandle=await fs.open(resolvedPath,'r');
+  let sourceStat,buffer;
+  try{sourceStat=await sourceHandle.stat();buffer=sourceStat.size>50*1024*1024?null:await sourceHandle.readFile();}
+  finally{await sourceHandle.close();}
   const usePathUpload=sourceStat.size>50*1024*1024;
-  const buffer=usePathUpload?null:await fs.readFile(resolvedPath);
   const navigationStart=Date.now();
   try{
     await privacy.navigate(probe,baseUrl+'?fresh_fastpath='+encodeURIComponent(dataset)+'&t='+Date.now(),{waitUntil:'domcontentloaded'});
@@ -1913,7 +1915,7 @@ try{
     const chart=document.querySelector('#timeChart'),table=chart.data.find(t=>t.type==='table');
     return{
       externalHidden:document.querySelector('#graphStatistics')?.hidden===true,
-      header:(table?.header?.values||[]).map(x=>String(x).replace(/<[^>]+>/g,'')),
+      header:(table?.header?.values||[]).map(x=>{const fragment=document.createElement('template');fragment.innerHTML=String(x);return fragment.content.textContent;}),
       domain:table?.domain?.y,
       rows:(table?.cells?.values?.[0]||[]).map(String),
     };
@@ -2663,7 +2665,7 @@ try{
       thresholdTraces:thresholdTraces.map(t=>({name:t.name,yaxis:t.yaxis||'y',dash:t.line?.dash})),
       xaxis:{anchor:chart.layout.xaxis?.anchor,position:chart.layout.xaxis?.position,side:chart.layout.xaxis?.side,title:chart.layout.xaxis?.title?.text||chart.layout.xaxis?.title||'',range:chart.layout.xaxis?.range},
       annotations:(chart.layout.annotations||[]).map(a=>String(a.text||'')),
-      table:(()=>{const t=chart.data.find(x=>x.type==='table');return t?{header:(t.header?.values||[]).map(v=>String(v).replace(/<[^>]+>/g,'')),series:(t.cells?.values?.[0]||[]).map(String),units:(t.cells?.values?.[1]||[]).map(String),totals:(t.cells?.values?.[5]||[]).map(String),domain:t.domain?.y}:null;})(),
+      table:(()=>{const t=chart.data.find(x=>x.type==='table');return t?{header:(t.header?.values||[]).map(v=>{const fragment=document.createElement('template');fragment.innerHTML=String(v);return fragment.content.textContent;}),series:(t.cells?.values?.[0]||[]).map(String),units:(t.cells?.values?.[1]||[]).map(String),totals:(t.cells?.values?.[5]||[]).map(String),domain:t.domain?.y}:null;})(),
       colours:Object.fromEntries(chart.data.filter(t=>t.type!=='table'&&t.name).map(t=>[t.name,t.line?.color||t.marker?.color||null])),
       externalStatsHidden:document.querySelector('#graphStatistics')?.hidden===true
     };
@@ -3086,7 +3088,7 @@ try{
       pointCounts:window.__ICM_WORKBENCH__.lastGraphPointCounts,
       order:window.__ICM_WORKBENCH__.lastPanelOrder,
       colours:Object.fromEntries(chart.data.filter(t=>t.type!=='table'&&t.name).map(t=>[t.name,t.line?.color||null])),
-      tableHeader:(table?.header?.values||[]).map(v=>String(v).replace(/<[^>]+>/g,'')),
+      tableHeader:(table?.header?.values||[]).map(v=>{const fragment=document.createElement('template');fragment.innerHTML=String(v);return fragment.content.textContent;}),
       tableSeries:(table?.cells?.values?.[0]||[]).map(String),
       tableUnits:(table?.cells?.values?.[1]||[]).map(String),
       tableTotals:(table?.cells?.values?.[5]||[]).map(String),

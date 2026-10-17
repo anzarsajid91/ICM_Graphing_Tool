@@ -11,20 +11,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           path: candidate
           fetch-depth: 0
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: dff8ff593e61dbfea142007b5ac32b0d66787f0a
           path: baseline
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
       - name: Build exact baseline and candidate
@@ -34,7 +34,7 @@ jobs:
       - name: Compare on one runner
         working-directory: candidate
         run: |
-          npm install --no-save playwright@1.55.0
+          npm ci --ignore-scripts
           npx playwright install --with-deps chromium
           python -m http.server 8000 --directory _site >/tmp/uiux-candidate-http.log 2>&1 &
           CANDIDATE_SERVER=$!
@@ -44,7 +44,7 @@ jobs:
           TARGET_SHA="$(git rev-parse HEAD)" node web/tests/uiux-performance.mjs
           ICM_UIUX_OBSERVE=0 ICM_BASE_URL=http://127.0.0.1:8001/ TARGET_SHA=dff8ff593e61dbfea142007b5ac32b0d66787f0a ICM_EVIDENCE_DIR=/tmp/hydra-uiux-performance/survey-baseline node web/tests/schematic-review-smoke.mjs
           ICM_UIUX_OBSERVE=0 ICM_BASE_URL=http://127.0.0.1:8000/ TARGET_SHA="$(git rev-parse HEAD)" ICM_EVIDENCE_DIR=/tmp/hydra-uiux-performance/survey-candidate node web/tests/schematic-review-smoke.mjs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: uiux-same-runner-${{ github.event.pull_request.head.sha || github.sha }}

@@ -1,0 +1,3 @@
+# Responsible single maintainer; not independent approval.
+# PRs and required checks are enforced separately. See docs/security-governance.md.
+* @anzarsajid91
