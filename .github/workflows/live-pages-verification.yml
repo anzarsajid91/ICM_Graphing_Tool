@@ -163,9 +163,9 @@ jobs:
               'The workflow artifact contains the browser log, live build metadata, and a full-page failure screenshot when the browser test reached the application.',
               '',
               '### Repair policy',
-              'Every automated repair must use a PR, pass mandatory checks and receive independent review. No direct pushes or unreviewed automatic merges are permitted.',
+              'Every automated repair must use a PR, pass mandatory checks and receive documented maintainer review under the single-maintainer policy. No direct pushes or unreviewed automatic merges are permitted.',
               '',
-              'Do **not** auto-merge a repair that changes hydraulic methodology, WAPUG/FSAT criteria, spill-counting rules, volume-balance equations, validity semantics, unit contracts, or engineering thresholds. Networking, dependencies, storage, file processing, security and deployment changes also require independent security review.',
+              'Do **not** auto-merge a repair that changes hydraulic methodology, WAPUG/FSAT criteria, spill-counting rules, volume-balance equations, validity semantics, unit contracts, or engineering thresholds. Networking, dependencies, storage, file processing, security and deployment changes also require documented maintainer security impact review.',
               '',
               'Every repair must add or strengthen a regression test and must pass Python, JavaScript, release-artifact, Chromium, and subsequent live-Pages verification before this issue is closed.'
             ].join('\n');

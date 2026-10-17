@@ -19,7 +19,7 @@ Do not merge or release with an unresolved confidentiality failure.
 - Change class and reason (labels never suppress mandatory checks):
 - Network/storage/dependency/file-processing impact:
 - Engineering methodology/output changes (separate approval if any):
-- Claim IDs/evidence affected; independent reviewer:
+- Claim IDs/evidence affected; maintainer review; independent human review available/unavailable:
 - Exact tests actually run, failures and limitations:
 - Synthetic browser request evidence and IT Security screenshots:
 - Dependency/licence/advisory disposition and SBOM links:

@@ -22,6 +22,8 @@ try{
  assert.equal(await panel.locator('[data-claim-id]').count(),8);
  assert.equal(await page.locator('#reviewNotes').isVisible(),false);
  assert.match(await panel.innerText(),/Verification status is not available for this build/);
+ assert.match(await panel.innerText(),/single-maintainer project/);
+ assert.match(await panel.innerText(),/independent human review is not available/i);
  const claimText=await panel.locator('[data-claim-id]').allTextContents();
  const register=await page.evaluate(()=>JSON.parse(document.getElementById('securityClaims').textContent));
  for(let i=0;i<8;i++)assert.ok(claimText[i].includes(register.claims[i].statement));

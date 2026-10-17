@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "assessment": "2026-10-17 / upstream 8c7f59f; see assessment for verification limits",
+  "assessment": "2026-10-18 / single-maintainer policy; see assessment for scope and verification limits",
   "claims": [
     {
       "id": "SC-01",
@@ -48,7 +48,7 @@
     {
       "id": "SC-04",
       "title": "Application security controls",
-      "statement": "The source confidentiality gate detects changes to reviewed network-capable files. Dependency files are checked against a maintained hash inventory. Browser request tests reject unapproved destinations, resource queries, request bodies and network sockets in tested flows. These checks require enforced repository review and release rules to prevent bypass.",
+      "statement": "The source confidentiality gate detects changes to reviewed network-capable files. Dependency files are checked against a maintained hash inventory. Browser request tests reject unapproved destinations, resource queries, request bodies and network sockets in tested flows. These checks require enforced repository checks and release rules to prevent bypass.",
       "evidence": [
         "scripts/verify_data_confidentiality.py",
         "scripts/verify_vendor.py",
@@ -76,14 +76,15 @@
     {
       "id": "SC-06",
       "title": "Security verification",
-      "statement": "Verification status is not available for this build. Release metadata identifies the source revision and application version; it does not by itself certify security. Consult the assessment and workflow evidence for the exact revision.",
+      "statement": "Verification status is not available for this build. Release checks cover source confidentiality, dependency advisories, secrets, static analysis, engineering regression and browser requests. This is a single-maintainer project: independent human review is not available, and AI-assisted review is not a substitute. Version and source revision identify the build; consult workflow evidence for that revision.",
       "evidence": [
         "scripts/build_pages.py",
         "scripts/app_version.py",
-        "docs/security-audit.md"
+        "docs/security-audit.md",
+        "docs/security-governance.md"
       ],
       "scope": "Neutral build identity only.",
-      "limitation": "No live workflow lookup or independently verified security badge is performed by this page.",
+      "limitation": "No independent human approval, certification or runtime security badge is claimed. Mandatory checks and effective branch rules are required before deployment.",
       "status": "unverified",
       "owner": "Repository maintainer"
     },
@@ -116,7 +117,7 @@
   "evidence_sha256": {
     "web/assets/analysis-worker.js": "adb36e7e3384a0dd171b11964fe4502851c479c777f3c7c5f8dc6a553111a2eb",
     "web/assets/fastpath-worker.js": "3ceb0560eca8035a05c1d45c5687bd094740e13e3d3a3a96cc550c1cbbe516ef",
-    "SECURITY.md": "6772f1c2373ae6bf2e286b8e1ed42fbd2b1a66ce6ad581f1591d13268ea8a976",
+    "SECURITY.md": "480b6a91a72ec28bb80f0a92d05e77d24d01e7fdf370f1270c41cc30a4f1bcdb",
     "scripts/build_pages.py": "254c2cc2874779f1bee268c77d5759eb40e4112607513d12593bd30babab247a",
     "web/vendor/manifest.json": "bb70a1f4497a0f6307f836828522015ebb60293e91df66ac3778f986f2d96b82",
     "web/assets/runtime.release.js": "c110c220aea922a3711d928624dfe29924ae0874f87e868c7f3cd274061493ab",
@@ -127,7 +128,8 @@
     "web/tests/privacy-network.mjs": "cee5e4702b48869bbb1824ea2f934e091a56a53a163f941d1868c3d2109dcd43",
     "tests/privacy/test_source_gate.py": "d684e98611d756764ef5f268a1bb0c808b52e7ddb5e5f47939017c4c0b735c1b",
     "scripts/app_version.py": "9671833607cc1a38690a9e3586cb1a9c00a05a632d4da9253461fed0e962e506",
-    "docs/security-audit.md": "0ae10716891944d7faedd6cc59022385764641e09d8882a37a6e65316c237ec1",
-    "AGENTS.md": "189e6d01e6a8cecfd5c7546f96387b00653f8d3ddf9af4f2fad66d70219d1048"
+    "docs/security-audit.md": "547171c84ac558cb7fd017993a18b846a5077db642189e05ad0dc803cbd6d925",
+    "AGENTS.md": "4f54bc69115e55eacf5650a0375b5a175eb73d7e408a151af5fcff3086ab2e5c",
+    "docs/security-governance.md": "deac87483e8ef022d369678d9a88cc1b94290214d7054c4bbca23dfa0d6fc767"
   }
 }

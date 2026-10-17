@@ -23,7 +23,7 @@ def verify_claims(root=ROOT):
                 raise ValueError(f'Missing/unsafe claim evidence: {relative}')
             actual = hashlib.sha256(path.read_bytes()).hexdigest()
             if register['evidence_sha256'].get(relative) != actual:
-                raise ValueError(f'Security claim evidence changed: {relative}; independent review required')
+                raise ValueError(f'Security claim evidence changed: {relative}; documented maintainer claim review required')
     if claims[5]['statement'].split('.')[0] != 'Verification status is not available for this build':
         raise ValueError('No supported exact-build verification assertion has been approved')
     print('Security claim structure and evidence digests match; semantic review remains mandatory.')

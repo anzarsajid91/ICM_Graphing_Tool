@@ -1,6 +1,6 @@
 # Hydra Bench security assessment — 2026-10-17
 
-**Assessment state: incomplete; candidate changes require independent review. Not a certification. Production release is blocked.**
+**Bounded assessment, not a certification. Initial findings below retain the original baseline; the 2026-10-18 disposition supersedes the initial independent-review proposal.**
 
 Baseline: public repository `anzarsajid91/ICM_Graphing_Tool`, main `8c7f59ff94ecdf0c84c5b22f1f9ec6d6d4c38a98`. Live build.json reports **v1.066**, that SHA, worker architecture 9 and SHA-versioned assets. The latest inspected scheduled live run (39026506758, 2026-10-17) concluded success for that revision. Neither statement establishes absence of vulnerabilities.
 
@@ -83,4 +83,12 @@ Dependency review failed because GitHub Dependency graph is disabled/unsupported
 
 ## Release decision
 
-**Do not release this candidate yet.** Verify administrator rules, independent review, all CI conclusions and static-analysis findings; disposition dependency matches without blanket exceptions; review the candidate CSV remediation; finish missing historical/hosting review and execute exact-artifact validation. See security-governance.md for exact settings and rollback procedure. No employer-specific policy or approval is claimed.
+Release remains conditional on effective administrator rules, all mandatory checks, static-analysis review and exact-artifact validation. The owner authorised single-maintainer release on 2026-10-18; no independent human review is represented. Historical-data, licensing and wider hosting assurance limitations remain open and are not claims of confirmed data egress. See security-governance.md for exact settings and rollback procedure. No employer-specific policy or approval is claimed.
+
+## 2026-10-18 maintainer disposition and policy revision
+
+The owner explicitly authorised single-maintainer governance and release subject to passing checks. Independent human review is unavailable; AI-assisted scrutiny is not represented as independent approval. HB-01 remains blocked until effective rules are verified; mandatory PRs, all required checks, no bypass actors, deletion/force-push protection and exact revision verification remain required. HB-02 automation boundaries still prohibit automatic merge and test relaxation. HB-05 affects only CSV string serialization; typed numeric outputs and hydraulic methods are unchanged and require regression evidence.
+
+HB-09: [GHSA-4r6h-8v6p-xvw6](https://github.com/advisories/GHSA-4r6h-8v6p-xvw6) documents affected CE versions below 0.19.3; [GHSA-5pgg-2g8v-p4x9](https://github.com/advisories/GHSA-5pgg-2g8v-p4x9) documents versions below 0.20.2. Both machine records omit a fixed npm event because maintained CE builds are distributed outside npm. The hash-verified vendor binary identifies version 0.20.3. `security/dependency-applicability.json` records a narrow not-affected disposition for those two advisories and those exact bytes. CI retains raw matches and validates current advisory ID, modification date, details and affected fields against the reviewed record. Changed advisory content, other versions/bytes and every unreviewed advisory remain release-blocking. This is applicability evaluation, not an accepted vulnerable-version exception or scanner disablement. Regression tests cover each rejection case. No application dependency or engineering method is changed by this correction.
+
+The About register explicitly describes single-maintainer review, available test categories and unavailable independent review. Exact-build security verification remains neutral; no fabricated green security badge is added. Earlier references to independent review in the baseline findings describe the initial proposal, superseded by this authorised policy revision. The residual concentration of code, settings and release authority in one account remains material. Reassess independent review when another maintainer is available.

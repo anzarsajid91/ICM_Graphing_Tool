@@ -55,7 +55,7 @@ proves every possible browser/environment behaviour.
 ## Repository administration
 
 Configure `Data confidentiality / confidentiality` as a required status check for
-`main`; require PR review; restrict direct/force pushes and bypass permissions.
+`main`; require PRs and mandatory checks; restrict direct/force pushes and bypass permissions.
 Protect changes to this policy, approval inventory, guard, and workflow with
 maintainer review. These server-side controls are separate from files in the
 repository and must not be claimed as configured without verifying them.
@@ -72,7 +72,7 @@ and restore a reviewed version. Follow applicable employer/client incident rules
 See [security governance](docs/security-governance.md), the bounded
 [assessment](docs/security-audit.md) and the [claim register](security/claims.json).
 Run `python scripts/security_preflight.py` for local feedback; hooks do not enforce
-server-side review. Security-control and claim changes require independent review.
+server-side review. Security-control and claim changes require documented maintainer impact review under the owner-authorised single-maintainer policy. Independent human review is unavailable and is not claimed.
 Candidate controls are not represented as production-enforced until settings and
 executed checks are verified. Never use a scanner false-positive assumption to
-silence a failure without documented independent applicability review.
+silence a failure without documented, evidence-backed applicability review.

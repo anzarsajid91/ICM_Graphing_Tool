@@ -44,12 +44,12 @@ Release browser tests must retain the request assertions in
 not a universal security guarantee. Maintainer-controlled GitHub required checks
 and protected branches are additionally needed to prevent bypassing merge checks.
 
-## Independent review and security transparency
+## Maintainer review and security transparency
 
 All changes, including AI repairs, use PRs and identical checks. Read
 `docs/security-governance.md`. No direct production push or unreviewed automatic
 merge is permitted. Networking, dependencies, storage, security controls/claims,
-workflows and deployment are high risk. Do not self-approve control changes or
+workflows and deployment are high risk. Never fabricate independent review. The owner authorised single-maintainer governance on 2026-10-18; security/control changes require documented impact review and owner-authorised release. Do not
 blindly refresh approval hashes. Changes to claim evidence require semantic
 review; a matching digest alone does not establish truth. Record tests actually
 executed and leave missing settings/approvals explicitly Not Enforced.

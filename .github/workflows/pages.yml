@@ -37,6 +37,7 @@ jobs:
           python scripts/verify_data_confidentiality.py
           python -m unittest discover -s tests/privacy -v
           node web/tests/privacy-network-unit.mjs
+          node web/tests/production-governance-unit.mjs
           python scripts/verify_security_claims.py
       - name: Run Python regression suite
         run: python -m pytest
