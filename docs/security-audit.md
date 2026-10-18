@@ -87,6 +87,35 @@ The later [CodeQL source-path review](https://github.com/anzarsajid91/ICM_Graphi
 
 Release remains conditional on effective administrator rules, all mandatory checks, static-analysis review and exact-artifact validation. The owner authorised single-maintainer release on 2026-10-18; no independent human review is represented. Historical-data, licensing and wider hosting assurance limitations remain open and are not claims of confirmed data egress. See security-governance.md for exact settings and rollback procedure. No employer-specific policy or approval is claimed.
 
+## Ruleset evidence visibility finding
+
+HB-15 (High assurance risk): GitHub omits bypass actors from callers without
+ruleset write access. The previous fallback interpreted an omitted field as an
+empty list; a new negative test reproduced false acceptance. Actual authenticated
+owner reads verified no bypass actors, but the CI token has different visibility.
+The correction uses read-only governance API calls and requires a fresh authenticated owner
+administrative release record bound to the exact merge/head SHAs and all active
+ruleset identities/update times. Missing, edited, stale, forged or mismatched
+records fail; visible nonempty bypass lists always fail. This adds an owner
+release gate without granting administration credentials to automation. See the
+[protocol, evidence limits and regression results](security-release-acknowledgement.md).
+It is point-in-time owner verification, not independent review or continuous CI
+visibility into administrative settings. All existing checks remain required.
+
+## Historical evidence retention finding
+
+HB-14 (High operational assurance risk): a pre-existing maintenance workflow
+automatically deleted historical Actions logs when a production push changed its
+workflow or script. PR #81's Action-pin update triggered it. The run reported zero
+artifacts deleted and log deletion for 1,884 historical runs before cancellation
+took effect. Production deployment was stopped. The correction removes automatic
+triggers, grants only read permissions and removes all deletion/cancellation code;
+the remaining manual inventory uses GET only. Synthetic regression tests reproduce
+the old DELETE attempt and verify the correction. See the [incident evidence,
+impact review and recovery limitations](security-evidence-retention.md). This
+does not restore historical logs or establish complete historical-data assurance.
+Full protected checks and live acceptance remain mandatory for the follow-up.
+
 ## Downloaded-artifact acceptance finding
 
 HB-13 (Medium, high confidence): independent archive inspection found that the

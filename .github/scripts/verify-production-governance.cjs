@@ -17,13 +17,22 @@ module.exports = async ({github, context, core}) => {
   const contexts=new Set(checks.required_status_checks.filter(x=>x.integration_id===15368).map(x=>x.context));
   for(const name of ['confidentiality','security','secrets','dependency-review','verify','browser-smoke','browser-firefox-shell','browser-interactions','baseline-performance','analyze (javascript-typescript)','analyze (python)','test (ubuntu-latest, 3.12)','test (windows-latest, 3.12)','security-release / security'])
     if(!contexts.has(name))throw new Error('Required status missing: '+name);
-  const {data:sets}=await github.request('GET /repos/{owner}/{repo}/rulesets',{owner,repo,includes_parents:true});
+  const sets=await github.paginate('GET /repos/{owner}/{repo}/rulesets',{owner,repo,includes_parents:true,per_page:100});
   if(!sets.length)throw new Error('Ruleset evidence unavailable');
+  const active=[];
   for(const item of sets){
     const {data:full}=await github.request('GET /repos/{owner}/{repo}/rulesets/{ruleset_id}',{owner,repo,ruleset_id:item.id});
-    if(full.enforcement==='active' && (full.bypass_actors||[]).length)
-      throw new Error('Active ruleset contains a bypass actor');
+    if(full.enforcement!=='active')continue;
+    if(!Number.isSafeInteger(full.id) || active.some(rule=>rule.id===full.id) ||
+       !full.source_type || !full.source || !Number.isFinite(Date.parse(full.updated_at)))
+      throw new Error('Active ruleset identity/version evidence unavailable');
+    if(Object.hasOwn(full,'bypass_actors') && (!Array.isArray(full.bypass_actors) || full.bypass_actors.length))
+      throw new Error('Active ruleset bypass inventory is malformed or nonempty');
+    // A missing field is redacted/unknown, never an empty list. Every release
+    // additionally requires authenticated owner evidence for all active rulesets.
+    active.push(full);
   }
+  if(!active.length)throw new Error('No active ruleset evidence');
   const {data:prs}=await github.rest.repos.listPullRequestsAssociatedWithCommit({owner,repo,commit_sha:context.sha});
   const merged=prs.find(p=>p.merged_at && p.base.ref==='main' && p.merge_commit_sha===context.sha);
   if(!merged)throw new Error('Production revision is not a PR merge commit');
@@ -32,5 +41,6 @@ module.exports = async ({github, context, core}) => {
   // Merge is the maintainer's release decision; all required checks still apply.
   if(pr.merged_by?.login!==owner || pr.head.sha!==merged.head.sha)
     throw new Error('Release must be merged by the repository owner at the validated PR head');
-  core.notice('Single-maintainer production governance verified for PR #'+merged.number+' at '+context.sha+'; no independent human review');
+  await require('./verify-owner-release-ack.cjs')({github,owner,repo,pr,sha:context.sha,rulesets:active,core});
+  core.notice('Effective production rules and authenticated owner release record verified for PR #'+merged.number+' at '+context.sha+'; no independent human review');
 };

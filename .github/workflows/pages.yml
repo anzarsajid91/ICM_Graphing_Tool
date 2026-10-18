@@ -436,6 +436,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      issues: read
       pages: write
       id-token: write
     runs-on: ubuntu-latest
