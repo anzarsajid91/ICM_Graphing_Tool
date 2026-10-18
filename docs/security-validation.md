@@ -41,6 +41,26 @@ GitHub Actions is the required full-history environment for the version test and
 
 No production merge or deployment occurred. The latest correction's CI outcomes must be inspected before treating these fixes as verified.
 
+## Release interruption and evidence retention — 2026-10-18
+
+PR #81 final head `363677f` passed all fourteen required contexts and merged at
+`5087aea903e8659076e8fd6562c91e8533d7ae8e`. Strict independent download verification
+matched all 107 preview files and GitHub's ZIP digest; the reproduced Pages tar
+also passed. Final Chromium smoke observed 1,216 requests and zero violations;
+four prohibited probes were rejected. About screenshots at 1024/1440 were checked.
+The final PR head, tested merge result and actual merge have identical Git trees.
+
+Production run 39073435149 passed 325 engineering tests and 100 subtests, all18
+privacy tests, reference simulation, security and browser interactions, then was
+cancelled before deployment after the [historical-log deletion finding](security-evidence-retention.md).
+Cancelled release jobs do not count as passes. A fresh resume read confirmed
+main still `5087aea`, all 73 original files matching, active ruleset25314721 with
+fourteen required checks/no bypass actors, and live v1.066 at `8c7f59f`.
+
+The follow-up removes automatic evidence deletion. All four targeted synthetic
+regression tests pass locally after reproducing the old DELETE attempt. Full
+follow-up PR/release checks and live verification remain pending at this entry.
+
 ## Single-maintainer candidate revision — 2026-10-18
 
 The owner authorised single-maintainer release; no independent human approval is claimed. All existing required tests remain enabled. Fresh local checks passed: source confidentiality (nine approved network-capable sources, 22 fixed vendor files), claim digests, all 13 privacy/applicability/artifact tests and all 18 JavaScript unit scripts. Governance tests cover required checks bound to GitHub Actions, strict up-to-date policy, rejected bypass actors, owner merge and exact PR head, including nine negative cases. Applicability tests reject altered advisory fields, unknown advisory IDs, changed versions/packages and vendor tampering. About browser acceptance now requires the explicit single-maintainer/no-independent-review statements.

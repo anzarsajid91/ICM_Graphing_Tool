@@ -128,7 +128,7 @@
     "web/tests/privacy-network.mjs": "cee5e4702b48869bbb1824ea2f934e091a56a53a163f941d1868c3d2109dcd43",
     "tests/privacy/test_source_gate.py": "d684e98611d756764ef5f268a1bb0c808b52e7ddb5e5f47939017c4c0b735c1b",
     "scripts/app_version.py": "9671833607cc1a38690a9e3586cb1a9c00a05a632d4da9253461fed0e962e506",
-    "docs/security-audit.md": "dffbd48281a7a7d1e361918885eb48aa9f4d86e4a212de2c231dff7ce2c9e717",
+    "docs/security-audit.md": "26301ae84c84e8a855ed450968407ba7852afa2ddd1e243fff8b97c3aa491d97",
     "AGENTS.md": "4f54bc69115e55eacf5650a0375b5a175eb73d7e408a151af5fcff3086ab2e5c",
     "docs/security-governance.md": "4a564ffd7f5add576e434e73063219739f474fb5a69e06b6866591b36e8a2762"
   }

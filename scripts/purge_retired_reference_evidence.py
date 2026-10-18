@@ -1,48 +1,46 @@
-"""Remove retained Actions outputs from runs containing retired source fixtures.
+"""Read-only inventory of Actions evidence associated with retired fixtures.
 
-Only repository administration; never imported by the application. The current
-deployment and static Pages/preview artifacts are excluded. Run records remain.
+The historical filename is retained for existing references. Deletion and run
+cancellation are unavailable, including when invoked directly. This repository
+administration tool is never imported by the browser application. It reads Git
+metadata, not engineering file contents or historical log/artifact contents.
 """
 from __future__ import annotations
 
-import json
+import argparse
 from concurrent.futures import ThreadPoolExecutor
+import json
 import os
-import urllib.error
 import urllib.request
 
 REPO = 'anzarsajid91/ICM_Graphing_Tool'
 BASE = 'https://api.github.com/repos/' + REPO
-TOKEN = os.environ['GH_TOKEN']
-EARLIEST_UPLOAD = os.environ['REFERENCE_UPLOAD_NOT_BEFORE']
 EMPTY = 'e69de29bb2d1d6434b8b29ae775ad8c2e48c5391'
-cache = {}
 
 
-def request(path, method='GET'):
-    req = urllib.request.Request(BASE + path, method=method, headers={
-        'Authorization': 'Bearer ' + TOKEN,
+def request(path):
+    # GET is fixed: this helper has no method/body argument or mutation endpoint.
+    req = urllib.request.Request(BASE + path, method='GET', headers={
+        'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
     })
     with urllib.request.urlopen(req, timeout=60) as response:
-        body = response.read()
-        return json.loads(body) if body else None
+        return json.loads(response.read())
 
 
 def original_sources(sha):
-    if sha not in cache:
-        commit = request('/git/commits/' + sha)
-        tree = request('/git/trees/' + commit['tree']['sha'] + '?recursive=1')
-        assert not tree.get('truncated'), 'Incomplete tree: refuse uncertain deletion'
-        paths = {e['path']: e for e in tree['tree']}
-        synthetic = 'reference/current-tool/synthetic-manifest.json' in paths
-        populated = any(e['type'] == 'blob' and e['sha'] != EMPTY and
-                        (p.startswith('reference/current-tool/sample-data/') or
-                         p.startswith('reference/current-tool/reports/'))
-                        for p, e in paths.items())
-        cache[sha] = populated and not synthetic
-    return cache[sha]
+    commit = request('/git/commits/' + sha)
+    tree = request('/git/trees/' + commit['tree']['sha'] + '?recursive=1')
+    if tree.get('truncated'):
+        raise ValueError('Incomplete tree: inventory classification unavailable')
+    paths = {entry['path']: entry for entry in tree['tree']}
+    synthetic = 'reference/current-tool/synthetic-manifest.json' in paths
+    populated = any(entry['type'] == 'blob' and entry['sha'] != EMPTY and
+                    (path.startswith('reference/current-tool/sample-data/') or
+                     path.startswith('reference/current-tool/reports/'))
+                    for path, entry in paths.items())
+    return sha, populated and not synthetic
 
 
 def pages(path, key):
@@ -55,58 +53,35 @@ def pages(path, key):
         page += 1
 
 
-if __name__ == '__main__':
-    assert os.environ['GITHUB_REPOSITORY'] == REPO
-    # Stop superseded copies of this one-off maintenance job only.
-    own_run = int(os.environ['GITHUB_RUN_ID'])
-    older = request('/actions/workflows/reference-evidence-cleanup.yml/runs?per_page=100')['workflow_runs']
-    for run in older:
-        if run['id'] != own_run and run['status'] in ('in_progress', 'queued', 'pending'):
-            try:
-                request('/actions/runs/' + str(run['id']) + '/cancel', 'POST')
-            except urllib.error.HTTPError as error:
-                if error.code not in (409, 422):
-                    raise
-    # Gather before deleting so pagination cannot skip entries as the list shrinks.
-    artifacts = list(pages('/actions/artifacts', 'artifacts'))
-    candidates = [a for a in artifacts
-                  if not a['expired'] and a['created_at'] >= EARLIEST_UPLOAD
-                  and a['name'] != 'github-pages' and 'preview' not in a['name']]
+def main():
+    argparse.ArgumentParser(description=__doc__).parse_args()
+    if os.environ.get('GITHUB_REPOSITORY') != REPO:
+        raise ValueError('Inventory is restricted to the configured repository')
+    earliest = os.environ['REFERENCE_UPLOAD_NOT_BEFORE']
+    artifacts = [artifact for artifact in pages('/actions/artifacts', 'artifacts')
+                 if not artifact['expired'] and artifact['created_at'] >= earliest
+                 and artifact['name'] != 'github-pages' and 'preview' not in artifact['name']]
     runs = []
     for run in pages('/actions/runs', 'workflow_runs'):
-        if run['created_at'] < EARLIEST_UPLOAD:
+        if run['created_at'] < earliest:
             break
         if run['status'] == 'completed':
             runs.append(run)
-    heads = {a['workflow_run']['head_sha'] for a in candidates}
-    heads.update(r['head_sha'] for r in runs)
-    # Classifications are read-only and deduplicated before any deletion.
+    heads = {artifact['workflow_run']['head_sha'] for artifact in artifacts}
+    heads.update(run['head_sha'] for run in runs)
     with ThreadPoolExecutor(max_workers=8) as pool:
-        list(pool.map(original_sources, sorted(heads)))
-    retired_artifacts = [a for a in candidates if cache[a['workflow_run']['head_sha']]]
-    retired_runs = [r for r in runs if cache[r['head_sha']]]
-    print(json.dumps({'classified_heads': len(heads),
-                      'remaining_retired_artifacts': len(retired_artifacts),
-                      'retired_runs_to_clear': len(retired_runs)}), flush=True)
+        classified = dict(pool.map(original_sources, sorted(heads)))
+    print(json.dumps({
+        'read_only': True,
+        'classified_heads': len(heads),
+        'candidate_artifact_ids': sorted(artifact['id'] for artifact in artifacts
+                                         if classified[artifact['workflow_run']['head_sha']]),
+        'candidate_run_ids': sorted(run['id'] for run in runs if classified[run['head_sha']]),
+        'deleted_artifacts': 0,
+        'deleted_run_logs': 0,
+        'limitation': 'Metadata classification only; it does not establish data authenticity or authorise deletion.',
+    }), flush=True)
 
-    def delete_artifact(artifact):
-        request('/actions/artifacts/' + str(artifact['id']), 'DELETE')
-        return 1
 
-    def delete_logs(run):
-        try:
-            request('/actions/runs/' + str(run['id']) + '/logs', 'DELETE')
-        except urllib.error.HTTPError as error:
-            if error.code != 404:
-                raise
-            return 0
-        return 1
-
-    # Independent evidence objects; a small pool keeps request concurrency low.
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        deleted_artifacts = sum(pool.map(delete_artifact, retired_artifacts))
-        print(json.dumps({'retired_reference_artifacts_deleted': deleted_artifacts}), flush=True)
-        deleted_logs = sum(pool.map(delete_logs, retired_runs))
-    print(json.dumps({'retired_reference_artifacts_deleted': deleted_artifacts,
-                      'retired_reference_run_logs_deleted': deleted_logs,
-                      'current_deployment_and_static_site_artifacts_preserved': True}), flush=True)
+if __name__ == '__main__':
+    main()
