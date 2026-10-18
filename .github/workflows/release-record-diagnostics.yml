@@ -9,7 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ICM_BASE_URL: https://anzarsajid91.github.io/ICM_Graphing_Tool/
-      ICM_EVIDENCE_DIR: ${{ runner.temp }}/live-it-security
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -26,6 +25,8 @@ jobs:
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium
       - name: Capture production IT Security acceptance evidence
+        env:
+          ICM_EVIDENCE_DIR: ${{ runner.temp }}/live-it-security
         run: node web/tests/security-about-smoke.mjs
       - name: Retain public build metadata and synthetic screenshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
