@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ICM_BASE_URL: https://anzarsajid91.github.io/ICM_Graphing_Tool/
+      TARGET_SHA: 4bba015c7914b68f8cd6f3255cb7fb72322a4164
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
