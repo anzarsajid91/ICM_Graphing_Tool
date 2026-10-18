@@ -41,6 +41,17 @@ GitHub Actions is the required full-history environment for the version test and
 
 No production merge or deployment occurred. The latest correction's CI outcomes must be inspected before treating these fixes as verified.
 
+## Owner release evidence correction — 2026-10-18
+
+PR #94 candidate `034637b` completed all fourteen mandatory contexts. Subsequent
+source review identified HB-15: the production helper accepted redacted bypass
+evidence as an empty list. The new omitted-field rejection test failed against
+that code. The correction adds a mandatory authenticated owner release record;
+all 48 governance negative cases and visible/redacted/multiple-ruleset positive
+cases pass locally. This changes the candidate, so the old candidate's successful
+CI cannot establish acceptance of the new revision. Fresh CI and real main-build
+owner-record validation remain required. No administrator secret is introduced.
+
 ## Release interruption and evidence retention — 2026-10-18
 
 PR #81 final head `363677f` passed all fourteen required contexts and merged at
