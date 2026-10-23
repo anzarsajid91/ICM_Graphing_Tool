@@ -18,7 +18,8 @@ unchanged. No engineering inputs enter this CI-only helper. Missing resources,
 certificate errors, redirects outside the application root, manifest differences
 and content hash differences still fail. Exhausted transient failures still fail.
 No status gate, required check, dependency, browser source, runtime calculation,
-claim, source approval or branch protection is changed.
+claim wording, source approval or branch protection is changed. The reviewed
+builder evidence digest changes as described below.
 
 The workflow retains build and integrity stdout/stderr with pipefail enabled.
 This makes failures before browser startup available in the evidence artifact.
@@ -35,10 +36,21 @@ the bounded workbench Python ranges must not be widened solely to clear the queu
 
 ## Validation
 
-Local privacy/security unittest suite: 27 passed, including new transient recovery,
+Local privacy/security unittest suite: 28 passed, including new transient recovery,
 bounded exhaustion, permanent HTTP failure, timeout and certificate/redirect cases.
 Existing live-integrity tests retain tampered asset and missing resource rejection.
 All JavaScript *-unit.mjs suites passed. Source confidentiality, claim evidence,
 Pages build and npm audit passed (zero reported npm vulnerabilities).
 Full Python and GitHub CI results are recorded in the PR after execution.
 No independent human review or production deployment is claimed by this note.
+
+## Additional packaging correction
+
+A local rebuild after tests included two host-generated bridge .pyc files absent
+from the live manifest. The browser source copy now excludes __pycache__ and
+*.pyc at every depth, as the Python package copy already did. A synthetic staging
+test checks generated files/test runners are excluded while source, runtime and
+.nojekyll remain. The build-script evidence digest in claims.json was updated
+only after reviewing this diff: SC-02 fixed same-origin resource delivery remains
+true; this change removes non-runtime host outputs and adds no network operation.
+The final repair includes this reviewed evidence-digest change.
