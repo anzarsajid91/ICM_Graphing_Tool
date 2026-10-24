@@ -87,8 +87,9 @@ jobs:
         env:
           GITHUB_SHA: ${{ env.TARGET_SHA }}
         run: |
-          python3 scripts/build_pages.py
-          python3 scripts/verify_live_integrity.py _site "$SITE_URL" "$TARGET_SHA"
+          set -o pipefail
+          python3 scripts/build_pages.py 2>&1 | tee /tmp/icm-live-build.log
+          python3 scripts/verify_live_integrity.py _site "$SITE_URL" "$TARGET_SHA" 2>&1 | tee /tmp/icm-live-integrity.log
 
       - name: Install Chromium acceptance runner
         run: |
@@ -122,6 +123,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
           path: |
+            /tmp/icm-live-build.log
+            /tmp/icm-live-integrity.log
             /tmp/icm-live-pages.log
             /tmp/icm-live-detriment.log
             /tmp/icm-live-detriment-reference.log

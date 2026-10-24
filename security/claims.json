@@ -118,7 +118,7 @@
     "web/assets/analysis-worker.js": "adb36e7e3384a0dd171b11964fe4502851c479c777f3c7c5f8dc6a553111a2eb",
     "web/assets/fastpath-worker.js": "3ceb0560eca8035a05c1d45c5687bd094740e13e3d3a3a96cc550c1cbbe516ef",
     "SECURITY.md": "480b6a91a72ec28bb80f0a92d05e77d24d01e7fdf370f1270c41cc30a4f1bcdb",
-    "scripts/build_pages.py": "254c2cc2874779f1bee268c77d5759eb40e4112607513d12593bd30babab247a",
+    "scripts/build_pages.py": "55510acbb8f43e422015db019565f478743ad45fbf4156dfc69f69ca08d010d4",
     "web/vendor/manifest.json": "bb70a1f4497a0f6307f836828522015ebb60293e91df66ac3778f986f2d96b82",
     "web/assets/runtime.release.js": "aff98f2965b1898a27105e49e5c5524b8b4bc2da07aacb3c85ad981f5d3d3cfb",
     "web/assets/network-schematic.js": "9a9e8c44c63b0c5331fe28b305240357b3a772da55a62abe09bf5d78a9a6a4df",

@@ -7,10 +7,37 @@ import concurrent.futures
 import hashlib
 import json
 import sys
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
 from release_integrity import verify as verify_artifact, served_entries
+
+
+def download_resource(url, base):
+    """Retry transient HTTP failures/timeouts; never retry integrity errors."""
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response:
+                if not response.url.startswith(base):
+                    raise ValueError('Artifact redirect left the application root')
+                return response.read()
+        except urllib.error.HTTPError as error:
+            if error.code not in (429, 500, 502, 503, 504) or attempt == 3:
+                raise
+            error.close()
+            reason = f'HTTP {error.code}'
+        except (TimeoutError, urllib.error.URLError) as error:
+            if isinstance(error, urllib.error.URLError) and not isinstance(error.reason, TimeoutError):
+                raise
+            if attempt == 3:
+                raise
+            reason = 'timeout'
+        delay = 2 ** attempt
+        print(f'Fixed-resource {reason}; retry {attempt + 1}/3 in {delay}s: {url}',
+              file=sys.stderr, flush=True)
+        time.sleep(delay)
 
 
 def verify(site, base, commit):
@@ -23,10 +50,7 @@ def verify(site, base, commit):
     def download(relative):
         if relative.startswith('/') or any(x in relative for x in ('..', ':', '?', '#', '%', '\\')):
             raise ValueError('Unsafe fixed artifact path')
-        with urllib.request.urlopen(base+relative+'?v='+commit, timeout=60) as response:
-            if not response.url.startswith(base):
-                raise ValueError('Artifact redirect left the application root')
-            return response.read()
+        return download_resource(base+relative+'?v='+commit, base)
     actual = json.loads(download('release-integrity.json'))
     if actual != expected:
         raise ValueError('Live manifest differs from the rebuilt reviewed revision')
