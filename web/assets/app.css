@@ -41,6 +41,14 @@ h1,h2,h3,h4,h5,h6,strong,b{font-weight:600}th{font-weight:500}body{font-weight:4
 .table-wrap[tabindex="0"]:focus-visible{outline:3px solid var(--hb-focus);outline-offset:1px}
 
 /* First-view introduction in the existing Data / time series workspace. */
+.hb-welcome {
+  margin-bottom: 14px;
+  padding: 16px;
+  border: 1px solid var(--hb-border);
+  border-radius: var(--hb-radius-card);
+  background: var(--hb-surface);
+  box-shadow: var(--hb-shadow);
+}
 .hb-welcome > summary {
   cursor: pointer;
   width: fit-content;
