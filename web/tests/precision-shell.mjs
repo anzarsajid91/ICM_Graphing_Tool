@@ -16,13 +16,31 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
   console.log('SHELL STEP navigation shell');
   const labels=(await page.locator('.pw-primary-nav button').allTextContents()).map(x=>x.replace(/^[^A-Za-z]+/,'').trim());
-  if(labels.join('|')!=='Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
+  if(labels.join('|')!=='Home|Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
   const navigationOwnership=await page.evaluate(()=>({
     legacyDisplay:getComputedStyle(document.querySelector('nav.tabs')).display,
     precisionVisible:[...document.querySelectorAll('.pw-primary-nav button')].filter(x=>x.getClientRects().length>0).length,
     legacyLabels:[...document.querySelectorAll('nav.tabs .tab')].map(x=>x.textContent.trim()),
   }));
-  if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==6)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
+  if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==7)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
+  await page.locator('.pw-primary-nav [data-workspace="home"]').click();
+  if(!await page.locator('#tab-home .hb-welcome-network').isVisible()||
+     await page.locator('#dropzone').isVisible()||
+     await page.locator('#timeChart').isVisible())throw new Error('Home must contain the schematic and keep Data controls on their own route.');
+  await page.emulateMedia({reducedMotion:'reduce'});
+  const animation=await page.locator('.hb-welcome-flow').first().evaluate(el=>getComputedStyle(el).animationName);
+  if(animation!=='none')throw new Error('Home schematic must respect reduced motion.');
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  const homeLink=page.locator('#welcomeAddSources');
+  await homeLink.focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='data');
+  if(await page.locator('#tab-home').isVisible()||
+     ((await page.locator('#dropzone').boundingBox())?.height??0)<102)throw new Error('Data must show the enlarged drop area with Home hidden.');
+  await page.goBack({waitUntil:'commit'});
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='home');
+  await page.goBack({waitUntil:'commit'});
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='data');
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const surveyTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
   if(surveyTabs.join('|')!=='FDV check|Rainfall check|Volume balance|Monthly review')throw new Error('Flow survey subtab order mismatch: '+JSON.stringify(surveyTabs));

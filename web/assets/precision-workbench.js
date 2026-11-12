@@ -3,6 +3,11 @@ const $=id=>document.getElementById(id);
 const qs=(sel,root=document)=>root.querySelector(sel);
 const qsa=(sel,root=document)=>[...root.querySelectorAll(sel)];
 const ROUTES={
+  home:{
+    label:'Home',
+    icon:'home',
+    pages:{overview:{label:'Overview',title:'Hydra Bench',description:'Wastewater network evidence, model verification and scenario assessment.',root:()=>$('tab-home')}}
+  },
   data:{
     label:'Data / time series',
     icon:'data',
@@ -75,7 +80,8 @@ function canonicalRoute(workspace,page){
   const alias=ROUTE_ALIASES[workspace+'/'+page];
   return alias?{workspace:alias[0],page:alias[1]}:null;
 }
-let current={workspace:'data',page:'time-series'};
+const DEFAULT_ROUTE={workspace:'data',page:'time-series'};
+let current=DEFAULT_ROUTE;
 let docked=[];
 let syncingLegacy=false;
 let focusPreference=false;
@@ -134,6 +140,7 @@ function wireScrollMemory(){
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function navIcon(name){
   const paths={
+    home:'<path d="m3 10 9-7 9 7M5 9v11h14V9M10 20v-6h4v6"/>',
     data:'<ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/>',
     survey:'<path d="M3 6c2.3 0 2.3-2 4.5-2S9.8 6 12 6s2.3-2 4.5-2S18.8 6 21 6M3 12c2.3 0 2.3-2 4.5-2s2.3 2 4.5 2 2.3-2 4.5-2 2.3 2 4.5 2M3 18c2.3 0 2.3-2 4.5-2s2.3 2 4.5 2 2.3-2 4.5-2 2.3 2 4.5 2"/>',
     rainfall:'<path d="M7 15a4 4 0 0 1 .6-8 5.5 5.5 0 0 1 10.5 1.5A3.5 3.5 0 0 1 18 15"/><path d="M8 18l-1 2M12 18l-1 2M16 18l-1 2"/>',
@@ -707,7 +714,7 @@ function wireContextUpdates(){
   ['observedSelect','rainSelect','analysisStart','analysisEnd','workspaceName'].forEach(id=>$(id)?.addEventListener('change',refreshScope));
   $('modelSelect')?.addEventListener('change',()=>{refreshReportScenarioOptions();refreshScope();});
   window.addEventListener('icm:source-pool-changed',()=>{renderAssets();setTimeout(()=>{createScenarioChecklist();refreshReportScenarioOptions();refreshScope();},0);});
-  const syncLocationRoute=()=>{const r=parseHash();if(r&&(r.workspace!==current.workspace||r.page!==current.page))navigate(r.workspace,r.page,false);};
+  const syncLocationRoute=()=>{const r=parseHash()||(!location.hash?DEFAULT_ROUTE:null);if(r&&(r.workspace!==current.workspace||r.page!==current.page))navigate(r.workspace,r.page,false);};
   window.addEventListener('hashchange',syncLocationRoute);
   // pushState-backed route changes are restored by browser Back/Forward through
   // popstate. Keep this explicit instead of relying on browser-specific fragment
@@ -777,7 +784,7 @@ function buildSecurityPage(){
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
   buildAboutPage();buildSecurityPage();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
-  const initial=parseHash()||{workspace:'data',page:'time-series'};navigate(initial.workspace,initial.page,false);
+  const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
