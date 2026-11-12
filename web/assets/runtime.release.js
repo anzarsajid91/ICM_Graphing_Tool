@@ -942,6 +942,8 @@ async function handoffFastPath(item){
     $('observedSelect').value=preferred.key;
   }
   [...$('modelSelect').options].forEach(o=>o.selected=false);
+  // Programmatic selection does not fire the controls' change listeners.
+  renderSeriesSemanticsOverrides();
   if(window.ICMGraph&&window.ICMGraph.setChannel)window.ICMGraph.setChannel(active.mode,false);
   if(window.ICMGraph&&window.ICMGraph.applyMapping)await window.ICMGraph.applyMapping();
   if(window.ICMFastPath&&window.ICMFastPath.clear)window.ICMFastPath.clear();
@@ -2113,6 +2115,7 @@ async function applyWorkspace(w){
   $('observedSelect').value=state.mapping.observed;
   [...$('modelSelect').options].forEach(o=>o.selected=state.mapping.models.includes(o.value));
   $('rainSelect').value=state.mapping.rain;
+  renderSeriesSemanticsOverrides();
   const a=w.analysis||{};
   if($('timeBasisConfirmed'))$('timeBasisConfirmed').checked=Boolean(w.time_basis_confirmed);
   if($('levelDatumConfirmed'))$('levelDatumConfirmed').checked=Boolean(w.level_datum_confirmed);

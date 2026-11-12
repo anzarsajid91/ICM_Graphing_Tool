@@ -54,15 +54,14 @@
       <button class="tab" data-tab="workspace">Workspace &amp; report</button>
     </nav>
 
-    <section class="tab-panel active" id="tab-graph">
-      <details class="hb-welcome" open>
-        <summary>Hydra Bench overview</summary>
+    <section class="tab-panel" id="tab-home" hidden>
+      <article class="hb-welcome" aria-labelledby="hbWelcomeHeading">
         <div class="hb-welcome-layout">
           <div class="hb-welcome-copy">
             <p class="hb-welcome-kicker">Wastewater network modelling</p>
-            <h3>Verify model response.<br />Assess network performance.</h3>
+            <h2 id="hbWelcomeHeading">Verify model response.<br />Assess network performance.</h2>
             <p>Review flow surveys, compare observed and modelled data, and assess spills and detriment.</p>
-            <button class="btn primary" type="button" id="welcomeAddSources">Add local sources</button>
+            <a class="btn primary" id="welcomeAddSources" href="#/data/time-series">Open Data / time series</a>
           </div>
           <figure class="hb-welcome-network">
             <svg viewBox="0 0 540 170" role="img" aria-labelledby="hbWelcomeNetworkTitle hbWelcomeNetworkDesc">
@@ -98,7 +97,15 @@
           <a href="#/detriment/flooding">Detriment assessment</a>
           <a href="#/graphs/comparison">Plots</a>
         </nav>
-      </details>
+      </article>
+      <div class="hb-home-workflows">
+        <article><h3>Check survey evidence</h3><p>Review flow, depth and velocity alongside rainfall and monitor quality.</p></article>
+        <article><h3>Compare network response</h3><p>Check observed and modelled traces, spill counts and scenario detriment.</p></article>
+        <article><h3>Report findings</h3><p>Check which assessments are ready and export your results.</p><a href="#/reports/report-generation">Open reports</a></article>
+      </div>
+    </section>
+
+    <section class="tab-panel active" id="tab-graph">
       <div class="panel">
         <div class="panel-head"><div><h2>Time-series review</h2><p>Observed, multiple model/comparison and rainfall traces with shared zoom.</p></div><button class="btn" id="refreshGraphBtn">Refresh graph</button></div>
         <details class="subpanel appearance-panel"><summary><strong>Appearance &amp; overlays</strong></summary>
@@ -277,17 +284,5 @@
        It still executes before every graph/workbench script in the release build. -->
   <script src="vendor/plotly-3.1.0/plotly.min.js" charset="utf-8"></script>
   <script type="module" src="assets/runtime.js"></script>
-  <script>
-    document.getElementById('welcomeAddSources').addEventListener('click', () => {
-      document.getElementById('addFilesBtn').click();
-    });
-    document.querySelector('.hb-welcome-links').addEventListener('click', event => {
-      const link = event.target.closest('a');
-      if (link && !location.hash && !event.defaultPrevented && event.button === 0 &&
-          !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
-        history.replaceState(history.state, '', '#/data/time-series');
-      }
-    });
-  </script>
 </body>
 </html>

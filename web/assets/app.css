@@ -40,7 +40,7 @@ h1,h2,h3,h4,h5,h6,strong,b{font-weight:600}th{font-weight:500}body{font-weight:4
 
 .table-wrap[tabindex="0"]:focus-visible{outline:3px solid var(--hb-focus);outline-offset:1px}
 
-/* First-view introduction in the existing Data / time series workspace. */
+/* Home workspace */
 .hb-welcome {
   margin-bottom: 14px;
   padding: 16px;
@@ -48,12 +48,6 @@ h1,h2,h3,h4,h5,h6,strong,b{font-weight:600}th{font-weight:500}body{font-weight:4
   border-radius: var(--hb-radius-card);
   background: var(--hb-surface);
   box-shadow: var(--hb-shadow);
-}
-.hb-welcome > summary {
-  cursor: pointer;
-  width: fit-content;
-  font-weight: 600;
-  color: var(--hb-muted);
 }
 .hb-welcome-layout {
   display: grid;
@@ -67,7 +61,7 @@ h1,h2,h3,h4,h5,h6,strong,b{font-weight:600}th{font-weight:500}body{font-weight:4
   font-size: 12px;
   font-weight: 600;
 }
-.hb-welcome .hb-welcome-copy h3 {
+.hb-welcome .hb-welcome-copy h2 {
   margin: 6px 0 8px;
   font-size: clamp(21px, 2.4vw, 34px);
   line-height: 1.13;
@@ -96,15 +90,21 @@ h1,h2,h3,h4,h5,h6,strong,b{font-weight:600}th{font-weight:500}body{font-weight:4
 .hb-welcome-flow-spill { stroke: #8bbbd1; stroke-dasharray: 3 20; }
 .hb-welcome-links { display: flex; flex-wrap: wrap; gap: 6px 20px; border-top: 1px solid var(--hb-border); padding-top: 9px; }
 .hb-welcome-links a { color: var(--hb-accent-hover); font-weight: 500; padding-block: 3px; text-underline-offset: 3px; }
-.hb-welcome :is(a, summary):focus-visible { outline: 2px solid var(--hb-focus); outline-offset: 3px; }
+#tab-home a:focus-visible { outline: 2px solid var(--hb-focus); outline-offset: 3px; }
 @media (prefers-reduced-motion: no-preference) {
-  .hb-welcome-flow { animation: hb-welcome-flow 4s linear; }
+  .pw-route-home-overview .hb-welcome-flow { animation: hb-welcome-flow 4s linear; }
 }
 @keyframes hb-welcome-flow {
   from { stroke-dashoffset: 23; opacity: 0; }
   15%, 82% { opacity: 1; }
   to { stroke-dashoffset: -23; opacity: 0; }
 }
+.hb-welcome-copy .btn { display: inline-block; text-decoration: none; }
+.hb-home-workflows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 12px; }
+.hb-home-workflows article { padding: 14px 16px; border: 1px solid var(--hb-border); border-radius: var(--hb-radius-card); background: var(--hb-surface); }
+.hb-home-workflows h3 { margin: 0 0 5px; font-size: 14px; }
+.hb-home-workflows p { margin: 0; color: var(--hb-muted); }
+.hb-home-workflows a { display: inline-block; margin-top: 7px; color: var(--hb-accent-hover); }
 @media (max-width: 800px) {
   .hb-welcome-layout { grid-template-columns: minmax(0, 1fr); }
   .hb-welcome-network { max-width: 520px; }

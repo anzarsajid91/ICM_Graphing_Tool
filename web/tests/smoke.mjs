@@ -1352,7 +1352,7 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
   const primaryLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(primaryLabels.map(x=>x.trim()).join('|')!=='Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
+  if(primaryLabels.map(x=>x.trim()).join('|')!=='Home|Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
   for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080}]){
     await page.setViewportSize(size);
     await precisionRoute('data','sources');
@@ -2467,7 +2467,7 @@ try{
   stage='association workbook and canonical survey navigation';
   await precisionRoute('survey','fdv-check');
   const navLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(navLabels.map(x=>x.trim()).join('|')!=='Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Unexpected Precision navigation: '+JSON.stringify(navLabels));
+  if(navLabels.map(x=>x.trim()).join('|')!=='Home|Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Unexpected Precision navigation: '+JSON.stringify(navLabels));
   if(navLabels.some(x=>/storage/i.test(x)))throw new Error('Storage must remain a Spills subtab, not a primary workspace: '+JSON.stringify(navLabels));
   const flowSurveySubtabs=await page.locator('.pw-secondary-nav button').allTextContents();
   if(flowSurveySubtabs.map(x=>x.trim()).join('|')!=='FDV check|Rainfall check|Volume balance|Monthly review')throw new Error('Unexpected Flow survey subtab sequence: '+JSON.stringify(flowSurveySubtabs));

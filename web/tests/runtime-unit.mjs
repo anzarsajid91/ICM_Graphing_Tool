@@ -139,3 +139,39 @@ assert.equal(sandbox.window.migratedWorkspace.navigation.page,'storage');
 assert.deepEqual(Object.keys(sandbox.window.recoveredNamedStore),[]);
 assert.equal(sandbox.window.quarantinedKeys.length,1);
 console.log('Runtime regressions passed: worker RPC isolation/recovery, bounded FastPath failure fallback, scoped masks, workspace migration and corrupt local-state recovery.');
+
+// FastPath can select a Flow column that the initial Observed suggestions
+// skipped. Its interpretation controls must use the final key immediately.
+await vm.runInContext(`(async()=>{
+  const selectors={
+    observedSelect:{value:''},
+    modelSelect:{options:[],selectedOptions:[]},
+    rainSelect:{value:''},
+    seriesSemanticsPanel:{hidden:true},
+    seriesSemanticsRows:{innerHTML:'',querySelectorAll:()=>[]}
+  };
+  document.getElementById=id=>selectors[id]||null;
+  const item={id:'synthetic-source',status:'ready',displayName:'synthetic.csv',parsed:{
+    columns:['Flow (L/s)'],
+    metadata:{}
+  }};
+  state.files.set(item.id,item);
+  const key=sourceKey(item.id,'Flow (L/s)');
+  allSeries=()=>[{item,col:'Flow (L/s)',key,quantity:'flow'}];
+  window.ICMFastPath={active:()=>({sourceId:item.id,mode:'flow'}),clear:()=>{}};
+  window.ICMGraph={applyMapping:()=>{
+    window.handoffControls={
+      selected:selectors.observedSelect.value,
+      key,
+      hidden:selectors.seriesSemanticsPanel.hidden,
+      markup:selectors.seriesSemanticsRows.innerHTML
+    };
+  }};
+  await handoffFastPath(item);
+})()`,sandbox);
+const handoff=sandbox.window.handoffControls;
+assert.equal(handoff.selected,handoff.key);
+assert.equal(handoff.hidden,false);
+assert.match(handoff.markup,/data-series-quantity-key/);
+assert.match(handoff.markup,/data-series-unit-key/);
+console.log('FastPath renders interpretation controls for the automatically selected Observed series.');

@@ -161,7 +161,7 @@ body.precision-workbench{
 .precision-workbench .mapping-panel>.mapping-grid{grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr))}
 .precision-workbench .two-col{min-width:0;max-width:100%}
 .precision-workbench .two-col>*{min-width:0;max-width:100%}
-.precision-workbench .dropzone{border:1px dashed var(--pw-border-strong);background:var(--hb-soft);border-radius:var(--hb-radius-control)}
+.precision-workbench .dropzone{min-height:102px;padding:12px;text-align:center;border:1px dashed var(--pw-teal);background:var(--hb-selection);border-radius:var(--hb-radius-control)}
 .precision-workbench .dropzone.drag{border-color:var(--pw-teal);background:#edf9f9}
 .precision-workbench .table-wrap{max-width:100%;overflow:auto;border:1px solid var(--pw-border);border-radius:var(--hb-radius-control)}
 .precision-workbench .table-wrap table{margin:0;min-width:720px}
@@ -278,6 +278,7 @@ body.precision-workbench{
 .precision-workbench .ex-row label:nth-of-type(1){grid-area:enabled}.precision-workbench .ex-row label:nth-of-type(2){grid-area:start}.precision-workbench .ex-row label:nth-of-type(3){grid-area:end}.precision-workbench .ex-row label:nth-of-type(4){grid-area:scope}.precision-workbench .ex-row label:nth-of-type(5){grid-area:reason}.precision-workbench .ex-row .remove-ex{grid-area:remove;align-self:end}
 .precision-workbench .ex-row label:nth-of-type(5) input{width:100%}
 .pw-review-notes{margin:0 var(--pw-gap) 20px}
+.pw-route-home-overview .pw-review-notes{display:none}
 .precision-workbench footer{margin:0 var(--pw-gap) 20px;color:var(--pw-muted);border-top:1px solid var(--pw-border);padding-top:12px;font-size:12px;line-height:18px}
 .pw-shell-note{font-size:12px;color:var(--pw-muted);line-height:18px}
 
