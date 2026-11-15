@@ -11,7 +11,7 @@ concurrency:
 jobs:
   preview:
     if: github.ref == 'refs/heads/test/network-annual-review'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pages: write

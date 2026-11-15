@@ -80,7 +80,7 @@ function canonicalRoute(workspace,page){
   const alias=ROUTE_ALIASES[workspace+'/'+page];
   return alias?{workspace:alias[0],page:alias[1]}:null;
 }
-const DEFAULT_ROUTE={workspace:'data',page:'time-series'};
+const DEFAULT_ROUTE={workspace:'home',page:'overview'};
 let current=DEFAULT_ROUTE;
 let docked=[];
 let syncingLegacy=false;

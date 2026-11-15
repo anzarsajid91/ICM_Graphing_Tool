@@ -23,7 +23,8 @@ try{
     legacyLabels:[...document.querySelectorAll('nav.tabs .tab')].map(x=>x.textContent.trim()),
   }));
   if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==7)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
-  await page.locator('.pw-primary-nav [data-workspace="home"]').click();
+  const landingRoute=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
+  if(landingRoute.workspace!=='home'||landingRoute.page!=='overview')throw new Error('A shared base URL must open on Home: '+JSON.stringify(landingRoute));
   if(!await page.locator('#tab-home .hb-welcome-network').isVisible()||
      await page.locator('#dropzone').isVisible()||
      await page.locator('#timeChart').isVisible())throw new Error('Home must contain the schematic and keep Data controls on their own route.');
@@ -39,8 +40,10 @@ try{
      ((await page.locator('#dropzone').boundingBox())?.height??0)<102)throw new Error('Data must show the enlarged drop area with Home hidden.');
   await page.goBack({waitUntil:'commit'});
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='home');
-  await page.goBack({waitUntil:'commit'});
+  await page.goto(new URL('#/data/time-series',baseUrl).href);
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='data');
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route().page==='time-series');
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const surveyTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
   if(surveyTabs.join('|')!=='FDV check|Rainfall check|Volume balance|Monthly review')throw new Error('Flow survey subtab order mismatch: '+JSON.stringify(surveyTabs));

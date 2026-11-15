@@ -155,7 +155,7 @@ jobs:
           PY
 
   browser-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: verify
     timeout-minutes: 45
     env:
@@ -279,7 +279,7 @@ jobs:
           retention-days: 30
 
   baseline-performance:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: verify
     timeout-minutes: 30
     steps:
@@ -350,7 +350,7 @@ jobs:
             /tmp/icm-baseline-http.log
 
   browser-firefox-shell:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: verify
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -385,7 +385,7 @@ jobs:
 
 
   browser-interactions:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:

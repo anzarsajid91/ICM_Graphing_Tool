@@ -100,7 +100,7 @@ async function measureColdReferenceImport(){
   const buffer=await fs.readFile(sourcePath);
   const navigationStart=Date.now();
   try{
-    await privacy.navigate(probe,baseUrl+'?cold_import='+Date.now(),{waitUntil:'domcontentloaded'});
+    await privacy.navigate(probe,baseUrl+'#/data/time-series',{waitUntil:'domcontentloaded'});
     const domReadyMs=Date.now()-navigationStart;
     const selectedAt=Date.now();
     await probe.setInputFiles('#fileInput',{name:'Cold-FM7413.fdv',mimeType:'text/plain',buffer});
@@ -149,7 +149,7 @@ async function measureFreshFastPathImport({dataset,relativePath,sourcePath,input
   const usePathUpload=sourceStat.size>50*1024*1024;
   const navigationStart=Date.now();
   try{
-    await privacy.navigate(probe,baseUrl+'?fresh_fastpath='+encodeURIComponent(dataset)+'&t='+Date.now(),{waitUntil:'domcontentloaded'});
+    await privacy.navigate(probe,baseUrl+'#/data/time-series',{waitUntil:'domcontentloaded'});
     const domReadyMs=Date.now()-navigationStart;
     const selectedAt=Date.now();
     await probe.setInputFiles('#fileInput',usePathUpload?resolvedPath:{name:inputName,mimeType,buffer});
@@ -210,7 +210,7 @@ async function verifyClearDuringPendingImport(){
   probe.on('pageerror',error=>probeErrors.push('pageerror: '+String(error)));
   probe.on('console',message=>{if(message.type()==='error')probeErrors.push('console: '+message.text());});
   try{
-    await privacy.navigate(probe,baseUrl+'?pending_clear='+Date.now(),{waitUntil:'domcontentloaded'});
+    await privacy.navigate(probe,baseUrl+'#/data/time-series',{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     const payload=Buffer.from([
       'timestamp,Depth (m)',
@@ -250,7 +250,7 @@ async function verifyRestartDuringPendingImport(){
   probe.on('pageerror',error=>probeErrors.push('pageerror: '+String(error)));
   probe.on('console',message=>{if(message.type()==='error')probeErrors.push('console: '+message.text());});
   try{
-    await privacy.navigate(probe,baseUrl+'?pending_restart='+Date.now(),{waitUntil:'domcontentloaded'});
+    await privacy.navigate(probe,baseUrl+'#/data/time-series',{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>/ready/i.test(document.querySelector('#engineStatus')?.textContent||''),null,{timeout:30000});
     const basePayload=Buffer.from([
       'timestamp,Depth (m)',
@@ -298,7 +298,7 @@ async function verifyFastPathFailureFallsBack(){
       contentType:'text/javascript',
       body:'throw new Error("forced FastPath worker failure");'
     }));
-    await privacy.navigate(probe,baseUrl+'?fastpath_failure_fallback='+Date.now(),{waitUntil:'domcontentloaded'});
+    await privacy.navigate(probe,baseUrl+'#/data/time-series',{waitUntil:'domcontentloaded'});
     // "No files loaded." exists in static HTML, so it cannot prove runtime.start()
     // has executed. The idle diagnostic and navigation API appear after the
     // import handlers are attached, making this a deterministic readiness boundary.
@@ -335,11 +335,25 @@ async function verifyFastPathFailureFallsBack(){
   }finally{await probe.close();}
 }
 
-async function verifyMixedSiblingImport(){
-  const probe=await context.newPage(),probeErrors=[];
+async function verifyMixedSiblingImport(workerDelayMs=0){
+  const isolated=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000},serviceWorkers:'block'});
+  privacy.attach(isolated);
+  const probe=await isolated.newPage();
+  const probeErrors=[],probeConsole=[],failedRequests=[],failedResponses=[];
+  let delayedWorkerRequests=0;
   probe.on('pageerror',error=>probeErrors.push(String(error)));
+  probe.on('console',message=>{if(message.type()==='error')probeConsole.push(message.text());});
+  isolated.on('requestfailed',request=>failedRequests.push({url:request.url(),error:request.failure()?.errorText}));
+  isolated.on('response',response=>{if(response.status()>=400)failedResponses.push({url:response.url(),status:response.status()});});
   try{
-    await privacy.navigate(probe,baseUrl+'?mixed_import='+Date.now(),{waitUntil:'domcontentloaded'});
+    if(workerDelayMs){
+      await isolated.route('**/assets/analysis-worker.js*',async route=>{
+        delayedWorkerRequests++;
+        await new Promise(resolve=>setTimeout(resolve,workerDelayMs));
+        await route.continue();
+      });
+    }
+    await privacy.navigate(probe,baseUrl+'#/data/time-series',{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     const valid={name:'sibling-valid.csv',mimeType:'text/csv',buffer:Buffer.from('timestamp,Depth (m)\n2026-02-01T00:00:00,0.2\n2026-02-01T00:01:00,0.3\n')};
     const invalid={name:'sibling-invalid.fdv',mimeType:'text/plain',buffer:Buffer.from('this is not a valid FDV file\n')};
@@ -352,8 +366,29 @@ async function verifyMixedSiblingImport(){
     }));
     if(!result.validMapped||!result.summary.includes('1 parsed successfully'))throw new Error('Valid sibling did not remain usable after another file failed: '+JSON.stringify(result));
     if(probeErrors.length)throw new Error('Mixed sibling import produced browser errors: '+probeErrors.join(' | '));
-    return result;
-  }finally{await probe.close();}
+    if(workerDelayMs&&!delayedWorkerRequests)throw new Error('The delayed analysis worker request was not exercised.');
+    return {...result,workerDelayMs,delayedWorkerRequests};
+  }catch(error){
+    const state=await probe.evaluate(()=>({
+      route:window.__ICM_PRECISION_WORKBENCH__?.route(),
+      engineStatus:document.querySelector('#engineStatus')?.textContent,
+      rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+      summary:document.querySelector('#poolSummary')?.textContent,
+      workbenchStatus:window.__ICM_WORKBENCH__?.status,
+      worker:window.__ICM_WORKBENCH__?.worker,
+      errors:window.__ICM_WORKBENCH__?.errors,
+    })).catch(()=>({unavailable:true}));
+    const evidence={state,probeErrors,probeConsole,failedRequests,failedResponses,workerDelayMs,delayedWorkerRequests};
+    console.error('MIXED_IMPORT_PROBE_FAILURE '+JSON.stringify(evidence));
+    if(process.env.ICM_EVIDENCE_DIR){
+      const dir=process.env.ICM_EVIDENCE_DIR;
+      const stem=workerDelayMs?'mixed-import-delayed-failure':'mixed-import-cold-failure';
+      await fs.mkdir(dir,{recursive:true});
+      await fs.writeFile(path.join(dir,stem+'.json'),JSON.stringify(evidence,null,2)+'\n');
+      await probe.screenshot({path:path.join(dir,stem+'.png'),fullPage:true,timeout:5000}).catch(()=>{});
+    }
+    throw error;
+  }finally{await isolated.close();}
 }
 
 async function inspectReportHtml(html,minFigures=1){
@@ -433,7 +468,7 @@ async function verifyCS2666ThresholdChain(){
     await probe.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},expected);
   };
   try{
-    await privacy.navigate(probe,baseUrl+'?synthetic_cso_threshold='+Date.now(),{waitUntil:'domcontentloaded'});
+    await privacy.navigate(probe,baseUrl+'#/data/time-series',{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     await probe.setInputFiles('#fileInput',[
       path.join(root,'reference/current-tool/sample-data/other/CS2666_EDM.csv'),
@@ -683,7 +718,7 @@ async function verifyIndividualSourceRemoval(){
   probe.on('pageerror',error=>probeErrors.push('pageerror: '+String(error)));
   probe.on('console',message=>{if(message.type()==='error'&&!message.text().includes('favicon.ico'))probeErrors.push('console: '+message.text());});
   try{
-    await privacy.navigate(probe,baseUrl+'?individual_source_remove='+Date.now(),{waitUntil:'domcontentloaded'});
+    await privacy.navigate(probe,baseUrl+'#/data/time-series',{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     const fdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM7413.fdv'));
     const rain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG5097.R'));
@@ -805,7 +840,7 @@ async function verifyPlotlyEngineeringEnhancements(){
   probe.on('console',message=>{if(message.type()==='error'&&!message.text().includes('favicon.ico'))probeErrors.push('console: '+message.text());});
   try{
     await probe.setViewportSize({width:1366,height:760});
-    await privacy.navigate(probe,baseUrl+'?plotly_engineering='+Date.now(),{waitUntil:'domcontentloaded'});
+    await privacy.navigate(probe,baseUrl+'#/data/time-series',{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     await probe.evaluate(()=>{
       const confirm=()=>{for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
@@ -1078,7 +1113,7 @@ async function verifyRealFlowSurveyReference(){
     await probe.waitForFunction(([w,p])=>{const r=window.__ICM_PRECISION_WORKBENCH__?.route?.();return r?.workspace===w&&r?.page===p;},expected);
   };
   try{
-    await privacy.navigate(probe,baseUrl+'?real_flow_survey='+Date.now(),{waitUntil:'domcontentloaded'});
+    await privacy.navigate(probe,baseUrl+'#/data/time-series',{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     await nav('survey','fdv-check');
 
@@ -1194,7 +1229,7 @@ async function verifySpillCalendarAllocation(){
   probe.on('pageerror',error=>errors.push('pageerror: '+String(error)));
   probe.on('console',message=>{if(message.type()==='error'&&!message.text().includes('favicon.ico'))errors.push('console: '+message.text());});
   try{
-    await privacy.navigate(probe,baseUrl+'?spill_calendar='+Date.now(),{waitUntil:'domcontentloaded'});
+    await privacy.navigate(probe,baseUrl+'#/data/time-series',{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     await probe.evaluate(()=>{
       const confirm=()=>{for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
@@ -1274,6 +1309,7 @@ try{
   await writePerformanceEvidence();
   stage='mixed-success import isolation';
   performanceEvidence.mixedSiblingImport=await verifyMixedSiblingImport();
+  performanceEvidence.mixedSiblingImportDelayed=await verifyMixedSiblingImport(1200);
   await writePerformanceEvidence();
 
   stage='cold import baseline';
@@ -1342,6 +1378,8 @@ try{
   await privacy.navigate(page,baseUrl+(liveMode?`?live_verify=${Date.now()}`:''),{waitUntil:'domcontentloaded'});
   performanceEvidence.applicationDomReadyMs=Date.now()-applicationNavigationStart;
   await waitShellReady();
+  if(!await page.locator('#tab-home .hb-welcome-network').isVisible()||
+     await page.locator('#dropzone').isVisible())throw new Error('Shared application URL must open on Home with Data controls hidden.');
   await page.evaluate(()=>{
     const confirm=()=>{for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
       const input=document.getElementById(id);input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
