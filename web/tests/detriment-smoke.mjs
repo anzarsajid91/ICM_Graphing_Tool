@@ -22,6 +22,7 @@ async function exportText(id){const downloadPromise=page.waitForEvent('download'
 try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.ICMDetriment&&window.__ICM_PRECISION_WORKBENCH__),null,{timeout:30000});
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
   await page.locator('#dtReportUpload summary').click();
   await page.setInputFiles('#dtFileInput',(await fs.readdir('tests/fixtures/detriment')).filter(n=>n.endsWith('.csv')).map(n=>path.resolve('tests/fixtures/detriment',n)));
   await page.waitForFunction(()=>[...state.files.values()].filter(x=>x.status==='ready'&&x.parsed?.metadata?.source_kind==='detriment_report').length===9,null,{timeout:120000});

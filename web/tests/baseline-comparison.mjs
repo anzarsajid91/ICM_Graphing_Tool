@@ -63,7 +63,8 @@ async function measure(url,kind,spec){
   page.on('pageerror',e=>errors.push('pageerror: '+String(e)));
   page.on('console',m=>{if(m.type()==='error'&&!m.text().includes('favicon.ico'))errors.push('console: '+m.text());});
   try{
-    await page.goto(url+'?benchmark='+encodeURIComponent(spec.dataset)+'&t='+Date.now(),{waitUntil:'domcontentloaded'});
+    const workspace=kind==='current'?'#/data/time-series':'';
+    await page.goto(url+'?benchmark='+encodeURIComponent(spec.dataset)+'&t='+Date.now()+workspace,{waitUntil:'domcontentloaded'});
     await waitRuntimeWired(page,kind);
     const selectedAt=Date.now();
     await page.setInputFiles('#fileInput',spec.sourcePath);

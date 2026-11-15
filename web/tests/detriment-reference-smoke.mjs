@@ -24,7 +24,7 @@ async function run(){await page.click('#runDetrimentBtn');await page.waitForFunc
 async function download(selector){const event=page.waitForEvent('download');await page.click(selector);const file=await event;return fs.readFile(await file.path(),'utf8');}
 function close(a,b){assert.ok(Math.abs(a-b)<1e-9,`${a} != ${b}`);}
 try{
-  await page.goto(base,{waitUntil:'domcontentloaded'});
+  await page.goto(new URL('#/data/time-series',base).href,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.ICMDetriment&&window.__ICM_PRECISION_WORKBENCH__),null,{timeout:30000});
   assert.match(await page.title(),/Hydra Bench/);
   assert.deepEqual((await page.locator('.pw-primary-nav .pw-nav-label').allTextContents()).map(x=>x.trim()),['Home','Data / time series','Spills','Flow survey','Detriment assessment','Plots','Reports']);
