@@ -137,6 +137,22 @@
           <button class="btn" value="design">Assess design flow</button>
         </form>
         <div id="pipeCapacityResult" class="summary-box" role="status" aria-live="polite">Enter pipe dimensions and a uniform-flow gradient.</div>
+        <div id="pipeSectionViews" class="pipe-section-views"></div>
+        <section aria-labelledby="pipeCompareHeading" class="subpanel">
+          <h3 id="pipeCompareHeading">Compare arrangements</h3>
+          <div class="actions">
+            <button id="pipeKeepResult" type="button" class="btn" disabled>Add current result</button>
+            <button id="pipeExportComparison" type="button" class="btn" disabled>Export comparison CSV</button>
+            <button id="pipeClearComparison" type="button" class="btn quiet" disabled>Clear comparison</button>
+          </div>
+          <p id="pipeCompareStatus" role="status">Add up to eight trials. Export to keep a copy.</p>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Pipe arrangements">
+            <table id="pipeComparisonTable" class="data-table compact" hidden>
+              <thead><tr><th>Trial</th><th>Diameter (mm)</th><th>Gradient (m/m)</th><th>kₛ (mm)</th><th>ν (m²/s)</th><th>Full capacity (L/s)</th><th>Design flow (L/s)</th><th>Normal depth(s) (mm)</th><th>Calculation status</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
       </article>
     </section>
 

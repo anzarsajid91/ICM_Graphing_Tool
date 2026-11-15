@@ -422,6 +422,7 @@ jobs:
           ICM_BROWSER=chromium node web/tests/network-schematic-smoke.mjs
           node web/tests/network-review-smoke.mjs
           node web/tests/network-layout-smoke.mjs
+          node web/tests/hydraulics-smoke.mjs
           ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs
           ICM_BROWSER=firefox node web/tests/network-schematic-smoke.mjs
       - name: Retain workspace interaction evidence

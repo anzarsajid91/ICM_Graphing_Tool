@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import {chromium} from 'playwright';
+import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
+import {installPrivacyGuard} from './privacy-network.mjs';
+
+const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
+const browser=await chromium.launch(browserLaunchOptions());
+try{
+  const context=await browser.newContext({...browserContextOptions(),acceptDownloads:true,viewport:{width:390,height:800}});
+  const privacy=installPrivacyGuard(context,base);
+  const page=await context.newPage();
+  await privacy.navigate(page,base);
+  await page.getByRole('link',{name:'Run hydraulic calculations'}).click();
+  const keep=page.getByRole('button',{name:'Add current result'});
+  const table=page.locator('#pipeComparisonTable');
+  const result=page.locator('#pipeCapacityResult');
+  await page.getByRole('button',{name:'Calculate capacity'}).click();
+  await page.locator('.pipe-section-views figure').waitFor({timeout:60000});
+  assert.match(await result.textContent(),/202\.65 L\/s/);
+  await keep.click();
+  assert.equal(await table.locator('tbody tr').count(),1);
+  assert.equal(await keep.isDisabled(),true);
+  await page.getByLabel('Design discharge (L/s)').fill('212.78');
+  assert.equal(await page.locator('.pipe-section-views figure').count(),0);
+  await page.getByRole('button',{name:'Assess design flow'}).click();
+  await page.locator('.pipe-section-views figure').nth(1).waitFor({timeout:60000});
+  await keep.click();
+  assert.equal(await table.locator('tbody tr').count(),2);
+  assert.equal(await table.locator('meter').count(),2);
+  assert.match(await table.locator('tbody tr').last().textContent(),/396\.24 \/ 442\.74/);
+  const download=page.waitForEvent('download');
+  await page.getByRole('button',{name:'Export comparison CSV'}).click();
+  const csv=await fs.readFile(await (await download).path(),'utf8');
+  assert.match(csv,/"full_capacity_L_s","design_flow_L_s","normal_depths_mm"/);
+  assert.equal(csv.split('\r\n').length,3);
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  await page.getByRole('button',{name:'Clear comparison'}).click();
+  assert.equal(await table.isVisible(),false);
+  privacy.assertClean();
+  console.log('Hydraulic capacity, two normal depths, comparison, local export and narrow layout passed.');
+}finally{await browser.close();}

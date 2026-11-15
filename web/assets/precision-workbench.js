@@ -796,9 +796,64 @@ function buildSecurityPage(){
 }
 function wirePipeCapacity(){
   const form=$('pipeCapacityForm'),result=$('pipeCapacityResult');
-  let generation=0;
+  const sectionViews=$('pipeSectionViews'),keep=$('pipeKeepResult');
+  const table=$('pipeComparisonTable'),body=qs('tbody',table),status=$('pipeCompareStatus');
+  const trials=[];
+  const precision=value=>value===null?'—':Number(value.toPrecision(5)).toLocaleString(undefined,{maximumSignificantDigits:5});
+  const capacity=trial=>trial.design?trial.values.full_capacity_m3_s:trial.values.discharge_m3_s;
+  let generation=0,current=null;
+  function resetResult(){
+    ++generation;current=null;keep.disabled=true;sectionViews.replaceChildren();
+  }
+  function drawSection(fraction,label){
+    const figure=document.createElement('figure'),circle=document.createElement('div');
+    const water=document.createElement('div'),caption=document.createElement('figcaption');
+    circle.className='pipe-section-circle';circle.setAttribute('aria-hidden','true');
+    water.className='pipe-section-water';water.style.height=(fraction*100)+'%';
+    circle.append(water);caption.textContent=label;figure.append(circle,caption);sectionViews.append(figure);
+  }
+  function trialRow(trial,index){
+    const {inputs,values,design}=trial;
+    return [index+1,inputs.diameter_m*1000,inputs.gradient,inputs.roughness_m*1000,
+      inputs.viscosity_m2_s,capacity(trial)===null?null:capacity(trial)*1000,
+      design?inputs.discharge_m3_s*1000:null,design?values.depths.map(depth=>depth.depth_m*1000):null,
+      design?values.status:values.regime];
+  }
+  function showComparison(){
+    table.hidden=!trials.length;body.replaceChildren();
+    const maxCapacity=Math.max(0,...trials.map(trial=>capacity(trial)||0))*1000;
+    for(const [index,trial] of trials.entries()){
+      const row=body.insertRow();
+      for(const [column,value] of trialRow(trial,index).entries()){
+        const cell=row.insertCell();
+        cell.textContent=Array.isArray(value)?value.map(precision).join(' / ')||'—':
+          typeof value==='string'?value:precision(value);
+        if(column===5&&typeof value==='number'&&maxCapacity>0){
+          const bar=document.createElement('meter');
+          bar.className='pipe-capacity-bar';bar.max=maxCapacity;bar.value=value;
+          bar.setAttribute('aria-label','Trial '+(index+1)+' full capacity in L/s');
+          cell.append(bar);
+        }
+      }
+    }
+    $('pipeExportComparison').disabled=$('pipeClearComparison').disabled=!trials.length;
+    keep.disabled=!current||trials.length>=8;
+    status.textContent=trials.length?trials.length+' of 8 trials. Capacity bars share a common scale.':'Add up to eight trials. Export to keep a copy.';
+  }
+  keep.addEventListener('click',()=>{
+    if(!current||trials.length>=8)return;
+    trials.push(current);current=null;showComparison();
+  });
+  $('pipeClearComparison').addEventListener('click',()=>{trials.length=0;showComparison();});
+  $('pipeExportComparison').addEventListener('click',()=>{
+    const headers=['trial','diameter_mm','gradient_m_per_m','roughness_mm','viscosity_m2_s',
+      'full_capacity_L_s','design_flow_L_s','normal_depths_mm','status'];
+    const rows=trials.map((trial,index)=>trialRow(trial,index).map(value=>Array.isArray(value)?value.join(' / '):value));
+    const csv=[headers,...rows].map(row=>row.map(ICMSafeCSV.cell).join(',')).join('\r\n');
+    downloadBlob('hydrabench-pipe-comparison.csv',csv,'text/csv');
+  });
   form.addEventListener('input',()=>{
-    ++generation;
+    resetResult();
     const viscosity=form.elements.viscosity.value;
     $('pipeActiveViscosity').textContent=viscosity?'ν = '+viscosity+' m²/s':'ν required';
     result.textContent='Inputs edited. Calculate to refresh capacity.';
@@ -814,13 +869,14 @@ function wirePipeCapacity(){
       result.textContent='The computed gradient is outside the supported 0–1 m/m range.';
       return;
     }
-    ++generation;
+    resetResult();
     form.elements.gradient.value=String(gradient);
     result.textContent='Calculated gradient applied. Calculate to refresh capacity.';
   });
   form.addEventListener('submit',async event=>{
     event.preventDefault();
-    const request=++generation;
+    resetResult();
+    const request=generation;
     const number=name=>form.elements[name].valueAsNumber;
     const inputs={diameter_m:number('diameter')/1000,gradient:number('gradient'),
       roughness_m:number('roughness')/1000,viscosity_m2_s:number('viscosity')};
@@ -837,7 +893,7 @@ function wirePipeCapacity(){
       const operation=design?'circular_pipe_design_flow':'circular_pipe_capacity';
       const values=await engine.call(operation,inputs);
       if(request!==generation)return;
-      const precision=value=>value===null?'—':Number(value.toPrecision(5)).toLocaleString(undefined,{maximumSignificantDigits:5});
+      current={design,inputs,values};keep.disabled=trials.length>=8;
       if(design){
         const summary=document.createElement('p');
         summary.textContent='Imposed full-bore velocity '+precision(values.imposed_full_velocity_m_s)+
@@ -851,6 +907,7 @@ function wirePipeCapacity(){
             item.textContent=basis+' '+precision(solution.depth_m*1000)+' mm · '+precision(solution.velocity_m_s)+
               ' m/s · Area '+precision(solution.area_m2)+' m² · Hydraulic radius '+precision(solution.hydraulic_radius_m)+' m';
             list.append(item);
+            drawSection(solution.depth_fraction,precision(solution.depth_m*1000)+' mm depth');
           }
           result.append(list);
         }else{
@@ -865,6 +922,7 @@ function wirePipeCapacity(){
         result.textContent='Capacity unavailable in the transitional flow range.';
         return;
       }
+      if(values.discharge_m3_s>0)drawSection(1,'Flowing just full');
       result.textContent=precision(values.discharge_m3_s*1000)+' L/s · '+precision(values.velocity_m_s)+
         ' m/s · Re '+precision(values.reynolds)+' · Darcy f '+precision(values.friction_factor)+' · '+values.regime;
     }catch(error){
