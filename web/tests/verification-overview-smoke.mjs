@@ -48,6 +48,20 @@ try{
   assert.match(await summary.textContent(),/Stale evidence/);
   assert.match(await row.textContent(),/Stale review/);
   assert.equal(await page.getByRole('button',{name:'Save engineer review'}).isDisabled(),true);
+  await page.evaluate(()=>{
+    // Insert an already-qualified synthetic rainfall window to exercise the
+    // hydraulic event workflow independently of rainfall qualification.
+    state.rainEvents=[{start:'2026-01-01T00:00:00',end:'2026-01-01T00:03:00',total_depth_mm:6}];
+    state.rainEventResult={count:1};
+    state.rainEventSignature=rainEventInputSignature();
+    window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','events');
+  });
+  await page.getByRole('button',{name:'Compare selected event'}).click();
+  await page.waitForFunction(()=>document.querySelector('#verificationEventResult').textContent.includes('Observed volume'));
+  const event=await page.locator('#verificationEventResult').textContent();
+  assert.match(event,/38\.7 m³.*Observed volume/);
+  assert.match(event,/40\.5 m³.*Modelled volume/);
+  assert.match(event,/0\.01 m³\/s.*Peak error/);
   privacy.assertClean();
   console.log('Verification overview rendered authoritative metrics and blocked review of stale evidence.');
 }finally{await browser.close();}

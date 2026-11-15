@@ -65,3 +65,19 @@ HydraBench two-root design check follows the unmodified uniform-flow curve.
 Compare these outputs under equivalent assumptions and keep that near-crown
 method difference explicit. See the [Autodesk conduit field reference](https://help.autodesk.com/cloudhelp/2026/ENU/ICMLIVE-Help/files/GUID-1306601E-4A25-4FBE-AE9A-01E06BF4986E.htm)
 for the documented gradient and just-full capacity definitions.
+
+### Verification Event Review
+
+Select a current qualifying Time Series rainfall event and one mapped model
+scenario. Event Review accepts instantaneous flow or depth with matching units
+and a confirmed comparison time basis. It applies the model time offset and
+intersects the two series' linearly interpolable intervals before subtracting
+the union of their exclusions. Interpolation never crosses a gap beyond the
+configured limit or an invalid sample.
+
+Peaks use each trace's own breakpoints on that intersection, including boundary
+limits. Tied peaks use the earliest time. Peak error and timing lag are model
+minus observed. Signed flow volume integrates both curves over exactly the
+same retained support. Depth has no volume output. The separate Overview shows
+the existing comparison coverage estimate, which uses the smaller of the two
+eligible-support fractions and does not measure interval intersection.

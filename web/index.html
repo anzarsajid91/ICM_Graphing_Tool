@@ -126,7 +126,7 @@
         </div>
         <div class="table-wrap" tabindex="0" role="region" aria-label="Verification scenarios">
           <table id="verificationEvidenceTable" class="data-table compact" hidden>
-            <thead><tr><th>Scenario source</th><th>Valid pairs</th><th>Common support</th><th>RMSE</th><th>NSE</th><th>Review</th></tr></thead>
+            <thead><tr><th>Scenario source</th><th>Valid pairs</th><th>Eligible support</th><th>RMSE</th><th>NSE</th><th>Review</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -147,6 +147,22 @@
           </fieldset>
           <p id="verificationReviewStatus" role="status"></p>
         </section>
+      </article>
+    </section>
+
+    <section class="tab-panel" id="tab-verification-events" hidden>
+      <article class="panel">
+        <h3>Event Review</h3>
+        <p>Compare peaks, timing and signed flow volumes during a qualifying rainfall event. Results use the intersection of both hydraulic series’ valid intervals.</p>
+        <div class="mapping-grid">
+          <label>Rainfall event<select id="verificationEventSelect"></select></label>
+          <label>Modelled scenario<select id="verificationEventModel"></select></label>
+        </div>
+        <div class="actions">
+          <button id="verificationEventRun" type="button" class="btn primary">Compare selected event</button>
+          <a class="btn" href="#/data/time-series">Open time series and rainfall events</a>
+        </div>
+        <div id="verificationEventResult" class="summary-box" role="status"></div>
       </article>
     </section>
 

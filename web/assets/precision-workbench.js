@@ -44,6 +44,7 @@ const ROUTES={
     pages:{
       comparison:{label:'Observed vs modelled',title:'Observed versus modelled diagnostics',description:'Compare scenarios using the canonical bounded-alignment engine, scatter views and verification statistics.',tab:'compare',root:()=>$('tab-compare')},
       overview:{label:'Overview',title:'Verification overview',description:'Review source coverage, comparison metrics and engineering decisions.',root:()=>$('tab-verification-overview')},
+      events:{label:'Event Review',title:'Verification event review',description:'Compare observed and modelled responses for a qualifying rainfall event.',root:()=>$('tab-verification-events')},
       rating:{label:'Depth / rating',title:'Depth agreement and flow–depth diagnostics',description:'Inspect depth agreement and Q/H rating evidence with sample support and validity limitations.',tab:'compare',root:()=>$('tab-compare')},
       dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
     }
@@ -71,6 +72,7 @@ const ROUTE_ALIASES={
   'data/series-mapping':['data','time-series'],
   'verification/comparison':['graphs','comparison'],
   'verification/overview':['graphs','overview'],
+  'verification/events':['graphs','events'],
   'verification/rating':['graphs','rating'],
   'verification/dwf':['graphs','dwf'],
   'verification/storage':['spills','storage'],
@@ -934,6 +936,73 @@ function wireVerificationOverview(){
   window.addEventListener('icm:route-changed',()=>{if(active())render();});
   window.addEventListener('icm:source-pool-changed',()=>{if(active())render();});
 }
+function wireVerificationEvents(){
+  const events=$('verificationEventSelect'),models=$('verificationEventModel');
+  const run=$('verificationEventRun'),output=$('verificationEventResult');
+  let generation=0;
+  const active=()=>current.workspace==='graphs'&&current.page==='events';
+  function refresh(){
+    ++generation;
+    events.replaceChildren();models.replaceChildren();
+    if(rainEventsFresh()){
+      for(const [index,event] of state.rainEvents.entries())
+        events.add(new Option(event.start+' to '+event.end+' · '+event.total_depth_mm+' mm',String(index)));
+    }
+    for(const model of currentModels()){
+      const key=sourceKey(model.id,model.col);
+      models.add(new Option(model.item.displayName+' · '+model.col,key));
+    }
+    run.disabled=!events.options.length||!models.options.length||!state.mapping.observed;
+    output.textContent=run.disabled?'Apply an observed and modelled mapping, then calculate rainfall events in Time series.':'Choose a rainfall event and modelled scenario.';
+  }
+  for(const control of [events,models])control.addEventListener('change',()=>{
+    ++generation;run.disabled=false;output.textContent='Selection changed. Compare the selected event to refresh results.';
+  });
+  run.addEventListener('click',async()=>{
+    if(!rainEventsFresh()){refresh();return;}
+    const obs=mappingObject(state.mapping.observed),model=mappingObject(models.value);
+    const event=state.rainEvents[Number(events.value)];
+    if(!obs||!model||!event)return;
+    if(!$('timeBasisConfirmed').checked){
+      output.textContent='Confirm the comparison time basis in Data / Time series first.';return;
+    }
+    const request=++generation,signature=analysisSignature(),rainfall=state.rainEventSignature;
+    run.disabled=true;output.textContent='Comparing event…';
+    try{
+      const values=await engine.call('verification_event_comparison',{
+        obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:model.item.virtualPath,model_col:model.col,
+        start:event.start,end:event.end,max_gap_seconds:Number($('gapInput').value||900),
+        offset_minutes:Number($('offsetInput').value||0),
+        exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',models.value)]),
+      });
+      if(request!==generation||!active())return;
+      if(!rainEventsFresh()||rainfall!==state.rainEventSignature||signature!==analysisSignature()){
+        refresh();output.textContent='Event inputs changed. Recalculate before using the result.';return;
+      }
+      const number=value=>Number.isFinite(value)?Number(value.toPrecision(5)).toString():'—';
+      const rows=[
+        ['Common valid support',number(values.common_support_seconds/60)+' min · '+values.status],
+        ['Excluded time',number(values.excluded_seconds/60)+' min'],
+        ['Observed peak',number(values.observed_peak)+' '+values.unit],
+        ['Modelled peak',number(values.modelled_peak)+' '+values.unit],
+        ['Peak error (model − observed)',number(values.peak_error)+' '+values.unit],
+        ['Peak lag (model − observed)',number(values.peak_lag_minutes)+' min'],
+      ];
+      if(values.observed_volume_m3!==null)rows.push(['Observed volume',number(values.observed_volume_m3)+' m³'],['Modelled volume',number(values.modelled_volume_m3)+' m³']);
+      output.replaceChildren();
+      for(const [label,value] of rows){
+        const card=document.createElement('div'),title=document.createElement('strong'),caption=document.createElement('span');
+        title.textContent=value;caption.textContent=label;card.append(title,caption);output.append(card);
+      }
+    }catch(error){
+      if(request===generation&&active())output.textContent=conciseErrorMessage(error);
+    }finally{
+      if(request===generation&&active())run.disabled=false;
+    }
+  });
+  window.addEventListener('icm:route-changed',()=>{if(active())refresh();else ++generation;});
+  window.addEventListener('icm:source-pool-changed',()=>{if(active())refresh();});
+}
 function wirePipeCapacity(){
   const form=$('pipeCapacityForm'),result=$('pipeCapacityResult');
   const sectionViews=$('pipeSectionViews'),keep=$('pipeKeepResult');
@@ -1072,7 +1141,7 @@ function wirePipeCapacity(){
 }
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
-  buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
+  buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wireVerificationEvents();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }

@@ -122,7 +122,7 @@
     "web/vendor/manifest.json": "bb70a1f4497a0f6307f836828522015ebb60293e91df66ac3778f986f2d96b82",
     "web/assets/runtime.release.js": "6076b87a125db5bf803fa7456bb45a622edd5715c88f06637549f641de1833e9",
     "web/assets/network-schematic.js": "bf0c987cca66c42f762697bda838937f54285b875f0df494edb218d42c53d6aa",
-    "web/assets/precision-workbench.js": "86288b4357146877c042ad5dde30e3ef5bfe280fbc610d90ca554d2d55f08cb9",
+    "web/assets/precision-workbench.js": "38fb5dec80936dbb0e9a837c9570d5f77183cc2cab6af97ffa04f9a661b0e70f",
     "scripts/verify_data_confidentiality.py": "6aac0bd0fbd78f84f49c39be4f2ecd08b6812dd0974579df9178fd61c27801cb",
     "scripts/verify_vendor.py": "26272a33a524532c21d591a917a45096f79eccd7761690dcf73499804f8824c2",
     "web/tests/privacy-network.mjs": "cee5e4702b48869bbb1824ea2f934e091a56a53a163f941d1868c3d2109dcd43",
