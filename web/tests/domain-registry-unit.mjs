@@ -14,7 +14,7 @@ const registry=sandbox.window.ICMProjectRegistry;
 assert.ok(registry);
 
 registry.registerSource({
-  id:'fm01',displayName:'FM01.fdv',virtualPath:'/data/FM01.fdv',
+  id:'fm01',hash:'synthetic-observed-fingerprint',displayName:'FM01.fdv',virtualPath:'/data/FM01.fdv',
   parsed:{
     format:'fdv_ascii',rows:2,start:'2026-01-01T00:00:00',end:'2026-01-01T00:02:00',
     columns:['flow','depth','velocity'],
@@ -30,7 +30,7 @@ registry.registerSource({
   parsed:{format:'rainfall_r_ascii',rows:2,columns:['rainfall'],metadata:{quantity:'rainfall',canonical_unit:'mm/h'}}
 });
 registry.registerSource({
-  id:'model',displayName:'simulated.csv',virtualPath:'/data/simulated.csv',
+  id:'model',hash:'synthetic-model-fingerprint',displayName:'simulated.csv',virtualPath:'/data/simulated.csv',
   parsed:{format:'tabular_csv',rows:2,columns:['Seconds','depth'],metadata:{quantity_by_column:{depth:'depth'}}}
 });
 registry.setRelationships([
@@ -61,3 +61,32 @@ assert.equal(ambiguous.metadata.diameterMm,null);
 assert.equal(ambiguous.metadata.associationStatus,'ambiguous');
 
 console.log('Domain registry regressions passed: source roles, hydraulic quantities, auxiliary filtering and association relationships.');
+
+const evidence={
+  asset:{id:'FM01',kind:'flow-monitor'},
+  signature:'synthetic-analysis-config',
+  period:{start:'2026-01-01',end:'2026-01-02'},
+  seriesKeys:[JSON.stringify(['fm01','depth']),JSON.stringify(['model','depth'])],
+  scenarios:[{metrics:{rmse:0.01}}],
+};
+assert.equal(registry.publishAssessment('comparison',evidence),true);
+const read=signature=>registry.readAssessment('comparison',signature);
+assert.equal(read(evidence.signature).freshness,'current');
+assert.equal(read(evidence.signature).dependencies[1].fingerprint,'synthetic-model-fingerprint');
+assert.equal(read('different-config').freshness,'stale');
+assert.equal(read().freshness,'stale');
+evidence.scenarios[0].metrics.rmse=5;
+read(evidence.signature).scenarios[0].metrics.rmse=6;
+assert.equal(read(evidence.signature).scenarios[0].metrics.rmse,0.01);
+assert.equal(registry.publishAssessment('other',{...evidence,asset:{id:'FM01',kind:'conduit'}}),false);
+assert.equal(registry.publishAssessment('other',{...evidence,seriesKeys:['missing']}),false);
+registry.registerSource({
+  id:'model',hash:'replaced-fingerprint',displayName:'simulated.csv',
+  parsed:{format:'tabular_csv',columns:['depth'],metadata:{quantity_by_column:{depth:'depth'}}},
+});
+assert.equal(read(evidence.signature).freshness,'stale');
+registry.removeSource('fm01');
+assert.equal(read(evidence.signature).freshness,'stale');
+registry.clearSources();
+assert.equal(read(evidence.signature),null);
+console.log('Shared assessment evidence regressions passed.');

@@ -2184,6 +2184,15 @@ try{
     throw new Error('Time Series route must calculate calibration statistics automatically without a Graphs action: '+JSON.stringify(automaticCalibration));
   }
 
+  const sharedEvidence=await page.evaluate(()=>({
+    evidence:window.__ICM_WORKBENCH__.readVerificationEvidence(),
+    pairs:state.comparisonSnapshot?.results?.[0]?.result?.metrics?.pairs,
+  }));
+  if(sharedEvidence.evidence?.freshness!=='current'||sharedEvidence.evidence.dependencies.length!==2||
+      sharedEvidence.evidence.scenarios[0]?.metrics?.pairs!==sharedEvidence.pairs){
+    throw new Error('Shared verification evidence must reconcile to the authoritative comparison and its two sources.');
+  }
+
   stage='calibration comparison and diagnostics';
   await clickTab('compare');
   await page.click('#runCompareBtn');

@@ -1473,6 +1473,23 @@ async function ensureComparisonResults({background=false}={}){
     if(signature!==analysisSignature())throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');
     state.comparisons=results;
     state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(results.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};
+    const registry=window.ICMProjectRegistry;
+    const asset=registry?.source(obs.id);
+    registry?.removeAssessment('verification:comparison');
+    if(asset){
+      registry.publishAssessment('verification:comparison',{
+        asset:{id:asset.assetId,kind:asset.assetKind},
+        signature,
+        period:bounds,
+        seriesKeys:[sourceKey(obs.id,obs.col),...models.map(m=>sourceKey(m.id,m.col))],
+        scenarios:results.map(({model,result,error})=>({
+          seriesKey:sourceKey(model.id,model.col),
+          metrics:result?.metrics??null,
+          coverage:result?.coverage??null,
+          error:error??null,
+        })),
+      });
+    }
   })();
   comparisonCalculation={signature,promise,background:Boolean(background),cancellationGeneration};
   try{
@@ -1497,6 +1514,8 @@ async function ensureTimeSeriesComparisonMetrics(){
   window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
 }
 window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics=ensureTimeSeriesComparisonMetrics;
+window.__ICM_WORKBENCH__.readVerificationEvidence=()=>
+  window.ICMProjectRegistry?.readAssessment('verification:comparison',analysisSignature())??null;
 const metricCard=(k,v,reason='')=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${reason?`<small>${esc(reason)}</small>`:''}</div>`;
 function metricPresentation(metrics,key,unit=''){
   const value=metrics?.[key],reason=metrics?.unavailable_reasons?.[key]||'';

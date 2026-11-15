@@ -120,7 +120,7 @@
     "SECURITY.md": "480b6a91a72ec28bb80f0a92d05e77d24d01e7fdf370f1270c41cc30a4f1bcdb",
     "scripts/build_pages.py": "55510acbb8f43e422015db019565f478743ad45fbf4156dfc69f69ca08d010d4",
     "web/vendor/manifest.json": "bb70a1f4497a0f6307f836828522015ebb60293e91df66ac3778f986f2d96b82",
-    "web/assets/runtime.release.js": "b4fadab7fa3581478366046e27e5fed1e1015a109f3f1926dce79b7edc265340",
+    "web/assets/runtime.release.js": "0e2012a865979a9d949d8502bf28c51d5ef824574e28681079f18424a78258d5",
     "web/assets/network-schematic.js": "eb5278e606ca86e0eb6619b7cd11768fb6741594ec5fbe1e2475551a1b5104b4",
     "web/assets/precision-workbench.js": "dd80031aebd868448f5175fea3999eb7e98b7dd004caca0f225f2f991ba086ab",
     "scripts/verify_data_confidentiality.py": "6aac0bd0fbd78f84f49c39be4f2ecd08b6812dd0974579df9178fd61c27801cb",
