@@ -111,15 +111,24 @@
 
     <section class="tab-panel" id="tab-hydraulics" hidden>
       <article class="panel">
-        <h3>Full-flow capacity</h3>
-        <p>Steady, uniform flow in a full circular pipe. The calculation uses pipe gradient as energy gradient.</p>
+        <h3>Conduit full capacity</h3>
+        <p>Steady, uniform flow in a full circular pipe. The calculation uses pipe gradient as energy gradient and a single roughness for the full wetted perimeter.</p>
         <form id="pipeCapacityForm">
           <div class="mapping-grid">
-            <label>Internal diameter (mm)<input name="diameter" type="number" min="1" max="20000" step="any" required value="450" /></label>
+            <label>Diameter (mm) · circular (CIRC)<input name="diameter" type="number" min="1" max="20000" step="any" required value="450" /></label>
             <label>Gradient (m/m)<input name="gradient" type="number" min="0" max="1" step="any" required value="0.005" /></label>
-            <label>Effective roughness (mm)<input name="roughness" type="number" min="0" step="any" required value="1.5" /></label>
+            <label>Colebrook–White roughness kₛ (mm)<input name="roughness" type="number" min="0" step="any" required value="1.5" /></label>
             <label>Design discharge (L/s)<input name="discharge" type="number" min="0" step="any" /></label>
           </div>
+          <details class="subpanel">
+            <summary>Calculate gradient from ICM conduit fields</summary>
+            <div class="mapping-grid">
+              <label>US invert level (m)<input name="usInvert" type="number" step="any" /></label>
+              <label>DS invert level (m)<input name="dsInvert" type="number" step="any" /></label>
+              <label>Length (m)<input name="conduitLength" type="number" step="any" min="0" /></label>
+            </div>
+            <button id="pipeUseInvertGradient" class="btn" type="button">Use calculated gradient</button>
+          </details>
           <details class="subpanel">
             <summary>Advanced fluid properties · <span id="pipeActiveViscosity">ν = 0.000001 m²/s</span></summary>
             <label>Kinematic viscosity (m²/s)<input name="viscosity" type="number" min="0.000000001" max="0.01" step="any" required value="0.000001" /></label>

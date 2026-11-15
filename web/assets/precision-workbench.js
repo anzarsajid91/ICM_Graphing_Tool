@@ -803,6 +803,21 @@ function wirePipeCapacity(){
     $('pipeActiveViscosity').textContent=viscosity?'ν = '+viscosity+' m²/s':'ν required';
     result.textContent='Inputs edited. Calculate to refresh capacity.';
   });
+  $('pipeUseInvertGradient').addEventListener('click',()=>{
+    const [us,ds,length]=['usInvert','dsInvert','conduitLength'].map(name=>form.elements[name].valueAsNumber);
+    if(![us,ds,length].every(Number.isFinite)||length<=0){
+      result.textContent='Enter both invert levels and a positive conduit length.';
+      return;
+    }
+    const gradient=(us-ds)/length;
+    if(!(gradient>=0&&gradient<=1)){
+      result.textContent='The computed gradient is outside the supported 0–1 m/m range.';
+      return;
+    }
+    ++generation;
+    form.elements.gradient.value=String(gradient);
+    result.textContent='Calculated gradient applied. Calculate to refresh capacity.';
+  });
   form.addEventListener('submit',async event=>{
     event.preventDefault();
     const request=++generation;
