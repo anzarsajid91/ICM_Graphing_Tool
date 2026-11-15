@@ -11,7 +11,7 @@ const page=await context.newPage(),errors=[],privacy=installPrivacyGuard(context
 page.on('pageerror',error=>errors.push(error.message));
 const settle=()=>page.waitForTimeout(450);
 try{
-  await page.goto(base,{waitUntil:'domcontentloaded'});
+  await page.goto(new URL('#/data/time-series',base).href,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__));
   await page.evaluate(async()=>{
     const chart=document.querySelector('#timeChart');
