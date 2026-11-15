@@ -47,6 +47,10 @@ const ROUTES={
       dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
     }
   },
+  hydraulics:{
+    label:'Hydraulic Calculations',icon:'hydraulics',
+    pages:{capacity:{label:'Pipe capacity',title:'Hydraulic calculations',description:'Estimate full-bore uniform-flow capacity using Darcy–Weisbach.',root:()=>$('tab-hydraulics')}}
+  },
   detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},
   about:{
     label:'About',icon:'about',
@@ -150,6 +154,7 @@ function navIcon(name){
     survey:'<path d="M3 6c2.3 0 2.3-2 4.5-2S9.8 6 12 6s2.3-2 4.5-2S18.8 6 21 6M3 12c2.3 0 2.3-2 4.5-2s2.3 2 4.5 2 2.3-2 4.5-2 2.3 2 4.5 2M3 18c2.3 0 2.3-2 4.5-2s2.3 2 4.5 2 2.3-2 4.5-2 2.3 2 4.5 2"/>',
     network:'<path d="M6 8v7m2-7 8 7m2-7v7"/><circle cx="6" cy="5" r="2"/><circle cx="18" cy="5" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
     rainfall:'<path d="M7 15a4 4 0 0 1 .6-8 5.5 5.5 0 0 1 10.5 1.5A3.5 3.5 0 0 1 18 15"/><path d="M8 18l-1 2M12 18l-1 2M16 18l-1 2"/>',
+    hydraulics:'<circle cx="12" cy="12" r="8"/><path d="M5 14h14M8 9l4-3 4 3"/>',
     verify:'<path d="M4 15h3v6H4zM10.5 10h3v11h-3zM17 4h3v17h-3z" fill="currentColor" stroke="none"/>',
     detriment:'<path d="M9 4H6v17h12V4h-3"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 10h6M9 14h6M9 18h4"/>',
     spills:'<path d="M12 2C10 5 5 10.4 5 14.5a7 7 0 0 0 14 0C19 10.4 14 5 12 2Z"/><path d="M8 14.5a4 4 0 0 0 4 4"/>',
@@ -788,9 +793,41 @@ function buildSecurityPage(){
   const links=document.createElement('p');links.innerHTML='<a href="security/dependencies.json">Dependency inventory</a> · <a href="security/security-audit.md">Assessment and limitations</a> · <a href="security/claims.json">Claim–evidence register</a> · <a href="security/SECURITY.md">Security disclosure guidance</a>';article.appendChild(links);
   panel.appendChild(article);qs('main.shell').appendChild(panel);
 }
+function wirePipeCapacity(){
+  const form=$('pipeCapacityForm'),result=$('pipeCapacityResult');
+  let generation=0;
+  form.addEventListener('input',()=>{
+    ++generation;
+    const viscosity=form.elements.viscosity.value;
+    $('pipeActiveViscosity').textContent=viscosity?'ν = '+viscosity+' m²/s':'ν required';
+    result.textContent='Inputs edited. Calculate to refresh capacity.';
+  });
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();
+    const request=++generation;
+    const number=name=>form.elements[name].valueAsNumber;
+    const inputs={diameter_m:number('diameter')/1000,gradient:number('gradient'),
+      roughness_m:number('roughness')/1000,viscosity_m2_s:number('viscosity')};
+    result.textContent='Calculating capacity…';
+    try{
+      await ensureEngineBoot();
+      const values=await engine.call('circular_pipe_capacity',inputs);
+      if(request!==generation)return;
+      if(values.regime==='transitional'){
+        result.textContent='Capacity unavailable in the transitional flow range.';
+        return;
+      }
+      const precision=value=>value===null?'—':Number(value.toPrecision(5)).toLocaleString(undefined,{maximumSignificantDigits:5});
+      result.textContent=precision(values.discharge_m3_s*1000)+' L/s · '+precision(values.velocity_m_s)+
+        ' m/s · Re '+precision(values.reynolds)+' · Darcy f '+precision(values.friction_factor)+' · '+values.regime;
+    }catch(error){
+      if(request===generation)result.textContent=typeof conciseErrorMessage==='function'?conciseErrorMessage(error):String(error.message);
+    }
+  });
+}
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
-  buildAboutPage();buildSecurityPage();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
+  buildAboutPage();buildSecurityPage();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }

@@ -97,6 +97,7 @@
           <a href="#/survey/fdv-check">Review flow survey</a>
           <a href="#/spills/assessment">Assess spills</a>
           <a href="#/network/schematic">Open network schematic</a>
+          <a href="#/hydraulics/capacity">Run hydraulic calculations</a>
           <a href="#/detriment/flooding">Compare detriment scenarios</a>
           <a href="#/reports/workspace">Restore workspace</a>
         </nav>
@@ -106,6 +107,26 @@
         <article><h3>Compare network response</h3><p>Check observed and modelled traces, spill counts and scenario detriment.</p></article>
         <article><h3>Report findings</h3><p>Check which assessments are ready and export your results.</p><a href="#/reports/report-generation">Open reports</a></article>
       </div>
+    </section>
+
+    <section class="tab-panel" id="tab-hydraulics" hidden>
+      <article class="panel">
+        <h3>Full-flow capacity</h3>
+        <p>Steady, uniform flow in a full circular pipe. The calculation uses pipe gradient as energy gradient.</p>
+        <form id="pipeCapacityForm">
+          <div class="mapping-grid">
+            <label>Internal diameter (mm)<input name="diameter" type="number" min="1" max="20000" step="any" required value="450" /></label>
+            <label>Gradient (m/m)<input name="gradient" type="number" min="0" max="1" step="any" required value="0.005" /></label>
+            <label>Effective roughness (mm)<input name="roughness" type="number" min="0" step="any" required value="1.5" /></label>
+          </div>
+          <details class="subpanel">
+            <summary>Advanced fluid properties · <span id="pipeActiveViscosity">ν = 0.000001 m²/s</span></summary>
+            <label>Kinematic viscosity (m²/s)<input name="viscosity" type="number" min="0.000000001" max="0.01" step="any" required value="0.000001" /></label>
+          </details>
+          <button class="btn primary">Calculate capacity</button>
+        </form>
+        <div id="pipeCapacityResult" class="summary-box" role="status" aria-live="polite">Enter pipe dimensions and a uniform-flow gradient.</div>
+      </article>
     </section>
 
     <section class="tab-panel active" id="tab-graph">

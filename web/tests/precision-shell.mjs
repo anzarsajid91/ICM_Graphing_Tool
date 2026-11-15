@@ -16,13 +16,13 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
   console.log('SHELL STEP navigation shell');
   const labels=(await page.locator('.pw-primary-nav button').allTextContents()).map(x=>x.replace(/^[^A-Za-z]+/,'').trim());
-  if(labels.join('|')!=='Home|Data / time series|Spills|Network Schematic|Flow survey|Verification|Detriment assessment|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
+  if(labels.join('|')!=='Home|Data / time series|Spills|Network Schematic|Flow survey|Verification|Hydraulic Calculations|Detriment assessment|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
   const navigationOwnership=await page.evaluate(()=>({
     legacyDisplay:getComputedStyle(document.querySelector('nav.tabs')).display,
     precisionVisible:[...document.querySelectorAll('.pw-primary-nav button')].filter(x=>x.getClientRects().length>0).length,
     legacyLabels:[...document.querySelectorAll('nav.tabs .tab')].map(x=>x.textContent.trim()),
   }));
-  if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==8)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
+  if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==9)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='home');
   if(new URL(page.url()).hash)throw new Error('The default Home route must leave the ordinary application URL intact.');
   if(!await page.locator('#tab-home .hb-welcome-network').isVisible()||
@@ -60,6 +60,7 @@ try{
       throw new Error('The old Spills schematic link must select the standalone Network Schematic workspace.');
     for(const [name,workspace,subpage] of [
       ['Start verification','graphs','comparison'],
+      ['Run hydraulic calculations','hydraulics','capacity'],
       ['Review flow survey','survey','fdv-check'],
       ['Assess spills','spills','assessment'],
       ['Open network schematic','network','schematic'],

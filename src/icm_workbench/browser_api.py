@@ -1142,3 +1142,10 @@ def storage_result(level_path, level_col, flow_path, flow_col, threshold, exclus
         "screening":_records(screening),
     }
     return json.dumps(_jsonable(payload),ensure_ascii=False)
+
+
+def circular_pipe_capacity(diameter_m, gradient, roughness_m, viscosity_m2_s):
+    """Expose the standalone full-bore calculator to the local worker."""
+    from icm_workbench.analysis.pipe_capacity import full_pipe_capacity
+
+    return json.dumps(full_pipe_capacity(diameter_m, gradient, roughness_m, viscosity_m2_s))
