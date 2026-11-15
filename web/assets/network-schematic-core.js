@@ -166,8 +166,47 @@ function validateNetwork(value){
   if(![result.camera.x,result.camera.y,result.camera.zoom].every(Number.isFinite)||result.camera.zoom<.2||result.camera.zoom>4)throw new Error('Invalid schematic camera.');
   return result;
 }
+// Canonical interchange format. Native exporter mappings belong in adapters.
+function importNetworkContext(text){
+  const [version,header,...lines]=text.replace(/^\uFEFF/,'').split(/\r?\n/);
+  if(version!=='HydraBench network context v1'||header!=='record,id,type,name,x_m,y_m,from,to')
+    throw new Error('Expected a HydraBench network context v1 CSV with metre coordinates.');
+  if(lines.length>7001)throw new Error('Network context exceeds the schematic size limit.');
+  const result=empty();
+  const ids={node:new Set(),link:new Set()};
+  for(const [index,line] of lines.entries()){
+    if(!line.trim())continue;
+    const fields=[];
+    const item=/(?:^|,)("(?:[^"]|"")*"|[^",]*)(?=,|$)/gy;
+    for(let offset=0;offset<line.length;){
+      const match=item.exec(line);
+      if(!match||item.lastIndex<=offset)break;
+      fields.push(match[1].startsWith('"')?match[1].slice(1,-1).replaceAll('""','"'):match[1]);
+      offset=item.lastIndex;
+    }
+    const fail=message=>{throw new Error('Network context row '+(index+3)+': '+message);};
+    if(fields.length!==8||item.lastIndex!==line.length)fail('expected eight CSV fields.');
+    const [record,id,type,name,x,y,from,to]=fields.map(field=>field.trim());
+    if(!Object.hasOwn(ids,record)||!id||id.length>128||ids[record].has(id)||name.length>256)
+      fail('invalid or duplicate object ID, record kind or name.');
+    ids[record].add(id);
+    if(record==='node'){
+      if(!Object.hasOwn(types,type)||type==='label'||!x||!y||from||to||![x,y].every(value=>/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value)&&Math.abs(Number(value))<=1e6))
+        fail('invalid node type or metre coordinates.');
+      result.nodes.push({id,type,name:name||id,x:Number(x),y:-Number(y),colour:'blue',bindings:[]});
+    }else{
+      if(!from||!to||from===to||type||x||y)fail('invalid link endpoints or unexpected node fields.');
+      result.edges.push({id,from,to,name:name||id,colour:'blue'});
+    }
+  }
+  if(!result.nodes.length)throw new Error('Network context contains no nodes.');
+  for(const edge of result.edges){
+    if(!ids.node.has(edge.from)||!ids.node.has(edge.to))throw new Error('A network context link references an unknown node.');
+  }
+  return validateNetwork(result);
+}
 function reportingConflicts(rows){
   const seen=new Set();for(const row of rows){for(const y of row.years){const key=row.role+'|'+(row.role==='model'?row.scenario:'Observed')+'|'+y;if(seen.has(key))throw new Error('Overlapping assignments for '+(row.role==='model'?row.scenario:'Observed')+' in '+y+'. Keep one authoritative source per reporting year.');seen.add(key);}}
 }
-globalThis.ICMNetworkCore={colours,types,mainYear,rag,comparable,validateYears,empty,validateNetwork,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
+globalThis.ICMNetworkCore={colours,types,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
 })();

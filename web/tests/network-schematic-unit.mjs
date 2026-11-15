@@ -91,3 +91,22 @@ assert.equal(C.valueScale('status','m','1'),1);
 assert.throws(()=>C.valueScale('flow','m','L/s'),/matching quantity/);
 assert.throws(()=>C.valueScale('depth','m',''),/supported unit/);
 console.log('All assigned years, independent missing pairs, outcome RAG, duration eligibility and unit scaling passed.');
+
+const contextCsv=[
+  'HydraBench network context v1',
+  'record,id,type,name,x_m,y_m,from,to',
+  'node,A,manhole,"Upstream, ""North""",350000,425000,,',
+  'node,B,outfall,Outlet,350125,425030,,',
+  'link,A.1,,Conduit,,,A,B',
+].join('\r\n');
+const imported=C.importNetworkContext('\uFEFF'+contextCsv);
+assert.equal(imported.nodes[0].name,'Upstream, "North"');
+assert.equal(imported.nodes[1].y,-425030);
+assert.equal(imported.edges[0].id,'A.1');
+assert.equal(imported.edges[0].from,'A');
+assert.equal(imported.edges[0].to,'B');
+assert.throws(()=>C.importNetworkContext(contextCsv.replace(',,,A,B',',,,A,C')),/unknown node/);
+assert.throws(()=>C.importNetworkContext(contextCsv.replace('node,B,','node,A,')),/duplicate/);
+assert.throws(()=>C.importNetworkContext(contextCsv.replace('425000','0x10')),/coordinates/);
+assert.throws(()=>C.importNetworkContext(contextCsv.replace('"Upstream, ""North"""','"Unclosed')),/eight CSV fields/);
+assert.throws(()=>C.importNetworkContext(contextCsv.replace('v1','v2')),/network context v1/);

@@ -187,3 +187,27 @@ refresh and fingerprint relinking while asserting shared spill settings are unch
 
 Saved assessments from the previous schematic method are marked stale and must
 be recalculated; their original evidence remains available for audit.
+
+### Canonical network context CSV preview
+
+Open an empty schematic and select the CSV using **Save / export → Load network**.
+Use UTF-8, metre coordinates, separate node and link IDs, and explicit nominal
+upstream and downstream node IDs. Fields may be quoted on one line. Coordinates
+use x east and y north, within ±1,000,000 m per axis.
+
+```csv
+HydraBench network context v1
+record,id,type,name,x_m,y_m,from,to
+node,A,manhole,Upstream,350000,425000,,
+node,B,outfall,Outlet,350125,425030,,
+link,A.1,,Conduit,,,A,B
+```
+
+Node types are `manhole`, `junction`, `outfall`, `cso`, `storm`, `emergency`,
+`pump`, `wwtw` and `tank`. Missing endpoints, duplicate IDs within an object
+kind, invalid coordinates and mismatched formats are rejected before changing the
+canvas. A populated schematic is protected from replacement by a CSV import.
+
+This preview schema covers node positions and directed topology. Native ICM
+export mapping, link geometry and hydraulic attributes, revision-aware re-import,
+and engineering layout are separate acceptance items.
