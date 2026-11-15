@@ -12,7 +12,8 @@ page.on('pageerror',error=>errors.push(error.message));
 const settle=()=>page.waitForTimeout(450);
 try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__));
+  await page.getByRole('link',{name:'Open Data / time series'}).click();
+  await page.locator('#timeChart').waitFor({state:'visible'});
   await page.evaluate(async()=>{
     const chart=document.querySelector('#timeChart');
     await Plotly.newPlot(chart,[{x:[0,1,2],y:[0,1,0]}],{autosize:true},{responsive:true});
