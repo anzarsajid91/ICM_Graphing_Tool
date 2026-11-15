@@ -796,6 +796,71 @@ function buildSecurityPage(){
   const links=document.createElement('p');links.innerHTML='<a href="security/dependencies.json">Dependency inventory</a> · <a href="security/security-audit.md">Assessment and limitations</a> · <a href="security/claims.json">Claim–evidence register</a> · <a href="security/SECURITY.md">Security disclosure guidance</a>';article.appendChild(links);
   panel.appendChild(article);qs('main.shell').appendChild(panel);
 }
+function wireGuidedImport(){
+  const review=$('guidedImportReview'),body=$('guidedImportRows'),status=$('guidedImportStatus');
+  const roles={observed:'Observed',model:'Modelled',rainfall:'Rainfall'};
+  function render(){
+    const registry=window.ICMProjectRegistry,series=registry?.listSeries()||[];
+    const previous=new Map(qsa('select',body).map(item=>[item.dataset.series,item.value]));
+    review.hidden=!series.length;
+    if(!series.length)review.open=false;
+    body.replaceChildren();
+    status.textContent='';
+    for(const item of series){
+      const row=body.insertRow(), source=registry.source(item.sourceId);
+      const recognised=Boolean(item.quantity&&item.unit);
+      const role=Object.hasOwn(roles,item.role)?roles[item.role]:'Review required';
+      const possible=recognised?role+' · verify source identity':role+' · confirm quantity and unit';
+      for(const value of [item.label,source?.format||'Unknown',item.assetId,item.quantity||'Unresolved',item.unit||'Unresolved',possible])
+        row.insertCell().textContent=value;
+      const choose=document.createElement('select');
+      choose.dataset.series=item.key;
+      choose.setAttribute('aria-label','Role for '+item.label);
+      choose.add(new Option('Keep existing assignments',''));
+      for(const [key,label] of Object.entries(roles))choose.add(new Option(label,key));
+      choose.value=previous.get(item.key)||'';
+      row.insertCell().append(choose);
+    }
+  }
+  $('guidedImportApply').addEventListener('click',()=>{
+    const selected=qsa('select',body).filter(control=>control.value);
+    const checkedRoles={observed:[],model:[],rainfall:[]};
+    for(const control of selected){
+      const series=window.ICMProjectRegistry?.getSeries(control.dataset.series);
+      if(!series){render();status.textContent='Sources changed. Review the current rows again.';return;}
+      checkedRoles[control.value].push(series.key);
+    }
+    if(!selected.length){status.textContent='Choose at least one role to stage.';return;}
+    if(checkedRoles.observed.length>1||checkedRoles.rainfall.length>1){
+      status.textContent='Choose at most one observed series and one rainfall series.';
+      return;
+    }
+    const plans=[
+      [$('observedSelect'),checkedRoles.observed],
+      [$('modelSelect'),checkedRoles.model],
+      [$('rainSelect'),checkedRoles.rainfall],
+    ];
+    if(plans.some(([control,keys])=>keys.some(key=>![...control.options].some(option=>option.value===key)))){
+      status.textContent='A chosen series is unavailable for that assignment. Check its interpretation and try again.';
+      return;
+    }
+    for(const [control,keys] of plans){
+      if(!keys.length)continue;
+      if(control.multiple){
+        for(const option of control.options)if(keys.includes(option.value))option.selected=true;
+      }else{
+        control.value=keys[0];
+      }
+      control.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+    status.textContent='Selections staged. Review quantity and units and use Apply assignments to confirm.';
+  });
+  review.addEventListener('toggle',()=>{if(review.open)render();});
+  window.addEventListener('icm:source-pool-changed',()=>{
+    if(review.open)render();
+    else review.hidden=!(window.ICMProjectRegistry?.listSeries().length);
+  });
+}
 function wireVerificationOverview(){
   const table=$('verificationEvidenceTable'),scenario=$('verificationReviewScenario');
   const fields=$('verificationReviewFields'),decision=$('verificationReviewDecision');
@@ -1007,7 +1072,7 @@ function wirePipeCapacity(){
 }
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
-  buildAboutPage();buildSecurityPage();wireVerificationOverview();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
+  buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }

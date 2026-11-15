@@ -19,11 +19,19 @@ try{
   }
   await page.setInputFiles('#fileInput',[file('Observed-synthetic.csv',0),file('Model-synthetic.csv',.01)]);
   await page.waitForFunction(()=>[...state.files.values()].filter(item=>item.status==='ready').length===2,null,{timeout:60000});
-  await page.evaluate(()=>{
-    document.querySelector('#timeBasisConfirmed').checked=true;
-    const registry=window.ICMProjectRegistry;
-    state.mapping={observed:registry.listSeries({role:'observed'})[0].key,models:[registry.listSeries({role:'model'})[0].key],rain:''};
-  });
+  await page.locator('#guidedImportReview summary').click();
+  const review=page.locator('#guidedImportReview');
+  await review.getByRole('combobox',{name:/Role for Observed-synthetic/}).waitFor();
+  assert.match(await review.locator('tbody').textContent(),/Observed-synthetic.*flow/i);
+  await review.getByRole('combobox',{name:/Role for Observed-synthetic/}).selectOption('observed');
+  await review.getByRole('combobox',{name:/Role for Model-synthetic/}).selectOption('model');
+  const before=await page.evaluate(()=>JSON.stringify(state.mapping));
+  await review.getByRole('button',{name:'Apply suggested setup'}).click();
+  assert.match(await page.locator('#guidedImportStatus').textContent(),/Selections staged/);
+  assert.equal(await page.evaluate(()=>JSON.stringify(state.mapping)),before);
+  await page.locator('#timeBasisConfirmed').check();
+  await page.locator('#applyMappingBtn').click();
+  await page.waitForFunction(()=>state.mapping.observed&&state.mapping.models.length===1);
   await page.evaluate(()=>window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics());
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','overview'));
   const row=page.locator('#verificationEvidenceTable tbody tr');

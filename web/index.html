@@ -26,6 +26,16 @@
       <input id="folderInput" type="file" webkitdirectory multiple hidden />
       <div class="dropzone" id="dropzone"><strong>Drop survey files or a folder here</strong><span>Recognised data: .CSV, .FDV, .R · survey association: fm_rg_assoc.xlsx</span></div>
       <div class="pool-summary" id="poolSummary">No files loaded.</div>
+      <details id="guidedImportReview" class="subpanel" hidden>
+        <summary>Import Review</summary>
+        <p>Review detected quantities and units. Choose the roles to stage in Assign &amp; interpret series, then confirm the assignments there.</p>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Imported series review">
+          <table class="data-table compact"><thead><tr><th>Source / series</th><th>Format</th><th>Likely asset</th><th>Quantity</th><th>Unit</th><th>Suggested role</th><th>Role to stage</th></tr></thead>
+            <tbody id="guidedImportRows"></tbody></table>
+        </div>
+        <button id="guidedImportApply" type="button" class="btn">Apply suggested setup</button>
+        <p id="guidedImportStatus" role="status"></p>
+      </details>
       <div class="table-wrap" tabindex="0" role="region" aria-label="Source files table"><table class="data-table"><thead><tr><th>File</th><th>Format</th><th>Rows</th><th>Period</th><th>Audit</th><th>Status</th><th class="source-remove-head" aria-label="Remove source"></th></tr></thead><tbody id="poolBody"></tbody></table></div>
     </section>
 
