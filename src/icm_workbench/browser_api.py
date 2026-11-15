@@ -1149,3 +1149,10 @@ def circular_pipe_capacity(diameter_m, gradient, roughness_m, viscosity_m2_s):
     from icm_workbench.analysis.pipe_capacity import full_pipe_capacity
 
     return json.dumps(full_pipe_capacity(diameter_m, gradient, roughness_m, viscosity_m2_s))
+
+
+def circular_pipe_design_flow(diameter_m, gradient, roughness_m, viscosity_m2_s, discharge_m3_s):
+    """Expose turbulent normal-depth assessment to the local worker."""
+    from icm_workbench.analysis.pipe_capacity import normal_depth_assessment
+
+    return json.dumps(normal_depth_assessment(diameter_m, gradient, roughness_m, viscosity_m2_s, discharge_m3_s))

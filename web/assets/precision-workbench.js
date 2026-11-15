@@ -766,6 +766,7 @@ function buildAboutPage(){
     ['survey','fdv-check','Flow survey','Review monitor and rain-gauge weeks from their schematics, record a rating and comment for each week, and check flow continuity in Volume balance. Monthly review brings the outcomes and actions together for PDF export.'],
     ['detriment','flooding','Detriment assessment','Compare baseline Scenario A with proposed Scenario B using exported ICM report evidence. The Flooding, Level and Spill tabs assess changes in flood volume, maximum water-level elevation and freeboard, or spill counts and actual durations. Explicit criteria, raw asset evidence and optional manhole / link ID lists support a focused, traceable assessment.'],
     ['graphs','comparison','Verification','Explore observed versus modelled agreement, depth and flow–depth rating diagnostics, and dry-weather-flow baselines. Use scatter views, fitted relationships and verification statistics to understand model performance and hydraulic behaviour, with sample support and data-validity limitations retained.'],
+    ['hydraulics','capacity','Hydraulic Calculations','Assess full-flow capacity and supported turbulent normal depths for steady uniform flow in a circular pipe.'],
     ['reports','report-generation','Reports','Export engineering assessments and graph reports from the current analysis, and save or restore a workspace with its configuration and source fingerprints. Reports carry the relevant criteria, units and evidence so results can be reviewed and shared; saved workspaces reference the original files without embedding their raw data.']
   ];
   const panel=document.createElement('section');panel.id='tab-about';panel.className='tab-panel';panel.hidden=true;
@@ -808,16 +809,47 @@ function wirePipeCapacity(){
     const number=name=>form.elements[name].valueAsNumber;
     const inputs={diameter_m:number('diameter')/1000,gradient:number('gradient'),
       roughness_m:number('roughness')/1000,viscosity_m2_s:number('viscosity')};
-    result.textContent='Calculating capacity…';
+    const design=event.submitter?.value==='design';
+    if(design&&form.elements.discharge.value===''){
+      result.textContent='Enter a design discharge in L/s.';
+      form.elements.discharge.focus();
+      return;
+    }
+    if(design)inputs.discharge_m3_s=number('discharge')/1000;
+    result.textContent=design?'Assessing design flow…':'Calculating capacity…';
     try{
       await ensureEngineBoot();
-      const values=await engine.call('circular_pipe_capacity',inputs);
+      const operation=design?'circular_pipe_design_flow':'circular_pipe_capacity';
+      const values=await engine.call(operation,inputs);
       if(request!==generation)return;
+      const precision=value=>value===null?'—':Number(value.toPrecision(5)).toLocaleString(undefined,{maximumSignificantDigits:5});
+      if(design){
+        const summary=document.createElement('p');
+        summary.textContent='Imposed full-bore velocity '+precision(values.imposed_full_velocity_m_s)+
+          ' m/s · Available full-flow capacity '+(values.full_capacity_m3_s===null?'unavailable':precision(values.full_capacity_m3_s*1000)+' L/s');
+        result.replaceChildren(summary);
+        if(values.depths.length){
+          const list=document.createElement('ul');
+          for(const solution of values.depths){
+            const item=document.createElement('li');
+            const basis=solution.depth_fraction===1?'Full-bore boundary':'Partially full normal depth';
+            item.textContent=basis+' '+precision(solution.depth_m*1000)+' mm · '+precision(solution.velocity_m_s)+
+              ' m/s · Area '+precision(solution.area_m2)+' m² · Hydraulic radius '+precision(solution.hydraulic_radius_m)+' m';
+            list.append(item);
+          }
+          result.append(list);
+        }else{
+          const note=document.createElement('p');
+          note.textContent=values.status==='unavailable'?'No supported turbulent normal-depth result. Check the flow regime and roughness.':
+            'No positive turbulent normal depth · '+values.status+'.';
+          result.append(note);
+        }
+        return;
+      }
       if(values.regime==='transitional'){
         result.textContent='Capacity unavailable in the transitional flow range.';
         return;
       }
-      const precision=value=>value===null?'—':Number(value.toPrecision(5)).toLocaleString(undefined,{maximumSignificantDigits:5});
       result.textContent=precision(values.discharge_m3_s*1000)+' L/s · '+precision(values.velocity_m_s)+
         ' m/s · Re '+precision(values.reynolds)+' · Darcy f '+precision(values.friction_factor)+' · '+values.regime;
     }catch(error){

@@ -32,3 +32,44 @@ def test_laminar_zero_and_transition_contracts():
 def test_invalid_inputs(values):
     with pytest.raises(ValueError):
         full_pipe_capacity(*values)
+
+
+def test_design_flow_returns_both_roots_and_satisfies_energy_equation():
+    from math import acos, log10, sin
+
+    from icm_workbench.analysis.pipe_capacity import normal_depth_assessment
+
+    d, slope, roughness, viscosity = .45, .005, .0015, 1e-6
+    q = 1.05 * full_pipe_capacity(d, slope, roughness, viscosity)["discharge_m3_s"]
+    result = normal_depth_assessment(d, slope, roughness, viscosity, q)
+    shallow, deep = result["depths"]
+    assert shallow["depth_fraction"] < .94 < deep["depth_fraction"] < 1
+    for solution in result["depths"]:
+        angle = 2 * acos(1 - 2 * solution["depth_fraction"])
+        area = d**2 * (angle - sin(angle)) / 8
+        hydraulic_diameter = 8 * area / (d * angle)
+        velocity = q / area
+        friction = solution["friction_factor"]
+        reynolds = hydraulic_diameter * velocity / viscosity
+        root = sqrt(friction)
+        assert friction * velocity**2 / (2 * 9.80665 * hydraulic_diameter) == pytest.approx(slope)
+        assert 1 / root == pytest.approx(-2 * log10(roughness / (3.7 * hydraulic_diameter) + 2.51 / (reynolds * root)))
+
+
+def test_design_flow_handles_half_full_crown_and_no_supported_solution():
+    from icm_workbench.analysis.pipe_capacity import normal_depth_assessment
+
+    d, slope, roughness, viscosity = args = (.45, .005, .0015, 1e-6)
+    capacity = full_pipe_capacity(*args)["discharge_m3_s"]
+    half = normal_depth_assessment(*args, capacity / 2)
+    assert half["depths"][0]["depth_fraction"] == pytest.approx(.5)
+    full = normal_depth_assessment(*args, capacity)
+    assert full["depths"][-1]["depth_fraction"] == 1
+    assert normal_depth_assessment(*args, 1.25 * capacity)["depths"] == []
+    assert normal_depth_assessment(*args, 0)["status"] == "zero discharge"
+    assert normal_depth_assessment(d, 0, roughness, viscosity, capacity)["status"] == "zero gradient"
+    assert normal_depth_assessment(*args, 1e-10)["depths"] == []
+    with pytest.raises(ValueError, match="discharge"):
+        normal_depth_assessment(*args, -1)
+    other = normal_depth_assessment(d, 2*slope, roughness, viscosity, capacity)
+    assert other["imposed_full_velocity_m_s"] == full["imposed_full_velocity_m_s"]

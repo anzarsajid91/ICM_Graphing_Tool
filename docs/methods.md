@@ -23,3 +23,22 @@ An exclusion is a reviewer decision that a known interval must not contribute to
 
 ## Storage screening
 The first-release capability is **Idealised spill-volume screening**. All physical discharge volumes are aggregated into their 12/24 counting block and annual block volumes can be screened against a configurable target count. This is not dynamic routing and is not a guaranteed engineered storage size.
+
+## Circular-pipe capacity and design flow preview
+
+The calculator uses SI units, steady uniform gravity flow, and pipe gradient
+as the energy slope. Full-bore capacity uses (64/Re) in laminar flow and
+Colebrook–White in turbulent flow. Capacity is withheld in the transitional
+range.
+
+Partially full design flow uses circular-segment area and wetted perimeter,
+with hydraulic diameter equal to four times the hydraulic radius. The solver
+checks both limbs of the turbulent capacity curve, including the descending
+near-crown limb. It reports each supported normal depth and identifies an
+exact full-bore capacity boundary separately. The implied full-bore velocity
+is always the imposed discharge divided by the full area.
+
+Partially full laminar and transitional regimes and relative roughness above
+5% of the hydraulic diameter are outside this preview's calculation scope.
+Results provide uniform-flow design evidence. Use dynamic hydraulic modelling
+for backwater, surcharge, controls and time-dependent flows.

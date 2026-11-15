@@ -118,12 +118,14 @@
             <label>Internal diameter (mm)<input name="diameter" type="number" min="1" max="20000" step="any" required value="450" /></label>
             <label>Gradient (m/m)<input name="gradient" type="number" min="0" max="1" step="any" required value="0.005" /></label>
             <label>Effective roughness (mm)<input name="roughness" type="number" min="0" step="any" required value="1.5" /></label>
+            <label>Design discharge (L/s)<input name="discharge" type="number" min="0" step="any" /></label>
           </div>
           <details class="subpanel">
             <summary>Advanced fluid properties · <span id="pipeActiveViscosity">ν = 0.000001 m²/s</span></summary>
             <label>Kinematic viscosity (m²/s)<input name="viscosity" type="number" min="0.000000001" max="0.01" step="any" required value="0.000001" /></label>
           </details>
-          <button class="btn primary">Calculate capacity</button>
+          <button class="btn primary" value="capacity">Calculate capacity</button>
+          <button class="btn" value="design">Assess design flow</button>
         </form>
         <div id="pipeCapacityResult" class="summary-box" role="status" aria-live="polite">Enter pipe dimensions and a uniform-flow gradient.</div>
       </article>

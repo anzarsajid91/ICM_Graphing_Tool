@@ -22,6 +22,7 @@ async function exportText(id){const downloadPromise=page.waitForEvent('download'
 try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.ICMDetriment&&window.__ICM_PRECISION_WORKBENCH__),null,{timeout:30000});
+  await page.getByRole('link',{name:'Open Data / time series'}).click();
   await page.locator('#dtReportUpload summary').click();
   await page.setInputFiles('#dtFileInput',(await fs.readdir('tests/fixtures/detriment')).filter(n=>n.endsWith('.csv')).map(n=>path.resolve('tests/fixtures/detriment',n)));
   await page.waitForFunction(()=>[...state.files.values()].filter(x=>x.status==='ready'&&x.parsed?.metadata?.source_kind==='detriment_report').length===9,null,{timeout:120000});
@@ -143,7 +144,7 @@ try{
   assert.ok(await page.evaluate(()=>document.querySelector('.pw-about-nav').nextElementSibling.classList.contains('pw-asset-browser')));
   await about.click();assert.equal(await page.title(),'About Hydra Bench · Hydra Bench');
   assert.equal(await page.locator('#tab-about').isVisible(),true);assert.equal(await page.locator('#tab-detriment').isVisible(),false);
-  assert.equal(await page.locator('.pw-about-workspaces section').count(),6);assert.match(await page.locator('.pw-about-author').innerText(),/Built by Anzar Sajid/);
+  assert.deepEqual(await page.locator('.pw-about-workspaces button').evaluateAll(buttons=>buttons.map(button=>button.dataset.aboutWorkspace)),['data','spills','network','survey','detriment','graphs','hydraulics','reports']);assert.match(await page.locator('.pw-about-author').innerText(),/Built by Anzar Sajid/);
   for(const size of [{width:1440,height:1000},{width:1024,height:844}]){await page.setViewportSize(size);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1));await page.screenshot({path:path.join(evidence,'about-'+size.width+'.png'),fullPage:false,animations:'disabled'});}
   await page.locator('[data-about-workspace="detriment"]').click();assert.equal(await page.locator('#dtAssetIds').isVisible(),true);
   assert.deepEqual(errors,[]);console.log('Detriment acceptance passed: Data Sources → 3 tabs → evidence/export, precision boundaries, restoration, source removal and responsive containment.');
