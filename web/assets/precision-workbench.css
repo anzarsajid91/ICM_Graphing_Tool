@@ -568,3 +568,24 @@ body.precision-workbench{
 #securityBuildIdentity{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 
 body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
+
+/* The fixed mark remains readable with the rail collapsed. */
+.pw-brand-icon:has(.hb-brand-mark){background:transparent}
+.hb-brand-mark{width:34px;height:34px;display:block;flex:none}
+.hb-brand-bench{color:#4740b6}
+.hb-brand-pulse{
+  stroke-dasharray:13 120;
+  stroke-dashoffset:14;
+  opacity:0;
+  animation:hb-brand-flow 7s linear infinite;
+}
+@keyframes hb-brand-flow{
+  0%{stroke-dashoffset:14;opacity:0}
+  4%{opacity:.92}
+  25%{opacity:.92}
+  30%{stroke-dashoffset:-103;opacity:0}
+  100%{stroke-dashoffset:-103;opacity:0}
+}
+@media(prefers-reduced-motion:reduce){
+  .hb-brand-pulse{animation:none}
+}

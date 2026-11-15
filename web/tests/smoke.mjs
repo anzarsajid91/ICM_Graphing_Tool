@@ -716,6 +716,7 @@ async function verifyIndividualSourceRemoval(){
   try{
     await privacy.navigate(probe,baseUrl+'?individual_source_remove='+Date.now(),{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
+    await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
     const fdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM7413.fdv'));
     const rain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG5097.R'));
     await probe.setInputFiles('#fileInput',[
@@ -838,6 +839,7 @@ async function verifyPlotlyEngineeringEnhancements(){
     await probe.setViewportSize({width:1366,height:760});
     await privacy.navigate(probe,baseUrl+'?plotly_engineering='+Date.now(),{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
+    await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
     await probe.evaluate(()=>{
       const confirm=()=>{for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
         const input=document.getElementById(id);input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
@@ -1227,6 +1229,7 @@ async function verifySpillCalendarAllocation(){
   try{
     await privacy.navigate(probe,baseUrl+'?spill_calendar='+Date.now(),{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
+    await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
     await probe.evaluate(()=>{
       const confirm=()=>{for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
         const input=document.getElementById(id);input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
@@ -1383,7 +1386,7 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
   const primaryLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(primaryLabels.map(x=>x.trim()).join('|')!=='Home|Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
+  if(primaryLabels.map(x=>x.trim()).join('|')!=='Home|Data / time series|Spills|Network Schematic|Flow survey|Verification|Detriment assessment|Reports')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
   for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080}]){
     await page.setViewportSize(size);
     await precisionRoute('data','sources');
@@ -2498,7 +2501,7 @@ try{
   stage='association workbook and canonical survey navigation';
   await precisionRoute('survey','fdv-check');
   const navLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(navLabels.map(x=>x.trim()).join('|')!=='Home|Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Unexpected Precision navigation: '+JSON.stringify(navLabels));
+  if(navLabels.map(x=>x.trim()).join('|')!=='Home|Data / time series|Spills|Network Schematic|Flow survey|Verification|Detriment assessment|Reports')throw new Error('Unexpected Precision navigation: '+JSON.stringify(navLabels));
   if(navLabels.some(x=>/storage/i.test(x)))throw new Error('Storage must remain a Spills subtab, not a primary workspace: '+JSON.stringify(navLabels));
   const flowSurveySubtabs=await page.locator('.pw-secondary-nav button').allTextContents();
   if(flowSurveySubtabs.map(x=>x.trim()).join('|')!=='FDV check|Rainfall check|Volume balance|Monthly review')throw new Error('Unexpected Flow survey subtab sequence: '+JSON.stringify(flowSurveySubtabs));

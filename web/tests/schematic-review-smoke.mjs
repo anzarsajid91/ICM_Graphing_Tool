@@ -10,7 +10,7 @@ const privacy=installPrivacyGuard(context,baseUrl);
 try{
  await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate&&(window.__ICM_WORKBENCH__?.status==='ready'||(window.__ICM_WORKBENCH__?.deferredEngine&&window.__ICM_WORKBENCH__?.status==='idle')),null,{timeout:90000});
- assert((await page.title()).includes('Hydra Bench'));assert((await page.locator('.pw-primary-nav').innerText()).includes('Plots'));
+ assert((await page.title()).includes('Hydra Bench'));assert((await page.locator('.pw-primary-nav').innerText()).includes('Verification'));
  console.log('STEP import supplied FDV/rain/workbook');
  await page.setInputFiles('#fileInput',[...['FM7413','FM8356','FM8095','FM7424','FM9320','FM2830','FM2961','FM8722','FM7307'].map(n=>root+'/reference/current-tool/sample-data/fdv/'+n+'.fdv'),...['RG5097','RG4922','RG6324','RG4977'].map(n=>root+'/reference/current-tool/sample-data/rainfall/'+n+'.R'),root+'/reference/current-tool/sample-data/rainfall/fm_rg_assoc.xlsx']);
  await page.waitForFunction(()=>state.files.size===13&&[...state.files.values()].every(x=>x.status==='ready'),null,{timeout:180000});

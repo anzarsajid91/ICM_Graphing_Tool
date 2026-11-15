@@ -1,6 +1,6 @@
 # Network schematic
 
-Open **Spills → Network Schematic**. This is an annual network assessment overview,
+Open **Network Schematic** from the primary navigation. This is an annual network assessment overview,
 with automatic layout and optional manual refinement. Spill count and duration
 are the primary information; evidence checks and engineering notes are disclosed
 on demand.

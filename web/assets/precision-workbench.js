@@ -20,9 +20,13 @@ const ROUTES={
     icon:'spills',
     pages:{
       assessment:{label:'Spill assessment',title:'EDM / model spill assessment',description:'Configure thresholds and exclusions, then review physical spill intervals, 12/24 counts and observed/model evidence.',tab:'spills',root:()=>$('tab-spills')},
-      storage:{label:'Storage assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')},
-      network:{label:'Network schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')}
+      storage:{label:'Storage assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')}
     }
+  },
+  network:{
+    label:'Network Schematic',
+    icon:'network',
+    pages:{schematic:{label:'Schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')}}
   },
   survey:{
     label:'Flow survey',
@@ -34,9 +38,8 @@ const ROUTES={
       'monthly-review':{label:'Monthly review',title:'Monthly survey review',description:'Review effective weekly outcomes, engineering comments and actions, then export the monthly PDF.',tab:'data-health',root:()=>$('tab-data-health')}
     }
   },
-  detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},
   graphs:{
-    label:'Plots',
+    label:'Verification',
     icon:'verify',
     pages:{
       comparison:{label:'Observed vs modelled',title:'Observed versus modelled diagnostics',description:'Compare scenarios using the canonical bounded-alignment engine, scatter views and verification statistics.',tab:'compare',root:()=>$('tab-compare')},
@@ -44,6 +47,7 @@ const ROUTES={
       dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
     }
   },
+  detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},
   about:{
     label:'About',icon:'about',
     pages:{overview:{label:'Overview',title:'About Hydra Bench',description:'A practical workbench for hydraulic evidence, model verification and scenario assessment.',root:()=>$('tab-about')},security:{label:'IT Security',title:'IT Security',description:'Data handling, implemented controls and verification limits.',root:()=>$('tab-security')}}
@@ -66,6 +70,7 @@ const ROUTE_ALIASES={
   'verification/storage':['spills','storage'],
   'spills/thresholds':['spills','assessment'],
   'spills/results':['spills','assessment'],
+  'spills/network':['network','schematic'],
   'survey/configuration':['survey','fdv-check'],
   'survey/data-health':['survey','fdv-check'],
   'survey/rainfall-response':['survey','rainfall-check'],
@@ -143,6 +148,7 @@ function navIcon(name){
     home:'<path d="m3 10 9-7 9 7M5 9v11h14V9M10 20v-6h4v6"/>',
     data:'<ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/>',
     survey:'<path d="M3 6c2.3 0 2.3-2 4.5-2S9.8 6 12 6s2.3-2 4.5-2S18.8 6 21 6M3 12c2.3 0 2.3-2 4.5-2s2.3 2 4.5 2 2.3-2 4.5-2 2.3 2 4.5 2M3 18c2.3 0 2.3-2 4.5-2s2.3 2 4.5 2 2.3-2 4.5-2 2.3 2 4.5 2"/>',
+    network:'<path d="M6 8v7m2-7 8 7m2-7v7"/><circle cx="6" cy="5" r="2"/><circle cx="18" cy="5" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
     rainfall:'<path d="M7 15a4 4 0 0 1 .6-8 5.5 5.5 0 0 1 10.5 1.5A3.5 3.5 0 0 1 18 15"/><path d="M8 18l-1 2M12 18l-1 2M16 18l-1 2"/>',
     verify:'<path d="M4 15h3v6H4zM10.5 10h3v11h-3zM17 4h3v17h-3z" fill="currentColor" stroke="none"/>',
     detriment:'<path d="M9 4H6v17h12V4h-3"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 10h6M9 14h6M9 18h4"/>',
@@ -366,7 +372,7 @@ function buildShell(){
   const app=document.createElement('div');app.className='pw-app';
   const rail=document.createElement('aside');rail.className='pw-rail';rail.setAttribute('aria-label','Primary workspaces');
   rail.id='pwNavigation';
-  rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><button type="button" id="pwBrandToggle" class="pw-brand-icon" aria-controls="pwNavigation" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">HB</button><span class="pw-brand-title">Hydra Bench</span></div><small>Browser-local hydraulic evidence and assessment.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
+  rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><button type="button" id="pwBrandToggle" class="pw-brand-icon" aria-controls="pwNavigation" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation"><svg class="hb-brand-mark" aria-hidden="true" focusable="false" viewBox="0 0 48 48"><path fill="#fff" stroke="#20252a" stroke-width="3.5" stroke-linejoin="round" d="M9 4h4a5 5 0 0 1 5 5v6a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4V9a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v30a5 5 0 0 1-5 5h-4a5 5 0 0 1-5-5v-6a4 4 0 0 0-4-4h-4a4 4 0 0 0-4 4v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9a5 5 0 0 1 5-5Z"/><path stroke="#20252a" stroke-width="3" d="M11 11v15m26 1v10"/><path fill="none" stroke="#4740b6" stroke-width="3.5" stroke-linecap="round" d="M5 37h4c4 0 5-3 5.5-6.5C15.2 25.7 20 24 24 24h16c-3-3-3.5-6-3.5-12"/><path class="hb-brand-pulse" pathLength="100" fill="none" stroke="#c2bcff" stroke-width="2.1" stroke-linecap="round" d="M5 37h4c4 0 5-3 5.5-6.5C15.2 25.7 20 24 24 24h16c-3-3-3.5-6-3.5-12"/><g fill="#fff" stroke="#20252a" stroke-width="2.5"><circle cx="11" cy="11" r="3.1"/><circle cx="37" cy="11" r="3.1"/><circle cx="24" cy="24" r="3.1"/><circle cx="11" cy="37" r="3.1"/><circle cx="37" cy="37" r="3.1"/></g></svg></button><span class="pw-brand-title">Hydra<span class="hb-brand-bench">Bench</span></span></div><small>Browser-local hydraulic evidence and assessment.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
   const bottom=document.createElement('div');bottom.className='pw-rail-bottom';
   bottom.innerHTML='<nav class="pw-about-nav" aria-label="About the tool"></nav>';
   bottom.appendChild(qs('.pw-asset-browser',rail));rail.appendChild(bottom);
@@ -588,7 +594,7 @@ function navigate(workspace,page,push=false){
   document.title=p.title+' · Hydra Bench';
   resizeVisuals();
   window.dispatchEvent(new CustomEvent('icm:route-changed',{detail:{workspace,page}}));
-  if(workspace==='spills'&&page==='network'){
+  if(workspace==='network'&&page==='schematic'){
     const networkRoot=$('tab-spill-network');
     if(networkRoot&&!networkRoot.children.length){
       const loading=document.createElement('p');loading.className='pw-empty-state';
@@ -751,9 +757,10 @@ function buildAboutPage(){
   const summaries=[
     ['data','time-series','Data / time series','Upload CSV, FDV and rainfall R files, association workbooks and ICM assessment reports into a shared source pool. Assign observed, modelled and rainfall series, confirm their quantities and units, and review hydraulic traces, thresholds, rainfall events and source statistics. This is the starting point for supplying and checking the evidence used by the other workspaces.'],
     ['spills','assessment','Spills','Assess observed and modelled spills using explicit thresholds, exclusions and valid temporal support. Review physical spill intervals, UK 12/24 counts and yearly or monthly comparisons. Storage assessment provides idealised storage screening and modelled spill-volume evidence to support further engineering investigation.'],
+    ['network','schematic','Network Schematic','Arrange and annotate a network, assign annual spill evidence and review observed and modelled results by asset and reporting year.'],
     ['survey','fdv-check','Flow survey','Review monitor and rain-gauge weeks from their schematics, record a rating and comment for each week, and check flow continuity in Volume balance. Monthly review brings the outcomes and actions together for PDF export.'],
     ['detriment','flooding','Detriment assessment','Compare baseline Scenario A with proposed Scenario B using exported ICM report evidence. The Flooding, Level and Spill tabs assess changes in flood volume, maximum water-level elevation and freeboard, or spill counts and actual durations. Explicit criteria, raw asset evidence and optional manhole / link ID lists support a focused, traceable assessment.'],
-    ['graphs','comparison','Plots','Explore observed versus modelled agreement, depth and flow–depth rating diagnostics, and dry-weather-flow baselines. Use scatter views, fitted relationships and verification statistics to understand model performance and hydraulic behaviour, with sample support and data-validity limitations retained.'],
+    ['graphs','comparison','Verification','Explore observed versus modelled agreement, depth and flow–depth rating diagnostics, and dry-weather-flow baselines. Use scatter views, fitted relationships and verification statistics to understand model performance and hydraulic behaviour, with sample support and data-validity limitations retained.'],
     ['reports','report-generation','Reports','Export engineering assessments and graph reports from the current analysis, and save or restore a workspace with its configuration and source fingerprints. Reports carry the relevant criteria, units and evidence so results can be reviewed and shared; saved workspaces reference the original files without embedding their raw data.']
   ];
   const panel=document.createElement('section');panel.id='tab-about';panel.className='tab-panel';panel.hidden=true;
