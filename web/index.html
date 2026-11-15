@@ -93,7 +93,7 @@
           </figure>
         </div>
         <nav class="hb-welcome-links" aria-label="Quick access">
-          <a href="#/verification/comparison">Start verification</a>
+          <a href="#/verification/overview">Start verification</a>
           <a href="#/survey/fdv-check">Review flow survey</a>
           <a href="#/spills/assessment">Assess spills</a>
           <a href="#/network/schematic">Open network schematic</a>
@@ -107,6 +107,37 @@
         <article><h3>Compare network response</h3><p>Check observed and modelled traces, spill counts and scenario detriment.</p></article>
         <article><h3>Report findings</h3><p>Check which assessments are ready and export your results.</p><a href="#/reports/report-generation">Open reports</a></article>
       </div>
+    </section>
+
+    <section class="tab-panel" id="tab-verification-overview" hidden>
+      <article class="panel">
+        <div class="panel-head"><div><h3>Comparison evidence</h3><p id="verificationEvidenceStatus" role="status"></p></div>
+          <a class="btn" href="#/graphs/comparison">Open comparison plots</a>
+        </div>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Verification scenarios">
+          <table id="verificationEvidenceTable" class="data-table compact" hidden>
+            <thead><tr><th>Scenario source</th><th>Valid pairs</th><th>Common support</th><th>RMSE</th><th>NSE</th><th>Review</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <section class="subpanel" aria-labelledby="verificationReviewHeading">
+          <h4 id="verificationReviewHeading">Engineer Review</h4>
+          <p>Decisions apply to the current evidence in this browser session.</p>
+          <fieldset id="verificationReviewFields" disabled>
+            <div class="mapping-grid">
+              <label>Scenario<select id="verificationReviewScenario"></select></label>
+              <label>Decision<select id="verificationReviewDecision">
+                <option>Not reviewed</option><option>Acceptable</option><option>Acceptable with caveats</option>
+                <option>Requires investigation</option><option>Not suitable for acceptance</option>
+              </select></label>
+              <label>Review comments<textarea id="verificationReviewComments" rows="3" maxlength="4000"></textarea></label>
+              <label>Assumptions and evidence references<textarea id="verificationReviewReferences" rows="3" maxlength="4000"></textarea></label>
+            </div>
+            <button id="verificationReviewSave" type="button" class="btn primary">Save engineer review</button>
+          </fieldset>
+          <p id="verificationReviewStatus" role="status"></p>
+        </section>
+      </article>
     </section>
 
     <section class="tab-panel" id="tab-hydraulics" hidden>

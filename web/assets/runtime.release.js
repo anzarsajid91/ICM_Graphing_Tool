@@ -1485,6 +1485,7 @@ async function ensureComparisonResults({background=false}={}){
         scenarios:results.map(({model,result,error})=>({
           seriesKey:sourceKey(model.id,model.col),
           metrics:result?.metrics??null,
+          unit:result?.observed_unit??null,
           coverage:result?.coverage??null,
           error:error??null,
         })),

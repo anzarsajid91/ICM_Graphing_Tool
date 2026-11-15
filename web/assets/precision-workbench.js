@@ -43,6 +43,7 @@ const ROUTES={
     icon:'verify',
     pages:{
       comparison:{label:'Observed vs modelled',title:'Observed versus modelled diagnostics',description:'Compare scenarios using the canonical bounded-alignment engine, scatter views and verification statistics.',tab:'compare',root:()=>$('tab-compare')},
+      overview:{label:'Overview',title:'Verification overview',description:'Review source coverage, comparison metrics and engineering decisions.',root:()=>$('tab-verification-overview')},
       rating:{label:'Depth / rating',title:'Depth agreement and flow–depth diagnostics',description:'Inspect depth agreement and Q/H rating evidence with sample support and validity limitations.',tab:'compare',root:()=>$('tab-compare')},
       dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
     }
@@ -69,6 +70,7 @@ const ROUTE_ALIASES={
   'data/sources':['data','time-series'],
   'data/series-mapping':['data','time-series'],
   'verification/comparison':['graphs','comparison'],
+  'verification/overview':['graphs','overview'],
   'verification/rating':['graphs','rating'],
   'verification/dwf':['graphs','dwf'],
   'verification/storage':['spills','storage'],
@@ -794,6 +796,79 @@ function buildSecurityPage(){
   const links=document.createElement('p');links.innerHTML='<a href="security/dependencies.json">Dependency inventory</a> · <a href="security/security-audit.md">Assessment and limitations</a> · <a href="security/claims.json">Claim–evidence register</a> · <a href="security/SECURITY.md">Security disclosure guidance</a>';article.appendChild(links);
   panel.appendChild(article);qs('main.shell').appendChild(panel);
 }
+function wireVerificationOverview(){
+  const table=$('verificationEvidenceTable'),scenario=$('verificationReviewScenario');
+  const fields=$('verificationReviewFields'),decision=$('verificationReviewDecision');
+  const comments=$('verificationReviewComments'),references=$('verificationReviewReferences');
+  const status=$('verificationReviewStatus'),reviews=new Map();
+  let evidence=null;
+  const available=row=>Boolean(row?.metrics?.pairs&&['complete','partial'].includes(row.coverage?.status));
+  const evidenceKey=()=>JSON.stringify([evidence.signature,evidence.dependencies]);
+  const active=()=>current.workspace==='graphs'&&current.page==='overview';
+  function reviewFor(key){
+    const review=reviews.get(key);
+    if(!review)return null;
+    return {...review,stale:evidence.freshness!=='current'||review.key!==evidenceKey()};
+  }
+  function updateFields(){
+    const selected=evidence?.scenarios.find(row=>row.seriesKey===scenario.value);
+    const review=selected&&reviewFor(selected.seriesKey);
+    fields.disabled=evidence?.freshness!=='current'||!evidence.scenarios.some(available);
+    decision.disabled=comments.disabled=references.disabled=$('verificationReviewSave').disabled=!available(selected);
+    decision.value=review&&!review.stale?review.decision:'Not reviewed';
+    comments.value=review&&!review.stale?review.comments:'';
+    references.value=review&&!review.stale?review.references:'';
+    status.textContent=review?.stale?'A previous review is stale. Recheck the evidence before recording a decision.':'';
+  }
+  function render(){
+    evidence=window.__ICM_WORKBENCH__?.readVerificationEvidence?.();
+    const previous=scenario.value;
+    scenario.replaceChildren();
+    const body=qs('tbody',table);body.replaceChildren();
+    table.hidden=!evidence?.scenarios.length;
+    const summary=$('verificationEvidenceStatus');
+    if(!evidence){
+      summary.textContent='Run an observed and modelled comparison to review its evidence.';
+      updateFields();
+      return;
+    }
+    const {start,end}=evidence.period;
+    summary.textContent=evidence.asset.id+' · '+(start||'start of common data')+' to '+(end||'end of common data')+
+      ' · '+(evidence.freshness==='current'?'Current evidence':'Stale evidence. Recalculate the comparison before review.');
+    const metric=value=>Number.isFinite(value)?Number(value.toPrecision(5)).toString():'—';
+    for(const row of evidence.scenarios){
+      const source=window.ICMProjectRegistry?.getSeries(row.seriesKey)?.label;
+      const label=source||'Unavailable source';
+      scenario.add(new Option(label,row.seriesKey));
+      const review=reviewFor(row.seriesKey);
+      const values=[label,metric(row.metrics?.pairs),row.error||(
+        Number.isFinite(row.coverage?.coverage_fraction)?
+          metric(row.coverage.coverage_fraction*100)+'% · '+row.coverage.status:'Unavailable'
+      ),Number.isFinite(row.metrics?.rmse)?metric(row.metrics.rmse)+' '+(row.unit||'(unit unresolved)'):'—',metric(row.metrics?.nse),review?.stale?'Stale review':review?.decision||'Not reviewed'];
+      const tr=body.insertRow();
+      for(const value of values)tr.insertCell().textContent=value;
+    }
+    if([...scenario.options].some(option=>option.value===previous))scenario.value=previous;
+    else if(evidence.scenarios.some(available))scenario.value=evidence.scenarios.find(available).seriesKey;
+    updateFields();
+  }
+  scenario.addEventListener('change',updateFields);
+  $('verificationReviewSave').addEventListener('click',()=>{
+    const latest=window.__ICM_WORKBENCH__?.readVerificationEvidence?.();
+    if(!evidence||latest?.freshness!=='current'||JSON.stringify([latest.signature,latest.dependencies])!==evidenceKey()){
+      render();return;
+    }
+    if(!latest.scenarios.some(row=>row.seriesKey===scenario.value&&available(row)))return;
+    if(decision.value==='Not reviewed'&&!comments.value.trim()&&!references.value.trim()){
+      reviews.delete(scenario.value);
+    }else{
+      reviews.set(scenario.value,{key:evidenceKey(),decision:decision.value,comments:comments.value.trim(),references:references.value.trim()});
+    }
+    render();status.textContent='Review saved for this session.';
+  });
+  window.addEventListener('icm:route-changed',()=>{if(active())render();});
+  window.addEventListener('icm:source-pool-changed',()=>{if(active())render();});
+}
 function wirePipeCapacity(){
   const form=$('pipeCapacityForm'),result=$('pipeCapacityResult');
   const sectionViews=$('pipeSectionViews'),keep=$('pipeKeepResult');
@@ -932,7 +1007,7 @@ function wirePipeCapacity(){
 }
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
-  buildAboutPage();buildSecurityPage();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
+  buildAboutPage();buildSecurityPage();wireVerificationOverview();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }

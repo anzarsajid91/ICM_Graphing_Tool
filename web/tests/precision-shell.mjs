@@ -59,7 +59,7 @@ try{
     if(await deepLinkPage.locator('.pw-primary-nav [data-workspace="network"]').getAttribute('aria-current')!=='page')
       throw new Error('The old Spills schematic link must select the standalone Network Schematic workspace.');
     for(const [name,workspace,subpage] of [
-      ['Start verification','graphs','comparison'],
+      ['Start verification','graphs','overview'],
       ['Run hydraulic calculations','hydraulics','capacity'],
       ['Review flow survey','survey','fdv-check'],
       ['Assess spills','spills','assessment'],
