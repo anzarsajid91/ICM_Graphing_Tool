@@ -1,5 +1,5 @@
 import {recordControls,observeControls} from './uiux-evidence.mjs';
-import {installPrivacyGuard} from './privacy-network.mjs';
+import {installPrivacyGuard,resourcePaths} from './privacy-network.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {assertReportActionSpacing} from './report-layout.mjs';
 import { chromium } from 'playwright';
@@ -102,6 +102,7 @@ async function measureColdReferenceImport(){
   try{
     await privacy.navigate(probe,baseUrl+'?cold_import='+Date.now(),{waitUntil:'domcontentloaded'});
     const domReadyMs=Date.now()-navigationStart;
+    await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
     const selectedAt=Date.now();
     await probe.setInputFiles('#fileInput',{name:'Cold-FM7413.fdv',mimeType:'text/plain',buffer});
     const outcome=await Promise.race([
@@ -151,6 +152,7 @@ async function measureFreshFastPathImport({dataset,relativePath,sourcePath,input
   try{
     await privacy.navigate(probe,baseUrl+'?fresh_fastpath='+encodeURIComponent(dataset)+'&t='+Date.now(),{waitUntil:'domcontentloaded'});
     const domReadyMs=Date.now()-navigationStart;
+    await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
     const selectedAt=Date.now();
     await probe.setInputFiles('#fileInput',usePathUpload?resolvedPath:{name:inputName,mimeType,buffer});
     const outcome=await Promise.race([
@@ -336,11 +338,24 @@ async function verifyFastPathFailureFallsBack(){
 }
 
 async function verifyMixedSiblingImport(){
-  const probe=await context.newPage(),probeErrors=[];
+  const probe=await context.newPage(),probeErrors=[],requestFailures=[];
+  const site=new URL(baseUrl),fixedPaths=resourcePaths();
+  const recordFailure=(request,status)=>{
+    const url=new URL(request.url());
+    const relative=url.origin===site.origin&&url.pathname.startsWith(site.pathname)
+      ?url.pathname.slice(site.pathname.length):null;
+    requestFailures.push({resource:fixedPaths.has(relative)?relative:'unrecognised resource',status});
+  };
+  probe.on('requestfailed',request=>recordFailure(request,request.failure()?.errorText||'failed'));
+  probe.on('response',response=>{
+    if(response.status()>=400)recordFailure(response.request(),response.status());
+  });
+  probe.on('console',message=>{if(message.type()==='error')probeErrors.push(message.text());});
   probe.on('pageerror',error=>probeErrors.push(String(error)));
   try{
     await privacy.navigate(probe,baseUrl+'?mixed_import='+Date.now(),{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
+    await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
     const valid={name:'sibling-valid.csv',mimeType:'text/csv',buffer:Buffer.from('timestamp,Depth (m)\n2026-02-01T00:00:00,0.2\n2026-02-01T00:01:00,0.3\n')};
     const invalid={name:'sibling-invalid.fdv',mimeType:'text/plain',buffer:Buffer.from('this is not a valid FDV file\n')};
     await probe.setInputFiles('#fileInput',[valid,invalid]);
@@ -353,6 +368,22 @@ async function verifyMixedSiblingImport(){
     if(!result.validMapped||!result.summary.includes('1 parsed successfully'))throw new Error('Valid sibling did not remain usable after another file failed: '+JSON.stringify(result));
     if(probeErrors.length)throw new Error('Mixed sibling import produced browser errors: '+probeErrors.join(' | '));
     return result;
+  }catch(error){
+    // Collect evidence from the synthetic probe before closing its page.
+    const state=await probe.evaluate(()=>({
+      status:window.__ICM_WORKBENCH__?.status||null,
+      engine:document.querySelector('#engineStatus')?.textContent||null,
+      route:window.__ICM_PRECISION_WORKBENCH__?.route()||null,
+      rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+    })).catch(()=>({unavailable:true}));
+    console.error('Mixed sibling import probe:',JSON.stringify({state,requestFailures,probeErrors}));
+    if(process.env.ICM_EVIDENCE_DIR){
+      const dir=process.env.ICM_EVIDENCE_DIR;
+      await fs.mkdir(dir,{recursive:true});
+      await probe.screenshot({path:path.join(dir,'mixed-import-failure.png'),fullPage:true})
+        .catch(screenshotError=>console.error('Mixed import screenshot unavailable:',screenshotError.message));
+    }
+    throw error;
   }finally{await probe.close();}
 }
 

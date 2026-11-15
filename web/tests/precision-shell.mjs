@@ -23,7 +23,8 @@ try{
     legacyLabels:[...document.querySelectorAll('nav.tabs .tab')].map(x=>x.textContent.trim()),
   }));
   if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==7)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
-  await page.locator('.pw-primary-nav [data-workspace="home"]').click();
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='home');
+  if(new URL(page.url()).hash)throw new Error('The default Home route must leave the ordinary application URL intact.');
   if(!await page.locator('#tab-home .hb-welcome-network').isVisible()||
      await page.locator('#dropzone').isVisible()||
      await page.locator('#timeChart').isVisible())throw new Error('Home must contain the schematic and keep Data controls on their own route.');
@@ -39,8 +40,13 @@ try{
      ((await page.locator('#dropzone').boundingBox())?.height??0)<102)throw new Error('Data must show the enlarged drop area with Home hidden.');
   await page.goBack({waitUntil:'commit'});
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='home');
-  await page.goBack({waitUntil:'commit'});
-  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='data');
+  if(new URL(page.url()).hash)throw new Error('Back must restore the ordinary Home URL.');
+  const deepLinkPage=await context.newPage();
+  try{
+    await deepLinkPage.goto(new URL('#/data/time-series',baseUrl).href,{waitUntil:'domcontentloaded'});
+    await deepLinkPage.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route().workspace==='data');
+    if(!await deepLinkPage.locator('#dropzone').isVisible())throw new Error('An explicit Data link must open its time-series workflow.');
+  }finally{await deepLinkPage.close();}
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const surveyTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
   if(surveyTabs.join('|')!=='FDV check|Rainfall check|Volume balance|Monthly review')throw new Error('Flow survey subtab order mismatch: '+JSON.stringify(surveyTabs));
