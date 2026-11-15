@@ -8,7 +8,7 @@ const context=await browser.newContext({viewport:{width:1440,height:1000},accept
 await observeControls(page);const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
 const privacy=installPrivacyGuard(context,baseUrl);
 try{
- await page.goto(baseUrl,{waitUntil:'domcontentloaded'});
+ await page.goto(new URL('#/data/time-series',baseUrl).href,{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate&&(window.__ICM_WORKBENCH__?.status==='ready'||(window.__ICM_WORKBENCH__?.deferredEngine&&window.__ICM_WORKBENCH__?.status==='idle')),null,{timeout:90000});
  assert((await page.title()).includes('Hydra Bench'));assert((await page.locator('.pw-primary-nav').innerText()).includes('Plots'));
  console.log('STEP import supplied FDV/rain/workbook');
