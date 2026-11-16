@@ -37,12 +37,13 @@ def _inject_v2_assets(build_token: str) -> None:
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
 
     # GitHub Pages/CDN may retain same-named static assets across deployments.
-    # Version every local script/style URL with the exact release SHA so index,
+    # Version fixed assets linked from the index with the exact release SHA so index,
     # browser runtime, worker and Python package cannot be mixed across releases.
     local_assets = [
         "vendor/plotly-3.1.0/plotly.min.js",
         "vendor/sheetjs-0.20.3/xlsx.full.min.js",
         "assets/app.css",
+        "assets/hydrabench-mark.svg",
         "assets/workbench-v2.css",
         "assets/workbench-survey.css",
         "assets/workflow-26.css",

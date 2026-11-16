@@ -166,6 +166,108 @@ function validateNetwork(value){
   if(![result.camera.x,result.camera.y,result.camera.zoom].every(Number.isFinite)||result.camera.zoom<.2||result.camera.zoom>4)throw new Error('Invalid schematic camera.');
   return result;
 }
+function readContextRow(line,lineNumber){
+  const fields=[];
+  const item=/(?:^|,)("(?:[^"]|"")*"|[^",]*)(?=,|$)/gy;
+  for(let offset=0;offset<line.length;){
+    const match=item.exec(line);
+    if(!match||item.lastIndex<=offset)throw new Error('Network context row '+lineNumber+': malformed CSV fields.');
+    fields.push(match[1].startsWith('"')?match[1].slice(1,-1).replaceAll('""','"'):match[1]);
+    offset=item.lastIndex;
+  }
+  return fields;
+}
+// Read the metric, combined InfoWorks native CSV export. Only node and
+// conduit blocks are interpreted; every other block is disclosed in the audit.
+function importNativeContext(text){
+  const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/);
+  const network=empty(),nodes=new Map(),blocks=new Set(),warnings=new Set();
+  const nodeTypes=new Map([['manhole','manhole'],['outfall','outfall'],['outfall 2d','outfall'],
+    ['storage','tank'],['pond','tank'],['break','junction'],['connect 2d','junction']]);
+  let section=null,headers=null;
+  const pending=[];
+  for(const [index,line] of lines.entries()){
+    if(!line.trim())continue;
+    const block=/^\*{4}\s*([a-z0-9_]+)\s*$/i.exec(line);
+    const fail=message=>{throw new Error('ICM context row '+(index+1)+': '+message);};
+    if(block){
+      section=block[1].toLowerCase();headers=null;
+      if(section==='deletes')fail('delete instructions are not supported.');
+      if(blocks.has(section)&&['hw_node','hw_conduit'].includes(section))fail('duplicate network table.');
+      blocks.add(section);
+      if(!['hw_node','hw_conduit'].includes(section))warnings.add('Skipped '+section+' table.');
+      continue;
+    }
+    if(!section)fail('expected a native table delimiter.');
+    if(!['hw_node','hw_conduit'].includes(section))continue;
+    const fields=readContextRow(line,index+1).map(value=>value.trim());
+    if(!headers){
+      headers=fields.map(value=>value.toLowerCase());
+      if(new Set(headers.filter(Boolean)).size!==headers.filter(Boolean).length)fail('duplicate field names.');
+      const required=section==='hw_node'?['node_id','x','y']:['link_suffix'];
+      if(required.some(key=>!headers.includes(key))||
+         section==='hw_conduit'&&(!headers.some(key=>['us_node_id','upstream_node_id'].includes(key))||
+           !headers.some(key=>['ds_node_id','downstream_node_id'].includes(key))))fail('missing required network fields.');
+      continue;
+    }
+    if(fields.length!==headers.length)fail('field count differs from the header.');
+    const row=Object.fromEntries(headers.map((name,i)=>[name,fields[i]]));
+    const number=key=>{
+      const value=row[key];
+      if(!value)return null;
+      if(!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value)||!Number.isFinite(Number(value)))
+        fail('invalid numeric field '+key+'.');
+      return Number(value);
+    };
+    if(section==='hw_node'){
+      const id=row.node_id?.toUpperCase(),x=number('x'),y=number('y');
+      if(!id||id.length>128||nodes.has(id)||x===null||y===null||Math.abs(x)>1e6||Math.abs(y)>1e6)
+        fail('invalid or duplicate node ID or metre coordinates.');
+      const kind=row.node_type?.toLowerCase(),type=nodeTypes.get(kind)||'junction';
+      if(!nodeTypes.has(kind))warnings.add('Missing or unfamiliar node types use a generic junction symbol.');
+      nodes.set(id,{id:row.node_id,name:row.node_id,type,x,y:-y,colour:'blue',bindings:[],
+        icm:{nodeType:row.node_type||null,groundLevelM:number('ground_level')}});
+      if(nodes.size>2000)fail('network exceeds 2,000 points.');
+    }else{
+      const from=(row.us_node_id||row.upstream_node_id)?.toUpperCase(),to=(row.ds_node_id||row.downstream_node_id)?.toUpperCase();
+      const suffix=row.link_suffix?.toUpperCase();
+      if(!from||!to||from===to||!suffix||suffix.length>16)fail('invalid conduit key or endpoints.');
+      const icm={shape:row.shape||null,roughnessType:row.roughness_type||null,linkSuffix:row.link_suffix};
+      for(const key of ['conduit_length','conduit_width','conduit_height','us_invert','ds_invert','gradient',
+        'bottom_roughness_cw','top_roughness_cw','sediment_depth','number_of_barrels'])icm[key]=number(key);
+      for(const key of ['conduit_length','conduit_width','conduit_height','number_of_barrels'])
+        if(icm[key]!==null&&icm[key]<=0)fail('non-positive '+key+'.');
+      const edge={id:'ICM conduit '+JSON.stringify([from,suffix]),from,to,
+        name:(row.us_node_id||row.upstream_node_id)+'.'+row.link_suffix,colour:'blue',icm};
+      if(row.point_array){
+        const packed=/^\{(.*)\}$/.exec(row.point_array);
+        const coordinates=packed?.[1].split(',').map(value=>value.trim());
+        if(!coordinates||coordinates.length<4||coordinates.length%2||
+           coordinates.some(value=>!value||!Number.isFinite(Number(value))||Math.abs(Number(value))>1e6))
+          fail('invalid packed conduit geometry.');
+        edge.vertices=[];
+        for(let i=0;i<coordinates.length;i+=2)edge.vertices.push({x:Number(coordinates[i]),y:-Number(coordinates[i+1])});
+      }
+      pending.push(edge);
+      if(pending.length>5000)fail('network exceeds 5,000 connectors.');
+    }
+  }
+  if(!nodes.size||!blocks.has('hw_conduit'))throw new Error('Expected hw_node and hw_conduit tables in a combined ICM CSV export.');
+  if(pending.some(edge=>!nodes.has(edge.from)||!nodes.has(edge.to)))throw new Error('An ICM conduit references an unknown node.');
+  network.nodes=[...nodes.values()];
+  network.edges=pending.map(({vertices,...edge})=>{
+    const from=nodes.get(edge.from),to=nodes.get(edge.to);
+    if(vertices?.length){
+      const same=(a,b)=>Math.abs(a.x-b.x)<.001&&Math.abs(a.y-b.y)<.001;
+      const bends=vertices.slice(same(vertices[0],from)?1:0,same(vertices.at(-1),to)?-1:undefined);
+      if(bends.length<=32)edge.bends=bends;
+      else warnings.add('Conduits with more than 32 intermediate vertices display as straight links.');
+    }
+    return {...edge,from:from.id,to:to.id};
+  });
+  if(pending.some(edge=>!edge.icm.shape||edge.icm.conduit_length===null))warnings.add('Some conduits omit shape or length metadata.');
+  return {network:validateNetwork(network),warnings:[...warnings]};
+}
 // Canonical interchange format. Native exporter mappings belong in adapters.
 function importNetworkContext(text){
   const [version,header,...lines]=text.replace(/^\uFEFF/,'').split(/\r?\n/);
@@ -176,16 +278,9 @@ function importNetworkContext(text){
   const ids={node:new Set(),link:new Set()};
   for(const [index,line] of lines.entries()){
     if(!line.trim())continue;
-    const fields=[];
-    const item=/(?:^|,)("(?:[^"]|"")*"|[^",]*)(?=,|$)/gy;
-    for(let offset=0;offset<line.length;){
-      const match=item.exec(line);
-      if(!match||item.lastIndex<=offset)break;
-      fields.push(match[1].startsWith('"')?match[1].slice(1,-1).replaceAll('""','"'):match[1]);
-      offset=item.lastIndex;
-    }
     const fail=message=>{throw new Error('Network context row '+(index+3)+': '+message);};
-    if(fields.length!==8||item.lastIndex!==line.length)fail('expected eight CSV fields.');
+    const fields=readContextRow(line,index+3);
+    if(fields.length!==8)fail('expected eight CSV fields.');
     const [record,id,type,name,x,y,from,to]=fields.map(field=>field.trim());
     if(!Object.hasOwn(ids,record)||!id||id.length>128||ids[record].has(id)||name.length>256)
       fail('invalid or duplicate object ID, record kind or name.');
@@ -205,8 +300,54 @@ function importNetworkContext(text){
   }
   return validateNetwork(result);
 }
+function applyContextRevision(current,imported,format){
+  if(current.nodes.length&&current.contextFormat!==format)
+    throw new Error('Use an empty schematic or revise a previously imported context of the same format.');
+  const previousNodes=new Map(current.nodes.map(node=>[node.id,node]));
+  const previousEdges=new Map(current.edges.map(edge=>[edge.id,edge]));
+  if(current.nodes.some(node=>node.contextSource)&&!imported.nodes.some(node=>previousNodes.get(node.id)?.contextSource))
+    throw new Error('No shared imported node IDs. Open an empty schematic to import a different network.');
+  const nodes=imported.nodes.map(node=>{
+    const old=previousNodes.get(node.id);
+    if(old&&!old.contextSource)throw new Error('An imported node ID conflicts with a manually drawn node.');
+    const next={...node,contextSource:true,sourcePosition:{x:node.x,y:node.y}};
+    if(old?.type===node.type){
+      for(const key of ['pinned','nameOffset','labelOffset','review','bindings','defaults','gap','exclusions','confirmed'])
+        if(old[key]!==undefined)next[key]=old[key];
+      if(old.pinned||old.x!==old.sourcePosition?.x||old.y!==old.sourcePosition?.y){
+        next.x=old.x;next.y=old.y;
+      }
+    }
+    return next;
+  }).concat(current.nodes.filter(node=>!node.contextSource));
+  const ids=new Set(nodes.map(node=>node.id));
+  const edges=imported.edges.map(edge=>{
+    const old=previousEdges.get(edge.id);
+    if(old&&!old.contextSource)throw new Error('An imported link ID conflicts with a manually drawn connector.');
+    const next={...edge,contextSource:true,sourceBends:edge.bends||[]};
+    if(old?.from===edge.from&&old?.to===edge.to){
+      if(JSON.stringify(old.bends||[])!==JSON.stringify(old.sourceBends||[]))next.bends=old.bends||[];
+      for(const key of ['labelOffset','review','arrow'])
+        if(old[key]!==undefined)next[key]=old[key];
+    }
+    return next;
+  }).concat(current.edges.filter(edge=>!edge.contextSource&&ids.has(edge.from)&&ids.has(edge.to)));
+  return validateNetwork({...current,contextFormat:format,nodes,edges,views:[]});
+}
+function conduitTrial(edge){
+  const fields=edge?.icm;
+  if(!fields||String(fields.shape).toUpperCase()!=='CIRC'||String(fields.roughnessType).toUpperCase()!=='CW'||
+     fields.number_of_barrels!==1||fields.sediment_depth!==0)return null;
+  const {conduit_width:width,conduit_height:height,bottom_roughness_cw:roughness,top_roughness_cw:top,
+    conduit_length:length,us_invert:us,ds_invert:ds}=fields;
+  let gradient=fields.gradient;
+  if(gradient===null&&[length,us,ds].every(Number.isFinite)&&length>0)gradient=(us-ds)/length;
+  if(![width,height,roughness,gradient].every(Number.isFinite)||width!==height||width<1||width>20000||
+     roughness<0||roughness/width>.05||(top!==null&&top!==roughness)||gradient<0||gradient>1)return null;
+  return {diameter:width,roughness,gradient,label:edge.name||edge.id};
+}
 function reportingConflicts(rows){
   const seen=new Set();for(const row of rows){for(const y of row.years){const key=row.role+'|'+(row.role==='model'?row.scenario:'Observed')+'|'+y;if(seen.has(key))throw new Error('Overlapping assignments for '+(row.role==='model'?row.scenario:'Observed')+' in '+y+'. Keep one authoritative source per reporting year.');seen.add(key);}}
 }
-globalThis.ICMNetworkCore={colours,types,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
+globalThis.ICMNetworkCore={colours,types,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,applyContextRevision,conduitTrial,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
 })();

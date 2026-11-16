@@ -206,8 +206,29 @@ link,A.1,,Conduit,,,A,B
 Node types are `manhole`, `junction`, `outfall`, `cso`, `storm`, `emergency`,
 `pump`, `wwtw` and `tank`. Missing endpoints, duplicate IDs within an object
 kind, invalid coordinates and mismatched formats are rejected before changing the
-canvas. A populated schematic is protected from replacement by a CSV import.
+canvas. A populated manually drawn schematic is protected from replacement by a CSV import.
 
-This preview schema covers node positions and directed topology. Native ICM
-export mapping, link geometry and hydraulic attributes, revision-aware re-import,
-and engineering layout are separate acceptance items.
+The import audit previews counts, disconnected components, isolated nodes,
+loop-affected nodes and parallel links before changing the canvas. On first
+import, choose geographic coordinates or engineering schematic layout.
+Re-importing a revised export requires the same format and shared imported
+node IDs. Compatible manual positions, labels, bends and manual additions are
+retained. The import clears calculated spill results on imported assets and
+clears saved views. Undo restores the previous local schematic.
+
+### Native InfoWorks CSV preview
+
+Use a combined native CSV with documented `**** hw_node` and
+`**** hw_conduit` delimiters. Confirm metre coordinates, levels and lengths,
+and millimetre conduit dimensions and Colebrook–White roughness in the audit.
+The importer reads case-insensitive node keys, composite conduit keys, and
+packed `point_array` vertices. Separate-table files, other structures and
+unpacked geometry remain unsupported. The audit lists any skipped tables.
+This adapter is tested against synthetic fixtures based on Autodesk's
+[CSV file format](https://help.autodesk.com/cloudhelp/2027/ENU/ICM-Help/files/GUID-7EF49200-AFE8-4934-9ECC-74238171895C.htm).
+Compatibility with representative ICM 2026.3 exports remains to be verified.
+
+In **Edit network**, select a compatible imported conduit and choose **Open
+in Hydraulic Calculations**. Handoff requires circular geometry, one barrel,
+zero sediment, uniform Colebrook–White roughness, and a supported gradient.
+Edits in the calculator apply to the independent trial.

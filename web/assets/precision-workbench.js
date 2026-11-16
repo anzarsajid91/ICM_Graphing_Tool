@@ -1139,11 +1139,19 @@ function wirePipeCapacity(){
     }
   });
 }
+function openPipeTrial(inputs){
+  navigate('hydraulics','capacity',true);
+  const form=$('pipeCapacityForm');
+  for(const key of ['diameter','roughness','gradient'])form.elements[key].value=String(inputs[key]);
+  form.elements.discharge.value='';
+  form.dispatchEvent(new Event('input',{bubbles:true}));
+  $('pipeCapacityResult').textContent='Independent trial from '+inputs.label+'. Review fluid properties before calculating.';
+}
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
   buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wireVerificationEvents();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
-  window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
+  window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,openPipeTrial,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
 })();

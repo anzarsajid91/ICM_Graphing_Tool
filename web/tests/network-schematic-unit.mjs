@@ -108,5 +108,34 @@ assert.equal(imported.edges[0].to,'B');
 assert.throws(()=>C.importNetworkContext(contextCsv.replace(',,,A,B',',,,A,C')),/unknown node/);
 assert.throws(()=>C.importNetworkContext(contextCsv.replace('node,B,','node,A,')),/duplicate/);
 assert.throws(()=>C.importNetworkContext(contextCsv.replace('425000','0x10')),/coordinates/);
-assert.throws(()=>C.importNetworkContext(contextCsv.replace('"Upstream, ""North"""','"Unclosed')),/eight CSV fields/);
+assert.throws(()=>C.importNetworkContext(contextCsv.replace('"Upstream, ""North"""','"Unclosed')),/malformed CSV fields/);
 assert.throws(()=>C.importNetworkContext(contextCsv.replace('v1','v2')),/network context v1/);
+
+const nativeCsv=[
+  '**** hw_node','node_id,x,y,node_type,ground_level',
+  'Up,350000,425000,Manhole,102','Out,350125,425030,Outfall,101',
+  '**** hw_conduit','us_node_id,link_suffix,ds_node_id,shape,roughness_type,conduit_width,conduit_height,conduit_length,us_invert,ds_invert,bottom_roughness_CW,top_roughness_CW,sediment_depth,number_of_barrels,point_array',
+  'UP,1,OUT,CIRC,CW,450,450,200,101,100,1.5,1.5,0,1,"{350000,425000,350030,425025,350125,425030}"',
+  '**** hw_subcatchment','subcatchment_id','abc',
+].join('\n');
+const native=C.importNativeContext(nativeCsv);
+assert.equal(native.network.edges[0].from,'Up');
+assert.equal(native.network.edges[0].to,'Out');
+assert.equal(native.network.edges[0].bends.length,1);
+assert.equal(native.network.edges[0].bends[0].y,-425025);
+assert.match(native.warnings.join(' '),/Skipped hw_subcatchment/);
+const trial=C.conduitTrial(native.network.edges[0]);
+assert.equal(trial.diameter,450);
+assert.equal(trial.gradient,.005);
+assert.equal(trial.roughness,1.5);
+assert.equal(C.conduitTrial({...native.network.edges[0],icm:{...native.network.edges[0].icm,top_roughness_cw:3}}),null);
+assert.throws(()=>C.importNativeContext(nativeCsv.replace('Out,350125','up,350125')),/duplicate node ID/);
+assert.throws(()=>C.importNativeContext(nativeCsv.replace('UP,1,OUT','UP,1,Missing')),/unknown node/);
+const first=C.applyContextRevision(C.empty(),native.network,'icm-csv-v1');
+first.nodes[0].x+=20;first.nodes[0].nameOffset={x:12,y:0};
+first.edges[0].bends=[{x:350015,y:-425010}];
+const next=C.applyContextRevision(first,C.importNativeContext(nativeCsv.replace('Out,350125,425030','Out,350150,425030')).network,'icm-csv-v1');
+assert.equal(next.nodes[0].x,350020);
+assert.equal(next.nodes[1].x,350150);
+assert.equal(next.edges[0].bends[0].x,350015);
+assert.throws(()=>C.applyContextRevision(C.validateNetwork({...C.empty(),nodes:[first.nodes[0]]}),native.network,'icm-csv-v1'),/empty schematic/);

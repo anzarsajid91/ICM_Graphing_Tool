@@ -422,6 +422,7 @@ jobs:
           ICM_BROWSER=chromium node web/tests/network-schematic-smoke.mjs
           node web/tests/network-review-smoke.mjs
           node web/tests/network-layout-smoke.mjs
+          node web/tests/network-context-smoke.mjs
           node web/tests/hydraulics-smoke.mjs
           node web/tests/verification-overview-smoke.mjs
           ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs

@@ -135,7 +135,15 @@ function renderDrawer(){
   if(!n&&!e){drawer.innerHTML='<h3>Edit network</h3><p>Add a point or select an existing asset to name it and assign imported evidence.</p><p>Use Connect and click two points to draw a directed wire. Drag points to arrange the site.</p>';return;}
   const common='<div class="ns-drawer-head"><h3>'+html(n?n.name:e.name||'Connector')+'</h3><button data-ns-close-selection aria-label="Close settings">×</button></div>'+
     fields('Name','<input id="nsName" value="'+html(n?n.name:e.name||'')+'" maxlength="160">')+fields('Network colour',colours((n||e).colour,'data-ns-object-colour'));
-  if(e){drawer.innerHTML=common+'<label class="ns-check"><input id="nsArrow" type="checkbox" '+(e.arrow!==false?'checked':'')+'> Show direction</label><p class="ns-note">Click + on the line to add a bend; drag the round handles to position it.</p><button id="nsAddBend" '+((e.bends||[]).length>=32?'disabled':'')+'>+ Add bend</button> <button id="nsStraighten" '+(!(e.bends||[]).length?'disabled':'')+'>Straighten</button>'+((e.bends||[]).length?'<div class="ns-bend-list">'+e.bends.map((p,i)=>'<button data-ns-remove-bend="'+i+'">Remove bend '+(i+1)+'</button>').join('')+'</div>':'')+reviewFields(e)+'<button data-ns-delete class="ns-danger">Delete connector</button>';return;}
+  if(e){drawer.innerHTML=common+(e.icm?'<button type="button" id="nsPipeTrial">Open in Hydraulic Calculations</button>':'')+'<label class="ns-check"><input id="nsArrow" type="checkbox" '+(e.arrow!==false?'checked':'')+'> Show direction</label><p class="ns-note">Click + on the line to add a bend; drag the round handles to position it.</p><button id="nsAddBend" '+((e.bends||[]).length>=32?'disabled':'')+'>+ Add bend</button> <button id="nsStraighten" '+(!(e.bends||[]).length?'disabled':'')+'>Straighten</button>'+((e.bends||[]).length?'<div class="ns-bend-list">'+e.bends.map((p,i)=>'<button data-ns-remove-bend="'+i+'">Remove bend '+(i+1)+'</button>').join('')+'</div>':'')+reviewFields(e)+'<button data-ns-delete class="ns-danger">Delete connector</button>';
+    const trial=$('nsPipeTrial');
+    if(trial)trial.onclick=()=>{
+      const inputs=C.conduitTrial(e);
+      if(!inputs){status('Calculator handoff requires a circular, single-barrel, sediment-free conduit with uniform Colebrook–White roughness and valid geometry and gradient.');return;}
+      window.__ICM_PRECISION_WORKBENCH__.openPipeTrial(inputs);
+    };
+    return;
+  }
   drawer.innerHTML=common+fields('Type',selectHtml('id="nsType"',Object.entries(C.types),n.type))+
     '<label class="ns-check"><input id="nsPinned" type="checkbox" '+(n.pinned?'checked':'')+'> Pin position</label><div class="ns-two">'+fields('Label X','<input id="nsLabelX" type="number" min="-10000" max="10000" value="'+html(C.labelOffset(n).x)+'">')+fields('Label Y','<input id="nsLabelY" type="number" min="-10000" max="10000" value="'+html(C.labelOffset(n).y)+'">')+'</div><button id="nsResetLabel">Reset label</button><small>Drag the name or combined summary on the canvas. A leader arrow keeps the label tied to this point.</small>'+
     (asset(n)?'<section><h4>Observed</h4>'+fields('Shared threshold · blank rows inherit','<input id="nsObservedDefault" type="number" step="any" value="'+html(n.defaults?.observed??'')+'">')+bindingRows(n,'observed')+'<button data-ns-add-sources="observed">+ Add datasets</button></section>'+
@@ -578,22 +586,71 @@ function mount(){
   for(const [id,key] of [['nsYear','year'],['nsMetric','metric']])$(id).onchange=()=>{network[key]=$(id).value;changed(true);};
   $('nsScenario').onchange=()=>{const value=$('nsScenario').value;network.evidenceMode=value==='combined'?'combined':'single';if(value!=='combined')network.scenario=value==='observed'?'observed':value.slice(6);changed(true);};
   $('nsSave').onclick=()=>downloadBlob('hydra-network-schematic.json',JSON.stringify(snapshot(),null,2),'application/json');$('nsLoad').onclick=()=>$('nsLoadInput').click();
+  const importDialog=document.createElement('dialog');
+  importDialog.setAttribute('aria-labelledby','nsContextTitle');
+  importDialog.innerHTML='<h3 id="nsContextTitle">Model Context Import Audit</h3><p id="nsContextAudit"></p><ul id="nsContextWarnings"></ul><label id="nsContextUnitsLabel"><input id="nsContextUnits" type="checkbox"> Export uses metres for coordinates, lengths and levels, and millimetres for conduit dimensions and Colebrook–White roughness.</label><label id="nsContextLayoutLabel">Layout <select id="nsContextLayout"><option value="geographic">Geographic coordinates</option><option value="schematic">Engineering schematic</option></select></label><p id="nsContextMessage" role="status"></p><div class="actions"><button id="nsContextApply" type="button">Apply network context</button><button id="nsContextCancel" type="button">Cancel</button></div>';
+  container.append(importDialog);
+  let stagedContext=null,importGeneration=0;
+  importDialog.addEventListener('close',()=>{stagedContext=null;});
+  $('nsContextCancel').onclick=()=>importDialog.close();
+  $('nsContextApply').onclick=()=>{
+    if(!stagedContext)return;
+    if(stagedContext.format==='icm-csv-v1'&&!$('nsContextUnits').checked){
+      $('nsContextMessage').textContent='Confirm the units used in the export.';return;
+    }
+    try{
+      const revised=C.applyContextRevision(network,stagedContext.network,stagedContext.format);
+      const first=!network.nodes.length;
+      if(first&&$('nsContextLayout').value==='schematic'){
+        const points=R.autoLayout(revised.nodes,revised.edges);
+        for(const point of revised.nodes)Object.assign(point,points.get(point.id));
+        for(const conduit of revised.edges)conduit.bends=[];
+      }
+      checkpoint();network=revised;selected=null;popupVisible=false;multi.clear();highlight=null;connectFrom=null;freshness.clear();
+      render();if(first)fit();persist();
+      status('Model context import: '+network.nodes.length+' nodes and '+network.edges.length+' links. Arrows follow nominal topology.');
+      importDialog.close();
+    }catch(error){$('nsContextMessage').textContent=error.message;}
+  };
   $('nsLoadInput').onchange=async event=>{
+    const request=++importGeneration;
     try{
       const file=event.target.files[0];
       if(!file)return;
       if(/\.csv$/i.test(file.name)){
         if(file.size>4*1024*1024)throw new Error('Network context CSV exceeds 4 MiB.');
-        const imported=C.importNetworkContext(await file.text());
-        if(network.nodes.length)throw new Error('Open an empty schematic to import network context. Save your current layout first.');
-        checkpoint();network=imported;render();fit();persist();
-        status('Model context import: '+network.nodes.length+' nodes and '+network.edges.length+' links. Arrows follow nominal topology.');
+        const csv=await file.text();
+        if(request!==importGeneration)return;
+        const native=csv.trimStart().startsWith('****');
+        const imported=native?C.importNativeContext(csv):{network:C.importNetworkContext(csv),warnings:[]};
+        const format=native?'icm-csv-v1':'canonical-v1';
+        C.applyContextRevision(network,imported.network,format);
+        stagedContext={...imported,format};
+        $('nsContextAudit').textContent=imported.network.nodes.length+' imported nodes and '+imported.network.edges.length+' imported links. Arrows show nominal topology.';
+        const warnings=$('nsContextWarnings');warnings.replaceChildren();
+        const topology=R.audit(imported.network.nodes,imported.network.edges);
+        const endpointPairs=new Set(imported.network.edges.map(edge=>JSON.stringify([edge.from,edge.to])));
+        const messages=[...imported.warnings];
+        if(topology.components.length>1)messages.push(topology.components.length+' disconnected components.');
+        if(topology.isolated.length)messages.push(topology.isolated.length+' isolated nodes.');
+        if(topology.cycleAffected.length)messages.push('Directed loops affect '+topology.cycleAffected.length+' nodes, including downstream nodes.');
+        if(endpointPairs.size<imported.network.edges.length)messages.push('Parallel conduits share one or more directed endpoint pairs.');
+        $('nsContextLayoutLabel').hidden=Boolean(network.nodes.length);
+        $('nsContextLayout').value='geographic';
+        if(network.nodes.length)messages.push('Apply only for a revised export of the same network. Calculated spill evidence for imported assets and saved views will be cleared. Applicable manual edits will be retained.');
+        for(const warning of messages){const row=document.createElement('li');row.textContent=warning;warnings.append(row);}
+        $('nsContextUnitsLabel').hidden=!native;
+        $('nsContextUnits').checked=false;
+        $('nsContextMessage').textContent='';
+        if(!importDialog.open)importDialog.showModal();
       }else{
-        restore(JSON.parse(await file.text()));persist();
+        const saved=JSON.parse(await file.text());
+        if(request!==importGeneration)return;
+        restore(saved);persist();
         status('Network restored. Reload matching source files to validate and calculate its evidence.');
       }
-    }catch(error){status(error.message);}
-    finally{event.target.value='';}
+    }catch(error){if(request===importGeneration)status(error.message);}
+    finally{if(request===importGeneration)event.target.value='';}
   };
   for(const id of ['nsSave','nsLoad','nsCsv']){const action=$(id).onclick;$(id).onclick=()=>{document.querySelector('.ns-export-menu').open=false;action?.();};}
   document.addEventListener('click',event=>{const menu=root()?.querySelector('.ns-export-menu');if(menu&&!menu.contains(event.target))menu.open=false;});
