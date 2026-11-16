@@ -86,6 +86,9 @@ try{
   assert.match(event,/38\.7 m³.*Observed volume/);
   assert.match(event,/40\.5 m³.*Modelled volume/);
   assert.match(event,/0\.01 m³\/s.*Peak error/);
+  await page.getByRole('button',{name:'Open event in Time Series'}).click();
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='data'&&
+    JSON.stringify(window.__ICM_WORKBENCH__.uiV2.graphRange)===JSON.stringify(['2026-01-01T00:00:00','2026-01-01T00:03:00']));
   privacy.assertClean();
   console.log('Verification overview rendered authoritative metrics and blocked review of stale evidence.');
 }finally{await browser.close();}

@@ -1600,7 +1600,24 @@
   ensureUi();
   installPersistence();
   wb.workflow26ReportHtml = reportHtml;
+  function schematicSurveyEvidence(week){
+    const monitors=survey.batch?.monitors||[];
+    const weeks=[...new Set(monitors.flatMap(monitor=>(monitor.weekly?.weeks||[]).map(weekValue)).filter(Boolean))].sort();
+    const chosen=weeks.includes(week)?week:weeks.at(-1)||null;
+    return withFreshnessSnapshot(()=>{
+      const current=surveyFresh('complete');
+      const byMonitor=new Map(monitors.map(monitor=>{
+        const row=(monitor.weekly?.weeks||[]).find(item=>weekValue(item)===chosen);
+        const rating=current&&row?reviewedWeekState('monitor-week',monitor.monitor,row):null;
+        return [monitor.monitor,{status:!current?'stale':row?'current':'unavailable',
+          rating:rating?.reviewed||null,calculated:rating?.calculated||null,
+          reviewed:Boolean(rating?.review_current),short:Boolean(row&&isBoundaryShortWeek(row))}];
+      }));
+      return {weeks,week:chosen,byMonitor};
+    });
+  }
   wb.workflow26 = {
+    schematicSurveyEvidence,
     version:5,
     weekKey,reviewedWeekState,applyWeeklyReview,weekRows,
     reviewLedgerEvents,rebuildReviewSnapshot,

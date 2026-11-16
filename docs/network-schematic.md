@@ -243,3 +243,12 @@ points. Its tooltip distinguishes current, partial, stale and unavailable
 comparison evidence. The drawer opens Verification Overview when the current
 comparison belongs to the linked monitor. The layer reads existing results
 and does not rerun the comparison.
+
+### Flow Survey evidence layer
+
+Use the confirmed monitoring association and enable **Tools → Flow Survey
+evidence layer**. Select a survey week to see its effective rating, whether it
+was calculated or reviewed, and whether it is a short boundary week. Stale
+assessments show a stale badge without displaying a rating. **Open Flow Survey
+week** opens the linked monitor and week in the survey review. The layer reads
+existing results without recalculating them.

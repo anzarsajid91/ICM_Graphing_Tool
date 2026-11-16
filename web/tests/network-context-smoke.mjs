@@ -71,6 +71,22 @@ try{
   await page.evaluate(()=>{document.querySelector('#gapInput').value='120';});
   await page.getByLabel('Verification evidence layer').check();
   await point.locator('[data-ns-verification="Stale evidence"]').waitFor({state:'attached'});
+  await page.evaluate(()=>{
+    const wb=window.__ICM_WORKBENCH__;
+    wb.survey.batch={monitors:[{monitor:'FM01',status:'complete',weekly:{weeks:[
+      {start:'2026-01-01',end:'2026-01-08',week_ending:'2026-01-08',rag:'Green'},
+      {start:'2026-01-08',end:'2026-01-10',week_ending:'2026-01-10',rag:'Amber'},
+    ]}}]};
+    wb.survey.batchSignature=wb.surveyDependencySignature('complete');
+  });
+  await page.getByLabel('Flow Survey evidence layer').check();
+  await point.locator('[data-ns-survey="Amber · Calculated · Short boundary week"]').waitFor({state:'attached'});
+  await page.getByLabel('Survey week',{exact:true}).selectOption('2026-01-08');
+  await point.locator('[data-ns-survey="Green · Calculated"]').waitFor({state:'attached'});
+  await page.getByLabel('Flow Survey evidence layer').uncheck();
+  await page.evaluate(()=>{document.querySelector('#gapInput').value='150';});
+  await page.getByLabel('Flow Survey evidence layer').check();
+  await point.locator('[data-ns-survey="Stale survey evidence"]').waitFor({state:'attached'});
   privacy.assertClean();
-  console.log('Native context import, audit, revision, hydraulic trial and Verification overlay passed.');
+  console.log('Native context import, audit, revision, hydraulic trial and Verification and Flow Survey overlays passed.');
 }finally{await browser.close();}

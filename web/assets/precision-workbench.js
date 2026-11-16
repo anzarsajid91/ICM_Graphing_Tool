@@ -981,10 +981,12 @@ function wireVerificationOverview(){
 function wireVerificationEvents(){
   const events=$('verificationEventSelect'),models=$('verificationEventModel');
   const run=$('verificationEventRun'),output=$('verificationEventResult');
-  let generation=0;
+  const graph=$('verificationEventGraph');
+  let generation=0,plottedEvent=null;
+  function clearGraph(){plottedEvent=null;graph.disabled=true;}
   const active=()=>current.workspace==='graphs'&&current.page==='events';
   function refresh(){
-    ++generation;
+    ++generation;clearGraph();
     events.replaceChildren();models.replaceChildren();
     if(rainEventsFresh()){
       for(const [index,event] of state.rainEvents.entries())
@@ -998,7 +1000,7 @@ function wireVerificationEvents(){
     output.textContent=run.disabled?'Apply an observed and modelled mapping, then calculate rainfall events in Time series.':'Choose a rainfall event and modelled scenario.';
   }
   for(const control of [events,models])control.addEventListener('change',()=>{
-    ++generation;run.disabled=false;output.textContent='Selection changed. Compare the selected event to refresh results.';
+    ++generation;clearGraph();run.disabled=false;output.textContent='Selection changed. Compare the selected event to refresh results.';
   });
   run.addEventListener('click',async()=>{
     if(!rainEventsFresh()){refresh();return;}
@@ -1009,7 +1011,7 @@ function wireVerificationEvents(){
       output.textContent='Confirm the comparison time basis in Data / Time series first.';return;
     }
     const request=++generation,signature=analysisSignature(),rainfall=state.rainEventSignature;
-    run.disabled=true;output.textContent='Comparing event…';
+    clearGraph();run.disabled=true;output.textContent='Comparing event…';
     try{
       const values=await engine.call('verification_event_comparison',{
         obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:model.item.virtualPath,model_col:model.col,
@@ -1021,6 +1023,7 @@ function wireVerificationEvents(){
       if(!rainEventsFresh()||rainfall!==state.rainEventSignature||signature!==analysisSignature()){
         refresh();output.textContent='Event inputs changed. Recalculate before using the result.';return;
       }
+      plottedEvent={range:[event.start,event.end],signature,rainfall};graph.disabled=false;
       const number=value=>Number.isFinite(value)?Number(value.toPrecision(5)).toString():'—';
       const rows=[
         ['Common valid support',number(values.common_support_seconds/60)+' min · '+values.status],
@@ -1041,6 +1044,16 @@ function wireVerificationEvents(){
     }finally{
       if(request===generation&&active())run.disabled=false;
     }
+  });
+  graph.addEventListener('click',async()=>{
+    if(!plottedEvent||!rainEventsFresh()||plottedEvent.rainfall!==state.rainEventSignature||
+       plottedEvent.signature!==analysisSignature()){
+      refresh();output.textContent='Event inputs changed. Recalculate before opening the graph.';return;
+    }
+    const {range}=plottedEvent;
+    navigate('data','time-series',true);
+    try{await window.ICMGraph.draw(range);}
+    catch(error){$('mappingStatus').textContent=conciseErrorMessage(error);}
   });
   window.addEventListener('icm:route-changed',()=>{if(active())refresh();else ++generation;});
   window.addEventListener('icm:source-pool-changed',()=>{if(active())refresh();});
