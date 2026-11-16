@@ -121,7 +121,7 @@
     "scripts/build_pages.py": "e4de35f0743ed36bfe4892456590792215985c0a8db4cf7bcccc3404aae4846c",
     "web/vendor/manifest.json": "bb70a1f4497a0f6307f836828522015ebb60293e91df66ac3778f986f2d96b82",
     "web/assets/runtime.release.js": "6076b87a125db5bf803fa7456bb45a622edd5715c88f06637549f641de1833e9",
-    "web/assets/network-schematic.js": "aa7f8933a511285d0deabf3ee686b3c19bf5a77aee8809f1c01bee9fdf9c7058",
+    "web/assets/network-schematic.js": "6438e536014e0b6ac092fe384dfdde243f71d992609c6cb5112ebdd708b9592b",
     "web/assets/precision-workbench.js": "7b37bfe0c5d2b61101ec86a8bc87d0c2ea94e7b18bbd2a2e5f2c641c600c21bd",
     "scripts/verify_data_confidentiality.py": "6aac0bd0fbd78f84f49c39be4f2ecd08b6812dd0974579df9178fd61c27801cb",
     "scripts/verify_vendor.py": "26272a33a524532c21d591a917a45096f79eccd7761690dcf73499804f8824c2",

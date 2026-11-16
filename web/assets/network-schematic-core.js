@@ -135,6 +135,7 @@ function validateNetwork(value){
     if(!Array.isArray(n.bindings)||n.bindings.length>1000||!Array.isArray(n.exclusions||[]))throw new Error('Invalid asset evidence.');
     const bindingIds=new Set();
     for(const b of n.bindings){if(b?.comparison&&!['gt','ge'].includes(b.comparison))throw new Error('Invalid threshold rule.');if(!b||typeof b.id!=='string'||!b.id||bindingIds.has(b.id)||!['observed','model'].includes(b.role)||typeof b.scenario!=='string'||typeof b.sourceName!=='string'||typeof b.sha256!=='string'||typeof b.column!=='string'||!Array.isArray(b.years)||b.years.some(y=>!Number.isInteger(y)||y<1900||y>2200))throw new Error('Invalid source assignment.');bindingIds.add(b.id);}
+    if(n.monitorId!==undefined&&(typeof n.monitorId!=='string'||n.monitorId.length>128))throw new Error('Invalid monitoring association.');
     if(n.applied&&(!Array.isArray(n.applied.rows)||typeof n.applied.signature!=='string'))throw new Error('Invalid saved assessment.');
     for(const r of n.applied?.rows||[])if(!Number.isInteger(r.year)||r.year<1900||r.year>2200||!['observed','model'].includes(r.role)||typeof r.scenario!=='string'||typeof r.eligible!=='boolean'||[r.spill_count,r.duration_hours].some(v=>v!==null&&(!Number.isFinite(v)||v<0))||[r.analysis_start,r.analysis_end].some(v=>v!==null&&typeof v!=='string'))throw new Error('Invalid saved evidence row.');
     if(n.labelOffset&&![n.labelOffset.x,n.labelOffset.y].every(Number.isFinite))throw new Error('Invalid label pointer.');
@@ -312,7 +313,7 @@ function applyContextRevision(current,imported,format){
     if(old&&!old.contextSource)throw new Error('An imported node ID conflicts with a manually drawn node.');
     const next={...node,contextSource:true,sourcePosition:{x:node.x,y:node.y}};
     if(old?.type===node.type){
-      for(const key of ['pinned','nameOffset','labelOffset','review','bindings','defaults','gap','exclusions','confirmed'])
+      for(const key of ['pinned','nameOffset','labelOffset','review','bindings','defaults','gap','exclusions','confirmed','monitorId'])
         if(old[key]!==undefined)next[key]=old[key];
       if(old.pinned||old.x!==old.sourcePosition?.x||old.y!==old.sourcePosition?.y){
         next.x=old.x;next.y=old.y;

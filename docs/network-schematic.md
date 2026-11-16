@@ -232,3 +232,14 @@ In **Edit network**, select a compatible imported conduit and choose **Open
 in Hydraulic Calculations**. Handoff requires circular geometry, one barrel,
 zero sediment, uniform Colebrook–White roughness, and a supported gradient.
 Edits in the calculator apply to the independent trial.
+
+### Verification evidence layer
+
+In **Edit network**, select a point and confirm its **Monitoring association**
+using a flow monitor from the local project registry. One monitor can be linked
+to one schematic point. The association is reversible and is saved with the
+schematic. **Tools → Verification evidence layer** shows a V badge at linked
+points. Its tooltip distinguishes current, partial, stale and unavailable
+comparison evidence. The drawer opens Verification Overview when the current
+comparison belongs to the linked monitor. The layer reads existing results
+and does not rerun the comparison.

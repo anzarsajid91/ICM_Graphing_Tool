@@ -47,6 +47,30 @@ try{
   assert.equal(await page.getByLabel('Gradient (m/m)').inputValue(),'0.005');
   await page.getByLabel(/Diameter/).fill('600');
   assert.equal(await page.evaluate(()=>window.ICMNetworkSchematic.snapshot().edges[0].icm.conduit_width),450);
+  await page.evaluate(()=>{
+    const registry=window.ICMProjectRegistry;
+    registry.registerSource({id:'monitor',hash:'fixture-monitor',displayName:'FM01.fdv',parsed:{
+      format:'fdv_ascii',columns:['flow'],metadata:{monitor:'FM01',channels:{flow:{quantity:'flow',canonical_unit:'m³/s'}}}}});
+    registry.registerSource({id:'baseline',hash:'fixture-baseline',displayName:'Model.csv',parsed:{
+      format:'tabular_csv',columns:['Flow (m³/s)'],metadata:{quantity:'flow',canonical_unit:'m³/s'}}});
+    const observed=JSON.stringify(['monitor','flow']),model=JSON.stringify(['baseline','Flow (m³/s)']);
+    registry.publishAssessment('verification:comparison',{asset:{id:'FM01',kind:'flow-monitor'},signature:analysisSignature(),
+      period:{start:null,end:null},seriesKeys:[observed,model],scenarios:[{seriesKey:model,metrics:{pairs:4,rmse:.01},
+        coverage:{status:'complete',coverage_fraction:1},unit:'m³/s'}]});
+    window.__ICM_PRECISION_WORKBENCH__.navigate('network','schematic');
+  });
+  const point=page.locator('[data-ns-node="Up"]');
+  await point.focus();
+  await point.press('Enter');
+  await page.getByText('Monitoring association',{exact:true}).click();
+  await page.locator('#nsMonitorAssociation').selectOption('FM01');
+  await page.getByText('Tools',{exact:true}).click();
+  await page.getByLabel('Verification evidence layer').check();
+  await point.locator('[data-ns-verification="Evidence available"]').waitFor({state:'attached'});
+  await page.getByLabel('Verification evidence layer').uncheck();
+  await page.evaluate(()=>{document.querySelector('#gapInput').value='120';});
+  await page.getByLabel('Verification evidence layer').check();
+  await point.locator('[data-ns-verification="Stale evidence"]').waitFor({state:'attached'});
   privacy.assertClean();
-  console.log('Native context import, audit, revision and independent hydraulic trial passed.');
+  console.log('Native context import, audit, revision, hydraulic trial and Verification overlay passed.');
 }finally{await browser.close();}

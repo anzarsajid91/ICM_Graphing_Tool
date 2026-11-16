@@ -180,6 +180,7 @@
       if(!dependencies.length||dependencies.includes(null))return false;
       const {seriesKeys, ...assessment}=evidence;
       this.assessments.set(id,JSON.parse(JSON.stringify({...assessment,dependencies})));
+      global.dispatchEvent?.(new global.CustomEvent('icm:assessment-published',{detail:{id}}));
       return true;
     }
     removeAssessment(id){

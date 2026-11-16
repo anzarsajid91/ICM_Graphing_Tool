@@ -58,8 +58,29 @@ function badgeMarkup(n){
   return '<g data-ns-summary=""'+(network.evidenceMode==='single'?' data-ns-badge=""':'')+' transform="translate('+x+' '+y+')"><rect x="0" y="-14" width="'+width+'" height="'+height+'" rx="5" fill="white" stroke="#c7d2d9"/>'+lines.map((item,i)=>'<g '+(item.header?'data-ns-summary-year':'data-ns-summary-row')+'="'+item.year+'"'+(item.rag?' class="ns-rag-'+item.rag+'"':'')+'><title>'+html(item.header?item.text:item.label+': '+(item.value===null?'Unavailable':f(item.value))+(item.reason?' · '+item.reason:''))+'</title><rect x="1" y="'+(-10+i*21)+'" width="'+(width-2)+'" height="20" fill="'+(item.header?'#f5f7f9':{green:'#eaf6ed',amber:'#fff4d9',red:'#fdebec'}[item.rag]||'white')+'"/><text x="7" y="'+(4+i*21)+'" font-size="'+(item.header?11:12)+'" font-weight="'+(item.header?600:400)+'" fill="'+(item.header?'#60717d':{green:'#267044',amber:'#9a6500',red:'#b93838'}[item.rag]||'#182732')+'">'+html(item.text)+'</text></g>').join('')+'</g>';
 }
 function unitOptions(quantity){return quantity==='status'?[['1','Binary / unitless']]:quantity==='flow'?[['','Assign…'],['m³/s','m³/s'],['L/s','L/s'],['Ml/d','Ml/d'],['m³/d','m³/d']]:[['','Assign…'],['m','m'],['mm','mm']];}
+function verificationBadge(point,evidence){
+  if(!point.monitorId)return '';
+  const matched=evidence?.asset.kind==='flow-monitor'&&evidence.asset.id===point.monitorId;
+  const state=!matched?'No comparison':evidence.freshness!=='current'?'Stale evidence':
+    evidence.scenarios.some(row=>row.metrics?.pairs&&row.coverage?.status==='complete')?'Evidence available':
+    evidence.scenarios.some(row=>row.metrics?.pairs&&row.coverage?.status==='partial')?'Partial evidence':'No valid comparison';
+  return '<g data-ns-verification="'+html(state)+'" transform="translate(44 -16)" pointer-events="none">'+
+    '<title>'+html(point.monitorId+' · '+state)+'</title><circle r="8" fill="#fff" stroke="#4740b6"/><text y="4" text-anchor="middle" font-size="10" fill="#4740b6">V</text></g>';
+}
+function monitorAssociations(point){
+  if(point.type==='label')return '';
+  const monitors=(window.ICMProjectRegistry?.snapshot()?.assets||[]).filter(asset=>asset.kind==='flow-monitor');
+  if(!monitors.length&&!point.monitorId)return '';
+  const options=[['','Unlinked'],...monitors.map(asset=>[asset.id,asset.id])];
+  if(point.monitorId&&!monitors.some(asset=>asset.id===point.monitorId))options.push([point.monitorId,point.monitorId+' · source unavailable']);
+  return '<details><summary>Monitoring association</summary>'+fields('Flow monitor',selectHtml('id="nsMonitorAssociation" aria-label="Flow monitor"',options,point.monitorId||''))+
+    '<p class="ns-note">Select the monitor only when the physical installation is confirmed.</p>'+
+    (point.monitorId?'<button type="button" id="nsOpenVerification">Open Verification evidence</button>':'')+'</details>';
+}
 function svgContent(includeHandles=true){
   const {width,height}=dimensions(),parts=[];
+  const verificationLayer=prefs().verification===true;
+  const evidence=verificationLayer?window.__ICM_WORKBENCH__?.readVerificationEvidence?.():null;
   const shown=visibleNodes(),shownIds=new Set(shown.map(n=>n.id)),byId=new Map(network.nodes.map(n=>[n.id,n]));
   const routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y));
   for(const e of network.edges){
@@ -72,7 +93,7 @@ function svgContent(includeHandles=true){
     if(!shownIds.has(n.id))continue;
     const p=point(n.x,n.y),c=C.colours[n.colour],box=C.bounds(n.type),rawOffset=C.labelOffset(n),offset={x:Number(rawOffset.x),y:Number(rawOffset.y)},small=['manhole','label'].includes(n.type),leader=C.labelLeader(n);
     const label=(leader?'<path data-ns-leader="" d="M'+leader.start.x+' '+leader.start.y+'L'+Number(leader.end.x)+' '+Number(leader.end.y)+'" stroke="#82939f" stroke-width="1" fill="none"/><polygon points="'+leader.arrow.map(p=>p.x+','+p.y).join(' ')+'" fill="#82939f"/>':'')+'<text data-ns-label="'+html(n.id)+'" x="'+(offset.x+(small?5:0))+'" y="'+offset.y+'" text-anchor="'+(small?'start':'middle')+'" font-size="'+(small?13:14)+'" font-weight="'+(small?400:600)+'" fill="#182732">'+html(n.name)+'</text>';
-    parts.push('<g data-ns-node="'+html(n.id)+'" transform="translate('+p.x+' '+p.y+')" tabindex="0" role="button" aria-label="'+html(n.name)+' · '+html(C.types[n.type])+'"><title>'+html(n.name+' · '+C.types[n.type])+'</title>'+(selected===n.id||multi.has(n.id)?'<rect x="-42" y="-32" width="84" height="64" rx="8" fill="none" stroke="#0b8f96" stroke-width="2"/>':'')+(box.circle?'':'<rect data-ns-frame="" x="'+(-box.x)+'" y="'+(-box.y)+'" width="'+(box.x*2)+'" height="'+(box.y*2)+'" rx="6" fill="white" stroke="'+c+'" stroke-width="1.5"/>')+'<rect x="-37" y="-28" width="74" height="56" fill="transparent"/><g stroke="'+c+'" stroke-width="1.8" fill="white" stroke-linecap="round" stroke-linejoin="round">'+icon(n.type)+'</g>'+label+(asset(n)?badgeMarkup(n):'')+'</g>');
+    parts.push('<g data-ns-node="'+html(n.id)+'" transform="translate('+p.x+' '+p.y+')" tabindex="0" role="button" aria-label="'+html(n.name)+' · '+html(C.types[n.type])+'"><title>'+html(n.name+' · '+C.types[n.type])+'</title>'+(selected===n.id||multi.has(n.id)?'<rect x="-42" y="-32" width="84" height="64" rx="8" fill="none" stroke="#0b8f96" stroke-width="2"/>':'')+(box.circle?'':'<rect data-ns-frame="" x="'+(-box.x)+'" y="'+(-box.y)+'" width="'+(box.x*2)+'" height="'+(box.y*2)+'" rx="6" fill="white" stroke="'+c+'" stroke-width="1.5"/>')+'<rect x="-37" y="-28" width="74" height="56" fill="transparent"/><g stroke="'+c+'" stroke-width="1.8" fill="white" stroke-linecap="round" stroke-linejoin="round">'+icon(n.type)+'</g>'+label+(asset(n)?badgeMarkup(n):'')+(verificationLayer?verificationBadge(n,evidence):'')+'</g>');
   }
   if(!network.nodes.length)parts.push('<text x="'+width/2+'" y="'+height/2+'" text-anchor="middle" fill="#60717d" font-size="15"><tspan x="'+width/2+'" dy="-10">Choose Edit network,</tspan><tspan x="'+width/2+'" dy="22">then add assets and manholes.</tspan></text>');
   return parts.join('');
@@ -144,7 +165,7 @@ function renderDrawer(){
     };
     return;
   }
-  drawer.innerHTML=common+fields('Type',selectHtml('id="nsType"',Object.entries(C.types),n.type))+
+  drawer.innerHTML=common+monitorAssociations(n)+fields('Type',selectHtml('id="nsType"',Object.entries(C.types),n.type))+
     '<label class="ns-check"><input id="nsPinned" type="checkbox" '+(n.pinned?'checked':'')+'> Pin position</label><div class="ns-two">'+fields('Label X','<input id="nsLabelX" type="number" min="-10000" max="10000" value="'+html(C.labelOffset(n).x)+'">')+fields('Label Y','<input id="nsLabelY" type="number" min="-10000" max="10000" value="'+html(C.labelOffset(n).y)+'">')+'</div><button id="nsResetLabel">Reset label</button><small>Drag the name or combined summary on the canvas. A leader arrow keeps the label tied to this point.</small>'+
     (asset(n)?'<section><h4>Observed</h4>'+fields('Shared threshold · blank rows inherit','<input id="nsObservedDefault" type="number" step="any" value="'+html(n.defaults?.observed??'')+'">')+bindingRows(n,'observed')+'<button data-ns-add-sources="observed">+ Add datasets</button></section>'+
       '<section><h4>Modelled scenarios</h4>'+fields('Scenario for new assignments','<input id="nsNewScenario" value="'+html(n.newScenario||'Baseline')+'" maxlength="100">')+fields('Shared model threshold · blank rows inherit','<input id="nsModelDefault" type="number" step="any" value="'+html(n.defaults?.model??'')+'">')+bindingRows(n,'model')+'<button data-ns-add-sources="model">+ Add datasets to scenario</button></section>'+
@@ -435,7 +456,7 @@ function annualTable(n,differences=false,scenarios=prefs().scenarios,interactive
 function renderReview(){
   if(!$('nsReviewTools'))return;
   const p=prefs(),names=[...new Set(network.nodes.flatMap(n=>n.bindings.filter(b=>b.role==='model').map(b=>b.scenario)))].sort();
-  $('nsTypeFilter').value=p.type;$('nsHealthFilter').value=p.health;$('nsResultFilter').value=p.result;$('nsDetail').value=p.detail;$('nsSnap').checked=p.snap;$('nsLocked').checked=p.locked;
+  $('nsTypeFilter').value=p.type;$('nsHealthFilter').value=p.health;$('nsResultFilter').value=p.result;$('nsDetail').value=p.detail;$('nsSnap').checked=p.snap;$('nsLocked').checked=p.locked;$('nsVerificationLayer').checked=p.verification===true;
   $('nsRedo').disabled=!redo.length||busy;
   $('nsScenarioChoices').innerHTML=names.map(name=>'<label><input type="checkbox" data-ns-scenario-choice="'+html(name)+'" '+(p.scenarios===null||p.scenarios.includes(name)?'checked':'')+'>'+html(name)+'</label>').join('')||'<small>No model scenarios assigned</small>';
   $('nsViewSelect').innerHTML='<option value="">Saved views</option>'+network.views.map((v,i)=>'<option value="'+i+'">'+html(v.name)+'</option>').join('');
@@ -554,6 +575,38 @@ function mountReview(){
   $('nsWorkbench').querySelector('.ns-export-actions').insertAdjacentHTML('beforeend','<button id="nsSvgExport">Export SVG</button><button id="nsReportExport">Annual report / PDF</button>');
   $('nsCanvas').insertAdjacentHTML('beforeend','<aside id="nsHover" hidden></aside>');
   $('nsWorkbench').insertAdjacentHTML('beforeend','<section id="nsMatrix" hidden><div class="ns-matrix-toolbar"><strong>Annual comparison</strong><input id="nsMatrixSearch" type="search" placeholder="Filter assets"><label><input id="nsMatrixSelected" type="checkbox"> Selected only</label><small>Δ = M − O</small><button id="nsCloseMatrix">Close</button></div><div id="nsMatrixBody"></div></section><dialog id="nsAnalysis" role="dialog" aria-modal="true" aria-label="Asset analysis" hidden><div class="ns-analysis-toolbar"><strong id="nsAnalysisTitle"></strong><select id="nsAnalysisYear" aria-label="Graph year"></select><button id="nsAnalysisMode">Show annual spills</button><button id="nsCloseAnalysis">Close</button></div><div class="ns-analysis-body"><details id="nsAnalysisSettings"><summary>Channels, units &amp; thresholds</summary><div id="nsAnalysisSources"></div><button id="nsAnalysisCalculate" class="ns-primary">Apply &amp; recalculate annual spills</button></details><div id="nsAnalysisPlot"></div><small id="nsAnalysisMessage"></small><strong id="nsAnalysisBasis">Annual evidence</strong><div id="nsAnalysisCounts"></div><details><summary>Common-period comparison</summary><div class="ns-tool-row"><select id="nsCommonYear" aria-label="Common period year"></select><select id="nsCommonScenario" aria-label="Common period scenario"></select><button id="nsCommonCalculate">Calculate overlap</button></div><small id="nsCommonMessage">Annual totals remain unchanged.</small><div id="nsCommonResult" hidden></div></details><details><summary>Assessment details</summary><div id="nsAnalysisAudit"></div></details></div></dialog>');
+  $('nsReviewTools').querySelector('.ns-tool-panel').insertAdjacentHTML('afterbegin',
+    '<label><input id="nsVerificationLayer" type="checkbox"> Verification evidence layer</label>');
+  window.addEventListener('icm:assessment-published',event=>{
+    const route=window.__ICM_PRECISION_WORKBENCH__?.route();
+    if(event.detail.id==='verification:comparison'&&prefs().verification===true&&route?.workspace==='network')renderCanvas();
+  });
+  $('nsVerificationLayer').onchange=()=>{
+    network.preferences={...prefs(),verification:$('nsVerificationLayer').checked};
+    changed(true);
+  };
+  root().addEventListener('change',event=>{
+    if(event.target.id!=='nsMonitorAssociation')return;
+    const point=node(),id=event.target.value;
+    if(!point||point.type==='label')return;
+    const monitor=window.ICMProjectRegistry?.snapshot()?.assets.find(asset=>asset.id===id&&asset.kind==='flow-monitor');
+    if(id&&!monitor)return;
+    if(id&&network.nodes.some(other=>other.id!==point.id&&other.monitorId===id)){
+      status('This monitor is already associated with another point. Remove that association before moving it.');
+      event.target.value=point.monitorId||'';return;
+    }
+    checkpoint();
+    point.monitorId=id;
+    changed(true);renderDrawer();
+  });
+  root().addEventListener('click',event=>{
+    if(!event.target.closest('#nsOpenVerification'))return;
+    const point=node(),assessment=window.__ICM_WORKBENCH__?.readVerificationEvidence?.();
+    if(!point?.monitorId||assessment?.asset.kind!=='flow-monitor'||assessment.asset.id!==point.monitorId){
+      status('Run a comparison for the linked monitor before opening Verification evidence.');return;
+    }
+    window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','overview',true);
+  });
   $('nsAssetSearch').oninput=()=>{$('nsAssetNames').innerHTML=network.nodes.filter(n=>n.name.toLowerCase().includes($('nsAssetSearch').value.toLowerCase())).slice(0,30).map(n=>'<option value="'+html(n.name)+'"></option>').join('');};
   $('nsAssetSearch').onchange=()=>{const query=$('nsAssetSearch').value.toLowerCase(),n=network.nodes.find(n=>n.name.toLowerCase()===query)||network.nodes.find(n=>n.name.toLowerCase().includes(query));if(n){const p=prefs();if(selected!==n.id||p.type!=='all'||p.health!=='all'||p.result!=='all'){network.preferences={...p,type:'all',health:'all',result:'all'};centre(n.id);}}else status('Asset not found.');};
   for(const [id,key] of [['nsTypeFilter','type'],['nsHealthFilter','health'],['nsResultFilter','result'],['nsDetail','detail'],['nsSnap','snap'],['nsLocked','locked']])$(id).onchange=()=>{network.preferences={...prefs(),[key]:['snap','locked'].includes(key)?$(id).checked:$(id).value};changed(true);};
