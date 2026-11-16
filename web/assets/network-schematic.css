@@ -49,9 +49,11 @@
 /* Counts and hours lead; review metadata stays behind disclosures. */
 #nsWorkbench #nsAssetSearch{width:145px;font-size:12px}
 #nsWorkbench .ns-main-toolbar{position:relative}
-#nsWorkbench #nsReviewTools{position:static;font-size:12px}
+#nsWorkbench #nsReviewTools{font-size:12px}
+#nsWorkbench #nsReviewTools[open]{flex-basis:100%;min-width:0}
+#nsWorkbench #nsReviewTools>summary{width:max-content}
 #nsWorkbench #nsReviewTools>summary{padding:9px 10px;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-control);cursor:pointer;list-style:none}
-#nsWorkbench .ns-tool-panel{position:absolute;right:0;top:calc(100% + 6px);width:min(640px,calc(100vw - 70px));max-height:70vh;overflow:auto;background:white;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-card);padding:14px;box-shadow:var(--hb-shadow-popover);z-index:8}
+#nsWorkbench .ns-tool-panel{margin-top:6px;min-width:0;background:var(--hb-soft);border:1px solid var(--hb-border);border-radius:var(--hb-radius-card);padding:12px;overflow-wrap:anywhere}
 #nsWorkbench .ns-tool-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0}
 #nsWorkbench .ns-tool-panel label{display:flex;gap:6px;align-items:center}
 #nsWorkbench details>summary{cursor:pointer;font-size:12px}
@@ -102,3 +104,8 @@
 #nsWorkbench :is(#nsPicker,#nsPopup,#nsAnalysis):not([hidden]){animation:hb-reveal var(--hb-motion-control) var(--hb-ease)}
 
 #nsAnalysis::backdrop{background:#20222140}
+
+#nsWorkbench .ns-tool-panel>label{display:inline-flex;flex-wrap:wrap;margin:0 12px 6px 0}
+#nsWorkbench .ns-drawer-head h3{min-width:0;overflow-wrap:anywhere}
+#nsWorkbench #nsSvg [data-ns-label-suppressed]{visibility:hidden}
+#nsWorkbench #nsSvg .ns-multi-selected>[data-ns-label]{paint-order:stroke;stroke:white;stroke-width:3px;stroke-linejoin:round}

@@ -67,6 +67,14 @@ try{
   await page.getByText('Tools',{exact:true}).click();
   await page.getByLabel('Verification evidence layer').check();
   await point.locator('[data-ns-verification="Evidence available"]').waitFor({state:'attached'});
+  await page.getByText('Tools',{exact:true}).click();
+  await page.getByText('Monitoring association',{exact:true}).click();
+  await page.getByRole('button',{name:'Open Verification evidence'}).click();
+  await page.locator('#verificationReviewDecision').selectOption('Requires investigation');
+  await page.locator('#verificationReviewSave').click();
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('network','schematic'));
+  await point.locator('[data-ns-verification="Review requires attention"]').waitFor({state:'attached'});
+  await page.getByText('Tools',{exact:true}).click();
   await page.getByLabel('Verification evidence layer').uncheck();
   await page.evaluate(()=>{document.querySelector('#gapInput').value='120';});
   await page.getByLabel('Verification evidence layer').check();

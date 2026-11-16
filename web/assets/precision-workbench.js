@@ -963,8 +963,7 @@ function wireVerificationOverview(){
       }
       if(active())render();
     },
-    report:()=>{
-      const record=window.__ICM_WORKBENCH__.readVerificationEvidence();
+    report:(record=window.__ICM_WORKBENCH__.readVerificationEvidence())=>{
       if(record?.freshness!=='current')return [];
       return record.scenarios.flatMap(row=>{
         const review=reviews.get(scenarioKey(record,row.seriesKey));

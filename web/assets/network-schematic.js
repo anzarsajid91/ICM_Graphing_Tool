@@ -58,14 +58,17 @@ function badgeMarkup(n){
   return '<g data-ns-summary=""'+(network.evidenceMode==='single'?' data-ns-badge=""':'')+' transform="translate('+x+' '+y+')"><rect x="0" y="-14" width="'+width+'" height="'+height+'" rx="5" fill="white" stroke="#c7d2d9"/>'+lines.map((item,i)=>'<g '+(item.header?'data-ns-summary-year':'data-ns-summary-row')+'="'+item.year+'"'+(item.rag?' class="ns-rag-'+item.rag+'"':'')+'><title>'+html(item.header?item.text:item.label+': '+(item.value===null?'Unavailable':f(item.value))+(item.reason?' · '+item.reason:''))+'</title><rect x="1" y="'+(-10+i*21)+'" width="'+(width-2)+'" height="20" fill="'+(item.header?'#f5f7f9':{green:'#eaf6ed',amber:'#fff4d9',red:'#fdebec'}[item.rag]||'white')+'"/><text x="7" y="'+(4+i*21)+'" font-size="'+(item.header?11:12)+'" font-weight="'+(item.header?600:400)+'" fill="'+(item.header?'#60717d':{green:'#267044',amber:'#9a6500',red:'#b93838'}[item.rag]||'#182732')+'">'+html(item.text)+'</text></g>').join('')+'</g>';
 }
 function unitOptions(quantity){return quantity==='status'?[['1','Binary / unitless']]:quantity==='flow'?[['','Assign…'],['m³/s','m³/s'],['L/s','L/s'],['Ml/d','Ml/d'],['m³/d','m³/d']]:[['','Assign…'],['m','m'],['mm','mm']];}
-function verificationBadge(point,evidence){
+function verificationBadge(point,evidence,reviews){
   if(!point.monitorId)return '';
   const matched=evidence?.asset.kind==='flow-monitor'&&evidence.asset.id===point.monitorId;
-  const state=!matched?'No comparison':evidence.freshness!=='current'?'Stale evidence':
+  const needsInvestigation=matched&&reviews.some(row=>['Requires investigation','Not suitable for acceptance'].includes(row.decision));
+  const state=needsInvestigation?'Review requires attention':!matched?'No comparison':evidence.freshness!=='current'?'Stale evidence':
     evidence.scenarios.some(row=>row.metrics?.pairs&&row.coverage?.status==='complete')?'Evidence available':
     evidence.scenarios.some(row=>row.metrics?.pairs&&row.coverage?.status==='partial')?'Partial evidence':'No valid comparison';
-  return '<g data-ns-verification="'+html(state)+'" transform="translate(44 -16)" pointer-events="none">'+
-    '<title>'+html(point.monitorId+' · '+state)+'</title><circle r="8" fill="#fff" stroke="#4740b6"/><text y="4" text-anchor="middle" font-size="10" fill="#4740b6">V</text></g>';
+  const decisions=matched?reviews.map(row=>row.scenario+' · '+row.decision).join(' / '):'';
+  const colour=needsInvestigation?'#9a6500':'#4740b6';
+  return '<g data-ns-verification="'+html(state)+'" transform="translate(52 -16)">'+
+    '<title>'+html(point.monitorId+' · '+state+(decisions?' · '+decisions:''))+'</title><circle r="8" fill="#fff" stroke="'+colour+'"/><text y="4" text-anchor="middle" font-size="10" fill="'+colour+'">V</text></g>';
 }
 function flowSurveyBadge(point,view){
   if(!point.monitorId)return '';
@@ -73,7 +76,7 @@ function flowSurveyBadge(point,view){
   const state=item?.status==='stale'?'Stale survey evidence':!item?.rating?'No survey evidence':
     item.rating+' · '+(item.reviewed?'Engineer reviewed':'Calculated')+(item.short?' · Short boundary week':'');
   const colour={'Green':'#267044','Amber':'#9a6500','Red':'#b93838'}[item?.rating]||'#60717d';
-  return '<g data-ns-survey="'+html(state)+'" transform="translate(44 4)" pointer-events="none">'+
+  return '<g data-ns-survey="'+html(state)+'" transform="translate(52 4)">'+
     '<title>'+html(point.monitorId+' · '+(view?.week||'No week')+' · '+state)+'</title>'+
     '<circle r="8" fill="#fff" stroke="'+colour+'"/><text y="4" text-anchor="middle" font-size="10" fill="'+colour+'">F</text></g>';
 }
@@ -127,6 +130,7 @@ function svgContent(includeHandles=true){
   const {width,height}=dimensions(),parts=[];
   const verificationLayer=prefs().verification===true;
   const evidence=verificationLayer?window.__ICM_WORKBENCH__?.readVerificationEvidence?.():null;
+  const reviews=evidence?window.__ICM_WORKBENCH__?.verificationReviews?.report(evidence)||[]:[];
   const surveyLayer=prefs().flowSurvey===true;
   const surveyView=surveyLayer?surveyLayerView():null;
   const detrimentLayer=prefs().detriment===true,comparison=detrimentLayer?detrimentView():null;
@@ -142,13 +146,59 @@ function svgContent(includeHandles=true){
     if(!shownIds.has(n.id))continue;
     const p=point(n.x,n.y),c=C.colours[n.colour],box=C.bounds(n.type),rawOffset=C.labelOffset(n),offset={x:Number(rawOffset.x),y:Number(rawOffset.y)},small=['manhole','label'].includes(n.type),leader=C.labelLeader(n);
     const label=(leader?'<path data-ns-leader="" d="M'+leader.start.x+' '+leader.start.y+'L'+Number(leader.end.x)+' '+Number(leader.end.y)+'" stroke="#82939f" stroke-width="1" fill="none"/><polygon points="'+leader.arrow.map(p=>p.x+','+p.y).join(' ')+'" fill="#82939f"/>':'')+'<text data-ns-label="'+html(n.id)+'" x="'+(offset.x+(small?5:0))+'" y="'+offset.y+'" text-anchor="'+(small?'start':'middle')+'" font-size="'+(small?13:14)+'" font-weight="'+(small?400:600)+'" fill="#182732">'+html(n.name)+'</text>';
-    parts.push('<g data-ns-node="'+html(n.id)+'" transform="translate('+p.x+' '+p.y+')" tabindex="0" role="button" aria-label="'+html(n.name)+' · '+html(C.types[n.type])+'"><title>'+html(n.name+' · '+C.types[n.type])+'</title>'+(selected===n.id||multi.has(n.id)?'<rect x="-42" y="-32" width="84" height="64" rx="8" fill="none" stroke="#0b8f96" stroke-width="2"/>':'')+(box.circle?'':'<rect data-ns-frame="" x="'+(-box.x)+'" y="'+(-box.y)+'" width="'+(box.x*2)+'" height="'+(box.y*2)+'" rx="6" fill="white" stroke="'+c+'" stroke-width="1.5"/>')+'<rect x="-37" y="-28" width="74" height="56" fill="transparent"/><g stroke="'+c+'" stroke-width="1.8" fill="white" stroke-linecap="round" stroke-linejoin="round">'+icon(n.type)+'</g>'+label+(asset(n)?badgeMarkup(n):'')+(verificationLayer?verificationBadge(n,evidence):'')+(surveyLayer?flowSurveyBadge(n,surveyView):'')+(detrimentLayer?detrimentBadge(n,comparison,44,24):'')+'</g>');
+    parts.push('<g data-ns-node="'+html(n.id)+'" transform="translate('+p.x+' '+p.y+')" tabindex="0" role="button" aria-label="'+html(n.name)+' · '+html(C.types[n.type])+'"><title>'+html(n.name+' · '+C.types[n.type])+'</title>'+(selected===n.id||multi.has(n.id)?'<rect x="-42" y="-32" width="84" height="64" rx="8" fill="none" stroke="#0b8f96" stroke-width="2"/>':'')+(box.circle?'':'<rect data-ns-frame="" x="'+(-box.x)+'" y="'+(-box.y)+'" width="'+(box.x*2)+'" height="'+(box.y*2)+'" rx="6" fill="white" stroke="'+c+'" stroke-width="1.5"/>')+'<rect x="-37" y="-28" width="74" height="56" fill="transparent"/><g data-ns-symbol="" stroke="'+c+'" stroke-width="1.8" fill="white" stroke-linecap="round" stroke-linejoin="round">'+icon(n.type)+'</g>'+label+(asset(n)?badgeMarkup(n):'')+(verificationLayer?verificationBadge(n,evidence,reviews):'')+(surveyLayer?flowSurveyBadge(n,surveyView):'')+(detrimentLayer?detrimentBadge(n,comparison,52,24):'')+'</g>');
   }
   if(!network.nodes.length)parts.push('<text x="'+width/2+'" y="'+height/2+'" text-anchor="middle" fill="#60717d" font-size="15"><tspan x="'+width/2+'" dy="-10">Choose Edit network,</tspan><tspan x="'+width/2+'" dy="22">then add assets and manholes.</tspan></text>');
   return parts.join('');
 }
+function declutterLabels(svg){
+  if(prefs().detail==='full'||!svg.getClientRects().length)return;
+  const viewport=svg.getBoundingClientRect();
+  const manualNodes=new Set(network.nodes.filter(n=>n.nameOffset||n.labelOffset).map(n=>n.id));
+  const manualEdges=new Set(network.edges.filter(e=>e.labelOffset).map(e=>e.id));
+  const labels=[];
+  for(const label of svg.querySelectorAll('[data-ns-label], [data-ns-edge-label]')){
+    const group=label.parentElement;
+    const id=group.dataset.nsNode||group.dataset.nsEdge;
+    const priority=id===selected||multi.has(id)||manualNodes.has(id)||manualEdges.has(id)?2:group.dataset.nsNode?1:0;
+    labels.push({label,box:label.getBoundingClientRect(),priority});
+  }
+  labels.sort((a,b)=>b.priority-a.priority);
+  const occupied=new Map(),padding=3,bucketSize=128;
+  function buckets(box){
+    const keys=[];
+    for(let y=Math.floor((Math.max(box.top,viewport.top)-padding)/bucketSize);y<=Math.floor((Math.min(box.bottom,viewport.bottom)+padding)/bucketSize);y++)
+      for(let x=Math.floor((Math.max(box.left,viewport.left)-padding)/bucketSize);x<=Math.floor((Math.min(box.right,viewport.right)+padding)/bucketSize);x++)keys.push(x+':'+y);
+    return keys;
+  }
+  const overlaps=(a,b)=>a.left<b.right+padding&&a.right>b.left-padding&&a.top<b.bottom+padding&&a.bottom>b.top-padding;
+  const obstacles=Array.from(svg.querySelectorAll('[data-ns-symbol], [data-ns-verification], [data-ns-survey], [data-ns-detriment]'),el=>el.getBoundingClientRect());
+  for(const box of obstacles){
+    if(!box.width||!overlaps(box,viewport))continue;
+    for(const key of buckets(box)){
+      if(!occupied.has(key))occupied.set(key,[]);
+      occupied.get(key).push(box);
+    }
+  }
+  for(const {label,box,priority} of labels){
+    if(!box.width||!overlaps(box,viewport))continue;
+    const keys=buckets(box);
+    if(priority<2&&(box.left<viewport.left||box.right>viewport.right||
+       keys.some(key=>occupied.get(key)?.some(other=>overlaps(box,other))))){
+      label.setAttribute('data-ns-label-suppressed','');
+      continue;
+    }
+    for(const key of keys){
+      if(!occupied.has(key))occupied.set(key,[]);
+      occupied.get(key).push(box);
+    }
+  }
+}
 function renderCanvas(){
   const svg=$('nsSvg');if(!svg)return;const d=dimensions();svg.setAttribute('viewBox','0 0 '+d.width+' '+d.height);svg.innerHTML=svgContent();
+  declutterLabels(svg);
+  const selectedGroup=[...svg.children].find(group=>group.dataset.nsNode===selected&&selected!==null);
+  if(selectedGroup)svg.append(selectedGroup);
   $('nsZoom').textContent=Math.round(network.camera.zoom*100)+'%';$('nsUndo').disabled=!history.length||busy;
   renderPopup();
   applyDecorations();
@@ -349,7 +399,10 @@ function updateField(target){
   const object=n||e;
   try{
     checkpoint();
-    if(target.id==='nsName')object.name=target.value.trim()||C.types[n?.type]||'Connector';
+    if(target.id==='nsName'){
+      object.name=target.value.trim()||C.types[n?.type]||'Connector';
+      $('nsDrawer').querySelector('.ns-drawer-head h3').textContent=object.name;
+    }
     else if(target.id==='nsType')n.type=target.value;
     else if(target.id==='nsArrow')e.arrow=target.checked;
     else if(target.id==='nsPinned')n.pinned=target.checked;

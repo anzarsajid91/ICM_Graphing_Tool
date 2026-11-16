@@ -268,3 +268,18 @@ A changed assessment criterion hides the prior result until recalculation.
 Applying a network context import clears associations on its imported objects.
 Saved schematic associations are local and remain stale on restore until the
 matching comparison is calculated again.
+
+### Reading dense diagrams
+
+The Tools disclosure expands above the canvas and leaves the properties pane
+available. On narrow screens the pane stacks beneath the canvas. Automatic
+detail uses rendered text bounds to suppress lower-priority labels that collide
+with other labels or symbols. Selecting a point reveals its full label. Search
+and the properties pane also show full names. Manually positioned labels take
+priority. Full detail shows all labels, so it can reveal intentional overlaps.
+Zoom or reposition labels when available space is limited.
+
+Verification badges show current recorded scenario decisions and highlight
+investigation or unsuitable-for-acceptance decisions. Stale evidence does not
+carry a current decision. The overlay uses the current published verification
+comparison, while Flow Survey uses its current completed weekly assessment.
