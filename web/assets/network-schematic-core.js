@@ -144,6 +144,15 @@ function validateNetwork(value){
     ids.add(n.id);
   }
   const edges=new Set();for(const e of value.edges){if(!e.id||edges.has(e.id)||!ids.has(e.from)||!ids.has(e.to)||e.from===e.to||!Object.hasOwn(colours,e.colour))throw new Error('Invalid connector.');if(e.bends!==undefined&&(!Array.isArray(e.bends)||e.bends.length>32||e.bends.some(p=>!p||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6))))throw new Error('Invalid connector bends (maximum 32).');edges.add(e.id);}
+  for(const object of [...value.nodes,...value.edges]){
+    if(object.detrimentLinks===undefined)continue;
+    const links=object.detrimentLinks;
+    if(!object.contextSource||!links||typeof links!=='object'||Array.isArray(links)||
+       Object.entries(links).some(([kind,link])=>!['flooding','level','spill'].includes(kind)||
+         typeof link?.id!=='string'||!link.id||link.id.length>512||
+         typeof link.signature!=='string'||!link.signature||link.signature.length>32768))
+      throw new Error('Invalid detriment association.');
+  }
   if(value.evidenceMode!==undefined&&!['single','combined'].includes(value.evidenceMode))throw new Error('Invalid evidence display mode.');
   const result=JSON.parse(JSON.stringify(value));
   result.schema=2;

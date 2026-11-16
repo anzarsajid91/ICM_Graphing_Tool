@@ -294,7 +294,29 @@ function mount(){
   $('dtExportHtml').onclick=()=>exportHtml(false);$('dtExportViewHtml').onclick=()=>exportHtml(true);
   renderForm();renderResults();installPersistence();refresh();
 }
-window.ICMDetriment={escape,csvCell,csv,sectionData,timelineData,pairedData,relinkSource,reportOnlyWorkspace,filterRows,parseIdList,selectIdRows,idMatchSummary,summariseRows,idSelectionEvidence,visibleRows,scopedRows,isReport,detectReport,reportKind,assessmentErrorMessage,refresh,result:()=>results[kind],config:()=>config(),routes:{label:'Detriment Assessment',icon:'verify',pages:Object.fromEntries(Object.entries(titles).map(([k,t])=>[k,{label:t,title:t,description:'Compare baseline A with proposed B using ICM report evidence, explicit criteria and auditable asset-level results.',tab:'detriment',root:()=>$('tab-detriment')}]))}};
+const schematicEvidenceCache=new WeakMap();
+function schematicEvidence(page){
+  const result=results[page];
+  if(!result)return null;
+  if(!schematicEvidenceCache.has(result)){
+    const sources=[result.scenario_a,result.scenario_b];
+    if(sources.some(source=>!source.sha256))return null;
+    const signature=JSON.stringify(sources.map(({sha256,mapping,scope,period_start,period_end,template,datum})=>
+      [sha256,mapping,scope,period_start,period_end,template,datum]));
+    schematicEvidenceCache.set(result,{signature,caption:sources.map(source=>source.name).join(' → '),
+      rows:new Map(result.rows.map(row=>[row.asset_id,row]))});
+  }
+  return schematicEvidenceCache.get(result);
+}
+function openSchematicEvidence(page,id){
+  if(!schematicEvidence(page)?.rows.has(id))return;
+  window.__ICM_PRECISION_WORKBENCH__.navigate('detriment',page,true);
+  selected=id;
+  drawerReturnFocus=null;
+  renderDrawer();
+  $('dtClose')?.focus();
+}
+window.ICMDetriment={schematicEvidence,openSchematicEvidence,escape,csvCell,csv,sectionData,timelineData,pairedData,relinkSource,reportOnlyWorkspace,filterRows,parseIdList,selectIdRows,idMatchSummary,summariseRows,idSelectionEvidence,visibleRows,scopedRows,isReport,detectReport,reportKind,assessmentErrorMessage,refresh,result:()=>results[kind],config:()=>config(),routes:{label:'Detriment Assessment',icon:'verify',pages:Object.fromEntries(Object.entries(titles).map(([k,t])=>[k,{label:t,title:t,description:'Compare baseline A with proposed B using ICM report evidence, explicit criteria and auditable asset-level results.',tab:'detriment',root:()=>$('tab-detriment')}]))}};
 window.addEventListener('icm:source-pool-changed',refresh);
 window.addEventListener('icm:route-changed',e=>{if(e.detail.workspace==='detriment'){if(kind!==e.detail.page){kind=e.detail.page;generation++;selected=null;}renderForm();renderResults();$('dtTitle').textContent=titles[kind];}});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();

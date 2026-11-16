@@ -252,3 +252,19 @@ was calculated or reviewed, and whether it is a short boundary week. Stale
 assessments show a stale badge without displaying a rating. **Open Flow Survey
 week** opens the linked monitor and week in the survey review. The layer reads
 existing results without recalculating them.
+
+### Detriment evidence
+
+Calculate the baseline and proposed assessment in Detriment, then select Flooding,
+Level / freeboard or Spill count / duration under Network Schematic → Tools.
+In Edit network, select an imported node or link and confirm its exact report ID
+under Detriment association. Confirm the ID against both scenario reports before
+linking. The association can be removed or undone.
+
+The layer uses the current assessment's existing classifications and displays the
+signed change, available duration or freeboard and assessment flags. A changed
+report pair, mapping, scope, period, datum or template needs a fresh association.
+A changed assessment criterion hides the prior result until recalculation.
+Applying a network context import clears associations on its imported objects.
+Saved schematic associations are local and remain stale on restore until the
+matching comparison is calculated again.

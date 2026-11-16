@@ -13,9 +13,9 @@ try{
   await page.locator('#nsSvg').waitFor();
   const fixture=[
     '**** hw_node','node_id,x,y,node_type',
-    'Up,350000,425000,Manhole','Out,350125,425030,Outfall',
+    '001,350000,425000,Manhole','Out,350125,425030,Outfall',
     '**** hw_conduit','us_node_id,link_suffix,ds_node_id,shape,roughness_type,conduit_width,conduit_height,conduit_length,us_invert,ds_invert,bottom_roughness_CW,top_roughness_CW,sediment_depth,number_of_barrels,point_array',
-    'UP,1,OUT,CIRC,CW,450,450,200,101,100,1.5,1.5,0,1,"{350000,425000,350030,425025,350125,425030}"',
+    '001,1,OUT,CIRC,CW,450,450,200,101,100,1.5,1.5,0,1,"{350000,425000,350030,425025,350125,425030}"',
     '',
   ].join('\n');
   const load=csv=>page.locator('#nsLoadInput').setInputFiles({name:'network.csv',mimeType:'text/csv',buffer:Buffer.from(csv)});
@@ -31,7 +31,7 @@ try{
   await audit.waitFor({state:'hidden'});
   assert.equal(await page.locator('[data-ns-node]').count(),2);
   assert.equal(await page.locator('[data-ns-edge] [data-ns-direction]').count(),1);
-  await load(fixture.replace('UP,1,OUT','UP,1,Missing'));
+  await load(fixture.replace('001,1,OUT','001,1,Missing'));
   await page.waitForFunction(()=>document.querySelector('#nsStatus').textContent.includes('unknown node'));
   assert.equal(await page.locator('[data-ns-node]').count(),2);
   await load(fixture.replace('Out,350125,425030','Out,350145,425030'));
@@ -59,7 +59,7 @@ try{
         coverage:{status:'complete',coverage_fraction:1},unit:'m³/s'}]});
     window.__ICM_PRECISION_WORKBENCH__.navigate('network','schematic');
   });
-  const point=page.locator('[data-ns-node="Up"]');
+  const point=page.locator('[data-ns-node="001"]');
   await point.focus();
   await point.press('Enter');
   await page.getByText('Monitoring association',{exact:true}).click();
@@ -87,6 +87,43 @@ try{
   await page.evaluate(()=>{document.querySelector('#gapInput').value='150';});
   await page.getByLabel('Flow Survey evidence layer').check();
   await point.locator('[data-ns-survey="Stale survey evidence"]').waitFor({state:'attached'});
+  // Calculate a real comparison from synthetic ICM reports. A matching ID
+  // alone must never attach that comparison to an imported network object.
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series'));
+  await page.setInputFiles('#dtFileInput',['tests/fixtures/detriment/flood-a.csv','tests/fixtures/detriment/flood-b.csv']);
+  await page.waitForFunction(()=>[...state.files.values()].filter(file=>file.status==='ready'&&file.parsed?.metadata?.source_kind==='detriment_report').length===2);
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('detriment','flooding'));
+  for(const [slot,name] of [['a','flood-a.csv'],['b','flood-b.csv']]){
+    await page.locator('#dtForm [data-key="'+slot+'.id"]').selectOption({label:name});
+  }
+  await page.locator('#dtForm [data-key="scope_confirmed"]').check();
+  await page.locator('#dtForm [data-key="threshold"]').fill('5');
+  await page.locator('#runDetrimentBtn').click();
+  await page.waitForFunction(()=>window.ICMDetriment.result()?.rows.some(row=>row.asset_id==='001'&&row.delta===6));
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('network','schematic'));
+  if(!await page.locator('#nsReviewTools').evaluate(el=>el.open))await page.getByText('Tools',{exact:true}).click();
+  await page.getByLabel('Detriment evidence layer').check();
+  await page.getByText('Tools',{exact:true}).click();
+  assert.equal(await page.locator('[data-ns-detriment]').count(),0);
+  await point.focus();
+  await point.press('Enter');
+  await page.getByText('Detriment association',{exact:true}).click();
+  await page.getByLabel('Exact report asset ID').fill('001');
+  await page.getByRole('button',{name:'Confirm association'}).click();
+  const badge=point.locator('[data-ns-detriment="detriment"]');
+  assert.match(await badge.locator('title').textContent(),/flood-a.csv → flood-b.csv.*Δ 6 m³/);
+  if(process.env.ICM_DETRIMENT_LAYER_SCREENSHOT)await page.screenshot({path:process.env.ICM_DETRIMENT_LAYER_SCREENSHOT,animations:'disabled'});
+  await page.getByRole('button',{name:'Open detriment evidence'}).click();
+  assert.match(await page.locator('#dtDrawer h2').innerText(),/^001$/);
+  await page.locator('#dtForm [data-key="threshold"]').fill('6');
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('network','schematic'));
+  await point.locator('[data-ns-detriment="stale"]').waitFor({state:'attached'});
+  assert.doesNotMatch(await point.locator('[data-ns-detriment="stale"] title').textContent(),/m³/);
+  await point.focus();
+  await point.press('Enter');
+  await page.getByText('Detriment association',{exact:true}).click();
+  await page.getByRole('button',{name:'Remove association'}).click();
+  assert.equal(await point.locator('[data-ns-detriment]').count(),0);
   privacy.assertClean();
-  console.log('Native context import, audit, revision, hydraulic trial and Verification and Flow Survey overlays passed.');
+  console.log('Native context import, audit, revision, hydraulic trial and Verification, Flow Survey and Detriment overlays passed.');
 }finally{await browser.close();}
