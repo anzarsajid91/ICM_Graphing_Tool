@@ -870,12 +870,21 @@ function wireVerificationOverview(){
   const status=$('verificationReviewStatus'),reviews=new Map();
   let evidence=null;
   const available=row=>Boolean(row?.metrics?.pairs&&['complete','partial'].includes(row.coverage?.status));
-  const evidenceKey=()=>JSON.stringify([evidence.signature,evidence.dependencies]);
+  function dependencyKey(dependency){
+    const [,column]=JSON.parse(dependency.seriesKey);
+    return [dependency.fingerprint,column,dependency.quantity,dependency.unit];
+  }
+  const evidenceKey=record=>JSON.stringify([record.signature,record.dependencies.map(dependencyKey),
+    record.scenarios.map(row=>[row.metrics,row.coverage,row.unit,row.error])]);
+  const scenarioKey=(record,key)=>{
+    const dependency=record.dependencies.find(item=>item.seriesKey===key);
+    return dependency?JSON.stringify([record.asset.id,...dependencyKey(dependency)]):null;
+  };
   const active=()=>current.workspace==='graphs'&&current.page==='overview';
   function reviewFor(key){
-    const review=reviews.get(key);
+    const review=reviews.get(scenarioKey(evidence,key));
     if(!review)return null;
-    return {...review,stale:evidence.freshness!=='current'||review.key!==evidenceKey()};
+    return {...review,stale:evidence.freshness!=='current'||review.key!==evidenceKey(evidence)};
   }
   function updateFields(){
     const selected=evidence?.scenarios.find(row=>row.seriesKey===scenario.value);
@@ -922,17 +931,50 @@ function wireVerificationOverview(){
   scenario.addEventListener('change',updateFields);
   $('verificationReviewSave').addEventListener('click',()=>{
     const latest=window.__ICM_WORKBENCH__?.readVerificationEvidence?.();
-    if(!evidence||latest?.freshness!=='current'||JSON.stringify([latest.signature,latest.dependencies])!==evidenceKey()){
+    if(!evidence||latest?.freshness!=='current'||evidenceKey(latest)!==evidenceKey(evidence)){
       render();return;
     }
     if(!latest.scenarios.some(row=>row.seriesKey===scenario.value&&available(row)))return;
     if(decision.value==='Not reviewed'&&!comments.value.trim()&&!references.value.trim()){
-      reviews.delete(scenario.value);
+      reviews.delete(scenarioKey(evidence,scenario.value));
     }else{
-      reviews.set(scenario.value,{key:evidenceKey(),decision:decision.value,comments:comments.value.trim(),references:references.value.trim()});
+      const key=scenarioKey(evidence,scenario.value),basis=evidenceKey(evidence);
+      if((!reviews.has(key)&&reviews.size>=250)||basis.length>262144){
+        status.textContent='This workspace has reached its review storage limit.';return;
+      }
+      reviews.set(key,{key:basis,decision:decision.value,comments:comments.value.trim(),references:references.value.trim()});
     }
-    render();status.textContent='Review saved for this session.';
+    render();status.textContent='Review recorded. Save the workspace to retain it.';
   });
+  const decisions=new Set([...decision.options].map(option=>option.value));
+  window.__ICM_WORKBENCH__.verificationReviews={
+    snapshot:()=>[...reviews].map(([scenario,review])=>({scenario,...review})),
+    restore:entries=>{
+      reviews.clear();
+      if(Array.isArray(entries)){
+        for(const item of entries.slice(0,250)){
+          if(!item||typeof item.scenario!=='string'||item.scenario.length>4096||
+             typeof item.key!=='string'||item.key.length>262144||!decisions.has(item.decision)||
+             typeof item.comments!=='string'||item.comments.length>4000||
+             typeof item.references!=='string'||item.references.length>4000)continue;
+          const {scenario,key,decision,comments,references}=item;
+          reviews.set(scenario,{key,decision,comments,references});
+        }
+      }
+      if(active())render();
+    },
+    report:()=>{
+      const record=window.__ICM_WORKBENCH__.readVerificationEvidence();
+      if(record?.freshness!=='current')return [];
+      return record.scenarios.flatMap(row=>{
+        const review=reviews.get(scenarioKey(record,row.seriesKey));
+        if(!review||review.key!==evidenceKey(record))return [];
+        const series=window.ICMProjectRegistry?.getSeries(row.seriesKey);
+        return [{asset:record.asset.id,scenario:series?.label||row.seriesKey,decision:review.decision,
+          comments:review.comments,references:review.references,period:record.period}];
+      });
+    },
+  };
   window.addEventListener('icm:route-changed',()=>{if(active())render();});
   window.addEventListener('icm:source-pool-changed',()=>{if(active())render();});
 }

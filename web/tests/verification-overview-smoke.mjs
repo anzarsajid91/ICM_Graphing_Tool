@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 import {chromium} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
@@ -6,7 +7,7 @@ import {installPrivacyGuard} from './privacy-network.mjs';
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browser=await chromium.launch(browserLaunchOptions());
 try{
-  const context=await browser.newContext({...browserContextOptions(),viewport:{width:1024,height:800}});
+  const context=await browser.newContext({...browserContextOptions(),viewport:{width:1024,height:800},acceptDownloads:true});
   const page=await context.newPage(),privacy=installPrivacyGuard(context,base);
   await privacy.navigate(page,base);
   await page.getByRole('link',{name:'Start verification'}).click();
@@ -41,12 +42,35 @@ try{
   await page.getByLabel('Review comments').fill('Synthetic check');
   await page.getByRole('button',{name:'Save engineer review'}).click();
   assert.match(await row.textContent(),/Requires investigation/);
+  const saved=await page.evaluate(()=>workspaceObject());
+  assert.equal(saved.verification_reviews.length,1);
+  assert.equal(saved.verification_reviews[0].comments,'Synthetic check');
+  assert.equal(await page.evaluate(()=>window.__ICM_WORKBENCH__.verificationReviews.report().length),1);
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation'));
+  const downloaded=page.waitForEvent('download');
+  await page.locator('#downloadReportBtn').click();
+  const report=await fs.readFile(await (await downloaded).path(),'utf8');
+  assert.match(report,/Verification engineer review/);
+  assert.match(report,/Requires investigation/);
+  assert.match(report,/Synthetic check/);
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','overview'));
+
+  await page.evaluate(()=>window.__ICM_WORKBENCH__.verificationReviews.restore([]));
+  assert.match(await row.textContent(),/Not reviewed/);
+  await page.evaluate(async workspace=>{
+    await applyWorkspace(workspace);
+    await window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics();
+    window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','overview');
+  },saved);
+  assert.match(await row.textContent(),/Requires investigation/);
+
   await page.evaluate(()=>{
     document.querySelector('#gapInput').value='120';
     window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','overview');
   });
   assert.match(await summary.textContent(),/Stale evidence/);
   assert.match(await row.textContent(),/Stale review/);
+  assert.equal(await page.evaluate(()=>window.__ICM_WORKBENCH__.verificationReviews.report().length),0);
   assert.equal(await page.getByRole('button',{name:'Save engineer review'}).isDisabled(),true);
   await page.evaluate(()=>{
     // Insert an already-qualified synthetic rainfall window to exercise the
