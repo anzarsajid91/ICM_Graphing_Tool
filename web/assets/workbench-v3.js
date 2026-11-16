@@ -1,3 +1,5 @@
+/* SPDX-FileCopyrightText: 2026 Anzar Sajid and other applicable rights holders
+ * SPDX-License-Identifier: AGPL-3.0-only */
 (() => {
   'use strict';
 
@@ -5,20 +7,6 @@
   const RAIN_COLOURS = ['#1268b3','#2e8b57','#7c4dff','#ef7d00','#c43d6f','#008b95','#7a5c00','#5b6d7e'];
   const v3 = {rainTimer:null,rainGeneration:0,lastRainFactor:null};
   window.__ICM_WORKBENCH__.uiV3 = v3;
-
-  function ensureCopyrightFooter() {
-    const footer = document.querySelector('footer');
-    if (!footer) return;
-    let owner = footer.querySelector('[data-icm-copyright]');
-    if (!owner) {
-      owner = footer.querySelector('span:first-child') || document.createElement('span');
-      owner.dataset.icmCopyright = 'true';
-      if (!owner.parentElement) footer.prepend(owner);
-    }
-    const version = footer.querySelector('#appVersion');
-    owner.textContent = 'Hydra Bench — © 2026 Anzar Sajid';
-    if (version) owner.append(' · ', version);
-  }
 
   function exposeThresholdControlsGlobally() {
     const toolbar = document.getElementById('v2GraphToolbar');
@@ -469,7 +457,6 @@
     }, true);
   }
 
-  ensureCopyrightFooter();
   exposeThresholdControlsGlobally();
   installCumulativeRainfallPanel();
   wireAutomaticCumulativeRefresh();

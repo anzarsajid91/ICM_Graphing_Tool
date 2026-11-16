@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -92,6 +93,7 @@ def build() -> None:
     if SITE.exists():
         shutil.rmtree(SITE)
     copy_browser_sources(WEB, SITE)
+    shutil.copy2(ROOT / "LICENSE", SITE / "LICENSE.txt")
 
     security_root = SITE / 'security'
     security_root.mkdir()
@@ -111,6 +113,11 @@ def build() -> None:
     index = SITE / "index.html"
     html = index.read_text(encoding="utf-8").replace('id="appVersion">v1.000', f'id="appVersion">{version["app_version"]}')
     html = html.replace('  <meta name="icm-build-sha"', f'  <meta name="hydra-bench-version" content="{version["app_version"]}" />\n  <meta name="icm-build-sha"')
+    repository = os.environ.get("GITHUB_REPOSITORY", "anzarsajid91/ICM_Graphing_Tool")
+    if re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", repository) and re.fullmatch(r"[a-f0-9]{40}", build_token):
+        original_source = 'id="hbBuildSource" href="https://github.com/anzarsajid91/ICM_Graphing_Tool"'
+        source = f'id="hbBuildSource" href="https://github.com/{repository}/tree/{build_token}"'
+        html = html.replace(original_source, source, 1)
     index.write_text(html, encoding="utf-8")
 
     manifest = [

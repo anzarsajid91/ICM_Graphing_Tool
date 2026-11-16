@@ -27,3 +27,13 @@ explicit static-SVG fallback.
 The Python/JavaScript/worker architecture and engineering equations are unchanged
 by this dependency packaging. The vendored runtime adds approximately 25 MiB to
 the release artifact; only required files are loaded by the browser.
+
+### Licence scope
+
+The root AGPLv3 licence covers HydraBench's original software. The copied
+browser dependency directories retain their own notices and upstream terms.
+The published application includes the vendor tree and its licence files
+unchanged. For Pyodide's MPL 2.0-covered source, see the
+[Pyodide 0.29.4 upstream source](https://github.com/pyodide/pyodide/tree/0.29.4).
+The pinned browser inventory lists the separate Python packages. Inter is
+distributed under the SIL Open Font License with its bundled notice.

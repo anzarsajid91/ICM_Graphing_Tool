@@ -109,3 +109,7 @@ h1,h2,h3,h4,h5,h6,strong,b{font-weight:600}th{font-weight:500}body{font-weight:4
   .hb-welcome-layout { grid-template-columns: minmax(0, 1fr); }
   .hb-welcome-network { max-width: 520px; }
 }
+
+.hb-welcome-copy .hb-creator-credit { margin: 12px 0 0; }
+.hb-app-footer { flex-wrap: wrap; gap: 8px 16px; }
+.hb-licence-links { display: inline-flex; flex-wrap: wrap; gap: 8px 14px; }

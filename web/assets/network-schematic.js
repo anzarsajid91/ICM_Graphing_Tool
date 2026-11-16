@@ -1,3 +1,5 @@
+/* SPDX-FileCopyrightText: 2026 Anzar Sajid and other applicable rights holders
+ * SPDX-License-Identifier: AGPL-3.0-only */
 /* Network overview: own state, local source bindings and calendar spill results. */
 (()=>{'use strict';
 const C=ICMNetworkCore,R=ICMNetworkReviewCore,NS='http://www.w3.org/2000/svg',STORE='hydra-network-schematic-v1';

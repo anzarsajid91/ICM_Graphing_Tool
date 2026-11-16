@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Anzar Sajid and other applicable rights holders
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Steady uniform full-bore circular pipe capacity in SI units."""
 from math import asin, isfinite, log10, pi, sin, sqrt
 

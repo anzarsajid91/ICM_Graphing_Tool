@@ -69,10 +69,11 @@
       <article class="hb-welcome" aria-labelledby="hbWelcomeHeading">
         <div class="hb-welcome-layout">
           <div class="hb-welcome-copy">
-            <p class="hb-welcome-kicker">Wastewater network modelling</p>
+            <p class="hb-welcome-kicker">Engineering Decision Support Platform</p>
             <h2 id="hbWelcomeHeading">Verify model response.<br />Assess network performance.</h2>
             <p>Review flow surveys, compare observed and modelled data, and assess spills and detriment.</p>
             <a class="btn primary" id="welcomeAddSources" href="#/data/time-series">Open Data / time series</a>
+            <p class="hb-creator-credit"><small>Originally created by Anzar Sajid</small></p>
           </div>
           <figure class="hb-welcome-network">
             <svg viewBox="0 0 540 170" role="img" aria-labelledby="hbWelcomeNetworkTitle hbWelcomeNetworkDesc">
@@ -388,7 +389,7 @@
     </section>
   </main>
 
-  <section class="panel"><label>Review notes and assumptions<textarea id="reviewNotes" rows="3" placeholder="Notes are exported separately from computed results"></textarea></label></section><footer><span>Hydra Bench — © 2026 Anzar Sajid · <span id="appVersion">v1.000</span></span><span id="footerBuild">Reference engine: Python worker / canonical core</span></footer>
+  <section class="panel"><label>Review notes and assumptions<textarea id="reviewNotes" rows="3" placeholder="Notes are exported separately from computed results"></textarea></label></section><footer class="hb-app-footer"><span data-icm-copyright="true">© 2026 Anzar Sajid and other applicable rights holders · <span id="appVersion">v1.000</span></span><span class="hb-licence-links"><a href="LICENSE.txt">GNU AGPLv3</a><a id="hbBuildSource" href="https://github.com/anzarsajid91/ICM_Graphing_Tool" rel="noopener noreferrer" referrerpolicy="no-referrer" target="_blank">Source for this build</a></span><span id="footerBuild">Reference engine: Python worker / canonical core</span></footer>
   <!-- Keep the large plotting runtime off the document-head critical path.
        It still executes before every graph/workbench script in the release build. -->
   <script src="vendor/plotly-3.1.0/plotly.min.js" charset="utf-8"></script>

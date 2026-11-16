@@ -41,7 +41,24 @@ The repository includes a
 [representative-validation protocol](tests/representative/README.md) and
 machine-readable acceptance harness.
 
-Presentation copyright: © 2026 Anzar Sajid.
+## Licence and authorship
+
+HydraBench is an engineering decision support platform originally created by
+Anzar Sajid. Copyright © 2026 Anzar Sajid and other applicable rights holders.
+The original software is available under the [GNU Affero General Public License,
+version 3](LICENSE) (`AGPL-3.0-only`). See [Authors and acknowledgements](AUTHORS.md),
+[Contributing](CONTRIBUTING.md), and the [name and logo policy](TRADEMARKS.md).
+
+Keep copyright, licence and attribution notices when distributing the
+software. When distributing covered builds, provide the corresponding source
+under the applicable AGPL terms. Mark modified versions and provide the
+source offer required by section 13 when users interact with a modified
+version remotely over a network. Use the running app’s **Source for this
+build** link for the exact upstream revision of an official build.
+
+Bundled third-party software and fonts retain their own licences and notices.
+[Browser dependencies](docs/browser-dependencies.md) lists their provenance.
+Engineering data and reports remain separate from the software licensing grant.
 
 ## Product direction
 
