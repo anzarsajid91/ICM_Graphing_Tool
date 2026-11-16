@@ -90,8 +90,8 @@ try{
   // Calculate a real comparison from synthetic ICM reports. A matching ID
   // alone must never attach that comparison to an imported network object.
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series'));
-  await page.setInputFiles('#dtFileInput',['tests/fixtures/detriment/flood-a.csv','tests/fixtures/detriment/flood-b.csv']);
-  await page.waitForFunction(()=>[...state.files.values()].filter(file=>file.status==='ready'&&file.parsed?.metadata?.source_kind==='detriment_report').length===2);
+  await page.setInputFiles('#dtFileInput',['flood','level','spill'].flatMap(kind=>['a','b'].map(slot=>'tests/fixtures/detriment/'+kind+'-'+slot+'.csv')));
+  await page.waitForFunction(()=>[...state.files.values()].filter(file=>file.status==='ready'&&file.parsed?.metadata?.source_kind==='detriment_report').length===6);
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('detriment','flooding'));
   for(const [slot,name] of [['a','flood-a.csv'],['b','flood-b.csv']]){
     await page.locator('#dtForm [data-key="'+slot+'.id"]').selectOption({label:name});
@@ -124,6 +124,32 @@ try{
   await page.getByText('Detriment association',{exact:true}).click();
   await page.getByRole('button',{name:'Remove association'}).click();
   assert.equal(await point.locator('[data-ns-detriment]').count(),0);
+  for(const [kind,asset,inputs,evidenceText] of [
+    ['level','MH01',{threshold:'0.15',freeboard_required:'0.5',datum:'AOD',elevation_confirmed:true},/Proposed freeboard 0\.35 m/],
+    ['spill','CSO01',{period_start:'2025-01-01',period_end:'2026-01-01',template:'UK12/24 equivalent threshold and integral'},/Δ 3 spills.*Δ duration 4 h/],
+  ]){
+    await page.evaluate(kind=>window.__ICM_PRECISION_WORKBENCH__.navigate('detriment',kind),kind);
+    const field=key=>page.locator('#dtForm [data-key="'+key+'"]');
+    for(const slot of ['a','b'])await field(slot+'.id').selectOption({label:kind+'-'+slot+'.csv'});
+    await field('scope_confirmed').check();
+    for(const [key,value] of Object.entries(inputs)){
+      if(value===true)await field(key).check();
+      else await field(key).fill(value);
+    }
+    await page.locator('#runDetrimentBtn').click();
+    await page.waitForFunction(()=>window.ICMDetriment.result()?.status==='complete');
+    await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('network','schematic'));
+    await page.getByText('Tools',{exact:true}).click();
+    await page.getByLabel('Detriment theme').selectOption(kind);
+    await page.getByText('Tools',{exact:true}).click();
+    assert.equal(await point.locator('[data-ns-detriment]').count(),0);
+    await point.focus();
+    await point.press('Enter');
+    await page.getByText('Detriment association',{exact:true}).click();
+    await page.getByLabel('Exact report asset ID').fill(asset);
+    await page.getByRole('button',{name:'Confirm association'}).click();
+    assert.match(await badge.locator('title').textContent(),evidenceText);
+  }
   privacy.assertClean();
   console.log('Native context import, audit, revision, hydraulic trial and Verification, Flow Survey and Detriment overlays passed.');
 }finally{await browser.close();}

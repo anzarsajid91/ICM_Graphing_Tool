@@ -39,3 +39,19 @@ the selected configuration. Partially full flow and dynamic solver behaviour
 require separate evidence.
 
 [Autodesk conduit fields and validation-calculated capacity](https://help.autodesk.com/cloudhelp/2026/ENU/ICMLIVE-Help/files/GUID-1306601E-4A25-4FBE-AE9A-01E06BF4986E.htm)
+
+## Independent normal-depth check
+
+With HB02 geometry and fluid properties, 75 L/s gives one normal depth of
+0.189282931404 m. At 215 L/s, the two uniform-flow depths are
+0.404564165940 m and 0.437860773262 m. The reference solves Darcy friction
+factor by bisection at each depth, then bisects the discharge residual
+separately on a bracket for each root. It uses the circle segment angle
+(2\arccos(1-2y/D)) and determines hydraulic diameter from area and wetted
+perimeter. The values are exercised in the automated pipe-capacity suite.
+
+A small native ICM network export can be used independently to check the
+schematic column mappings and the conduit-to-calculator handoff. The four
+synthetic cases above are reproducible calculator references and do not need
+to be built in ICM for that import check. Version-specific capacity agreement
+can only be measured for rows carrying comparable inputs and ICM capacity.

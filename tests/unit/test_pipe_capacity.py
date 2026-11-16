@@ -73,3 +73,31 @@ def test_design_flow_handles_half_full_crown_and_no_supported_solution():
         normal_depth_assessment(*args, -1)
     other = normal_depth_assessment(d, 2*slope, roughness, viscosity, capacity)
     assert other["imposed_full_velocity_m_s"] == full["imposed_full_velocity_m_s"]
+
+
+@pytest.mark.parametrize(
+    "diameter, slope, roughness, reference_l_s",
+    [
+        (0.300, 0.002, 0.00150, 43.632987),
+        (0.450, 0.005, 0.00150, 202.647909),
+        (0.900, 0.001, 0.00150, 562.339300),
+        (0.450, 0.005, 0.00015, 262.815812),
+    ],
+)
+def test_full_flow_benchmark(diameter, slope, roughness, reference_l_s):
+    # Independent friction-factor bisection values, rounded to 6 decimals.
+    result = full_pipe_capacity(diameter, slope, roughness, 1e-6)
+    assert result["regime"] == "turbulent"
+    assert 1000 * result["discharge_m3_s"] == pytest.approx(reference_l_s, abs=5e-7, rel=0)
+
+
+@pytest.mark.parametrize(
+    "flow_l_s, depths_m",
+    [(75, [0.189282931404]), (215, [0.404564165940, 0.437860773262])],
+)
+def test_normal_depth_benchmark(flow_l_s, depths_m):
+    from icm_workbench.analysis.pipe_capacity import normal_depth_assessment
+
+    result = normal_depth_assessment(0.45, 0.005, 0.0015, 1e-6, flow_l_s / 1000)
+    assert result["status"] == "supported"
+    assert [row["depth_m"] for row in result["depths"]] == pytest.approx(depths_m, abs=5e-12, rel=0)
