@@ -615,9 +615,12 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #guidedImportReview{background:var(--hb-soft);margin-block:12px 18px}
 #guidedImportReview[open]>summary{margin-bottom:12px}
 #guidedImportReview .table-wrap{background:var(--hb-elevated)}
-#guidedImportReview td:first-child{overflow-wrap:anywhere}
+#guidedImportReview .data-table{min-width:0;table-layout:fixed}
+#guidedImportReview th:first-child{width:34%}
+#guidedImportReview th:last-child{width:30%}
+#guidedImportReview :is(td,th){overflow-wrap:anywhere}
 #guidedImportReview td:first-child small{display:block;color:var(--hb-muted)}
-#guidedImportReview td select{min-width:9rem;width:100%}
+#guidedImportReview td select{min-width:0;width:100%}
 .hb-review-tools button.primary{margin-top:12px}
 #guidedImportReview [data-needs-review]{background:#f8eecf;color:#755010}
 #guidedImportApply{margin-top:12px}
