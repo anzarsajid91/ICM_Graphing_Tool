@@ -1,11 +1,11 @@
 @font-face{font-family:"Inter";font-style:normal;font-weight:100 900;font-display:swap;src:url("../vendor/inter-4.1/InterVariable.woff2") format("woff2")}
 /* Hydra Bench foundation. Owners alias these tokens; engineering series/RAG colours stay independent. */
 :root{
-  --hb-canvas:#f0f0ee;--hb-surface:#fcfcfc;--hb-elevated:#fff;--hb-soft:#f5f5f3;
-  --hb-text:#202221;--hb-muted:#626660;--hb-border:#e4e5e3;--hb-control-border:#858d85;
-  --hb-action:#202221;--hb-action-hover:#373c37;--hb-accent:#26716b;--hb-accent-hover:#1c5752;--hb-selection:#edf3f0;
-  --hb-focus:#176b8a;--hb-success:#267044;--hb-warning:#895b00;--hb-danger:#b93838;
-  --hb-radius-card:16px;--hb-radius-control:10px;--hb-radius-pill:999px;
+  --hb-canvas:#f3f2ee;--hb-surface:#ffffff;--hb-elevated:#fff;--hb-soft:#f9f8f4;--hb-rail:#efeee9;
+  --hb-text:#25262c;--hb-muted:#626660;--hb-border:#e2dfd9;--hb-control-border:#8c8991;
+  --hb-action:#50419e;--hb-action-hover:#413486;--hb-accent:#50419e;--hb-accent-hover:#413486;--hb-selection:#eae6f6;
+  --hb-focus:#5549aa;--hb-success:#267044;--hb-warning:#895b00;--hb-danger:#b93838;
+  --hb-radius-card:12px;--hb-radius-control:8px;--hb-radius-pill:999px;
   --hb-shadow:0 1px 3px rgb(32 34 33 / .035),0 4px 16px rgb(32 34 33 / .025);
   --hb-shadow-popover:0 8px 28px rgb(32 34 33 / .12);
   --hb-font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;

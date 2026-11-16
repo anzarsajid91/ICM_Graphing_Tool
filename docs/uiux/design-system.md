@@ -11,7 +11,7 @@ Status: common foundation, shell, workspace owners and reports implemented; fina
 ## Foundation
 
 Warm canvas #F0F0EE; surface #FCFCFC; elevated surface #FFFFFF;
-text #202221; secondary text #626660 (darkened from the reference proposal for
+text #25262c; secondary text #626660 (darkened from the reference proposal for
 small-text contrast); subtle border #E4E5E3; control border #858D85 (controls
 must remain distinguishable). Primary action charcoal; restrained teal only for
 focus/link/selection context. Existing observed red, model purple-blue, rainfall,
@@ -97,3 +97,17 @@ Visual examples: [native component showcase](evidence/components/components-defa
 See [additional reference review](additional-reference-review.md). Inter 4.1 is bundled under SIL OFL 1.1 in `web/vendor/inter-4.1`; no external font requests. The exact fallback stack is `"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`. Body: 400; UI labels: 500; headings/buttons: 600. Tabular numerals apply throughout technical content. Large headings tighten tracking by approximately 1.5%; CSS does not force uppercase captions. Native input values, units, identifiers and engineering acronyms are preserved.
 
 Desktop navigation is inset 12 px with a 16 px radius. The existing grid, collapsed/focus modes, mobile overlay, keyboard and chart-resize contracts remain. Independent workspace evidence blocks use the shared card geometry; nested controls retain their smaller radius. Export font preparation is lazy, cached and same-origin; local HTML/print/SVG embed the font so offline output retains the typeface.
+
+
+## HydraBench 2.0 workspaces
+
+The warm canvas (`#f3f2ee`), rail (`#efeee9`) and white evidence surfaces
+provide distinct levels. Indigo (`#50419e`) identifies primary actions and
+selection. Hydraulic series and engineering status colours keep their
+established meanings. Inter and tabular figures carry dense numeric evidence.
+
+The schematic docks selected-asset evidence to the right on desktop or below
+the canvas at narrower widths. Its PNG capture includes the visible evidence
+panel in either layout. Verification keeps evidence and the engineer review
+side by side on wider screens. Import Review pairs the series table with its
+staging action and flags unresolved interpretation without changing assignments.

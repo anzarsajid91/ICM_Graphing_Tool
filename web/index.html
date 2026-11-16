@@ -28,13 +28,19 @@
       <div class="pool-summary" id="poolSummary">No files loaded.</div>
       <details id="guidedImportReview" class="subpanel" hidden>
         <summary>Import Review</summary>
-        <p>Review detected quantities and units. Choose the roles to stage in Assign &amp; interpret series, then confirm the assignments there.</p>
+        <div class="hb-import-grid">
         <div class="table-wrap" tabindex="0" role="region" aria-label="Imported series review">
-          <table class="data-table compact"><thead><tr><th>Source / series</th><th>Format</th><th>Likely asset</th><th>Quantity</th><th>Unit</th><th>Suggested role</th><th>Role to stage</th></tr></thead>
+          <table class="data-table compact"><thead><tr><th>Source / series</th><th>Quantity &amp; unit</th><th>Suggested role</th><th>Role to stage</th></tr></thead>
             <tbody id="guidedImportRows"></tbody></table>
         </div>
-        <button id="guidedImportApply" type="button" class="btn">Apply suggested setup</button>
-        <p id="guidedImportStatus" role="status"></p>
+        <section class="hb-import-guidance" aria-labelledby="guidedImportHeading">
+          <h3 id="guidedImportHeading">Review suggested setup</h3>
+          <p id="guidedImportReadiness"></p>
+          <p>Review the detected quantities and units. Choose which roles to stage, then confirm them in Assign &amp; interpret series.</p>
+          <button id="guidedImportApply" type="button" class="btn primary">Apply suggested setup</button>
+          <p id="guidedImportStatus" role="status"></p>
+        </section>
+        </div>
       </details>
       <div class="table-wrap" tabindex="0" role="region" aria-label="Source files table"><table class="data-table"><thead><tr><th>File</th><th>Format</th><th>Rows</th><th>Period</th><th>Audit</th><th>Status</th><th class="source-remove-head" aria-label="Remove source"></th></tr></thead><tbody id="poolBody"></tbody></table></div>
     </section>
@@ -121,7 +127,7 @@
     </section>
 
     <section class="tab-panel" id="tab-verification-overview" hidden>
-      <article class="panel">
+      <div class="hb-review-grid"><article class="panel">
         <div class="panel-head"><div><h3>Comparison evidence</h3><p id="verificationEvidenceStatus" role="status"></p></div>
           <a class="btn" href="#/graphs/comparison">Open comparison plots</a>
         </div>
@@ -131,7 +137,7 @@
             <tbody></tbody>
           </table>
         </div>
-        <section class="subpanel" aria-labelledby="verificationReviewHeading">
+        </article><section class="panel hb-review-tools" aria-labelledby="verificationReviewHeading">
           <h4 id="verificationReviewHeading">Engineer Review</h4>
           <p>Decisions apply to the current comparison evidence. Save the workspace to retain them.</p>
           <fieldset id="verificationReviewFields" disabled>
@@ -148,7 +154,7 @@
           </fieldset>
           <p id="verificationReviewStatus" role="status"></p>
         </section>
-      </article>
+      </div>
     </section>
 
     <section class="tab-panel" id="tab-verification-events" hidden>

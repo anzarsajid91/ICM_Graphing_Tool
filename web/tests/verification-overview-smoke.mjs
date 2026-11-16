@@ -7,8 +7,10 @@ import {installPrivacyGuard} from './privacy-network.mjs';
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browser=await chromium.launch(browserLaunchOptions());
 try{
-  const context=await browser.newContext({...browserContextOptions(),viewport:{width:1024,height:800},acceptDownloads:true});
+  const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1050},acceptDownloads:true});
   const page=await context.newPage(),privacy=installPrivacyGuard(context,base);
+  const evidence=process.env.ICM_EVIDENCE_DIR;
+  if(evidence)await fs.mkdir(evidence,{recursive:true});
   await privacy.navigate(page,base);
   await page.getByRole('link',{name:'Start verification'}).click();
   const summary=page.locator('#verificationEvidenceStatus');
@@ -26,6 +28,7 @@ try{
   assert.match(await review.locator('tbody').textContent(),/Observed-synthetic.*flow/i);
   await review.getByRole('combobox',{name:/Role for Observed-synthetic/}).selectOption('observed');
   await review.getByRole('combobox',{name:/Role for Model-synthetic/}).selectOption('model');
+  if(evidence){await review.scrollIntoViewIfNeeded();await page.screenshot({path:evidence+'/import-review.png'});}
   const before=await page.evaluate(()=>JSON.stringify(state.mapping));
   await review.getByRole('button',{name:'Apply suggested setup'}).click();
   assert.match(await page.locator('#guidedImportStatus').textContent(),/Selections staged/);
@@ -42,6 +45,14 @@ try{
   await page.getByLabel('Review comments').fill('Synthetic check');
   await page.getByRole('button',{name:'Save engineer review'}).click();
   assert.match(await row.textContent(),/Requires investigation/);
+  const evidencePanel=page.locator('.hb-review-grid article'),reviewPanel=page.locator('.hb-review-tools');
+  const wideEvidence=await evidencePanel.boundingBox(),wideReview=await reviewPanel.boundingBox();
+  assert.ok(wideReview.x>=wideEvidence.x+wideEvidence.width-1,'Verification review docks beside evidence');
+  if(evidence)await page.screenshot({path:evidence+'/verification-review.png'});
+  await page.setViewportSize({width:920,height:900});
+  const narrowEvidence=await evidencePanel.boundingBox(),narrowReview=await reviewPanel.boundingBox();
+  assert.ok(narrowReview.y>=narrowEvidence.y+narrowEvidence.height-1,'Verification review stacks below the evidence');
+  await page.setViewportSize({width:1024,height:800});
   const saved=await page.evaluate(()=>workspaceObject());
   assert.equal(saved.verification_reviews.length,1);
   assert.equal(saved.verification_reviews[0].comments,'Synthetic check');

@@ -813,13 +813,23 @@ function wireGuidedImport(){
     if(!series.length)review.open=false;
     body.replaceChildren();
     status.textContent='';
+    const unresolved=series.filter(item=>!item.quantity||!item.unit).length;
+    $('guidedImportReadiness').textContent=unresolved?unresolved+' of '+series.length+' series need quantity or unit review.':series.length+' series with detected quantities and units.';
     for(const item of series){
       const row=body.insertRow(), source=registry.source(item.sourceId);
       const recognised=Boolean(item.quantity&&item.unit);
       const role=Object.hasOwn(roles,item.role)?roles[item.role]:'Review required';
-      const possible=recognised?role+' · verify source identity':role+' · confirm quantity and unit';
-      for(const value of [item.label,source?.format||'Unknown',item.assetId,item.quantity||'Unresolved',item.unit||'Unresolved',possible])
-        row.insertCell().textContent=value;
+      const possible=recognised?role:role+' · confirm quantity and unit';
+      const identity=row.insertCell();
+      const label=document.createElement('strong');
+      label.textContent=item.label;
+      const metadata=document.createElement('small');
+      metadata.textContent=[source?.format||'Unknown',item.assetId].filter(Boolean).join(' · ');
+      identity.append(label,metadata);
+      row.insertCell().textContent=(item.quantity||'Unresolved')+' · '+(item.unit||'Unresolved');
+      const suggestion=row.insertCell();
+      suggestion.textContent=possible;
+      if(!recognised)suggestion.setAttribute('data-needs-review','');
       const choose=document.createElement('select');
       choose.dataset.series=item.key;
       choose.setAttribute('aria-label','Role for '+item.label);

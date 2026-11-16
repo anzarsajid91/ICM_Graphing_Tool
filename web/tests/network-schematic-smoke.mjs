@@ -122,7 +122,11 @@ try{
   assert.equal(await page.locator('[data-ns-wire]').first().evaluate(el=>(el.getAttribute('d').match(/L/g)||[]).length),2,'Manual bend is retained in review mode');
   assert.equal(await page.locator('[data-ns-bend]').count(),0,'Editing handles hide in review mode');
   assert.ok(await page.locator('#nsPopup .ns-rag-green').count());assert.ok(await page.locator('#nsPopup .ns-rag-amber').count());assert.ok(await page.locator('#nsPopup .ns-rag-red').count());
-  const containment=await page.evaluate(()=>{const p=document.getElementById('nsPopup').getBoundingClientRect(),c=document.getElementById('nsCanvas').getBoundingClientRect();return p.left>=c.left&&p.top>=c.top&&p.right<=c.right+1&&p.bottom<=c.bottom+1;});assert.ok(containment,'Popup stays inside capture area');
+  const docked=async()=>page.evaluate(()=>{
+    const p=document.getElementById('nsPopup').getBoundingClientRect(),c=document.getElementById('nsCanvas').getBoundingClientRect();
+    return p.left>=c.right-1||p.top>=c.bottom-1;
+  });
+  assert.ok(await docked(),'Evidence inspector does not cover the canvas');
   const size=await page.locator('[data-ns-node] text').first().evaluate(el=>getComputedStyle(el).fontSize);await page.click('#nsZoomIn');assert.equal(await page.locator('[data-ns-node] text').first().evaluate(el=>getComputedStyle(el).fontSize),size,'Labels retain screen font size');await page.click('#nsFit');
   const panBefore=(await snapshot()).camera;await page.click('#nsPan');const box=await page.locator('#nsCanvas').boundingBox();await page.mouse.move(box.x+box.width*.08,box.y+70);await page.mouse.down();await page.mouse.move(box.x+box.width*.08+60,box.y+110,{steps:4});await page.mouse.up();assert.notEqual((await snapshot()).camera.x,panBefore.x);await page.click('#nsPan');await page.click('#nsFit');
   await page.screenshot({path:evidence+'/network-review-'+name+'.png'});await recordControls(page,evidence,'network-review-'+name);
@@ -130,7 +134,7 @@ try{
   console.log(name+': capture complete; check responsive layout and saved evidence');
   const w=await page.evaluate(()=>workspaceObject());assert.equal(w.network_schematic.nodes[0].bindings.length,5);
   await page.locator('[data-ns-close-popup]').click();
-  await page.setViewportSize({width:900,height:1000});await page.click('#nsFit');await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();assert.ok(await page.locator('#nsPopup').isVisible());
+  await page.setViewportSize({width:900,height:1000});await page.click('#nsFit');await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();assert.ok(await page.locator('#nsPopup').isVisible());assert.ok(await docked(),'Narrow inspector stacks below the canvas');
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),'No horizontal viewport overflow');
   await page.reload({waitUntil:'domcontentloaded'});await page.waitForSelector('#nsEdit');assert.equal((await snapshot()).nodes.length,9,'Layout survives refresh');
   assert.equal((await snapshot()).edges[0].bends.length,1,'Manual bends survive refresh');assert.deepEqual((await snapshot()).nodes[0].nameOffset,nameOffset);assert.equal((await snapshot()).evidenceMode,'combined');

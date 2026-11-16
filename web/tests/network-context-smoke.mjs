@@ -158,6 +158,13 @@ try{
     await page.getByRole('button',{name:'Confirm association'}).click();
     assert.match(await badge.locator('title').textContent(),evidenceText);
   }
+  await page.getByRole('button',{name:'Done editing'}).click();
+  await point.focus();
+  await point.press('Enter');
+  const inspector=page.getByRole('complementary',{name:'Selected asset evidence'});
+  assert.match(await inspector.locator('.ns-linked-evidence').innerText(),/Flow monitor FM01/);
+  await inspector.getByRole('button',{name:'Open Verification evidence'}).click();
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='graphs');
   privacy.assertClean();
   console.log('Native context import, audit, revision, hydraulic trial and Verification, Flow Survey and Detriment overlays passed.');
 }finally{await browser.close();}

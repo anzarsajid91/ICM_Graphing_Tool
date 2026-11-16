@@ -289,15 +289,28 @@ function popupTable(n){
   const details=groups.map(g=>[g.observed,g.model].filter(Boolean).map(r=>'<p><strong>'+html(r.year+' · '+(r.role==='observed'?'Observed':r.scenario))+'</strong><br>'+html(r.analysis_start?r.analysis_start.slice(0,10)+' to '+r.analysis_end.slice(0,10):'No period')+(r.partial_year?' · partial year':'')+'<br>'+html(r.column)+' · '+(C.thresholdRule(r)==='gt'?'&gt;':'≥')+' '+f(r.threshold,6)+' '+html(r.unit||'')+'<br>Valid '+f(r.valid_hours,1)+' h · gaps '+f(r.unknown_hours,1)+' h · excluded '+f(r.excluded_hours,1)+' h'+(r.value_min!==undefined?'<br>Value range '+f(r.value_min,6)+' to '+f(r.value_max,6)+' '+html(r.unit||''):'')+(r.reason?'<br>'+html(r.reason):'')+(r.count_status&&r.count_status!=='definitive'?'<br>'+html(r.count_status):'')+(r.continuous_spill?'<br>All valid support is classified as spilling. Check channel, threshold, units and datum.':'')+'</p>').join('')+(g.model?'<p>'+html(fresh?C.comparable(g.observed,g.model,n.confirmed)||'Comparison eligible.':'Recalculation required.')+'</p>':'')).join('');
   return table+(fresh?'':'<p class="ns-note">Recalculation required: settings, method or source evidence changed.</p>')+'<details class="ns-evidence-details"><summary>Assessment details</summary>'+details+'</details><small>12/24 counts · duration in hours</small>';
 }
+function linkedMonitorEvidence(n){
+  if(!n.monitorId)return '';
+  const survey=surveyLayerView(),week=survey?.byMonitor.get(n.monitorId);
+  const workbench=window.__ICM_WORKBENCH__;
+  const verification=workbench?.readVerificationEvidence?.();
+  const matches=verification?.asset.kind==='flow-monitor'&&verification.asset.id===n.monitorId;
+  const reviews=matches?workbench.verificationReviews?.report(verification)||[]:[];
+  const surveyStatus=week?.status==='current'?(week.rating||'Current evidence'):
+    week?.status==='stale'?'Stale survey evidence':'No survey evidence';
+  const verificationStatus=!matches?'No comparison':verification.freshness!=='current'?'Stale evidence':
+    reviews.length?reviews.map(review=>review.decision).join(' · '):'Comparison available';
+  return '<section class="ns-linked-evidence"><strong>Flow monitor '+html(n.monitorId)+'</strong>'+
+    '<p>Flow Survey · '+html(surveyStatus)+(survey?.week?' · '+html(survey.week):'')+'</p>'+
+    '<p>Verification · '+html(verificationStatus)+'</p>'+
+    '<div class="ns-linked-actions"><button type="button" id="nsOpenFlowSurvey">Open Flow Survey week</button> '+
+    '<button type="button" id="nsOpenVerification">Open Verification evidence</button></div></section>';
+}
 function renderPopup(){
   const pop=$('nsPopup'),n=node();if(!pop)return;pop.hidden=editing||!popupVisible||!n;
+  $('nsLayout').classList.toggle('ns-inspecting',!pop.hidden);
   if(pop.hidden){pop.replaceChildren();return;}
-  const oldScroll=pop.querySelector('.ns-popup-body')?.scrollTop||0;pop.innerHTML='<div class="ns-popup-head"><div><h3>'+html(n.name)+'</h3><small>'+html(C.types[n.type])+' · all reporting years</small></div><button data-ns-close-popup aria-label="Close spill evidence">×</button></div><div class="ns-popup-body">'+popupTable(n)+reviewFields(n)+'</div><div class="ns-popup-footer"><button data-ns-open-analysis="series">Time series</button><button data-ns-open-analysis="spills">Spill analysis</button><button data-ns-edit-selected>Edit asset</button></div>';pop.querySelector('.ns-popup-body').scrollTop=oldScroll;
-  const d=dimensions(),p=point(n.x,n.y),w=Math.min(620,d.width-24);pop.style.width=w+'px';pop.style.maxHeight=(d.height-24)+'px';
-  // Keep the camera controls reachable even with a long evidence table.
-  pop.style.maxHeight=(d.height-82)+'px';
-  pop.style.left=Math.max(12,d.width-w-12)+'px';
-  pop.style.top='12px';
+  const oldScroll=pop.querySelector('.ns-popup-body')?.scrollTop||0;pop.innerHTML='<div class="ns-popup-head"><div><h3>'+html(n.name)+'</h3><small>'+html(C.types[n.type])+' · all reporting years</small></div><button data-ns-close-popup aria-label="Close asset evidence">×</button></div><div class="ns-popup-body">'+linkedMonitorEvidence(n)+popupTable(n)+reviewFields(n)+'</div><div class="ns-popup-footer"><button data-ns-open-analysis="series">Time series</button><button data-ns-open-analysis="spills">Spill analysis</button><button data-ns-edit-selected>Edit asset</button></div>';pop.querySelector('.ns-popup-body').scrollTop=oldScroll;
 }
 function render(){
   if(!mounted)return;
@@ -515,12 +528,14 @@ function exportPopupSvg(){
 }
 async function capture(){
   const d=dimensions(),n=popupVisible&&!editing?node():null;let overlay='';
+  const layout=$('nsLayout').getBoundingClientRect();
+  const width=n?Math.ceil(layout.width):d.width,height=n?Math.ceil(layout.height):d.height;
   if(n)overlay=exportPopupSvg();
-  const text='<svg xmlns="'+NS+'" width="'+d.width+'" height="'+d.height+'" viewBox="0 0 '+d.width+' '+d.height+'"><rect width="100%" height="100%" fill="white"/><g font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" fill="#182732">'+svgContent(false)+overlay+'<text x="12" y="'+(d.height-12)+'" font-size="11" fill="#60717d">Hydra Bench · '+html(network.year==='all'?'All years':network.year)+' · '+html(network.evidenceMode==='combined'?'Observed + all models':network.scenario)+' · connections show topology only</text></g></svg>';
+  const text='<svg xmlns="'+NS+'" width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'"><rect width="100%" height="100%" fill="white"/><g font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" fill="#182732">'+svgContent(false)+overlay+'<text x="12" y="'+(d.height-12)+'" font-size="11" fill="#60717d">Hydra Bench · '+html(network.year==='all'?'All years':network.year)+' · '+html(network.evidenceMode==='combined'?'Observed + all models':network.scenario)+' · connections show topology only</text></g></svg>';
   await window.HydraDesign.prepareReportFont();
   const embedded=text.replace('<rect','<defs><style>'+window.HydraDesign.reportFontCss()+'</style></defs><rect');
   const blob=new Blob([embedded],{type:'image/svg+xml'}),url=URL.createObjectURL(blob);
-  try{await document.fonts?.ready;const image=new Image();image.src=url;await image.decode();const canvas=document.createElement('canvas');canvas.width=d.width*2;canvas.height=d.height*2;const ctx=canvas.getContext('2d');ctx.scale(2,2);ctx.drawImage(image,0,0);const png=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!png)throw new Error('Could not create screenshot.');const link=document.createElement('a'),pngUrl=URL.createObjectURL(png);link.href=pngUrl;link.download='hydra-network-schematic.png';link.click();setTimeout(()=>URL.revokeObjectURL(pngUrl),1000);status('Network PNG captured with the open evidence table.');}
+  try{await document.fonts?.ready;const image=new Image();image.src=url;await image.decode();const canvas=document.createElement('canvas');canvas.width=width*2;canvas.height=height*2;const ctx=canvas.getContext('2d');ctx.scale(2,2);ctx.drawImage(image,0,0);const png=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!png)throw new Error('Could not create screenshot.');const link=document.createElement('a'),pngUrl=URL.createObjectURL(png);link.href=pngUrl;link.download='hydra-network-schematic.png';link.click();setTimeout(()=>URL.revokeObjectURL(pngUrl),1000);status('Network PNG captured with the open evidence table.');}
   finally{URL.revokeObjectURL(url);}
 }
 function reviewFields(object){
@@ -792,7 +807,7 @@ function mount(){
   const container=root();if(!container)return;
   container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / export</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network or context CSV</button><button id="nsCsv">Export evidence CSV</button></div></details><input id="nsLoadInput" type="file" accept=".csv,.json" hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
     '<div id="nsEditTools" class="ns-edit-tools" hidden>'+selectHtml('id="nsAddType"',Object.entries(C.types).filter(([key])=>!['manhole','label'].includes(key)),'cso')+'<button id="nsAddAsset">+ Asset</button><button id="nsAddManhole">+ Manhole</button><button id="nsAddLabel">+ Label</button><button id="nsConnect" aria-pressed="false">Connect</button><span id="nsColourChoices"></span><button id="nsUndo" aria-label="Undo last edit">Undo</button><button id="nsDelete">Delete selected</button></div>'+
-    '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag background to pan; select an asset to review evidence."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><aside id="nsPopup" hidden></aside><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button></div></div><aside id="nsDrawer" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
+    '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag background to pan; select an asset to review evidence."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button></div></div><aside id="nsPopup" aria-label="Selected asset evidence" hidden></aside><aside id="nsDrawer" aria-label="Asset properties" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
   mounted=true;container.addEventListener('click',onClick);container.addEventListener('change',event=>updateField(event.target));
   $('nsEdit').onclick=()=>{editing=!editing;popupVisible=false;tool='select';connectFrom=null;render();};
   $('nsAddAsset').onclick=()=>add($('nsAddType').value);$('nsAddManhole').onclick=()=>add('manhole');$('nsAddLabel').onclick=()=>add('label');

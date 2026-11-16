@@ -109,3 +109,19 @@
 #nsWorkbench .ns-drawer-head h3{min-width:0;overflow-wrap:anywhere}
 #nsWorkbench #nsSvg [data-ns-label-suppressed]{visibility:hidden}
 #nsWorkbench #nsSvg .ns-multi-selected>[data-ns-label]{paint-order:stroke;stroke:white;stroke-width:3px;stroke-linejoin:round}
+
+/* Dock review evidence beside the schematic; stack it when space is limited. */
+#nsWorkbench #nsLayout.ns-inspecting{grid-template-columns:minmax(0,1fr) minmax(320px,37%);align-items:start}
+#nsWorkbench #nsCanvas{background-color:#fdfcfa}
+#nsWorkbench #nsPopup{position:relative;z-index:auto;max-width:100%;min-width:0;max-height:660px;
+  border:0;border-left:1px solid var(--hb-border);border-radius:0;box-shadow:none}
+#nsWorkbench .ns-popup-body{overflow:auto}
+#nsWorkbench .ns-popup-body table{min-width:360px}
+#nsWorkbench .ns-popup-footer{justify-content:flex-start}
+#nsWorkbench .ns-linked-evidence{padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--hb-border)}
+#nsWorkbench .ns-linked-evidence p{color:var(--hb-muted);margin:5px 0;font-size:12px}
+#nsWorkbench .ns-linked-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+@media(max-width:1000px){
+  #nsWorkbench #nsLayout.ns-inspecting{grid-template-columns:minmax(0,1fr)}
+  #nsWorkbench #nsPopup{border-left:0;border-top:1px solid var(--hb-border)}
+}

@@ -144,7 +144,7 @@ try{
   assert.ok(await page.evaluate(()=>document.querySelector('.pw-about-nav').nextElementSibling.classList.contains('pw-asset-browser')));
   await about.click();assert.equal(await page.title(),'About Hydra Bench · Hydra Bench');
   assert.equal(await page.locator('#tab-about').isVisible(),true);assert.equal(await page.locator('#tab-detriment').isVisible(),false);
-  assert.deepEqual(await page.locator('.pw-about-workspaces button').evaluateAll(buttons=>buttons.map(button=>button.dataset.aboutWorkspace)),['data','spills','network','survey','detriment','graphs','hydraulics','reports']);assert.match(await page.locator('.pw-about-author').innerText(),/Built by Anzar Sajid/);
+  assert.deepEqual(await page.locator('.pw-about-workspaces button').evaluateAll(buttons=>buttons.map(button=>button.dataset.aboutWorkspace)),['data','spills','network','survey','detriment','graphs','hydraulics','reports']);const creator=await page.locator('#hbBuildSource').count()?'Originally created by Anzar Sajid':'Built by Anzar Sajid';assert.equal(await page.locator('.pw-about-author h3').innerText(),creator);
   for(const size of [{width:1440,height:1000},{width:1024,height:844}]){await page.setViewportSize(size);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth<=1));await page.screenshot({path:path.join(evidence,'about-'+size.width+'.png'),fullPage:false,animations:'disabled'});}
   await page.locator('[data-about-workspace="detriment"]').click();assert.equal(await page.locator('#dtAssetIds').isVisible(),true);
   assert.deepEqual(errors,[]);console.log('Detriment acceptance passed: Data Sources → 3 tabs → evidence/export, precision boundaries, restoration, source removal and responsive containment.');
