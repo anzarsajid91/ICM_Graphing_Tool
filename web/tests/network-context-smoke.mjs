@@ -35,8 +35,13 @@ try{
   await audit.waitFor({state:'hidden'});
   assert.equal(await page.evaluate(()=>window.ICMNetworkSchematic.snapshot().nodes.find(n=>n.id==='Out').x),350145);
   await page.locator('#nsEdit').click();
-  await page.locator('[data-ns-edge]').focus();
-  await page.locator('[data-ns-edge]').press('Enter');
+  const conduit=page.locator('[data-ns-edge]');
+  await conduit.focus();
+  const previousConnector=await conduit.elementHandle();
+  await page.setViewportSize({width:1380,height:900});
+  await page.waitForFunction(element=>!element.isConnected,previousConnector);
+  assert.equal(await conduit.evaluate(element=>document.activeElement===element),true,'Keyboard focus survives the schematic resize');
+  await conduit.press('Enter');
   await page.getByRole('button',{name:'Open in Hydraulic Calculations'}).click();
   assert.equal(await page.getByLabel(/Diameter/).inputValue(),'450');
   assert.equal(await page.getByLabel('Gradient (m/m)').inputValue(),'0.005');
