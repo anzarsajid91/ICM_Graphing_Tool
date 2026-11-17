@@ -190,18 +190,29 @@ function readContextRow(line,lineNumber){
 }
 // Read the metric, combined InfoWorks native CSV export. Only node and
 // conduit blocks are interpreted; every other block is disclosed in the audit.
+const nativeLinks=new Set(['hw_conduit','hw_pump','hw_weir','hw_sluice','hw_flap_valve','hw_screen','hw_user_control','hw_orifice']);
 function nativeContextText(name,text){
   if(/^\s*\*{4}/.test(text))return text.trimStart();
   // Separate-table exports identify the section in the filename.
-  const table=/(?:^|_)(node|conduit|pump|weir|orifice|flap_valve|outlet|subcatchment|deletes)\.csv$/i.exec(name)?.[1];
-  if(!table)throw new Error('Keep the ICM table suffix on separate CSV files (for example, network_node.csv).');
-  return '**** '+(table.toLowerCase()==='deletes'?'deletes':'hw_'+table.toLowerCase())+'\n'+text;
+  const table=/(?:^|_)(node|conduit|pump|weir|sluice|screen|user_control|orifice|flap_valve|outlet|subcatchment|deletes)\.csv$/i.exec(name)?.[1];
+  if(table)return '**** '+(table.toLowerCase()==='deletes'?'deletes':'hw_'+table.toLowerCase())+'\n'+text;
+  const lines=text.trimStart().split(/\r?\n/);
+  const header=readContextRow(lines[0],1).map(value=>value.trim().toLowerCase());
+  const typeColumn=header.indexOf('objecttable');
+  if(typeColumn>=0){
+    const types=new Set(lines.slice(1).filter(line=>line.trim()).map((line,index)=>
+      readContextRow(line,index+2)[typeColumn]?.trim().toLowerCase()).filter(value=>/^hw_[a-z0-9_]+$/.test(value||'')));
+    if(types.size===1)return '**** '+[...types][0]+'\n'+text;
+    if(!types.size)return '**** hw_empty_table\n'+text;
+  }
+  throw new Error('Keep the ICM table suffix on separate CSV files (for example, network_node.csv).');
 }
 function importNativeContext(text){
   const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/);
   const network=empty(),nodes=new Map(),blocks=new Set(),warnings=new Set();
   const nodeTypes=new Map([['manhole','manhole'],['outfall','outfall'],['outfall 2d','outfall'],
     ['storage','tank'],['pond','tank'],['break','junction'],['connect 2d','junction']]);
+  const supported=type=>type==='hw_node'||nativeLinks.has(type);
   let section=null,headers=null,leadingMetadata=true;
   const pending=[];
   for(const [index,line] of lines.entries()){
@@ -211,13 +222,13 @@ function importNativeContext(text){
     if(block){
       section=block[1].toLowerCase();headers=null;leadingMetadata=true;
       if(section==='deletes')fail('delete instructions are not supported.');
-      if(blocks.has(section)&&['hw_node','hw_conduit'].includes(section))fail('duplicate network table.');
+      if(blocks.has(section)&&supported(section))fail('duplicate network table.');
       blocks.add(section);
-      if(!['hw_node','hw_conduit'].includes(section))warnings.add('Skipped '+section+' table.');
+      if(!supported(section))warnings.add('Skipped '+section+' table.');
       continue;
     }
     if(!section)fail('expected a native table delimiter.');
-    if(!['hw_node','hw_conduit'].includes(section))continue;
+    if(!supported(section))continue;
     const fields=readContextRow(line,index+1).map(value=>value.trim());
     if(!headers){
       headers=fields.map(value=>value.toLowerCase());
@@ -239,7 +250,20 @@ function importNativeContext(text){
         /^node[ _]id$/i.test(key)&&coordinateTokens.some(token=>/coordinate|^easting$|^northing$/.test(token)):
         /^(?:(?:us|upstream)[ _]node[ _]id)$/i.test(key)&&/^link[ _]suffix$/i.test(row.link_suffix);
       const units=!key&&(section==='hw_node'?coordinateTokens.every(token=>lengthUnit.test(token)):lengthUnit.test(lengthToken));
-      if(description||units){
+      const marker=row.objecttable?.toLowerCase();
+      if(marker==='userunits'){
+        for(const [keys,expected] of [
+          [['x','y','ground_level','chamber_floor','conduit_length','us_invert','ds_invert'],'m'],
+          [['conduit_width','conduit_height','bottom_roughness_cw','top_roughness_cw','sediment_depth'],'mm'],
+          [['gradient'],'m/m'],
+        ])for(const field of keys){
+          if(!['hw_node','hw_conduit'].includes(section))continue;
+          const unit=row[field]?.toLowerCase();
+          if(unit&&unit!==expected&&!(expected==='m'&&unit==='m ad'))
+            fail('unsupported declared units for '+field+' (expected '+expected+').');
+        }
+      }
+      if(marker==='fielddescription'||marker==='userunits'||description||units){
         warnings.add('Optional ICM description or unit rows were skipped.');
         continue;
       }
@@ -259,18 +283,18 @@ function importNativeContext(text){
       const kind=row.node_type?.toLowerCase(),type=nodeTypes.get(kind)||'junction';
       if(!nodeTypes.has(kind))warnings.add('Missing or unfamiliar node types use a generic junction symbol.');
       nodes.set(id,{id:row.node_id,name:row.node_id,type,x,y:-y,colour:'blue',bindings:[],
-        icm:{nodeType:row.node_type||null,groundLevelM:number('ground_level')}});
+        icm:{nodeType:row.node_type||null,groundLevelM:number('ground_level'),chamberFloorM:number('chamber_floor')}});
       if(nodes.size>2000)fail('network exceeds 2,000 points.');
     }else{
       const from=(row.us_node_id||row.upstream_node_id)?.toUpperCase(),to=(row.ds_node_id||row.downstream_node_id)?.toUpperCase();
       const suffix=row.link_suffix?.toUpperCase();
       if(!from||!to||from===to||!suffix||suffix.length>16)fail('invalid conduit key or endpoints.');
-      const icm={shape:row.shape||null,roughnessType:row.roughness_type||null,linkSuffix:row.link_suffix};
+      const icm={table:section,shape:row.shape||null,roughnessType:row.roughness_type||null,linkSuffix:row.link_suffix};
       for(const key of ['conduit_length','conduit_width','conduit_height','us_invert','ds_invert','gradient',
         'bottom_roughness_cw','top_roughness_cw','sediment_depth','number_of_barrels'])icm[key]=number(key);
       for(const key of ['conduit_length','conduit_width','conduit_height','number_of_barrels'])
         if(icm[key]!==null&&icm[key]<=0)fail('non-positive '+key+'.');
-      const edge={id:'ICM conduit '+JSON.stringify([from,suffix]),from,to,
+      const edge={id:'ICM '+section.slice(3)+' '+JSON.stringify([from,suffix]),from,to,
         name:(row.us_node_id||row.upstream_node_id)+'.'+row.link_suffix,colour:'blue',icm};
       if(row.point_array){
         const packed=/^\{(.*)\}$/.exec(row.point_array);
@@ -298,7 +322,7 @@ function importNativeContext(text){
     }
     return {...edge,from:from.id,to:to.id};
   });
-  if(pending.some(edge=>!edge.icm.shape||edge.icm.conduit_length===null))warnings.add('Some conduits omit shape or length metadata.');
+  if(pending.some(edge=>edge.icm.table==='hw_conduit'&&(!edge.icm.shape||edge.icm.conduit_length===null)))warnings.add('Some conduits omit shape or length metadata.');
   return {network:validateNetwork(network),warnings:[...warnings]};
 }
 // Canonical interchange format. Native exporter mappings belong in adapters.
@@ -369,7 +393,7 @@ function applyContextRevision(current,imported,format){
 }
 function conduitTrial(edge){
   const fields=edge?.icm;
-  if(!fields||String(fields.shape).toUpperCase()!=='CIRC'||String(fields.roughnessType).toUpperCase()!=='CW'||
+  if(!fields||(fields.table&&fields.table!=='hw_conduit')||String(fields.shape).toUpperCase()!=='CIRC'||String(fields.roughnessType).toUpperCase()!=='CW'||
      fields.number_of_barrels!==1||fields.sediment_depth!==0)return null;
   const {conduit_width:width,conduit_height:height,bottom_roughness_cw:roughness,top_roughness_cw:top,
     conduit_length:length,us_invert:us,ds_invert:ds}=fields;

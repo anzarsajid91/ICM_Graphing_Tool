@@ -227,10 +227,13 @@ together, keeping their table suffixes (for example, `_node.csv` and
 `_conduit.csv`). The importer recognises leading description and unit records,
 ignores unused fields, and matches required fields by database name. Confirm
 the actual export units before applying the import. The audit lists skipped
-tables. Non-conduit structures and unpacked geometry remain unsupported.
+tables. Pumps, weirs, sluices, flap valves, screens, orifices and user-control
+links are represented as named connectors with their source type. Conduit
+hydraulic trials remain limited to eligible conduits. Unpacked geometry
+remains unsupported. The combined selection limit is 32 MiB.
 This adapter is tested against synthetic fixtures based on Autodesk's
 [CSV file format](https://help.autodesk.com/cloudhelp/2027/ENU/ICM-Help/files/GUID-7EF49200-AFE8-4934-9ECC-74238171895C.htm).
-Compatibility with representative ICM 2026.3 exports remains to be verified.
+The importer also recognises the explicit `FieldDescription` and `UserUnits` records emitted with the default ICM export options.
 
 In **Edit network**, select a compatible imported conduit and choose **Open
 in Hydraulic Calculations**. Handoff requires circular geometry, one barrel,

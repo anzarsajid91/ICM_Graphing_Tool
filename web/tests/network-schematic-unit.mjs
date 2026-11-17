@@ -132,14 +132,19 @@ const separateLinks='link_suffix,ds_node_id,us_node_id,conduit_length\n'+
 const split=C.importNativeContext([
   C.nativeContextText('export_conduit.csv',separateLinks),
   C.nativeContextText('export_node.csv',separateNodes),
-  C.nativeContextText('export_weir.csv','upstream_node_id\nUP'),
+  C.nativeContextText('export_weir.csv','ObjectTable,us_node_id,ds_node_id,link_suffix\nhw_weir,UP,OUT,W'),
 ].join('\n'));
 assert.equal(split.network.nodes.length,2);
 assert.equal(split.network.edges[0].from,'Up');
 assert.equal(split.network.edges[0].to,'Out');
 assert.match(split.warnings.join(' '),/description or unit rows were skipped/);
-assert.match(split.warnings.join(' '),/Skipped hw_weir/);
+assert.equal(split.network.edges[1].icm.table,'hw_weir');
 assert.throws(()=>C.importNativeContext(nativeCsv.replace('Up,350000','Up,invalid')),/invalid numeric field x/);
+const withDefaultHeaders=nativeCsv.replace('node_id,x,y,node_type,ground_level',
+  'ObjectTable,node_id,x,y,node_type,ground_level\nFieldDescription,Node ID,x,y,Node type,Ground level\nUserUnits,,m,m,,m AD')
+  .replace('\nUp,','\nhw_node,Up,').replace('\nOut,','\nhw_node,Out,');
+assert.equal(C.importNativeContext(withDefaultHeaders).network.nodes.length,2);
+assert.throws(()=>C.importNativeContext(withDefaultHeaders.replace('UserUnits,,m,m','UserUnits,,ft,ft')),/unsupported declared units/);
 const trial=C.conduitTrial(native.network.edges[0]);
 assert.equal(trial.diameter,450);
 assert.equal(trial.gradient,.005);

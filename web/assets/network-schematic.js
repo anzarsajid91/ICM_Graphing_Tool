@@ -851,7 +851,7 @@ function mount(){
       if(!file)return;
       if(/\.csv$/i.test(file.name)){
         if(files.some(item=>!/\.csv$/i.test(item.name)))throw new Error('Select either network CSV tables together or one saved JSON schematic.');
-        if(files.reduce((size,item)=>size+item.size,0)>4*1024*1024)throw new Error('Network context CSV selection exceeds 4 MiB.');
+        if(files.reduce((size,item)=>size+item.size,0)>32*1024*1024)throw new Error('Network context CSV selection exceeds 32 MiB.');
         const csvs=await Promise.all(files.map(async item=>{
           const data=await item.arrayBuffer();
           try{return new TextDecoder('utf-8',{fatal:true}).decode(data);}
