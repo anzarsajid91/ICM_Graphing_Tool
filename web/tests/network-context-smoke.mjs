@@ -19,6 +19,12 @@ try{
   const load=csv=>page.locator('#nsLoadInput').setInputFiles({name:'network.csv',mimeType:'text/csv',buffer:Buffer.from(csv)});
   const audit=page.getByRole('dialog',{name:'Model Context Import Audit'});
   const apply=audit.getByRole('button',{name:'Apply network context'});
+  const beforeCancel=await page.evaluate(()=>window.ICMNetworkSchematic.snapshot());
+  await load(fixture);
+  await audit.waitFor();
+  await audit.getByRole('button',{name:'Cancel',exact:true}).click();
+  await audit.waitFor({state:'hidden'});
+  assert.deepEqual(await page.evaluate(()=>window.ICMNetworkSchematic.snapshot()),beforeCancel);
   await load(fixture);
   await audit.waitFor();
   await apply.click();
@@ -189,6 +195,34 @@ try{
   await chooseNetwork(networkJson);
   await page.waitForFunction(()=>document.querySelector('#nsStatus').textContent.includes('Network restored.'));
   assert.equal(await page.locator('[data-ns-edge]').count(),1);
+  const layoutContext=await browser.newContext({...browserContextOptions(),viewport:{width:1024,height:768}});
+  let writeLayoutEvidence;
+  try{
+    writeLayoutEvidence=await trackControls(layoutContext,'network-context-layout-control-evidence.json');
+    const layoutPrivacy=installPrivacyGuard(layoutContext,base),layoutPage=await layoutContext.newPage();
+    await layoutPrivacy.navigate(layoutPage,base);
+    await layoutPage.getByRole('link',{name:'Open network schematic'}).click();
+    const layoutMenu=layoutPage.locator('.ns-export-menu summary');
+    await layoutMenu.click();
+    const chooser=layoutPage.waitForEvent('filechooser');
+    await layoutPage.locator('#nsLoad').click();
+    await (await chooser).setFiles({name:'network.csv',mimeType:'text/csv',buffer:Buffer.from(fixture)});
+    const layoutAudit=layoutPage.getByRole('dialog',{name:'Model Context Import Audit'});
+    await layoutAudit.getByLabel('Layout').selectOption('schematic');
+    await layoutAudit.getByRole('checkbox').check();
+    await layoutAudit.getByRole('button',{name:'Apply network context'}).click();
+    await layoutAudit.waitFor({state:'hidden'});
+    const laidOut=await layoutPage.evaluate(()=>window.ICMNetworkSchematic.snapshot());
+    const conduit=laidOut.edges[0];
+    assert.equal(conduit.from,'001');
+    assert.equal(conduit.to,'Out');
+    assert.equal(conduit.icm.conduit_width,450);
+    assert.deepEqual(conduit.bends,[]);
+    assert.equal(laidOut.nodes[0].sourcePosition.x,350000);
+    assert.notEqual(laidOut.nodes[0].x,laidOut.nodes[0].sourcePosition.x);
+    assert.equal(await layoutPage.locator('[data-ns-edge]').count(),1);
+    layoutPrivacy.assertClean();
+  }finally{try{await writeLayoutEvidence?.();}finally{await layoutContext.close();}}
   privacy.assertClean();
   console.log('Native context import, audit, revision, hydraulic trial and Verification, Flow Survey and Detriment overlays passed.');
 }finally{try{await writeControlEvidence?.();}finally{await browser.close();}}
