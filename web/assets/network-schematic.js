@@ -1038,7 +1038,18 @@ function mountReview(){
   $('nsRedo').onclick=()=>undoEdit(true);$('nsSaveView').onclick=saveView;$('nsViewSelect').onchange=()=>loadView($('nsViewSelect').value);$('nsSaveSnapshot').onclick=saveReviewSnapshot;$('nsSnapshotSelect').onchange=()=>downloadReviewSnapshot($('nsSnapshotSelect').value);
   $('nsAnnualTable').onclick=()=>{$('nsMatrix').hidden=!$('nsMatrix').hidden;renderMatrix();};$('nsCloseMatrix').onclick=()=>{$('nsMatrix').hidden=true;};$('nsMatrixSearch').oninput=renderMatrix;$('nsMatrixSelected').onchange=renderMatrix;
   $('nsClearTrace').onclick=()=>{highlight=null;renderCanvas();};$('nsAudit').onclick=()=>{const a=R.audit(network.nodes,network.edges);$('nsAuditResult').textContent=a.components.length+' components · '+a.isolated.length+' isolated · '+a.cycleAffected.length+' cycle-affected';highlight={ids:new Set([...a.isolated,...a.cycleAffected]),wires:new Set()};if(!highlight.ids.size)highlight=null;renderCanvas();};
-  $('nsSvgExport').onclick=async()=>{const svg=wholeSceneSvg();root().querySelector('.ns-export-menu').open=false;try{await window.HydraDesign.prepareReportFont();downloadBlob('hydra-network-schematic.svg',svg.replace('<rect','<defs><style>'+window.HydraDesign.reportFontCss()+'</style></defs><rect'),'image/svg+xml');}catch(error){status(error.message);}};$('nsReportExport').onclick=()=>{root().querySelector('.ns-export-menu').open=false;exportReport();};
+  $('nsSvgExport').onclick=async()=>{
+    const svg=wholeSceneSvg();
+    root().querySelector('.ns-export-menu').open=false;
+    try{
+      await window.HydraDesign.prepareReportFont();
+      const defs=svgElement('defs');
+      defs.append(svgElement('style',{},window.HydraDesign.reportFontCss()));
+      svg.prepend(defs);
+      downloadBlob('hydra-network-schematic.svg',new XMLSerializer().serializeToString(svg),'image/svg+xml');
+    }catch(error){status(error.message);}
+  };
+  $('nsReportExport').onclick=()=>{root().querySelector('.ns-export-menu').open=false;exportReport();};
   root().addEventListener('click',event=>{const t=event.target,trace=t.closest('[data-ns-trace]'),arrangeButton=t.closest('[data-ns-arrange]'),focus=t.closest('[data-ns-centre],[data-ns-focus]'),analysis=t.closest('[data-ns-open-analysis]');if(trace&&selected){highlight=R.trace(network.nodes,network.edges,selected,trace.dataset.nsTrace);renderCanvas();}if(arrangeButton)arrange(arrangeButton.dataset.nsArrange);if(focus){if(focus.dataset.nsYear)network.year=focus.dataset.nsYear;centre(focus.dataset.nsCentre||focus.dataset.nsFocus);}if(analysis)void openAnalysis(analysis.dataset.nsOpenAnalysis);});
   root().addEventListener('change',event=>{if(event.target.hasAttribute('data-ns-scenario-choice')){network.preferences={...prefs(),scenarios:[...$('nsScenarioChoices').querySelectorAll('input:checked')].map(x=>x.dataset.nsScenarioChoice)};changed(true);}});
   $('nsSvg').addEventListener('pointerover',event=>{const id=event.target.closest('[data-ns-node]')?.dataset.nsNode;if(id){clearTimeout(hoverTimer);hoverTimer=setTimeout(()=>hoverCard(id),250);}});$('nsSvg').addEventListener('pointerout',event=>{if(!event.relatedTarget?.closest?.('[data-ns-node]'))hideHover();});
