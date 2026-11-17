@@ -168,6 +168,27 @@ try{
   assert.match(await inspector.locator('.ns-linked-evidence').innerText(),/Flow monitor FM01/);
   await inspector.getByRole('button',{name:'Open Verification evidence'}).click();
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='graphs');
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('network','schematic'));
+  const menu=page.locator('.ns-export-menu summary');
+  await menu.click();
+  const networkDownload=page.waitForEvent('download');
+  await page.locator('#nsSave').click();
+  const networkJson=readFileSync(await (await networkDownload).path());
+  const savedNetwork=JSON.parse(networkJson);
+  assert.equal(savedNetwork.nodes.length,2);
+  assert.equal(savedNetwork.edges.length,1);
+  const chooseNetwork=async bytes=>{
+    await menu.click();
+    const choice=page.waitForEvent('filechooser');
+    await page.locator('#nsLoad').click();
+    await (await choice).setFiles({name:'network.json',mimeType:'application/json',buffer:bytes});
+  };
+  await chooseNetwork(Buffer.from('{"schema":2,"nodes":null}'));
+  await page.waitForFunction(()=>document.querySelector('#nsStatus').textContent.includes('Unsupported network schematic file'));
+  assert.equal(await page.locator('[data-ns-node]').count(),2);
+  await chooseNetwork(networkJson);
+  await page.waitForFunction(()=>document.querySelector('#nsStatus').textContent.includes('Network restored.'));
+  assert.equal(await page.locator('[data-ns-edge]').count(),1);
   privacy.assertClean();
   console.log('Native context import, audit, revision, hydraulic trial and Verification, Flow Survey and Detriment overlays passed.');
 }finally{try{await writeControlEvidence?.();}finally{await browser.close();}}

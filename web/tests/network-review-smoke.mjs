@@ -58,6 +58,26 @@ try{
   await page.locator('[data-ns-scenario-choice="Update"]').uncheck();assert.equal(await page.locator('#nsMatrixBody').getByText('Update',{exact:true}).count(),0);assert.equal((await snapshot()).nodes[0].applied.rows.length,5);
   await page.selectOption('#nsTypeFilter','pump');assert.equal(await page.locator('[data-ns-node]').count(),0);await page.selectOption('#nsTypeFilter','all');
   await page.locator('#nsReviewTools details summary').filter({hasText:'Views'}).click();await field('nsViewName','Annual review layout');await page.click('#nsSaveView');assert.equal((await snapshot()).views.length,1);await page.click('#nsSaveSnapshot');assert.equal((await snapshot()).reviewSnapshots.length,1);
+  const viewCamera=(await snapshot()).camera;
+  await page.click('#nsZoomIn');
+  assert.notDeepEqual((await snapshot()).camera,viewCamera);
+  await page.locator('#nsViewSelect').selectOption('0');
+  assert.deepEqual((await snapshot()).camera,viewCamera);
+  await page.click('#nsZoomIn');
+  const zoomedCamera=(await snapshot()).camera;
+  await page.locator('#nsViewSelect').selectOption('');
+  assert.deepEqual((await snapshot()).camera,zoomedCamera,'Selecting the view placeholder is a no-op');
+  const snapshotDownload=page.waitForEvent('download');
+  await page.locator('#nsSnapshotSelect').selectOption('0');
+  const exportedSnapshot=JSON.parse(await fs.readFile(await (await snapshotDownload).path(),'utf8'));
+  assert.equal(exportedSnapshot.name,'Annual review layout');
+  assert.equal(exportedSnapshot.network.nodes.length,3);
+  const emptyDownload=page.waitForEvent('download',{timeout:350}).then(()=>true,error=>{
+    if(error.name==='TimeoutError')return false;
+    throw error;
+  });
+  await page.locator('#nsSnapshotSelect').selectOption('');
+  assert.equal(await emptyDownload,false,'Selecting the snapshot placeholder starts no download');
   await page.click('#nsAudit');assert.match(await page.locator('#nsAuditResult').innerText(),/1 components/);await page.click('#nsClearTrace');await page.click('#nsReviewTools > summary');
   await page.click('#nsCloseMatrix');await page.click('#nsEdit');await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();await page.locator('#nsPinned').check();const pinned=(await snapshot()).nodes[0];
   await page.click('#nsReviewTools > summary');
