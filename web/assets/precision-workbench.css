@@ -619,6 +619,7 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #guidedImportReview th:first-child{width:34%}
 #guidedImportReview th:last-child{width:30%}
 #guidedImportReview :is(td,th){overflow-wrap:anywhere}
+#guidedImportReview th{white-space:normal}
 #guidedImportReview td:first-child small{display:block;color:var(--hb-muted)}
 #guidedImportReview td select{min-width:0;width:100%}
 .hb-review-tools button.primary{margin-top:12px}

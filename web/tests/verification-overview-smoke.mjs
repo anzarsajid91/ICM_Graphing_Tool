@@ -29,6 +29,14 @@ try{
   const review=page.locator('#guidedImportReview');
   await review.getByRole('combobox',{name:/Role for Observed-synthetic/}).waitFor();
   assert.match(await review.locator('tbody').textContent(),/Observed-synthetic.*flow/i);
+  for(const width of [1440,1024,768]){
+    await page.setViewportSize({width,height:1050});
+    const clipped=await review.locator('th').evaluateAll(headers=>headers
+      .filter(header=>header.scrollWidth>header.clientWidth+1)
+      .map(header=>header.textContent));
+    assert.deepEqual(clipped,[],`Import Review column headings fit at ${width}px`);
+  }
+  await page.setViewportSize({width:1440,height:1050});
   await review.getByRole('combobox',{name:/Role for Observed-synthetic/}).selectOption('observed');
   await review.getByRole('combobox',{name:/Role for Model-synthetic/}).selectOption('model');
   if(evidence){await review.scrollIntoViewIfNeeded();await page.screenshot({path:evidence+'/import-review.png'});}
