@@ -1601,17 +1601,18 @@ async function renderComparisons(){
     const population=scatterPopulation(entry.result,log),pairs=population.pairs,metrics=population.metrics||{};
     const key=sourceKey(entry.model.item.id,entry.model.col),colour=state.modelColours[key]||palette[i%palette.length];
     const scenario=`${entry.model.item.displayName} · ${entry.model.col}`;
+    const label=scenario.length>24?'M'+(i+1)+' · '+scenario.slice(0,17)+'…':scenario;
     for(const pair of pairs){
       for(const value of [pair.obs,pair.sim]){const n=Number(value);if(Number.isFinite(n)&&(!log||n>0)){lo=Math.min(lo,n);hi=Math.max(hi,n);}}
     }
     scatter.push({
-      x:pairs.map(x=>x.obs),y:pairs.map(x=>x.sim),mode:'markers',name:scenario,
+      x:pairs.map(x=>x.obs),y:pairs.map(x=>x.sim),mode:'markers',name:esc(label),
       marker:{size:6,opacity:.48,color:colour},
       customdata:pairs.map(x=>[x.timestamp,x.obs,x.sim]),
       hovertemplate:'<b>'+esc(scenario)+'</b><br>%{customdata[0]}<br>Observed: %{customdata[1]:.5g}<br>Modelled: %{customdata[2]:.5g}<extra></extra>'
     });
     const fit=regressionLinePoints(metrics,pairs,log);
-    if(fit)scatter.push({x:fit.x,y:fit.y,mode:'lines',name:`${scenario} fit`,line:{color:colour,width:2},hoverinfo:'skip'});
+    if(fit)scatter.push({x:fit.x,y:fit.y,mode:'lines',name:esc(label)+' fit',line:{color:colour,width:2},hoverinfo:'skip'});
   });
   if(Number.isFinite(lo)&&Number.isFinite(hi)&&hi>lo)scatter.push({x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1 agreement',line:{dash:'dash',color:'#667085',width:1.6},hoverinfo:'skip'});
   const quantity=comparisonQuantity(first.result),unitSuffix=unit?` (${unit})`:'',axisUnitSuffix=` (${unit||'unit unresolved'})`,bounds=analysisBounds();
@@ -1620,7 +1621,7 @@ async function renderComparisons(){
   await Plotly.react('scatterChart',scatter,{
     template:'plotly_white',...(window.HydraDesign?.chartLayout()||{}),
     title:`Observed vs modelled ${quantity}${log?' · log₁₀ positive pairs':' · linear'}${period}`,
-    legend:{orientation:'h',y:1.16,x:0},
+    legend:{orientation:'h',y:1.04,yanchor:'bottom',x:0,xanchor:'left'},
     xaxis:{title:{text:`Observed ${quantity}${axisUnitSuffix}`},type:log?'log':'linear',range:axisRange},
     yaxis:{title:{text:`Modelled ${quantity}${axisUnitSuffix}`},type:log?'log':'linear',range:axisRange,scaleanchor:'x',scaleratio:1},
     margin:{l:68,r:28,t:84,b:64},
