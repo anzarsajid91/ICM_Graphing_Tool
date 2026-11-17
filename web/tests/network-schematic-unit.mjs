@@ -124,6 +124,22 @@ assert.equal(native.network.edges[0].to,'Out');
 assert.equal(native.network.edges[0].bends.length,1);
 assert.equal(native.network.edges[0].bends[0].y,-425025);
 assert.match(native.warnings.join(' '),/Skipped hw_subcatchment/);
+const separateNodes='node_type,node_id,y,x,ground_level_flag,Object Type\n'+
+  'Node type,Node ID,Y coordinate,X coordinate,Ground level flag,\n'+
+  ',,m,m,,\nManhole,Up,425000,350000,,hw_node\nOutfall,Out,425030,350125,,hw_node';
+const separateLinks='link_suffix,ds_node_id,us_node_id,conduit_length\n'+
+  'Link suffix,DS node ID,US node ID,Length\n,,,m\n1,OUT,UP,200';
+const split=C.importNativeContext([
+  C.nativeContextText('export_conduit.csv',separateLinks),
+  C.nativeContextText('export_node.csv',separateNodes),
+  C.nativeContextText('export_weir.csv','upstream_node_id\nUP'),
+].join('\n'));
+assert.equal(split.network.nodes.length,2);
+assert.equal(split.network.edges[0].from,'Up');
+assert.equal(split.network.edges[0].to,'Out');
+assert.match(split.warnings.join(' '),/description or unit rows were skipped/);
+assert.match(split.warnings.join(' '),/Skipped hw_weir/);
+assert.throws(()=>C.importNativeContext(nativeCsv.replace('Up,350000','Up,invalid')),/invalid numeric field x/);
 const trial=C.conduitTrial(native.network.edges[0]);
 assert.equal(trial.diameter,450);
 assert.equal(trial.gradient,.005);

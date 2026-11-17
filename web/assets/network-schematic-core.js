@@ -178,30 +178,38 @@ function validateNetwork(value){
 }
 function readContextRow(line,lineNumber){
   const fields=[];
-  const item=/(?:^|,)("(?:[^"]|"")*"|[^",]*)(?=,|$)/gy;
+  const item=/("(?:[^"]|"")*"|[^",]*)(?:,|$)/gy;
   for(let offset=0;offset<line.length;){
     const match=item.exec(line);
     if(!match||item.lastIndex<=offset)throw new Error('Network context row '+lineNumber+': malformed CSV fields.');
     fields.push(match[1].startsWith('"')?match[1].slice(1,-1).replaceAll('""','"'):match[1]);
     offset=item.lastIndex;
   }
+  if(line.endsWith(','))fields.push('');
   return fields;
 }
 // Read the metric, combined InfoWorks native CSV export. Only node and
 // conduit blocks are interpreted; every other block is disclosed in the audit.
+function nativeContextText(name,text){
+  if(/^\s*\*{4}/.test(text))return text.trimStart();
+  // Separate-table exports identify the section in the filename.
+  const table=/(?:^|_)(node|conduit|pump|weir|orifice|flap_valve|outlet|subcatchment|deletes)\.csv$/i.exec(name)?.[1];
+  if(!table)throw new Error('Keep the ICM table suffix on separate CSV files (for example, network_node.csv).');
+  return '**** '+(table.toLowerCase()==='deletes'?'deletes':'hw_'+table.toLowerCase())+'\n'+text;
+}
 function importNativeContext(text){
   const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/);
   const network=empty(),nodes=new Map(),blocks=new Set(),warnings=new Set();
   const nodeTypes=new Map([['manhole','manhole'],['outfall','outfall'],['outfall 2d','outfall'],
     ['storage','tank'],['pond','tank'],['break','junction'],['connect 2d','junction']]);
-  let section=null,headers=null;
+  let section=null,headers=null,leadingMetadata=true;
   const pending=[];
   for(const [index,line] of lines.entries()){
     if(!line.trim())continue;
     const block=/^\*{4}\s*([a-z0-9_]+)\s*$/i.exec(line);
     const fail=message=>{throw new Error('ICM context row '+(index+1)+': '+message);};
     if(block){
-      section=block[1].toLowerCase();headers=null;
+      section=block[1].toLowerCase();headers=null;leadingMetadata=true;
       if(section==='deletes')fail('delete instructions are not supported.');
       if(blocks.has(section)&&['hw_node','hw_conduit'].includes(section))fail('duplicate network table.');
       blocks.add(section);
@@ -222,6 +230,21 @@ function importNativeContext(text){
     }
     if(fields.length!==headers.length)fail('field count differs from the header.');
     const row=Object.fromEntries(headers.map((name,i)=>[name,fields[i]]));
+    if(leadingMetadata){
+      const key=section==='hw_node'?row.node_id:row.us_node_id??row.upstream_node_id;
+      const coordinateTokens=[row.x,row.y].map(value=>String(value??'').toLowerCase());
+      const lengthToken=String(row.conduit_length??'').toLowerCase();
+      const lengthUnit=/^(?:m|mm|cm|ft|feet|metres?|meters?|millimetres?|millimeters?|in|inches)$/;
+      const description=section==='hw_node'?
+        /^node[ _]id$/i.test(key)&&coordinateTokens.some(token=>/coordinate|^easting$|^northing$/.test(token)):
+        /^(?:(?:us|upstream)[ _]node[ _]id)$/i.test(key)&&/^link[ _]suffix$/i.test(row.link_suffix);
+      const units=!key&&(section==='hw_node'?coordinateTokens.every(token=>lengthUnit.test(token)):lengthUnit.test(lengthToken));
+      if(description||units){
+        warnings.add('Optional ICM description or unit rows were skipped.');
+        continue;
+      }
+      leadingMetadata=false;
+    }
     const number=key=>{
       const value=row[key];
       if(!value)return null;
@@ -359,5 +382,5 @@ function conduitTrial(edge){
 function reportingConflicts(rows){
   const seen=new Set();for(const row of rows){for(const y of row.years){const key=row.role+'|'+(row.role==='model'?row.scenario:'Observed')+'|'+y;if(seen.has(key))throw new Error('Overlapping assignments for '+(row.role==='model'?row.scenario:'Observed')+' in '+y+'. Keep one authoritative source per reporting year.');seen.add(key);}}
 }
-globalThis.ICMNetworkCore={colours,types,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,applyContextRevision,conduitTrial,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
+globalThis.ICMNetworkCore={colours,types,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,nativeContextText,applyContextRevision,conduitTrial,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
 })();

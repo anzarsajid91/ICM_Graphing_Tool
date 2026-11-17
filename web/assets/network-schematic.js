@@ -805,7 +805,7 @@ function mountReview(){
 }
 function mount(){
   const container=root();if(!container)return;
-  container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / export</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network or context CSV</button><button id="nsCsv">Export evidence CSV</button></div></details><input id="nsLoadInput" type="file" accept=".csv,.json" hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
+  container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / export</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network or context CSV</button><button id="nsCsv">Export evidence CSV</button></div></details><input id="nsLoadInput" type="file" accept=".csv,.json" multiple hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
     '<div id="nsEditTools" class="ns-edit-tools" hidden>'+selectHtml('id="nsAddType"',Object.entries(C.types).filter(([key])=>!['manhole','label'].includes(key)),'cso')+'<button id="nsAddAsset">+ Asset</button><button id="nsAddManhole">+ Manhole</button><button id="nsAddLabel">+ Label</button><button id="nsConnect" aria-pressed="false">Connect</button><span id="nsColourChoices"></span><button id="nsUndo" aria-label="Undo last edit">Undo</button><button id="nsDelete">Delete selected</button></div>'+
     '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag background to pan; select an asset to review evidence."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button></div></div><aside id="nsPopup" aria-label="Selected asset evidence" hidden></aside><aside id="nsDrawer" aria-label="Asset properties" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
   mounted=true;container.addEventListener('click',onClick);container.addEventListener('change',event=>updateField(event.target));
@@ -847,14 +847,21 @@ function mount(){
   $('nsLoadInput').onchange=async event=>{
     const request=++importGeneration;
     try{
-      const file=event.target.files[0];
+      const files=[...event.target.files],file=files[0];
       if(!file)return;
       if(/\.csv$/i.test(file.name)){
-        if(file.size>4*1024*1024)throw new Error('Network context CSV exceeds 4 MiB.');
-        const csv=await file.text();
+        if(files.some(item=>!/\.csv$/i.test(item.name)))throw new Error('Select either network CSV tables together or one saved JSON schematic.');
+        if(files.reduce((size,item)=>size+item.size,0)>4*1024*1024)throw new Error('Network context CSV selection exceeds 4 MiB.');
+        const csvs=await Promise.all(files.map(async item=>{
+          const data=await item.arrayBuffer();
+          try{return new TextDecoder('utf-8',{fatal:true}).decode(data);}
+          catch{return new TextDecoder('windows-1252').decode(data);}
+        }));
         if(request!==importGeneration)return;
-        const native=csv.trimStart().startsWith('****');
-        const imported=native?C.importNativeContext(csv):{network:C.importNetworkContext(csv),warnings:[]};
+        const csv=csvs[0];
+        const native=files.length>1||/^\s*\*{4}/.test(csv)||/(?:^|_)(node|conduit)\.csv$/i.test(file.name)&&!csv.trimStart().startsWith('HydraBench');
+        const imported=native?C.importNativeContext(csvs.map((content,index)=>C.nativeContextText(files[index].name,content)).join('\n')):
+          {network:C.importNetworkContext(csv),warnings:[]};
         const format=native?'icm-csv-v1':'canonical-v1';
         C.applyContextRevision(network,imported.network,format);
         stagedContext={...imported,format};
@@ -876,6 +883,7 @@ function mount(){
         $('nsContextMessage').textContent='';
         if(!importDialog.open)importDialog.showModal();
       }else{
+        if(files.length!==1)throw new Error('Select one saved JSON schematic.');
         const saved=JSON.parse(await file.text());
         if(request!==importGeneration)return;
         restore(saved);persist();

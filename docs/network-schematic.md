@@ -222,8 +222,12 @@ Use a combined native CSV with documented `**** hw_node` and
 `**** hw_conduit` delimiters. Confirm metre coordinates, levels and lengths,
 and millimetre conduit dimensions and Colebrook–White roughness in the audit.
 The importer reads case-insensitive node keys, composite conduit keys, and
-packed `point_array` vertices. Separate-table files, other structures and
-unpacked geometry remain unsupported. The audit lists any skipped tables.
+packed `point_array` vertices. You can also select the separate ICM table CSVs
+together, keeping their table suffixes (for example, `_node.csv` and
+`_conduit.csv`). The importer recognises leading description and unit records,
+ignores unused fields, and matches required fields by database name. Confirm
+the actual export units before applying the import. The audit lists skipped
+tables. Non-conduit structures and unpacked geometry remain unsupported.
 This adapter is tested against synthetic fixtures based on Autodesk's
 [CSV file format](https://help.autodesk.com/cloudhelp/2027/ENU/ICM-Help/files/GUID-7EF49200-AFE8-4934-9ECC-74238171895C.htm).
 Compatibility with representative ICM 2026.3 exports remains to be verified.
