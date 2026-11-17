@@ -1,3 +1,4 @@
+import {trackControls} from './control-evidence.mjs';
 import {writeEvidence} from './evidence-output.mjs';
 import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
@@ -5,6 +6,7 @@ import {chromium} from 'playwright';import {browserLaunchOptions,browserContextO
 const root=process.cwd(),baseUrl=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/',evidence=(process.env.ICM_EVIDENCE_DIR||'/tmp/icm-pr-evidence')+'/schematic-weekly-review';await fs.mkdir(evidence,{recursive:true});
 const browser=await chromium.launch(browserLaunchOptions());
 const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true,...browserContextOptions()});const page=await context.newPage();
+const writeControlEvidence=await trackControls(page.context(),'schematic-review-smoke-control-evidence.json');
 await observeControls(page);const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
 const privacy=installPrivacyGuard(context,baseUrl);
 try{
@@ -144,4 +146,4 @@ await report.screenshot({path:evidence+'/annual-html.png',fullPage:false});await
  await page.setViewportSize({width:1024,height:900});await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));assert(await page.locator('#assessmentMatrix-fdv').isVisible());assert(await page.locator('#assessmentDrawer-fdv').isVisible());await page.screenshot({path:evidence+'/narrow.png',fullPage:false});await recordControls(page,evidence,'narrow');
  assert.equal(errors.length,0,errors.join('\n'));await writeEvidence(evidence+'/result.json',JSON.stringify({current,weekData,config,imageEvidence,errors},null,2));console.log('PASS schematic/weekly/PDF/selectors/export browser acceptance');
 privacy.assertClean();
-}catch(error){console.log('FAIL STATE',await page.evaluate(()=>({status:document.getElementById('workspaceStatus')?.textContent,mapping:state.mapping,errors:window.__ICM_WORKBENCH__?.lastError})));await page.screenshot({path:evidence+'/failure.png',fullPage:false});await recordControls(page,evidence,'failure');throw error;}finally{await browser.close();}
+}catch(error){console.log('FAIL STATE',await page.evaluate(()=>({status:document.getElementById('workspaceStatus')?.textContent,mapping:state.mapping,errors:window.__ICM_WORKBENCH__?.lastError})));await page.screenshot({path:evidence+'/failure.png',fullPage:false});await recordControls(page,evidence,'failure');throw error;}finally{try{await writeControlEvidence?.();}finally{await browser.close();}}

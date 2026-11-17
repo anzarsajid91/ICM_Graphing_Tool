@@ -1,3 +1,4 @@
+import {trackControls} from './control-evidence.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {chromium} from 'playwright';
@@ -10,6 +11,7 @@ try{
   const context=await browser.newContext({...browserContextOptions(),acceptDownloads:true,viewport:{width:390,height:800}});
   const privacy=installPrivacyGuard(context,base);
   const page=await context.newPage();
+const writeControlEvidence=await trackControls(page.context(),'hydraulics-smoke-control-evidence.json');
   await privacy.navigate(page,base);
   await page.getByRole('link',{name:'Run hydraulic calculations'}).click();
   const keep=page.getByRole('button',{name:'Add current result'});
@@ -39,4 +41,4 @@ try{
   assert.equal(await table.isVisible(),false);
   privacy.assertClean();
   console.log('Hydraulic capacity, two normal depths, comparison, local export and narrow layout passed.');
-}finally{await browser.close();}
+}finally{try{await writeControlEvidence?.();}finally{await browser.close();}}

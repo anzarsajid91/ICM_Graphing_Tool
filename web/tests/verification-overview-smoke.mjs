@@ -1,3 +1,4 @@
+import {trackControls} from './control-evidence.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {chromium} from 'playwright';
@@ -9,6 +10,7 @@ const browser=await chromium.launch(browserLaunchOptions());
 try{
   const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1050},acceptDownloads:true});
   const page=await context.newPage(),privacy=installPrivacyGuard(context,base);
+const writeControlEvidence=await trackControls(page.context(),'verification-overview-smoke-control-evidence.json');
   const evidence=process.env.ICM_EVIDENCE_DIR;
   if(evidence)await fs.mkdir(evidence,{recursive:true});
   await privacy.navigate(page,base);
@@ -102,4 +104,4 @@ try{
     JSON.stringify(window.__ICM_WORKBENCH__.uiV2.graphRange)===JSON.stringify(['2026-01-01T00:00:00','2026-01-01T00:03:00']));
   privacy.assertClean();
   console.log('Verification overview rendered authoritative metrics and blocked review of stale evidence.');
-}finally{await browser.close();}
+}finally{try{await writeControlEvidence?.();}finally{await browser.close();}}

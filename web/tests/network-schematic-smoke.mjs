@@ -1,3 +1,4 @@
+import {trackControls} from './control-evidence.mjs';
 import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {chromium,firefox} from 'playwright';
@@ -6,6 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const name=process.env.ICM_BROWSER||'chromium',browser=await (name==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 const page=await browser.newPage({...browserContextOptions(),viewport:{width:1600,height:1050},acceptDownloads:true});
+const writeControlEvidence=await trackControls(page.context(),name+'-network-control-evidence.json');
 await observeControls(page);
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const evidence=process.env.ICM_EVIDENCE_DIR||'/tmp/hydra-network-evidence';await fs.mkdir(evidence,{recursive:true});
@@ -161,4 +163,4 @@ try{
   assert.deepEqual(errors,[],'No browser runtime errors');console.log(name+': batch mapping, real Python counts, warm-up, isolation, RAG, editor, camera, capture and restore passed.');
 privacy.assertClean();
 }catch(error){await page.screenshot({path:evidence+'/network-failure-'+name+'.png',fullPage:true});throw error;}
-finally{await browser.close();}
+finally{try{await writeControlEvidence?.();}finally{await browser.close();}}

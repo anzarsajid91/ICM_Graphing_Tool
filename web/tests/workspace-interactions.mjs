@@ -1,3 +1,4 @@
+import {trackControls} from './control-evidence.mjs';
 // Browser regressions for route scroll memory, the shared HB toggle, and both
 // schematic cameras. Synthetic survey results isolate UI behaviour from engines.
 import {chromium,firefox} from 'playwright';
@@ -9,6 +10,7 @@ const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browserName=process.env.ICM_BROWSER||'chromium';
 const browser=await (browserName==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000}});
+const writeControlEvidence=await trackControls(context,browserName+'-control-evidence.json');
 const page=await context.newPage(),errors=[],evidence={browser:browserName,scroll:[],zoom:[],navigation:[],reportLayout:[]};
 page.on('pageerror',error=>errors.push(error.message));
 page.on('console',message=>{if(message.type()==='error'&&!message.text().includes('favicon.ico'))errors.push(message.text());});
@@ -48,6 +50,18 @@ try{
     setTimeout(()=>{document.querySelector('main.shell').style.minHeight='3600px';document.querySelector('#tab-spills').style.height='';document.querySelector('#tab-spills').style.overflow='';},80);
   });
   await page.waitForFunction(()=>Math.abs(scrollY-710)<2);
+  // Exercise actual workspace and page buttons in addition to route history.
+  for(const [workspace,tab] of routes){
+    const primary=page.locator('.pw-primary-nav button[data-workspace="'+workspace+'"],.pw-about-nav button[data-workspace="'+workspace+'"]');
+    await primary.click();
+    const secondary=page.locator('#pwSecondaryNav button[data-page="'+tab+'"]');
+    if(await secondary.isVisible())await secondary.click();
+    await page.waitForFunction(([w,t])=>{
+      const current=window.__ICM_PRECISION_WORKBENCH__.route();
+      return current.workspace===w&&current.page===t;
+    },[workspace,tab]);
+    evidence.navigation.push({workspace,tab,via:'workspace and page buttons'});
+  }
   // Report exports retain spacing after returning to a scrolled workspace.
   for(const size of [1440,1024]){
     await page.setViewportSize({width:size,height:1000});
@@ -135,4 +149,6 @@ try{
 }catch(error){
   if(process.env.ICM_EVIDENCE_DIR){const dir=process.env.ICM_EVIDENCE_DIR+'/workspace-interactions';await fs.mkdir(dir,{recursive:true});await fs.writeFile(dir+'/'+browserName+'-failure.json',JSON.stringify({...evidence,error:String(error),route:await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__?.route())},null,2));await page.screenshot({path:dir+'/'+browserName+'-failure.png',fullPage:false});}
   throw error;
-}finally{await browser.close();}
+}finally{
+  try{await writeControlEvidence?.();}finally{await browser.close();}
+}

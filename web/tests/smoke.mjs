@@ -1,3 +1,4 @@
+import {trackControls} from './control-evidence.mjs';
 import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard,resourcePaths} from './privacy-network.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
@@ -18,6 +19,7 @@ const baseUrl=(process.env.ICM_BASE_URL||'http://127.0.0.1:8000/').replace(/\/?$
 const liveMode=Boolean(process.env.ICM_BASE_URL);
 const browser=await chromium.launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000},acceptDownloads:true,timezoneId:'Asia/Kolkata'});
+const writeControlEvidence=await trackControls(context,'release-control-evidence.json');
 const privacy=installPrivacyGuard(context,baseUrl);
 const page=await context.newPage();
 await observeControls(page);
@@ -2842,7 +2844,9 @@ try{
   await page.uncheck('#reportIncludeSurvey');
   await page.selectOption('#reportScenarioSelect',[]);
   await precisionRoute('reports','workspace');
-  await page.setInputFiles('#workspaceInput',workspacePath);
+  const workspaceChooser=page.waitForEvent('filechooser');
+  await page.click('#loadWorkspaceBtn');
+  await (await workspaceChooser).setFiles(workspacePath);
   await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('Workspace loaded.'),null,{timeout:60000});
   const restoredReportOptions=await page.evaluate(()=>({
     scatter:document.querySelector('#reportScatterScale')?.value,
@@ -2874,6 +2878,17 @@ try{
     fresh:window.__ICM_WORKBENCH__.dwfFresh?.(),
   }));
   if(!/observed\.csv — flow/i.test(restoredDwf.flow)||restoredDwf.unit!=='m3/s'||restoredDwf.dryDay!==1||restoredDwf.baseline!==28||restoredDwf.adp!==6||restoredDwf.fresh!==false)throw new Error('Workspace did not restore DWF configuration while correctly withholding derived DWF results: '+JSON.stringify(restoredDwf));
+
+  stage='named browser workspace reload';
+  await precisionRoute('reports','workspace');
+  await page.fill('#reviewNotes','Synthetic change after browser save');
+  await page.selectOption('#namedWorkspaceSelect','Acceptance workspace');
+  const previousNamedRestore=await page.evaluate(()=>window.__ICM_WORKBENCH__.workspaceRestore?.completedAt||null);
+  await page.click('#loadNamedWorkspaceBtn');
+  await page.waitForFunction(previous=>Boolean(window.__ICM_WORKBENCH__.workspaceRestore?.completedAt)&&
+    window.__ICM_WORKBENCH__.workspaceRestore.completedAt!==previous&&
+    !document.body.classList.contains('operation-busy'),previousNamedRestore,{timeout:60000});
+  if(await page.locator('#reviewNotes').inputValue()!==(workspace.review_notes||''))throw new Error('Load named did not restore the saved review notes.');
 
   stage='workspace migration and source reattachment guidance';
   const legacyWorkspace=JSON.parse(JSON.stringify(workspace));
@@ -3372,5 +3387,5 @@ try{
   await page.screenshot({path:process.env.ICM_FAILURE_SCREENSHOT||'/tmp/icm-workbench-failure.png',fullPage:true}).catch(()=>{});
   throw err;
 } finally {
-  await browser.close();
+  try{await writeControlEvidence?.();}finally{await browser.close();}
 }

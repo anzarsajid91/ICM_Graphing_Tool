@@ -1,3 +1,4 @@
+import {trackControls} from './control-evidence.mjs';
 import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
@@ -7,6 +8,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 const browser=await chromium.launch(browserLaunchOptions());
 const page=await browser.newPage({...browserContextOptions(),viewport:{width:1440,height:1000},acceptDownloads:true});
+const writeControlEvidence=await trackControls(page.context(),'detriment-smoke-control-evidence.json');
 await observeControls(page);
 const evidence=process.env.ICM_EVIDENCE_DIR||'/tmp/icm-detriment-evidence';
 await fs.mkdir(evidence,{recursive:true});
@@ -149,4 +151,4 @@ try{
   await page.locator('[data-about-workspace="detriment"]').click();assert.equal(await page.locator('#dtAssetIds').isVisible(),true);
   assert.deepEqual(errors,[]);console.log('Detriment acceptance passed: Data Sources → 3 tabs → evidence/export, precision boundaries, restoration, source removal and responsive containment.');
 privacy.assertClean();
-}catch(error){await page.screenshot({path:path.join(evidence,'detriment-failure.png'),fullPage:true}).catch(()=>{});await recordControls(page,evidence,'detriment-failure');console.error('Detriment state:',await page.locator('#dtStatus').textContent().catch(()=>''),errors);throw error;}finally{await browser.close();}
+}catch(error){await page.screenshot({path:path.join(evidence,'detriment-failure.png'),fullPage:true}).catch(()=>{});await recordControls(page,evidence,'detriment-failure');console.error('Detriment state:',await page.locator('#dtStatus').textContent().catch(()=>''),errors);throw error;}finally{try{await writeControlEvidence?.();}finally{await browser.close();}}
