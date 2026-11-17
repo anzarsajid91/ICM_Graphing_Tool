@@ -1,3 +1,4 @@
+import {trackControls} from './control-evidence.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {chromium} from 'playwright';
@@ -6,9 +7,11 @@ import {installPrivacyGuard} from './privacy-network.mjs';
 
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browser=await chromium.launch(browserLaunchOptions());
+let writeControlEvidence;
 try{
   const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:900}});
   const privacy=installPrivacyGuard(context,base),page=await context.newPage();
+  writeControlEvidence=await trackControls(context,'network-context-smoke-control-evidence.json');
   await privacy.navigate(page,base);
   await page.getByRole('link',{name:'Open network schematic'}).click();
   await page.locator('#nsSvg').waitFor();
@@ -167,4 +170,4 @@ try{
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='graphs');
   privacy.assertClean();
   console.log('Native context import, audit, revision, hydraulic trial and Verification, Flow Survey and Detriment overlays passed.');
-}finally{await browser.close();}
+}finally{try{await writeControlEvidence?.();}finally{await browser.close();}}

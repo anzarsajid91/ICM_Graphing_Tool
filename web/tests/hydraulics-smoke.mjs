@@ -7,11 +7,12 @@ import {installPrivacyGuard} from './privacy-network.mjs';
 
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browser=await chromium.launch(browserLaunchOptions());
+let writeControlEvidence;
 try{
   const context=await browser.newContext({...browserContextOptions(),acceptDownloads:true,viewport:{width:390,height:800}});
   const privacy=installPrivacyGuard(context,base);
   const page=await context.newPage();
-const writeControlEvidence=await trackControls(page.context(),'hydraulics-smoke-control-evidence.json');
+  writeControlEvidence=await trackControls(page.context(),'hydraulics-smoke-control-evidence.json');
   await privacy.navigate(page,base);
   await page.getByRole('link',{name:'Run hydraulic calculations'}).click();
   const keep=page.getByRole('button',{name:'Add current result'});

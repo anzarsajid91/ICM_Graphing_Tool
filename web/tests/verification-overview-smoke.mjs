@@ -7,10 +7,11 @@ import {installPrivacyGuard} from './privacy-network.mjs';
 
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browser=await chromium.launch(browserLaunchOptions());
+let writeControlEvidence;
 try{
   const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1050},acceptDownloads:true});
   const page=await context.newPage(),privacy=installPrivacyGuard(context,base);
-const writeControlEvidence=await trackControls(page.context(),'verification-overview-smoke-control-evidence.json');
+  writeControlEvidence=await trackControls(page.context(),'verification-overview-smoke-control-evidence.json');
   const evidence=process.env.ICM_EVIDENCE_DIR;
   if(evidence)await fs.mkdir(evidence,{recursive:true});
   await privacy.navigate(page,base);
