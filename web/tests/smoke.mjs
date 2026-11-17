@@ -2470,6 +2470,8 @@ try{
   await page.waitForFunction(()=>document.querySelector('#rainEventSummary')?.textContent.includes('qualifying events'),null,{timeout:60000});
   if(await page.locator('#rainEventBody tr').count()<1)throw new Error('Manual rainfall criteria should identify the demo event');
   if(await page.evaluate(()=>window.__ICM_WORKBENCH__.rainEventsFresh?.())!==true)throw new Error('Fresh rainfall-event result was not bound to source/criteria/exclusion dependencies.');
+  // Event detection renders its summary before the optional response finishes.
+  await page.waitForFunction(()=>!document.body.classList.contains('operation-busy'),null,{timeout:60000});
   await page.fill('#analysisStart','2026-01-05T00:04');
   await page.locator('#analysisStart').dispatchEvent('change');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.rainEventsFresh?.()===false&&state.rainEvents.length===0&&document.querySelector('#rainEventSummary')?.textContent.includes('analysis period'));

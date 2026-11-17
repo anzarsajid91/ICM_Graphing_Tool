@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {chromium} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
@@ -11,13 +12,7 @@ try{
   await privacy.navigate(page,base);
   await page.getByRole('link',{name:'Open network schematic'}).click();
   await page.locator('#nsSvg').waitFor();
-  const fixture=[
-    '**** hw_node','node_id,x,y,node_type',
-    '001,350000,425000,Manhole','Out,350125,425030,Outfall',
-    '**** hw_conduit','us_node_id,link_suffix,ds_node_id,shape,roughness_type,conduit_width,conduit_height,conduit_length,us_invert,ds_invert,bottom_roughness_CW,top_roughness_CW,sediment_depth,number_of_barrels,point_array',
-    '001,1,OUT,CIRC,CW,450,450,200,101,100,1.5,1.5,0,1,"{350000,425000,350030,425025,350125,425030}"',
-    '',
-  ].join('\n');
+  const fixture=readFileSync(new URL('../../tests/fixtures/network-context/synthetic-default.csv',import.meta.url),'utf8');
   const load=csv=>page.locator('#nsLoadInput').setInputFiles({name:'network.csv',mimeType:'text/csv',buffer:Buffer.from(csv)});
   const audit=page.getByRole('dialog',{name:'Model Context Import Audit'});
   const apply=audit.getByRole('button',{name:'Apply network context'});
