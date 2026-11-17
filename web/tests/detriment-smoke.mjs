@@ -91,7 +91,23 @@ try{
   assert.match(await exportText('#dtExportHtml'),/Assessment criteria and source provenance/);
   await page.screenshot({path:path.join(evidence,'detriment-flooding.png'),fullPage:false});await recordControls(page,evidence,'detriment-flooding');
   await page.locator('#dtResults [data-key="filter"]').selectOption('new_flooding');assert.equal(await page.locator('#dtTable tbody tr').count(),1);assert.match(await page.locator('#dtTable').innerText(),/002/);
+  const visibleCsv=await exportText('#dtExportViewCsv');
+  assert.match(visibleCsv,/"002"/);
+  assert.doesNotMatch(visibleCsv,/"001"/);
+  const visibleHtml=await exportText('#dtExportViewHtml');
+  assert.match(visibleHtml,/<td>002<\/td>/);
+  assert.doesNotMatch(visibleHtml,/<td>001<\/td>/);
+  assert.match(await exportText('#dtExportCsv'),/"001"/,'Full export keeps the rows omitted from current view');
   await page.locator('#dtResults [data-key="filter"]').selectOption('all');assert.equal(await page.locator('#dtTable tbody tr').count(),6);
+  const assetEvidence=page.locator('[data-asset="001"]');
+  await assetEvidence.click();
+  await page.locator('#dtClose').click();
+  assert.equal(await page.locator('#dtDrawer').isVisible(),false);
+  assert.equal(await assetEvidence.evaluate(el=>document.activeElement===el),true,'Closing the drawer restores focus to its trigger');
+  await assetEvidence.click();
+  await page.locator('#dtClose').press('Escape');
+  assert.equal(await page.locator('#dtDrawer').isVisible(),false);
+
   await page.locator('#dtResults [data-key="search"]').fill('only');assert.equal(await page.locator('#dtTable tbody tr').count(),2);
   await field('threshold').fill('6');assert.equal(await page.locator('#dtExportCsv').isDisabled(),true);assert.equal(await page.evaluate(()=>window.ICMDetriment.result()),null);
   await field('threshold').fill('5');await run();

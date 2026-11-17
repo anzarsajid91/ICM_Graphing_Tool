@@ -54,6 +54,31 @@ try{
   await form.locator('[name="dsInvert"]').fill('101');
   await page.locator('#pipeUseInvertGradient').click();
   assert.match(await result.innerText(),/outside the supported/);
+  // Hold one real worker reply so the waiting controls are deterministic.
+  await page.evaluate(()=>{
+   const original=engine._message.bind(engine);
+   let held;
+   engine._message=message=>{
+    if(message.type==='result'&&!held){held=message;return;}
+    return original(message);
+   };
+   window.releaseFirstQueueResult=async()=>{
+    while(!held)await new Promise(resolve=>setTimeout(resolve,20));
+    engine._message=original;original(held);
+   };
+   const args={diameter_m:.45,gradient:0.005,roughness_m:.0015,viscosity_m2_s:1e-6};
+   window.queueOutcomes=Array.from({length:4},()=>engine.call('circular_pipe_capacity',args).then(()=>true,e=>e.message));
+  });
+  await page.getByText('Process queue',{exact:true}).click();
+  const queued=await page.locator('[data-prioritise-job]').evaluateAll(els=>els.map(el=>el.dataset.prioritiseJob));
+  assert.equal(queued.length,3);
+  await page.locator('[data-prioritise-job="'+queued[2]+'"]').click();
+  assert.equal(await page.locator('[data-prioritise-job]').first().getAttribute('data-prioritise-job'),queued[2]);
+  await page.locator('[data-cancel-job="'+queued[0]+'"]').click();
+  assert.equal(await page.locator('[data-cancel-job="'+queued[0]+'"]').count(),0);
+  await page.evaluate(()=>window.releaseFirstQueueResult());
+  const outcomes=await page.evaluate(()=>Promise.all(window.queueOutcomes));
+  assert.deepEqual(outcomes,[true,'Queued analysis cancelled.',true,true]);
   privacy.assertClean();
   console.log('Hydraulic capacity, two normal depths, comparison, local export and narrow layout passed.');
 }finally{try{await writeControlEvidence?.();}finally{await browser.close();}}
