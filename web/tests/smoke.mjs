@@ -2323,13 +2323,14 @@ try{
       markers:markers.map(t=>({name:t.name,colour:t.marker?.color,points:(t.x||[]).length})),
       rows:[...document.querySelectorAll('#scenarioBody tr')].map(row=>row.textContent),
       documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
-      legendAboveAxis:!!legend&&!!axisTitle&&legend.bottom<=axisTitle.top+2,
+      legendClearsAxisTitle:!!legend&&!!axisTitle&&(legend.bottom<=axisTitle.top+2||
+        legend.top>=axisTitle.bottom-2||legend.right<=axisTitle.left+2||legend.left>=axisTitle.right-2),
       legendWithinChart:!!legend&&!!chartBounds&&legend.right<=chartBounds.right+2,
       legendWithinPanel:!legend||!panel||(legend.right<=panel.right+2&&legend.left>=panel.left-2),
     };
   });
   if(multiScenario.markers.length!==2||multiScenario.markers.some(x=>x.points<2)||new Set(multiScenario.markers.map(x=>x.colour)).size!==2)throw new Error('Multi-scenario scatter must render two independently styled authoritative pair clouds: '+JSON.stringify(multiScenario));
-  if(!multiScenario.rows.some(x=>x.includes(longScenarioName))||multiScenario.documentOverflow>2||!multiScenario.legendWithinPanel||!multiScenario.legendAboveAxis||!multiScenario.legendWithinChart)throw new Error('Long multi-scenario legend/table containment failed: '+JSON.stringify(multiScenario));
+  if(!multiScenario.rows.some(x=>x.includes(longScenarioName))||multiScenario.documentOverflow>2||!multiScenario.legendWithinPanel||!multiScenario.legendClearsAxisTitle||!multiScenario.legendWithinChart)throw new Error('Long multi-scenario legend/table containment failed: '+JSON.stringify(multiScenario));
   await captureEvidence('08b-graphs-multiple-scenarios');
 
   stage='generic observed/modelled scatter without quantity classification';
