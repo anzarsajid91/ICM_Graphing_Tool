@@ -37,17 +37,45 @@ function restore(value){
 function point(x,y){return {x:x*network.camera.zoom+Number(network.camera.x),y:y*network.camera.zoom+Number(network.camera.y)};}
 function world(x,y){return {x:(x-network.camera.x)/network.camera.zoom,y:(y-network.camera.y)/network.camera.zoom};}
 function dimensions(){return {width:Math.max(240,$('nsCanvas')?.clientWidth||1000),height:Math.max(360,$('nsCanvas')?.clientHeight||620)};}
-function icon(type){
-  const shapes={cso:'<path d="M-25 2c8-7 14 5 22 0h5v-18h7v31h17"/>',
-    storm:'<path d="M-25 2h21v-16h7v28h23"/>',
-    emergency:'<path d="M-25 4h50M0-15v12M0 12h.01"/>',
-    pump:'<circle r="25"/><path d="M-10-14L15 0-10 14Z"/>',
-    wwtw:'<path d="M-21-22v44M7-22v44M-32-10H32"/>',
-    tank:'<path d="M-26-16v32M26-16v32M-26 0c10-7 18 7 28 0s17 5 24 0"/>',
-    junction:'<circle r="12"/><path d="M-20 0h40M0-20v40"/>',outfall:'<path d="M-24-12H9V12H-24M9 0h20M22-7l7 7-7 7"/>',manhole:'<circle r="8"/>',label:'<circle r="3" fill="currentColor"/>'};
-  return shapes[type]||shapes.cso;
+// The scene uses fixed element and attribute names. Project data is assigned as
+// text or attribute values, without passing it through an HTML parser.
+function svgElement(tag,attributes={},content){
+  const element=document.createElementNS(NS,tag);
+  for(const [key,value] of Object.entries(attributes))element.setAttribute(key,value);
+  if(content!==undefined)element.textContent=content;
+  return element;
 }
-function badgeMarkup(n){
+function translate(x,y){return `translate(${x} ${y})`;}
+function polygonPoints(points){return points.map(({x,y})=>`${x},${y}`).join(' ');}
+const iconPaths={
+  cso:'M-25 2c8-7 14 5 22 0h5v-18h7v31h17',
+  storm:'M-25 2h21v-16h7v28h23',
+  emergency:'M-25 4h50M0-15v12M0 12h.01',
+  pump:'M-10-14L15 0-10 14Z',
+  wwtw:'M-21-22v44M7-22v44M-32-10H32',
+  tank:'M-26-16v32M26-16v32M-26 0c10-7 18 7 28 0s17 5 24 0',
+  junction:'M-20 0h40M0-20v40',
+  outfall:'M-24-12H9V12H-24M9 0h20M22-7l7 7-7 7',
+};
+function renderIcon(group,type){
+  if(type==='label'){
+    group.append(svgElement('circle',{r:3,fill:'currentColor'}));
+    return;
+  }
+  const radii={pump:25,junction:12,manhole:8};
+  if(Object.hasOwn(radii,type))group.append(svgElement('circle',{r:radii[type]}));
+  if(Object.hasOwn(iconPaths,type))group.append(svgElement('path',{d:iconPaths[type]}));
+}
+function evidenceBadge(attribute,state,offset,colour,letter,title,extra={}){
+  const badge=svgElement('g',{[attribute]:state,transform:offset,...extra});
+  badge.append(
+    svgElement('title',{},title),
+    svgElement('circle',{r:8,fill:'#fff',stroke:colour}),
+    svgElement('text',{y:4,'text-anchor':'middle','font-size':10,fill:colour},letter),
+  );
+  return badge;
+}
+function resultBadge(n){
   if(!n.bindings.length)return '';
   if(prefs().detail==='minimal'||prefs().detail==='auto'&&network.camera.zoom<.55&&selected!==n.id&&!multi.has(n.id))return '';
   const chosen=prefs().scenarios,rows=(n.applied?.rows||[]).filter(r=>r.role==='observed'||chosen===null||chosen.includes(r.scenario));
@@ -57,7 +85,21 @@ function badgeMarkup(n){
   const rawOffset=C.labelOffset(n),offset={x:Number(rawOffset.x),y:Number(rawOffset.y)},box=C.bounds(n.type),vertical=Math.abs(offset.y)/box.y>=Math.abs(offset.x)/box.x;
   const x=vertical?offset.x-width/2:offset.x<0?offset.x-width-10:offset.x+10;
   const y=vertical?(offset.y<=0?offset.y+4-height:offset.y+25):offset.y-height/2+14;
-  return '<g data-ns-summary=""'+(network.evidenceMode==='single'?' data-ns-badge=""':'')+' transform="translate('+x+' '+y+')"><rect x="0" y="-14" width="'+width+'" height="'+height+'" rx="5" fill="white" stroke="#c7d2d9"/>'+lines.map((item,i)=>'<g '+(item.header?'data-ns-summary-year':'data-ns-summary-row')+'="'+item.year+'"'+(item.rag?' class="ns-rag-'+item.rag+'"':'')+'><title>'+html(item.header?item.text:item.label+': '+(item.value===null?'Unavailable':f(item.value))+(item.reason?' · '+item.reason:''))+'</title><rect x="1" y="'+(-10+i*21)+'" width="'+(width-2)+'" height="20" fill="'+(item.header?'#f5f7f9':{green:'#eaf6ed',amber:'#fff4d9',red:'#fdebec'}[item.rag]||'white')+'"/><text x="7" y="'+(4+i*21)+'" font-size="'+(item.header?11:12)+'" font-weight="'+(item.header?600:400)+'" fill="'+(item.header?'#60717d':{green:'#267044',amber:'#9a6500',red:'#b93838'}[item.rag]||'#182732')+'">'+html(item.text)+'</text></g>').join('')+'</g>';
+  const badge=svgElement('g',{'data-ns-summary':'',transform:translate(x,y)});
+  if(network.evidenceMode==='single')badge.setAttribute('data-ns-badge','');
+  badge.append(svgElement('rect',{x:0,y:-14,width,height,rx:5,fill:'white',stroke:'#c7d2d9'}));
+  for(const [i,item] of lines.entries()){
+    const row=svgElement('g',{[item.header?'data-ns-summary-year':'data-ns-summary-row']:item.year});
+    if(item.rag)row.setAttribute('class','ns-rag-'+item.rag);
+    const title=item.header?item.text:item.label+': '+(item.value===null?'Unavailable':f(item.value))+(item.reason?' · '+item.reason:'');
+    const background=item.header?'#f5f7f9':{green:'#eaf6ed',amber:'#fff4d9',red:'#fdebec'}[item.rag]||'white';
+    const foreground=item.header?'#60717d':{green:'#267044',amber:'#9a6500',red:'#b93838'}[item.rag]||'#182732';
+    row.append(svgElement('title',{},title),
+      svgElement('rect',{x:1,y:-10+i*21,width:width-2,height:20,fill:background}),
+      svgElement('text',{x:7,y:4+i*21,'font-size':item.header?11:12,'font-weight':item.header?600:400,fill:foreground},item.text));
+    badge.append(row);
+  }
+  return badge;
 }
 function unitOptions(quantity){return quantity==='status'?[['1','Binary / unitless']]:quantity==='flow'?[['','Assign…'],['m³/s','m³/s'],['L/s','L/s'],['Ml/d','Ml/d'],['m³/d','m³/d']]:[['','Assign…'],['m','m'],['mm','mm']];}
 function verificationBadge(point,evidence,reviews){
@@ -69,8 +111,8 @@ function verificationBadge(point,evidence,reviews){
     evidence.scenarios.some(row=>row.metrics?.pairs&&row.coverage?.status==='partial')?'Partial evidence':'No valid comparison';
   const decisions=matched?reviews.map(row=>row.scenario+' · '+row.decision).join(' / '):'';
   const colour=needsInvestigation?'#9a6500':'#4740b6';
-  return '<g data-ns-verification="'+html(state)+'" transform="translate(52 -16)">'+
-    '<title>'+html(point.monitorId+' · '+state+(decisions?' · '+decisions:''))+'</title><circle r="8" fill="#fff" stroke="'+colour+'"/><text y="4" text-anchor="middle" font-size="10" fill="'+colour+'">V</text></g>';
+  return evidenceBadge('data-ns-verification',state,translate(52,-16),colour,'V',
+    point.monitorId+' · '+state+(decisions?' · '+decisions:''));
 }
 function flowSurveyBadge(point,view){
   if(!point.monitorId)return '';
@@ -78,9 +120,8 @@ function flowSurveyBadge(point,view){
   const state=item?.status==='stale'?'Stale survey evidence':!item?.rating?'No survey evidence':
     item.rating+' · '+(item.reviewed?'Engineer reviewed':'Calculated')+(item.short?' · Short boundary week':'');
   const colour={'Green':'#267044','Amber':'#9a6500','Red':'#b93838'}[item?.rating]||'#60717d';
-  return '<g data-ns-survey="'+html(state)+'" transform="translate(52 4)">'+
-    '<title>'+html(point.monitorId+' · '+(view?.week||'No week')+' · '+state)+'</title>'+
-    '<circle r="8" fill="#fff" stroke="'+colour+'"/><text y="4" text-anchor="middle" font-size="10" fill="'+colour+'">F</text></g>';
+  return evidenceBadge('data-ns-survey',state,translate(52,4),colour,'F',
+    point.monitorId+' · '+(view?.week||'No week')+' · '+state);
 }
 function surveyLayerView(){
   return window.__ICM_WORKBENCH__?.workflow26?.schematicSurveyEvidence(prefs().surveyWeek);
@@ -102,9 +143,9 @@ function detrimentBadge(object,view,x,y){
   const duration=row?.duration_delta_hours==null?'':' · Δ duration '+f(row.duration_delta_hours,6)+' h';
   const freeboard=row?.freeboard_b==null?'':' · Proposed freeboard '+f(row.freeboard_b,6)+' m';
   const flags=row?.flags.length?' · '+row.flags.join(', ').replaceAll('_',' '):'';
-  return '<g data-ns-detriment="'+html(state)+'" transform="translate('+x+' '+y+')" pointer-events="none">'+
-    '<title>'+html(link.id+' · '+(row?view.caption+' · '+state+delta+duration+freeboard+flags:'Stale or unavailable comparison'))+'</title>'+
-    '<circle r="8" fill="#fff" stroke="'+colour+'"/><text y="4" text-anchor="middle" font-size="10" fill="'+colour+'">D</text></g>';
+  return evidenceBadge('data-ns-detriment',state,translate(x,y),colour,'D',
+    link.id+' · '+(row?view.caption+' · '+state+delta+duration+freeboard+flags:'Stale or unavailable comparison'),
+    {'pointer-events':'none'});
 }
 function detrimentAssociation(object){
   if(!object.contextSource)return '';
@@ -128,8 +169,21 @@ function monitorAssociations(point){
     '<p class="ns-note">Select the monitor only when the physical installation is confirmed.</p>'+
     (point.monitorId?'<button type="button" id="nsOpenVerification">Open Verification evidence</button> <button type="button" id="nsOpenFlowSurvey">Open Flow Survey week</button>':'')+'</details>';
 }
-function svgContent(includeHandles=true){
-  const {width,height}=dimensions(),parts=[];
+function renderEdgeHandles(group,route,bendCount){
+  for(const [i,p] of route.points.slice(1,-1).entries()){
+    group.append(svgElement('circle',{'data-ns-bend':i,cx:p.x,cy:p.y,r:7,fill:'white',stroke:'#087b82','stroke-width':2}));
+  }
+  if(bendCount>=32)return;
+  for(const [i,p] of route.points.slice(1).entries()){
+    const a=route.points[i],x=(a.x+p.x)/2,y=(a.y+p.y)/2;
+    const handle=svgElement('g',{'data-ns-add-bend':i,'aria-label':'Add bend'});
+    handle.append(svgElement('circle',{cx:x,cy:y,r:8,fill:'white',stroke:'#087b82'}),
+      svgElement('path',{'data-ns-handle':'',d:`M${x-3} ${y}h6M${x} ${y-3}v6`,stroke:'#087b82','pointer-events':'none'}));
+    group.append(handle);
+  }
+}
+function renderScene(includeHandles=true){
+  const {width,height}=dimensions(),scene=document.createDocumentFragment();
   const verificationLayer=prefs().verification===true;
   const evidence=verificationLayer?window.__ICM_WORKBENCH__?.readVerificationEvidence?.():null;
   const reviews=evidence?window.__ICM_WORKBENCH__?.verificationReviews?.report(evidence)||[]:[];
@@ -141,17 +195,60 @@ function svgContent(includeHandles=true){
   for(const e of network.edges){
     if(!shownIds.has(e.from)||!shownIds.has(e.to))continue;
     const route=routes.get(e.id);if(!route)continue;
-    const a=byId.get(e.from),b=byId.get(e.to),c=C.colours[e.colour];
-    parts.push('<g data-ns-edge="'+html(e.id)+'" tabindex="0" role="button" aria-label="Connector '+html(e.name||a.name+' to '+b.name)+'"><path d="'+route.path+'" fill="none" stroke="transparent" stroke-width="14"/><path data-ns-wire="" d="'+route.path+'" fill="none" stroke="'+c+'" stroke-width="'+(e.id===selected?3:2)+'"/>'+(e.arrow!==false&&route.arrow.length?'<polygon data-ns-direction="" points="'+route.arrow.map(p=>p.x+','+p.y).join(' ')+'" fill="'+c+'"/>':'')+(e.name?'<text data-ns-edge-label="" x="'+(route.label.x+Number(e.labelOffset?.x||0))+'" y="'+(route.label.y+Number(e.labelOffset?.y||0))+'" fill="'+c+'" font-size="13">'+html(e.name)+'</text>':'')+(detrimentLayer?detrimentBadge(e,comparison,route.label.x-10,route.label.y-5):'')+(includeHandles&&editing&&e.id===selected?route.points.slice(1,-1).map((p,i)=>'<circle data-ns-bend="'+i+'" cx="'+p.x+'" cy="'+p.y+'" r="7" fill="white" stroke="#087b82" stroke-width="2"/>').join('')+((e.bends||[]).length<32?route.points.slice(1).map((p,i)=>{const a=route.points[i],x=(a.x+p.x)/2,y=(a.y+p.y)/2;return '<g data-ns-add-bend="'+i+'" aria-label="Add bend"><circle cx="'+x+'" cy="'+y+'" r="8" fill="white" stroke="#087b82"/><path data-ns-handle="" d="M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6" stroke="#087b82" pointer-events="none"/></g>';}).join(''):''):'')+'</g>');
+    const a=byId.get(e.from),b=byId.get(e.to),colour=C.colours[e.colour];
+    const group=svgElement('g',{'data-ns-edge':e.id,tabindex:0,role:'button','aria-label':'Connector '+(e.name||a.name+' to '+b.name)});
+    group.append(svgElement('path',{d:route.path,fill:'none',stroke:'transparent','stroke-width':14}),
+      svgElement('path',{'data-ns-wire':'',d:route.path,fill:'none',stroke:colour,'stroke-width':e.id===selected?3:2}));
+    if(e.arrow!==false&&route.arrow.length){
+      group.append(svgElement('polygon',{'data-ns-direction':'',points:polygonPoints(route.arrow),fill:colour}));
+    }
+    if(e.name){
+      group.append(svgElement('text',{'data-ns-edge-label':'',x:route.label.x+Number(e.labelOffset?.x||0),
+        y:route.label.y+Number(e.labelOffset?.y||0),fill:colour,'font-size':13},e.name));
+    }
+    const badge=detrimentLayer&&detrimentBadge(e,comparison,route.label.x-10,route.label.y-5);
+    if(badge)group.append(badge);
+    if(includeHandles&&editing&&e.id===selected)renderEdgeHandles(group,route,(e.bends||[]).length);
+    scene.append(group);
   }
-  for(const n of network.nodes){
-    if(!shownIds.has(n.id))continue;
-    const p=point(n.x,n.y),c=C.colours[n.colour],box=C.bounds(n.type),rawOffset=C.labelOffset(n),offset={x:Number(rawOffset.x),y:Number(rawOffset.y)},small=['manhole','label'].includes(n.type),leader=C.labelLeader(n);
-    const label=(leader?'<path data-ns-leader="" d="M'+leader.start.x+' '+leader.start.y+'L'+Number(leader.end.x)+' '+Number(leader.end.y)+'" stroke="#82939f" stroke-width="1" fill="none"/><polygon points="'+leader.arrow.map(p=>p.x+','+p.y).join(' ')+'" fill="#82939f"/>':'')+'<text data-ns-label="'+html(n.id)+'" x="'+(offset.x+(small?5:0))+'" y="'+offset.y+'" text-anchor="'+(small?'start':'middle')+'" font-size="'+(small?13:14)+'" font-weight="'+(small?400:600)+'" fill="#182732">'+html(n.name)+'</text>';
-    parts.push('<g data-ns-node="'+html(n.id)+'" transform="translate('+p.x+' '+p.y+')" tabindex="0" role="button" aria-label="'+html(n.name)+' · '+html(C.types[n.type])+'"><title>'+html(n.name+' · '+C.types[n.type])+'</title>'+(selected===n.id||multi.has(n.id)?'<rect x="-42" y="-32" width="84" height="64" rx="8" fill="none" stroke="#0b8f96" stroke-width="2"/>':'')+(box.circle?'':'<rect data-ns-frame="" x="'+(-box.x)+'" y="'+(-box.y)+'" width="'+(box.x*2)+'" height="'+(box.y*2)+'" rx="6" fill="white" stroke="'+c+'" stroke-width="1.5"/>')+'<rect x="-37" y="-28" width="74" height="56" fill="transparent"/><g data-ns-symbol="" stroke="'+c+'" stroke-width="1.8" fill="white" stroke-linecap="round" stroke-linejoin="round">'+icon(n.type)+'</g>'+label+(asset(n)?badgeMarkup(n):'')+(verificationLayer?verificationBadge(n,evidence,reviews):'')+(surveyLayer?flowSurveyBadge(n,surveyView):'')+(detrimentLayer?detrimentBadge(n,comparison,52,24):'')+'</g>');
+  for(const n of shown){
+    const p=point(n.x,n.y),colour=C.colours[n.colour],box=C.bounds(n.type),offset=C.labelOffset(n);
+    const small=['manhole','label'].includes(n.type),leader=C.labelLeader(n);
+    const title=n.name+' · '+C.types[n.type];
+    const group=svgElement('g',{'data-ns-node':n.id,transform:translate(p.x,p.y),tabindex:0,role:'button','aria-label':title});
+    group.append(svgElement('title',{},title));
+    if(selected===n.id||multi.has(n.id)){
+      group.append(svgElement('rect',{x:-42,y:-32,width:84,height:64,rx:8,fill:'none',stroke:'#0b8f96','stroke-width':2}));
+    }
+    if(!box.circle){
+      group.append(svgElement('rect',{'data-ns-frame':'',x:-box.x,y:-box.y,width:box.x*2,height:box.y*2,
+        rx:6,fill:'white',stroke:colour,'stroke-width':1.5}));
+    }
+    group.append(svgElement('rect',{x:-37,y:-28,width:74,height:56,fill:'transparent'}));
+    const symbol=svgElement('g',{'data-ns-symbol':'',stroke:colour,'stroke-width':1.8,fill:'white',
+      'stroke-linecap':'round','stroke-linejoin':'round'});
+    renderIcon(symbol,n.type);
+    group.append(symbol);
+    if(leader){
+      group.append(svgElement('path',{'data-ns-leader':'',d:`M${leader.start.x} ${leader.start.y}L${Number(leader.end.x)} ${Number(leader.end.y)}`,
+        stroke:'#82939f','stroke-width':1,fill:'none'}),
+        svgElement('polygon',{points:polygonPoints(leader.arrow),fill:'#82939f'}));
+    }
+    group.append(svgElement('text',{'data-ns-label':n.id,x:Number(offset.x)+(small?5:0),y:Number(offset.y),
+      'text-anchor':small?'start':'middle','font-size':small?13:14,'font-weight':small?400:600,fill:'#182732'},n.name));
+    for(const badge of [asset(n)&&resultBadge(n),verificationLayer&&verificationBadge(n,evidence,reviews),
+      surveyLayer&&flowSurveyBadge(n,surveyView),detrimentLayer&&detrimentBadge(n,comparison,52,24)]){
+      if(badge)group.append(badge);
+    }
+    scene.append(group);
   }
-  if(!network.nodes.length)parts.push('<text x="'+width/2+'" y="'+height/2+'" text-anchor="middle" fill="#60717d" font-size="15"><tspan x="'+width/2+'" dy="-10">Choose Edit network,</tspan><tspan x="'+width/2+'" dy="22">then add assets and manholes.</tspan></text>');
-  return parts.join('');
+  if(!network.nodes.length){
+    const text=svgElement('text',{x:width/2,y:height/2,'text-anchor':'middle',fill:'#60717d','font-size':15});
+    text.append(svgElement('tspan',{x:width/2,dy:-10},'Choose Edit network,'),
+      svgElement('tspan',{x:width/2,dy:22},'then add assets and manholes.'));
+    scene.append(text);
+  }
+  return scene;
 }
 function declutterLabels(svg){
   if(prefs().detail==='full'||!svg.getClientRects().length)return;
@@ -200,7 +297,7 @@ function renderCanvas(){
   const svg=$('nsSvg');if(!svg)return;
   const active=document.activeElement;
   const focused=svg.contains(active)&&active.closest('[data-ns-node],[data-ns-edge]');
-  const d=dimensions();svg.setAttribute('viewBox','0 0 '+d.width+' '+d.height);svg.innerHTML=svgContent();
+  const d=dimensions();svg.setAttribute('viewBox','0 0 '+d.width+' '+d.height);svg.replaceChildren(renderScene());
   declutterLabels(svg);
   const selectedGroup=[...svg.children].find(group=>group.dataset.nsNode===selected&&selected!==null);
   if(selectedGroup)svg.append(selectedGroup);
@@ -286,7 +383,7 @@ function renderDrawer(){
     reviewFields(n)+'<button data-ns-delete class="ns-danger">Delete point</button>';
 }
 function popupTable(n){
-  if(!n.applied)return annualTable(n)+'<small>Assign datasets and calculate.</small>';
+  if(!n.applied)return '<div data-ns-empty-table></div><small>Assign datasets and calculate.</small>';
   const fresh=isFresh(n),groups=R.annualGroups(n,prefs().scenarios);
   let table='<table><thead><tr><th>Year</th><th>Scenario</th><th>Observed<br>spills</th><th>Modelled<br>spills</th><th>Observed<br>hours</th><th>Modelled<br>hours</th></tr></thead><tbody>';
   const cell=(v,rag)=>'<td'+(rag?' class="ns-rag-'+rag+'"':'')+'>'+f(v,Number.isInteger(v)?0:2)+(rag?'<small class="ns-rag-label">'+html(rag[0].toUpperCase()+rag.slice(1))+' agreement</small>':'')+'</td>';
@@ -319,7 +416,7 @@ function renderPopup(){
   const pop=$('nsPopup'),n=node();if(!pop)return;pop.hidden=editing||!popupVisible||!n;
   $('nsLayout').classList.toggle('ns-inspecting',!pop.hidden);
   if(pop.hidden){pop.replaceChildren();return;}
-  const oldScroll=pop.querySelector('.ns-popup-body')?.scrollTop||0;pop.innerHTML='<div class="ns-popup-head"><div><h3>'+html(n.name)+'</h3><small>'+html(C.types[n.type])+' · all reporting years</small></div><button data-ns-close-popup aria-label="Close asset evidence">×</button></div><div class="ns-popup-body">'+linkedMonitorEvidence(n)+popupTable(n)+reviewFields(n)+'</div><div class="ns-popup-footer"><button data-ns-open-analysis="series">Time series</button><button data-ns-open-analysis="spills">Spill analysis</button><button data-ns-edit-selected>Edit asset</button></div>';pop.querySelector('.ns-popup-body').scrollTop=oldScroll;
+  const oldScroll=pop.querySelector('.ns-popup-body')?.scrollTop||0;pop.innerHTML='<div class="ns-popup-head"><div><h3>'+html(n.name)+'</h3><small>'+html(C.types[n.type])+' · all reporting years</small></div><button data-ns-close-popup aria-label="Close asset evidence">×</button></div><div class="ns-popup-body">'+linkedMonitorEvidence(n)+popupTable(n)+reviewFields(n)+'</div><div class="ns-popup-footer"><button data-ns-open-analysis="series">Time series</button><button data-ns-open-analysis="spills">Spill analysis</button><button data-ns-edit-selected>Edit asset</button></div>';pop.querySelector('[data-ns-empty-table]')?.replaceWith(annualTable(n));pop.querySelector('.ns-popup-body').scrollTop=oldScroll;
 }
 function render(){
   if(!mounted)return;
@@ -417,7 +514,7 @@ function updateField(target){
       if(key==='years')b.years=C.validateYears(target.value);else if(key==='threshold')b.threshold=target.value===''?'':Number(target.value);else if(key==='scenario')b.scenario=target.value.trim()||'Baseline';else b[key]=target.value;
       if(key==='column'){const item=sourceFor(b);b.quantity=seriesQuantity(item,b.column)||b.quantity;b.unit=seriesUnit(item,b.column)||'';b.datum=seriesReference(item,b.column)||'';}
       if(['column','quantity'].includes(key))b.comparison=b.quantity==='flow'?'gt':'ge';if(key==='quantity')b.unit=b.quantity==='status'?'1':'';changed();if(['column','quantity','threshold','comparison','unit'].includes(key))renderDrawer();
-      if(analysisContext?.id===n.id){renderAnalysisSettings(n);$('nsAnalysisCounts').innerHTML=annualTable(n,true);$('nsAnalysisAudit').innerHTML=auditHtml(n);$('nsCommonResult').hidden=true;if(analysisContext.mode==='series')void plotAnalysis(++analysisGeneration);}
+      if(analysisContext?.id===n.id){renderAnalysisSettings(n);$('nsAnalysisCounts').replaceChildren(annualTable(n,true));$('nsAnalysisAudit').replaceChildren(auditDetails(n));$('nsCommonResult').hidden=true;if(analysisContext.mode==='series')void plotAnalysis(++analysisGeneration);}
     }catch(error){status(error.message);target.setAttribute('aria-invalid','true');}return;
   }
   const object=n||e;
@@ -540,7 +637,9 @@ async function capture(){
   const layout=$('nsLayout').getBoundingClientRect();
   const width=n?Math.ceil(layout.width):d.width,height=n?Math.ceil(layout.height):d.height;
   if(n)overlay=exportPopupSvg();
-  const text='<svg xmlns="'+NS+'" width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'"><rect width="100%" height="100%" fill="white"/><g font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" fill="#182732">'+svgContent(false)+overlay+'<text x="12" y="'+(d.height-12)+'" font-size="11" fill="#60717d">Hydra Bench · '+html(network.year==='all'?'All years':network.year)+' · '+html(network.evidenceMode==='combined'?'Observed + all models':network.scenario)+' · connections show topology only</text></g></svg>';
+  const scene=svgElement('g');
+  scene.append(renderScene(false));
+  const text='<svg xmlns="'+NS+'" width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'"><rect width="100%" height="100%" fill="white"/><g font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" fill="#182732">'+new XMLSerializer().serializeToString(scene)+overlay+'<text x="12" y="'+(d.height-12)+'" font-size="11" fill="#60717d">Hydra Bench · '+html(network.year==='all'?'All years':network.year)+' · '+html(network.evidenceMode==='combined'?'Observed + all models':network.scenario)+' · connections show topology only</text></g></svg>';
   await window.HydraDesign.prepareReportFont();
   const embedded=text.replace('<rect','<defs><style>'+window.HydraDesign.reportFontCss()+'</style></defs><rect');
   const blob=new Blob([embedded],{type:'image/svg+xml'}),url=URL.createObjectURL(blob);
@@ -571,15 +670,67 @@ function centre(id){const n=network.nodes.find(n=>n.id===id);if(!n)return;const 
 function hideHover(){clearTimeout(hoverTimer);if($('nsHover'))$('nsHover').hidden=true;}
 function hoverCard(id){
   const n=network.nodes.find(n=>n.id===id);if(!n||!asset(n)||editing||drag||popupVisible)return;
-  const hover=$('nsHover'),d=dimensions(),p=point(n.x,n.y);hover.innerHTML='<strong>'+html(n.name)+'</strong><div class="ns-hover-table">'+annualTable(n,false,prefs().scenarios,false)+'</div><small>Click asset to inspect</small>';hover.hidden=false;const w=Math.min(460,d.width-24);hover.style.width=w+'px';hover.style.left=Math.max(12,Math.min(d.width-w-12,p.x+45))+'px';hover.style.top=Math.max(12,Math.min(d.height-hover.offsetHeight-70,p.y+15))+'px';
+  const hover=$('nsHover'),d=dimensions(),p=point(n.x,n.y);
+  const wrapper=document.createElement('div');
+  wrapper.className='ns-hover-table';
+  wrapper.append(annualTable(n,false,prefs().scenarios,false));
+  hover.replaceChildren(textElement('strong',n.name),wrapper,textElement('small','Click asset to inspect'));
+  hover.hidden=false;const w=Math.min(460,d.width-24);hover.style.width=w+'px';hover.style.left=Math.max(12,Math.min(d.width-w-12,p.x+45))+'px';hover.style.top=Math.max(12,Math.min(d.height-hover.offsetHeight-70,p.y+15))+'px';
+}
+function textElement(tag,text){
+  const element=document.createElement(tag);
+  element.textContent=text;
+  return element;
 }
 function annualTable(n,differences=false,scenarios=prefs().scenarios,interactive=true){
-  const fresh=isFresh(n),groups=R.annualGroups(n,scenarios),cell=(value,rag)=>'<td'+(rag?' class="ns-rag-'+rag+'"':'')+'>'+f(value,Number.isInteger(value)?0:1)+(rag?'<small class="ns-rag-label">'+html(rag[0].toUpperCase()+rag.slice(1))+' agreement</small>':'')+'</td>';
+  const fresh=isFresh(n);
+  const table=document.createElement('table');
+  table.className='ns-annual-table';
+  const heading=table.createTHead().insertRow();
+  for(const column of ['Year','Scenario','O count','M count','O h','M h',...(differences?['Δ count','Δ h']:[])]){
+    heading.append(textElement('th',column));
+  }
+  const body=table.createTBody();
   const signed=value=>value===null?'—':(value>0?'+':'')+f(value,1);
-  return '<table class="ns-annual-table"><thead><tr><th>Year</th><th>Scenario</th><th>O count</th><th>M count</th><th>O h</th><th>M h</th>'+(differences?'<th>Δ count</th><th>Δ h</th>':'')+'</tr></thead><tbody>'+groups.map(g=>{
-    const reason=metric=>!fresh?'Recalculate':g.model?C.comparable(g.observed,g.model,n.confirmed,metric):'No model evidence',countValid=!reason('spill_count'),durationValid=!reason('duration_hours'),o=fresh?g.observed:null,m=fresh?g.model:null;
-    return '<tr data-ns-focus="'+html(n.id)+'" data-ns-year="'+g.year+'" title="'+html(reason('spill_count')||reason('duration_hours'))+'"><td>'+(interactive?'<button type="button" class="ns-table-year" aria-label="Focus '+html(n.name)+' in '+g.year+'">'+g.year+'</button>':g.year)+'</td><td>'+html(g.scenario)+'</td>'+cell(o?.spill_count)+cell(m?.spill_count,countValid?C.rag(o.spill_count,m.spill_count):null)+cell(o?.duration_hours)+cell(m?.duration_hours,durationValid?C.rag(o.duration_hours,m.duration_hours):null)+(differences?'<td>'+signed(countValid?R.delta(o.spill_count,m.spill_count):null)+'</td><td>'+signed(durationValid?R.delta(o.duration_hours,m.duration_hours):null)+'</td>':'')+'</tr>';
-  }).join('')+'</tbody></table>';
+  for(const g of R.annualGroups(n,scenarios)){
+    const reason=metric=>!fresh?'Recalculate':g.model?C.comparable(g.observed,g.model,n.confirmed,metric):'No model evidence';
+    const countValid=!reason('spill_count'),durationValid=!reason('duration_hours');
+    const o=fresh?g.observed:null,m=fresh?g.model:null;
+    const row=body.insertRow();
+    row.dataset.nsFocus=n.id;
+    row.dataset.nsYear=g.year;
+    row.title=reason('spill_count')||reason('duration_hours');
+    const yearCell=row.insertCell();
+    if(interactive){
+      const button=textElement('button',g.year);
+      button.type='button';
+      button.className='ns-table-year';
+      button.setAttribute('aria-label','Focus '+n.name+' in '+g.year);
+      yearCell.append(button);
+    }else{
+      yearCell.textContent=g.year;
+    }
+    row.insertCell().textContent=g.scenario;
+    const cell=(value,rag)=>{
+      const td=row.insertCell();
+      td.textContent=f(value,Number.isInteger(value)?0:1);
+      if(rag){
+        td.className='ns-rag-'+rag;
+        const label=textElement('small',rag[0].toUpperCase()+rag.slice(1)+' agreement');
+        label.className='ns-rag-label';
+        td.append(label);
+      }
+    };
+    cell(o?.spill_count);
+    cell(m?.spill_count,countValid?C.rag(o.spill_count,m.spill_count):null);
+    cell(o?.duration_hours);
+    cell(m?.duration_hours,durationValid?C.rag(o.duration_hours,m.duration_hours):null);
+    if(differences){
+      row.insertCell().textContent=signed(countValid?R.delta(o.spill_count,m.spill_count):null);
+      row.insertCell().textContent=signed(durationValid?R.delta(o.duration_hours,m.duration_hours):null);
+    }
+  }
+  return table;
 }
 function renderReview(){
   if(!$('nsReviewTools'))return;
@@ -605,7 +756,17 @@ function renderReview(){
 function renderMatrix(){
   const selectedOnly=$('nsMatrixSelected').checked,query=$('nsMatrixSearch').value.toLowerCase();
   const nodes=network.nodes.filter(n=>asset(n)&&(!selectedOnly||multi.has(n.id))&&n.name.toLowerCase().includes(query));
-  $('nsMatrixBody').innerHTML=nodes.map(n=>'<section><button class="ns-asset-link" data-ns-centre="'+html(n.id)+'">'+html(n.name)+'</button>'+annualTable(n,true)+'</section>').join('')||'<p>No matching assets.</p>';
+  const matrix=$('nsMatrixBody');
+  matrix.replaceChildren();
+  if(!nodes.length)matrix.append(textElement('p','No matching assets.'));
+  for(const n of nodes){
+    const section=document.createElement('section');
+    const button=textElement('button',n.name);
+    button.className='ns-asset-link';
+    button.dataset.nsCentre=n.id;
+    section.append(button,annualTable(n,true));
+    matrix.append(section);
+  }
 }
 function undoEdit(forward=false){
   if(busy)return;const source=forward?redo:history,dest=forward?history:redo;if(!source.length)return;dest.push(JSON.stringify(network));network=JSON.parse(source.pop());selected=null;multi.clear();highlight=null;popupVisible=false;freshness.clear();persist();render();renderReview();
@@ -630,21 +791,96 @@ function saveReviewSnapshot(){
 }
 function downloadReviewSnapshot(index){if(index==='')return;const saved=network.reviewSnapshots[Number(index)];if(saved)downloadBlob('hydra-network-review-snapshot.json',JSON.stringify({...saved,network:C.validateNetwork(saved.network)},null,2),'application/json');}
 function wholeSceneSvg(){
-  const before={camera:network.camera,preferences:network.preferences},d=dimensions();let content,bounds;
-  try{network.camera={x:0,y:0,zoom:1};network.preferences={...prefs(),detail:'full',type:'all',health:'all',result:'all'};content=svgContent(false);const svg=document.createElementNS(NS,'svg');svg.innerHTML=content;svg.style.cssText='position:fixed;left:-100000px;top:0;width:1000px;height:1000px';document.body.append(svg);try{bounds=svg.getBBox();}finally{svg.remove();}}
-  finally{network.camera=before.camera;network.preferences=before.preferences;}
+  const before={camera:network.camera,preferences:network.preferences};
+  const svg=svgElement('svg'),scene=svgElement('g',{'font-family':'Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif',fill:'#182732'});
+  let bounds;
+  try{
+    network.camera={x:0,y:0,zoom:1};
+    network.preferences={...prefs(),detail:'full',type:'all',health:'all',result:'all'};
+    scene.append(renderScene(false));
+    svg.append(scene);
+    svg.style.cssText='position:fixed;left:-100000px;top:0;width:1000px;height:1000px';
+    document.body.append(svg);
+    bounds=svg.getBBox();
+  }finally{
+    svg.remove();
+    svg.removeAttribute('style');
+    network.camera=before.camera;
+    network.preferences=before.preferences;
+  }
   const width=Math.max(300,bounds.width+60),height=Math.max(200,bounds.height+100),x=bounds.x-30,y=bounds.y-30;
-  return '<svg xmlns="'+NS+'" width="'+Math.ceil(width)+'" height="'+Math.ceil(height)+'" viewBox="'+x+' '+y+' '+width+' '+height+'"><rect x="'+x+'" y="'+y+'" width="'+width+'" height="'+height+'" fill="white"/><g font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" fill="#182732">'+content+'<text x="'+(x+12)+'" y="'+(y+height-32)+'" font-size="11">'+html('Hydra Bench · '+(network.year==='all'?'All reporting years':network.year)+' · '+(network.metric==='spill_count'?'Spill count':'Duration (h)'))+'</text><text x="'+(x+12)+'" y="'+(y+height-14)+'" font-size="10" fill="#60717d">Topology only · result RAG: ≤5% / ≤10% / >10% · network colours are user categories</text></g></svg>';
+  svg.setAttribute('width',Math.ceil(width));
+  svg.setAttribute('height',Math.ceil(height));
+  svg.setAttribute('viewBox',`${x} ${y} ${width} ${height}`);
+  svg.prepend(svgElement('rect',{x,y,width,height,fill:'white'}));
+  scene.append(
+    svgElement('text',{x:x+12,y:y+height-32,'font-size':11},
+      'Hydra Bench · '+(network.year==='all'?'All reporting years':network.year)+' · '+(network.metric==='spill_count'?'Spill count':'Duration (h)')),
+    svgElement('text',{x:x+12,y:y+height-14,'font-size':10,fill:'#60717d'},
+      'Topology only · result RAG: ≤5% / ≤10% / >10% · network colours are user categories'),
+  );
+  return svg;
 }
 async function exportReport(){
-  const report=window.open('','_blank');if(!report){status('Allow this report window to open.');return;}
-  const svg=wholeSceneSvg(),nodes=network.nodes.filter(asset),css='h1,h2,strong,button{font-weight:600}th{font-weight:500}body{font-variant-numeric:tabular-nums}body{font:12px Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#202221;margin:24px}h1{font-size:21px}h2{font-size:16px}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{padding:7px;border-bottom:1px solid #e4e5e3;text-align:right}th:nth-child(2),td:nth-child(2){text-align:left}th{background:#f5f5f3}small,details{color:#626660}.ns-rag-green{background:#eaf6ed}.ns-rag-amber{background:#fff4d9}.ns-rag-red{background:#fdebec}svg{width:100%;height:auto;max-height:80vh}section{break-inside:avoid;margin:24px 0}@page{size:A4 landscape;margin:12mm}@media print{button{display:none}svg{max-height:160mm}details:not([open])>*:not(summary){display:block!important}}';
-  const snapshotHtml=('<!doctype html><html><head><meta charset="utf-8"><title>Network annual spill review</title><style>'+css+'</style></head><body><button id="printReport">Print / save PDF</button><h1>Network annual spill review</h1><small>'+html(new Date().toISOString())+' · build '+html(buildToken)+' · counts: occupied 12/24 blocks · duration: hours · Δ = model − observed</small>'+svg+nodes.map(n=>'<section><h2>'+html(n.name)+'</h2>'+annualTable(n,true,prefs().scenarios,false)+(R.review(n).comment?'<p>'+html(R.review(n).comment)+'</p>':'')+'<small>Review: '+html(R.review(n).status)+' · '+html(healthLabel(nodeHealth(n)))+'</small><details open><summary>Assessment basis</summary>'+auditHtml(n)+'</details></section>').join('')+'<h2>Connector notes</h2>'+network.edges.filter(e=>R.review(e).comment).map(e=>'<p><strong>'+html(e.name||e.from+' → '+e.to)+'</strong>: '+html(R.review(e).comment)+'</p>').join('')+'<p>RAG describes agreement, not spill severity. Partial years are not annualised. Missing or provisional evidence remains qualified.</p><footer>Hydra Bench · Anzar Sajid</footer></body></html>');
+  const report=window.open('','_blank');
+  if(!report){status('Allow this report window to open.');return;}
+  const css='h1,h2,strong,button{font-weight:600}th{font-weight:500}body{font-variant-numeric:tabular-nums}body{font:12px Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#202221;margin:24px}h1{font-size:21px}h2{font-size:16px}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{padding:7px;border-bottom:1px solid #e4e5e3;text-align:right}th:nth-child(2),td:nth-child(2){text-align:left}th{background:#f5f5f3}small,details{color:#626660}.ns-rag-green{background:#eaf6ed}.ns-rag-amber{background:#fff4d9}.ns-rag-red{background:#fdebec}svg{width:100%;height:auto;max-height:80vh}section{break-inside:avoid;margin:24px 0}@page{size:A4 landscape;margin:12mm}@media print{button{display:none}svg{max-height:160mm}details:not([open])>*:not(summary){display:block!important}}';
+  const title='Network annual spill review';
+  const print=textElement('button','Print / save PDF');
+  print.id='printReport';
+  print.onclick=()=>report.print();
+  const content=document.createDocumentFragment();
+  content.append(print,textElement('h1',title),textElement('small',
+    new Date().toISOString()+' · build '+buildToken+' · counts: occupied 12/24 blocks · duration: hours · Δ = model − observed'),
+    wholeSceneSvg());
+  for(const n of network.nodes.filter(asset)){
+    const section=document.createElement('section');
+    const review=R.review(n);
+    section.append(textElement('h2',n.name),annualTable(n,true,prefs().scenarios,false));
+    if(review.comment)section.append(textElement('p',review.comment));
+    const details=document.createElement('details');
+    details.open=true;
+    details.append(textElement('summary','Assessment basis'),auditDetails(n));
+    section.append(textElement('small','Review: '+review.status+' · '+healthLabel(nodeHealth(n))),details);
+    content.append(section);
+  }
+  content.append(textElement('h2','Connector notes'));
+  for(const edge of network.edges){
+    const comment=R.review(edge).comment;
+    if(!comment)continue;
+    const paragraph=document.createElement('p');
+    paragraph.append(textElement('strong',edge.name||edge.from+' → '+edge.to),': '+comment);
+    content.append(paragraph);
+  }
+  content.append(textElement('p','RAG describes agreement, not spill severity. Partial years are not annualised. Missing or provisional evidence remains qualified.'),
+    textElement('footer','Hydra Bench · Anzar Sajid'));
   try{await window.HydraDesign.prepareReportFont();}catch(error){report.close();status(error.message);return;}
-  report.document.open();report.document.write(snapshotHtml.replace('</head>','<style>'+window.HydraDesign.reportFontCss()+'</style></head>'));report.document.close();report.document.getElementById('printReport').onclick=()=>report.print();report.focus();status('Report opened. Use Print / Save PDF.');
+  if(report.closed)return;
+  report.document.title=title;
+  report.document.head.append(textElement('style',css),textElement('style',window.HydraDesign.reportFontCss()));
+  report.document.body.replaceChildren(content);
+  report.focus();
+  status('Report opened. Use Print / Save PDF.');
 }
-function auditHtml(n){
-  return (n.applied?.rows||[]).map(r=>'<p>'+html(r.year+' · '+(r.role==='observed'?'Observed':r.scenario)+' · '+r.source_name+' · '+r.column)+'<br>'+html((r.analysis_start||'—')+' to '+(r.analysis_end||'—'))+' · '+html(r.partial_year?'partial year':'')+'<br>Threshold '+html(C.thresholdRule(r)==='gt'?'>':'≥')+' '+f(r.threshold,6)+' '+html(r.unit||'')+' · '+html(r.quantity||'')+' '+html(r.datum||'')+'<br>Valid '+f(r.valid_hours)+' h · unknown '+f(r.unknown_hours)+' h · excluded '+f(r.excluded_hours)+' h · '+html(r.count_status||'')+'<br>SHA-256 '+html(r.source_sha256||'')+'<br>Exclusions '+html(JSON.stringify(r.exclusions||[]))+'</p>').join('')+'<p>Calculated '+html(n.applied?.calculated_at||'—')+' · gap '+f(n.applied?.settings?.gap)+' s · comparison basis '+html(n.applied?.settings?.confirmed?'confirmed':'unconfirmed')+'</p>';
+function auditDetails(n){
+  const fragment=document.createDocumentFragment();
+  for(const r of n.applied?.rows||[]){
+    const paragraph=document.createElement('p');
+    const lines=[
+      r.year+' · '+(r.role==='observed'?'Observed':r.scenario)+' · '+r.source_name+' · '+r.column,
+      (r.analysis_start||'—')+' to '+(r.analysis_end||'—')+' · '+(r.partial_year?'partial year':''),
+      'Threshold '+(C.thresholdRule(r)==='gt'?'>':'≥')+' '+f(r.threshold,6)+' '+(r.unit||'')+' · '+(r.quantity||'')+' '+(r.datum||''),
+      'Valid '+f(r.valid_hours)+' h · unknown '+f(r.unknown_hours)+' h · excluded '+f(r.excluded_hours)+' h · '+(r.count_status||''),
+      'SHA-256 '+(r.source_sha256||''),
+      'Exclusions '+JSON.stringify(r.exclusions||[]),
+    ];
+    paragraph.append(lines[0]);
+    for(const line of lines.slice(1))paragraph.append(document.createElement('br'),line);
+    fragment.append(paragraph);
+  }
+  fragment.append(textElement('p','Calculated '+(n.applied?.calculated_at||'—')+' · gap '+f(n.applied?.settings?.gap)
+    +' s · comparison basis '+(n.applied?.settings?.confirmed?'confirmed':'unconfirmed')));
+  return fragment;
 }
 function renderAnalysisSettings(n){
   const year=Number($('nsAnalysisYear').value),chosen=prefs().scenarios;
@@ -661,8 +897,8 @@ async function openAnalysis(mode='series'){
   $('nsAnalysis').hidden=false;if(!$('nsAnalysis').open)$('nsAnalysis').showModal();$('nsCloseAnalysis').focus();$('nsAnalysisTitle').textContent=n.name;
   $('nsAnalysisYear').innerHTML=years.map(y=>'<option '+(y===year?'selected':'')+'>'+y+'</option>').join('');
   renderAnalysisSettings(n);
-  $('nsAnalysisCounts').innerHTML=annualTable(n,true);
-  $('nsAnalysisAudit').innerHTML=auditHtml(n);
+  $('nsAnalysisCounts').replaceChildren(annualTable(n,true));
+  $('nsAnalysisAudit').replaceChildren(auditDetails(n));
   $('nsAnalysisBasis').textContent='Annual evidence';$('nsCommonResult').innerHTML='';$('nsCommonResult').hidden=true;$('nsCommonMessage').textContent='';$('nsAnalysisMessage').textContent='';Plotly.purge('nsAnalysisPlot');
   const names=[...new Set(n.bindings.filter(b=>b.role==='model').map(b=>b.scenario))].sort();$('nsCommonScenario').innerHTML=names.map(s=>'<option>'+html(s)+'</option>').join('');
   $('nsCommonYear').innerHTML=years.map(y=>'<option '+(y===year?'selected':'')+'>'+y+'</option>').join('');
@@ -704,7 +940,7 @@ async function calculateCommon(){
     const output=[];for(const r of [o,m]){const b=n.bindings.find(b=>b.sha256===r.source_sha256&&b.column===r.column&&b.role===r.role&&b.scenario===r.scenario&&b.years.includes(year)),source=b&&sourceFor(b);if(!source)throw new Error('Reload matching evidence sources.');const scale=C.valueScale(b.quantity,contract(b).unit,b.unit),value=await engine.call('network_common_spill_result',{path:source.virtualPath,column:b.column,threshold:r.threshold/scale,start,end,max_gap_seconds:n.gap,comparison:C.thresholdRule(r),exclusions_json:JSON.stringify(n.exclusions)});output.push({...r,...value,threshold:r.threshold,value_min:value.value_min==null?value.value_min:value.value_min*scale,value_max:value.value_max==null?value.value_max:value.value_max*scale,exclusions:n.exclusions});}
     if(sig!==signature(n))throw new Error('Settings changed. Recalculate.');
     n.common={signature:sig,rows:output,calculated_at:new Date().toISOString()};persist();const proxy={...n,applied:{...n.applied,rows:output},bindings:n.bindings.filter(b=>b.years.includes(year)&&(b.role==='observed'||b.scenario===scenario))};
-    $('nsCommonResult').hidden=false;$('nsCommonResult').innerHTML='<strong>Common period · '+year+'</strong>'+annualTable(proxy,true,[scenario])+'<small>'+html(start+' to '+end)+'</small>';const reason=C.comparable(output[0],output[1],n.confirmed);$('nsCommonMessage').textContent=reason||'Comparable common-period evidence.';
+    $('nsCommonResult').hidden=false;$('nsCommonResult').replaceChildren(textElement('strong','Common period · '+year),annualTable(proxy,true,[scenario]),textElement('small',start+' to '+end));const reason=C.comparable(output[0],output[1],n.confirmed);$('nsCommonMessage').textContent=reason||'Comparable common-period evidence.';
   }catch(error){$('nsCommonMessage').textContent=String(error.message||error);}
   finally{busy=false;$('nsCommonCalculate').disabled=false;renderReview();}
 }
@@ -810,7 +1046,7 @@ function mountReview(){
   $('nsAnalysis').addEventListener('cancel',event=>{event.preventDefault();$('nsCloseAnalysis').click();});
   window.addEventListener('icm:route-changed',event=>{if($('nsAnalysis').open&&(event.detail.workspace!=='network'||event.detail.page!=='schematic'))$('nsCloseAnalysis').click();});
   $('nsCloseAnalysis').onclick=()=>{++analysisGeneration;clearTimeout(analysisTimer);$('nsAnalysis').close();$('nsAnalysis').hidden=true;Plotly.purge('nsAnalysisPlot');analysisContext=null;const target=analysisReturnFocus?.isConnected?analysisReturnFocus:$('nsCanvas');target?.focus({preventScroll:true});analysisReturnFocus=null;};$('nsAnalysisYear').onchange=()=>{const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n)renderAnalysisSettings(n);if(analysisContext?.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsAnalysisMode').onclick=()=>{if(!analysisContext)return;analysisContext.mode=analysisContext.mode==='series'?'spills':'series';$('nsAnalysisPlot').hidden=analysisContext.mode==='spills';$('nsAnalysisMode').textContent=analysisContext.mode==='spills'?'Show time series':'Show annual spills';if(analysisContext.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsCommonCalculate').onclick=()=>void calculateCommon();
-  $('nsAnalysisCalculate').onclick=async()=>{if(busy)return;await calculate();const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n){$('nsAnalysisCounts').innerHTML=annualTable(n,true);$('nsAnalysisAudit').innerHTML=auditHtml(n);if(analysisContext.mode==='series')await plotAnalysis(++analysisGeneration);}};
+  $('nsAnalysisCalculate').onclick=async()=>{if(busy)return;await calculate();const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n){$('nsAnalysisCounts').replaceChildren(annualTable(n,true));$('nsAnalysisAudit').replaceChildren(auditDetails(n));if(analysisContext.mode==='series')await plotAnalysis(++analysisGeneration);}};
   renderReview();
 }
 function mount(){
@@ -918,7 +1154,7 @@ function mount(){
   // changes still waiting in the short autosave debounce.
   window.addEventListener('pagehide',flushSave);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSave();});
-  window.addEventListener('icm:source-pool-changed',()=>{freshness.clear();if(analysisContext){++analysisGeneration;Plotly.purge('nsAnalysisPlot');$('nsAnalysisCounts').innerHTML=annualTable(network.nodes.find(n=>n.id===analysisContext.id)||{id:'missing',bindings:[]},true);$('nsCommonResult').hidden=true;$('nsAnalysisMessage').textContent='Sources changed. Reopen this analysis to refresh.';}renderCanvas();renderReview();if(editing)renderDrawer();});
+  window.addEventListener('icm:source-pool-changed',()=>{freshness.clear();if(analysisContext){++analysisGeneration;Plotly.purge('nsAnalysisPlot');$('nsAnalysisCounts').replaceChildren(annualTable(network.nodes.find(n=>n.id===analysisContext.id)||{id:'missing',bindings:[]},true));$('nsCommonResult').hidden=true;$('nsAnalysisMessage').textContent='Sources changed. Reopen this analysis to refresh.';}renderCanvas();renderReview();if(editing)renderDrawer();});
   mountReview();render();
 }
 async function open(){

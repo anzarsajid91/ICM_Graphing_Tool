@@ -339,8 +339,11 @@ async function verifyFastPathFailureFallsBack(){
   }finally{await probe.close();}
 }
 
-async function verifyMixedSiblingImport(){
-  const probe=await context.newPage(),probeErrors=[],requestFailures=[];
+async function verifyMixedSiblingImport(workerDelayMs=0){
+  const isolated=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000},serviceWorkers:'block'});
+  privacy.attach(isolated);
+  const probe=await isolated.newPage(),probeErrors=[],requestFailures=[];
+  let delayedWorkerRequests=0;
   const site=new URL(baseUrl),fixedPaths=resourcePaths();
   const recordFailure=(request,status)=>{
     const url=new URL(request.url());
@@ -355,6 +358,13 @@ async function verifyMixedSiblingImport(){
   probe.on('console',message=>{if(message.type()==='error')probeErrors.push(message.text());});
   probe.on('pageerror',error=>probeErrors.push(String(error)));
   try{
+    if(workerDelayMs){
+      await probe.route('**/assets/analysis-worker.js*',async route=>{
+        delayedWorkerRequests++;
+        await new Promise(resolve=>setTimeout(resolve,workerDelayMs));
+        await route.continue();
+      });
+    }
     await privacy.navigate(probe,baseUrl+'?mixed_import='+Date.now(),{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
     await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
@@ -369,7 +379,8 @@ async function verifyMixedSiblingImport(){
     }));
     if(!result.validMapped||!result.summary.includes('1 parsed successfully'))throw new Error('Valid sibling did not remain usable after another file failed: '+JSON.stringify(result));
     if(probeErrors.length)throw new Error('Mixed sibling import produced browser errors: '+probeErrors.join(' | '));
-    return result;
+    if(workerDelayMs&&!delayedWorkerRequests)throw new Error('The delayed analysis worker request was not exercised.');
+    return {...result,workerDelayMs,delayedWorkerRequests};
   }catch(error){
     // Collect evidence from the synthetic probe before closing its page.
     const state=await probe.evaluate(()=>({
@@ -378,15 +389,16 @@ async function verifyMixedSiblingImport(){
       route:window.__ICM_PRECISION_WORKBENCH__?.route()||null,
       rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
     })).catch(()=>({unavailable:true}));
-    console.error('Mixed sibling import probe:',JSON.stringify({state,requestFailures,probeErrors}));
+    console.error('Mixed sibling import probe:',JSON.stringify({state,requestFailures,probeErrors,workerDelayMs,delayedWorkerRequests}));
     if(process.env.ICM_EVIDENCE_DIR){
       const dir=process.env.ICM_EVIDENCE_DIR;
       await fs.mkdir(dir,{recursive:true});
-      await probe.screenshot({path:path.join(dir,'mixed-import-failure.png'),fullPage:true})
+      const screenshot=workerDelayMs?'mixed-import-delayed-failure.png':'mixed-import-cold-failure.png';
+      await probe.screenshot({path:path.join(dir,screenshot),fullPage:true,timeout:5000})
         .catch(screenshotError=>console.error('Mixed import screenshot unavailable:',screenshotError.message));
     }
     throw error;
-  }finally{await probe.close();}
+  }finally{await isolated.close();}
 }
 
 async function inspectReportHtml(html,minFigures=1){
@@ -1310,6 +1322,7 @@ try{
   await writePerformanceEvidence();
   stage='mixed-success import isolation';
   performanceEvidence.mixedSiblingImport=await verifyMixedSiblingImport();
+  performanceEvidence.mixedSiblingImportDelayed=await verifyMixedSiblingImport(1200);
   await writePerformanceEvidence();
 
   stage='cold import baseline';
