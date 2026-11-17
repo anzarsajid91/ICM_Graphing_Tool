@@ -142,7 +142,7 @@ function svgContent(includeHandles=true){
     if(!shownIds.has(e.from)||!shownIds.has(e.to))continue;
     const route=routes.get(e.id);if(!route)continue;
     const a=byId.get(e.from),b=byId.get(e.to),c=C.colours[e.colour];
-    parts.push('<g data-ns-edge="'+html(e.id)+'" tabindex="0" role="button" aria-label="Connector '+html(e.name||a.name+' to '+b.name)+'"><path d="'+route.path+'" fill="none" stroke="transparent" stroke-width="14"/><path data-ns-wire="" d="'+route.path+'" fill="none" stroke="'+c+'" stroke-width="'+(e.id===selected?3:2)+'"/>'+(e.arrow!==false?'<polygon data-ns-direction="" points="'+route.arrow.map(p=>p.x+','+p.y).join(' ')+'" fill="'+c+'"/>':'')+(e.name?'<text data-ns-edge-label="" x="'+(route.label.x+Number(e.labelOffset?.x||0))+'" y="'+(route.label.y+Number(e.labelOffset?.y||0))+'" fill="'+c+'" font-size="13">'+html(e.name)+'</text>':'')+(detrimentLayer?detrimentBadge(e,comparison,route.label.x-10,route.label.y-5):'')+(includeHandles&&editing&&e.id===selected?route.points.slice(1,-1).map((p,i)=>'<circle data-ns-bend="'+i+'" cx="'+p.x+'" cy="'+p.y+'" r="7" fill="white" stroke="#087b82" stroke-width="2"/>').join('')+((e.bends||[]).length<32?route.points.slice(1).map((p,i)=>{const a=route.points[i],x=(a.x+p.x)/2,y=(a.y+p.y)/2;return '<g data-ns-add-bend="'+i+'" aria-label="Add bend"><circle cx="'+x+'" cy="'+y+'" r="8" fill="white" stroke="#087b82"/><path data-ns-handle="" d="M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6" stroke="#087b82" pointer-events="none"/></g>';}).join(''):''):'')+'</g>');
+    parts.push('<g data-ns-edge="'+html(e.id)+'" tabindex="0" role="button" aria-label="Connector '+html(e.name||a.name+' to '+b.name)+'"><path d="'+route.path+'" fill="none" stroke="transparent" stroke-width="14"/><path data-ns-wire="" d="'+route.path+'" fill="none" stroke="'+c+'" stroke-width="'+(e.id===selected?3:2)+'"/>'+(e.arrow!==false&&route.arrow.length?'<polygon data-ns-direction="" points="'+route.arrow.map(p=>p.x+','+p.y).join(' ')+'" fill="'+c+'"/>':'')+(e.name?'<text data-ns-edge-label="" x="'+(route.label.x+Number(e.labelOffset?.x||0))+'" y="'+(route.label.y+Number(e.labelOffset?.y||0))+'" fill="'+c+'" font-size="13">'+html(e.name)+'</text>':'')+(detrimentLayer?detrimentBadge(e,comparison,route.label.x-10,route.label.y-5):'')+(includeHandles&&editing&&e.id===selected?route.points.slice(1,-1).map((p,i)=>'<circle data-ns-bend="'+i+'" cx="'+p.x+'" cy="'+p.y+'" r="7" fill="white" stroke="#087b82" stroke-width="2"/>').join('')+((e.bends||[]).length<32?route.points.slice(1).map((p,i)=>{const a=route.points[i],x=(a.x+p.x)/2,y=(a.y+p.y)/2;return '<g data-ns-add-bend="'+i+'" aria-label="Add bend"><circle cx="'+x+'" cy="'+y+'" r="8" fill="white" stroke="#087b82"/><path data-ns-handle="" d="M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6" stroke="#087b82" pointer-events="none"/></g>';}).join(''):''):'')+'</g>');
   }
   for(const n of network.nodes){
     if(!shownIds.has(n.id))continue;
@@ -209,7 +209,7 @@ function renderCanvas(){
     const replacement=[...svg.children].find(group=>group.dataset[key]===focused.dataset[key]);
     replacement?.focus({preventScroll:true});
   }
-  $('nsZoom').textContent=Math.round(network.camera.zoom*100)+'%';$('nsUndo').disabled=!history.length||busy;
+  $('nsZoom').textContent=Number((network.camera.zoom*100).toFixed(1))+'%';$('nsUndo').disabled=!history.length||busy;
   renderPopup();
   applyDecorations();
 }
@@ -228,12 +228,13 @@ function fit(){
     for(const p of network.edges.flatMap(e=>e.bends||[])){xs.push(p.x*z);ys.push(p.y*z);}
     return {left:Math.min(...xs),right:Math.max(...xs),top:Math.min(...ys),bottom:Math.max(...ys)};
   };
-  let z=Math.max(.2,Math.min(2,(d.width-160)/Math.max(200,right-left),(d.height-150)/Math.max(180,bottom-top))),box;
-  for(let i=0;i<8;i++){box=scene(z);const ratio=Math.min(1,(d.width-40)/Math.max(1,box.right-box.left),(d.height-70)/Math.max(1,box.bottom-box.top));if(ratio>.999||z===.2)break;z=Math.max(.2,z*ratio);}
+  const minZoom=network.contextFormat ? .002 : .2;
+  let z=Math.max(minZoom,Math.min(2,(d.width-160)/Math.max(200,right-left),(d.height-150)/Math.max(180,bottom-top))),box;
+  for(let i=0;i<8;i++){box=scene(z);const ratio=Math.min(1,(d.width-40)/Math.max(1,box.right-box.left),(d.height-70)/Math.max(1,box.bottom-box.top));if(ratio>.999||z===minZoom)break;z=Math.max(minZoom,z*ratio);}
   box=scene(z);network.camera={zoom:z,x:d.width/2-(box.left+box.right)/2,y:(d.height-30)/2-(box.top+box.bottom)/2};changed(true);
 }
 function zoom(factor,anchor){
-  const d=dimensions(),p=anchor||{x:d.width/2,y:d.height/2},before=world(p.x,p.y),z=Math.max(.2,Math.min(4,network.camera.zoom*factor));
+  const d=dimensions(),p=anchor||{x:d.width/2,y:d.height/2},before=world(p.x,p.y),z=Math.max(network.contextFormat ? .002 : .2,Math.min(4,network.camera.zoom*factor));
   network.camera={zoom:z,x:p.x-before.x*z,y:p.y-before.y*z};changed(true);
 }
 function renderFilters(){

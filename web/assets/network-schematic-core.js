@@ -61,12 +61,20 @@ function connectionRoutes(nodes,edges,project=v=>v){
   }
   for(const e of edges){
     const pair=ports.get(e.id);if(!pair)continue;
-    const start=pair.get(e.from),end=pair.get(e.to),bends=waypoints.get(e.id),points=[start,...bends,end],pa=positions.get(e.from),pb=positions.get(e.to);
-    const segments=points.slice(1).map((p,i)=>({a:points[i],b:p,length:Math.hypot(p.x-points[i].x,p.y-points[i].y)})),length=segments.reduce((s,p)=>s+p.length,0);
-    if(length<12||(!bends.length&&((end.x-start.x)*(pb.x-pa.x)+(end.y-start.y)*(pb.y-pa.y))<=0))continue;
+    let start=pair.get(e.from),end=pair.get(e.to);
+    const bends=waypoints.get(e.id),pa=positions.get(e.from),pb=positions.get(e.to);
+    let points=[start,...bends,end];
+    const segmentLengths=()=>points.slice(1).map((p,i)=>({a:points[i],b:p,length:Math.hypot(p.x-points[i].x,p.y-points[i].y)}));
+    let segments=segmentLengths(),length=segments.reduce((s,p)=>s+p.length,0);
+    if(length<12||(!bends.length&&((end.x-start.x)*(pb.x-pa.x)+(end.y-start.y)*(pb.y-pa.y))<=0)){
+      if(!e.contextSource)continue;
+      // Imported geometry survives when fixed-size symbols overlap at overview scale.
+      start=pa;end=pb;points=[start,...bends,end];
+      segments=segmentLengths();length=segments.reduce((s,p)=>s+p.length,0);
+    }
     const along=fraction=>{let remaining=length*fraction;for(const s of segments){if(!s.length)continue;if(remaining<=s.length){const ux=(s.b.x-s.a.x)/s.length,uy=(s.b.y-s.a.y)/s.length;return {x:s.a.x+ux*remaining,y:s.a.y+uy*remaining,ux,uy,size:Math.min(10,s.length/2)};}remaining-=s.length;}return {x:end.x,y:end.y,ux:1,uy:0,size:10};};
     const tip=along(.72),middle=along(.5),{ux,uy,size}=tip;
-    routes.set(e.id,{start,end,points,path:points.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(''),label:{x:middle.x-middle.uy*10,y:middle.y+middle.ux*10},arrow:[{x:tip.x,y:tip.y},{x:tip.x-ux*size-uy*4,y:tip.y-uy*size+ux*4},{x:tip.x-ux*size+uy*4,y:tip.y-uy*size-ux*4}]});
+    routes.set(e.id,{start,end,points,path:points.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(''),label:{x:middle.x-middle.uy*10,y:middle.y+middle.ux*10},arrow:length<12?[]:[{x:tip.x,y:tip.y},{x:tip.x-ux*size-uy*4,y:tip.y-uy*size+ux*4},{x:tip.x-ux*size+uy*4,y:tip.y-uy*size-ux*4}]});
   }
   return routes;
 }
@@ -162,7 +170,7 @@ function validateNetwork(value){
   for(const e of result.edges){if(e.labelOffset&&![e.labelOffset.x,e.labelOffset.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=10000))throw new Error('Invalid connector label placement.');if(e.review&&(typeof e.review.comment!=='string'||e.review.comment.length>10000||!['unreviewed','in-review','reviewed'].includes(e.review.status)))throw new Error('Invalid connector review.');}
   result.views=result.views||[];result.reviewSnapshots=result.reviewSnapshots||[];
   if(!Array.isArray(result.views)||result.views.length>30||!Array.isArray(result.reviewSnapshots)||result.reviewSnapshots.length>20)throw new Error('Invalid saved review views.');
-  for(const view of result.views)if(typeof view.name!=='string'||view.name.length>100||!Array.isArray(view.positions)||view.positions.length>2000||!view.camera||![view.camera.x,view.camera.y,view.camera.zoom].every(Number.isFinite)||view.camera.zoom<.2||view.camera.zoom>4||view.positions.some(p=>typeof p.id!=='string'||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)))throw new Error('Invalid saved view.');
+  for(const view of result.views)if(typeof view.name!=='string'||view.name.length>100||!Array.isArray(view.positions)||view.positions.length>2000||!view.camera||![view.camera.x,view.camera.y,view.camera.zoom].every(Number.isFinite)||view.camera.zoom<.002||view.camera.zoom>4||view.positions.some(p=>typeof p.id!=='string'||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)))throw new Error('Invalid saved view.');
   for(const view of result.views){
     if(view.edges!==undefined&&(!Array.isArray(view.edges)||view.edges.length>5000)||view.evidenceMode!==undefined&&!['single','combined'].includes(view.evidenceMode)||view.metric!==undefined&&!['spill_count','duration_hours'].includes(view.metric))throw new Error('Invalid saved view display.');
     const test={...result,views:[],reviewSnapshots:[],camera:view.camera,preferences:view.preferences||result.preferences};
@@ -173,7 +181,7 @@ function validateNetwork(value){
   for(const saved of result.reviewSnapshots)if(typeof saved.name!=='string'||saved.name.length>100||typeof saved.saved_at!=='string'||!saved.network||!Array.isArray(saved.network.nodes)||!Array.isArray(saved.network.edges)||saved.network.nodes.length>2000||saved.network.edges.length>5000)throw new Error('Invalid review snapshot.');
   for(const saved of result.reviewSnapshots){if(saved.network.views?.length||saved.network.reviewSnapshots?.length)throw new Error('Nested review snapshots are unsupported.');saved.network=validateNetwork(saved.network);}
   result.camera=result.camera||{x:0,y:0,zoom:1};
-  if(![result.camera.x,result.camera.y,result.camera.zoom].every(Number.isFinite)||result.camera.zoom<.2||result.camera.zoom>4)throw new Error('Invalid schematic camera.');
+  if(![result.camera.x,result.camera.y,result.camera.zoom].every(Number.isFinite)||result.camera.zoom<.002||result.camera.zoom>4)throw new Error('Invalid schematic camera.');
   return result;
 }
 function readContextRow(line,lineNumber){

@@ -40,6 +40,20 @@ try{
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   await page.getByRole('button',{name:'Clear comparison'}).click();
   assert.equal(await table.isVisible(),false);
+  const disclose=page.getByText('Calculate gradient from ICM conduit fields',{exact:true});
+  await disclose.click();
+  await page.locator('#pipeUseInvertGradient').click();
+  assert.match(await result.innerText(),/Enter both invert levels/);
+  const form=page.locator('#pipeCapacityForm');
+  await form.locator('[name="usInvert"]').fill('100');
+  await form.locator('[name="dsInvert"]').fill('99');
+  await form.locator('[name="conduitLength"]').fill('200');
+  await page.locator('#pipeUseInvertGradient').click();
+  assert.equal(Number(await form.locator('[name="gradient"]').inputValue()),0.005);
+  assert.match(await result.innerText(),/Calculated gradient applied/);
+  await form.locator('[name="dsInvert"]').fill('101');
+  await page.locator('#pipeUseInvertGradient').click();
+  assert.match(await result.innerText(),/outside the supported/);
   privacy.assertClean();
   console.log('Hydraulic capacity, two normal depths, comparison, local export and narrow layout passed.');
 }finally{try{await writeControlEvidence?.();}finally{await browser.close();}}

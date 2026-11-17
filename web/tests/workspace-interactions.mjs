@@ -142,6 +142,19 @@ try{
   const comment=page.locator('#assessmentDrawer-fdv .weekly-comment');await comment.fill('Camera regression draft');
   await page.locator('[data-schematic-zoom="1"][data-schematic-kind="fdv"]').click();
   await navigate('survey','rainfall-check');await navigate('survey','fdv-check');assert.equal(await comment.inputValue(),'Camera regression draft');
+  for(const [name,w,p] of [
+    ['Assess spills','spills','assessment'],['Compare detriment scenarios','detriment','flooding'],
+    ['Open reports','reports','report-generation'],['Restore workspace','reports','workspace'],
+    ['Review flow survey','survey','fdv-check'],['Run hydraulic calculations','hydraulics','capacity'],
+  ]){
+    await page.locator('.pw-primary-nav button[data-workspace="home"]').click();
+    await page.getByRole('link',{name,exact:true}).click();
+    await page.waitForFunction(([w,p])=>{
+      const route=window.__ICM_PRECISION_WORKBENCH__.route();
+      return route.workspace===w&&route.page===p;
+    },[w,p]);
+    evidence.navigation.push({workspace:w,tab:p,via:'Home shortcut: '+name});
+  }
   assert.deepEqual(errors,[]);
   evidence.url=page.url();evidence.errors=errors;
   if(process.env.ICM_EVIDENCE_DIR){const dir=process.env.ICM_EVIDENCE_DIR+'/workspace-interactions';await fs.mkdir(dir,{recursive:true});await fs.writeFile(dir+'/'+browserName+'.json',JSON.stringify(evidence,null,2));await page.setViewportSize({width:1440,height:1000});await navigate('survey','fdv-check');await page.locator('#assessmentSchematicViewport-fdv').scrollIntoViewIfNeeded();await page.screenshot({path:dir+'/'+browserName+'.png',fullPage:false});}
