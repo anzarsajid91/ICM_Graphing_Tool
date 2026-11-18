@@ -2,13 +2,16 @@
 
 Status on 2026-11-18: **acceptance review remains open**.
 
-The tested product candidate is `9f4d5b215f925c219c0bce5b5713f6d440e78a33`
+The latest tested product commit is `23f502cfa5f869063940687b9438bd275f068521`
 on [PR #108](https://github.com/anzarsajid91/ICM_Graphing_Tool/pull/108).
 All fourteen required checks and the separate CodeQL finding gate passed.
-The [candidate workflow](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44160522774)
+The [product workflow](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44264397252)
 passed Chromium graph/assessment, survey, Detriment and release regression checks,
-Firefox shell, browser interactions and performance comparison. Its packaged
-preview retained every tested file.
+Firefox shell, expanded browser interactions and performance comparison.
+The subsequent QA checkpoint completes the original control matrix and adds
+survey process and offline report assertions; its own final-head CI remains required.
+Earlier product `9f4d5b2` evidence remains bounded to the unchanged controls and
+methods it exercised, as identified below.
 
 The schematic and annual print report now assign project text through native DOM.
 The SVG download serializes the SVG node. CodeQL reports no new alerts in the PR.
@@ -20,10 +23,8 @@ included in the v2 branch.
 
 [The control matrix](hydrabench-v2-control-results.csv) records 743 route/control
 identities from the two synthetic CI artifacts, including 691 observed enabled.
-The matrix currently reconciles 718 identities to passing assertions or executed
-keyboard disclosure checks. The other 25 are explicitly BLOCKED pending
-per-control assertion reconciliation or a prerequisite-state outcome check.
-These rows include disabled states and repeated shared controls. The matrix does
+The matrix currently reconciles 738 identities to passing assertions or executed
+keyboard disclosure checks. Five entries are NOT APPLICABLE: empty transient download anchors created by the local export helper, not independent user controls. No button/link/disclosure identity remains BLOCKED. Disabled and repeated shared controls are included in the passing assertions. The matrix does
 not infer failure from a missing activation, or acceptance from a recorded click.
 The inventory covers buttons, links and disclosures. Input and conditional-state
 coverage also requires reconciliation with the workflow tests.
@@ -82,7 +83,7 @@ The browser-interactions job now executes the focused control suites and the rou
 
 Shared period and section acceptance passed 27 outcomes per browser across eleven routes. Synthetic date traces isolate the shared callback: both analysis bounds and change notifications are asserted. Every initially visible section control is exercised with content visibility and expanded-state checks. Source selection/removal passed 18 outcomes per browser: all/none selections, sixteen exact source removals, removed options and unchanged sibling identities/hashes. All imports use generated synthetic CSV/FDV/R content; inventory filenames do not imply use of original engineering files.
 
-The follow-up checkpoint `0ae6d9d` exposed a new CodeQL high finding in the network test evidence writer (predictable temporary path). The writer now creates a unique private evidence directory; both desktop network suites passed again. The finding remains unresolved until fresh CodeQL confirms the repair on the next commit. Other repository-wide alert-list access still returns HTTP 403; Dependabot alerts remain disabled.
+The follow-up checkpoint `0ae6d9d` exposed a new CodeQL high finding in the network test evidence writer (predictable temporary path). The writer now creates a unique private evidence directory; both desktop network suites passed again. The CodeQL finding gate subsequently passed on 979f371 and on product commit 23f502c, confirming the repair. Other repository-wide alert-list access still returns HTTP 403; Dependabot alerts remain disabled.
 
 Expanded Detriment acceptance covers report mapping/preview keyboard disclosures, level calculation/list clearing, Inspect evidence, full and filtered spill exports, exact selected IDs and close/focus restoration. Clearing a list restores the prior view filter; the test asserts that existing behavior. Both desktop browsers are required in the CI control loop.
 
@@ -95,3 +96,13 @@ Security impact review against 979f371: runtime.release.js changes fixed channel
 The data/process suite passed 17 outcomes (16 distinct matrix identities) in each desktop browser on the reviewed working tree after 979f371. It uses real local synthetic CSV/FDV/R imports, holds one real addFile reply for deterministic preview checks, and verifies actual clipboard bytes (Chromium read permission granted; Firefox paste). Custom selection/point events use existing normal handlers with synthetic event payloads. Independent expectations include 9.6 mm cumulative rainfall and one spill with 26 minutes of duration. Full Python rerun: 353 PASS; privacy: 28 PASS; all JavaScript unit suites PASS, including the new renderer fallback and FDV caption regressions. New exact-commit browser/security CI remains required.
 
 Checkpoint 979f371 passed the CodeQL finding gate after the private evidence-directory fix. The browser-interactions job passed the expanded two-browser control loop. Its full browser-smoke and baseline-performance jobs were still running when the next product-fix checkpoint was prepared; this is not final-head release evidence. Repository-wide open alert lists remain inaccessible and Dependabot alerts disabled.
+
+## Final control reconciliation checkpoint
+
+The 743 original button/link/disclosure identities now reconcile to 738 PASS and five NOT APPLICABLE internal download carriers. The latter have no caption or independent action: the existing downloadBlob helper creates a local Blob link, clicks it automatically and removes it after one second. Captured report/Detriment surface metadata identifies downloadAnchor=true; network JSON/SVG exports call the same helper. Their initiating export buttons retain their actual content assertions. This classification does not waive an export check.
+
+Real survey process acceptance passed eleven outcomes per browser, including all four complete-survey origins, independent 2016-interval trapezoidal continuity from 2017 FDV boundary samples, 60,480 m³ for each upstream and 120,960 m³ downstream, ratio 1, actual calculated Green selection, recorded review metadata/marker, unchanged calculation JSON and monthly disclosure. Native report controls passed ten outcomes per browser on an actual generated self-contained report: two zoom buttons, reset, autoscale, mouse pan/zoom, matching box/lasso selections containing the actual targeted sample, a valid PNG and notification dismissal. Exported trace coordinates are unchanged.
+
+The complete synthetic browser regression passed on 23f502c, including cold/delayed mixed siblings, normal survey/spill/storage calculations, dense adaptive graphs, exports and workspace restoration. Its request observer checked 491 requests with zero violations. Browser-smoke now calls the report assertions on the actual generated report; Firefox separately reads that same synthetic artifact. The runner installs the same locked Firefox version already used by other jobs. The survey process suite joins the existing two-browser control loop. These QA-only changes preserve all action pins, permissions, runner images, branch/environment restrictions, mandatory checks, failure behavior and retention. New document metadata is recorded only by the synthetic QA helper; application runtime and destinations are unchanged in this QA checkpoint.
+
+Input/conditional-state coverage remains under reconciliation. The existing empty-state inventory contains 216 visible input/select/textarea route identities; populated workflow tests additionally exercise conditional fields. Native operating-system directory dialog interaction remains outside headless evidence. No universal all-input/all-environment claim is made. Repository-wide Code/Secret Scanning access still returned HTTP 403 after the owner acknowledgement; Dependabot alerts are still disabled. Fresh CI on the final QA commit and those security-review dependencies remain required.

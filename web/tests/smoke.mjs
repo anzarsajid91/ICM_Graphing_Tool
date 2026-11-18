@@ -3,6 +3,7 @@ import {recordControls,observeControls} from './uiux-evidence.mjs';
 import {installPrivacyGuard,resourcePaths} from './privacy-network.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {assertReportActionSpacing} from './report-layout.mjs';
+import {verifyReportControls} from './report-controls-acceptance.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -401,6 +402,7 @@ async function verifyMixedSiblingImport(workerDelayMs=0){
   }finally{await isolated.close();}
 }
 
+let reportControlsVerified=false;
 async function inspectReportHtml(html,minFigures=1){
   const p=await context.newPage();
   const reportErrors=[],reportFailedRequests=[];
@@ -447,6 +449,7 @@ async function inspectReportHtml(html,minFigures=1){
         minFigures,
       };
     },minFigures);
+    if(!reportControlsVerified&&minFigures===3){await verifyReportControls(p,dir||'/tmp/hydra-report-controls');reportControlsVerified=true;}
     if(dir)await p.screenshot({path:path.join(dir,`report-${minFigures}-figures.png`),fullPage:true});
     await p.emulateMedia({media:'print'});
     const print=await p.evaluate(()=>{

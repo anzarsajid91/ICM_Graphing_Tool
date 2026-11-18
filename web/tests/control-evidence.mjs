@@ -7,9 +7,10 @@ export async function trackControls(context, file) {
   const folder=process.env.ICM_EVIDENCE_DIR;
   if(!folder)return;
   const records=new Map();
-  await context.exposeBinding('recordHydraControl',(_,route,id,action)=>{
+  await context.exposeBinding('recordHydraControl',(_,route,id,action,surface)=>{
     const key=JSON.stringify([route,id]);
-    const row=records.get(key)||{route,id,enabled:false,disabled:false,activations:0};
+    const row=records.get(key)||{route,id,enabled:false,disabled:false,activations:0,surfaces:[]};
+    if(surface&&!row.surfaces.some(item=>JSON.stringify(item)===JSON.stringify(surface)))row.surfaces.push(surface);
     if(action==='activate')row.activations++;
     else if(action==='enabled')row.enabled=true;
     else row.disabled=true;
@@ -34,7 +35,13 @@ export async function trackControls(context, file) {
       const key=JSON.stringify([where,control,action]);
       if(action!=='activate'&&seen.has(key))return;
       seen.add(key);
-      void window.recordHydraControl(where,control,action);
+      const surface={
+        title:document.title,
+        documentKind:location.protocol==='blob:'?'local-blob':location.protocol==='about:'?'local-about':'application',
+        downloadAnchor:element.tagName==='A'&&element.hasAttribute('download'),
+        tag:element.tagName,
+      };
+      void window.recordHydraControl(where,control,action,surface);
     };
     const scan=()=>{
       for(const button of document.querySelectorAll(selector)){
