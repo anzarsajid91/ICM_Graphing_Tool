@@ -226,12 +226,13 @@ function nativeContextText(name,text){
   // Separate-table exports identify the section in the filename.
   const table=/(?:^|_)(node|conduit|pump|weir|sluice|screen|user_control|orifice|flap_valve|outlet|subcatchment|deletes)\.csv$/i.exec(name)?.[1];
   if(table)return '**** '+(table.toLowerCase()==='deletes'?'deletes':'hw_'+table.toLowerCase())+'\n'+text;
-  const lines=text.trimStart().split(/\r?\n/);
-  const header=readContextRow(lines[0],1).map(value=>value.trim().toLowerCase());
+  const records=splitNativeRecords(text).filter(record=>record.line.trim());
+  const first=records[0];
+  const header=first?readContextRow(first.line,first.row).map(value=>value.trim().toLowerCase()):[];
   const typeColumn=header.indexOf('objecttable');
   if(typeColumn>=0){
-    const types=new Set(lines.slice(1).filter(line=>line.trim()).map((line,index)=>
-      readContextRow(line,index+2)[typeColumn]?.trim().toLowerCase()).filter(value=>/^hw_[a-z0-9_]+$/.test(value||'')));
+    const types=new Set(records.slice(1).map(({line,row})=>
+      readContextRow(line,row)[typeColumn]?.trim().toLowerCase()).filter(value=>/^hw_[a-z0-9_]+$/.test(value||'')));
     if(types.size===1)return '**** '+[...types][0]+'\n'+text;
     if(!types.size)return '**** hw_empty_table\n'+text;
   }
@@ -310,15 +311,17 @@ function importNativeContext(input){
         /^(?:(?:us|upstream)[ _]node[ _]id)$/i.test(key)&&/^link[ _]suffix$/i.test(row.link_suffix);
       const units=!key&&(section==='hw_node'?coordinateTokens.every(token=>lengthUnit.test(token)):lengthUnit.test(lengthToken));
       const marker=row.objecttable?.toLowerCase();
-      if(marker==='userunits'){
+      if(marker==='userunits'||units){
         for(const [keys,expected] of [
-          [['x','y','ground_level','chamber_floor','conduit_length','us_invert','ds_invert'],'m'],
+          [['x','y','ground_level','chamber_floor','conduit_length','us_invert','ds_invert','point_array'],'m'],
           [['conduit_width','conduit_height','bottom_roughness_cw','top_roughness_cw','sediment_depth'],'mm'],
           [['gradient'],'m/m'],
         ])for(const field of keys){
-          if(!['hw_node','hw_conduit'].includes(section))continue;
+          if(!['hw_node','hw_conduit'].includes(section)&&field!=='point_array')continue;
           const unit=row[field]?.toLowerCase();
-          if(unit&&unit!==expected&&!(expected==='m'&&unit==='m ad'))
+          const accepted=unit===expected||expected==='m'&&/^(?:m ad|metres?|meters?)$/.test(unit)||
+            expected==='mm'&&/^(?:millimetres?|millimeters?)$/.test(unit);
+          if(unit&&!accepted)
             fail('unsupported declared units for '+field+' (expected '+expected+').');
         }
       }

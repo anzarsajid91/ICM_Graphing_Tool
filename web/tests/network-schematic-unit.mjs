@@ -147,12 +147,20 @@ assert.equal(split.network.edges[0].from,'Up');
 assert.equal(split.network.edges[0].to,'Out');
 assert.match(split.warnings.join(' '),/description or unit rows were skipped/);
 assert.equal(split.network.edges[1].icm.table,'hw_weir');
+assert.throws(()=>C.importNativeContext([{name:'export_node.csv',text:separateNodes.replace(',,m,m',',,ft,ft')}]),/unsupported declared units for x/);
+assert.throws(()=>C.importNativeContext([
+  {name:'export_node.csv',text:separateNodes},
+  {name:'export_conduit.csv',text:separateLinks.replace(',,,m',' ,,,ft')},
+]),/unsupported declared units for conduit_length/);
 assert.throws(()=>C.importNativeContext(nativeCsv.replace('Up,350000','Up,invalid')),/invalid numeric field x/);
 const withDefaultHeaders=nativeCsv.replace('node_id,x,y,node_type,ground_level',
   'ObjectTable,node_id,x,y,node_type,ground_level\nFieldDescription,Node ID,x,y,Node type,Ground level\nUserUnits,,m,m,,m AD')
   .replace('\nUp,','\nhw_node,Up,').replace('\nOut,','\nhw_node,Out,');
 assert.equal(C.importNativeContext(withDefaultHeaders).network.nodes.length,2);
 assert.throws(()=>C.importNativeContext(withDefaultHeaders.replace('UserUnits,,m,m','UserUnits,,ft,ft')),/unsupported declared units/);
+const geometryUnits=nativeCsv.replace('\nUP,1,OUT,','\nUserUnits,,,,,,,,,,,,,,,ft\nhw_conduit,UP,1,OUT,')
+  .replace('**** hw_conduit\nus_node_id','**** hw_conduit\nObjectTable,us_node_id');
+assert.throws(()=>C.importNativeContext(geometryUnits),/unsupported declared units for point_array/);
 const trial=C.conduitTrial(native.network.edges[0]);
 assert.equal(trial.diameter,450);
 assert.equal(trial.gradient,.005);
@@ -176,6 +184,8 @@ const explorerFixture=[
   ...componentTables.map((table,index)=>({name:'explorer_'+table+'.csv',
     text:'ObjectTable,us_node_id,ds_node_id,link_suffix,custom_rating\nUserUnits,,,,unit-as-exported\nhw_'+table+',UP,DOWN,'+(index+1)+'," 03.50 "'})),
 ];
+const renamedFixture=explorerFixture.map((item,index)=>({...item,name:'renamed-'+index+'.csv'}));
+assert.equal(C.importNativeContext(renamedFixture).network.nodes[1].sourceAttributes.fields.at(-1).value,'line one\nline two');
 const explorerImport=C.importNativeContext(explorerFixture).network;
 assertJSON(explorerImport.nodes.map(n=>n.type),['manhole','outfall']);
 assert.equal(explorerImport.edges.length,componentTables.length);
