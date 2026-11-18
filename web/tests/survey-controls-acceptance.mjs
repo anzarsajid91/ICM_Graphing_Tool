@@ -697,6 +697,30 @@ try {
       );
     }
   }
+  // Isolated two-week UI fixture for the remaining filter/select inputs.
+  await page.evaluate(()=>{
+    const wb=window.__ICM_WORKBENCH__,s=wb.survey;
+    const weeks=rag=>[{start:'2026-08-24T00:00:00',end:'2026-08-31T00:00:00',week_ending:'2026-08-30',rag:'Green',coverage_percent:100},{start:'2026-08-31T00:00:00',end:'2026-09-07T00:00:00',week_ending:'2026-09-06',rag,coverage_percent:100}];
+    s.reviews={};s.reviewLedger=[];s.selectedWeeks={};s.reviewContext={kind:'monitor-week',name:null,weekKey:null,drawerTab:'overview',exceptionsOnly:false,search:'',zoom:{fdv:1,rain:1}};
+    s.association={records:[{monitor:'FM01',rain_gauge:'RG01',diameter_mm:600,upstream:[]},{monitor:'FM02',rain_gauge:'RG02',diameter_mm:600,upstream:['FM01']}]};
+    s.batch={monitors:['FM01','FM02'].map((monitor,i)=>({monitor,status:'complete',rain_gauge:'RG0'+(i+1),weekly:{weeks:weeks(i?'Red':'Green')},event_response:{rows:[]},contracts:{}})),network:{gauge_count:2,gauge_summary:['RG01','RG02'].map((gauge,i)=>({gauge,status:i?'Red':'Green',operational_coverage_percent:100,event_strike_count:0})),gauge_weekly:['RG01','RG02'].flatMap((gauge,i)=>weeks(i?'Red':'Green').map(row=>({gauge,...row}))),candidate_wapug_events:[],qualified_wapug_events:[]},volume_balance:{rows:[],summary:{}},analysis_controls:{}};
+    s.schematicWeek='2026-09-06';s.batchSignature=wb.surveyDependencySignature('complete');wb.workflow26.render();
+  });
+  for(const [route,suffix,prefix] of [['fdv-check','fdv','FM'],['rainfall-check','rain','RG']]){
+    await navigate(route);const names=()=>page.locator('#assessmentMatrix-'+suffix+' tbody tr > th').allTextContents();
+    await page.locator('#assessmentSearch-'+suffix).fill(prefix.toLowerCase()+'01');assert.deepEqual(await names(),[prefix+'01']);
+    await page.locator('#assessmentSearch-'+suffix).fill('no-matching-synthetic-id');assert.deepEqual(await names(),[]);
+    await page.locator('#assessmentSearch-'+suffix).fill('');assert.deepEqual(await names(),[prefix+'01',prefix+'02']);
+    record(route,'#assessmentSearch-'+suffix,'Filter actual matrix rows case-insensitively, show zero results and restore on clear','Exactly '+prefix+'01 selected, zero-match state, then both synthetic rows restored; injected UI ratings only.');
+    await page.locator('#assessmentExceptions-'+suffix).check();assert.deepEqual(await names(),[prefix+'02']);
+    await page.locator('#assessmentExceptions-'+suffix).uncheck();assert.deepEqual(await names(),[prefix+'01',prefix+'02']);
+    record(route,'#assessmentExceptions-'+suffix,'Show only genuine exception rows across the two-week fixture and restore all rows','Only '+prefix+'02 has a Red week; all-Green '+prefix+'01 excluded; clearing restores both.');
+    await page.locator('#assessmentWeek-'+suffix).selectOption('2026-08-30');
+    const node=page.locator('#assessmentSchematic-'+suffix+' ['+(suffix==='fdv'?'data-survey-node':'data-survey-gauge')+'="'+prefix+'02"]');
+    assert.match(await node.getAttribute('aria-label'),/Green/);
+    await page.locator('#assessmentWeek-'+suffix).selectOption('2026-09-06');assert.match(await node.getAttribute('aria-label'),/Red/);
+    record(route,'#assessmentWeek-'+suffix,'Select specific weeks and change the associated schematic rating','Older week Green; newer week Red for '+prefix+'02; two-week synthetic UI fixture, no engineering calculation claim.');
+  }
   assert.deepEqual(errors, []);
   privacy.assertClean();
   const artifact = await writeEvidence(

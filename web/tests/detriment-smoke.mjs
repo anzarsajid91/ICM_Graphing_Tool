@@ -70,6 +70,8 @@ try{
   await field('threshold').fill('5');
   let r=await run();assert.equal(r.summary.detriment,1);assert.equal(r.summary.matched,4);assert.equal(r.summary.unresolved,2);assert.equal(r.rows.find(x=>x.asset_id==='001').delta,6);assert.equal(r.rows.find(x=>x.asset_id==='004').status,'risk');
   await sourceDisclosures();
+  await field('new_flooding_policy').selectOption('any_new_flooding');r=await run();assert.equal(r.rows.find(row=>row.asset_id==='002').status,'detriment');assert.equal(r.rows.find(row=>row.asset_id==='002').delta,.4);
+  await field('new_flooding_policy').selectOption('tolerance');r=await run();assert.equal(r.rows.find(row=>row.asset_id==='002').status,'risk');console.log('DETRIMENT_INPUT_PASS new_flooding_policy');
   assert.equal(await page.locator('#dtTable tbody tr').count(),1);
   // Applied lists scope every view; editing the draft alone does not alter evidence.
   const unfiltered=await page.evaluate(()=>JSON.stringify(window.ICMDetriment.result()));
@@ -145,6 +147,11 @@ try{
   await page.getByText('Separate common ground-level table (optional)',{exact:true}).click();await selectReport('ground','ground.csv');r=await run();assert.equal(r.rows[0].freeboard_b,.35);
   await route('spill');await selectReport('a','spill-a.csv');await selectReport('b','spill-b.csv');await scope();await field('period_start').fill('2025-01-01');await field('period_end').fill('2026-01-01');await field('template').fill('UK12/24 identical threshold and integral');
   r=await run();assert.equal(r.rows[0].delta,3);assert.equal(r.rows[0].duration_delta_hours,4);assert.equal(r.rows[1].status,'risk');assert.ok(r.rows[1].flags.includes('mixed_result'));
+  await field('count_tolerance').fill('3');await field('duration_tolerance_hours').fill('4');await field('spill_combination_policy').selectOption('either_criterion');r=await run();
+  let policyRow=r.rows.find(row=>row.asset_id==='CSO01');assert.equal(policyRow.count_status,'risk');assert.equal(policyRow.duration_status,'risk');assert.equal(policyRow.status,'risk');
+  policyRow=r.rows.find(row=>row.asset_id==='CSO02');assert.equal(policyRow.count_status,'improvement');assert.equal(policyRow.duration_status,'detriment');assert.equal(policyRow.status,'detriment');
+  await field('spill_combination_policy').selectOption('count_primary');r=await run();assert.equal(r.rows.find(row=>row.asset_id==='CSO02').status,'improvement');
+  await field('count_tolerance').fill('0');await field('duration_tolerance_hours').fill('0');await field('spill_combination_policy').selectOption('legacy');r=await run();assert.equal(r.rows.find(row=>row.asset_id==='CSO02').status,'risk');console.log('DETRIMENT_INPUT_PASS count_tolerance duration_tolerance_hours spill_combination_policy');
   await page.locator('#dtAssetIds').fill('CSO02');await page.click('#dtApplyIds');
   assert.deepEqual(await page.locator('#dtTable tbody tr td:first-child').allTextContents(),['CSO02']);
   for(const id of ['dtChart','dtDurationChart'])assert.deepEqual(await page.locator('#'+id).evaluate(el=>el.data[0].y),['CSO02']);

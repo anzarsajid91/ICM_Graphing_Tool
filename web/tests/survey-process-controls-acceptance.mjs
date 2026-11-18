@@ -129,6 +129,16 @@ try {
       route,
     );
   };
+  await page.evaluate(() => {
+    window.surveyInputCalls = [];
+    const original = engine.call.bind(engine);
+    engine.call = async (name, args, ...rest) => {
+      const values = await original(name, args, ...rest);
+      if (name === "professional_survey_batch_result")
+        window.surveyInputCalls.push({ ...args });
+      return values;
+    };
+  });
   for (const route of [
     "fdv-check",
     "rainfall-check",
@@ -136,6 +146,22 @@ try {
     "monthly-review",
   ]) {
     await navigate(route);
+    const variant = [
+      "fdv-check",
+      "rainfall-check",
+      "volume-balance",
+      "monthly-review",
+    ].indexOf(route);
+    const population = variant % 2 ? "under50" : "over50",
+      tolerance = 7 + variant,
+      cutoff = variant % 2 === 0;
+    const assessmentSettings = page.locator("#surveyAssessmentSettings");
+    if (!(await assessmentSettings.evaluate((el) => el.open)))
+      await assessmentSettings.locator(":scope > summary").click();
+    await page.locator("#surveyPopulation").selectOption(population);
+    await page.locator("#surveyBalanceTolerance").fill(String(tolerance));
+    await page.locator("#surveyBalanceTolerance").press("Tab");
+    await page.locator("#surveyApplyFaultCutoff").setChecked(cutoff);
     const complete = page.locator("#completeSurveyPanel"),
       toggle = complete.locator(".tool-collapse-toggle").first();
     if (
@@ -187,6 +213,21 @@ try {
       ),
       true,
     );
+    const supplied = await page.evaluate(() => window.surveyInputCalls.at(-1));
+    assert.equal(supplied.population_above_50k, population === "over50");
+    assert.equal(supplied.amber_tolerance_percent, tolerance);
+    assert.equal(supplied.apply_fault_cutoff, cutoff);
+    for (const [control, value] of [
+      ["#surveyPopulation", population],
+      ["#surveyBalanceTolerance", tolerance],
+      ["#surveyApplyFaultCutoff", cutoff],
+    ])
+      record(
+        route,
+        control,
+        "Pass the edited criterion to the actual complete-survey worker and bind fresh calculated evidence",
+        { value, monitors: 3, fresh: true },
+      );
     record(
       route,
       "#runCompleteSurveyBtn",

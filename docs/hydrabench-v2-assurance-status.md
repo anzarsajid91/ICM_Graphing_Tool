@@ -8,8 +8,7 @@ All fourteen required checks and the separate CodeQL finding gate passed.
 The [product workflow](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44264397252)
 passed Chromium graph/assessment, survey, Detriment and release regression checks,
 Firefox shell, expanded browser interactions and performance comparison.
-The subsequent QA checkpoint completes the original control matrix and adds
-survey process and offline report assertions; its own final-head CI remains required.
+QA checkpoint `e85fd257a6bbe49816ea7eaa8e174598fa589489` also passed all fourteen required checks and the CodeQL finding gate ([workflow](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44267762416)). The subsequent input-assurance patch requires its own final-head CI.
 Earlier product `9f4d5b2` evidence remains bounded to the unchanged controls and
 methods it exercised, as identified below.
 
@@ -26,8 +25,7 @@ identities from the two synthetic CI artifacts, including 691 observed enabled.
 The matrix currently reconciles 738 identities to passing assertions or executed
 keyboard disclosure checks. Five entries are NOT APPLICABLE: empty transient download anchors created by the local export helper, not independent user controls. No button/link/disclosure identity remains BLOCKED. Disabled and repeated shared controls are included in the passing assertions. The matrix does
 not infer failure from a missing activation, or acceptance from a recorded click.
-The inventory covers buttons, links and disclosures. Input and conditional-state
-coverage also requires reconciliation with the workflow tests.
+The inventory covers buttons, links and disclosures. The separate [input matrix](hydrabench-v2-input-results.csv) reconciles 216 visible input/select/textarea route identities to PASS in bounded synthetic workflows. Conditional fields are additionally exercised by their populated workflow tests.
 
 The repaired visual audit discovers canonical routes at runtime and supports
 Chromium and Firefox. It checks all 22 routes at four desktop widths and uses
@@ -106,3 +104,16 @@ Real survey process acceptance passed eleven outcomes per browser, including all
 The complete synthetic browser regression passed on 23f502c, including cold/delayed mixed siblings, normal survey/spill/storage calculations, dense adaptive graphs, exports and workspace restoration. Its request observer checked 491 requests with zero violations. Browser-smoke now calls the report assertions on the actual generated report; Firefox separately reads that same synthetic artifact. The runner installs the same locked Firefox version already used by other jobs. The survey process suite joins the existing two-browser control loop. These QA-only changes preserve all action pins, permissions, runner images, branch/environment restrictions, mandatory checks, failure behavior and retention. New document metadata is recorded only by the synthetic QA helper; application runtime and destinations are unchanged in this QA checkpoint.
 
 Input/conditional-state coverage remains under reconciliation. The existing empty-state inventory contains 216 visible input/select/textarea route identities; populated workflow tests additionally exercise conditional fields. Native operating-system directory dialog interaction remains outside headless evidence. No universal all-input/all-environment claim is made. Repository-wide Code/Secret Scanning access still returned HTTP 403 after the owner acknowledgement; Dependabot alerts are still disabled. Fresh CI on the final QA commit and those security-review dependencies remain required.
+
+
+## Input assurance checkpoint
+
+All 216 visible input/select/textarea identities now have outcome evidence in Chromium and Firefox on e85fd25. These assertions supplement the 738 passing button/link/disclosure identities and five internal download carriers. They do not extend to every possible operating system, browser or input value. New focused suites verify 54 shared input outcomes, eight hydraulic fields, thirteen appearance fields, seven verification fields, five schematic fields and two storage fields per browser. Expanded suites verify 30 shared section/period outcomes, 91 survey UI outcomes and 23 real survey process outcomes per browser. Detriment policy assertions cover exact tolerance boundaries and count/duration/flood policy distinctions.
+
+Independent numeric expectations include Darcy–Weisbach friction bisection (~552.17 L/s for 600 mm diameter, slope 0.0073, roughness 1 mm and viscosity 1.1e-6 m²/s), a normal-depth slope residual at 250 L/s, a 1.46 m fall over 200 m giving slope 0.0073, 19.2 mm factored cumulative rainfall, delayed verification MAE 0/NSE 1, selected five-minute observed/model volumes 75/150 m³, a complete dry-weather baseline of 0.1 m³/s and a ten-minute storage episode requiring 24 m³ at target zero versus zero at target one. Equivalent 1 m and 1000 mm thresholds return identical storage. No established calculation method changed.
+
+The new input suites join the existing two-browser CI loop. Only QA commands and synthetic evidence are added; permissions, action pins, runner images, environments, required check names, deployment restrictions and retention remain unchanged. Every added evidence writer uses a private temporary directory. No production source changed after 23f502c. Fresh final-head CI is required before release readiness.
+
+Native cloud-desktop verification opened the Chromium colour picker and entered RGB 58/111/156 using the native controls; the actual input returned #3a6f9c. The colour's downstream plotted effect is independently asserted in the two-browser appearance suite. Screenshot: /workspace/shared/hydrabench-native-colour.jpg (local synthetic QA). Native showDirectoryPicker is BLOCKED in this cloud browser: both semantic activation and a foreground desktop click returned the browser/platform denial before opening a dialog. This is not a native folder-selection PASS. The generated nested-folder fallback is verified in both desktop browsers. Native operating-system directory selection still needs evidence from a supported interactive environment before an unrestricted every-dialog claim.
+
+Repository-wide Code Scanning and Secret Scanning alert-list reads still return HTTP 403. Dependabot alerts are disabled; the authorised enable attempt also returned HTTP 403 for the integration and made no setting change. The owner's acknowledgement is not evidence that permissions or alerts changed. No claim that all existing security findings are resolved can be made. Issues #100/#106 and PR #107 retain the dispositions above; main was neither merged nor deployed.

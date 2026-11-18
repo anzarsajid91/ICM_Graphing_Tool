@@ -39,11 +39,12 @@ try {
     "survey/fdv-check",
     "survey/monthly-review",
     "survey/volume-balance",
+    "survey/rainfall-check",
     "reports/report-generation",
     "reports/workspace",
     "spills/assessment",
   ];
-  const periodRoutes = routes.slice(0, 8);
+  const periodRoutes = routes.slice(0, 9);
   for (const route of routes) {
     await page.evaluate(
       (route) =>
