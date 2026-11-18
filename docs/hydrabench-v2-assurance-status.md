@@ -20,8 +20,8 @@ included in the v2 branch.
 
 [The control matrix](hydrabench-v2-control-results.csv) records 743 route/control
 identities from the two synthetic CI artifacts, including 691 observed enabled.
-The matrix currently reconciles 639 identities to passing assertions or executed
-keyboard disclosure checks. The other 104 are explicitly BLOCKED pending
+The matrix currently reconciles 702 identities to passing assertions or executed
+keyboard disclosure checks. The other 41 are explicitly BLOCKED pending
 per-control assertion reconciliation or a prerequisite-state outcome check.
 These rows include disabled states and repeated shared controls. The matrix does
 not infer failure from a missing activation, or acceptance from a recorded click.
@@ -78,4 +78,10 @@ Queue acceptance passed 40 outcomes per browser across ten routes. Prioritizatio
 
 ## CI security impact review
 
-The browser-interactions job now executes the six focused control suites and the route audit in Chromium and Firefox against its own built artifact. The change adds test commands and synthetic artifact paths. Runner image, pinned action revisions, job permissions, branch/environment restrictions, mandatory check names, failure behavior, publication commands and retention period are unchanged. The existing source/claim gates still run before build and the request observers remain active. The focused licence navigation suite adds only the fixed built LICENSE.txt path to its own allowed-resource set. External source-link tests intercept only the two fixed GitHub destination forms locally and assert GET, empty body, absent referrer and isolated popup. No application runtime, engineering method or browser data destination changed in this assurance patch. This is AI-assisted source review within the authorised single-maintainer process, not independent human approval. Fresh final-head CI remains required.
+The browser-interactions job now executes the focused control suites and the route audit in Chromium and Firefox against its own built artifact. The change adds test commands and synthetic artifact paths. Runner image, pinned action revisions, job permissions, branch/environment restrictions, mandatory check names, failure behavior, publication commands and retention period are unchanged. The existing source/claim gates still run before build and the request observers remain active. The focused licence navigation suite adds only the fixed built LICENSE.txt path to its own allowed-resource set. External source-link tests intercept only the two fixed GitHub destination forms locally and assert GET, empty body, absent referrer and isolated popup. No application runtime, engineering method or browser data destination changed in this assurance patch. This is AI-assisted source review within the authorised single-maintainer process, not independent human approval. Shared/source acceptance and the Detriment suite are also added to this same browser loop. Fresh final-head CI remains required.
+
+Shared period and section acceptance passed 27 outcomes per browser across eleven routes. Synthetic date traces isolate the shared callback: both analysis bounds and change notifications are asserted. Every initially visible section control is exercised with content visibility and expanded-state checks. Source selection/removal passed 18 outcomes per browser: all/none selections, sixteen exact source removals, removed options and unchanged sibling identities/hashes. All imports use generated synthetic CSV/FDV/R content; inventory filenames do not imply use of original engineering files.
+
+The follow-up checkpoint `0ae6d9d` exposed a new CodeQL high finding in the network test evidence writer (predictable temporary path). The writer now creates a unique private evidence directory; both desktop network suites passed again. The finding remains unresolved until fresh CodeQL confirms the repair on the next commit. Other repository-wide alert-list access still returns HTTP 403; Dependabot alerts remain disabled.
+
+Expanded Detriment acceptance covers report mapping/preview keyboard disclosures, level calculation/list clearing, Inspect evidence, full and filtered spill exports, exact selected IDs and close/focus restoration. Clearing a list restores the prior view filter; the test asserts that existing behavior. Both desktop browsers are required in the CI control loop.

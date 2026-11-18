@@ -428,7 +428,7 @@ jobs:
           ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs
           ICM_BROWSER=firefox node web/tests/network-schematic-smoke.mjs
           for browser in chromium firefox; do
-            for suite in link-controls-smoke import-controls-acceptance network-controls-acceptance plot-controls-acceptance survey-controls-acceptance queue-controls-acceptance uiux-review; do
+            for suite in link-controls-smoke import-controls-acceptance network-controls-acceptance plot-controls-acceptance survey-controls-acceptance queue-controls-acceptance shared-controls-acceptance source-controls-acceptance detriment-smoke uiux-review; do
               evidence="/tmp/icm-interaction-evidence/control-assurance/$browser/$suite"
               export ICM_BASE_URL=http://127.0.0.1:8000/
               ICM_BROWSER="$browser" ICM_EVIDENCE_DIR="$evidence" ICM_UIUX_EVIDENCE="$evidence" node "web/tests/$suite.mjs"

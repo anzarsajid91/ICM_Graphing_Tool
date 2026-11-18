@@ -1,6 +1,7 @@
 // Synthetic desktop acceptance for controls lacking direct outcome assertions.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import path from "node:path";
 import { chromium, firefox } from "playwright";
 import {
   browserLaunchOptions,
@@ -12,8 +13,9 @@ const browserName = process.env.ICM_BROWSER || "chromium";
 assert.ok(["chromium", "firefox"].includes(browserName));
 const base = process.env.ICM_BASE_URL || "http://127.0.0.1:8003/";
 const candidate = process.env.GITHUB_SHA || "local";
-const directory = process.env.ICM_EVIDENCE_DIR || "/tmp/hydra-network-controls";
-await fs.mkdir(directory, { recursive: true });
+const evidenceRoot = process.env.ICM_EVIDENCE_DIR || "/tmp/hydra-network-controls";
+await fs.mkdir(evidenceRoot, { recursive: true });
+const directory = await fs.mkdtemp(path.join(evidenceRoot, "evidence-"));
 const results = [],
   errors = [];
 const browser = await (browserName === "firefox" ? firefox : chromium).launch(
