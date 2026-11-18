@@ -1142,3 +1142,44 @@ def storage_result(level_path, level_col, flow_path, flow_col, threshold, exclus
         "screening":_records(screening),
     }
     return json.dumps(_jsonable(payload),ensure_ascii=False)
+
+
+def circular_pipe_capacity(diameter_m, gradient, roughness_m, viscosity_m2_s):
+    """Expose the standalone full-bore calculator to the local worker."""
+    from icm_workbench.analysis.pipe_capacity import full_pipe_capacity
+
+    return json.dumps(full_pipe_capacity(diameter_m, gradient, roughness_m, viscosity_m2_s))
+
+
+def circular_pipe_design_flow(diameter_m, gradient, roughness_m, viscosity_m2_s, discharge_m3_s):
+    """Expose turbulent normal-depth assessment to the local worker."""
+    from icm_workbench.analysis.pipe_capacity import normal_depth_assessment
+
+    return json.dumps(normal_depth_assessment(diameter_m, gradient, roughness_m, viscosity_m2_s, discharge_m3_s))
+
+
+def verification_event_comparison(obs_path, obs_col, model_path, model_col, start, end,
+                                  max_gap_seconds=900.0, offset_minutes=0, exclusions_json="[]"):
+    """Compare one selected wet-weather event using supported hydraulic channels."""
+    from icm_workbench.analysis.verification_events import compare_event_support
+
+    oq, mq = _comparison_quantity(obs_path, obs_col), _comparison_quantity(model_path, model_col)
+    observed, model = _series_contract(obs_path, obs_col), _series_contract(model_path, model_col)
+    unit = observed.get("canonical_unit")
+    if oq not in {"flow", "depth"} or oq != mq or not unit or unit != model.get("canonical_unit"):
+        raise ValueError("Event Review requires matching flow or depth quantities with known matching units.")
+    obs_source = _require_model_clock(_load(obs_path), "Observed source")
+    model_source = _require_model_clock(_load(model_path), "Modelled source")
+    if any(source.metadata.get("timestamp_convention") != "instantaneous" for source in (obs_source, model_source)):
+        raise ValueError("Event Review requires instantaneous hydraulic data.")
+    obs, mod = obs_source.frame, model_source.frame
+    if offset_minutes:
+        mod = mod.assign(timestamp=pd.to_datetime(mod["timestamp"]) + pd.to_timedelta(offset_minutes, unit="m"))
+    result = compare_event_support(obs, mod, obs_col, model_col, start, end,
+                                   max_gap_seconds, _exclusions(exclusions_json))
+    result["unit"] = unit
+    result["observed_volume_m3"] = result.pop("observed_integral") if oq == "flow" and unit in {"m³/s", "m3/s"} else None
+    result["modelled_volume_m3"] = result.pop("modelled_integral") if oq == "flow" and unit in {"m³/s", "m3/s"} else None
+    result.pop("observed_integral", None)
+    result.pop("modelled_integral", None)
+    return json.dumps(_jsonable(result))

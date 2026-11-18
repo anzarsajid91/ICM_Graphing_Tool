@@ -1,7 +1,9 @@
+import {trackControls} from './control-evidence.mjs';
 import {recordControls,observeControls} from './uiux-evidence.mjs';
-import {installPrivacyGuard} from './privacy-network.mjs';
+import {installPrivacyGuard,resourcePaths} from './privacy-network.mjs';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {assertReportActionSpacing} from './report-layout.mjs';
+import {verifyReportControls} from './report-controls-acceptance.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -18,6 +20,7 @@ const baseUrl=(process.env.ICM_BASE_URL||'http://127.0.0.1:8000/').replace(/\/?$
 const liveMode=Boolean(process.env.ICM_BASE_URL);
 const browser=await chromium.launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000},acceptDownloads:true,timezoneId:'Asia/Kolkata'});
+const writeControlEvidence=await trackControls(context,'release-control-evidence.json');
 const privacy=installPrivacyGuard(context,baseUrl);
 const page=await context.newPage();
 await observeControls(page);
@@ -102,6 +105,7 @@ async function measureColdReferenceImport(){
   try{
     await privacy.navigate(probe,baseUrl+'?cold_import='+Date.now(),{waitUntil:'domcontentloaded'});
     const domReadyMs=Date.now()-navigationStart;
+    await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
     const selectedAt=Date.now();
     await probe.setInputFiles('#fileInput',{name:'Cold-FM7413.fdv',mimeType:'text/plain',buffer});
     const outcome=await Promise.race([
@@ -151,6 +155,7 @@ async function measureFreshFastPathImport({dataset,relativePath,sourcePath,input
   try{
     await privacy.navigate(probe,baseUrl+'?fresh_fastpath='+encodeURIComponent(dataset)+'&t='+Date.now(),{waitUntil:'domcontentloaded'});
     const domReadyMs=Date.now()-navigationStart;
+    await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
     const selectedAt=Date.now();
     await probe.setInputFiles('#fileInput',usePathUpload?resolvedPath:{name:inputName,mimeType,buffer});
     const outcome=await Promise.race([
@@ -335,12 +340,35 @@ async function verifyFastPathFailureFallsBack(){
   }finally{await probe.close();}
 }
 
-async function verifyMixedSiblingImport(){
-  const probe=await context.newPage(),probeErrors=[];
+async function verifyMixedSiblingImport(workerDelayMs=0){
+  const isolated=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000},serviceWorkers:'block'});
+  privacy.attach(isolated);
+  const probe=await isolated.newPage(),probeErrors=[],requestFailures=[];
+  let delayedWorkerRequests=0;
+  const site=new URL(baseUrl),fixedPaths=resourcePaths();
+  const recordFailure=(request,status)=>{
+    const url=new URL(request.url());
+    const relative=url.origin===site.origin&&url.pathname.startsWith(site.pathname)
+      ?url.pathname.slice(site.pathname.length):null;
+    requestFailures.push({resource:fixedPaths.has(relative)?relative:'unrecognised resource',status});
+  };
+  probe.on('requestfailed',request=>recordFailure(request,request.failure()?.errorText||'failed'));
+  probe.on('response',response=>{
+    if(response.status()>=400)recordFailure(response.request(),response.status());
+  });
+  probe.on('console',message=>{if(message.type()==='error')probeErrors.push(message.text());});
   probe.on('pageerror',error=>probeErrors.push(String(error)));
   try{
+    if(workerDelayMs){
+      await probe.route('**/assets/analysis-worker.js*',async route=>{
+        delayedWorkerRequests++;
+        await new Promise(resolve=>setTimeout(resolve,workerDelayMs));
+        await route.continue();
+      });
+    }
     await privacy.navigate(probe,baseUrl+'?mixed_import='+Date.now(),{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
+    await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
     const valid={name:'sibling-valid.csv',mimeType:'text/csv',buffer:Buffer.from('timestamp,Depth (m)\n2026-02-01T00:00:00,0.2\n2026-02-01T00:01:00,0.3\n')};
     const invalid={name:'sibling-invalid.fdv',mimeType:'text/plain',buffer:Buffer.from('this is not a valid FDV file\n')};
     await probe.setInputFiles('#fileInput',[valid,invalid]);
@@ -352,10 +380,29 @@ async function verifyMixedSiblingImport(){
     }));
     if(!result.validMapped||!result.summary.includes('1 parsed successfully'))throw new Error('Valid sibling did not remain usable after another file failed: '+JSON.stringify(result));
     if(probeErrors.length)throw new Error('Mixed sibling import produced browser errors: '+probeErrors.join(' | '));
-    return result;
-  }finally{await probe.close();}
+    if(workerDelayMs&&!delayedWorkerRequests)throw new Error('The delayed analysis worker request was not exercised.');
+    return {...result,workerDelayMs,delayedWorkerRequests};
+  }catch(error){
+    // Collect evidence from the synthetic probe before closing its page.
+    const state=await probe.evaluate(()=>({
+      status:window.__ICM_WORKBENCH__?.status||null,
+      engine:document.querySelector('#engineStatus')?.textContent||null,
+      route:window.__ICM_PRECISION_WORKBENCH__?.route()||null,
+      rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+    })).catch(()=>({unavailable:true}));
+    console.error('Mixed sibling import probe:',JSON.stringify({state,requestFailures,probeErrors,workerDelayMs,delayedWorkerRequests}));
+    if(process.env.ICM_EVIDENCE_DIR){
+      const dir=process.env.ICM_EVIDENCE_DIR;
+      await fs.mkdir(dir,{recursive:true});
+      const screenshot=workerDelayMs?'mixed-import-delayed-failure.png':'mixed-import-cold-failure.png';
+      await probe.screenshot({path:path.join(dir,screenshot),fullPage:true,timeout:5000})
+        .catch(screenshotError=>console.error('Mixed import screenshot unavailable:',screenshotError.message));
+    }
+    throw error;
+  }finally{await isolated.close();}
 }
 
+let reportControlsVerified=false;
 async function inspectReportHtml(html,minFigures=1){
   const p=await context.newPage();
   const reportErrors=[],reportFailedRequests=[];
@@ -402,6 +449,7 @@ async function inspectReportHtml(html,minFigures=1){
         minFigures,
       };
     },minFigures);
+    if(!reportControlsVerified&&minFigures===3){await verifyReportControls(p,dir||'/tmp/hydra-report-controls');reportControlsVerified=true;}
     if(dir)await p.screenshot({path:path.join(dir,`report-${minFigures}-figures.png`),fullPage:true});
     await p.emulateMedia({media:'print'});
     const print=await p.evaluate(()=>{
@@ -685,6 +733,7 @@ async function verifyIndividualSourceRemoval(){
   try{
     await privacy.navigate(probe,baseUrl+'?individual_source_remove='+Date.now(),{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
+    await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
     const fdv=await fs.readFile(path.join(root,'reference/current-tool/sample-data/fdv/FM7413.fdv'));
     const rain=await fs.readFile(path.join(root,'reference/current-tool/sample-data/rainfall/RG5097.R'));
     await probe.setInputFiles('#fileInput',[
@@ -807,6 +856,7 @@ async function verifyPlotlyEngineeringEnhancements(){
     await probe.setViewportSize({width:1366,height:760});
     await privacy.navigate(probe,baseUrl+'?plotly_engineering='+Date.now(),{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
+    await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
     await probe.evaluate(()=>{
       const confirm=()=>{for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
         const input=document.getElementById(id);input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
@@ -1196,6 +1246,7 @@ async function verifySpillCalendarAllocation(){
   try{
     await privacy.navigate(probe,baseUrl+'?spill_calendar='+Date.now(),{waitUntil:'domcontentloaded'});
     await probe.waitForFunction(()=>window.__ICM_WORKBENCH__?.status==='idle'&&window.__ICM_PRECISION_WORKBENCH__?.navigate,null,{timeout:30000});
+    await probe.getByRole('button',{name:'Data / time series',exact:true}).click();
     await probe.evaluate(()=>{
       const confirm=()=>{for(const id of ['timeBasisConfirmed','levelDatumConfirmed']){
         const input=document.getElementById(id);input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
@@ -1274,6 +1325,7 @@ try{
   await writePerformanceEvidence();
   stage='mixed-success import isolation';
   performanceEvidence.mixedSiblingImport=await verifyMixedSiblingImport();
+  performanceEvidence.mixedSiblingImportDelayed=await verifyMixedSiblingImport(1200);
   await writePerformanceEvidence();
 
   stage='cold import baseline';
@@ -1352,7 +1404,7 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate&&document.querySelector('.pw-rail')&&document.querySelector('.pw-inspector')),null,{timeout:30000});
   stage='Precision Workbench shell and responsive layout';
   const primaryLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(primaryLabels.map(x=>x.trim()).join('|')!=='Home|Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
+  if(primaryLabels.map(x=>x.trim()).join('|')!=='Home|Data / time series|Spills|Network Schematic|Flow survey|Verification|Hydraulic Calculations|Detriment assessment|Reports')throw new Error('Precision Workbench primary navigation mismatch: '+JSON.stringify(primaryLabels));
   for(const size of [{width:1366,height:768},{width:1487,height:1058},{width:1920,height:1080}]){
     await page.setViewportSize(size);
     await precisionRoute('data','sources');
@@ -2150,6 +2202,15 @@ try{
     throw new Error('Time Series route must calculate calibration statistics automatically without a Graphs action: '+JSON.stringify(automaticCalibration));
   }
 
+  const sharedEvidence=await page.evaluate(()=>({
+    evidence:window.__ICM_WORKBENCH__.readVerificationEvidence(),
+    pairs:state.comparisonSnapshot?.results?.[0]?.result?.metrics?.pairs,
+  }));
+  if(sharedEvidence.evidence?.freshness!=='current'||sharedEvidence.evidence.dependencies.length!==2||
+      sharedEvidence.evidence.scenarios[0]?.metrics?.pairs!==sharedEvidence.pairs){
+    throw new Error('Shared verification evidence must reconcile to the authoritative comparison and its two sources.');
+  }
+
   stage='calibration comparison and diagnostics';
   await clickTab('compare');
   await page.click('#runCompareBtn');
@@ -2272,15 +2333,20 @@ try{
     const chart=document.querySelector('#scatterChart'),markers=(chart?.data||[]).filter(t=>t.mode==='markers');
     const panel=document.querySelector('#tab-compare>.panel')?.getBoundingClientRect();
     const legend=chart?.querySelector('.legend')?.getBoundingClientRect();
+    const axisTitle=chart?.querySelector('.ytitle')?.getBoundingClientRect();
+    const chartBounds=chart?.getBoundingClientRect();
     return{
       markers:markers.map(t=>({name:t.name,colour:t.marker?.color,points:(t.x||[]).length})),
       rows:[...document.querySelectorAll('#scenarioBody tr')].map(row=>row.textContent),
       documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+      legendClearsAxisTitle:!!legend&&!!axisTitle&&(legend.bottom<=axisTitle.top+2||
+        legend.top>=axisTitle.bottom-2||legend.right<=axisTitle.left+2||legend.left>=axisTitle.right-2),
+      legendWithinChart:!!legend&&!!chartBounds&&legend.right<=chartBounds.right+2,
       legendWithinPanel:!legend||!panel||(legend.right<=panel.right+2&&legend.left>=panel.left-2),
     };
   });
   if(multiScenario.markers.length!==2||multiScenario.markers.some(x=>x.points<2)||new Set(multiScenario.markers.map(x=>x.colour)).size!==2)throw new Error('Multi-scenario scatter must render two independently styled authoritative pair clouds: '+JSON.stringify(multiScenario));
-  if(!multiScenario.rows.some(x=>x.includes(longScenarioName))||multiScenario.documentOverflow>2||!multiScenario.legendWithinPanel)throw new Error('Long multi-scenario legend/table containment failed: '+JSON.stringify(multiScenario));
+  if(!multiScenario.rows.some(x=>x.includes(longScenarioName))||multiScenario.documentOverflow>2||!multiScenario.legendWithinPanel||!multiScenario.legendClearsAxisTitle||!multiScenario.legendWithinChart)throw new Error('Long multi-scenario legend/table containment failed: '+JSON.stringify(multiScenario));
   await captureEvidence('08b-graphs-multiple-scenarios');
 
   stage='generic observed/modelled scatter without quantity classification';
@@ -2427,6 +2493,8 @@ try{
   await page.waitForFunction(()=>document.querySelector('#rainEventSummary')?.textContent.includes('qualifying events'),null,{timeout:60000});
   if(await page.locator('#rainEventBody tr').count()<1)throw new Error('Manual rainfall criteria should identify the demo event');
   if(await page.evaluate(()=>window.__ICM_WORKBENCH__.rainEventsFresh?.())!==true)throw new Error('Fresh rainfall-event result was not bound to source/criteria/exclusion dependencies.');
+  // Event detection renders its summary before the optional response finishes.
+  await page.waitForFunction(()=>!document.body.classList.contains('operation-busy'),null,{timeout:60000});
   await page.fill('#analysisStart','2026-01-05T00:04');
   await page.locator('#analysisStart').dispatchEvent('change');
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.rainEventsFresh?.()===false&&state.rainEvents.length===0&&document.querySelector('#rainEventSummary')?.textContent.includes('analysis period'));
@@ -2467,7 +2535,7 @@ try{
   stage='association workbook and canonical survey navigation';
   await precisionRoute('survey','fdv-check');
   const navLabels=await page.locator('.pw-primary-nav button').allTextContents();
-  if(navLabels.map(x=>x.trim()).join('|')!=='Home|Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Unexpected Precision navigation: '+JSON.stringify(navLabels));
+  if(navLabels.map(x=>x.trim()).join('|')!=='Home|Data / time series|Spills|Network Schematic|Flow survey|Verification|Hydraulic Calculations|Detriment assessment|Reports')throw new Error('Unexpected Precision navigation: '+JSON.stringify(navLabels));
   if(navLabels.some(x=>/storage/i.test(x)))throw new Error('Storage must remain a Spills subtab, not a primary workspace: '+JSON.stringify(navLabels));
   const flowSurveySubtabs=await page.locator('.pw-secondary-nav button').allTextContents();
   if(flowSurveySubtabs.map(x=>x.trim()).join('|')!=='FDV check|Rainfall check|Volume balance|Monthly review')throw new Error('Unexpected Flow survey subtab sequence: '+JSON.stringify(flowSurveySubtabs));
@@ -2793,7 +2861,9 @@ try{
   await page.uncheck('#reportIncludeSurvey');
   await page.selectOption('#reportScenarioSelect',[]);
   await precisionRoute('reports','workspace');
-  await page.setInputFiles('#workspaceInput',workspacePath);
+  const workspaceChooser=page.waitForEvent('filechooser');
+  await page.click('#loadWorkspaceBtn');
+  await (await workspaceChooser).setFiles(workspacePath);
   await page.waitForFunction(()=>document.querySelector('#workspaceStatus')?.textContent.includes('Workspace loaded.'),null,{timeout:60000});
   const restoredReportOptions=await page.evaluate(()=>({
     scatter:document.querySelector('#reportScatterScale')?.value,
@@ -2825,6 +2895,17 @@ try{
     fresh:window.__ICM_WORKBENCH__.dwfFresh?.(),
   }));
   if(!/observed\.csv — flow/i.test(restoredDwf.flow)||restoredDwf.unit!=='m3/s'||restoredDwf.dryDay!==1||restoredDwf.baseline!==28||restoredDwf.adp!==6||restoredDwf.fresh!==false)throw new Error('Workspace did not restore DWF configuration while correctly withholding derived DWF results: '+JSON.stringify(restoredDwf));
+
+  stage='named browser workspace reload';
+  await precisionRoute('reports','workspace');
+  await page.fill('#reviewNotes','Synthetic change after browser save');
+  await page.selectOption('#namedWorkspaceSelect','Acceptance workspace');
+  const previousNamedRestore=await page.evaluate(()=>window.__ICM_WORKBENCH__.workspaceRestore?.completedAt||null);
+  await page.click('#loadNamedWorkspaceBtn');
+  await page.waitForFunction(previous=>Boolean(window.__ICM_WORKBENCH__.workspaceRestore?.completedAt)&&
+    window.__ICM_WORKBENCH__.workspaceRestore.completedAt!==previous&&
+    !document.body.classList.contains('operation-busy'),previousNamedRestore,{timeout:60000});
+  if(await page.locator('#reviewNotes').inputValue()!==(workspace.review_notes||''))throw new Error('Load named did not restore the saved review notes.');
 
   stage='workspace migration and source reattachment guidance';
   const legacyWorkspace=JSON.parse(JSON.stringify(workspace));
@@ -3323,5 +3404,5 @@ try{
   await page.screenshot({path:process.env.ICM_FAILURE_SCREENSHOT||'/tmp/icm-workbench-failure.png',fullPage:true}).catch(()=>{});
   throw err;
 } finally {
-  await browser.close();
+  try{await writeControlEvidence?.();}finally{await browser.close();}
 }

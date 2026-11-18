@@ -55,6 +55,7 @@
       this.assets=new Map();
       this.relationships=[];
       this.associationSource=null;
+      this.assessments=new Map();
       this.version=1;
     }
     registerSource(item){
@@ -69,6 +70,7 @@
         id:item.id,
         name:item.displayName||item.file?.name||item.id,
         path:item.virtualPath,
+        fingerprint:item.hash||null,
         format:item.parsed.format||'unknown',
         role,
         assetId,
@@ -118,6 +120,7 @@
       this.render();
     }
     clearSources(){
+      this.assessments.clear();
       this.sources.clear();
       this.series.clear();
       this.assets.clear();
@@ -162,6 +165,39 @@
         }
       }
       this.render();
+    }
+    publishAssessment(id, evidence){
+      const asset=this.assets.get(evidence.asset.id);
+      if(!asset||asset.kind!==evidence.asset.kind)return false;
+      const dependencies=evidence.seriesKeys.map(seriesKey=>{
+        const series=this.series.get(seriesKey);
+        const source=series&&this.sources.get(series.sourceId);
+        return source?.fingerprint?{
+          seriesKey,sourceId:source.id,fingerprint:source.fingerprint,
+          quantity:series.quantity,unit:series.unit,
+        }:null;
+      });
+      if(!dependencies.length||dependencies.includes(null))return false;
+      const {seriesKeys, ...assessment}=evidence;
+      this.assessments.set(id,JSON.parse(JSON.stringify({...assessment,dependencies})));
+      global.dispatchEvent?.(new global.CustomEvent('icm:assessment-published',{detail:{id}}));
+      return true;
+    }
+    removeAssessment(id){
+      this.assessments.delete(id);
+    }
+    readAssessment(id, currentSignature){
+      const assessment=this.assessments.get(id);
+      if(!assessment)return null;
+      const asset=this.assets.get(assessment.asset.id);
+      const dependenciesCurrent=assessment.dependencies.every(({seriesKey,sourceId,fingerprint,quantity,unit})=>{
+        const series=this.series.get(seriesKey);
+        return series?.sourceId===sourceId&&series.quantity===quantity&&series.unit===unit&&
+          this.sources.get(sourceId)?.fingerprint===fingerprint;
+      });
+      const freshness=typeof currentSignature==='string'&&currentSignature===assessment.signature&&
+        asset?.kind===assessment.asset.kind&&dependenciesCurrent?'current':'stale';
+      return JSON.parse(JSON.stringify({...assessment,freshness}));
     }
     listSeries(filter={}){
       let rows=[...this.series.values()];

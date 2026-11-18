@@ -1,3 +1,5 @@
+/* SPDX-FileCopyrightText: 2026 Anzar Sajid and other applicable rights holders
+ * SPDX-License-Identifier: AGPL-3.0-only */
 /* Network overview: own state, local source bindings and calendar spill results. */
 (()=>{'use strict';
 const C=ICMNetworkCore,R=ICMNetworkReviewCore,NS='http://www.w3.org/2000/svg',STORE='hydra-network-schematic-v1';
@@ -35,17 +37,45 @@ function restore(value){
 function point(x,y){return {x:x*network.camera.zoom+Number(network.camera.x),y:y*network.camera.zoom+Number(network.camera.y)};}
 function world(x,y){return {x:(x-network.camera.x)/network.camera.zoom,y:(y-network.camera.y)/network.camera.zoom};}
 function dimensions(){return {width:Math.max(240,$('nsCanvas')?.clientWidth||1000),height:Math.max(360,$('nsCanvas')?.clientHeight||620)};}
-function icon(type){
-  const shapes={cso:'<path d="M-25 2c8-7 14 5 22 0h5v-18h7v31h17"/>',
-    storm:'<path d="M-25 2h21v-16h7v28h23"/>',
-    emergency:'<path d="M-25 4h50M0-15v12M0 12h.01"/>',
-    pump:'<circle r="25"/><path d="M-10-14L15 0-10 14Z"/>',
-    wwtw:'<path d="M-21-22v44M7-22v44M-32-10H32"/>',
-    tank:'<path d="M-26-16v32M26-16v32M-26 0c10-7 18 7 28 0s17 5 24 0"/>',
-    junction:'<circle r="12"/><path d="M-20 0h40M0-20v40"/>',outfall:'<path d="M-24-12H9V12H-24M9 0h20M22-7l7 7-7 7"/>',manhole:'<circle r="8"/>',label:'<circle r="3" fill="currentColor"/>'};
-  return shapes[type]||shapes.cso;
+// The scene uses fixed element and attribute names. Project data is assigned as
+// text or attribute values, without passing it through an HTML parser.
+function svgElement(tag,attributes={},content){
+  const element=document.createElementNS(NS,tag);
+  for(const [key,value] of Object.entries(attributes))element.setAttribute(key,value);
+  if(content!==undefined)element.textContent=content;
+  return element;
 }
-function badgeMarkup(n){
+function translate(x,y){return `translate(${x} ${y})`;}
+function polygonPoints(points){return points.map(({x,y})=>`${x},${y}`).join(' ');}
+const iconPaths={
+  cso:'M-25 2c8-7 14 5 22 0h5v-18h7v31h17',
+  storm:'M-25 2h21v-16h7v28h23',
+  emergency:'M-25 4h50M0-15v12M0 12h.01',
+  pump:'M-10-14L15 0-10 14Z',
+  wwtw:'M-21-22v44M7-22v44M-32-10H32',
+  tank:'M-26-16v32M26-16v32M-26 0c10-7 18 7 28 0s17 5 24 0',
+  junction:'M-20 0h40M0-20v40',
+  outfall:'M-24-12H9V12H-24M9 0h20M22-7l7 7-7 7',
+};
+function renderIcon(group,type){
+  if(type==='label'){
+    group.append(svgElement('circle',{r:3,fill:'currentColor'}));
+    return;
+  }
+  const radii={pump:25,junction:12,manhole:8};
+  if(Object.hasOwn(radii,type))group.append(svgElement('circle',{r:radii[type]}));
+  if(Object.hasOwn(iconPaths,type))group.append(svgElement('path',{d:iconPaths[type]}));
+}
+function evidenceBadge(attribute,state,offset,colour,letter,title,extra={}){
+  const badge=svgElement('g',{[attribute]:state,transform:offset,...extra});
+  badge.append(
+    svgElement('title',{},title),
+    svgElement('circle',{r:8,fill:'#fff',stroke:colour}),
+    svgElement('text',{y:4,'text-anchor':'middle','font-size':10,fill:colour},letter),
+  );
+  return badge;
+}
+function resultBadge(n){
   if(!n.bindings.length)return '';
   if(prefs().detail==='minimal'||prefs().detail==='auto'&&network.camera.zoom<.55&&selected!==n.id&&!multi.has(n.id))return '';
   const chosen=prefs().scenarios,rows=(n.applied?.rows||[]).filter(r=>r.role==='observed'||chosen===null||chosen.includes(r.scenario));
@@ -55,38 +85,235 @@ function badgeMarkup(n){
   const rawOffset=C.labelOffset(n),offset={x:Number(rawOffset.x),y:Number(rawOffset.y)},box=C.bounds(n.type),vertical=Math.abs(offset.y)/box.y>=Math.abs(offset.x)/box.x;
   const x=vertical?offset.x-width/2:offset.x<0?offset.x-width-10:offset.x+10;
   const y=vertical?(offset.y<=0?offset.y+4-height:offset.y+25):offset.y-height/2+14;
-  return '<g data-ns-summary=""'+(network.evidenceMode==='single'?' data-ns-badge=""':'')+' transform="translate('+x+' '+y+')"><rect x="0" y="-14" width="'+width+'" height="'+height+'" rx="5" fill="white" stroke="#c7d2d9"/>'+lines.map((item,i)=>'<g '+(item.header?'data-ns-summary-year':'data-ns-summary-row')+'="'+item.year+'"'+(item.rag?' class="ns-rag-'+item.rag+'"':'')+'><title>'+html(item.header?item.text:item.label+': '+(item.value===null?'Unavailable':f(item.value))+(item.reason?' · '+item.reason:''))+'</title><rect x="1" y="'+(-10+i*21)+'" width="'+(width-2)+'" height="20" fill="'+(item.header?'#f5f7f9':{green:'#eaf6ed',amber:'#fff4d9',red:'#fdebec'}[item.rag]||'white')+'"/><text x="7" y="'+(4+i*21)+'" font-size="'+(item.header?11:12)+'" font-weight="'+(item.header?600:400)+'" fill="'+(item.header?'#60717d':{green:'#267044',amber:'#9a6500',red:'#b93838'}[item.rag]||'#182732')+'">'+html(item.text)+'</text></g>').join('')+'</g>';
+  const badge=svgElement('g',{'data-ns-summary':'',transform:translate(x,y)});
+  if(network.evidenceMode==='single')badge.setAttribute('data-ns-badge','');
+  badge.append(svgElement('rect',{x:0,y:-14,width,height,rx:5,fill:'white',stroke:'#c7d2d9'}));
+  for(const [i,item] of lines.entries()){
+    const row=svgElement('g',{[item.header?'data-ns-summary-year':'data-ns-summary-row']:item.year});
+    if(item.rag)row.setAttribute('class','ns-rag-'+item.rag);
+    const title=item.header?item.text:item.label+': '+(item.value===null?'Unavailable':f(item.value))+(item.reason?' · '+item.reason:'');
+    const background=item.header?'#f5f7f9':{green:'#eaf6ed',amber:'#fff4d9',red:'#fdebec'}[item.rag]||'white';
+    const foreground=item.header?'#60717d':{green:'#267044',amber:'#9a6500',red:'#b93838'}[item.rag]||'#182732';
+    row.append(svgElement('title',{},title),
+      svgElement('rect',{x:1,y:-10+i*21,width:width-2,height:20,fill:background}),
+      svgElement('text',{x:7,y:4+i*21,'font-size':item.header?11:12,'font-weight':item.header?600:400,fill:foreground},item.text));
+    badge.append(row);
+  }
+  return badge;
 }
 function unitOptions(quantity){return quantity==='status'?[['1','Binary / unitless']]:quantity==='flow'?[['','Assign…'],['m³/s','m³/s'],['L/s','L/s'],['Ml/d','Ml/d'],['m³/d','m³/d']]:[['','Assign…'],['m','m'],['mm','mm']];}
-function svgContent(includeHandles=true){
-  const {width,height}=dimensions(),parts=[];
+function verificationBadge(point,evidence,reviews){
+  if(!point.monitorId)return '';
+  const matched=evidence?.asset.kind==='flow-monitor'&&evidence.asset.id===point.monitorId;
+  const needsInvestigation=matched&&reviews.some(row=>['Requires investigation','Not suitable for acceptance'].includes(row.decision));
+  const state=needsInvestigation?'Review requires attention':!matched?'No comparison':evidence.freshness!=='current'?'Stale evidence':
+    evidence.scenarios.some(row=>row.metrics?.pairs&&row.coverage?.status==='complete')?'Evidence available':
+    evidence.scenarios.some(row=>row.metrics?.pairs&&row.coverage?.status==='partial')?'Partial evidence':'No valid comparison';
+  const decisions=matched?reviews.map(row=>row.scenario+' · '+row.decision).join(' / '):'';
+  const colour=needsInvestigation?'#9a6500':'#4740b6';
+  return evidenceBadge('data-ns-verification',state,translate(52,-16),colour,'V',
+    point.monitorId+' · '+state+(decisions?' · '+decisions:''));
+}
+function flowSurveyBadge(point,view){
+  if(!point.monitorId)return '';
+  const item=view?.byMonitor.get(point.monitorId);
+  const state=item?.status==='stale'?'Stale survey evidence':!item?.rating?'No survey evidence':
+    item.rating+' · '+(item.reviewed?'Engineer reviewed':'Calculated')+(item.short?' · Short boundary week':'');
+  const colour={'Green':'#267044','Amber':'#9a6500','Red':'#b93838'}[item?.rating]||'#60717d';
+  return evidenceBadge('data-ns-survey',state,translate(52,4),colour,'F',
+    point.monitorId+' · '+(view?.week||'No week')+' · '+state);
+}
+function surveyLayerView(){
+  return window.__ICM_WORKBENCH__?.workflow26?.schematicSurveyEvidence(prefs().surveyWeek);
+}
+const detrimentKinds=[['flooding','Flooding'],['level','Level / freeboard'],['spill','Spill count / duration']];
+function detrimentKind(){
+  return detrimentKinds.some(([id])=>id===prefs().detrimentKind)?prefs().detrimentKind:'flooding';
+}
+function detrimentView(){
+  return window.ICMDetriment?.schematicEvidence(detrimentKind());
+}
+function detrimentBadge(object,view,x,y){
+  const link=object.detrimentLinks?.[detrimentKind()];
+  if(!link)return '';
+  const row=link.signature===view?.signature?view.rows.get(link.id):null;
+  const state=row?.status||'stale';
+  const colour={detriment:'#b93838',improvement:'#267044',risk:'#9a6500'}[state]||'#60717d';
+  const delta=row?.delta==null?'':' · Δ '+f(row.delta,6)+' '+row.unit;
+  const duration=row?.duration_delta_hours==null?'':' · Δ duration '+f(row.duration_delta_hours,6)+' h';
+  const freeboard=row?.freeboard_b==null?'':' · Proposed freeboard '+f(row.freeboard_b,6)+' m';
+  const flags=row?.flags.length?' · '+row.flags.join(', ').replaceAll('_',' '):'';
+  return evidenceBadge('data-ns-detriment',state,translate(x,y),colour,'D',
+    link.id+' · '+(row?view.caption+' · '+state+delta+duration+freeboard+flags:'Stale or unavailable comparison'),
+    {'pointer-events':'none'});
+}
+function detrimentAssociation(object){
+  if(!object.contextSource)return '';
+  const view=detrimentView(),kind=detrimentKind(),link=object.detrimentLinks?.[kind];
+  const current=link&&link.signature===view?.signature&&view.rows.has(link.id);
+  return '<details><summary>Detriment association</summary><p>'+html(detrimentKinds.find(([id])=>id===kind)[1])+' · '+
+    html(view?.caption||'Calculate a comparison first')+'</p>'+
+    (view?fields('Exact report asset ID','<input id="nsDetrimentId" aria-label="Exact report asset ID" maxlength="512" value="'+html(link?.id||'')+'">')+
+      '<p class="ns-note">Confirm this ID refers to the selected physical object in both reports.</p>'+
+      '<button type="button" id="nsConfirmDetriment">Confirm association</button> ':'')+
+    (link?'<button type="button" id="nsRemoveDetriment">Remove association</button> ':'')+
+    (current?'<button type="button" id="nsOpenDetriment">Open detriment evidence</button>':'')+'</details>';
+}
+function monitorAssociations(point){
+  if(point.type==='label')return '';
+  const monitors=(window.ICMProjectRegistry?.snapshot()?.assets||[]).filter(asset=>asset.kind==='flow-monitor');
+  if(!monitors.length&&!point.monitorId)return '';
+  const options=[['','Unlinked'],...monitors.map(asset=>[asset.id,asset.id])];
+  if(point.monitorId&&!monitors.some(asset=>asset.id===point.monitorId))options.push([point.monitorId,point.monitorId+' · source unavailable']);
+  return '<details><summary>Monitoring association</summary>'+fields('Flow monitor',selectHtml('id="nsMonitorAssociation" aria-label="Flow monitor"',options,point.monitorId||''))+
+    '<p class="ns-note">Select the monitor only when the physical installation is confirmed.</p>'+
+    (point.monitorId?'<button type="button" id="nsOpenVerification">Open Verification evidence</button> <button type="button" id="nsOpenFlowSurvey">Open Flow Survey week</button>':'')+'</details>';
+}
+function renderEdgeHandles(group,route,bendCount){
+  for(const [i,p] of route.points.slice(1,-1).entries()){
+    group.append(svgElement('circle',{'data-ns-bend':i,cx:p.x,cy:p.y,r:7,fill:'white',stroke:'#087b82','stroke-width':2}));
+  }
+  if(bendCount>=32)return;
+  for(const [i,p] of route.points.slice(1).entries()){
+    const a=route.points[i],x=(a.x+p.x)/2,y=(a.y+p.y)/2;
+    const handle=svgElement('g',{'data-ns-add-bend':i,'aria-label':'Add bend'});
+    handle.append(svgElement('circle',{cx:x,cy:y,r:8,fill:'white',stroke:'#087b82'}),
+      svgElement('path',{'data-ns-handle':'',d:`M${x-3} ${y}h6M${x} ${y-3}v6`,stroke:'#087b82','pointer-events':'none'}));
+    group.append(handle);
+  }
+}
+function renderScene(includeHandles=true){
+  const {width,height}=dimensions(),scene=document.createDocumentFragment();
+  const verificationLayer=prefs().verification===true;
+  const evidence=verificationLayer?window.__ICM_WORKBENCH__?.readVerificationEvidence?.():null;
+  const reviews=evidence?window.__ICM_WORKBENCH__?.verificationReviews?.report(evidence)||[]:[];
+  const surveyLayer=prefs().flowSurvey===true;
+  const surveyView=surveyLayer?surveyLayerView():null;
+  const detrimentLayer=prefs().detriment===true,comparison=detrimentLayer?detrimentView():null;
   const shown=visibleNodes(),shownIds=new Set(shown.map(n=>n.id)),byId=new Map(network.nodes.map(n=>[n.id,n]));
   const routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y));
   for(const e of network.edges){
     if(!shownIds.has(e.from)||!shownIds.has(e.to))continue;
     const route=routes.get(e.id);if(!route)continue;
-    const a=byId.get(e.from),b=byId.get(e.to),c=C.colours[e.colour];
-    parts.push('<g data-ns-edge="'+html(e.id)+'" tabindex="0" role="button" aria-label="Connector '+html(e.name||a.name+' to '+b.name)+'"><path d="'+route.path+'" fill="none" stroke="transparent" stroke-width="14"/><path data-ns-wire="" d="'+route.path+'" fill="none" stroke="'+c+'" stroke-width="'+(e.id===selected?3:2)+'"/>'+(e.arrow!==false?'<polygon data-ns-direction="" points="'+route.arrow.map(p=>p.x+','+p.y).join(' ')+'" fill="'+c+'"/>':'')+(e.name?'<text data-ns-edge-label="" x="'+(route.label.x+Number(e.labelOffset?.x||0))+'" y="'+(route.label.y+Number(e.labelOffset?.y||0))+'" fill="'+c+'" font-size="13">'+html(e.name)+'</text>':'')+(includeHandles&&editing&&e.id===selected?route.points.slice(1,-1).map((p,i)=>'<circle data-ns-bend="'+i+'" cx="'+p.x+'" cy="'+p.y+'" r="7" fill="white" stroke="#087b82" stroke-width="2"/>').join('')+((e.bends||[]).length<32?route.points.slice(1).map((p,i)=>{const a=route.points[i],x=(a.x+p.x)/2,y=(a.y+p.y)/2;return '<g data-ns-add-bend="'+i+'" aria-label="Add bend"><circle cx="'+x+'" cy="'+y+'" r="8" fill="white" stroke="#087b82"/><path data-ns-handle="" d="M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6" stroke="#087b82" pointer-events="none"/></g>';}).join(''):''):'')+'</g>');
+    const a=byId.get(e.from),b=byId.get(e.to),colour=C.colours[e.colour];
+    const group=svgElement('g',{'data-ns-edge':e.id,tabindex:0,role:'button','aria-label':'Connector '+(e.name||a.name+' to '+b.name)});
+    group.append(svgElement('path',{d:route.path,fill:'none',stroke:'transparent','stroke-width':14}),
+      svgElement('path',{'data-ns-wire':'',d:route.path,fill:'none',stroke:colour,'stroke-width':e.id===selected?3:2}));
+    if(e.arrow!==false&&route.arrow.length){
+      group.append(svgElement('polygon',{'data-ns-direction':'',points:polygonPoints(route.arrow),fill:colour}));
+    }
+    if(e.name){
+      group.append(svgElement('text',{'data-ns-edge-label':'',x:route.label.x+Number(e.labelOffset?.x||0),
+        y:route.label.y+Number(e.labelOffset?.y||0),fill:colour,'font-size':13},e.name));
+    }
+    const badge=detrimentLayer&&detrimentBadge(e,comparison,route.label.x-10,route.label.y-5);
+    if(badge)group.append(badge);
+    if(includeHandles&&editing&&e.id===selected)renderEdgeHandles(group,route,(e.bends||[]).length);
+    scene.append(group);
   }
-  for(const n of network.nodes){
-    if(!shownIds.has(n.id))continue;
-    const p=point(n.x,n.y),c=C.colours[n.colour],box=C.bounds(n.type),rawOffset=C.labelOffset(n),offset={x:Number(rawOffset.x),y:Number(rawOffset.y)},small=['manhole','label'].includes(n.type),leader=C.labelLeader(n);
-    const label=(leader?'<path data-ns-leader="" d="M'+leader.start.x+' '+leader.start.y+'L'+Number(leader.end.x)+' '+Number(leader.end.y)+'" stroke="#82939f" stroke-width="1" fill="none"/><polygon points="'+leader.arrow.map(p=>p.x+','+p.y).join(' ')+'" fill="#82939f"/>':'')+'<text data-ns-label="'+html(n.id)+'" x="'+(offset.x+(small?5:0))+'" y="'+offset.y+'" text-anchor="'+(small?'start':'middle')+'" font-size="'+(small?13:14)+'" font-weight="'+(small?400:600)+'" fill="#182732">'+html(n.name)+'</text>';
-    parts.push('<g data-ns-node="'+html(n.id)+'" transform="translate('+p.x+' '+p.y+')" tabindex="0" role="button" aria-label="'+html(n.name)+' · '+html(C.types[n.type])+'"><title>'+html(n.name+' · '+C.types[n.type])+'</title>'+(selected===n.id||multi.has(n.id)?'<rect x="-42" y="-32" width="84" height="64" rx="8" fill="none" stroke="#0b8f96" stroke-width="2"/>':'')+(box.circle?'':'<rect data-ns-frame="" x="'+(-box.x)+'" y="'+(-box.y)+'" width="'+(box.x*2)+'" height="'+(box.y*2)+'" rx="6" fill="white" stroke="'+c+'" stroke-width="1.5"/>')+'<rect x="-37" y="-28" width="74" height="56" fill="transparent"/><g stroke="'+c+'" stroke-width="1.8" fill="white" stroke-linecap="round" stroke-linejoin="round">'+icon(n.type)+'</g>'+label+(asset(n)?badgeMarkup(n):'')+'</g>');
+  for(const n of shown){
+    const p=point(n.x,n.y),colour=C.colours[n.colour],box=C.bounds(n.type),offset=C.labelOffset(n);
+    const small=['manhole','label'].includes(n.type),leader=C.labelLeader(n);
+    const title=n.name+' · '+C.types[n.type];
+    const group=svgElement('g',{'data-ns-node':n.id,transform:translate(p.x,p.y),tabindex:0,role:'button','aria-label':title});
+    group.append(svgElement('title',{},title));
+    if(selected===n.id||multi.has(n.id)){
+      group.append(svgElement('rect',{x:-42,y:-32,width:84,height:64,rx:8,fill:'none',stroke:'#0b8f96','stroke-width':2}));
+    }
+    if(!box.circle){
+      group.append(svgElement('rect',{'data-ns-frame':'',x:-box.x,y:-box.y,width:box.x*2,height:box.y*2,
+        rx:6,fill:'white',stroke:colour,'stroke-width':1.5}));
+    }
+    group.append(svgElement('rect',{x:-37,y:-28,width:74,height:56,fill:'transparent'}));
+    const symbol=svgElement('g',{'data-ns-symbol':'',stroke:colour,'stroke-width':1.8,fill:'white',
+      'stroke-linecap':'round','stroke-linejoin':'round'});
+    renderIcon(symbol,n.type);
+    group.append(symbol);
+    if(leader){
+      group.append(svgElement('path',{'data-ns-leader':'',d:`M${leader.start.x} ${leader.start.y}L${Number(leader.end.x)} ${Number(leader.end.y)}`,
+        stroke:'#82939f','stroke-width':1,fill:'none'}),
+        svgElement('polygon',{points:polygonPoints(leader.arrow),fill:'#82939f'}));
+    }
+    group.append(svgElement('text',{'data-ns-label':n.id,x:Number(offset.x)+(small?5:0),y:Number(offset.y),
+      'text-anchor':small?'start':'middle','font-size':small?13:14,'font-weight':small?400:600,fill:'#182732'},n.name));
+    for(const badge of [asset(n)&&resultBadge(n),verificationLayer&&verificationBadge(n,evidence,reviews),
+      surveyLayer&&flowSurveyBadge(n,surveyView),detrimentLayer&&detrimentBadge(n,comparison,52,24)]){
+      if(badge)group.append(badge);
+    }
+    scene.append(group);
   }
-  if(!network.nodes.length)parts.push('<text x="'+width/2+'" y="'+height/2+'" text-anchor="middle" fill="#60717d" font-size="15"><tspan x="'+width/2+'" dy="-10">Choose Edit network,</tspan><tspan x="'+width/2+'" dy="22">then add assets and manholes.</tspan></text>');
-  return parts.join('');
+  if(!network.nodes.length){
+    const text=svgElement('text',{x:width/2,y:height/2,'text-anchor':'middle',fill:'#60717d','font-size':15});
+    text.append(svgElement('tspan',{x:width/2,dy:-10},'Choose Edit network,'),
+      svgElement('tspan',{x:width/2,dy:22},'then add assets and manholes.'));
+    scene.append(text);
+  }
+  return scene;
+}
+function declutterLabels(svg){
+  if(prefs().detail==='full'||!svg.getClientRects().length)return;
+  const viewport=svg.getBoundingClientRect();
+  const manualNodes=new Set(network.nodes.filter(n=>n.nameOffset||n.labelOffset).map(n=>n.id));
+  const manualEdges=new Set(network.edges.filter(e=>e.labelOffset).map(e=>e.id));
+  const labels=[];
+  for(const label of svg.querySelectorAll('[data-ns-label], [data-ns-edge-label]')){
+    const group=label.parentElement;
+    const id=group.dataset.nsNode||group.dataset.nsEdge;
+    const priority=id===selected||multi.has(id)||manualNodes.has(id)||manualEdges.has(id)?2:group.dataset.nsNode?1:0;
+    labels.push({label,box:label.getBoundingClientRect(),priority});
+  }
+  labels.sort((a,b)=>b.priority-a.priority);
+  const occupied=new Map(),padding=3,bucketSize=128;
+  function buckets(box){
+    const keys=[];
+    for(let y=Math.floor((Math.max(box.top,viewport.top)-padding)/bucketSize);y<=Math.floor((Math.min(box.bottom,viewport.bottom)+padding)/bucketSize);y++)
+      for(let x=Math.floor((Math.max(box.left,viewport.left)-padding)/bucketSize);x<=Math.floor((Math.min(box.right,viewport.right)+padding)/bucketSize);x++)keys.push(x+':'+y);
+    return keys;
+  }
+  const overlaps=(a,b)=>a.left<b.right+padding&&a.right>b.left-padding&&a.top<b.bottom+padding&&a.bottom>b.top-padding;
+  const obstacles=Array.from(svg.querySelectorAll('[data-ns-symbol], [data-ns-verification], [data-ns-survey], [data-ns-detriment]'),el=>el.getBoundingClientRect());
+  for(const box of obstacles){
+    if(!box.width||!overlaps(box,viewport))continue;
+    for(const key of buckets(box)){
+      if(!occupied.has(key))occupied.set(key,[]);
+      occupied.get(key).push(box);
+    }
+  }
+  for(const {label,box,priority} of labels){
+    if(!box.width||!overlaps(box,viewport))continue;
+    const keys=buckets(box);
+    if(priority<2&&(box.left<viewport.left||box.right>viewport.right||
+       keys.some(key=>occupied.get(key)?.some(other=>overlaps(box,other))))){
+      label.setAttribute('data-ns-label-suppressed','');
+      continue;
+    }
+    for(const key of keys){
+      if(!occupied.has(key))occupied.set(key,[]);
+      occupied.get(key).push(box);
+    }
+  }
 }
 function renderCanvas(){
-  const svg=$('nsSvg');if(!svg)return;const d=dimensions();svg.setAttribute('viewBox','0 0 '+d.width+' '+d.height);svg.innerHTML=svgContent();
-  $('nsZoom').textContent=Math.round(network.camera.zoom*100)+'%';$('nsUndo').disabled=!history.length||busy;
+  const svg=$('nsSvg');if(!svg)return;
+  const active=document.activeElement;
+  const focused=svg.contains(active)&&active.closest('[data-ns-node],[data-ns-edge]');
+  const d=dimensions();svg.setAttribute('viewBox','0 0 '+d.width+' '+d.height);svg.replaceChildren(renderScene());
+  declutterLabels(svg);
+  const selectedGroup=[...svg.children].find(group=>group.dataset.nsNode===selected&&selected!==null);
+  if(selectedGroup)svg.append(selectedGroup);
+  if(focused){
+    const key=focused.hasAttribute('data-ns-node')?'nsNode':'nsEdge';
+    const replacement=[...svg.children].find(group=>group.dataset[key]===focused.dataset[key]);
+    replacement?.focus({preventScroll:true});
+  }
+  $('nsZoom').textContent=Number((network.camera.zoom*100).toFixed(1))+'%';$('nsUndo').disabled=!history.length||busy;
   renderPopup();
   applyDecorations();
 }
 function renderGeometry(){
   const edges=new Map(network.edges.map(e=>[e.id,e])),nodes=new Map(network.nodes.map(n=>[n.id,n])),routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y));
   for(const g of $('nsSvg').querySelectorAll('[data-ns-node]')){const n=nodes.get(g.dataset.nsNode),p=point(n.x,n.y);g.setAttribute('transform','translate('+p.x+' '+p.y+')');}
-  for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]')){const route=routes.get(g.dataset.nsEdge);if(!route){g.style.visibility='hidden';continue;}g.style.visibility='';for(const path of g.querySelectorAll(':scope > path'))path.setAttribute('d',route.path);g.querySelector('[data-ns-direction]')?.setAttribute('points',route.arrow.map(p=>p.x+','+p.y).join(' '));const e=edges.get(g.dataset.nsEdge),offset=e.labelOffset||{x:0,y:0},label=g.querySelector('text');if(label){label.setAttribute('x',route.label.x+offset.x);label.setAttribute('y',route.label.y+offset.y);}for(const handle of g.querySelectorAll('[data-ns-bend]')){const p=route.points[Number(handle.dataset.nsBend)+1];handle.setAttribute('cx',p.x);handle.setAttribute('cy',p.y);}for(const handle of g.querySelectorAll('[data-ns-add-bend]')){const i=Number(handle.dataset.nsAddBend),a=route.points[i],b=route.points[i+1],x=(a.x+b.x)/2,y=(a.y+b.y)/2;handle.querySelector('circle').setAttribute('cx',x);handle.querySelector('circle').setAttribute('cy',y);handle.querySelector('path').setAttribute('d','M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6');}}
+  for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]')){const route=routes.get(g.dataset.nsEdge);if(!route){g.style.visibility='hidden';continue;}g.style.visibility='';for(const path of g.querySelectorAll(':scope > path'))path.setAttribute('d',route.path);g.querySelector('[data-ns-direction]')?.setAttribute('points',route.arrow.map(p=>p.x+','+p.y).join(' '));const e=edges.get(g.dataset.nsEdge),offset=e.labelOffset||{x:0,y:0},label=g.querySelector('[data-ns-edge-label]');g.querySelector('[data-ns-detriment]')?.setAttribute('transform','translate('+(route.label.x-10)+' '+(route.label.y-5)+')');if(label){label.setAttribute('x',route.label.x+offset.x);label.setAttribute('y',route.label.y+offset.y);}for(const handle of g.querySelectorAll('[data-ns-bend]')){const p=route.points[Number(handle.dataset.nsBend)+1];handle.setAttribute('cx',p.x);handle.setAttribute('cy',p.y);}for(const handle of g.querySelectorAll('[data-ns-add-bend]')){const i=Number(handle.dataset.nsAddBend),a=route.points[i],b=route.points[i+1],x=(a.x+b.x)/2,y=(a.y+b.y)/2;handle.querySelector('circle').setAttribute('cx',x);handle.querySelector('circle').setAttribute('cy',y);handle.querySelector('path').setAttribute('d','M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6');}}
 }
 function fit(){
   const d=dimensions();if(!network.nodes.length){network.camera={x:0,y:0,zoom:1};changed(true);return;}
@@ -98,12 +325,13 @@ function fit(){
     for(const p of network.edges.flatMap(e=>e.bends||[])){xs.push(p.x*z);ys.push(p.y*z);}
     return {left:Math.min(...xs),right:Math.max(...xs),top:Math.min(...ys),bottom:Math.max(...ys)};
   };
-  let z=Math.max(.2,Math.min(2,(d.width-160)/Math.max(200,right-left),(d.height-150)/Math.max(180,bottom-top))),box;
-  for(let i=0;i<8;i++){box=scene(z);const ratio=Math.min(1,(d.width-40)/Math.max(1,box.right-box.left),(d.height-70)/Math.max(1,box.bottom-box.top));if(ratio>.999||z===.2)break;z=Math.max(.2,z*ratio);}
+  const minZoom=network.contextFormat ? .002 : .2;
+  let z=Math.max(minZoom,Math.min(2,(d.width-160)/Math.max(200,right-left),(d.height-150)/Math.max(180,bottom-top))),box;
+  for(let i=0;i<8;i++){box=scene(z);const ratio=Math.min(1,(d.width-40)/Math.max(1,box.right-box.left),(d.height-70)/Math.max(1,box.bottom-box.top));if(ratio>.999||z===minZoom)break;z=Math.max(minZoom,z*ratio);}
   box=scene(z);network.camera={zoom:z,x:d.width/2-(box.left+box.right)/2,y:(d.height-30)/2-(box.top+box.bottom)/2};changed(true);
 }
 function zoom(factor,anchor){
-  const d=dimensions(),p=anchor||{x:d.width/2,y:d.height/2},before=world(p.x,p.y),z=Math.max(.2,Math.min(4,network.camera.zoom*factor));
+  const d=dimensions(),p=anchor||{x:d.width/2,y:d.height/2},before=world(p.x,p.y),z=Math.max(network.contextFormat ? .002 : .2,Math.min(4,network.camera.zoom*factor));
   network.camera={zoom:z,x:p.x-before.x*z,y:p.y-before.y*z};changed(true);
 }
 function renderFilters(){
@@ -135,8 +363,16 @@ function renderDrawer(){
   if(!n&&!e){drawer.innerHTML='<h3>Edit network</h3><p>Add a point or select an existing asset to name it and assign imported evidence.</p><p>Use Connect and click two points to draw a directed wire. Drag points to arrange the site.</p>';return;}
   const common='<div class="ns-drawer-head"><h3>'+html(n?n.name:e.name||'Connector')+'</h3><button data-ns-close-selection aria-label="Close settings">×</button></div>'+
     fields('Name','<input id="nsName" value="'+html(n?n.name:e.name||'')+'" maxlength="160">')+fields('Network colour',colours((n||e).colour,'data-ns-object-colour'));
-  if(e){drawer.innerHTML=common+'<label class="ns-check"><input id="nsArrow" type="checkbox" '+(e.arrow!==false?'checked':'')+'> Show direction</label><p class="ns-note">Click + on the line to add a bend; drag the round handles to position it.</p><button id="nsAddBend" '+((e.bends||[]).length>=32?'disabled':'')+'>+ Add bend</button> <button id="nsStraighten" '+(!(e.bends||[]).length?'disabled':'')+'>Straighten</button>'+((e.bends||[]).length?'<div class="ns-bend-list">'+e.bends.map((p,i)=>'<button data-ns-remove-bend="'+i+'">Remove bend '+(i+1)+'</button>').join('')+'</div>':'')+reviewFields(e)+'<button data-ns-delete class="ns-danger">Delete connector</button>';return;}
-  drawer.innerHTML=common+fields('Type',selectHtml('id="nsType"',Object.entries(C.types),n.type))+
+  if(e){drawer.innerHTML=common+detrimentAssociation(e)+(e.icm?'<button type="button" id="nsPipeTrial">Open in Hydraulic Calculations</button>':'')+'<label class="ns-check"><input id="nsArrow" type="checkbox" '+(e.arrow!==false?'checked':'')+'> Show direction</label><p class="ns-note">Click + on the line to add a bend; drag the round handles to position it.</p><button id="nsAddBend" '+((e.bends||[]).length>=32?'disabled':'')+'>+ Add bend</button> <button id="nsStraighten" '+(!(e.bends||[]).length?'disabled':'')+'>Straighten</button>'+((e.bends||[]).length?'<div class="ns-bend-list">'+e.bends.map((p,i)=>'<button data-ns-remove-bend="'+i+'">Remove bend '+(i+1)+'</button>').join('')+'</div>':'')+reviewFields(e)+'<button data-ns-delete class="ns-danger">Delete connector</button>';
+    const trial=$('nsPipeTrial');
+    if(trial)trial.onclick=()=>{
+      const inputs=C.conduitTrial(e);
+      if(!inputs){status('Calculator handoff requires a circular, single-barrel, sediment-free conduit with uniform Colebrook–White roughness and valid geometry and gradient.');return;}
+      window.__ICM_PRECISION_WORKBENCH__.openPipeTrial(inputs);
+    };
+    return;
+  }
+  drawer.innerHTML=common+monitorAssociations(n)+detrimentAssociation(n)+fields('Type',selectHtml('id="nsType"',Object.entries(C.types),n.type))+
     '<label class="ns-check"><input id="nsPinned" type="checkbox" '+(n.pinned?'checked':'')+'> Pin position</label><div class="ns-two">'+fields('Label X','<input id="nsLabelX" type="number" min="-10000" max="10000" value="'+html(C.labelOffset(n).x)+'">')+fields('Label Y','<input id="nsLabelY" type="number" min="-10000" max="10000" value="'+html(C.labelOffset(n).y)+'">')+'</div><button id="nsResetLabel">Reset label</button><small>Drag the name or combined summary on the canvas. A leader arrow keeps the label tied to this point.</small>'+
     (asset(n)?'<section><h4>Observed</h4>'+fields('Shared threshold · blank rows inherit','<input id="nsObservedDefault" type="number" step="any" value="'+html(n.defaults?.observed??'')+'">')+bindingRows(n,'observed')+'<button data-ns-add-sources="observed">+ Add datasets</button></section>'+
       '<section><h4>Modelled scenarios</h4>'+fields('Scenario for new assignments','<input id="nsNewScenario" value="'+html(n.newScenario||'Baseline')+'" maxlength="100">')+fields('Shared model threshold · blank rows inherit','<input id="nsModelDefault" type="number" step="any" value="'+html(n.defaults?.model??'')+'">')+bindingRows(n,'model')+'<button data-ns-add-sources="model">+ Add datasets to scenario</button></section>'+
@@ -147,7 +383,7 @@ function renderDrawer(){
     reviewFields(n)+'<button data-ns-delete class="ns-danger">Delete point</button>';
 }
 function popupTable(n){
-  if(!n.applied)return annualTable(n)+'<small>Assign datasets and calculate.</small>';
+  if(!n.applied)return '<div data-ns-empty-table></div><small>Assign datasets and calculate.</small>';
   const fresh=isFresh(n),groups=R.annualGroups(n,prefs().scenarios);
   let table='<table><thead><tr><th>Year</th><th>Scenario</th><th>Observed<br>spills</th><th>Modelled<br>spills</th><th>Observed<br>hours</th><th>Modelled<br>hours</th></tr></thead><tbody>';
   const cell=(v,rag)=>'<td'+(rag?' class="ns-rag-'+rag+'"':'')+'>'+f(v,Number.isInteger(v)?0:2)+(rag?'<small class="ns-rag-label">'+html(rag[0].toUpperCase()+rag.slice(1))+' agreement</small>':'')+'</td>';
@@ -159,15 +395,28 @@ function popupTable(n){
   const details=groups.map(g=>[g.observed,g.model].filter(Boolean).map(r=>'<p><strong>'+html(r.year+' · '+(r.role==='observed'?'Observed':r.scenario))+'</strong><br>'+html(r.analysis_start?r.analysis_start.slice(0,10)+' to '+r.analysis_end.slice(0,10):'No period')+(r.partial_year?' · partial year':'')+'<br>'+html(r.column)+' · '+(C.thresholdRule(r)==='gt'?'&gt;':'≥')+' '+f(r.threshold,6)+' '+html(r.unit||'')+'<br>Valid '+f(r.valid_hours,1)+' h · gaps '+f(r.unknown_hours,1)+' h · excluded '+f(r.excluded_hours,1)+' h'+(r.value_min!==undefined?'<br>Value range '+f(r.value_min,6)+' to '+f(r.value_max,6)+' '+html(r.unit||''):'')+(r.reason?'<br>'+html(r.reason):'')+(r.count_status&&r.count_status!=='definitive'?'<br>'+html(r.count_status):'')+(r.continuous_spill?'<br>All valid support is classified as spilling. Check channel, threshold, units and datum.':'')+'</p>').join('')+(g.model?'<p>'+html(fresh?C.comparable(g.observed,g.model,n.confirmed)||'Comparison eligible.':'Recalculation required.')+'</p>':'')).join('');
   return table+(fresh?'':'<p class="ns-note">Recalculation required: settings, method or source evidence changed.</p>')+'<details class="ns-evidence-details"><summary>Assessment details</summary>'+details+'</details><small>12/24 counts · duration in hours</small>';
 }
+function linkedMonitorEvidence(n){
+  if(!n.monitorId)return '';
+  const survey=surveyLayerView(),week=survey?.byMonitor.get(n.monitorId);
+  const workbench=window.__ICM_WORKBENCH__;
+  const verification=workbench?.readVerificationEvidence?.();
+  const matches=verification?.asset.kind==='flow-monitor'&&verification.asset.id===n.monitorId;
+  const reviews=matches?workbench.verificationReviews?.report(verification)||[]:[];
+  const surveyStatus=week?.status==='current'?(week.rating||'Current evidence'):
+    week?.status==='stale'?'Stale survey evidence':'No survey evidence';
+  const verificationStatus=!matches?'No comparison':verification.freshness!=='current'?'Stale evidence':
+    reviews.length?reviews.map(review=>review.decision).join(' · '):'Comparison available';
+  return '<section class="ns-linked-evidence"><strong>Flow monitor '+html(n.monitorId)+'</strong>'+
+    '<p>Flow Survey · '+html(surveyStatus)+(survey?.week?' · '+html(survey.week):'')+'</p>'+
+    '<p>Verification · '+html(verificationStatus)+'</p>'+
+    '<div class="ns-linked-actions"><button type="button" id="nsOpenFlowSurvey">Open Flow Survey week</button> '+
+    '<button type="button" id="nsOpenVerification">Open Verification evidence</button></div></section>';
+}
 function renderPopup(){
   const pop=$('nsPopup'),n=node();if(!pop)return;pop.hidden=editing||!popupVisible||!n;
+  $('nsLayout').classList.toggle('ns-inspecting',!pop.hidden);
   if(pop.hidden){pop.replaceChildren();return;}
-  const oldScroll=pop.querySelector('.ns-popup-body')?.scrollTop||0;pop.innerHTML='<div class="ns-popup-head"><div><h3>'+html(n.name)+'</h3><small>'+html(C.types[n.type])+' · all reporting years</small></div><button data-ns-close-popup aria-label="Close spill evidence">×</button></div><div class="ns-popup-body">'+popupTable(n)+reviewFields(n)+'</div><div class="ns-popup-footer"><button data-ns-open-analysis="series">Time series</button><button data-ns-open-analysis="spills">Spill analysis</button><button data-ns-edit-selected>Edit asset</button></div>';pop.querySelector('.ns-popup-body').scrollTop=oldScroll;
-  const d=dimensions(),p=point(n.x,n.y),w=Math.min(620,d.width-24);pop.style.width=w+'px';pop.style.maxHeight=(d.height-24)+'px';
-  // Keep the camera controls reachable even with a long evidence table.
-  pop.style.maxHeight=(d.height-82)+'px';
-  pop.style.left=Math.max(12,d.width-w-12)+'px';
-  pop.style.top='12px';
+  const oldScroll=pop.querySelector('.ns-popup-body')?.scrollTop||0;pop.innerHTML='<div class="ns-popup-head"><div><h3>'+html(n.name)+'</h3><small>'+html(C.types[n.type])+' · all reporting years</small></div><button data-ns-close-popup aria-label="Close asset evidence">×</button></div><div class="ns-popup-body">'+linkedMonitorEvidence(n)+popupTable(n)+reviewFields(n)+'</div><div class="ns-popup-footer"><button data-ns-open-analysis="series">Time series</button><button data-ns-open-analysis="spills">Spill analysis</button><button data-ns-edit-selected>Edit asset</button></div>';pop.querySelector('[data-ns-empty-table]')?.replaceWith(annualTable(n));pop.querySelector('.ns-popup-body').scrollTop=oldScroll;
 }
 function render(){
   if(!mounted)return;
@@ -265,13 +514,16 @@ function updateField(target){
       if(key==='years')b.years=C.validateYears(target.value);else if(key==='threshold')b.threshold=target.value===''?'':Number(target.value);else if(key==='scenario')b.scenario=target.value.trim()||'Baseline';else b[key]=target.value;
       if(key==='column'){const item=sourceFor(b);b.quantity=seriesQuantity(item,b.column)||b.quantity;b.unit=seriesUnit(item,b.column)||'';b.datum=seriesReference(item,b.column)||'';}
       if(['column','quantity'].includes(key))b.comparison=b.quantity==='flow'?'gt':'ge';if(key==='quantity')b.unit=b.quantity==='status'?'1':'';changed();if(['column','quantity','threshold','comparison','unit'].includes(key))renderDrawer();
-      if(analysisContext?.id===n.id){renderAnalysisSettings(n);$('nsAnalysisCounts').innerHTML=annualTable(n,true);$('nsAnalysisAudit').innerHTML=auditHtml(n);$('nsCommonResult').hidden=true;if(analysisContext.mode==='series')void plotAnalysis(++analysisGeneration);}
+      if(analysisContext?.id===n.id){renderAnalysisSettings(n);$('nsAnalysisCounts').replaceChildren(annualTable(n,true));$('nsAnalysisAudit').replaceChildren(auditDetails(n));$('nsCommonResult').hidden=true;if(analysisContext.mode==='series')void plotAnalysis(++analysisGeneration);}
     }catch(error){status(error.message);target.setAttribute('aria-invalid','true');}return;
   }
   const object=n||e;
   try{
     checkpoint();
-    if(target.id==='nsName')object.name=target.value.trim()||C.types[n?.type]||'Connector';
+    if(target.id==='nsName'){
+      object.name=target.value.trim()||C.types[n?.type]||'Connector';
+      $('nsDrawer').querySelector('.ns-drawer-head h3').textContent=object.name;
+    }
     else if(target.id==='nsType')n.type=target.value;
     else if(target.id==='nsArrow')e.arrow=target.checked;
     else if(target.id==='nsPinned')n.pinned=target.checked;
@@ -382,12 +634,16 @@ function exportPopupSvg(){
 }
 async function capture(){
   const d=dimensions(),n=popupVisible&&!editing?node():null;let overlay='';
+  const layout=$('nsLayout').getBoundingClientRect();
+  const width=n?Math.ceil(layout.width):d.width,height=n?Math.ceil(layout.height):d.height;
   if(n)overlay=exportPopupSvg();
-  const text='<svg xmlns="'+NS+'" width="'+d.width+'" height="'+d.height+'" viewBox="0 0 '+d.width+' '+d.height+'"><rect width="100%" height="100%" fill="white"/><g font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" fill="#182732">'+svgContent(false)+overlay+'<text x="12" y="'+(d.height-12)+'" font-size="11" fill="#60717d">Hydra Bench · '+html(network.year==='all'?'All years':network.year)+' · '+html(network.evidenceMode==='combined'?'Observed + all models':network.scenario)+' · connections show topology only</text></g></svg>';
+  const scene=svgElement('g');
+  scene.append(renderScene(false));
+  const text='<svg xmlns="'+NS+'" width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'"><rect width="100%" height="100%" fill="white"/><g font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" fill="#182732">'+new XMLSerializer().serializeToString(scene)+overlay+'<text x="12" y="'+(d.height-12)+'" font-size="11" fill="#60717d">Hydra Bench · '+html(network.year==='all'?'All years':network.year)+' · '+html(network.evidenceMode==='combined'?'Observed + all models':network.scenario)+' · connections show topology only</text></g></svg>';
   await window.HydraDesign.prepareReportFont();
   const embedded=text.replace('<rect','<defs><style>'+window.HydraDesign.reportFontCss()+'</style></defs><rect');
   const blob=new Blob([embedded],{type:'image/svg+xml'}),url=URL.createObjectURL(blob);
-  try{await document.fonts?.ready;const image=new Image();image.src=url;await image.decode();const canvas=document.createElement('canvas');canvas.width=d.width*2;canvas.height=d.height*2;const ctx=canvas.getContext('2d');ctx.scale(2,2);ctx.drawImage(image,0,0);const png=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!png)throw new Error('Could not create screenshot.');const link=document.createElement('a'),pngUrl=URL.createObjectURL(png);link.href=pngUrl;link.download='hydra-network-schematic.png';link.click();setTimeout(()=>URL.revokeObjectURL(pngUrl),1000);status('Network PNG captured with the open evidence table.');}
+  try{await document.fonts?.ready;const image=new Image();image.src=url;await image.decode();const canvas=document.createElement('canvas');canvas.width=width*2;canvas.height=height*2;const ctx=canvas.getContext('2d');ctx.scale(2,2);ctx.drawImage(image,0,0);const png=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!png)throw new Error('Could not create screenshot.');const link=document.createElement('a'),pngUrl=URL.createObjectURL(png);link.href=pngUrl;link.download='hydra-network-schematic.png';link.click();setTimeout(()=>URL.revokeObjectURL(pngUrl),1000);status('Network PNG captured with the open evidence table.');}
   finally{URL.revokeObjectURL(url);}
 }
 function reviewFields(object){
@@ -414,20 +670,82 @@ function centre(id){const n=network.nodes.find(n=>n.id===id);if(!n)return;const 
 function hideHover(){clearTimeout(hoverTimer);if($('nsHover'))$('nsHover').hidden=true;}
 function hoverCard(id){
   const n=network.nodes.find(n=>n.id===id);if(!n||!asset(n)||editing||drag||popupVisible)return;
-  const hover=$('nsHover'),d=dimensions(),p=point(n.x,n.y);hover.innerHTML='<strong>'+html(n.name)+'</strong><div class="ns-hover-table">'+annualTable(n,false,prefs().scenarios,false)+'</div><small>Click asset to inspect</small>';hover.hidden=false;const w=Math.min(460,d.width-24);hover.style.width=w+'px';hover.style.left=Math.max(12,Math.min(d.width-w-12,p.x+45))+'px';hover.style.top=Math.max(12,Math.min(d.height-hover.offsetHeight-70,p.y+15))+'px';
+  const hover=$('nsHover'),d=dimensions(),p=point(n.x,n.y);
+  const wrapper=document.createElement('div');
+  wrapper.className='ns-hover-table';
+  wrapper.append(annualTable(n,false,prefs().scenarios,false));
+  hover.replaceChildren(textElement('strong',n.name),wrapper,textElement('small','Click asset to inspect'));
+  hover.hidden=false;const w=Math.min(460,d.width-24);hover.style.width=w+'px';hover.style.left=Math.max(12,Math.min(d.width-w-12,p.x+45))+'px';hover.style.top=Math.max(12,Math.min(d.height-hover.offsetHeight-70,p.y+15))+'px';
+}
+function textElement(tag,text){
+  const element=document.createElement(tag);
+  element.textContent=text;
+  return element;
 }
 function annualTable(n,differences=false,scenarios=prefs().scenarios,interactive=true){
-  const fresh=isFresh(n),groups=R.annualGroups(n,scenarios),cell=(value,rag)=>'<td'+(rag?' class="ns-rag-'+rag+'"':'')+'>'+f(value,Number.isInteger(value)?0:1)+(rag?'<small class="ns-rag-label">'+html(rag[0].toUpperCase()+rag.slice(1))+' agreement</small>':'')+'</td>';
+  const fresh=isFresh(n);
+  const table=document.createElement('table');
+  table.className='ns-annual-table';
+  const heading=table.createTHead().insertRow();
+  for(const column of ['Year','Scenario','O count','M count','O h','M h',...(differences?['Δ count','Δ h']:[])]){
+    heading.append(textElement('th',column));
+  }
+  const body=table.createTBody();
   const signed=value=>value===null?'—':(value>0?'+':'')+f(value,1);
-  return '<table class="ns-annual-table"><thead><tr><th>Year</th><th>Scenario</th><th>O count</th><th>M count</th><th>O h</th><th>M h</th>'+(differences?'<th>Δ count</th><th>Δ h</th>':'')+'</tr></thead><tbody>'+groups.map(g=>{
-    const reason=metric=>!fresh?'Recalculate':g.model?C.comparable(g.observed,g.model,n.confirmed,metric):'No model evidence',countValid=!reason('spill_count'),durationValid=!reason('duration_hours'),o=fresh?g.observed:null,m=fresh?g.model:null;
-    return '<tr data-ns-focus="'+html(n.id)+'" data-ns-year="'+g.year+'" title="'+html(reason('spill_count')||reason('duration_hours'))+'"><td>'+(interactive?'<button type="button" class="ns-table-year" aria-label="Focus '+html(n.name)+' in '+g.year+'">'+g.year+'</button>':g.year)+'</td><td>'+html(g.scenario)+'</td>'+cell(o?.spill_count)+cell(m?.spill_count,countValid?C.rag(o.spill_count,m.spill_count):null)+cell(o?.duration_hours)+cell(m?.duration_hours,durationValid?C.rag(o.duration_hours,m.duration_hours):null)+(differences?'<td>'+signed(countValid?R.delta(o.spill_count,m.spill_count):null)+'</td><td>'+signed(durationValid?R.delta(o.duration_hours,m.duration_hours):null)+'</td>':'')+'</tr>';
-  }).join('')+'</tbody></table>';
+  for(const g of R.annualGroups(n,scenarios)){
+    const reason=metric=>!fresh?'Recalculate':g.model?C.comparable(g.observed,g.model,n.confirmed,metric):'No model evidence';
+    const countValid=!reason('spill_count'),durationValid=!reason('duration_hours');
+    const o=fresh?g.observed:null,m=fresh?g.model:null;
+    const row=body.insertRow();
+    row.dataset.nsFocus=n.id;
+    row.dataset.nsYear=g.year;
+    row.title=reason('spill_count')||reason('duration_hours');
+    const yearCell=row.insertCell();
+    if(interactive){
+      const button=textElement('button',g.year);
+      button.type='button';
+      button.className='ns-table-year';
+      button.setAttribute('aria-label','Focus '+n.name+' in '+g.year);
+      yearCell.append(button);
+    }else{
+      yearCell.textContent=g.year;
+    }
+    row.insertCell().textContent=g.scenario;
+    const cell=(value,rag)=>{
+      const td=row.insertCell();
+      td.textContent=f(value,Number.isInteger(value)?0:1);
+      if(rag){
+        td.className='ns-rag-'+rag;
+        const label=textElement('small',rag[0].toUpperCase()+rag.slice(1)+' agreement');
+        label.className='ns-rag-label';
+        td.append(label);
+      }
+    };
+    cell(o?.spill_count);
+    cell(m?.spill_count,countValid?C.rag(o.spill_count,m.spill_count):null);
+    cell(o?.duration_hours);
+    cell(m?.duration_hours,durationValid?C.rag(o.duration_hours,m.duration_hours):null);
+    if(differences){
+      row.insertCell().textContent=signed(countValid?R.delta(o.spill_count,m.spill_count):null);
+      row.insertCell().textContent=signed(durationValid?R.delta(o.duration_hours,m.duration_hours):null);
+    }
+  }
+  return table;
 }
 function renderReview(){
   if(!$('nsReviewTools'))return;
   const p=prefs(),names=[...new Set(network.nodes.flatMap(n=>n.bindings.filter(b=>b.role==='model').map(b=>b.scenario)))].sort();
-  $('nsTypeFilter').value=p.type;$('nsHealthFilter').value=p.health;$('nsResultFilter').value=p.result;$('nsDetail').value=p.detail;$('nsSnap').checked=p.snap;$('nsLocked').checked=p.locked;
+  $('nsTypeFilter').value=p.type;$('nsHealthFilter').value=p.health;$('nsResultFilter').value=p.result;$('nsDetail').value=p.detail;$('nsSnap').checked=p.snap;$('nsLocked').checked=p.locked;$('nsVerificationLayer').checked=p.verification===true;
+  $('nsFlowSurveyLayer').checked=p.flowSurvey===true;
+  $('nsDetrimentLayer').checked=p.detriment===true;
+  $('nsDetrimentKind').value=detrimentKind();
+  $('nsDetrimentCaption').textContent=p.detriment?(detrimentView()?.caption||'Calculate a detriment comparison to show current evidence.'):'';
+  const surveyWeek=$('nsFlowSurveyWeek');
+  const surveyView=p.flowSurvey?surveyLayerView():null;
+  surveyWeek.replaceChildren();
+  for(const week of surveyView?.weeks||[])surveyWeek.add(new Option(week,week));
+  surveyWeek.disabled=!surveyView?.weeks.length;
+  surveyWeek.value=surveyView?.week||'';
   $('nsRedo').disabled=!redo.length||busy;
   $('nsScenarioChoices').innerHTML=names.map(name=>'<label><input type="checkbox" data-ns-scenario-choice="'+html(name)+'" '+(p.scenarios===null||p.scenarios.includes(name)?'checked':'')+'>'+html(name)+'</label>').join('')||'<small>No model scenarios assigned</small>';
   $('nsViewSelect').innerHTML='<option value="">Saved views</option>'+network.views.map((v,i)=>'<option value="'+i+'">'+html(v.name)+'</option>').join('');
@@ -438,7 +756,17 @@ function renderReview(){
 function renderMatrix(){
   const selectedOnly=$('nsMatrixSelected').checked,query=$('nsMatrixSearch').value.toLowerCase();
   const nodes=network.nodes.filter(n=>asset(n)&&(!selectedOnly||multi.has(n.id))&&n.name.toLowerCase().includes(query));
-  $('nsMatrixBody').innerHTML=nodes.map(n=>'<section><button class="ns-asset-link" data-ns-centre="'+html(n.id)+'">'+html(n.name)+'</button>'+annualTable(n,true)+'</section>').join('')||'<p>No matching assets.</p>';
+  const matrix=$('nsMatrixBody');
+  matrix.replaceChildren();
+  if(!nodes.length)matrix.append(textElement('p','No matching assets.'));
+  for(const n of nodes){
+    const section=document.createElement('section');
+    const button=textElement('button',n.name);
+    button.className='ns-asset-link';
+    button.dataset.nsCentre=n.id;
+    section.append(button,annualTable(n,true));
+    matrix.append(section);
+  }
 }
 function undoEdit(forward=false){
   if(busy)return;const source=forward?redo:history,dest=forward?history:redo;if(!source.length)return;dest.push(JSON.stringify(network));network=JSON.parse(source.pop());selected=null;multi.clear();highlight=null;popupVisible=false;freshness.clear();persist();render();renderReview();
@@ -454,29 +782,105 @@ function saveView(){
   checkpoint();network.views=network.views.filter(v=>v.name!==name);network.views.push({name:name.slice(0,100),camera:{...network.camera},year:network.year,scenario:network.scenario,evidenceMode:network.evidenceMode,metric:network.metric,preferences:{...prefs()},positions:network.nodes.map(n=>({id:n.id,x:n.x,y:n.y,nameOffset:n.nameOffset})),edges:network.edges.map(e=>({id:e.id,bends:e.bends,labelOffset:e.labelOffset}))});network.views=network.views.slice(-30);changed(true);status('View saved.');
 }
 function loadView(index){
+  if(index==='')return;
   const v=network.views[Number(index)];if(!v)return;checkpoint();for(const key of ['camera','year','scenario','evidenceMode','metric','preferences'])if(v[key]!==undefined)network[key]=JSON.parse(JSON.stringify(v[key]));const nodes=new Map(network.nodes.map(n=>[n.id,n])),edges=new Map(network.edges.map(e=>[e.id,e]));for(const p of v.positions){const n=nodes.get(p.id);if(n){n.x=p.x;n.y=p.y;n.nameOffset=p.nameOffset;}}for(const p of v.edges||[]){const e=edges.get(p.id);if(e){e.bends=p.bends||[];e.labelOffset=p.labelOffset;}}changed(true);render();
 }
 function saveReviewSnapshot(){
   const name=$('nsViewName').value.trim()||new Date().toLocaleString(),copy=snapshot();delete copy.reviewSnapshots;delete copy.views;
   checkpoint();network.reviewSnapshots.push({name:name.slice(0,100),saved_at:new Date().toISOString(),build:buildToken,method:'occupied 12/24; network method 2',network:copy});network.reviewSnapshots=network.reviewSnapshots.slice(-20);changed(true);status('Assessment snapshot saved.');
 }
-function downloadReviewSnapshot(index){const saved=network.reviewSnapshots[Number(index)];if(saved)downloadBlob('hydra-network-review-snapshot.json',JSON.stringify({...saved,network:C.validateNetwork(saved.network)},null,2),'application/json');}
+function downloadReviewSnapshot(index){if(index==='')return;const saved=network.reviewSnapshots[Number(index)];if(saved)downloadBlob('hydra-network-review-snapshot.json',JSON.stringify({...saved,network:C.validateNetwork(saved.network)},null,2),'application/json');}
 function wholeSceneSvg(){
-  const before={camera:network.camera,preferences:network.preferences},d=dimensions();let content,bounds;
-  try{network.camera={x:0,y:0,zoom:1};network.preferences={...prefs(),detail:'full',type:'all',health:'all',result:'all'};content=svgContent(false);const svg=document.createElementNS(NS,'svg');svg.innerHTML=content;svg.style.cssText='position:fixed;left:-100000px;top:0;width:1000px;height:1000px';document.body.append(svg);try{bounds=svg.getBBox();}finally{svg.remove();}}
-  finally{network.camera=before.camera;network.preferences=before.preferences;}
+  const before={camera:network.camera,preferences:network.preferences};
+  const svg=svgElement('svg'),scene=svgElement('g',{'font-family':'Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif',fill:'#182732'});
+  let bounds;
+  try{
+    network.camera={x:0,y:0,zoom:1};
+    network.preferences={...prefs(),detail:'full',type:'all',health:'all',result:'all'};
+    scene.append(renderScene(false));
+    svg.append(scene);
+    svg.style.cssText='position:fixed;left:-100000px;top:0;width:1000px;height:1000px';
+    document.body.append(svg);
+    bounds=svg.getBBox();
+  }finally{
+    svg.remove();
+    svg.removeAttribute('style');
+    network.camera=before.camera;
+    network.preferences=before.preferences;
+  }
   const width=Math.max(300,bounds.width+60),height=Math.max(200,bounds.height+100),x=bounds.x-30,y=bounds.y-30;
-  return '<svg xmlns="'+NS+'" width="'+Math.ceil(width)+'" height="'+Math.ceil(height)+'" viewBox="'+x+' '+y+' '+width+' '+height+'"><rect x="'+x+'" y="'+y+'" width="'+width+'" height="'+height+'" fill="white"/><g font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" fill="#182732">'+content+'<text x="'+(x+12)+'" y="'+(y+height-32)+'" font-size="11">'+html('Hydra Bench · '+(network.year==='all'?'All reporting years':network.year)+' · '+(network.metric==='spill_count'?'Spill count':'Duration (h)'))+'</text><text x="'+(x+12)+'" y="'+(y+height-14)+'" font-size="10" fill="#60717d">Topology only · result RAG: ≤5% / ≤10% / >10% · network colours are user categories</text></g></svg>';
+  svg.setAttribute('width',Math.ceil(width));
+  svg.setAttribute('height',Math.ceil(height));
+  svg.setAttribute('viewBox',`${x} ${y} ${width} ${height}`);
+  svg.prepend(svgElement('rect',{x,y,width,height,fill:'white'}));
+  scene.append(
+    svgElement('text',{x:x+12,y:y+height-32,'font-size':11},
+      'Hydra Bench · '+(network.year==='all'?'All reporting years':network.year)+' · '+(network.metric==='spill_count'?'Spill count':'Duration (h)')),
+    svgElement('text',{x:x+12,y:y+height-14,'font-size':10,fill:'#60717d'},
+      'Topology only · result RAG: ≤5% / ≤10% / >10% · network colours are user categories'),
+  );
+  return svg;
 }
 async function exportReport(){
-  const report=window.open('','_blank');if(!report){status('Allow this report window to open.');return;}
-  const svg=wholeSceneSvg(),nodes=network.nodes.filter(asset),css='h1,h2,strong,button{font-weight:600}th{font-weight:500}body{font-variant-numeric:tabular-nums}body{font:12px Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#202221;margin:24px}h1{font-size:21px}h2{font-size:16px}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{padding:7px;border-bottom:1px solid #e4e5e3;text-align:right}th:nth-child(2),td:nth-child(2){text-align:left}th{background:#f5f5f3}small,details{color:#626660}.ns-rag-green{background:#eaf6ed}.ns-rag-amber{background:#fff4d9}.ns-rag-red{background:#fdebec}svg{width:100%;height:auto;max-height:80vh}section{break-inside:avoid;margin:24px 0}@page{size:A4 landscape;margin:12mm}@media print{button{display:none}svg{max-height:160mm}details:not([open])>*:not(summary){display:block!important}}';
-  const snapshotHtml=('<!doctype html><html><head><meta charset="utf-8"><title>Network annual spill review</title><style>'+css+'</style></head><body><button id="printReport">Print / save PDF</button><h1>Network annual spill review</h1><small>'+html(new Date().toISOString())+' · build '+html(buildToken)+' · counts: occupied 12/24 blocks · duration: hours · Δ = model − observed</small>'+svg+nodes.map(n=>'<section><h2>'+html(n.name)+'</h2>'+annualTable(n,true,prefs().scenarios,false)+(R.review(n).comment?'<p>'+html(R.review(n).comment)+'</p>':'')+'<small>Review: '+html(R.review(n).status)+' · '+html(healthLabel(nodeHealth(n)))+'</small><details open><summary>Assessment basis</summary>'+auditHtml(n)+'</details></section>').join('')+'<h2>Connector notes</h2>'+network.edges.filter(e=>R.review(e).comment).map(e=>'<p><strong>'+html(e.name||e.from+' → '+e.to)+'</strong>: '+html(R.review(e).comment)+'</p>').join('')+'<p>RAG describes agreement, not spill severity. Partial years are not annualised. Missing or provisional evidence remains qualified.</p><footer>Hydra Bench · Anzar Sajid</footer></body></html>');
+  const report=window.open('','_blank');
+  if(!report){status('Allow this report window to open.');return;}
+  const css='h1,h2,strong,button{font-weight:600}th{font-weight:500}body{font-variant-numeric:tabular-nums}body{font:12px Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#202221;margin:24px}h1{font-size:21px}h2{font-size:16px}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{padding:7px;border-bottom:1px solid #e4e5e3;text-align:right}th:nth-child(2),td:nth-child(2){text-align:left}th{background:#f5f5f3}small,details{color:#626660}.ns-rag-green{background:#eaf6ed}.ns-rag-amber{background:#fff4d9}.ns-rag-red{background:#fdebec}svg{width:100%;height:auto;max-height:80vh}section{break-inside:avoid;margin:24px 0}@page{size:A4 landscape;margin:12mm}@media print{button{display:none}svg{max-height:160mm}details:not([open])>*:not(summary){display:block!important}}';
+  const title='Network annual spill review';
+  const print=textElement('button','Print / save PDF');
+  print.id='printReport';
+  print.onclick=()=>report.print();
+  const content=document.createDocumentFragment();
+  content.append(print,textElement('h1',title),textElement('small',
+    new Date().toISOString()+' · build '+buildToken+' · counts: occupied 12/24 blocks · duration: hours · Δ = model − observed'),
+    wholeSceneSvg());
+  for(const n of network.nodes.filter(asset)){
+    const section=document.createElement('section');
+    const review=R.review(n);
+    section.append(textElement('h2',n.name),annualTable(n,true,prefs().scenarios,false));
+    if(review.comment)section.append(textElement('p',review.comment));
+    const details=document.createElement('details');
+    details.open=true;
+    details.append(textElement('summary','Assessment basis'),auditDetails(n));
+    section.append(textElement('small','Review: '+review.status+' · '+healthLabel(nodeHealth(n))),details);
+    content.append(section);
+  }
+  content.append(textElement('h2','Connector notes'));
+  for(const edge of network.edges){
+    const comment=R.review(edge).comment;
+    if(!comment)continue;
+    const paragraph=document.createElement('p');
+    paragraph.append(textElement('strong',edge.name||edge.from+' → '+edge.to),': '+comment);
+    content.append(paragraph);
+  }
+  content.append(textElement('p','RAG describes agreement, not spill severity. Partial years are not annualised. Missing or provisional evidence remains qualified.'),
+    textElement('footer','Hydra Bench · Anzar Sajid'));
   try{await window.HydraDesign.prepareReportFont();}catch(error){report.close();status(error.message);return;}
-  report.document.open();report.document.write(snapshotHtml.replace('</head>','<style>'+window.HydraDesign.reportFontCss()+'</style></head>'));report.document.close();report.document.getElementById('printReport').onclick=()=>report.print();report.focus();status('Report opened. Use Print / Save PDF.');
+  if(report.closed)return;
+  report.document.title=title;
+  report.document.head.append(textElement('style',css),textElement('style',window.HydraDesign.reportFontCss()));
+  report.document.body.replaceChildren(content);
+  report.focus();
+  status('Report opened. Use Print / Save PDF.');
 }
-function auditHtml(n){
-  return (n.applied?.rows||[]).map(r=>'<p>'+html(r.year+' · '+(r.role==='observed'?'Observed':r.scenario)+' · '+r.source_name+' · '+r.column)+'<br>'+html((r.analysis_start||'—')+' to '+(r.analysis_end||'—'))+' · '+html(r.partial_year?'partial year':'')+'<br>Threshold '+html(C.thresholdRule(r)==='gt'?'>':'≥')+' '+f(r.threshold,6)+' '+html(r.unit||'')+' · '+html(r.quantity||'')+' '+html(r.datum||'')+'<br>Valid '+f(r.valid_hours)+' h · unknown '+f(r.unknown_hours)+' h · excluded '+f(r.excluded_hours)+' h · '+html(r.count_status||'')+'<br>SHA-256 '+html(r.source_sha256||'')+'<br>Exclusions '+html(JSON.stringify(r.exclusions||[]))+'</p>').join('')+'<p>Calculated '+html(n.applied?.calculated_at||'—')+' · gap '+f(n.applied?.settings?.gap)+' s · comparison basis '+html(n.applied?.settings?.confirmed?'confirmed':'unconfirmed')+'</p>';
+function auditDetails(n){
+  const fragment=document.createDocumentFragment();
+  for(const r of n.applied?.rows||[]){
+    const paragraph=document.createElement('p');
+    const lines=[
+      r.year+' · '+(r.role==='observed'?'Observed':r.scenario)+' · '+r.source_name+' · '+r.column,
+      (r.analysis_start||'—')+' to '+(r.analysis_end||'—')+' · '+(r.partial_year?'partial year':''),
+      'Threshold '+(C.thresholdRule(r)==='gt'?'>':'≥')+' '+f(r.threshold,6)+' '+(r.unit||'')+' · '+(r.quantity||'')+' '+(r.datum||''),
+      'Valid '+f(r.valid_hours)+' h · unknown '+f(r.unknown_hours)+' h · excluded '+f(r.excluded_hours)+' h · '+(r.count_status||''),
+      'SHA-256 '+(r.source_sha256||''),
+      'Exclusions '+JSON.stringify(r.exclusions||[]),
+    ];
+    paragraph.append(lines[0]);
+    for(const line of lines.slice(1))paragraph.append(document.createElement('br'),line);
+    fragment.append(paragraph);
+  }
+  fragment.append(textElement('p','Calculated '+(n.applied?.calculated_at||'—')+' · gap '+f(n.applied?.settings?.gap)
+    +' s · comparison basis '+(n.applied?.settings?.confirmed?'confirmed':'unconfirmed')));
+  return fragment;
 }
 function renderAnalysisSettings(n){
   const year=Number($('nsAnalysisYear').value),chosen=prefs().scenarios;
@@ -493,8 +897,8 @@ async function openAnalysis(mode='series'){
   $('nsAnalysis').hidden=false;if(!$('nsAnalysis').open)$('nsAnalysis').showModal();$('nsCloseAnalysis').focus();$('nsAnalysisTitle').textContent=n.name;
   $('nsAnalysisYear').innerHTML=years.map(y=>'<option '+(y===year?'selected':'')+'>'+y+'</option>').join('');
   renderAnalysisSettings(n);
-  $('nsAnalysisCounts').innerHTML=annualTable(n,true);
-  $('nsAnalysisAudit').innerHTML=auditHtml(n);
+  $('nsAnalysisCounts').replaceChildren(annualTable(n,true));
+  $('nsAnalysisAudit').replaceChildren(auditDetails(n));
   $('nsAnalysisBasis').textContent='Annual evidence';$('nsCommonResult').innerHTML='';$('nsCommonResult').hidden=true;$('nsCommonMessage').textContent='';$('nsAnalysisMessage').textContent='';Plotly.purge('nsAnalysisPlot');
   const names=[...new Set(n.bindings.filter(b=>b.role==='model').map(b=>b.scenario))].sort();$('nsCommonScenario').innerHTML=names.map(s=>'<option>'+html(s)+'</option>').join('');
   $('nsCommonYear').innerHTML=years.map(y=>'<option '+(y===year?'selected':'')+'>'+y+'</option>').join('');
@@ -536,7 +940,7 @@ async function calculateCommon(){
     const output=[];for(const r of [o,m]){const b=n.bindings.find(b=>b.sha256===r.source_sha256&&b.column===r.column&&b.role===r.role&&b.scenario===r.scenario&&b.years.includes(year)),source=b&&sourceFor(b);if(!source)throw new Error('Reload matching evidence sources.');const scale=C.valueScale(b.quantity,contract(b).unit,b.unit),value=await engine.call('network_common_spill_result',{path:source.virtualPath,column:b.column,threshold:r.threshold/scale,start,end,max_gap_seconds:n.gap,comparison:C.thresholdRule(r),exclusions_json:JSON.stringify(n.exclusions)});output.push({...r,...value,threshold:r.threshold,value_min:value.value_min==null?value.value_min:value.value_min*scale,value_max:value.value_max==null?value.value_max:value.value_max*scale,exclusions:n.exclusions});}
     if(sig!==signature(n))throw new Error('Settings changed. Recalculate.');
     n.common={signature:sig,rows:output,calculated_at:new Date().toISOString()};persist();const proxy={...n,applied:{...n.applied,rows:output},bindings:n.bindings.filter(b=>b.years.includes(year)&&(b.role==='observed'||b.scenario===scenario))};
-    $('nsCommonResult').hidden=false;$('nsCommonResult').innerHTML='<strong>Common period · '+year+'</strong>'+annualTable(proxy,true,[scenario])+'<small>'+html(start+' to '+end)+'</small>';const reason=C.comparable(output[0],output[1],n.confirmed);$('nsCommonMessage').textContent=reason||'Comparable common-period evidence.';
+    $('nsCommonResult').hidden=false;$('nsCommonResult').replaceChildren(textElement('strong','Common period · '+year),annualTable(proxy,true,[scenario]),textElement('small',start+' to '+end));const reason=C.comparable(output[0],output[1],n.confirmed);$('nsCommonMessage').textContent=reason||'Comparable common-period evidence.';
   }catch(error){$('nsCommonMessage').textContent=String(error.message||error);}
   finally{busy=false;$('nsCommonCalculate').disabled=false;renderReview();}
 }
@@ -546,28 +950,121 @@ function mountReview(){
   $('nsWorkbench').querySelector('.ns-export-actions').insertAdjacentHTML('beforeend','<button id="nsSvgExport">Export SVG</button><button id="nsReportExport">Annual report / PDF</button>');
   $('nsCanvas').insertAdjacentHTML('beforeend','<aside id="nsHover" hidden></aside>');
   $('nsWorkbench').insertAdjacentHTML('beforeend','<section id="nsMatrix" hidden><div class="ns-matrix-toolbar"><strong>Annual comparison</strong><input id="nsMatrixSearch" type="search" placeholder="Filter assets"><label><input id="nsMatrixSelected" type="checkbox"> Selected only</label><small>Δ = M − O</small><button id="nsCloseMatrix">Close</button></div><div id="nsMatrixBody"></div></section><dialog id="nsAnalysis" role="dialog" aria-modal="true" aria-label="Asset analysis" hidden><div class="ns-analysis-toolbar"><strong id="nsAnalysisTitle"></strong><select id="nsAnalysisYear" aria-label="Graph year"></select><button id="nsAnalysisMode">Show annual spills</button><button id="nsCloseAnalysis">Close</button></div><div class="ns-analysis-body"><details id="nsAnalysisSettings"><summary>Channels, units &amp; thresholds</summary><div id="nsAnalysisSources"></div><button id="nsAnalysisCalculate" class="ns-primary">Apply &amp; recalculate annual spills</button></details><div id="nsAnalysisPlot"></div><small id="nsAnalysisMessage"></small><strong id="nsAnalysisBasis">Annual evidence</strong><div id="nsAnalysisCounts"></div><details><summary>Common-period comparison</summary><div class="ns-tool-row"><select id="nsCommonYear" aria-label="Common period year"></select><select id="nsCommonScenario" aria-label="Common period scenario"></select><button id="nsCommonCalculate">Calculate overlap</button></div><small id="nsCommonMessage">Annual totals remain unchanged.</small><div id="nsCommonResult" hidden></div></details><details><summary>Assessment details</summary><div id="nsAnalysisAudit"></div></details></div></dialog>');
+  $('nsReviewTools').querySelector('.ns-tool-panel').insertAdjacentHTML('afterbegin',
+    '<label><input id="nsVerificationLayer" type="checkbox"> Verification evidence layer</label> <label><input id="nsFlowSurveyLayer" type="checkbox"> Flow Survey evidence layer</label> <label>Survey week <select id="nsFlowSurveyWeek" aria-label="Survey week"></select></label> <label><input id="nsDetrimentLayer" type="checkbox"> Detriment evidence layer</label> <label>Detriment theme '+selectHtml('id="nsDetrimentKind" aria-label="Detriment theme"',detrimentKinds,detrimentKind())+'</label> <small id="nsDetrimentCaption"></small>');
+  window.addEventListener('icm:route-changed',event=>{
+    if(event.detail.workspace==='network'){renderCanvas();renderReview();renderDrawer();}
+  });
+  window.addEventListener('icm:assessment-published',event=>{
+    const route=window.__ICM_PRECISION_WORKBENCH__?.route();
+    if(event.detail.id==='verification:comparison'&&prefs().verification===true&&route?.workspace==='network')renderCanvas();
+  });
+  $('nsDetrimentLayer').onchange=()=>{
+    network.preferences={...prefs(),detriment:$('nsDetrimentLayer').checked};
+    changed(true);
+  };
+  $('nsDetrimentKind').onchange=()=>{
+    network.preferences={...prefs(),detrimentKind:$('nsDetrimentKind').value};
+    changed(true);renderDrawer();
+  };
+  root().addEventListener('click',event=>{
+    const id=event.target.id;
+    if(!['nsConfirmDetriment','nsRemoveDetriment','nsOpenDetriment'].includes(id))return;
+    const object=node()||edge(),kind=detrimentKind(),view=detrimentView();
+    if(!object?.contextSource)return;
+    if(id==='nsOpenDetriment'){
+      const link=object.detrimentLinks?.[kind];
+      if(link&&link.signature===view?.signature)window.ICMDetriment.openSchematicEvidence(kind,link.id);
+      return;
+    }
+    const reportId=$('nsDetrimentId')?.value;
+    if(id==='nsConfirmDetriment'&&!view?.rows.has(reportId)){
+      status('Enter an exact asset ID present in this detriment comparison.');return;
+    }
+    checkpoint();
+    object.detrimentLinks={...object.detrimentLinks};
+    if(id==='nsRemoveDetriment')delete object.detrimentLinks[kind];
+    else object.detrimentLinks[kind]={id:reportId,signature:view.signature};
+    changed(true);renderDrawer();
+    $('nsDrawer').querySelector('#nsDetrimentId')?.closest('details')?.setAttribute('open','');
+    status(id==='nsRemoveDetriment'?'Detriment association removed.':'Detriment association confirmed.');
+  });
+  $('nsFlowSurveyLayer').onchange=()=>{
+    network.preferences={...prefs(),flowSurvey:$('nsFlowSurveyLayer').checked};
+    changed(true);
+  };
+  $('nsFlowSurveyWeek').onchange=()=>{
+    network.preferences={...prefs(),surveyWeek:$('nsFlowSurveyWeek').value};
+    changed(true);
+  };
+  root().addEventListener('click',event=>{
+    if(!event.target.closest('#nsOpenFlowSurvey'))return;
+    const point=node(),view=surveyLayerView(),row=view?.byMonitor.get(point?.monitorId);
+    if(!row||row.status!=='current'){
+      status('Run a current Flow Survey assessment for the linked monitor and select a week.');return;
+    }
+    window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',true);
+    window.__ICM_WORKBENCH__.workflow26.selectReviewWeek('monitor-week',point.monitorId,null,view.week);
+  });
+  $('nsVerificationLayer').onchange=()=>{
+    network.preferences={...prefs(),verification:$('nsVerificationLayer').checked};
+    changed(true);
+  };
+  root().addEventListener('change',event=>{
+    if(event.target.id!=='nsMonitorAssociation')return;
+    const point=node(),id=event.target.value;
+    if(!point||point.type==='label')return;
+    const monitor=window.ICMProjectRegistry?.snapshot()?.assets.find(asset=>asset.id===id&&asset.kind==='flow-monitor');
+    if(id&&!monitor)return;
+    if(id&&network.nodes.some(other=>other.id!==point.id&&other.monitorId===id)){
+      status('This monitor is already associated with another point. Remove that association before moving it.');
+      event.target.value=point.monitorId||'';return;
+    }
+    checkpoint();
+    point.monitorId=id;
+    changed(true);renderDrawer();
+  });
+  root().addEventListener('click',event=>{
+    if(!event.target.closest('#nsOpenVerification'))return;
+    const point=node(),assessment=window.__ICM_WORKBENCH__?.readVerificationEvidence?.();
+    if(!point?.monitorId||assessment?.asset.kind!=='flow-monitor'||assessment.asset.id!==point.monitorId){
+      status('Run a comparison for the linked monitor before opening Verification evidence.');return;
+    }
+    window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','overview',true);
+  });
   $('nsAssetSearch').oninput=()=>{$('nsAssetNames').innerHTML=network.nodes.filter(n=>n.name.toLowerCase().includes($('nsAssetSearch').value.toLowerCase())).slice(0,30).map(n=>'<option value="'+html(n.name)+'"></option>').join('');};
   $('nsAssetSearch').onchange=()=>{const query=$('nsAssetSearch').value.toLowerCase(),n=network.nodes.find(n=>n.name.toLowerCase()===query)||network.nodes.find(n=>n.name.toLowerCase().includes(query));if(n){const p=prefs();if(selected!==n.id||p.type!=='all'||p.health!=='all'||p.result!=='all'){network.preferences={...p,type:'all',health:'all',result:'all'};centre(n.id);}}else status('Asset not found.');};
   for(const [id,key] of [['nsTypeFilter','type'],['nsHealthFilter','health'],['nsResultFilter','result'],['nsDetail','detail'],['nsSnap','snap'],['nsLocked','locked']])$(id).onchange=()=>{network.preferences={...prefs(),[key]:['snap','locked'].includes(key)?$(id).checked:$(id).value};changed(true);};
   $('nsRedo').onclick=()=>undoEdit(true);$('nsSaveView').onclick=saveView;$('nsViewSelect').onchange=()=>loadView($('nsViewSelect').value);$('nsSaveSnapshot').onclick=saveReviewSnapshot;$('nsSnapshotSelect').onchange=()=>downloadReviewSnapshot($('nsSnapshotSelect').value);
   $('nsAnnualTable').onclick=()=>{$('nsMatrix').hidden=!$('nsMatrix').hidden;renderMatrix();};$('nsCloseMatrix').onclick=()=>{$('nsMatrix').hidden=true;};$('nsMatrixSearch').oninput=renderMatrix;$('nsMatrixSelected').onchange=renderMatrix;
   $('nsClearTrace').onclick=()=>{highlight=null;renderCanvas();};$('nsAudit').onclick=()=>{const a=R.audit(network.nodes,network.edges);$('nsAuditResult').textContent=a.components.length+' components · '+a.isolated.length+' isolated · '+a.cycleAffected.length+' cycle-affected';highlight={ids:new Set([...a.isolated,...a.cycleAffected]),wires:new Set()};if(!highlight.ids.size)highlight=null;renderCanvas();};
-  $('nsSvgExport').onclick=async()=>{const svg=wholeSceneSvg();root().querySelector('.ns-export-menu').open=false;try{await window.HydraDesign.prepareReportFont();downloadBlob('hydra-network-schematic.svg',svg.replace('<rect','<defs><style>'+window.HydraDesign.reportFontCss()+'</style></defs><rect'),'image/svg+xml');}catch(error){status(error.message);}};$('nsReportExport').onclick=()=>{root().querySelector('.ns-export-menu').open=false;exportReport();};
+  $('nsSvgExport').onclick=async()=>{
+    const svg=wholeSceneSvg();
+    root().querySelector('.ns-export-menu').open=false;
+    try{
+      await window.HydraDesign.prepareReportFont();
+      const defs=svgElement('defs');
+      defs.append(svgElement('style',{},window.HydraDesign.reportFontCss()));
+      svg.prepend(defs);
+      downloadBlob('hydra-network-schematic.svg',new XMLSerializer().serializeToString(svg),'image/svg+xml');
+    }catch(error){status(error.message);}
+  };
+  $('nsReportExport').onclick=()=>{root().querySelector('.ns-export-menu').open=false;exportReport();};
   root().addEventListener('click',event=>{const t=event.target,trace=t.closest('[data-ns-trace]'),arrangeButton=t.closest('[data-ns-arrange]'),focus=t.closest('[data-ns-centre],[data-ns-focus]'),analysis=t.closest('[data-ns-open-analysis]');if(trace&&selected){highlight=R.trace(network.nodes,network.edges,selected,trace.dataset.nsTrace);renderCanvas();}if(arrangeButton)arrange(arrangeButton.dataset.nsArrange);if(focus){if(focus.dataset.nsYear)network.year=focus.dataset.nsYear;centre(focus.dataset.nsCentre||focus.dataset.nsFocus);}if(analysis)void openAnalysis(analysis.dataset.nsOpenAnalysis);});
   root().addEventListener('change',event=>{if(event.target.hasAttribute('data-ns-scenario-choice')){network.preferences={...prefs(),scenarios:[...$('nsScenarioChoices').querySelectorAll('input:checked')].map(x=>x.dataset.nsScenarioChoice)};changed(true);}});
   $('nsSvg').addEventListener('pointerover',event=>{const id=event.target.closest('[data-ns-node]')?.dataset.nsNode;if(id){clearTimeout(hoverTimer);hoverTimer=setTimeout(()=>hoverCard(id),250);}});$('nsSvg').addEventListener('pointerout',event=>{if(!event.relatedTarget?.closest?.('[data-ns-node]'))hideHover();});
   $('nsAnalysis').addEventListener('keydown',event=>{if(event.key==='Escape')$('nsCloseAnalysis').click();if(event.key==='Tab'){const controls=[...$('nsAnalysis').querySelectorAll('button,select,summary,input,textarea,a[href],[tabindex]')].filter(el=>el.getClientRects().length&&!el.disabled&&el.tabIndex>=0&&!el.closest('[hidden],[inert]')),first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}});
   $('nsAnalysis').addEventListener('cancel',event=>{event.preventDefault();$('nsCloseAnalysis').click();});
-  window.addEventListener('icm:route-changed',event=>{if($('nsAnalysis').open&&(event.detail.workspace!=='spills'||event.detail.page!=='network'))$('nsCloseAnalysis').click();});
+  window.addEventListener('icm:route-changed',event=>{if($('nsAnalysis').open&&(event.detail.workspace!=='network'||event.detail.page!=='schematic'))$('nsCloseAnalysis').click();});
   $('nsCloseAnalysis').onclick=()=>{++analysisGeneration;clearTimeout(analysisTimer);$('nsAnalysis').close();$('nsAnalysis').hidden=true;Plotly.purge('nsAnalysisPlot');analysisContext=null;const target=analysisReturnFocus?.isConnected?analysisReturnFocus:$('nsCanvas');target?.focus({preventScroll:true});analysisReturnFocus=null;};$('nsAnalysisYear').onchange=()=>{const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n)renderAnalysisSettings(n);if(analysisContext?.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsAnalysisMode').onclick=()=>{if(!analysisContext)return;analysisContext.mode=analysisContext.mode==='series'?'spills':'series';$('nsAnalysisPlot').hidden=analysisContext.mode==='spills';$('nsAnalysisMode').textContent=analysisContext.mode==='spills'?'Show time series':'Show annual spills';if(analysisContext.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsCommonCalculate').onclick=()=>void calculateCommon();
-  $('nsAnalysisCalculate').onclick=async()=>{if(busy)return;await calculate();const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n){$('nsAnalysisCounts').innerHTML=annualTable(n,true);$('nsAnalysisAudit').innerHTML=auditHtml(n);if(analysisContext.mode==='series')await plotAnalysis(++analysisGeneration);}};
+  $('nsAnalysisCalculate').onclick=async()=>{if(busy)return;await calculate();const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n){$('nsAnalysisCounts').replaceChildren(annualTable(n,true));$('nsAnalysisAudit').replaceChildren(auditDetails(n));if(analysisContext.mode==='series')await plotAnalysis(++analysisGeneration);}};
   renderReview();
 }
 function mount(){
   const container=root();if(!container)return;
-  container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / export</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network</button><button id="nsCsv">Export evidence CSV</button></div></details><input id="nsLoadInput" type="file" accept=".json" hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
+  container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / export</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network or context CSV</button><button id="nsCsv">Export evidence CSV</button></div></details><input id="nsLoadInput" type="file" accept=".csv,.json" multiple hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
     '<div id="nsEditTools" class="ns-edit-tools" hidden>'+selectHtml('id="nsAddType"',Object.entries(C.types).filter(([key])=>!['manhole','label'].includes(key)),'cso')+'<button id="nsAddAsset">+ Asset</button><button id="nsAddManhole">+ Manhole</button><button id="nsAddLabel">+ Label</button><button id="nsConnect" aria-pressed="false">Connect</button><span id="nsColourChoices"></span><button id="nsUndo" aria-label="Undo last edit">Undo</button><button id="nsDelete">Delete selected</button></div>'+
-    '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag background to pan; select an asset to review evidence."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><aside id="nsPopup" hidden></aside><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button></div></div><aside id="nsDrawer" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
+    '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag background to pan; select an asset to review evidence."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button></div></div><aside id="nsPopup" aria-label="Selected asset evidence" hidden></aside><aside id="nsDrawer" aria-label="Asset properties" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
   mounted=true;container.addEventListener('click',onClick);container.addEventListener('change',event=>updateField(event.target));
   $('nsEdit').onclick=()=>{editing=!editing;popupVisible=false;tool='select';connectFrom=null;render();};
   $('nsAddAsset').onclick=()=>add($('nsAddType').value);$('nsAddManhole').onclick=()=>add('manhole');$('nsAddLabel').onclick=()=>add('label');
@@ -578,7 +1075,80 @@ function mount(){
   for(const [id,key] of [['nsYear','year'],['nsMetric','metric']])$(id).onchange=()=>{network[key]=$(id).value;changed(true);};
   $('nsScenario').onchange=()=>{const value=$('nsScenario').value;network.evidenceMode=value==='combined'?'combined':'single';if(value!=='combined')network.scenario=value==='observed'?'observed':value.slice(6);changed(true);};
   $('nsSave').onclick=()=>downloadBlob('hydra-network-schematic.json',JSON.stringify(snapshot(),null,2),'application/json');$('nsLoad').onclick=()=>$('nsLoadInput').click();
-  $('nsLoadInput').onchange=async event=>{try{const file=event.target.files[0];if(file){restore(JSON.parse(await file.text()));persist();status('Network restored. Reload matching source files to validate and calculate its evidence.');}}catch(error){status(error.message);}finally{event.target.value='';}};
+  const importDialog=document.createElement('dialog');
+  importDialog.setAttribute('aria-labelledby','nsContextTitle');
+  importDialog.innerHTML='<h3 id="nsContextTitle">Model Context Import Audit</h3><p id="nsContextAudit"></p><ul id="nsContextWarnings"></ul><label id="nsContextUnitsLabel"><input id="nsContextUnits" type="checkbox"> Export uses metres for coordinates, lengths and levels, and millimetres for conduit dimensions and Colebrook–White roughness.</label><label id="nsContextLayoutLabel">Layout <select id="nsContextLayout"><option value="geographic">Geographic coordinates</option><option value="schematic">Engineering schematic</option></select></label><p id="nsContextMessage" role="status"></p><div class="actions"><button id="nsContextApply" type="button">Apply network context</button><button id="nsContextCancel" type="button">Cancel</button></div>';
+  container.append(importDialog);
+  let stagedContext=null,importGeneration=0;
+  importDialog.addEventListener('close',()=>{stagedContext=null;});
+  $('nsContextCancel').onclick=()=>importDialog.close();
+  $('nsContextApply').onclick=()=>{
+    if(!stagedContext)return;
+    if(stagedContext.format==='icm-csv-v1'&&!$('nsContextUnits').checked){
+      $('nsContextMessage').textContent='Confirm the units used in the export.';return;
+    }
+    try{
+      const revised=C.applyContextRevision(network,stagedContext.network,stagedContext.format);
+      const first=!network.nodes.length;
+      if(first&&$('nsContextLayout').value==='schematic'){
+        const points=R.autoLayout(revised.nodes,revised.edges);
+        for(const point of revised.nodes)Object.assign(point,points.get(point.id));
+        for(const conduit of revised.edges)conduit.bends=[];
+      }
+      checkpoint();network=revised;selected=null;popupVisible=false;multi.clear();highlight=null;connectFrom=null;freshness.clear();
+      render();if(first)fit();persist();
+      status('Model context import: '+network.nodes.length+' nodes and '+network.edges.length+' links. Arrows follow nominal topology.');
+      importDialog.close();
+    }catch(error){$('nsContextMessage').textContent=error.message;}
+  };
+  $('nsLoadInput').onchange=async event=>{
+    const request=++importGeneration;
+    try{
+      const files=[...event.target.files],file=files[0];
+      if(!file)return;
+      if(/\.csv$/i.test(file.name)){
+        if(files.some(item=>!/\.csv$/i.test(item.name)))throw new Error('Select either network CSV tables together or one saved JSON schematic.');
+        if(files.reduce((size,item)=>size+item.size,0)>32*1024*1024)throw new Error('Network context CSV selection exceeds 32 MiB.');
+        const csvs=await Promise.all(files.map(async item=>{
+          const data=await item.arrayBuffer();
+          try{return new TextDecoder('utf-8',{fatal:true}).decode(data);}
+          catch{return new TextDecoder('windows-1252').decode(data);}
+        }));
+        if(request!==importGeneration)return;
+        const csv=csvs[0];
+        const native=files.length>1||/^\s*\*{4}/.test(csv)||/(?:^|_)(node|conduit)\.csv$/i.test(file.name)&&!csv.trimStart().startsWith('HydraBench');
+        const imported=native?C.importNativeContext(csvs.map((content,index)=>C.nativeContextText(files[index].name,content)).join('\n')):
+          {network:C.importNetworkContext(csv),warnings:[]};
+        const format=native?'icm-csv-v1':'canonical-v1';
+        C.applyContextRevision(network,imported.network,format);
+        stagedContext={...imported,format};
+        $('nsContextAudit').textContent=imported.network.nodes.length+' imported nodes and '+imported.network.edges.length+' imported links. Arrows show nominal topology.';
+        const warnings=$('nsContextWarnings');warnings.replaceChildren();
+        const topology=R.audit(imported.network.nodes,imported.network.edges);
+        const endpointPairs=new Set(imported.network.edges.map(edge=>JSON.stringify([edge.from,edge.to])));
+        const messages=[...imported.warnings];
+        if(topology.components.length>1)messages.push(topology.components.length+' disconnected components.');
+        if(topology.isolated.length)messages.push(topology.isolated.length+' isolated nodes.');
+        if(topology.cycleAffected.length)messages.push('Directed loops affect '+topology.cycleAffected.length+' nodes, including downstream nodes.');
+        if(endpointPairs.size<imported.network.edges.length)messages.push('Parallel conduits share one or more directed endpoint pairs.');
+        $('nsContextLayoutLabel').hidden=Boolean(network.nodes.length);
+        $('nsContextLayout').value='geographic';
+        if(network.nodes.length)messages.push('Apply only for a revised export of the same network. Calculated spill evidence, confirmed detriment associations and saved views for imported context will be cleared. Applicable manual edits will be retained.');
+        for(const warning of messages){const row=document.createElement('li');row.textContent=warning;warnings.append(row);}
+        $('nsContextUnitsLabel').hidden=!native;
+        $('nsContextUnits').checked=false;
+        $('nsContextMessage').textContent='';
+        if(!importDialog.open)importDialog.showModal();
+      }else{
+        if(files.length!==1)throw new Error('Select one saved JSON schematic.');
+        const saved=JSON.parse(await file.text());
+        if(request!==importGeneration)return;
+        restore(saved);persist();
+        status('Network restored. Reload matching source files to validate and calculate its evidence.');
+      }
+    }catch(error){if(request===importGeneration)status(error.message);}
+    finally{if(request===importGeneration)event.target.value='';}
+  };
   for(const id of ['nsSave','nsLoad','nsCsv']){const action=$(id).onclick;$(id).onclick=()=>{document.querySelector('.ns-export-menu').open=false;action?.();};}
   document.addEventListener('click',event=>{const menu=root()?.querySelector('.ns-export-menu');if(menu&&!menu.contains(event.target))menu.open=false;});
   root().addEventListener('keydown',event=>{if(event.key==='Escape'){const menu=root().querySelector('.ns-export-menu');if(menu?.open){menu.open=false;menu.querySelector('summary').focus();}}});
@@ -595,7 +1165,7 @@ function mount(){
   // changes still waiting in the short autosave debounce.
   window.addEventListener('pagehide',flushSave);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSave();});
-  window.addEventListener('icm:source-pool-changed',()=>{freshness.clear();if(analysisContext){++analysisGeneration;Plotly.purge('nsAnalysisPlot');$('nsAnalysisCounts').innerHTML=annualTable(network.nodes.find(n=>n.id===analysisContext.id)||{id:'missing',bindings:[]},true);$('nsCommonResult').hidden=true;$('nsAnalysisMessage').textContent='Sources changed. Reopen this analysis to refresh.';}renderCanvas();renderReview();if(editing)renderDrawer();});
+  window.addEventListener('icm:source-pool-changed',()=>{freshness.clear();if(analysisContext){++analysisGeneration;Plotly.purge('nsAnalysisPlot');$('nsAnalysisCounts').replaceChildren(annualTable(network.nodes.find(n=>n.id===analysisContext.id)||{id:'missing',bindings:[]},true));$('nsCommonResult').hidden=true;$('nsAnalysisMessage').textContent='Sources changed. Reopen this analysis to refresh.';}renderCanvas();renderReview();if(editing)renderDrawer();});
   mountReview();render();
 }
 async function open(){

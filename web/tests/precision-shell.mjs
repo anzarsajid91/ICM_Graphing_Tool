@@ -16,18 +16,26 @@ try{
   await page.waitForFunction(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate),null,{timeout:30000});
   console.log('SHELL STEP navigation shell');
   const labels=(await page.locator('.pw-primary-nav button').allTextContents()).map(x=>x.replace(/^[^A-Za-z]+/,'').trim());
-  if(labels.join('|')!=='Home|Data / time series|Spills|Flow survey|Detriment assessment|Plots|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
+  if(labels.join('|')!=='Home|Data / time series|Spills|Network Schematic|Flow survey|Verification|Hydraulic Calculations|Detriment assessment|Reports')throw new Error('Primary workspaces mismatch: '+JSON.stringify(labels));
   const navigationOwnership=await page.evaluate(()=>({
     legacyDisplay:getComputedStyle(document.querySelector('nav.tabs')).display,
     precisionVisible:[...document.querySelectorAll('.pw-primary-nav button')].filter(x=>x.getClientRects().length>0).length,
     legacyLabels:[...document.querySelectorAll('nav.tabs .tab')].map(x=>x.textContent.trim()),
   }));
-  if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==7)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
-  await page.locator('.pw-primary-nav [data-workspace="home"]').click();
+  if(navigationOwnership.legacyDisplay!=='none'||navigationOwnership.precisionVisible!==9)throw new Error('Precision ROUTES must be the sole visible primary navigation owner: '+JSON.stringify(navigationOwnership));
+  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='home');
+  if(new URL(page.url()).hash)throw new Error('The default Home route must leave the ordinary application URL intact.');
   if(!await page.locator('#tab-home .hb-welcome-network').isVisible()||
      await page.locator('#dropzone').isVisible()||
      await page.locator('#timeChart').isVisible())throw new Error('Home must contain the schematic and keep Data controls on their own route.');
+  const brandPulse=page.locator('.pw-brand-icon .hb-brand-pulse');
+  if(await brandPulse.count()!==1||await page.locator('.pw-brand-title').textContent()!=='HydraBench')
+    throw new Error('The header must show the HydraBench mark and stable wordmark.');
+  if(await brandPulse.evaluate(el=>getComputedStyle(el).animationDuration)!=='7s')
+    throw new Error('The brand pulse must include its resting interval.');
   await page.emulateMedia({reducedMotion:'reduce'});
+  if(await brandPulse.evaluate(el=>getComputedStyle(el).animationName)!=='none')
+    throw new Error('The brand pulse must respect reduced motion.');
   const animation=await page.locator('.hb-welcome-flow').first().evaluate(el=>getComputedStyle(el).animationName);
   if(animation!=='none')throw new Error('Home schematic must respect reduced motion.');
   await page.emulateMedia({reducedMotion:'no-preference'});
@@ -39,8 +47,35 @@ try{
      ((await page.locator('#dropzone').boundingBox())?.height??0)<102)throw new Error('Data must show the enlarged drop area with Home hidden.');
   await page.goBack({waitUntil:'commit'});
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='home');
-  await page.goBack({waitUntil:'commit'});
-  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='data');
+  if(new URL(page.url()).hash)throw new Error('Back must restore the ordinary Home URL.');
+  const deepLinkPage=await context.newPage();
+  try{
+    await deepLinkPage.goto(new URL('#/data/time-series',baseUrl).href,{waitUntil:'domcontentloaded'});
+    await deepLinkPage.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route().workspace==='data');
+    if(!await deepLinkPage.locator('#dropzone').isVisible())throw new Error('An explicit Data link must open its time-series workflow.');
+    await deepLinkPage.goto(new URL('#/spills/network',baseUrl).href,{waitUntil:'domcontentloaded'});
+    await deepLinkPage.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route().workspace==='network');
+    await deepLinkPage.locator('#nsSvg').waitFor({state:'visible'});
+    if(await deepLinkPage.locator('.pw-primary-nav [data-workspace="network"]').getAttribute('aria-current')!=='page')
+      throw new Error('The old Spills schematic link must select the standalone Network Schematic workspace.');
+    for(const [name,workspace,subpage] of [
+      ['Start verification','graphs','overview'],
+      ['Run hydraulic calculations','hydraulics','capacity'],
+      ['Review flow survey','survey','fdv-check'],
+      ['Assess spills','spills','assessment'],
+      ['Open network schematic','network','schematic'],
+      ['Compare detriment scenarios','detriment','flooding'],
+      ['Restore workspace','reports','workspace'],
+      ['Open reports','reports','report-generation'],
+    ]){
+      await deepLinkPage.goto(new URL('#/home/overview',baseUrl).href,{waitUntil:'domcontentloaded'});
+      await deepLinkPage.getByRole('link',{name,exact:true}).click();
+      await deepLinkPage.waitForFunction(([workspace,page])=>{
+        const route=window.__ICM_PRECISION_WORKBENCH__.route();
+        return route.workspace===workspace&&route.page===page;
+      },[workspace,subpage]);
+    }
+  }finally{await deepLinkPage.close();}
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const surveyTabs=(await page.locator('#pwSecondaryNav button').allTextContents()).map(x=>x.trim());
   if(surveyTabs.join('|')!=='FDV check|Rainfall check|Volume balance|Monthly review')throw new Error('Flow survey subtab order mismatch: '+JSON.stringify(surveyTabs));
@@ -78,7 +113,7 @@ try{
   const migrated=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
   if(migrated.workspace!=='spills'||migrated.page!=='storage')throw new Error('Legacy Storage route did not migrate: '+JSON.stringify(migrated));
   const productTitle=((await page.locator('.pw-brand-title').textContent())||'').trim();
-  if(productTitle!=='Hydra Bench')throw new Error('Product title must be Hydra Bench, got '+JSON.stringify(productTitle));
+  if(productTitle!=='HydraBench')throw new Error('Product wordmark must be HydraBench, got '+JSON.stringify(productTitle));
   if(await page.locator('#pwRailToggle').count()!==1)throw new Error('Navigation rail needs an explicit collapse/expand control.');
   if(await page.locator('[data-pw-page="provenance"]').count()!==0)throw new Error('User-facing provenance route should be removed.');
 

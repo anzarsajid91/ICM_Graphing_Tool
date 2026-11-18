@@ -65,6 +65,11 @@ async function measure(url,kind,spec){
   try{
     await page.goto(url+'?benchmark='+encodeURIComponent(spec.dataset)+'&t='+Date.now(),{waitUntil:'domcontentloaded'});
     await waitRuntimeWired(page,kind);
+    if(kind==='current'){
+      // Begin the timed import in the data workspace, as a user would from Home.
+      await page.getByRole('link',{name:'Open Data / time series'}).click();
+      await page.locator('#dropzone').waitFor({state:'visible'});
+    }
     const selectedAt=Date.now();
     await page.setInputFiles('#fileInput',spec.sourcePath);
     let firstGraphMs=null;
@@ -88,9 +93,12 @@ async function measure(url,kind,spec){
     }),spec.inputName);
     let navigationMs=null;
     if(kind==='current'&&await page.evaluate(()=>Boolean(window.__ICM_PRECISION_WORKBENCH__?.navigate))){
+      // Time a real Home-to-Data transition after a normal visible import.
+      await page.locator('.pw-primary-nav [data-workspace="home"]').click();
+      await page.locator('#welcomeAddSources').waitFor({state:'visible'});
       const navStart=performance.now();
-      await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));
-      await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.route?.().page==='time-series');
+      await page.locator('#welcomeAddSources').click();
+      await page.locator('#dropzone').waitFor({state:'visible'});
       navigationMs=performance.now()-navStart;
     }
     const usedJsHeapMb=await page.evaluate(()=>performance.memory?.usedJSHeapSize?performance.memory.usedJSHeapSize/1048576:null);
@@ -151,6 +159,7 @@ try{
     const baseline=summarise(baselineSamples),current=summarise(currentSamples);
     if(current.firstGraphMs==null)throw new Error('Current FastPath produced no first graph for '+spec.dataset);
     if(!(current.firstGraphMs<current.authoritativeReadyMs))throw new Error('Current median preview did not beat median authoritative readiness for '+spec.dataset);
+    console.log(JSON.stringify({dataset:spec.dataset,navigation_ms:current.navigationMs,navigation_range_ms:current.navigationRangeMs}));
     if(current.navigationMs!=null&&current.navigationMs>1000)throw new Error('Median Precision navigation exceeded the 1000 ms interaction budget for '+spec.dataset+': '+current.navigationMs);
     const result={
       dataset:spec.dataset,

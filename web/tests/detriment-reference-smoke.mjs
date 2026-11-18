@@ -27,7 +27,8 @@ try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.ICMDetriment&&window.__ICM_PRECISION_WORKBENCH__),null,{timeout:30000});
   assert.match(await page.title(),/Hydra Bench/);
-  assert.deepEqual((await page.locator('.pw-primary-nav .pw-nav-label').allTextContents()).map(x=>x.trim()),['Home','Data / time series','Spills','Flow survey','Detriment assessment','Plots','Reports']);
+  assert.deepEqual((await page.locator('.pw-primary-nav .pw-nav-label').allTextContents()).map(x=>x.trim()),['Home','Data / time series','Spills','Network Schematic','Flow survey','Verification','Hydraulic Calculations','Detriment assessment','Reports']);
+  await page.getByRole('link',{name:'Open Data / time series'}).click();
   const note=await page.locator('#dropzone span').textContent();
   assert.match(note,/\.CSV, \.FDV, \.R/);assert.match(note,/fm_rg_assoc.xlsx/);assert.doesNotMatch(note,/\.txt|\.FTV/i);
   const files=Object.values(cases).flatMap(c=>[c.original,...c.paths]);
@@ -105,6 +106,7 @@ try{
   const failed=await browser.newPage({viewport:{width:1366,height:768}});
   await failed.route('**/python/package-manifest.json*',r=>r.fulfill({status:503,body:'Controlled first-boot failure'}));
   await failed.goto(base,{waitUntil:'domcontentloaded'});
+  await failed.getByRole('link',{name:'Open Data / time series'}).click();
   await failed.setInputFiles('#fileInput',cases.spill.original);
   await failed.waitForFunction(
     ()=>window.__ICM_WORKBENCH__?.status==='failed'&&[...state.files.values()].some(x=>x.advancedUnavailable),

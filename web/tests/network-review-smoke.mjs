@@ -58,6 +58,26 @@ try{
   await page.locator('[data-ns-scenario-choice="Update"]').uncheck();assert.equal(await page.locator('#nsMatrixBody').getByText('Update',{exact:true}).count(),0);assert.equal((await snapshot()).nodes[0].applied.rows.length,5);
   await page.selectOption('#nsTypeFilter','pump');assert.equal(await page.locator('[data-ns-node]').count(),0);await page.selectOption('#nsTypeFilter','all');
   await page.locator('#nsReviewTools details summary').filter({hasText:'Views'}).click();await field('nsViewName','Annual review layout');await page.click('#nsSaveView');assert.equal((await snapshot()).views.length,1);await page.click('#nsSaveSnapshot');assert.equal((await snapshot()).reviewSnapshots.length,1);
+  const viewCamera=(await snapshot()).camera;
+  await page.click('#nsZoomIn');
+  assert.notDeepEqual((await snapshot()).camera,viewCamera);
+  await page.locator('#nsViewSelect').selectOption('0');
+  assert.deepEqual((await snapshot()).camera,viewCamera);
+  await page.click('#nsZoomIn');
+  const zoomedCamera=(await snapshot()).camera;
+  await page.locator('#nsViewSelect').selectOption('');
+  assert.deepEqual((await snapshot()).camera,zoomedCamera,'Selecting the view placeholder is a no-op');
+  const snapshotDownload=page.waitForEvent('download');
+  await page.locator('#nsSnapshotSelect').selectOption('0');
+  const exportedSnapshot=JSON.parse(await fs.readFile(await (await snapshotDownload).path(),'utf8'));
+  assert.equal(exportedSnapshot.name,'Annual review layout');
+  assert.equal(exportedSnapshot.network.nodes.length,3);
+  const emptyDownload=page.waitForEvent('download',{timeout:350}).then(()=>true,error=>{
+    if(error.name==='TimeoutError')return false;
+    throw error;
+  });
+  await page.locator('#nsSnapshotSelect').selectOption('');
+  assert.equal(await emptyDownload,false,'Selecting the snapshot placeholder starts no download');
   await page.click('#nsAudit');assert.match(await page.locator('#nsAuditResult').innerText(),/1 components/);await page.click('#nsClearTrace');await page.click('#nsReviewTools > summary');
   await page.click('#nsCloseMatrix');await page.click('#nsEdit');await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();await page.locator('#nsPinned').check();const pinned=(await snapshot()).nodes[0];
   await page.click('#nsReviewTools > summary');
@@ -65,7 +85,13 @@ try{
   await page.click('#nsReviewTools > summary');await page.click('#nsUndo');await page.click('#nsReviewTools > summary');await page.click('#nsRedo');assert.equal((await snapshot()).nodes[0].x,pinned.x);
   await page.click('#nsReviewTools > summary');await page.locator('[data-ns-node="'+asset.id+'"] [data-ns-frame]').click();await page.locator('#nsDrawer .ns-review-notes summary').click();await field('nsReviewComment','Review annual count and duration; inspect upstream response.');await page.selectOption('#nsReviewStatus','reviewed');
   await page.click('#nsEdit');await page.locator('.ns-export-menu summary').click();const svgDownload=page.waitForEvent('download');await page.click('#nsSvgExport');const svg=await svgDownload;await svg.saveAs(evidence+'/network-review.svg');assert.match(await fs.readFile(evidence+'/network-review.svg','utf8'),/Rising main/);
-  await page.locator('.ns-export-menu summary').click();const reportPromise=page.waitForEvent('popup');await page.click('#nsReportExport');const report=await reportPromise;await report.waitForLoadState();assert.match(await report.locator('body').innerText(),/2023/);assert.match(await report.locator('body').innerText(),/2024/);assert.match(await report.locator('body').innerText(),/Review annual count/);await recordControls(report,evidence,'annual-report');await report.emulateMedia({media:'print'}); const basis=report.locator('details').filter({hasText:'Assessment basis'}); assert.equal(await basis.count(),3); for(const detail of await basis.all()){assert.equal(await detail.getAttribute('open'),''); assert.equal(await detail.locator('p').first().isVisible(),true,'Printed assessment basis remains visible');} await report.pdf({path:evidence+'/annual-network-report.pdf',format:'A4',landscape:true});await report.close();
+  await page.locator('.ns-export-menu summary').click();const reportPromise=page.waitForEvent('popup');await page.click('#nsReportExport');const report=await reportPromise;await report.waitForLoadState();assert.match(await report.locator('body').innerText(),/2023/);assert.match(await report.locator('body').innerText(),/2024/);assert.match(await report.locator('body').innerText(),/Review annual count/);await recordControls(report,evidence,'annual-report');
+  // Headless mode cannot operate the OS print dialog. Verify the button calls
+  // the browser print entry point, then generate and inspect the print layout.
+  await report.evaluate(()=>{window.print=()=>{window.__printCalls=(window.__printCalls||0)+1;};});
+  await report.getByRole('button',{name:'Print / save PDF',exact:true}).click();
+  assert.equal(await report.evaluate(()=>window.__printCalls),1);
+  await report.emulateMedia({media:'print'}); const basis=report.locator('details').filter({hasText:'Assessment basis'}); assert.equal(await basis.count(),3); for(const detail of await basis.all()){assert.equal(await detail.getAttribute('open'),''); assert.equal(await detail.locator('p').first().isVisible(),true,'Printed assessment basis remains visible');} await report.pdf({path:evidence+'/annual-network-report.pdf',format:'A4',landscape:true});await report.close();
   // Adversarial imported labels remain text in SVG, settings and local reports.
   const beforeInjection=await snapshot();
   const injection='<img class="hydra-security-injection" src="https://collector.invalid/c">&\'"';

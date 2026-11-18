@@ -1,3 +1,5 @@
+/* SPDX-FileCopyrightText: 2026 Anzar Sajid and other applicable rights holders
+ * SPDX-License-Identifier: AGPL-3.0-only */
 const $ = (id) => document.getElementById(id);
 const state = {
   files: new Map(), mapping: { observed: '', models: [], rain: '' }, comparisons: [],
@@ -667,7 +669,10 @@ function sourcePickerSeries(all,preferredKeys=[]){
     seen.add(series.item.id);
     const channels=all.filter(s=>s.item.id===series.item.id);
     const selected=channels.find(s=>preferredKeys.includes(s.key))||channels.find(s=>s.quantity==='depth')||series;
-    out.push({...selected,label:series.item.displayName+' · FDV (Flow / Depth / Velocity)'});
+    const names={flow:'Flow',depth:'Depth',level:'Level',velocity:'Velocity'};
+    const quantities=[...new Set(channels.map(channel=>channel.quantity))];
+    const caption=['flow','depth','level','velocity'].filter(quantity=>quantities.includes(quantity)).map(quantity=>names[quantity]).join(' / ');
+    out.push({...selected,label:series.item.displayName+' · FDV ('+caption+')'});
   }
   return out;
 }
@@ -1473,6 +1478,24 @@ async function ensureComparisonResults({background=false}={}){
     if(signature!==analysisSignature())throw new Error('Comparison inputs changed while calculation was running. The late result was discarded.');
     state.comparisons=results;
     state.comparisonSnapshot={signature,config,results:JSON.parse(JSON.stringify(results.map(x=>({model:workspaceSeries(sourceKey(x.model.id,x.model.col)),result:x.result,error:x.error}))))};
+    const registry=window.ICMProjectRegistry;
+    const asset=registry?.source(obs.id);
+    registry?.removeAssessment('verification:comparison');
+    if(asset){
+      registry.publishAssessment('verification:comparison',{
+        asset:{id:asset.assetId,kind:asset.assetKind},
+        signature,
+        period:bounds,
+        seriesKeys:[sourceKey(obs.id,obs.col),...models.map(m=>sourceKey(m.id,m.col))],
+        scenarios:results.map(({model,result,error})=>({
+          seriesKey:sourceKey(model.id,model.col),
+          metrics:result?.metrics??null,
+          unit:result?.observed_unit??null,
+          coverage:result?.coverage??null,
+          error:error??null,
+        })),
+      });
+    }
   })();
   comparisonCalculation={signature,promise,background:Boolean(background),cancellationGeneration};
   try{
@@ -1497,6 +1520,8 @@ async function ensureTimeSeriesComparisonMetrics(){
   window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
 }
 window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics=ensureTimeSeriesComparisonMetrics;
+window.__ICM_WORKBENCH__.readVerificationEvidence=()=>
+  window.ICMProjectRegistry?.readAssessment('verification:comparison',analysisSignature())??null;
 const metricCard=(k,v,reason='')=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${reason?`<small>${esc(reason)}</small>`:''}</div>`;
 function metricPresentation(metrics,key,unit=''){
   const value=metrics?.[key],reason=metrics?.unavailable_reasons?.[key]||'';
@@ -1579,17 +1604,18 @@ async function renderComparisons(){
     const population=scatterPopulation(entry.result,log),pairs=population.pairs,metrics=population.metrics||{};
     const key=sourceKey(entry.model.item.id,entry.model.col),colour=state.modelColours[key]||palette[i%palette.length];
     const scenario=`${entry.model.item.displayName} · ${entry.model.col}`;
+    const label=scenario.length>24?'M'+(i+1)+' · '+scenario.slice(0,17)+'…':scenario;
     for(const pair of pairs){
       for(const value of [pair.obs,pair.sim]){const n=Number(value);if(Number.isFinite(n)&&(!log||n>0)){lo=Math.min(lo,n);hi=Math.max(hi,n);}}
     }
     scatter.push({
-      x:pairs.map(x=>x.obs),y:pairs.map(x=>x.sim),mode:'markers',name:scenario,
+      x:pairs.map(x=>x.obs),y:pairs.map(x=>x.sim),mode:'markers',name:esc(label),
       marker:{size:6,opacity:.48,color:colour},
       customdata:pairs.map(x=>[x.timestamp,x.obs,x.sim]),
       hovertemplate:'<b>'+esc(scenario)+'</b><br>%{customdata[0]}<br>Observed: %{customdata[1]:.5g}<br>Modelled: %{customdata[2]:.5g}<extra></extra>'
     });
     const fit=regressionLinePoints(metrics,pairs,log);
-    if(fit)scatter.push({x:fit.x,y:fit.y,mode:'lines',name:`${scenario} fit`,line:{color:colour,width:2},hoverinfo:'skip'});
+    if(fit)scatter.push({x:fit.x,y:fit.y,mode:'lines',name:esc(label)+' fit',line:{color:colour,width:2},hoverinfo:'skip'});
   });
   if(Number.isFinite(lo)&&Number.isFinite(hi)&&hi>lo)scatter.push({x:[lo,hi],y:[lo,hi],mode:'lines',name:'1:1 agreement',line:{dash:'dash',color:'#667085',width:1.6},hoverinfo:'skip'});
   const quantity=comparisonQuantity(first.result),unitSuffix=unit?` (${unit})`:'',axisUnitSuffix=` (${unit||'unit unresolved'})`,bounds=analysisBounds();
@@ -1598,7 +1624,7 @@ async function renderComparisons(){
   await Plotly.react('scatterChart',scatter,{
     template:'plotly_white',...(window.HydraDesign?.chartLayout()||{}),
     title:`Observed vs modelled ${quantity}${log?' · log₁₀ positive pairs':' · linear'}${period}`,
-    legend:{orientation:'h',y:1.16,x:0},
+    legend:{orientation:'h',y:1.04,yanchor:'bottom',x:0,xanchor:'left'},
     xaxis:{title:{text:`Observed ${quantity}${axisUnitSuffix}`},type:log?'log':'linear',range:axisRange},
     yaxis:{title:{text:`Modelled ${quantity}${axisUnitSuffix}`},type:log?'log':'linear',range:axisRange,scaleanchor:'x',scaleratio:1},
     margin:{l:68,r:28,t:84,b:64},
@@ -1851,7 +1877,7 @@ function renderExclusions(){
   const scopes=[['both','Observed + models'],['observed','Observed / EDM'],['model','All mapped models'],['rainfall','Rainfall'],...surveyScopes,...state.mapping.models.map(key=>{const m=mappingObject(key);return [key,seriesLabel(m.item,m.col)];})];
   $('exclusionRows').innerHTML=state.exclusions.length?state.exclusions.map(e=>`<div class="ex-row" data-id="${esc(e.id)}"><label>Enabled<input type="checkbox" data-field="enabled" ${e.enabled!==false?'checked':''}></label><label>Start<input type="datetime-local" step="1" data-field="start" value="${esc(modelClock(e.start))}"></label><label>End<input type="datetime-local" step="1" data-field="end" value="${esc(modelClock(e.end))}"></label><label>Scope<select data-field="scope">${([...(scopes),...(!scopes.some(([v])=>v===(e.scope||'both'))?[[(e.scope||'both'),'Saved survey scope']]:[])]).map(([v,n])=>`<option value="${esc(v)}" ${(e.scope||'both')===v?'selected':''}>${esc(n)}</option>`).join('')}</select></label><label>Reason<input type="text" data-field="reason" value="${esc(e.reason)}"></label><button class="btn quiet remove-ex" data-id="${esc(e.id)}">Remove</button></div>`).join(''):'<div class="pool-summary">No exclusion periods.</div>';
   document.querySelectorAll('.ex-row input,.ex-row select').forEach(inp=>inp.addEventListener('change',()=>{const e=state.exclusions.find(x=>x.id===inp.closest('.ex-row').dataset.id);if(e){state.exclusionHistory??=[];state.exclusionHistory.push({...e,changed_at:new Date().toISOString()});e[inp.dataset.field]=inp.type==='checkbox'?inp.checked:inp.value;}try{exclusionPayload(true);}catch{return;}void drawTimeChart().catch(err=>showError('mappingStatus',err?.message||err));}));
-  document.querySelectorAll('.remove-ex').forEach(b=>b.addEventListener('click',()=>{state.deletedExclusions??=[];state.deletedExclusions.push(state.exclusions.find(x=>x.id===b.dataset.id));state.exclusions=state.exclusions.filter(x=>x.id!==b.dataset.id);renderExclusions();void drawTimeChart();}));
+  document.querySelectorAll('.remove-ex').forEach(b=>b.addEventListener('click',()=>{state.deletedExclusions??=[];state.deletedExclusions.push(state.exclusions.find(x=>x.id===b.dataset.id));state.exclusions=state.exclusions.filter(x=>x.id!==b.dataset.id);renderExclusions();void guarded('spillRunStatus',()=>drawTimeChart());}));
 }
 
 async function runRainEvents(){
@@ -2052,7 +2078,7 @@ function thresholdWorkspaceSeries(role){
   const model=mappingObject(key);
   return model&&['depth','level'].includes(String(seriesQuantity(model.item,model.col)||'').toLowerCase())?workspaceSeries(key):null;
 }
-function workspaceObject(strictExclusions=true){return {schema_version:3,application:'Hydra Bench GitHub Pages',time_basis:$('timeBasisConfirmed')?.checked?'model clock/engineer-confirmed':'model clock/unspecified',time_basis_confirmed:Boolean($('timeBasisConfirmed')?.checked),level_datum_confirmed:Boolean($('levelDatumConfirmed')?.checked),saved_at:new Date().toISOString(),network_schematic:window.ICMNetworkSchematic?.snapshot?.()||state.networkSchematicWorkspace||null,navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity,unit:state.seriesUnitOverrides.get(key)||null})).filter(x=>x.series&&x.quantity),series_unit_overrides:[...state.seriesUnitOverrides.entries()].map(([key,unit])=>({series:workspaceSeries(key),unit})).filter(x=>x.series&&x.unit),rainfall_semantics_overrides:[...state.rainfallSemanticsOverrides.entries()].map(([key,semantics])=>({series:workspaceSeries(key),semantics})).filter(x=>x.series&&x.semantics),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),storage_threshold_unit:$('storageThresholdUnit')?.value||null,target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#ff0000',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#ff0000'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
+function workspaceObject(strictExclusions=true){return {schema_version:3,application:'Hydra Bench GitHub Pages',time_basis:$('timeBasisConfirmed')?.checked?'model clock/engineer-confirmed':'model clock/unspecified',time_basis_confirmed:Boolean($('timeBasisConfirmed')?.checked),level_datum_confirmed:Boolean($('levelDatumConfirmed')?.checked),saved_at:new Date().toISOString(),network_schematic:window.ICMNetworkSchematic?.snapshot?.()||state.networkSchematicWorkspace||null,navigation:window.__ICM_PRECISION_WORKBENCH__?.route?.()||null,verification_reviews:diagnostic.verificationReviews?.snapshot()||[],source_references:[...state.files.values()].filter(x=>x.status==='ready').map(x=>({name:x.file.name,display_name:x.displayName,size:x.file.size,last_modified:x.file.lastModified,sha256:x.hash,format:x.parsed.format,columns:x.parsed.columns})),series_quantity_overrides:[...state.seriesQuantityOverrides.entries()].map(([key,quantity])=>({series:workspaceSeries(key),quantity,unit:state.seriesUnitOverrides.get(key)||null})).filter(x=>x.series&&x.quantity),series_unit_overrides:[...state.seriesUnitOverrides.entries()].map(([key,unit])=>({series:workspaceSeries(key),unit})).filter(x=>x.series&&x.unit),rainfall_semantics_overrides:[...state.rainfallSemanticsOverrides.entries()].map(([key,semantics])=>({series:workspaceSeries(key),semantics})).filter(x=>x.series&&x.semantics),mapping:{observed:workspaceSeries(state.mapping.observed),models:state.mapping.models.map(workspaceSeries).filter(Boolean),rain:workspaceSeries(state.mapping.rain)},analysis:{max_gap_seconds:Number($('gapInput').value||900),observed_threshold:nullableNumber($('obsThreshold').value),model_threshold:nullableNumber($('modelThreshold').value),observed_threshold_series:thresholdWorkspaceSeries('observed'),model_threshold_series:thresholdWorkspaceSeries('model'),time_offset_minutes:Number($('offsetInput').value||0),analysis_start:modelClock($('analysisStart').value)||null,analysis_end:modelClock($('analysisEnd').value)||null,storage_threshold:nullableNumber($('storageThreshold').value),storage_threshold_unit:$('storageThresholdUnit')?.value||null,target_count:Number($('targetCount').value||10),storage_level:workspaceSeries($('storageLevelSelect').value),storage_flow:workspaceSeries($('storageFlowSelect').value),storage_level_unit:$('storageLevelUnit')?.value||null,storage_flow_unit:$('storageFlowUnit')?.value||null,dwf_flow:workspaceSeries($('dwfFlowSelect')?.value),dwf_flow_unit:$('dwfFlowUnit')?.value||null,dwf_dry_day_mm:Number($('dwfDryDay')?.value||1),dwf_baseline_days:Number($('dwfBaselineDays')?.value||28),dwf_adp_hours:Number($('dwfAdpHours')?.value||6),rating_obs_depth_unit:$('ratingObsDepthUnit')?.value||null,rating_obs_flow_unit:$('ratingObsFlowUnit')?.value||null,rating_model_depth_unit:$('ratingModelDepthUnit')?.value||null,rating_model_flow_unit:$('ratingModelFlowUnit')?.value||null,rain_factor:Number($('rainFactor').value||1)},appearance:{observed_color:$('obsColor').value,observed_quantity_colours:{flow:$('observedFlowColour')?.value||'#ff0000',depth:$('observedDepthColour')?.value||$('obsColor').value,velocity:$('observedVelocityColour')?.value||'#ff0000'},rain_color:$('rainColor').value,model_colours:state.modelColours,threshold1_label:$('threshold1Label').value,threshold1_color:$('threshold1Color').value,threshold2_label:$('threshold2Label').value,threshold2_color:$('threshold2Color').value},rain_events:{criteria_mode:$('rainCriteriaMode').value,events:rainEventsFresh()?state.rainEvents:[],manual:Object.fromEntries(['rainMinIntensity','rainIntensityDuration','rainEventDuration','rainTotalDepth','rainDryGap'].map(id=>[id,$(id).value]))},exclusions:exclusionPayload(strictExclusions),exclusion_history:state.exclusionHistory||[],review_notes:$('reviewNotes')?.value||'',project_registry:window.ICMProjectRegistry?.snapshot()||null,report_options:reportOptions(),active_spill_model:workspaceSeries($('spillModelSelect')?.value),model_styles:state.mapping.models.map(key=>({series:workspaceSeries(key),color:state.modelColours[key]}))};}
 function downloadBlob(name,content,type='application/octet-stream'){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 function downloadWorkspace(){downloadBlob(`icm-workbench-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(workspaceObject(),null,2),'application/json');$('workspaceStatus').textContent='Workspace downloaded. Raw files were not embedded.';}
 function findSeriesFromWorkspace(ref){
@@ -2196,6 +2222,7 @@ async function applyWorkspace(w){
   if(w.navigation?.workspace&&w.navigation?.page&&window.__ICM_PRECISION_WORKBENCH__?.navigate){
     window.__ICM_PRECISION_WORKBENCH__.navigate(w.navigation.workspace,w.navigation.page,false);
   }
+  diagnostic.verificationReviews?.restore(w.verification_reviews);
   diagnostic.workspaceRestore={expected,matched,navigation:w.navigation||null,completedAt:new Date().toISOString()};
   return {expected,matched,navigation:w.navigation||null};
 }
@@ -2234,7 +2261,7 @@ function reportCss(landscape=false){
   return (window.HydraDesign?.reportFontCss()||'')+'h1,h2,h3,h4,strong,b,button{font-weight:600}th{font-weight:500}body{font-weight:400;font-variant-numeric:tabular-nums}:root{--ink:#202221;--muted:#626660;--line:#e4e5e3;--soft:#f5f5f3;--accent:#202221}*{box-sizing:border-box}html{background:#f0f0ee}body{margin:0;color:var(--ink);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:13px;line-height:1.45;background:#fff}.report{max-width:1180px;margin:0 auto;padding:30px 34px 42px}.report-header{border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:22px;display:flex;justify-content:space-between;gap:24px;align-items:flex-end}.report-header h1{font-size:24px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em}.report-header p{margin:0;color:var(--muted)}.report-meta{text-align:right;color:var(--muted);font-size:12px;white-space:nowrap}h2{font-size:18px;margin:26px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:14px;margin:18px 0 8px}.note{background:var(--soft);border-left:4px solid var(--accent);padding:10px 12px;margin:12px 0 18px}.report-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.card{min-width:0;border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#fff;break-inside:avoid}.card h3{margin:0 0 8px}.table-wrap{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin:8px 0 14px}table{border-collapse:collapse;width:100%;min-width:620px}th,td{padding:7px 9px;border-bottom:1px solid #e8edf1;text-align:left;vertical-align:top;font-size:11.5px}th{background:var(--soft);color:#626660;text-transform:none;letter-spacing:0;font-size:10.5px}tr:last-child td{border-bottom:0}.figure{margin:12px 0 20px;break-inside:avoid}.report-plot{width:100%;min-width:0}.report-figure-metrics{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}.report-figure-metrics-title{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:none;color:var(--muted);margin:0 0 6px}.report-figure-metrics .graph-statistics-note{margin:0 0 7px}.report-figure-metrics .table-wrap{margin:0}.report-figure-metrics .graph-stats-compact{font-size:10.5px}.graph-stats-compact small{display:block;max-width:240px;overflow-wrap:anywhere}.graph-statistics-note{font-size:12px}.figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.figure figcaption{font-size:11.5px;color:var(--muted);margin-top:6px}.summary-box{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0}.summary-box>div{border:1px solid var(--line);border-radius:10px;padding:9px;background:var(--soft)}.summary-box strong{display:block;font-size:16px}.summary-box span{font-size:10.5px;color:var(--muted)}.swatch{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.14)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f9fb;border:1px solid var(--line);border-radius:6px;padding:10px;font:11px/1.45 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}.hash{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:10.5px;overflow-wrap:anywhere}.muted{color:var(--muted)}.report-page{break-after:page;page-break-after:always}.report-page:last-child{break-after:auto;page-break-after:auto}.report-footer{border-top:1px solid var(--line);margin-top:30px;padding-top:10px;color:var(--muted);font-size:11px;display:flex;justify-content:space-between;gap:12px}@media(max-width:760px){.report{padding:20px 16px}.report-header{display:block}.report-meta{text-align:left;margin-top:10px}.report-grid,.summary-box{grid-template-columns:1fr}table{min-width:560px}}@media print{html{background:#fff}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.report{max-width:none;padding:0}.card,.figure,.table-wrap{break-inside:avoid}.period-figure{break-inside:auto}.period-figure .report-plot{break-inside:avoid}.period-figure .report-figure-metrics{break-before:page;page-break-before:always;break-inside:avoid}.period-figure figcaption{break-inside:avoid}}@page{size:'+(landscape?'A4 landscape':'A4 portrait')+';margin:12mm}';
 }
 function reportShell(title,subtitle,body,landscape=false){
-  return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+reportCss(landscape)+'</style></head><body><main class="report"><header class="report-header"><div><h1>'+esc(title)+'</h1><p>'+esc(subtitle)+'</p></div><div class="report-meta">Generated '+esc(new Date().toLocaleString())+'<br>Hydra Bench</div></header>'+body+'<footer class="report-footer"><span>Engineering review output · source data processed locally in the browser</span><span>© 2026 Anzar Sajid</span></footer></main></body></html>';
+  return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+reportCss(landscape)+'</style></head><body><main class="report"><header class="report-header"><div><h1>'+esc(title)+'</h1><p>'+esc(subtitle)+'</p></div><div class="report-meta">Generated '+esc(new Date().toLocaleString())+'<br>Hydra Bench</div></header>'+body+'<footer class="report-footer"><span>Engineering review output · source data processed locally in the browser</span><span>HydraBench · Originally created by Anzar Sajid · © 2026 Anzar Sajid and other applicable rights holders</span></footer></main></body></html>';
 }
 function reportMappingTable(w){
   const rows=[];
@@ -2637,6 +2664,13 @@ async function downloadReport(){
   body+='<h2>Reviewer notes</h2><div class="card">'+(notes?'<p>'+esc(notes).replaceAll('\n','<br>')+'</p>':'<p class="muted">No reviewer notes recorded.</p>')+'</div>';
   body+='<h2>Project data context</h2>'+reportProjectRegistry();
   body+='<h2>Source provenance</h2>'+reportSources(w);
+  const engineerReviews=options.include_comparison?diagnostic.verificationReviews?.report()||[]:[];
+  if(engineerReviews.length){
+    body+='<h2>Verification engineer review</h2>'+engineerReviews.map(review=>
+      '<section><h3>'+esc(review.asset+' · '+review.scenario)+'</h3><p>'+esc(review.decision)+'</p>'+
+      '<p>'+esc((review.period.start||'Start of common data')+' to '+(review.period.end||'end of common data'))+'</p>'+
+      '<p>'+esc(review.comments)+'</p><p>'+esc(review.references)+'</p></section>').join('');
+  }
   body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({report_options:options,spills:state.spillSnapshot,storage:state.storage,comparison:state.comparisonSnapshot,professional_flow_survey:window.__ICM_WORKBENCH__.lastProfessionalSurvey||null,rating_diagnostic:state.rating||null,project_registry:window.ICMProjectRegistry?.snapshot()||null,execution:diagnostic.execution||'unknown'},null,2))+'</pre></details>';
   await window.HydraDesign.prepareReportFont();
   const html=await interactiveReportHtml(reportShell('Hydra Bench — Engineering Assessment','Professional hydraulic data review and model-verification output',body,false));

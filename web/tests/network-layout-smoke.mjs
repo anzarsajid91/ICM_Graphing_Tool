@@ -1,6 +1,7 @@
 import {chromium} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 const browser=await chromium.launch(browserLaunchOptions());
 const page=await browser.newPage({...browserContextOptions(),viewport:{width:1440,height:1050}});
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -32,5 +33,42 @@ try{
   const before=await page.evaluate(()=>ICMNetworkSchematic.snapshot().nodes[0]);const frame=await page.locator('[data-ns-node="n0"] [data-ns-frame]').boundingBox();
   await page.mouse.move(frame.x+20,frame.y+20);await page.mouse.down();await page.mouse.move(frame.x+80,frame.y+80,{steps:5});await page.mouse.up();
   const after=await page.evaluate(()=>ICMNetworkSchematic.snapshot().nodes[0]);assert.equal(after.x,before.x);assert.equal(after.y,before.y);
+  await page.evaluate(()=>{
+    const n=ICMNetworkCore.empty();
+    for(let i=0;i<12;i++){
+      n.nodes.push({id:'dense-'+i,name:'Long synthetic network asset '+i,type:i%4===0?'cso':'manhole',
+        x:82+(i%6)*88,y:130+Math.floor(i/6)*145,colour:'blue',bindings:[]});
+      if(i>0)n.edges.push({id:'link-'+i,from:'dense-'+(i-1),to:'dense-'+i,colour:'blue',name:'Conduit '+i});
+    }
+    n.edges.push({id:'return',from:'dense-11',to:'dense-0',colour:'amber',name:'Loop return'});
+    ICMNetworkSchematic.restore(n);
+  });
+  const suppressed=page.locator('[data-ns-label][data-ns-label-suppressed]').first();
+  const suppressedId=await suppressed.getAttribute('data-ns-label');
+  assert.ok(suppressedId);
+  const target=page.locator('[data-ns-node="'+suppressedId+'"]');
+  await target.focus();
+  await target.press('Enter');
+  assert.equal(await target.locator('[data-ns-label-suppressed]').count(),0,'Selecting a node reveals its full label');
+  await page.locator('#nsName').fill('Synthetic edited asset · full identifier');
+  await page.locator('#nsName').press('Tab');
+  assert.match(await target.getAttribute('aria-label'),/^Synthetic edited asset/);
+  assert.match(await page.locator('#nsDrawer h3').innerText(),/^Synthetic edited asset/);
+  const tools=page.locator('#nsReviewTools > summary');
+  await tools.click();
+  for(const width of [1440,1024,768,390]){
+    await page.setViewportSize({width,height:1000});
+    const panel=await page.locator('.ns-tool-panel').boundingBox();
+    const canvas=await page.locator('#nsCanvas').boundingBox();
+    const drawer=await page.locator('#nsDrawer').boundingBox();
+    assert(panel.y+panel.height<=canvas.y&&panel.y+panel.height<=drawer.y,'Tools remain outside the canvas and the property pane at '+width);
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Workspace does not overflow at '+width);
+    if(process.env.ICM_EVIDENCE_DIR){
+      const dir=process.env.ICM_EVIDENCE_DIR;
+      await fs.mkdir(dir,{recursive:true});
+      await page.locator('#nsLayout').scrollIntoViewIfNeeded();
+      await page.screenshot({path:dir+'/dense-properties-'+width+'.png',animations:'disabled'});
+    }
+  }
   assert.deepEqual(errors,[]);console.log('Network layout passed: 400 points/399 wires in '+Math.round(timing)+' ms, incremental pan, multi-select alignment and layout lock.');
 }finally{await browser.close();}

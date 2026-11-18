@@ -1,10 +1,10 @@
 # Release numbers and synthetic reference fixtures
 
-Hydra Bench started at **v1.000**. Every merged PR into `main` advances the integer release counter once: v1.001, v1.002, etc. Commits within a PR, closed/unmerged PRs and branch-sync PRs do not advance the published version. At iteration 1,000 the number becomes v2.000.
+Hydra Bench started at **v1.000**. Every merged PR into `main` advances the integer release counter once: v1.001, v1.002, etc. Commits within a PR, closed/unmerged PRs and branch-sync PRs do not advance the published version. PR #108 establishes the 2.0 milestone. Its review build is labelled v2.0.0-rc.1 and its merged build is labelled v2.0.0. Subsequent unique merged PRs advance the patch version once.
 
 `release-history.json` records the 59 historical main PR merges through the baseline commit. This includes an earlier main PR whose merge is nested in another main merge. Subsequent merge/squash commit subjects must retain the GitHub PR number. Use merge or squash when releasing; rebase without PR markers cannot be counted reliably. Builds read full local Git history; they make no API requests. Production checkouts therefore use `fetch-depth: 0`. Missing history fails the build instead of publishing a guessed number.
 
-The build stamps the release into the footer beside **Anzar Sajid**, the HTML metadata and `build.json`. PR builds display the next number with a `-preview` suffix. Engine status updates target a separate footer element so booting Python cannot overwrite the version.
+The build stamps the release into the footer beside **Anzar Sajid**, the HTML metadata and `build.json`. Ordinary PR builds display the next number with a `-preview` suffix. The 2.0 milestone uses its release-candidate label. Engine status updates target a separate footer element so booting Python cannot overwrite the version.
 
 ## Independent synthetic fixtures
 

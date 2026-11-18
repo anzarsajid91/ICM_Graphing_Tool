@@ -1,3 +1,4 @@
+import {trackControls} from './control-evidence.mjs';
 // Browser regressions for route scroll memory, the shared HB toggle, and both
 // schematic cameras. Synthetic survey results isolate UI behaviour from engines.
 import {chromium,firefox} from 'playwright';
@@ -9,6 +10,7 @@ const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browserName=process.env.ICM_BROWSER||'chromium';
 const browser=await (browserName==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000}});
+const writeControlEvidence=await trackControls(context,browserName+'-control-evidence.json');
 const page=await context.newPage(),errors=[],evidence={browser:browserName,scroll:[],zoom:[],navigation:[],reportLayout:[]};
 page.on('pageerror',error=>errors.push(error.message));
 page.on('console',message=>{if(message.type()==='error'&&!message.text().includes('favicon.ico'))errors.push(message.text());});
@@ -48,6 +50,18 @@ try{
     setTimeout(()=>{document.querySelector('main.shell').style.minHeight='3600px';document.querySelector('#tab-spills').style.height='';document.querySelector('#tab-spills').style.overflow='';},80);
   });
   await page.waitForFunction(()=>Math.abs(scrollY-710)<2);
+  // Exercise actual workspace and page buttons in addition to route history.
+  for(const [workspace,tab] of routes){
+    const primary=page.locator('.pw-primary-nav button[data-workspace="'+workspace+'"],.pw-about-nav button[data-workspace="'+workspace+'"]');
+    await primary.click();
+    const secondary=page.locator('#pwSecondaryNav button[data-page="'+tab+'"]');
+    if(await secondary.isVisible())await secondary.click();
+    await page.waitForFunction(([w,t])=>{
+      const current=window.__ICM_PRECISION_WORKBENCH__.route();
+      return current.workspace===w&&current.page===t;
+    },[workspace,tab]);
+    evidence.navigation.push({workspace,tab,via:'workspace and page buttons'});
+  }
   // Report exports retain spacing after returning to a scrolled workspace.
   for(const size of [1440,1024]){
     await page.setViewportSize({width:size,height:1000});
@@ -128,11 +142,33 @@ try{
   const comment=page.locator('#assessmentDrawer-fdv .weekly-comment');await comment.fill('Camera regression draft');
   await page.locator('[data-schematic-zoom="1"][data-schematic-kind="fdv"]').click();
   await navigate('survey','rainfall-check');await navigate('survey','fdv-check');assert.equal(await comment.inputValue(),'Camera regression draft');
+  const evidenceDir=process.env.ICM_EVIDENCE_DIR&&process.env.ICM_EVIDENCE_DIR+'/workspace-interactions';
+  if(evidenceDir){
+    await fs.mkdir(evidenceDir,{recursive:true});
+    await page.setViewportSize({width:1440,height:1000});
+    await page.locator('#assessmentSchematicViewport-fdv').scrollIntoViewIfNeeded();
+    await page.screenshot({path:evidenceDir+'/'+browserName+'.png',fullPage:false});
+  }
+  for(const [name,w,p] of [
+    ['Assess spills','spills','assessment'],['Compare detriment scenarios','detriment','flooding'],
+    ['Open reports','reports','report-generation'],['Restore workspace','reports','workspace'],
+    ['Review flow survey','survey','fdv-check'],['Run hydraulic calculations','hydraulics','capacity'],
+  ]){
+    await page.locator('.pw-primary-nav button[data-workspace="home"]').click();
+    await page.getByRole('link',{name,exact:true}).click();
+    await page.waitForFunction(([w,p])=>{
+      const route=window.__ICM_PRECISION_WORKBENCH__.route();
+      return route.workspace===w&&route.page===p;
+    },[w,p]);
+    evidence.navigation.push({workspace:w,tab:p,via:'Home shortcut: '+name});
+  }
   assert.deepEqual(errors,[]);
   evidence.url=page.url();evidence.errors=errors;
-  if(process.env.ICM_EVIDENCE_DIR){const dir=process.env.ICM_EVIDENCE_DIR+'/workspace-interactions';await fs.mkdir(dir,{recursive:true});await fs.writeFile(dir+'/'+browserName+'.json',JSON.stringify(evidence,null,2));await page.setViewportSize({width:1440,height:1000});await navigate('survey','fdv-check');await page.locator('#assessmentSchematicViewport-fdv').scrollIntoViewIfNeeded();await page.screenshot({path:dir+'/'+browserName+'.png',fullPage:false});}
+  if(evidenceDir)await fs.writeFile(evidenceDir+'/'+browserName+'.json',JSON.stringify(evidence,null,2));
   console.log('WORKSPACE_INTERACTIONS_PASS '+JSON.stringify(evidence));
 }catch(error){
   if(process.env.ICM_EVIDENCE_DIR){const dir=process.env.ICM_EVIDENCE_DIR+'/workspace-interactions';await fs.mkdir(dir,{recursive:true});await fs.writeFile(dir+'/'+browserName+'-failure.json',JSON.stringify({...evidence,error:String(error),route:await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__?.route())},null,2));await page.screenshot({path:dir+'/'+browserName+'-failure.png',fullPage:false});}
   throw error;
-}finally{await browser.close();}
+}finally{
+  try{await writeControlEvidence?.();}finally{await browser.close();}
+}

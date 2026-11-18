@@ -37,7 +37,7 @@ body.precision-workbench{
 .pw-app{min-height:100vh;display:grid;grid-template-columns:var(--pw-rail) minmax(0,1fr)}
 .pw-rail{
   position:sticky;top:0;height:100vh;z-index:50;overflow:auto;
-  background:var(--hb-soft);color:var(--pw-text);border-right:1px solid var(--pw-border);
+  background:var(--hb-rail);color:var(--pw-text);border-right:1px solid var(--pw-border);
   padding:16px;display:flex;flex-direction:column;gap:16px
 }
 .pw-brand{padding:4px 8px 12px;border-bottom:1px solid var(--pw-border)}
@@ -50,7 +50,7 @@ body.precision-workbench{
   min-height:42px;padding:8px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:15px;line-height:20px;font-weight:600
 }
 .pw-primary-nav button:hover{background:var(--hb-border)}
-.pw-primary-nav button[aria-current="page"]{background:var(--hb-border);color:var(--pw-text);box-shadow:none;font-weight:600}
+.pw-primary-nav button[aria-current="page"]{background:var(--hb-selection);color:var(--hb-accent-hover);box-shadow:none;font-weight:600}
 .pw-nav-icon{width:20px;height:20px;display:grid;place-items:center;color:var(--pw-muted);flex:0 0 20px}.pw-nav-icon svg{width:19px;height:19px}.pw-nav-label{min-width:0}
 .pw-asset-browser{margin-top:auto;display:grid;gap:8px;border-top:1px solid var(--pw-border);padding-top:16px}
 .pw-asset-browser label{font-size:12px;line-height:18px;color:var(--pw-muted);font-weight:500}
@@ -87,7 +87,7 @@ body.precision-workbench{
 .pw-context-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
 .pw-breadcrumb{display:flex;gap:8px;align-items:center;color:var(--pw-muted);font-size:12px;margin-bottom:4px}
 .pw-breadcrumb strong{color:var(--pw-text);font-weight:600}
-.pw-page-title{font-size:24px;line-height:32px;margin:0;font-weight:600;letter-spacing:-.015em}
+.pw-page-title{font-size:clamp(23px,2.5vw,33px);line-height:1.15;margin:0;font-weight:600;letter-spacing:-.028em}
 .pw-page-description{margin:4px 0 0;color:var(--pw-muted);max-width:900px;font-size:14px;line-height:21px}
 .pw-context-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .pw-rail-toggle,.pw-inspector-toggle,.pw-focus-toggle{display:none;border:1px solid var(--pw-border);background:#fff;border-radius:var(--hb-radius-control);padding:8px 12px;cursor:pointer;font-weight:600;color:var(--pw-text)}
@@ -568,3 +568,67 @@ body.precision-workbench{
 #securityBuildIdentity{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 
 body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
+
+/* The fixed mark remains readable with the rail collapsed. */
+.pw-brand-icon:has(.hb-brand-mark){background:transparent}
+.hb-brand-mark{width:34px;height:34px;display:block;flex:none}
+.hb-brand-bench{color:#4740b6}
+.hb-brand-pulse{
+  stroke-dasharray:13 120;
+  stroke-dashoffset:14;
+  opacity:0;
+  animation:hb-brand-flow 7s linear infinite;
+}
+@keyframes hb-brand-flow{
+  0%{stroke-dashoffset:14;opacity:0}
+  4%{opacity:.92}
+  25%{opacity:.92}
+  30%{stroke-dashoffset:-103;opacity:0}
+  100%{stroke-dashoffset:-103;opacity:0}
+}
+@media(prefers-reduced-motion:reduce){
+  .hb-brand-pulse{animation:none}
+}
+
+.pipe-section-views{display:flex;flex-wrap:wrap;gap:16px}
+.pipe-section-views figure{margin:12px 0;text-align:center;min-width:104px}
+.pipe-section-circle{display:flex;align-items:flex-end;overflow:hidden;width:72px;height:72px;margin:0 auto 8px;border:2px solid var(--hb-text);border-radius:50%}
+.pipe-section-water{width:100%;background:#a3b8e8;border-top:1px solid #555fa8;box-sizing:border-box}
+.pipe-capacity-bar{display:block;width:7rem;height:.55rem;margin-top:4px}
+
+/* Workspace surfaces follow the approved HydraBench 2.0 preview. */
+.precision-workbench .topbar{background:var(--hb-soft)}
+.pw-primary-nav button,.pw-about-nav button{font-size:15px;font-weight:500}
+.pw-primary-nav button[aria-current="page"],.pw-about-nav button[aria-current="page"]{
+  background:var(--hb-selection);color:var(--hb-accent-hover);font-weight:600
+}
+.precision-workbench .data-table th{background:var(--hb-soft);font-size:13px;letter-spacing:0;text-transform:none}
+.precision-workbench .data-table td,.precision-workbench .summary-box{font-variant-numeric:tabular-nums}
+.precision-workbench .dropzone{background:var(--hb-soft);border-color:#afa6cf}
+.hb-review-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(245px,1fr);gap:16px;align-items:start}
+.hb-review-grid>.panel{min-width:0;margin:0}
+.precision-workbench .hb-review-grid>.panel+.panel{margin-top:0}
+.hb-review-tools{min-width:0}
+.hb-review-tools fieldset{min-width:0;max-width:100%;padding:0;border:0;margin:12px 0 0}
+.hb-review-tools .mapping-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.hb-review-tools :is(select,textarea){width:100%;min-width:0}
+#guidedImportReview{background:var(--hb-soft);margin-block:12px 18px}
+#guidedImportReview[open]>summary{margin-bottom:12px}
+#guidedImportReview .table-wrap{background:var(--hb-elevated)}
+#guidedImportReview .data-table{min-width:0;table-layout:fixed}
+#guidedImportReview th:first-child{width:34%}
+#guidedImportReview th:last-child{width:30%}
+#guidedImportReview :is(td,th){overflow-wrap:anywhere}
+#guidedImportReview th{white-space:normal}
+#guidedImportReview td:first-child small{display:block;color:var(--hb-muted)}
+#guidedImportReview td select{min-width:0;width:100%}
+.hb-review-tools button.primary{margin-top:12px}
+#guidedImportReview [data-needs-review]{background:#f8eecf;color:#755010}
+#guidedImportApply{margin-top:12px}
+.hb-import-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(190px,1fr);gap:12px;align-items:start}
+.hb-import-grid>.table-wrap{min-width:0}
+.hb-import-guidance{background:var(--hb-elevated);border:1px solid var(--hb-border);border-radius:var(--hb-radius-control);padding:12px}
+.hb-import-guidance h3{margin:0 0 8px}
+.hb-import-guidance p{font-size:13px;color:var(--hb-muted);margin:8px 0}
+@media(max-width:1180px){.hb-import-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:1040px){.hb-review-grid{grid-template-columns:minmax(0,1fr)}}

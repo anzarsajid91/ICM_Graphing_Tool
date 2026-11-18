@@ -15,7 +15,33 @@ try{
  await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate);
  assert.match(await page.title(),/Hydra Bench/);
  await page.locator('.pw-about-nav button').click();
- await page.getByRole('heading',{name:'Built by Anzar Sajid'}).waitFor();
+ const footerSource=page.locator('#hbBuildSource');
+ if(await footerSource.count()){
+  await page.getByRole('heading',{name:'Originally created by Anzar Sajid'}).waitFor();
+  const about=page.locator('#tab-about');
+  const source=about.getByRole('link',{name:'Source for this build'});
+  assert.equal(await source.getAttribute('href'),await footerSource.getAttribute('href'));
+  assert.equal(await source.getAttribute('referrerpolicy'),'no-referrer');
+  assert.match(await source.getAttribute('rel'),/noreferrer/);
+  assert.equal(await about.locator('#hbAboutVersion').innerText(),await page.locator('#appVersion').innerText());
+  const sha=await page.locator('meta[name="icm-build-sha"]').getAttribute('content');
+  if(/^[a-f0-9]{40}$/.test(sha))assert.ok((await source.getAttribute('href')).endsWith('/tree/'+sha));
+  const licenceUrl=await about.getByRole('link',{name:'GNU AGPLv3'}).evaluate(link=>link.href);
+  const licencePage=await context.newPage();
+  const licence=await guard.navigate(licencePage,licenceUrl);
+  assert.ok(licence.ok());
+  assert.match(await licence.text(),/GNU AFFERO GENERAL PUBLIC LICENSE[\s\S]*END OF TERMS AND CONDITIONS/);
+  await licencePage.close();
+  for(const width of [1440,390]){
+   await page.setViewportSize({width,height:1000});
+   assert.ok(await about.evaluate(el=>el.scrollWidth<=el.clientWidth+2),'About fits viewport');
+   await about.locator('.pw-about-author').scrollIntoViewIfNeeded();
+   await page.screenshot({path:evidence+'/creator-attribution-'+width+'.png'});
+  }
+  await page.setViewportSize({width:1440,height:1000});
+ }else{
+  await page.getByRole('heading',{name:'Built by Anzar Sajid'}).waitFor();
+ }
  const security=page.getByRole('tab',{name:'IT Security',exact:true});await security.click();
  assert.equal(await security.getAttribute('aria-selected'),'true');
  const panel=page.locator('#tab-security');await panel.waitFor({state:'visible'});

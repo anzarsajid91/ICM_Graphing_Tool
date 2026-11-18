@@ -1,6 +1,6 @@
 # Network schematic
 
-Open **Spills → Network Schematic**. This is an annual network assessment overview,
+Open **Network Schematic** from the primary navigation. This is an annual network assessment overview,
 with automatic layout and optional manual refinement. Spill count and duration
 are the primary information; evidence checks and engineering notes are disclosed
 on demand.
@@ -187,3 +187,106 @@ refresh and fingerprint relinking while asserting shared spill settings are unch
 
 Saved assessments from the previous schematic method are marked stale and must
 be recalculated; their original evidence remains available for audit.
+
+### Canonical network context CSV preview
+
+Open an empty schematic and select the CSV using **Save / export → Load network**.
+Use UTF-8, metre coordinates, separate node and link IDs, and explicit nominal
+upstream and downstream node IDs. Fields may be quoted on one line. Coordinates
+use x east and y north, within ±1,000,000 m per axis.
+
+```csv
+HydraBench network context v1
+record,id,type,name,x_m,y_m,from,to
+node,A,manhole,Upstream,350000,425000,,
+node,B,outfall,Outlet,350125,425030,,
+link,A.1,,Conduit,,,A,B
+```
+
+Node types are `manhole`, `junction`, `outfall`, `cso`, `storm`, `emergency`,
+`pump`, `wwtw` and `tank`. Missing endpoints, duplicate IDs within an object
+kind, invalid coordinates and mismatched formats are rejected before changing the
+canvas. A populated manually drawn schematic is protected from replacement by a CSV import.
+
+The import audit previews counts, disconnected components, isolated nodes,
+loop-affected nodes and parallel links before changing the canvas. On first
+import, choose geographic coordinates or engineering schematic layout.
+Re-importing a revised export requires the same format and shared imported
+node IDs. Compatible manual positions, labels, bends and manual additions are
+retained. The import clears calculated spill results on imported assets and
+clears saved views. Undo restores the previous local schematic.
+
+### Native InfoWorks CSV preview
+
+Use a combined native CSV with documented `**** hw_node` and
+`**** hw_conduit` delimiters. Confirm metre coordinates, levels and lengths,
+and millimetre conduit dimensions and Colebrook–White roughness in the audit.
+The importer reads case-insensitive node keys, composite conduit keys, and
+packed `point_array` vertices. You can also select the separate ICM table CSVs
+together, keeping their table suffixes (for example, `_node.csv` and
+`_conduit.csv`). The importer recognises leading description and unit records,
+ignores unused fields, and matches required fields by database name. Confirm
+the actual export units before applying the import. The audit lists skipped
+tables. Pumps, weirs, sluices, flap valves, screens, orifices and user-control
+links are represented as named connectors with their source type. Conduit
+hydraulic trials remain limited to eligible conduits. Unpacked geometry
+remains unsupported. The combined selection limit is 32 MiB.
+This adapter is tested against synthetic fixtures based on Autodesk's
+[CSV file format](https://help.autodesk.com/cloudhelp/2027/ENU/ICM-Help/files/GUID-7EF49200-AFE8-4934-9ECC-74238171895C.htm).
+The importer also recognises the explicit `FieldDescription` and `UserUnits` records emitted with the default ICM export options.
+
+In **Edit network**, select a compatible imported conduit and choose **Open
+in Hydraulic Calculations**. Handoff requires circular geometry, one barrel,
+zero sediment, uniform Colebrook–White roughness, and a supported gradient.
+Edits in the calculator apply to the independent trial.
+
+### Verification evidence layer
+
+In **Edit network**, select a point and confirm its **Monitoring association**
+using a flow monitor from the local project registry. One monitor can be linked
+to one schematic point. The association is reversible and is saved with the
+schematic. **Tools → Verification evidence layer** shows a V badge at linked
+points. Its tooltip distinguishes current, partial, stale and unavailable
+comparison evidence. The drawer opens Verification Overview when the current
+comparison belongs to the linked monitor. The layer reads existing results
+and does not rerun the comparison.
+
+### Flow Survey evidence layer
+
+Use the confirmed monitoring association and enable **Tools → Flow Survey
+evidence layer**. Select a survey week to see its effective rating, whether it
+was calculated or reviewed, and whether it is a short boundary week. Stale
+assessments show a stale badge without displaying a rating. **Open Flow Survey
+week** opens the linked monitor and week in the survey review. The layer reads
+existing results without recalculating them.
+
+### Detriment evidence
+
+Calculate the baseline and proposed assessment in Detriment, then select Flooding,
+Level / freeboard or Spill count / duration under Network Schematic → Tools.
+In Edit network, select an imported node or link and confirm its exact report ID
+under Detriment association. Confirm the ID against both scenario reports before
+linking. The association can be removed or undone.
+
+The layer uses the current assessment's existing classifications and displays the
+signed change, available duration or freeboard and assessment flags. A changed
+report pair, mapping, scope, period, datum or template needs a fresh association.
+A changed assessment criterion hides the prior result until recalculation.
+Applying a network context import clears associations on its imported objects.
+Saved schematic associations are local and remain stale on restore until the
+matching comparison is calculated again.
+
+### Reading dense diagrams
+
+The Tools disclosure expands above the canvas and leaves the properties pane
+available. On narrow screens the pane stacks beneath the canvas. Automatic
+detail uses rendered text bounds to suppress lower-priority labels that collide
+with other labels or symbols. Selecting a point reveals its full label. Search
+and the properties pane also show full names. Manually positioned labels take
+priority. Full detail shows all labels, so it can reveal intentional overlaps.
+Zoom or reposition labels when available space is limited.
+
+Verification badges show current recorded scenario decisions and highlight
+investigation or unsuitable-for-acceptance decisions. Stale evidence does not
+carry a current decision. The overlay uses the current published verification
+comparison, while Flow Survey uses its current completed weekly assessment.

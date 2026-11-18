@@ -23,3 +23,61 @@ An exclusion is a reviewer decision that a known interval must not contribute to
 
 ## Storage screening
 The first-release capability is **Idealised spill-volume screening**. All physical discharge volumes are aggregated into their 12/24 counting block and annual block volumes can be screened against a configurable target count. This is not dynamic routing and is not a guaranteed engineered storage size.
+
+## Circular-pipe capacity and design flow preview
+
+The calculator uses SI units, steady uniform gravity flow, and pipe gradient
+as the energy slope. Full-bore capacity uses (64/Re) in laminar flow and
+Colebrook–White in turbulent flow. Capacity is withheld in the transitional
+range.
+
+Partially full design flow uses circular-segment area and wetted perimeter,
+with hydraulic diameter equal to four times the hydraulic radius. The solver
+checks both limbs of the turbulent capacity curve, including the descending
+near-crown limb. It reports each supported normal depth and identifies an
+exact full-bore capacity boundary separately. The implied full-bore velocity
+is always the imposed discharge divided by the full area.
+
+Partially full laminar and transitional regimes and relative roughness above
+5% of the hydraulic diameter are outside this preview's calculation scope.
+Results provide uniform-flow design evidence. Use dynamic hydraulic modelling
+for backwater, surcharge, controls and time-dependent flows.
+
+### InfoWorks ICM comparison basis
+
+The calculator accepts the InfoWorks conduit field names US invert level, DS
+invert level and Length. The derived gradient is (US invert − DS invert) /
+Length. Circular diameter represents one barrel. The preview uses a single
+Colebrook–White roughness and reports a uniform-flow estimate.
+
+Autodesk documents **Conduit full capacity** as flow just full, calculated
+during Network Validation. Use that field as the primary full-flow benchmark.
+For an ICM comparison, record the ICM version, solution model, geometry and
+units, inverts, length, roughness type and both roughness values, barrel count,
+and sediment depth. Begin with clean single-barrel circular cases with the
+same top and bottom roughness. Then test mixed roughness and sediment as
+separate cases before claiming support.
+
+The [InfoWorks hydraulic theory](https://help.autodesk.com/cloudhelp/2027/ENU/ICM-Help/files/GUID-3AF862EF-FC9D-4632-BACD-06CC4BC0431C.htm)
+describes a network solver that uses Saint-Venant equations, a pressurised
+flow slot and a monotonic conveyance approximation near the crown. A
+HydraBench two-root design check follows the unmodified uniform-flow curve.
+Compare these outputs under equivalent assumptions and keep that near-crown
+method difference explicit. See the [Autodesk conduit field reference](https://help.autodesk.com/cloudhelp/2026/ENU/ICMLIVE-Help/files/GUID-1306601E-4A25-4FBE-AE9A-01E06BF4986E.htm)
+for the documented gradient and just-full capacity definitions.
+
+### Verification Event Review
+
+Select a current qualifying Time Series rainfall event and one mapped model
+scenario. Event Review accepts instantaneous flow or depth with matching units
+and a confirmed comparison time basis. It applies the model time offset and
+intersects the two series' linearly interpolable intervals before subtracting
+the union of their exclusions. Interpolation never crosses a gap beyond the
+configured limit or an invalid sample.
+
+Peaks use each trace's own breakpoints on that intersection, including boundary
+limits. Tied peaks use the earliest time. Peak error and timing lag are model
+minus observed. Signed flow volume integrates both curves over exactly the
+same retained support. Depth has no volume output. The separate Overview shows
+the existing comparison coverage estimate, which uses the smaller of the two
+eligible-support fractions and does not measure interval intersection.

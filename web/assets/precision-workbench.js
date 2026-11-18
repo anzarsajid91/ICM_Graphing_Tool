@@ -1,3 +1,5 @@
+/* SPDX-FileCopyrightText: 2026 Anzar Sajid and other applicable rights holders
+ * SPDX-License-Identifier: AGPL-3.0-only */
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
 const qs=(sel,root=document)=>root.querySelector(sel);
@@ -20,9 +22,13 @@ const ROUTES={
     icon:'spills',
     pages:{
       assessment:{label:'Spill assessment',title:'EDM / model spill assessment',description:'Configure thresholds and exclusions, then review physical spill intervals, 12/24 counts and observed/model evidence.',tab:'spills',root:()=>$('tab-spills')},
-      storage:{label:'Storage assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')},
-      network:{label:'Network schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')}
+      storage:{label:'Storage assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')}
     }
+  },
+  network:{
+    label:'Network Schematic',
+    icon:'network',
+    pages:{schematic:{label:'Schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')}}
   },
   survey:{
     label:'Flow survey',
@@ -34,16 +40,22 @@ const ROUTES={
       'monthly-review':{label:'Monthly review',title:'Monthly survey review',description:'Review effective weekly outcomes, engineering comments and actions, then export the monthly PDF.',tab:'data-health',root:()=>$('tab-data-health')}
     }
   },
-  detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},
   graphs:{
-    label:'Plots',
+    label:'Verification',
     icon:'verify',
     pages:{
       comparison:{label:'Observed vs modelled',title:'Observed versus modelled diagnostics',description:'Compare scenarios using the canonical bounded-alignment engine, scatter views and verification statistics.',tab:'compare',root:()=>$('tab-compare')},
+      overview:{label:'Overview',title:'Verification overview',description:'Review source coverage, comparison metrics and engineering decisions.',root:()=>$('tab-verification-overview')},
+      events:{label:'Event Review',title:'Verification event review',description:'Compare observed and modelled responses for a qualifying rainfall event.',root:()=>$('tab-verification-events')},
       rating:{label:'Depth / rating',title:'Depth agreement and flow–depth diagnostics',description:'Inspect depth agreement and Q/H rating evidence with sample support and validity limitations.',tab:'compare',root:()=>$('tab-compare')},
       dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
     }
   },
+  hydraulics:{
+    label:'Hydraulic Calculations',icon:'hydraulics',
+    pages:{capacity:{label:'Pipe capacity',title:'Hydraulic calculations',description:'Estimate full-bore uniform-flow capacity using Darcy–Weisbach.',root:()=>$('tab-hydraulics')}}
+  },
+  detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},
   about:{
     label:'About',icon:'about',
     pages:{overview:{label:'Overview',title:'About Hydra Bench',description:'A practical workbench for hydraulic evidence, model verification and scenario assessment.',root:()=>$('tab-about')},security:{label:'IT Security',title:'IT Security',description:'Data handling, implemented controls and verification limits.',root:()=>$('tab-security')}}
@@ -61,11 +73,14 @@ const ROUTE_ALIASES={
   'data/sources':['data','time-series'],
   'data/series-mapping':['data','time-series'],
   'verification/comparison':['graphs','comparison'],
+  'verification/overview':['graphs','overview'],
+  'verification/events':['graphs','events'],
   'verification/rating':['graphs','rating'],
   'verification/dwf':['graphs','dwf'],
   'verification/storage':['spills','storage'],
   'spills/thresholds':['spills','assessment'],
   'spills/results':['spills','assessment'],
+  'spills/network':['network','schematic'],
   'survey/configuration':['survey','fdv-check'],
   'survey/data-health':['survey','fdv-check'],
   'survey/rainfall-response':['survey','rainfall-check'],
@@ -80,7 +95,7 @@ function canonicalRoute(workspace,page){
   const alias=ROUTE_ALIASES[workspace+'/'+page];
   return alias?{workspace:alias[0],page:alias[1]}:null;
 }
-const DEFAULT_ROUTE={workspace:'data',page:'time-series'};
+const DEFAULT_ROUTE={workspace:'home',page:'overview'};
 let current=DEFAULT_ROUTE;
 let docked=[];
 let syncingLegacy=false;
@@ -143,7 +158,9 @@ function navIcon(name){
     home:'<path d="m3 10 9-7 9 7M5 9v11h14V9M10 20v-6h4v6"/>',
     data:'<ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/>',
     survey:'<path d="M3 6c2.3 0 2.3-2 4.5-2S9.8 6 12 6s2.3-2 4.5-2S18.8 6 21 6M3 12c2.3 0 2.3-2 4.5-2s2.3 2 4.5 2 2.3-2 4.5-2 2.3 2 4.5 2M3 18c2.3 0 2.3-2 4.5-2s2.3 2 4.5 2 2.3-2 4.5-2 2.3 2 4.5 2"/>',
+    network:'<path d="M6 8v7m2-7 8 7m2-7v7"/><circle cx="6" cy="5" r="2"/><circle cx="18" cy="5" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
     rainfall:'<path d="M7 15a4 4 0 0 1 .6-8 5.5 5.5 0 0 1 10.5 1.5A3.5 3.5 0 0 1 18 15"/><path d="M8 18l-1 2M12 18l-1 2M16 18l-1 2"/>',
+    hydraulics:'<circle cx="12" cy="12" r="8"/><path d="M5 14h14M8 9l4-3 4 3"/>',
     verify:'<path d="M4 15h3v6H4zM10.5 10h3v11h-3zM17 4h3v17h-3z" fill="currentColor" stroke="none"/>',
     detriment:'<path d="M9 4H6v17h12V4h-3"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 10h6M9 14h6M9 18h4"/>',
     spills:'<path d="M12 2C10 5 5 10.4 5 14.5a7 7 0 0 0 14 0C19 10.4 14 5 12 2Z"/><path d="M8 14.5a4 4 0 0 0 4 4"/>',
@@ -366,7 +383,7 @@ function buildShell(){
   const app=document.createElement('div');app.className='pw-app';
   const rail=document.createElement('aside');rail.className='pw-rail';rail.setAttribute('aria-label','Primary workspaces');
   rail.id='pwNavigation';
-  rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><button type="button" id="pwBrandToggle" class="pw-brand-icon" aria-controls="pwNavigation" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">HB</button><span class="pw-brand-title">Hydra Bench</span></div><small>Browser-local hydraulic evidence and assessment.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
+  rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><button type="button" id="pwBrandToggle" class="pw-brand-icon" aria-controls="pwNavigation" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation"><svg class="hb-brand-mark" aria-hidden="true" focusable="false" viewBox="0 0 48 48"><path fill="#fff" stroke="#20252a" stroke-width="3.5" stroke-linejoin="round" d="M9 4h4a5 5 0 0 1 5 5v6a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4V9a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v30a5 5 0 0 1-5 5h-4a5 5 0 0 1-5-5v-6a4 4 0 0 0-4-4h-4a4 4 0 0 0-4 4v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9a5 5 0 0 1 5-5Z"/><path stroke="#20252a" stroke-width="3" d="M11 11v15m26 1v10"/><path fill="none" stroke="#4740b6" stroke-width="3.5" stroke-linecap="round" d="M5 37h4c4 0 5-3 5.5-6.5C15.2 25.7 20 24 24 24h16c-3-3-3.5-6-3.5-12"/><path class="hb-brand-pulse" pathLength="100" fill="none" stroke="#c2bcff" stroke-width="2.1" stroke-linecap="round" d="M5 37h4c4 0 5-3 5.5-6.5C15.2 25.7 20 24 24 24h16c-3-3-3.5-6-3.5-12"/><g fill="#fff" stroke="#20252a" stroke-width="2.5"><circle cx="11" cy="11" r="3.1"/><circle cx="37" cy="11" r="3.1"/><circle cx="24" cy="24" r="3.1"/><circle cx="11" cy="37" r="3.1"/><circle cx="37" cy="37" r="3.1"/></g></svg></button><span class="pw-brand-title">Hydra<span class="hb-brand-bench">Bench</span></span></div><small>Browser-local hydraulic evidence and assessment.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
   const bottom=document.createElement('div');bottom.className='pw-rail-bottom';
   bottom.innerHTML='<nav class="pw-about-nav" aria-label="About the tool"></nav>';
   bottom.appendChild(qs('.pw-asset-browser',rail));rail.appendChild(bottom);
@@ -588,7 +605,7 @@ function navigate(workspace,page,push=false){
   document.title=p.title+' · Hydra Bench';
   resizeVisuals();
   window.dispatchEvent(new CustomEvent('icm:route-changed',{detail:{workspace,page}}));
-  if(workspace==='spills'&&page==='network'){
+  if(workspace==='network'&&page==='schematic'){
     const networkRoot=$('tab-spill-network');
     if(networkRoot&&!networkRoot.children.length){
       const loading=document.createElement('p');loading.className='pw-empty-state';
@@ -751,14 +768,19 @@ function buildAboutPage(){
   const summaries=[
     ['data','time-series','Data / time series','Upload CSV, FDV and rainfall R files, association workbooks and ICM assessment reports into a shared source pool. Assign observed, modelled and rainfall series, confirm their quantities and units, and review hydraulic traces, thresholds, rainfall events and source statistics. This is the starting point for supplying and checking the evidence used by the other workspaces.'],
     ['spills','assessment','Spills','Assess observed and modelled spills using explicit thresholds, exclusions and valid temporal support. Review physical spill intervals, UK 12/24 counts and yearly or monthly comparisons. Storage assessment provides idealised storage screening and modelled spill-volume evidence to support further engineering investigation.'],
+    ['network','schematic','Network Schematic','Arrange and annotate a network, assign annual spill evidence and review observed and modelled results by asset and reporting year.'],
     ['survey','fdv-check','Flow survey','Review monitor and rain-gauge weeks from their schematics, record a rating and comment for each week, and check flow continuity in Volume balance. Monthly review brings the outcomes and actions together for PDF export.'],
     ['detriment','flooding','Detriment assessment','Compare baseline Scenario A with proposed Scenario B using exported ICM report evidence. The Flooding, Level and Spill tabs assess changes in flood volume, maximum water-level elevation and freeboard, or spill counts and actual durations. Explicit criteria, raw asset evidence and optional manhole / link ID lists support a focused, traceable assessment.'],
-    ['graphs','comparison','Plots','Explore observed versus modelled agreement, depth and flow–depth rating diagnostics, and dry-weather-flow baselines. Use scatter views, fitted relationships and verification statistics to understand model performance and hydraulic behaviour, with sample support and data-validity limitations retained.'],
+    ['graphs','comparison','Verification','Explore observed versus modelled agreement, depth and flow–depth rating diagnostics, and dry-weather-flow baselines. Use scatter views, fitted relationships and verification statistics to understand model performance and hydraulic behaviour, with sample support and data-validity limitations retained.'],
+    ['hydraulics','capacity','Hydraulic Calculations','Assess full-flow capacity and supported turbulent normal depths for steady uniform flow in a circular pipe.'],
     ['reports','report-generation','Reports','Export engineering assessments and graph reports from the current analysis, and save or restore a workspace with its configuration and source fingerprints. Reports carry the relevant criteria, units and evidence so results can be reviewed and shared; saved workspaces reference the original files without embedding their raw data.']
   ];
   const panel=document.createElement('section');panel.id='tab-about';panel.className='tab-panel';panel.hidden=true;
-  panel.innerHTML='<article class="panel pw-about-page"><header class="pw-about-intro"><span class="pw-about-monogram" aria-hidden="true">HB</span><div><h2>Hydra Bench</h2><p class="pw-about-lead">Hydraulic evidence. Clear assessment.</p></div></header><p class="pw-about-description">Hydra Bench is a browser-based engineering workbench for reviewing exported InfoWorks ICM results, telemetry, flow surveys and rainfall data. It brings data assessment, model verification, spill analysis and scenario comparison into one place, with explicit assumptions, units and traceable source evidence. Imported engineering data is processed locally in your browser.</p><section aria-labelledby="pwAboutWorkspaces"><h3 id="pwAboutWorkspaces">Your workspaces</h3><div class="pw-about-workspaces">'+summaries.map(([w,p,title,description])=>'<section><h4><button type="button" data-about-workspace="'+w+'" data-about-page="'+p+'">'+esc(title)+' <span aria-hidden="true">↗</span></button></h4><p>'+esc(description)+'</p></section>').join('')+'</div></section><section class="pw-about-author"><h3>Built by Anzar Sajid</h3><p>Created from practical hydraulic modelling and data-review workflows, Hydra Bench aims to make engineering evidence easier to inspect, compare and communicate. Its focus is on clear results, explicit assessment criteria and a streamlined path from imported data to an auditable engineering review.</p><small>© 2026 Anzar Sajid</small></section></article>';
+  panel.innerHTML='<article class="panel pw-about-page"><header class="pw-about-intro"><span class="pw-about-monogram" aria-hidden="true">HB</span><div><h2>Hydra Bench</h2><p class="pw-about-lead">Hydraulic evidence. Clear assessment.</p></div></header><p class="pw-about-description">Hydra Bench is a browser-based engineering workbench for reviewing exported InfoWorks ICM results, telemetry, flow surveys and rainfall data. It brings data assessment, model verification, spill analysis and scenario comparison into one place, with explicit assumptions, units and traceable source evidence. Imported engineering data is processed locally in your browser.</p><section aria-labelledby="pwAboutWorkspaces"><h3 id="pwAboutWorkspaces">Your workspaces</h3><div class="pw-about-workspaces">'+summaries.map(([w,p,title,description])=>'<section><h4><button type="button" data-about-workspace="'+w+'" data-about-page="'+p+'">'+esc(title)+' <span aria-hidden="true">↗</span></button></h4><p>'+esc(description)+'</p></section>').join('')+'</div></section><section class="pw-about-author"><h3>Originally created by Anzar Sajid</h3><p>Created from practical hydraulic modelling and data-review workflows, Hydra Bench aims to make engineering evidence easier to inspect, compare and communicate. Its focus is on clear results, explicit assessment criteria and a streamlined path from imported data to an auditable engineering review.</p><p>HydraBench began as a local graphing and hydraulic-data review tool. It grew into an engineering decision support platform with a shared source and evidence model. Anzar Sajid directed its development with AI assistance. Third-party software and fonts retain their original authorship and licence notices.</p><p>© 2026 Anzar Sajid and other applicable rights holders · <span id="hbAboutVersion"></span></p><p><a href="LICENSE.txt">GNU AGPLv3</a> · <a href="https://github.com/anzarsajid91/ICM_Graphing_Tool" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Official repository</a> · <span id="hbAboutSource"></span></p></section></article>';
   qs('main.shell').appendChild(panel);
+  panel.querySelector('#hbAboutVersion').textContent=$('appVersion')?.textContent||'Development';
+  const source=$('hbBuildSource')?.cloneNode(true);
+  if(source){source.removeAttribute('id');panel.querySelector('#hbAboutSource').append(source);}
   qsa('[data-about-workspace]',panel).forEach(button=>button.addEventListener('click',()=>navigate(button.dataset.aboutWorkspace,button.dataset.aboutPage,true)));
 }
 function buildSecurityPage(){
@@ -781,11 +803,424 @@ function buildSecurityPage(){
   const links=document.createElement('p');links.innerHTML='<a href="security/dependencies.json">Dependency inventory</a> · <a href="security/security-audit.md">Assessment and limitations</a> · <a href="security/claims.json">Claim–evidence register</a> · <a href="security/SECURITY.md">Security disclosure guidance</a>';article.appendChild(links);
   panel.appendChild(article);qs('main.shell').appendChild(panel);
 }
+function wireGuidedImport(){
+  const review=$('guidedImportReview'),body=$('guidedImportRows'),status=$('guidedImportStatus');
+  const roles={observed:'Observed',model:'Modelled',rainfall:'Rainfall'};
+  function render(){
+    const registry=window.ICMProjectRegistry,series=registry?.listSeries()||[];
+    const previous=new Map(qsa('select',body).map(item=>[item.dataset.series,item.value]));
+    review.hidden=!series.length;
+    if(!series.length)review.open=false;
+    body.replaceChildren();
+    status.textContent='';
+    const unresolved=series.filter(item=>!item.quantity||!item.unit).length;
+    $('guidedImportReadiness').textContent=unresolved?unresolved+' of '+series.length+' series need quantity or unit review.':series.length+' series with detected quantities and units.';
+    for(const item of series){
+      const row=body.insertRow(), source=registry.source(item.sourceId);
+      const recognised=Boolean(item.quantity&&item.unit);
+      const role=Object.hasOwn(roles,item.role)?roles[item.role]:'Review required';
+      const possible=recognised?role:role+' · confirm quantity and unit';
+      const identity=row.insertCell();
+      const label=document.createElement('strong');
+      label.textContent=item.label;
+      const metadata=document.createElement('small');
+      metadata.textContent=[source?.format||'Unknown',item.assetId].filter(Boolean).join(' · ');
+      identity.append(label,metadata);
+      row.insertCell().textContent=(item.quantity||'Unresolved')+' · '+(item.unit||'Unresolved');
+      const suggestion=row.insertCell();
+      suggestion.textContent=possible;
+      if(!recognised)suggestion.setAttribute('data-needs-review','');
+      const choose=document.createElement('select');
+      choose.dataset.series=item.key;
+      choose.setAttribute('aria-label','Role for '+item.label);
+      choose.add(new Option('Keep existing assignments',''));
+      for(const [key,label] of Object.entries(roles))choose.add(new Option(label,key));
+      choose.value=previous.get(item.key)||'';
+      row.insertCell().append(choose);
+    }
+  }
+  $('guidedImportApply').addEventListener('click',()=>{
+    const selected=qsa('select',body).filter(control=>control.value);
+    const checkedRoles={observed:[],model:[],rainfall:[]};
+    for(const control of selected){
+      const series=window.ICMProjectRegistry?.getSeries(control.dataset.series);
+      if(!series){render();status.textContent='Sources changed. Review the current rows again.';return;}
+      checkedRoles[control.value].push(series.key);
+    }
+    if(!selected.length){status.textContent='Choose at least one role to stage.';return;}
+    if(checkedRoles.observed.length>1||checkedRoles.rainfall.length>1){
+      status.textContent='Choose at most one observed series and one rainfall series.';
+      return;
+    }
+    const plans=[
+      [$('observedSelect'),checkedRoles.observed],
+      [$('modelSelect'),checkedRoles.model],
+      [$('rainSelect'),checkedRoles.rainfall],
+    ];
+    if(plans.some(([control,keys])=>keys.some(key=>![...control.options].some(option=>option.value===key)))){
+      status.textContent='A chosen series is unavailable for that assignment. Check its interpretation and try again.';
+      return;
+    }
+    for(const [control,keys] of plans){
+      if(!keys.length)continue;
+      if(control.multiple){
+        for(const option of control.options)if(keys.includes(option.value))option.selected=true;
+      }else{
+        control.value=keys[0];
+      }
+      control.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+    status.textContent='Selections staged. Review quantity and units and use Apply assignments to confirm.';
+  });
+  review.addEventListener('toggle',()=>{if(review.open)render();});
+  window.addEventListener('icm:source-pool-changed',()=>{
+    if(review.open)render();
+    else review.hidden=!(window.ICMProjectRegistry?.listSeries().length);
+  });
+}
+function wireVerificationOverview(){
+  const table=$('verificationEvidenceTable'),scenario=$('verificationReviewScenario');
+  const fields=$('verificationReviewFields'),decision=$('verificationReviewDecision');
+  const comments=$('verificationReviewComments'),references=$('verificationReviewReferences');
+  const status=$('verificationReviewStatus'),reviews=new Map();
+  let evidence=null;
+  const available=row=>Boolean(row?.metrics?.pairs&&['complete','partial'].includes(row.coverage?.status));
+  function dependencyKey(dependency){
+    const [,column]=JSON.parse(dependency.seriesKey);
+    return [dependency.fingerprint,column,dependency.quantity,dependency.unit];
+  }
+  const evidenceKey=record=>JSON.stringify([record.signature,record.dependencies.map(dependencyKey),
+    record.scenarios.map(row=>[row.metrics,row.coverage,row.unit,row.error])]);
+  const scenarioKey=(record,key)=>{
+    const dependency=record.dependencies.find(item=>item.seriesKey===key);
+    return dependency?JSON.stringify([record.asset.id,...dependencyKey(dependency)]):null;
+  };
+  const active=()=>current.workspace==='graphs'&&current.page==='overview';
+  function reviewFor(key){
+    const review=reviews.get(scenarioKey(evidence,key));
+    if(!review)return null;
+    return {...review,stale:evidence.freshness!=='current'||review.key!==evidenceKey(evidence)};
+  }
+  function updateFields(){
+    const selected=evidence?.scenarios.find(row=>row.seriesKey===scenario.value);
+    const review=selected&&reviewFor(selected.seriesKey);
+    fields.disabled=evidence?.freshness!=='current'||!evidence.scenarios.some(available);
+    decision.disabled=comments.disabled=references.disabled=$('verificationReviewSave').disabled=!available(selected);
+    decision.value=review&&!review.stale?review.decision:'Not reviewed';
+    comments.value=review&&!review.stale?review.comments:'';
+    references.value=review&&!review.stale?review.references:'';
+    status.textContent=review?.stale?'A previous review is stale. Recheck the evidence before recording a decision.':'';
+  }
+  function render(){
+    evidence=window.__ICM_WORKBENCH__?.readVerificationEvidence?.();
+    const previous=scenario.value;
+    scenario.replaceChildren();
+    const body=qs('tbody',table);body.replaceChildren();
+    table.hidden=!evidence?.scenarios.length;
+    const summary=$('verificationEvidenceStatus');
+    if(!evidence){
+      summary.textContent='Run an observed and modelled comparison to review its evidence.';
+      updateFields();
+      return;
+    }
+    const {start,end}=evidence.period;
+    summary.textContent=evidence.asset.id+' · '+(start||'start of common data')+' to '+(end||'end of common data')+
+      ' · '+(evidence.freshness==='current'?'Current evidence':'Stale evidence. Recalculate the comparison before review.');
+    const metric=value=>Number.isFinite(value)?Number(value.toPrecision(5)).toString():'—';
+    for(const row of evidence.scenarios){
+      const source=window.ICMProjectRegistry?.getSeries(row.seriesKey)?.label;
+      const label=source||'Unavailable source';
+      scenario.add(new Option(label,row.seriesKey));
+      const review=reviewFor(row.seriesKey);
+      const values=[label,metric(row.metrics?.pairs),row.error||(
+        Number.isFinite(row.coverage?.coverage_fraction)?
+          metric(row.coverage.coverage_fraction*100)+'% · '+row.coverage.status:'Unavailable'
+      ),Number.isFinite(row.metrics?.rmse)?metric(row.metrics.rmse)+' '+(row.unit||'(unit unresolved)'):'—',metric(row.metrics?.nse),review?.stale?'Stale review':review?.decision||'Not reviewed'];
+      const tr=body.insertRow();
+      for(const value of values)tr.insertCell().textContent=value;
+    }
+    if([...scenario.options].some(option=>option.value===previous))scenario.value=previous;
+    else if(evidence.scenarios.some(available))scenario.value=evidence.scenarios.find(available).seriesKey;
+    updateFields();
+  }
+  scenario.addEventListener('change',updateFields);
+  $('verificationReviewSave').addEventListener('click',()=>{
+    const latest=window.__ICM_WORKBENCH__?.readVerificationEvidence?.();
+    if(!evidence||latest?.freshness!=='current'||evidenceKey(latest)!==evidenceKey(evidence)){
+      render();return;
+    }
+    if(!latest.scenarios.some(row=>row.seriesKey===scenario.value&&available(row)))return;
+    if(decision.value==='Not reviewed'&&!comments.value.trim()&&!references.value.trim()){
+      reviews.delete(scenarioKey(evidence,scenario.value));
+    }else{
+      const key=scenarioKey(evidence,scenario.value),basis=evidenceKey(evidence);
+      if((!reviews.has(key)&&reviews.size>=250)||basis.length>262144){
+        status.textContent='This workspace has reached its review storage limit.';return;
+      }
+      reviews.set(key,{key:basis,decision:decision.value,comments:comments.value.trim(),references:references.value.trim()});
+    }
+    render();status.textContent='Review recorded. Save the workspace to retain it.';
+  });
+  const decisions=new Set([...decision.options].map(option=>option.value));
+  window.__ICM_WORKBENCH__.verificationReviews={
+    snapshot:()=>[...reviews].map(([scenario,review])=>({scenario,...review})),
+    restore:entries=>{
+      reviews.clear();
+      if(Array.isArray(entries)){
+        for(const item of entries.slice(0,250)){
+          if(!item||typeof item.scenario!=='string'||item.scenario.length>4096||
+             typeof item.key!=='string'||item.key.length>262144||!decisions.has(item.decision)||
+             typeof item.comments!=='string'||item.comments.length>4000||
+             typeof item.references!=='string'||item.references.length>4000)continue;
+          const {scenario,key,decision,comments,references}=item;
+          reviews.set(scenario,{key,decision,comments,references});
+        }
+      }
+      if(active())render();
+    },
+    report:(record=window.__ICM_WORKBENCH__.readVerificationEvidence())=>{
+      if(record?.freshness!=='current')return [];
+      return record.scenarios.flatMap(row=>{
+        const review=reviews.get(scenarioKey(record,row.seriesKey));
+        if(!review||review.key!==evidenceKey(record))return [];
+        const series=window.ICMProjectRegistry?.getSeries(row.seriesKey);
+        return [{asset:record.asset.id,scenario:series?.label||row.seriesKey,decision:review.decision,
+          comments:review.comments,references:review.references,period:record.period}];
+      });
+    },
+  };
+  window.addEventListener('icm:route-changed',()=>{if(active())render();});
+  window.addEventListener('icm:source-pool-changed',()=>{if(active())render();});
+}
+function wireVerificationEvents(){
+  const events=$('verificationEventSelect'),models=$('verificationEventModel');
+  const run=$('verificationEventRun'),output=$('verificationEventResult');
+  const graph=$('verificationEventGraph');
+  let generation=0,plottedEvent=null;
+  function clearGraph(){plottedEvent=null;graph.disabled=true;}
+  const active=()=>current.workspace==='graphs'&&current.page==='events';
+  function refresh(){
+    ++generation;clearGraph();
+    events.replaceChildren();models.replaceChildren();
+    if(rainEventsFresh()){
+      for(const [index,event] of state.rainEvents.entries())
+        events.add(new Option(event.start+' to '+event.end+' · '+event.total_depth_mm+' mm',String(index)));
+    }
+    for(const model of currentModels()){
+      const key=sourceKey(model.id,model.col);
+      models.add(new Option(model.item.displayName+' · '+model.col,key));
+    }
+    run.disabled=!events.options.length||!models.options.length||!state.mapping.observed;
+    output.textContent=run.disabled?'Apply an observed and modelled mapping, then calculate rainfall events in Time series.':'Choose a rainfall event and modelled scenario.';
+  }
+  for(const control of [events,models])control.addEventListener('change',()=>{
+    ++generation;clearGraph();run.disabled=false;output.textContent='Selection changed. Compare the selected event to refresh results.';
+  });
+  run.addEventListener('click',async()=>{
+    if(!rainEventsFresh()){refresh();return;}
+    const obs=mappingObject(state.mapping.observed),model=mappingObject(models.value);
+    const event=state.rainEvents[Number(events.value)];
+    if(!obs||!model||!event)return;
+    if(!$('timeBasisConfirmed').checked){
+      output.textContent='Confirm the comparison time basis in Data / Time series first.';return;
+    }
+    const request=++generation,signature=analysisSignature(),rainfall=state.rainEventSignature;
+    clearGraph();run.disabled=true;output.textContent='Comparing event…';
+    try{
+      const values=await engine.call('verification_event_comparison',{
+        obs_path:obs.item.virtualPath,obs_col:obs.col,model_path:model.item.virtualPath,model_col:model.col,
+        start:event.start,end:event.end,max_gap_seconds:Number($('gapInput').value||900),
+        offset_minutes:Number($('offsetInput').value||0),
+        exclusions_json:JSON.stringify([...exclusionPayload(true,'observed',state.mapping.observed),...exclusionPayload(true,'model',models.value)]),
+      });
+      if(request!==generation||!active())return;
+      if(!rainEventsFresh()||rainfall!==state.rainEventSignature||signature!==analysisSignature()){
+        refresh();output.textContent='Event inputs changed. Recalculate before using the result.';return;
+      }
+      plottedEvent={range:[event.start,event.end],signature,rainfall};graph.disabled=false;
+      const number=value=>Number.isFinite(value)?Number(value.toPrecision(5)).toString():'—';
+      const rows=[
+        ['Common valid support',number(values.common_support_seconds/60)+' min · '+values.status],
+        ['Excluded time',number(values.excluded_seconds/60)+' min'],
+        ['Observed peak',number(values.observed_peak)+' '+values.unit],
+        ['Modelled peak',number(values.modelled_peak)+' '+values.unit],
+        ['Peak error (model − observed)',number(values.peak_error)+' '+values.unit],
+        ['Peak lag (model − observed)',number(values.peak_lag_minutes)+' min'],
+      ];
+      if(values.observed_volume_m3!==null)rows.push(['Observed volume',number(values.observed_volume_m3)+' m³'],['Modelled volume',number(values.modelled_volume_m3)+' m³']);
+      output.replaceChildren();
+      for(const [label,value] of rows){
+        const card=document.createElement('div'),title=document.createElement('strong'),caption=document.createElement('span');
+        title.textContent=value;caption.textContent=label;card.append(title,caption);output.append(card);
+      }
+    }catch(error){
+      if(request===generation&&active())output.textContent=conciseErrorMessage(error);
+    }finally{
+      if(request===generation&&active())run.disabled=false;
+    }
+  });
+  graph.addEventListener('click',async()=>{
+    if(!plottedEvent||!rainEventsFresh()||plottedEvent.rainfall!==state.rainEventSignature||
+       plottedEvent.signature!==analysisSignature()){
+      refresh();output.textContent='Event inputs changed. Recalculate before opening the graph.';return;
+    }
+    const {range}=plottedEvent;
+    navigate('data','time-series',true);
+    try{await window.ICMGraph.draw(range);}
+    catch(error){$('mappingStatus').textContent=conciseErrorMessage(error);}
+  });
+  window.addEventListener('icm:route-changed',()=>{if(active())refresh();else ++generation;});
+  window.addEventListener('icm:source-pool-changed',()=>{if(active())refresh();});
+}
+function wirePipeCapacity(){
+  const form=$('pipeCapacityForm'),result=$('pipeCapacityResult');
+  const sectionViews=$('pipeSectionViews'),keep=$('pipeKeepResult');
+  const table=$('pipeComparisonTable'),body=qs('tbody',table),status=$('pipeCompareStatus');
+  const trials=[];
+  const precision=value=>value===null?'—':Number(value.toPrecision(5)).toLocaleString(undefined,{maximumSignificantDigits:5});
+  const capacity=trial=>trial.design?trial.values.full_capacity_m3_s:trial.values.discharge_m3_s;
+  let generation=0,current=null;
+  function resetResult(){
+    ++generation;current=null;keep.disabled=true;sectionViews.replaceChildren();
+  }
+  function drawSection(fraction,label){
+    const figure=document.createElement('figure'),circle=document.createElement('div');
+    const water=document.createElement('div'),caption=document.createElement('figcaption');
+    circle.className='pipe-section-circle';circle.setAttribute('aria-hidden','true');
+    water.className='pipe-section-water';water.style.height=(fraction*100)+'%';
+    circle.append(water);caption.textContent=label;figure.append(circle,caption);sectionViews.append(figure);
+  }
+  function trialRow(trial,index){
+    const {inputs,values,design}=trial;
+    return [index+1,inputs.diameter_m*1000,inputs.gradient,inputs.roughness_m*1000,
+      inputs.viscosity_m2_s,capacity(trial)===null?null:capacity(trial)*1000,
+      design?inputs.discharge_m3_s*1000:null,design?values.depths.map(depth=>depth.depth_m*1000):null,
+      design?values.status:values.regime];
+  }
+  function showComparison(){
+    table.hidden=!trials.length;body.replaceChildren();
+    const maxCapacity=Math.max(0,...trials.map(trial=>capacity(trial)||0))*1000;
+    for(const [index,trial] of trials.entries()){
+      const row=body.insertRow();
+      for(const [column,value] of trialRow(trial,index).entries()){
+        const cell=row.insertCell();
+        cell.textContent=Array.isArray(value)?value.map(precision).join(' / ')||'—':
+          typeof value==='string'?value:precision(value);
+        if(column===5&&typeof value==='number'&&maxCapacity>0){
+          const bar=document.createElement('meter');
+          bar.className='pipe-capacity-bar';bar.max=maxCapacity;bar.value=value;
+          bar.setAttribute('aria-label','Trial '+(index+1)+' full capacity in L/s');
+          cell.append(bar);
+        }
+      }
+    }
+    $('pipeExportComparison').disabled=$('pipeClearComparison').disabled=!trials.length;
+    keep.disabled=!current||trials.length>=8;
+    status.textContent=trials.length?trials.length+' of 8 trials. Capacity bars share a common scale.':'Add up to eight trials. Export to keep a copy.';
+  }
+  keep.addEventListener('click',()=>{
+    if(!current||trials.length>=8)return;
+    trials.push(current);current=null;showComparison();
+  });
+  $('pipeClearComparison').addEventListener('click',()=>{trials.length=0;showComparison();});
+  $('pipeExportComparison').addEventListener('click',()=>{
+    const headers=['trial','diameter_mm','gradient_m_per_m','roughness_mm','viscosity_m2_s',
+      'full_capacity_L_s','design_flow_L_s','normal_depths_mm','status'];
+    const rows=trials.map((trial,index)=>trialRow(trial,index).map(value=>Array.isArray(value)?value.join(' / '):value));
+    const csv=[headers,...rows].map(row=>row.map(ICMSafeCSV.cell).join(',')).join('\r\n');
+    downloadBlob('hydrabench-pipe-comparison.csv',csv,'text/csv');
+  });
+  form.addEventListener('input',()=>{
+    resetResult();
+    const viscosity=form.elements.viscosity.value;
+    $('pipeActiveViscosity').textContent=viscosity?'ν = '+viscosity+' m²/s':'ν required';
+    result.textContent='Inputs edited. Calculate to refresh capacity.';
+  });
+  $('pipeUseInvertGradient').addEventListener('click',()=>{
+    const [us,ds,length]=['usInvert','dsInvert','conduitLength'].map(name=>form.elements[name].valueAsNumber);
+    if(![us,ds,length].every(Number.isFinite)||length<=0){
+      result.textContent='Enter both invert levels and a positive conduit length.';
+      return;
+    }
+    const gradient=(us-ds)/length;
+    if(!(gradient>=0&&gradient<=1)){
+      result.textContent='The computed gradient is outside the supported 0–1 m/m range.';
+      return;
+    }
+    resetResult();
+    form.elements.gradient.value=String(gradient);
+    result.textContent='Calculated gradient applied. Calculate to refresh capacity.';
+  });
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();
+    resetResult();
+    const request=generation;
+    const number=name=>form.elements[name].valueAsNumber;
+    const inputs={diameter_m:number('diameter')/1000,gradient:number('gradient'),
+      roughness_m:number('roughness')/1000,viscosity_m2_s:number('viscosity')};
+    const design=event.submitter?.value==='design';
+    if(design&&form.elements.discharge.value===''){
+      result.textContent='Enter a design discharge in L/s.';
+      form.elements.discharge.focus();
+      return;
+    }
+    if(design)inputs.discharge_m3_s=number('discharge')/1000;
+    result.textContent=design?'Assessing design flow…':'Calculating capacity…';
+    try{
+      await ensureEngineBoot();
+      const operation=design?'circular_pipe_design_flow':'circular_pipe_capacity';
+      const values=await engine.call(operation,inputs);
+      if(request!==generation)return;
+      current={design,inputs,values};keep.disabled=trials.length>=8;
+      if(design){
+        const summary=document.createElement('p');
+        summary.textContent='Imposed full-bore velocity '+precision(values.imposed_full_velocity_m_s)+
+          ' m/s · Available full-flow capacity '+(values.full_capacity_m3_s===null?'unavailable':precision(values.full_capacity_m3_s*1000)+' L/s');
+        result.replaceChildren(summary);
+        if(values.depths.length){
+          const list=document.createElement('ul');
+          for(const solution of values.depths){
+            const item=document.createElement('li');
+            const basis=solution.depth_fraction===1?'Full-bore boundary':'Partially full normal depth';
+            item.textContent=basis+' '+precision(solution.depth_m*1000)+' mm · '+precision(solution.velocity_m_s)+
+              ' m/s · Area '+precision(solution.area_m2)+' m² · Hydraulic radius '+precision(solution.hydraulic_radius_m)+' m';
+            list.append(item);
+            drawSection(solution.depth_fraction,precision(solution.depth_m*1000)+' mm depth');
+          }
+          result.append(list);
+        }else{
+          const note=document.createElement('p');
+          note.textContent=values.status==='unavailable'?'No supported turbulent normal-depth result. Check the flow regime and roughness.':
+            'No positive turbulent normal depth · '+values.status+'.';
+          result.append(note);
+        }
+        return;
+      }
+      if(values.regime==='transitional'){
+        result.textContent='Capacity unavailable in the transitional flow range.';
+        return;
+      }
+      if(values.discharge_m3_s>0)drawSection(1,'Flowing just full');
+      result.textContent=precision(values.discharge_m3_s*1000)+' L/s · '+precision(values.velocity_m_s)+
+        ' m/s · Re '+precision(values.reynolds)+' · Darcy f '+precision(values.friction_factor)+' · '+values.regime;
+    }catch(error){
+      if(request===generation)result.textContent=typeof conciseErrorMessage==='function'?conciseErrorMessage(error):String(error.message);
+    }
+  });
+}
+function openPipeTrial(inputs){
+  navigate('hydraulics','capacity',true);
+  const form=$('pipeCapacityForm');
+  for(const key of ['diameter','roughness','gradient'])form.elements[key].value=String(inputs[key]);
+  form.elements.discharge.value='';
+  form.dispatchEvent(new Event('input',{bubbles:true}));
+  $('pipeCapacityResult').textContent='Independent trial from '+inputs.label+'. Review fluid properties before calculating.';
+}
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
-  buildAboutPage();buildSecurityPage();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
+  buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wireVerificationEvents();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
-  window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
+  window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,openPipeTrial,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
 })();

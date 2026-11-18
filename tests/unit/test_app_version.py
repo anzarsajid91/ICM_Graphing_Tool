@@ -9,6 +9,7 @@ def test_integer_release_number_has_three_decimal_places():
 
 
 def test_release_and_preview_have_distinct_labels(monkeypatch):
+    monkeypatch.delenv('GITHUB_REF', raising=False)
     monkeypatch.setenv('GITHUB_EVENT_NAME','push')
     release=release_version()
     monkeypatch.setenv('GITHUB_EVENT_NAME','pull_request')
@@ -26,3 +27,20 @@ def test_only_unique_pr_merge_or_squash_subjects_advance_version(monkeypatch):
     monkeypatch.setattr(module,'git',fake_git)
     monkeypatch.setenv('GITHUB_EVENT_NAME','push')
     assert module.release_version()['release_iteration']==len(baseline['merged_prs'])+2
+
+
+def test_v2_milestone_and_following_releases(monkeypatch):
+    import scripts.app_version as module
+
+    commits = ['Prior change (#107)']
+    monkeypatch.setattr(module, 'git', lambda *args: '\n'.join(commits) if args[0] == 'log' else '')
+    monkeypatch.setenv('GITHUB_EVENT_NAME', 'pull_request')
+    monkeypatch.setenv('GITHUB_REF', 'refs/pull/108/merge')
+    assert module.release_version()['app_version'] == 'v2.0.0-rc.1'
+
+    commits.append('HydraBench 2.0 (#108)')
+    monkeypatch.setenv('GITHUB_EVENT_NAME', 'push')
+    monkeypatch.setenv('GITHUB_REF', 'refs/heads/main')
+    assert module.release_version()['app_version'] == 'v2.0.0'
+    commits.extend(['Next change (#110)', 'Duplicate marker (#110)'])
+    assert module.release_version()['app_version'] == 'v2.0.1'

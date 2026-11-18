@@ -1,0 +1,11 @@
+**** hw_node
+ObjectTable,node_id,x,y,node_type,ground_level,chamber_floor
+FieldDescription,Node ID,x,y,Node type,Ground level,Chamber floor
+UserUnits,,m,m,,m AD,m AD
+hw_node,001,350000,425000,Manhole,104,101
+hw_node,Out,350125,425030,Outfall,102,100
+**** hw_conduit
+ObjectTable,us_node_id,link_suffix,ds_node_id,shape,roughness_type,conduit_width,conduit_height,conduit_length,us_invert,ds_invert,bottom_roughness_CW,top_roughness_CW,sediment_depth,number_of_barrels,point_array
+FieldDescription,US node ID,Link suffix,DS node ID,Shape,Roughness type,Width,Height,Length,US invert,DS invert,Bottom roughness,Top roughness,Sediment depth,Number of barrels,Point array
+UserUnits,,,,,,mm,mm,m,m AD,m AD,mm,mm,mm,,
+hw_conduit,001,1,OUT,CIRC,CW,450,450,200,101,100,1.5,1.5,0,1,"{350000,425000,350030,425025,350125,425030}"

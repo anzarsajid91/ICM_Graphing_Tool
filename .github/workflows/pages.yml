@@ -155,7 +155,8 @@ jobs:
           PY
 
   browser-smoke:
-    runs-on: ubuntu-latest
+    # Match the Ubuntu versions supported by the locked Playwright build.
+    runs-on: ubuntu-24.04
     needs: verify
     timeout-minutes: 45
     env:
@@ -173,10 +174,10 @@ jobs:
           python-version: '3.13'
       - name: Assemble exact release artifact
         run: python scripts/build_pages.py
-      - name: Install Chromium acceptance runner
+      - name: Install Chromium and Firefox acceptance runners
         run: |
           npm ci --ignore-scripts
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium firefox
       - name: Start browser acceptance server
         run: |
           nohup python -m http.server 8000 --directory _site >/tmp/icm-pages-http.log 2>&1 </dev/null &
@@ -220,6 +221,8 @@ jobs:
           node web/tests/rainfall-audit-smoke.mjs
       - name: Verify complete graph and assessment workflows
         run: node web/tests/smoke.mjs
+      - name: Verify offline report controls in Firefox
+        run: ICM_BASE_URL=http://127.0.0.1:8000/ ICM_BROWSER=firefox ICM_REPORT_HTML="$ICM_EVIDENCE_DIR/report-3-figures.html" ICM_EVIDENCE_DIR="$ICM_EVIDENCE_DIR/firefox-report-controls" node web/tests/report-controls-acceptance.mjs
       - name: Verify survey schematic review
         run: node web/tests/schematic-review-smoke.mjs
       - name: Stop browser acceptance server
@@ -279,7 +282,8 @@ jobs:
           retention-days: 30
 
   baseline-performance:
-    runs-on: ubuntu-latest
+    # Match the Ubuntu versions supported by the locked Playwright build.
+    runs-on: ubuntu-24.04
     needs: verify
     timeout-minutes: 30
     steps:
@@ -350,7 +354,8 @@ jobs:
             /tmp/icm-baseline-http.log
 
   browser-firefox-shell:
-    runs-on: ubuntu-latest
+    # Match the Ubuntu versions supported by the locked Playwright build.
+    runs-on: ubuntu-24.04
     needs: verify
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -385,7 +390,8 @@ jobs:
 
 
   browser-interactions:
-    runs-on: ubuntu-latest
+    # Match the Ubuntu versions supported by the locked Playwright build.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -418,8 +424,18 @@ jobs:
           ICM_BROWSER=chromium node web/tests/network-schematic-smoke.mjs
           node web/tests/network-review-smoke.mjs
           node web/tests/network-layout-smoke.mjs
+          node web/tests/network-context-smoke.mjs
+          node web/tests/hydraulics-smoke.mjs
+          node web/tests/verification-overview-smoke.mjs
           ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs
           ICM_BROWSER=firefox node web/tests/network-schematic-smoke.mjs
+          for browser in chromium firefox; do
+            for suite in link-controls-smoke import-controls-acceptance network-controls-acceptance plot-controls-acceptance survey-controls-acceptance queue-controls-acceptance shared-controls-acceptance source-controls-acceptance data-process-controls-acceptance survey-process-controls-acceptance shared-input-controls-acceptance hydraulic-input-controls-acceptance appearance-input-controls-acceptance verification-input-controls-acceptance network-input-controls-acceptance storage-input-controls-acceptance detriment-smoke uiux-review; do
+              evidence="/tmp/icm-interaction-evidence/control-assurance/$browser/$suite"
+              export ICM_BASE_URL=http://127.0.0.1:8000/
+              ICM_BROWSER="$browser" ICM_EVIDENCE_DIR="$evidence" ICM_UIUX_EVIDENCE="$evidence" node "web/tests/$suite.mjs"
+            done
+          done
       - name: Retain workspace interaction evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

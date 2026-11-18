@@ -7,6 +7,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="description" content="Zero-install Hydra Bench running locally in your browser." />
   <title>Hydra Bench</title>
+  <link rel="icon" type="image/svg+xml" href="assets/hydrabench-mark.svg" />
   <link rel="stylesheet" href="assets/app.css" />
 </head>
 <body>
@@ -25,6 +26,22 @@
       <input id="folderInput" type="file" webkitdirectory multiple hidden />
       <div class="dropzone" id="dropzone"><strong>Drop survey files or a folder here</strong><span>Recognised data: .CSV, .FDV, .R · survey association: fm_rg_assoc.xlsx</span></div>
       <div class="pool-summary" id="poolSummary">No files loaded.</div>
+      <details id="guidedImportReview" class="subpanel" hidden>
+        <summary>Import Review</summary>
+        <div class="hb-import-grid">
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Imported series review">
+          <table class="data-table compact"><thead><tr><th>Source / series</th><th>Quantity &amp; unit</th><th>Suggested role</th><th>Role to stage</th></tr></thead>
+            <tbody id="guidedImportRows"></tbody></table>
+        </div>
+        <section class="hb-import-guidance" aria-labelledby="guidedImportHeading">
+          <h3 id="guidedImportHeading">Review suggested setup</h3>
+          <p id="guidedImportReadiness"></p>
+          <p>Review the detected quantities and units. Choose which roles to stage, then confirm them in Assign &amp; interpret series.</p>
+          <button id="guidedImportApply" type="button" class="btn primary">Apply suggested setup</button>
+          <p id="guidedImportStatus" role="status"></p>
+        </section>
+        </div>
+      </details>
       <div class="table-wrap" tabindex="0" role="region" aria-label="Source files table"><table class="data-table"><thead><tr><th>File</th><th>Format</th><th>Rows</th><th>Period</th><th>Audit</th><th>Status</th><th class="source-remove-head" aria-label="Remove source"></th></tr></thead><tbody id="poolBody"></tbody></table></div>
     </section>
 
@@ -58,10 +75,11 @@
       <article class="hb-welcome" aria-labelledby="hbWelcomeHeading">
         <div class="hb-welcome-layout">
           <div class="hb-welcome-copy">
-            <p class="hb-welcome-kicker">Wastewater network modelling</p>
+            <p class="hb-welcome-kicker">Engineering Decision Support Platform</p>
             <h2 id="hbWelcomeHeading">Verify model response.<br />Assess network performance.</h2>
             <p>Review flow surveys, compare observed and modelled data, and assess spills and detriment.</p>
             <a class="btn primary" id="welcomeAddSources" href="#/data/time-series">Open Data / time series</a>
+            <p class="hb-creator-credit"><small>Originally created by Anzar Sajid</small></p>
           </div>
           <figure class="hb-welcome-network">
             <svg viewBox="0 0 540 170" role="img" aria-labelledby="hbWelcomeNetworkTitle hbWelcomeNetworkDesc">
@@ -92,10 +110,13 @@
           </figure>
         </div>
         <nav class="hb-welcome-links" aria-label="Quick access">
-          <a href="#/survey/fdv-check">Flow survey</a>
-          <a href="#/spills/assessment">Spills</a>
-          <a href="#/detriment/flooding">Detriment assessment</a>
-          <a href="#/graphs/comparison">Plots</a>
+          <a href="#/verification/overview">Start verification</a>
+          <a href="#/survey/fdv-check">Review flow survey</a>
+          <a href="#/spills/assessment">Assess spills</a>
+          <a href="#/network/schematic">Open network schematic</a>
+          <a href="#/hydraulics/capacity">Run hydraulic calculations</a>
+          <a href="#/detriment/flooding">Compare detriment scenarios</a>
+          <a href="#/reports/workspace">Restore workspace</a>
         </nav>
       </article>
       <div class="hb-home-workflows">
@@ -103,6 +124,101 @@
         <article><h3>Compare network response</h3><p>Check observed and modelled traces, spill counts and scenario detriment.</p></article>
         <article><h3>Report findings</h3><p>Check which assessments are ready and export your results.</p><a href="#/reports/report-generation">Open reports</a></article>
       </div>
+    </section>
+
+    <section class="tab-panel" id="tab-verification-overview" hidden>
+      <div class="hb-review-grid"><article class="panel">
+        <div class="panel-head"><div><h3>Comparison evidence</h3><p id="verificationEvidenceStatus" role="status"></p></div>
+          <a class="btn" href="#/graphs/comparison">Open comparison plots</a>
+        </div>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Verification scenarios">
+          <table id="verificationEvidenceTable" class="data-table compact" hidden>
+            <thead><tr><th>Scenario source</th><th>Valid pairs</th><th>Eligible support</th><th>RMSE</th><th>NSE</th><th>Review</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        </article><section class="panel hb-review-tools" aria-labelledby="verificationReviewHeading">
+          <h4 id="verificationReviewHeading">Engineer Review</h4>
+          <p>Decisions apply to the current comparison evidence. Save the workspace to retain them.</p>
+          <fieldset id="verificationReviewFields" disabled>
+            <div class="mapping-grid">
+              <label>Scenario<select id="verificationReviewScenario"></select></label>
+              <label>Decision<select id="verificationReviewDecision">
+                <option>Not reviewed</option><option>Acceptable</option><option>Acceptable with caveats</option>
+                <option>Requires investigation</option><option>Not suitable for acceptance</option>
+              </select></label>
+              <label>Review comments<textarea id="verificationReviewComments" rows="3" maxlength="4000"></textarea></label>
+              <label>Assumptions and evidence references<textarea id="verificationReviewReferences" rows="3" maxlength="4000"></textarea></label>
+            </div>
+            <button id="verificationReviewSave" type="button" class="btn primary">Save engineer review</button>
+          </fieldset>
+          <p id="verificationReviewStatus" role="status"></p>
+        </section>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-verification-events" hidden>
+      <article class="panel">
+        <h3>Event Review</h3>
+        <p>Compare peaks, timing and signed flow volumes during a qualifying rainfall event. Results use the intersection of both hydraulic series’ valid intervals.</p>
+        <div class="mapping-grid">
+          <label>Rainfall event<select id="verificationEventSelect"></select></label>
+          <label>Modelled scenario<select id="verificationEventModel"></select></label>
+        </div>
+        <div class="actions">
+          <button id="verificationEventRun" type="button" class="btn primary">Compare selected event</button>
+          <button id="verificationEventGraph" type="button" class="btn" disabled>Open event in Time Series</button>
+          <a class="btn" href="#/data/time-series">Open time series and rainfall events</a>
+        </div>
+        <div id="verificationEventResult" class="summary-box" role="status"></div>
+      </article>
+    </section>
+
+    <section class="tab-panel" id="tab-hydraulics" hidden>
+      <article class="panel">
+        <h3>Conduit full capacity</h3>
+        <p>Steady, uniform flow in a full circular pipe. The calculation uses pipe gradient as energy gradient and a single roughness for the full wetted perimeter.</p>
+        <form id="pipeCapacityForm">
+          <div class="mapping-grid">
+            <label>Diameter (mm) · circular (CIRC)<input name="diameter" type="number" min="1" max="20000" step="any" required value="450" /></label>
+            <label>Gradient (m/m)<input name="gradient" type="number" min="0" max="1" step="any" required value="0.005" /></label>
+            <label>Colebrook–White roughness kₛ (mm)<input name="roughness" type="number" min="0" step="any" required value="1.5" /></label>
+            <label>Design discharge (L/s)<input name="discharge" type="number" min="0" step="any" /></label>
+          </div>
+          <details class="subpanel">
+            <summary>Calculate gradient from ICM conduit fields</summary>
+            <div class="mapping-grid">
+              <label>US invert level (m)<input name="usInvert" type="number" step="any" /></label>
+              <label>DS invert level (m)<input name="dsInvert" type="number" step="any" /></label>
+              <label>Length (m)<input name="conduitLength" type="number" step="any" min="0" /></label>
+            </div>
+            <button id="pipeUseInvertGradient" class="btn" type="button">Use calculated gradient</button>
+          </details>
+          <details class="subpanel">
+            <summary>Advanced fluid properties · <span id="pipeActiveViscosity">ν = 0.000001 m²/s</span></summary>
+            <label>Kinematic viscosity (m²/s)<input name="viscosity" type="number" min="0.000000001" max="0.01" step="any" required value="0.000001" /></label>
+          </details>
+          <button class="btn primary" value="capacity">Calculate capacity</button>
+          <button class="btn" value="design">Assess design flow</button>
+        </form>
+        <div id="pipeCapacityResult" class="summary-box" role="status" aria-live="polite">Enter pipe dimensions and a uniform-flow gradient.</div>
+        <div id="pipeSectionViews" class="pipe-section-views"></div>
+        <section aria-labelledby="pipeCompareHeading" class="subpanel">
+          <h3 id="pipeCompareHeading">Compare arrangements</h3>
+          <div class="actions">
+            <button id="pipeKeepResult" type="button" class="btn" disabled>Add current result</button>
+            <button id="pipeExportComparison" type="button" class="btn" disabled>Export comparison CSV</button>
+            <button id="pipeClearComparison" type="button" class="btn quiet" disabled>Clear comparison</button>
+          </div>
+          <p id="pipeCompareStatus" role="status">Add up to eight trials. Export to keep a copy.</p>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Pipe arrangements">
+            <table id="pipeComparisonTable" class="data-table compact" hidden>
+              <thead><tr><th>Trial</th><th>Diameter (mm)</th><th>Gradient (m/m)</th><th>kₛ (mm)</th><th>ν (m²/s)</th><th>Full capacity (L/s)</th><th>Design flow (L/s)</th><th>Normal depth(s) (mm)</th><th>Calculation status</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </article>
     </section>
 
     <section class="tab-panel active" id="tab-graph">
@@ -279,7 +395,7 @@
     </section>
   </main>
 
-  <section class="panel"><label>Review notes and assumptions<textarea id="reviewNotes" rows="3" placeholder="Notes are exported separately from computed results"></textarea></label></section><footer><span>Hydra Bench — © 2026 Anzar Sajid · <span id="appVersion">v1.000</span></span><span id="footerBuild">Reference engine: Python worker / canonical core</span></footer>
+  <section class="panel"><label>Review notes and assumptions<textarea id="reviewNotes" rows="3" placeholder="Notes are exported separately from computed results"></textarea></label></section><footer class="hb-app-footer"><span data-icm-copyright="true">© 2026 Anzar Sajid and other applicable rights holders · <span id="appVersion">v1.000</span></span><span class="hb-licence-links"><a href="LICENSE.txt">GNU AGPLv3</a><a id="hbBuildSource" href="https://github.com/anzarsajid91/ICM_Graphing_Tool" rel="noopener noreferrer" referrerpolicy="no-referrer" target="_blank">Source for this build</a></span><span id="footerBuild">Reference engine: Python worker / canonical core</span></footer>
   <!-- Keep the large plotting runtime off the document-head critical path.
        It still executes before every graph/workbench script in the release build. -->
   <script src="vendor/plotly-3.1.0/plotly.min.js" charset="utf-8"></script>
