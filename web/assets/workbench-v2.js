@@ -3,6 +3,19 @@
 
   const FULL_DISPLAY_POINTS = 15000;
   const ZOOM_DISPLAY_POINTS = 120000;
+  let webGLAvailable;
+  function timeGraphTraceType(data){
+    if(Number(data?.display_count||0)<=8000)return 'scatter';
+    if(webGLAvailable===undefined){
+      try{
+        const canvas=document.createElement('canvas');
+        const context=canvas.getContext('webgl2')||canvas.getContext('webgl');
+        webGLAvailable=Boolean(context);
+        context?.getExtension('WEBGL_lose_context')?.loseContext();
+      }catch{webGLAvailable=false;}
+    }
+    return webGLAvailable?'scattergl':'scatter';
+  }
   function displayPointBudget(range){
     if(!range||range.length!==2)return FULL_DISPLAY_POINTS;
     const start=new Date(range[0]).getTime(),end=new Date(range[1]).getTime();
@@ -942,7 +955,7 @@
 
       const plottedRange=plottedTimestampRange(observedEntries,modelEntries,rainEntry);
       const displayRange=range?.length===2?range:plottedRange;
-      const traceType=data=>Number(data?.display_count||0)>8000?'scattergl':'scatter';
+      const traceType=timeGraphTraceType;
       const colourFor=q=>q==='flow'?($('observedFlowColour')?.value||$('obsColor').value):q==='depth'?($('observedDepthColour')?.value||$('obsColor').value):q==='velocity'?($('observedVelocityColour')?.value||$('obsColor').value):$('obsColor').value;
       const observedThreshold=nullableNumber($('obsThreshold').value);
       const modelThreshold=nullableNumber($('modelThreshold').value);
@@ -996,7 +1009,7 @@
           panelDomains.rainfall=[rainBottom,1];
           layout.yaxis={title:{text:rainfallAxisTitle,standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:true,gridcolor:'#e4e5e3',showline:true,linecolor:'#a8b7c4',linewidth:1,ticks:'outside',tickcolor:'#a8b7c4',zeroline:false,automargin:true,tickfont:{size:10,color:'#626660'},titlefont:{size:11,color:'#202221'}};
           layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#202221'}});
-          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:'y',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} '+(rainEntry.unit||'unit unresolved')+'<extra></extra>'});
+          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),legendgroup:'rainfall',type:traceType(rainEntry.source.data),mode:'lines',connectgaps:false,yaxis:'y',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} '+(rainEntry.unit||'unit unresolved')+'<extra></extra>'});
         }
         for(const quantity of canonical){
           const axis=axisByPanel[quantity];if(!axis)continue;
@@ -1053,7 +1066,7 @@
             layout.yaxis2={title:{text:rainfallAxisTitle,standoff:10},domain:[rainBottom,1],anchor:'x',range:[rainfallMaximum(rainEntry.values),0],showgrid:true,gridcolor:'#e4e5e3',showline:true,linecolor:'#a8b7c4',linewidth:1,ticks:'outside',tickcolor:'#a8b7c4',zeroline:false,automargin:true};
           }
           layout.annotations.push({xref:'paper',x:.5,yref:'paper',y:1,text:'<b>Rainfall</b>',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:11,color:'#202221'}});
-          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),legendgroup:'rainfall',type:'scattergl',mode:'lines',connectgaps:false,yaxis:rainfallOnly?'y':'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} '+(rainEntry.unit||'unit unresolved')+'<extra></extra>'});
+          traces.push({x:rainEntry.source.data.timestamp,y:rainEntry.values,name:'Rainfall',uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),legendgroup:'rainfall',type:traceType(rainEntry.source.data),mode:'lines',connectgaps:false,yaxis:rainfallOnly?'y':'y2',line:{color:$('rainColor').value,width:1},hovertemplate:'%{x}<br>Rainfall %{y:.3f} '+(rainEntry.unit||'unit unresolved')+'<extra></extra>'});
         }
         // ICM HYD exports commonly describe the vertical hydraulic series as
         // "level" rather than "depth". Both belong to the same threshold-bearing
@@ -1422,7 +1435,7 @@
   window.ICMGraph = {draw:v2DrawGraph,applyMapping:v2ApplyMapping,setChannel:setChannelMode,channel:()=>ui.channelMode,useVisiblePeriod:useVisiblePeriodFromGraph,fitVisibleY,setExclusionCapture,captureExclusionRange:(range)=>captureGraphExclusion({range:{x:range}}),inspectPoint:inspectGraphPoint};
   const exActions=$('addExclusionBtn').parentElement;
   const rangeButton=document.createElement('button');rangeButton.className='btn quiet';rangeButton.textContent='Exclude visible period';rangeButton.onclick=()=>{const range=ui.graphRange;if(!range)return;addExclusionRow({start:modelClock(range[0]),end:modelClock(range[1])});};exActions.appendChild(rangeButton);
-  const undoButton=document.createElement('button');undoButton.className='btn quiet';undoButton.textContent='Undo removal';undoButton.onclick=()=>{const row=state.deletedExclusions?.pop();if(row){state.exclusions.push(row);renderExclusions();void drawTimeChart();}};exActions.appendChild(undoButton);
+  const undoButton=document.createElement('button');undoButton.className='btn quiet';undoButton.textContent='Undo removal';undoButton.onclick=()=>{const row=state.deletedExclusions?.pop();if(row){state.exclusions.push(row);renderExclusions();void guarded('spillRunStatus',()=>drawTimeChart());}};exActions.appendChild(undoButton);
   installSourcePoolControl();
   installGraphControls();
   installSpillStatus();

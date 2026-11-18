@@ -20,8 +20,8 @@ included in the v2 branch.
 
 [The control matrix](hydrabench-v2-control-results.csv) records 743 route/control
 identities from the two synthetic CI artifacts, including 691 observed enabled.
-The matrix currently reconciles 702 identities to passing assertions or executed
-keyboard disclosure checks. The other 41 are explicitly BLOCKED pending
+The matrix currently reconciles 718 identities to passing assertions or executed
+keyboard disclosure checks. The other 25 are explicitly BLOCKED pending
 per-control assertion reconciliation or a prerequisite-state outcome check.
 These rows include disabled states and repeated shared controls. The matrix does
 not infer failure from a missing activation, or acceptance from a recorded click.
@@ -85,3 +85,13 @@ Shared period and section acceptance passed 27 outcomes per browser across eleve
 The follow-up checkpoint `0ae6d9d` exposed a new CodeQL high finding in the network test evidence writer (predictable temporary path). The writer now creates a unique private evidence directory; both desktop network suites passed again. The finding remains unresolved until fresh CodeQL confirms the repair on the next commit. Other repository-wide alert-list access still returns HTTP 403; Dependabot alerts remain disabled.
 
 Expanded Detriment acceptance covers report mapping/preview keyboard disclosures, level calculation/list clearing, Inspect evidence, full and filtered spill exports, exact selected IDs and close/focus restoration. Clearing a list restores the prior view filter; the test asserts that existing behavior. Both desktop browsers are required in the CI control loop.
+
+## Follow-up rendering and caption review
+
+Normal-input desktop Firefox acceptance exposed a WebGL-unavailable overlay intercepting rainfall chart controls. Rainfall now follows the hydraulic trace policy: SVG for up to 8,000 display points and WebGL for larger traces only when a local capability probe succeeds; otherwise SVG. The probe is cached and its temporary GPU context is released. Plotted values, statistics, thresholds, downsampling limits and engineering inputs/results are unchanged. Native FDV option captions now enumerate their actual local Flow/Depth/Level/Velocity channels; source keys and channel preference remain unchanged. A Level caption regression failed before the repair and passed afterwards.
+
+Security impact review against 979f371: runtime.release.js changes fixed channel caption construction and guards exclusion-removal redraw errors through the existing visible spill status. The matching undo handler now uses that same guard. Restoring a draft with a missing reason still fails validation, reports it visibly and finishes operation state without an unhandled rejection; no reason is invented and no invalid calculation is accepted. The existing worker addresses, fixed same-origin Plotly fetch, local Blob export helper and browser storage calls were inspected and remain unchanged. SC-03 (storage/retention) remains true within its existing scope and limitations; no storage access, retained data or retention policy changed. Its runtime evidence digest is updated after that semantic diff review. No security statement/status or supported exact-build claim is upgraded. The network source rationale records this review explicitly. The WebGL capability probe creates a local canvas only, does not process source values, and makes no request. No dependency, licence or data destination changed. This is AI-assisted review under the owner-authorised single-maintainer process; owner merge approval and fresh final-head checks remain required.
+
+The data/process suite passed 17 outcomes (16 distinct matrix identities) in each desktop browser on the reviewed working tree after 979f371. It uses real local synthetic CSV/FDV/R imports, holds one real addFile reply for deterministic preview checks, and verifies actual clipboard bytes (Chromium read permission granted; Firefox paste). Custom selection/point events use existing normal handlers with synthetic event payloads. Independent expectations include 9.6 mm cumulative rainfall and one spill with 26 minutes of duration. Full Python rerun: 353 PASS; privacy: 28 PASS; all JavaScript unit suites PASS, including the new renderer fallback and FDV caption regressions. New exact-commit browser/security CI remains required.
+
+Checkpoint 979f371 passed the CodeQL finding gate after the private evidence-directory fix. The browser-interactions job passed the expanded two-browser control loop. Its full browser-smoke and baseline-performance jobs were still running when the next product-fix checkpoint was prepared; this is not final-head release evidence. Repository-wide open alert lists remain inaccessible and Dependabot alerts disabled.

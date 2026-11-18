@@ -121,3 +121,11 @@ run(`refreshDiagnosticSelectors();`);
 assert.deepEqual(Array.from(sandbox.window.combinedSelects.ratingModelDepth.rows),[sandbox.window.combinedModelKey]);
 assert.deepEqual(Array.from(sandbox.window.combinedSelects.ratingObsDepth.rows),[sandbox.window.combinedObservedKey]);
 console.log('Diagnostic selector regression passed: explicit model columns in a shared CSV remain selectable independently of observed columns.');
+
+run(`{
+ const item={id:'level-fdv-picker',displayName:'Level.fdv',status:'ready',parsed:{format:'fdv_ascii',columns:['flow','level','velocity'],metadata:{quantity_by_column:{flow:'flow',level:'level',velocity:'velocity'}}}};
+ state.files.clear();state.files.set(item.id,item);
+ window.levelFdvPicker=sourcePickerSeries(allSeries())[0].label;
+}`);
+assert.equal(sandbox.window.levelFdvPicker,'Level.fdv · FDV (Flow / Level / Velocity)');
+console.log('FDV source caption reflects actual Level channels.');

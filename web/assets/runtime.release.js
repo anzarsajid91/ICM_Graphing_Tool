@@ -669,7 +669,10 @@ function sourcePickerSeries(all,preferredKeys=[]){
     seen.add(series.item.id);
     const channels=all.filter(s=>s.item.id===series.item.id);
     const selected=channels.find(s=>preferredKeys.includes(s.key))||channels.find(s=>s.quantity==='depth')||series;
-    out.push({...selected,label:series.item.displayName+' · FDV (Flow / Depth / Velocity)'});
+    const names={flow:'Flow',depth:'Depth',level:'Level',velocity:'Velocity'};
+    const quantities=[...new Set(channels.map(channel=>channel.quantity))];
+    const caption=['flow','depth','level','velocity'].filter(quantity=>quantities.includes(quantity)).map(quantity=>names[quantity]).join(' / ');
+    out.push({...selected,label:series.item.displayName+' · FDV ('+caption+')'});
   }
   return out;
 }
@@ -1874,7 +1877,7 @@ function renderExclusions(){
   const scopes=[['both','Observed + models'],['observed','Observed / EDM'],['model','All mapped models'],['rainfall','Rainfall'],...surveyScopes,...state.mapping.models.map(key=>{const m=mappingObject(key);return [key,seriesLabel(m.item,m.col)];})];
   $('exclusionRows').innerHTML=state.exclusions.length?state.exclusions.map(e=>`<div class="ex-row" data-id="${esc(e.id)}"><label>Enabled<input type="checkbox" data-field="enabled" ${e.enabled!==false?'checked':''}></label><label>Start<input type="datetime-local" step="1" data-field="start" value="${esc(modelClock(e.start))}"></label><label>End<input type="datetime-local" step="1" data-field="end" value="${esc(modelClock(e.end))}"></label><label>Scope<select data-field="scope">${([...(scopes),...(!scopes.some(([v])=>v===(e.scope||'both'))?[[(e.scope||'both'),'Saved survey scope']]:[])]).map(([v,n])=>`<option value="${esc(v)}" ${(e.scope||'both')===v?'selected':''}>${esc(n)}</option>`).join('')}</select></label><label>Reason<input type="text" data-field="reason" value="${esc(e.reason)}"></label><button class="btn quiet remove-ex" data-id="${esc(e.id)}">Remove</button></div>`).join(''):'<div class="pool-summary">No exclusion periods.</div>';
   document.querySelectorAll('.ex-row input,.ex-row select').forEach(inp=>inp.addEventListener('change',()=>{const e=state.exclusions.find(x=>x.id===inp.closest('.ex-row').dataset.id);if(e){state.exclusionHistory??=[];state.exclusionHistory.push({...e,changed_at:new Date().toISOString()});e[inp.dataset.field]=inp.type==='checkbox'?inp.checked:inp.value;}try{exclusionPayload(true);}catch{return;}void drawTimeChart().catch(err=>showError('mappingStatus',err?.message||err));}));
-  document.querySelectorAll('.remove-ex').forEach(b=>b.addEventListener('click',()=>{state.deletedExclusions??=[];state.deletedExclusions.push(state.exclusions.find(x=>x.id===b.dataset.id));state.exclusions=state.exclusions.filter(x=>x.id!==b.dataset.id);renderExclusions();void drawTimeChart();}));
+  document.querySelectorAll('.remove-ex').forEach(b=>b.addEventListener('click',()=>{state.deletedExclusions??=[];state.deletedExclusions.push(state.exclusions.find(x=>x.id===b.dataset.id));state.exclusions=state.exclusions.filter(x=>x.id!==b.dataset.id);renderExclusions();void guarded('spillRunStatus',()=>drawTimeChart());}));
 }
 
 async function runRainEvents(){
