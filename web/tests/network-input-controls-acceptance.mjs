@@ -202,6 +202,205 @@ try {
     "Suggest and center a case-insensitive match; handle misses without mutating geometry",
     "BETA suggests/selects Beta asset; unknown input shows local error and preserves camera/nodes",
   );
+  const ioMenu = page.getByText("Save / Export / Load", { exact: true });
+  await ioMenu.press("Enter");
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page
+    .getByRole("button", { name: "Load network or context CSV" })
+    .click();
+  const chooser = await chooserPromise;
+  const savedNetwork = await snapshot();
+  await chooser.setFiles({
+    name: "synthetic-layout.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(savedNetwork)),
+  });
+  await page
+    .getByRole("status")
+    .filter({ hasText: "Network restored" })
+    .waitFor();
+  assert.equal(await ioMenu.evaluate((el) => el.parentElement.open), false);
+  assert.equal((await snapshot()).nodes.length, 2);
+  record(
+    "nsLoad",
+    "Find Load in the labelled menu and import a saved schematic",
+    "Native chooser loaded two synthetic assets",
+  );
+
+  const screenshot = async (label) => {
+    if (!process.env.ICM_SCHEMATIC_SCREENSHOTS) return;
+    console.log(
+      "SCREENSHOT " +
+        (await writeEvidence(
+          process.env.ICM_SCHEMATIC_SCREENSHOTS + "/" + label + ".png",
+          await page.screenshot({ animations: "disabled" }),
+        )),
+    );
+  };
+  const canvas = page.locator("#nsCanvas");
+  const zoomMode = page.getByRole("button", { name: "Zoom", exact: true });
+  await zoomMode.press("Enter");
+  assert.equal(await zoomMode.getAttribute("aria-pressed"), "true");
+  assert.equal(
+    await page.locator("#nsSvg").evaluate((el) => getComputedStyle(el).cursor),
+    "zoom-in",
+  );
+  await canvas.scrollIntoViewIfNeeded();
+  await screenshot("zoom-mode");
+  const box = await canvas.boundingBox();
+  const anchor = { x: Math.round(box.width * 0.35), y: 120 };
+  const beforeZoom = (await snapshot()).camera;
+  await page.mouse.move(box.x + anchor.x, box.y + anchor.y);
+  await page.mouse.wheel(0, -180);
+  await page.waitForFunction(
+    (value) => ICMNetworkSchematic.snapshot().camera.zoom > value,
+    beforeZoom.zoom,
+  );
+  const afterZoom = (await snapshot()).camera;
+  for (const axis of ["x", "y"]) {
+    const before = (anchor[axis] - beforeZoom[axis]) / beforeZoom.zoom;
+    const after = (anchor[axis] - afterZoom[axis]) / afterZoom.zoom;
+    assert.ok(
+      Math.abs(before - after) < 2,
+      "Zoom anchors the point under the cursor",
+    );
+  }
+  await page.mouse.wheel(0, 150);
+  await page.waitForFunction(
+    (value) => ICMNetworkSchematic.snapshot().camera.zoom < value,
+    afterZoom.zoom,
+  );
+
+  const beforePan = await snapshot();
+  const startPoint = await page
+    .locator('[data-ns-node="beta"] [data-ns-frame]')
+    .boundingBox();
+  const start = {
+    x: startPoint.x + startPoint.width / 2,
+    y: startPoint.y + startPoint.height / 2,
+  };
+  const selectionBefore = await page.evaluate(
+    () => ICMNetworkSchematic.debug().selected,
+  );
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(start.x + 40, start.y + 25, { steps: 5 });
+  await page.mouse.up({ button: "middle" });
+  const afterPan = await snapshot();
+  assert.equal(afterPan.camera.zoom, beforePan.camera.zoom);
+  assert.ok(Math.abs(afterPan.camera.x - beforePan.camera.x - 40) < 2);
+  assert.ok(Math.abs(afterPan.camera.y - beforePan.camera.y - 25) < 2);
+  assert.deepEqual(afterPan.nodes, beforePan.nodes);
+  assert.deepEqual(afterPan.edges, beforePan.edges);
+  assert.equal(
+    await page.evaluate(() => ICMNetworkSchematic.debug().selected),
+    selectionBefore,
+  );
+  await zoomMode.press("Space");
+  assert.equal(await zoomMode.getAttribute("aria-pressed"), "false");
+  const beforeScroll = await page.evaluate(() => window.scrollY);
+  await page.mouse.move(box.x + anchor.x, box.y + anchor.y);
+  await page.mouse.wheel(0, 160);
+  await page.waitForFunction((value) => window.scrollY > value, beforeScroll);
+  assert.deepEqual((await snapshot()).camera, afterPan.camera);
+  record(
+    "nsZoomMode",
+    "Wheel zoom follows the pointer and wheel-button drag pans without editing",
+    "Keyboard toggle, both wheel directions, anchor, mouse drag, stable selection and ordinary page scroll verified",
+  );
+
+  await page.locator("#fileInput").setInputFiles({
+    name: "synthetic-map-source.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      "Timestamp,Flow (m3/s)\n2025-01-01 00:00,0.1\n2025-01-01 00:05,0.2\n2025-01-01 00:10,0.1\n",
+    ),
+  });
+  await page.waitForFunction(
+    () =>
+      [...state.files.values()].some(
+        (file) =>
+          file.displayName === "synthetic-map-source.csv" &&
+          file.status === "ready",
+      ),
+    null,
+    { timeout: 90000 },
+  );
+  const clear = page.locator("#nsClearMap");
+  await tools(true);
+  await page.locator("#nsLocked").check();
+  assert.equal(await clear.isDisabled(), true);
+  await page.locator("#nsLocked").uncheck();
+  await page.getByText("Views & snapshots", { exact: true }).click();
+  await page.locator("#nsViewName").fill("Synthetic saved state");
+  await page.locator("#nsSaveView").click();
+  await page.locator("#nsSaveSnapshot").click();
+  await tools(false);
+  const dialog = page.getByRole("dialog", { name: "Clear map" });
+  const beforeClear = await snapshot();
+  assert.equal(beforeClear.views.length, 1);
+  assert.equal(beforeClear.reviewSnapshots.length, 1);
+  const sources = () =>
+    page.evaluate(() =>
+      [...state.files.values()].map(({ id, hash, status }) => ({
+        id,
+        hash,
+        status,
+      })),
+    );
+  const retainedSources = await sources();
+  assert.equal(retainedSources.length, 1);
+  await clear.click();
+  await screenshot("clear-confirmation");
+  assert.equal(
+    await dialog
+      .getByRole("button", { name: "Cancel" })
+      .evaluate((el) => el === document.activeElement),
+    true,
+  );
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "hidden" });
+  assert.deepEqual(await snapshot(), beforeClear);
+  await clear.click();
+  await dialog.getByRole("button", { name: "Clear map" }).click();
+  assert.deepEqual(
+    await snapshot(),
+    await page.evaluate(() => ICMNetworkCore.empty()),
+  );
+  assert.deepEqual(await sources(), retainedSources);
+  assert.equal(await clear.isDisabled(), true);
+  assert.equal(
+    await page.locator("#nsSvg [data-ns-node], #nsSvg [data-ns-edge]").count(),
+    0,
+  );
+  await page.locator("#nsUndo").click();
+  assert.deepEqual(await snapshot(), beforeClear);
+  await clear.click();
+  await dialog.getByRole("button", { name: "Clear map" }).click();
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Network Schematic", exact: true })
+    .click();
+  await page.waitForFunction(
+    () =>
+      !!window.ICMNetworkSchematic?.snapshot &&
+      !!document.getElementById("nsClearMap"),
+  );
+  assert.equal((await snapshot()).nodes.length, 0);
+  assert.equal((await snapshot()).edges.length, 0);
+  await page.setViewportSize({ width: 1024, height: 900 });
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth + 1,
+    ),
+    true,
+  );
+  await screenshot("cleared-at-1024");
+  record(
+    "nsClearMap",
+    "Confirm and clear the full schematic, preserving imported files and undoing in-session",
+    "Escape preserves state, confirm empties geometry, Undo restores the full snapshot, reload retains a confirmed clear",
+  );
   guard.assertClean();
   assert.deepEqual(errors, []);
 } finally {
