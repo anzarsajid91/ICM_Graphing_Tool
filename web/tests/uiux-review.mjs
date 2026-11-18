@@ -13,7 +13,7 @@ const browserName=process.env.ICM_BROWSER||'chromium';
 const browser=await (browserName==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000},acceptDownloads:true});
 const privacy=installPrivacyGuard(context,base);
-const page=await context.newPage(),errors=[],inventory=[],timings=[],disclosures=[];
+const page=await context.newPage(),errors=[],inventory=[],timings=[],disclosures=[],navigation=[];
 page.on('pageerror',e=>errors.push(e.message));
 const widths=[1920,1440,1280,1024];
 try{
@@ -24,6 +24,21 @@ try{
   }
   const routes=await page.evaluate(()=>Object.entries(window.__ICM_PRECISION_WORKBENCH__.routes)
     .flatMap(([workspace,route])=>Object.keys(route.pages).map(view=>[workspace,view])));
+  const workspaces=[...new Set(routes.map(([workspace])=>workspace))];
+  for(const [workspace,view] of routes){
+    for(const target of workspaces){
+      await page.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[workspace,view]);
+      const button=page.locator('.pw-primary-nav button[data-workspace="'+target+'"],.pw-about-nav button[data-workspace="'+target+'"]');
+      await button.click();
+      await page.waitForFunction(w=>window.__ICM_PRECISION_WORKBENCH__.route().workspace===w,target);
+      assert.equal(await button.getAttribute('aria-current'),'page');
+      const result=await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.route());
+      const surface=page.locator('.pw-route-visible');
+      assert.ok(await surface.count()>0,'Navigation exposes a page surface');
+      assert.ok(await surface.first().isVisible(),'Selected workspace surface is visible');
+      navigation.push({from:workspace+'/'+view,target,result,expected:'workspace selected, active navigation marked, page surface visible',status:'PASS',browser:browserName});
+    }
+  }
   for(const [w,p] of routes){
     const start=await page.evaluate(()=>performance.now());
     await page.evaluate(([w,p])=>window.__ICM_PRECISION_WORKBENCH__.navigate(w,p,false),[w,p]);
@@ -57,6 +72,7 @@ try{
   await writeEvidence(path.join(out,'revision.json'),JSON.stringify(await page.evaluate(()=>({build:document.querySelector('meta[name="icm-build-sha"]')?.content,version:document.querySelector('#appVersion')?.textContent})),null,2));
   await writeEvidence(path.join(out,'inventory.json'),JSON.stringify(inventory,null,2));
   await writeEvidence(path.join(out,'disclosures.json'),JSON.stringify(disclosures,null,2));
+  await writeEvidence(path.join(out,'navigation.json'),JSON.stringify(navigation,null,2));
   await writeEvidence(path.join(out,'performance.json'),JSON.stringify(timings,null,2));
   await writeEvidence(path.join(out,'errors.json'),JSON.stringify(errors,null,2));
   privacy.assertClean();

@@ -20,8 +20,8 @@ included in the v2 branch.
 
 [The control matrix](hydrabench-v2-control-results.csv) records 743 route/control
 identities from the two synthetic CI artifacts, including 691 observed enabled.
-The matrix currently reconciles 104 identities to passing assertions or executed
-keyboard disclosure checks. The other 639 are explicitly BLOCKED pending
+The matrix currently reconciles 272 identities to passing assertions or executed
+keyboard disclosure checks. The other 471 are explicitly BLOCKED pending
 per-control assertion reconciliation or a prerequisite-state outcome check.
 These rows include disabled states and repeated shared controls. The matrix does
 not infer failure from a missing activation, or acceptance from a recorded click.
@@ -32,7 +32,7 @@ The repaired visual audit discovers canonical routes at runtime and supports
 Chromium and Firefox. It checks all 22 routes at four desktop widths and uses
 Enter and Space to verify visible disclosure state changes. The synthetic desktop
 audit passed on the product candidate in both browsers. Runtime evidence contains
-21 idle-state disclosure outcomes per browser.
+21 idle-state disclosure outcomes per browser. The follow-up audit executed 220 workspace transitions in each browser, checking the selected workspace, active navigation and visible destination from every canonical origin route.
 
 ## Engineering and security evidence
 
