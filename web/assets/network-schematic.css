@@ -134,3 +134,22 @@
 #nsWorkbench #nsClearMapTitle{margin:0}
 #nsWorkbench #nsClearMapDescription{margin:12px 0 16px}
 #nsWorkbench #nsClearMap:not(:disabled),#nsWorkbench #nsConfirmClearMap{color:#a12232}
+
+#nsWorkbench #nsModeLabel{font-size:12px;color:var(--hb-muted);white-space:nowrap}
+#nsWorkbench .ns-camera-tools{max-width:calc(100% - 24px);flex-wrap:wrap;justify-content:flex-end}
+#nsWorkbench #nsMinimap{position:absolute;left:12px;bottom:40px;width:152px;height:95px;max-width:38%;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-control);background:#fff;cursor:crosshair;touch-action:none}
+#nsWorkbench #nsContextActions{position:absolute;z-index:5;display:grid;gap:4px;padding:6px;background:#fff;border:1px solid var(--hb-control-border);border-radius:var(--hb-radius-control);box-shadow:var(--hb-shadow-popover)}
+#nsWorkbench #nsContextActions button{text-align:left}
+#nsWorkbench .ns-inspector-tabs{display:flex;flex-wrap:wrap;gap:4px;padding:0 10px 8px;border-bottom:1px solid var(--hb-border)}
+#nsWorkbench .ns-inspector-tabs button{font-size:12px;padding:5px 8px;min-height:32px}
+#nsWorkbench .ns-inspector-tabs button[aria-selected=true]{border-color:var(--hb-action);background:var(--hb-soft);color:var(--hb-action)}
+#nsWorkbench .ns-property-list{display:grid;grid-template-columns:minmax(90px,42%) minmax(0,1fr);gap:5px 10px;font-size:12px}
+#nsWorkbench .ns-property-list dt{font-weight:600;overflow-wrap:anywhere}
+#nsWorkbench .ns-property-list dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
+#nsWorkbench .ns-source-provenance{font-size:12px;color:var(--hb-muted);overflow-wrap:anywhere}
+#nsWorkbench .ns-custom-list{list-style:none;padding:0;margin:8px 0}
+#nsWorkbench .ns-custom-list li{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:6px 0;overflow-wrap:anywhere}
+#nsWorkbench .ns-custom-list li span{flex:1 1 160px;min-width:0}
+#nsWorkbench .ns-popup-body select[aria-label^="Reference"]{width:100%;margin:4px 0}
+#nsWorkbench .ns-popup-body>h4{margin:8px 0}
+@media(max-width:700px){#nsWorkbench #nsMinimap{bottom:92px;width:120px;height:75px}}

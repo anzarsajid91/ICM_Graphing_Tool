@@ -299,3 +299,30 @@ Verification badges show current recorded scenario decisions and highlight
 investigation or unsuitable-for-acceptance decisions. Stale evidence does not
 carry a current decision. The overlay uses the current published verification
 comparison, while Flow Survey uses its current completed weekly assessment.
+
+
+## Explore the network
+
+Use **Explore mode** to inspect a point or connector without moving it. Double-click
+to focus it. Right-click or press Shift+F10 on a focused object for focus, tracing
+and branch isolation. Search accepts object names and identifiers. **Reset view**
+clears display filters and the active trace, then fits the entire network. The
+minimap supports click, drag, arrow keys and Enter to fit. On a touch surface, drag
+one finger to pan or pinch with two fingers in Explore mode. Use **Edit network**
+for geometry, labels, connectors and calculation configuration.
+
+The inspector works on both points and connectors. **Properties** displays
+read-only original ICM values, descriptions, declared units and source provenance
+where available. Add local name/value/unit properties beneath the source fields.
+**Upload data** uses the shared local file picker. **Data linking** can attach
+time-series references, confirmed monitor relationships, Detriment associations,
+and annual spill assignments where applicable. A time-series reference is not an
+assignment to a spill calculation. **Evidence** keeps existing results,
+analysis actions and review notes.
+
+A revised export refreshes its ICM source fields. Matching objects retain compatible
+local names, geometry, properties, references, views and evidence. If substantive
+source fields change, the previous attached calculation and Detriment evidence
+must be re-established. Original units remain visible without conversion, and
+unsupported declared units for engineering fields are rejected. The importer
+creates or updates only the Hydra Bench project and never writes to ICM.

@@ -168,3 +168,46 @@ assert.equal(next.nodes[0].x,350020);
 assert.equal(next.nodes[1].x,350150);
 assert.equal(next.edges[0].bends[0].x,350015);
 assert.throws(()=>C.applyContextRevision(C.validateNetwork({...C.empty(),nodes:[first.nodes[0]]}),native.network,'icm-csv-v1'),/empty schematic/);
+
+const assertJSON=(actual,expected)=>assert.deepEqual(JSON.parse(JSON.stringify(actual)),JSON.parse(JSON.stringify(expected)));
+const componentTables=['conduit','pump','weir','orifice','sluice','flap_valve','screen','user_control','outlet'];
+const explorerFixture=[
+  {name:'explorer_node.csv',text:'ObjectTable,Node_ID,x,y,node_type,remarks\nFieldDescription,Node ID,Easting,Northing,Node type,Operator notes\nUserUnits,,m,m,,\nhw_node,Up,20,30,manhole,"north, entrance"\nhw_node,Down,120,90,outfall,"line one\nline two"'},
+  ...componentTables.map((table,index)=>({name:'explorer_'+table+'.csv',
+    text:'ObjectTable,us_node_id,ds_node_id,link_suffix,custom_rating\nUserUnits,,,,unit-as-exported\nhw_'+table+',UP,DOWN,'+(index+1)+'," 03.50 "'})),
+];
+const explorerImport=C.importNativeContext(explorerFixture).network;
+assertJSON(explorerImport.nodes.map(n=>n.type),['manhole','outfall']);
+assert.equal(explorerImport.edges.length,componentTables.length);
+for(const [index,edge] of explorerImport.edges.entries()){
+  assert.equal(edge.icm.table,'hw_'+componentTables[index]);
+  assert.equal(edge.from,'Up');assert.equal(edge.to,'Down');
+  assert.equal(edge.sourceAttributes.file,'explorer_'+componentTables[index]+'.csv');
+  assertJSON(edge.sourceAttributes.fields.find(f=>f.name==='custom_rating'),{
+    name:'custom_rating',label:'',unit:'unit-as-exported',value:' 03.50 ',
+  });
+}
+assert.equal(explorerImport.nodes[1].sourceAttributes.row,5);
+assert.equal(explorerImport.nodes[1].sourceAttributes.fields.at(-1).value,'line one\nline two');
+assert.equal(explorerImport.nodes[0].sourceAttributes.fields.at(-1).label,'Operator notes');
+assert.throws(()=>C.importNativeContext([{...explorerFixture[0],text:explorerFixture[0].text.replace('m,m','ft,ft')}]),/unsupported declared units/);
+assert.throws(()=>C.importNativeContext([{...explorerFixture[0],text:explorerFixture[0].text.slice(0,-1)}]),/unterminated CSV quote/);
+const enriched=C.applyContextRevision(C.empty(),explorerImport,'icm-csv-v1');
+enriched.nodes[0].name='Manual display name';
+enriched.nodes[0].customProperties=[{name:'Survey status',value:'Reviewed',unit:''}];
+enriched.nodes[0].applied={rows:[],signature:'synthetic existing signature'};
+enriched.edges[0].customProperties=[{name:'Diameter reference',value:'500',unit:'mm'}];
+enriched.edges[0].seriesLinks=[{sourceId:'synthetic',sourceName:'flow.csv',sha256:'synthetic-sha',column:'Flow'}];
+enriched.edges[0].bends=[{x:75,y:-45}];
+const revisedExplorer=C.applyContextRevision(enriched,C.importNativeContext(explorerFixture).network,'icm-csv-v1');
+assertJSON(revisedExplorer.nodes[0].applied,enriched.nodes[0].applied);
+assert.equal(revisedExplorer.nodes[0].name,'Manual display name');
+assertJSON(revisedExplorer.nodes[0].customProperties,enriched.nodes[0].customProperties);
+assertJSON(revisedExplorer.edges[0].customProperties,enriched.edges[0].customProperties);
+assertJSON(revisedExplorer.edges[0].seriesLinks,enriched.edges[0].seriesLinks);
+assertJSON(revisedExplorer.edges[0].bends,enriched.edges[0].bends);
+const altered=[...explorerFixture];altered[0]={...altered[0],text:altered[0].text.replace('north, entrance','updated source')};
+assert.equal(C.applyContextRevision(enriched,C.importNativeContext(altered).network,'icm-csv-v1').nodes[0].applied,undefined);
+assertJSON(C.validateNetwork(JSON.parse(JSON.stringify(enriched))),enriched);
+assert.throws(()=>C.validateNetwork({...enriched,nodes:[{...enriched.nodes[0],customProperties:[{name:'Test',value:'1',unit:''},{name:'test',value:'2',unit:''}]},...enriched.nodes.slice(1)]}),/duplicate custom/);
+console.log('Explorer native types, original values and units, migration, safe reimport and validation passed.');

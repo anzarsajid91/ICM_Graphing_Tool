@@ -134,6 +134,29 @@ function validateYears(value){
   return [...new Set(years)].sort((a,b)=>a-b);
 }
 function empty(){return {schema:2,nodes:[],edges:[],camera:{x:0,y:0,zoom:1},year:'all',scenario:'observed',evidenceMode:'combined',metric:'spill_count',preferences:{snap:false,locked:false,detail:'auto',type:'all',health:'all',result:'all',scenarios:null},views:[],reviewSnapshots:[]};}
+function validateInspectorProperties(object){
+  const bounded=(value,max)=>typeof value==='string'&&value.length<=max;
+  if(object.monitorId!==undefined&&!bounded(object.monitorId,128))throw new Error('Invalid monitoring association.');
+  const source=object.sourceAttributes;
+  if(source!==undefined){
+    if(!source||!bounded(source.table,128)||!bounded(source.file,512)||!Number.isSafeInteger(source.row)||source.row<1||
+       !Array.isArray(source.fields)||source.fields.length>512||
+       source.fields.some(field=>!field||!bounded(field.name,256)||!field.name.trim()||
+         !bounded(field.label,512)||!bounded(field.unit,128)||!bounded(field.value,32768)))
+      throw new Error('Invalid imported asset attributes.');
+  }
+  const links=object.seriesLinks;
+  if(links!==undefined&&(!Array.isArray(links)||links.length>100||links.some(link=>!link||
+      !bounded(link.sourceId,128)||!bounded(link.sourceName,1024)||!bounded(link.sha256,128)||!link.sha256||
+      !bounded(link.column,512)||!link.column)))throw new Error('Invalid asset time series reference.');
+  const custom=object.customProperties;
+  if(custom!==undefined){
+    if(!Array.isArray(custom)||custom.length>64||
+       custom.some(field=>!field||!bounded(field.name,128)||!field.name.trim()||!bounded(field.value,4096)||!bounded(field.unit,64))||
+       new Set(custom.map(field=>field.name.trim().toLowerCase())).size!==custom.length)
+      throw new Error('Invalid or duplicate custom asset properties.');
+  }
+}
 function validateNetwork(value){
   if(!value||![1,2].includes(value.schema)||!Array.isArray(value.nodes)||!Array.isArray(value.edges))throw new Error('Unsupported network schematic file.');
   if(value.nodes.length>2000||value.edges.length>5000)throw new Error('This overview supports up to 2,000 points and 5,000 connectors.');
@@ -143,7 +166,6 @@ function validateNetwork(value){
     if(!Array.isArray(n.bindings)||n.bindings.length>1000||!Array.isArray(n.exclusions||[]))throw new Error('Invalid asset evidence.');
     const bindingIds=new Set();
     for(const b of n.bindings){if(b?.comparison&&!['gt','ge'].includes(b.comparison))throw new Error('Invalid threshold rule.');if(!b||typeof b.id!=='string'||!b.id||bindingIds.has(b.id)||!['observed','model'].includes(b.role)||typeof b.scenario!=='string'||typeof b.sourceName!=='string'||typeof b.sha256!=='string'||typeof b.column!=='string'||!Array.isArray(b.years)||b.years.some(y=>!Number.isInteger(y)||y<1900||y>2200))throw new Error('Invalid source assignment.');bindingIds.add(b.id);}
-    if(n.monitorId!==undefined&&(typeof n.monitorId!=='string'||n.monitorId.length>128))throw new Error('Invalid monitoring association.');
     if(n.applied&&(!Array.isArray(n.applied.rows)||typeof n.applied.signature!=='string'))throw new Error('Invalid saved assessment.');
     for(const r of n.applied?.rows||[])if(!Number.isInteger(r.year)||r.year<1900||r.year>2200||!['observed','model'].includes(r.role)||typeof r.scenario!=='string'||typeof r.eligible!=='boolean'||[r.spill_count,r.duration_hours].some(v=>v!==null&&(!Number.isFinite(v)||v<0))||[r.analysis_start,r.analysis_end].some(v=>v!==null&&typeof v!=='string'))throw new Error('Invalid saved evidence row.');
     if(n.labelOffset&&![n.labelOffset.x,n.labelOffset.y].every(Number.isFinite))throw new Error('Invalid label pointer.');
@@ -153,6 +175,7 @@ function validateNetwork(value){
   }
   const edges=new Set();for(const e of value.edges){if(!e.id||edges.has(e.id)||!ids.has(e.from)||!ids.has(e.to)||e.from===e.to||!Object.hasOwn(colours,e.colour))throw new Error('Invalid connector.');if(e.bends!==undefined&&(!Array.isArray(e.bends)||e.bends.length>32||e.bends.some(p=>!p||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6))))throw new Error('Invalid connector bends (maximum 32).');edges.add(e.id);}
   for(const object of [...value.nodes,...value.edges]){
+    validateInspectorProperties(object);
     if(object.detrimentLinks===undefined)continue;
     const links=object.detrimentLinks;
     if(!object.contextSource||!links||typeof links!=='object'||Array.isArray(links)||
@@ -196,9 +219,8 @@ function readContextRow(line,lineNumber){
   if(line.endsWith(','))fields.push('');
   return fields;
 }
-// Read the metric, combined InfoWorks native CSV export. Only node and
-// conduit blocks are interpreted; every other block is disclosed in the audit.
-const nativeLinks=new Set(['hw_conduit','hw_pump','hw_weir','hw_sluice','hw_flap_valve','hw_screen','hw_user_control','hw_orifice']);
+// Read metric InfoWorks node and link exports. Unknown blocks are disclosed in the audit.
+const nativeLinks=new Set(['hw_conduit','hw_pump','hw_weir','hw_sluice','hw_flap_valve','hw_screen','hw_user_control','hw_orifice','hw_outlet']);
 function nativeContextText(name,text){
   if(/^\s*\*{4}/.test(text))return text.trimStart();
   // Separate-table exports identify the section in the filename.
@@ -215,20 +237,48 @@ function nativeContextText(name,text){
   }
   throw new Error('Keep the ICM table suffix on separate CSV files (for example, network_node.csv).');
 }
-function importNativeContext(text){
-  const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/);
+function splitNativeRecords(text){
+  const records=[];let start=0,row=1,startRow=1,quoted=false;
+  for(let i=0;i<text.length;i++){
+    const char=text[i];
+    if(char==='"'){
+      if(quoted&&text[i+1]==='"')i++;
+      else quoted=!quoted;
+    }
+    if(char==='\n'){
+      if(!quoted){
+        records.push({line:text.slice(start,i).replace(/\r$/,''),row:startRow});
+        start=i+1;startRow=row+1;
+      }
+      row++;
+    }
+  }
+  if(quoted)throw new Error('Network context row '+startRow+': unterminated CSV quote.');
+  if(start<text.length)records.push({line:text.slice(start).replace(/\r$/,''),row:startRow});
+  return records;
+}
+function importNativeContext(input){
+  const inputs=Array.isArray(input)?input:[{name:'',text:input}];
+  const lines=inputs.flatMap(({name,text})=>{
+    const original=text.replace(/^\uFEFF/,'');
+    const combined=/^\s*\*{4}/.test(original);
+    const content=name&&!combined?nativeContextText(name,original):original;
+    return splitNativeRecords(content).map(({line,row})=>({
+      line,file:name,sourceRow:row-(name&&!combined?1:0),
+    }));
+  });
   const network=empty(),nodes=new Map(),blocks=new Set(),warnings=new Set();
   const nodeTypes=new Map([['manhole','manhole'],['outfall','outfall'],['outfall 2d','outfall'],
     ['storage','tank'],['pond','tank'],['break','junction'],['connect 2d','junction']]);
   const supported=type=>type==='hw_node'||nativeLinks.has(type);
-  let section=null,headers=null,leadingMetadata=true;
+  let section=null,headers=null,fieldNames=[],fieldLabels=[],fieldUnits=[],leadingMetadata=true;
   const pending=[];
-  for(const [index,line] of lines.entries()){
+  for(const [index,{line,file,sourceRow}] of lines.entries()){
     if(!line.trim())continue;
-    const block=/^\*{4}\s*([a-z0-9_]+)\s*$/i.exec(line);
+    const block=/^\s*\*{4}\s*([a-z0-9_]+)\s*$/i.exec(line);
     const fail=message=>{throw new Error('ICM context row '+(index+1)+': '+message);};
     if(block){
-      section=block[1].toLowerCase();headers=null;leadingMetadata=true;
+      section=block[1].toLowerCase();headers=null;fieldLabels=[];fieldUnits=[];leadingMetadata=true;
       if(section==='deletes')fail('delete instructions are not supported.');
       if(blocks.has(section)&&supported(section))fail('duplicate network table.');
       blocks.add(section);
@@ -237,8 +287,9 @@ function importNativeContext(text){
     }
     if(!section)fail('expected a native table delimiter.');
     if(!supported(section))continue;
-    const fields=readContextRow(line,index+1).map(value=>value.trim());
+    const raw=readContextRow(line,index+1),fields=raw.map(value=>value.trim());
     if(!headers){
+      fieldNames=fields;
       headers=fields.map(value=>value.toLowerCase());
       if(new Set(headers.filter(Boolean)).size!==headers.filter(Boolean).length)fail('duplicate field names.');
       const required=section==='hw_node'?['node_id','x','y']:['link_suffix'];
@@ -272,11 +323,18 @@ function importNativeContext(text){
         }
       }
       if(marker==='fielddescription'||marker==='userunits'||description||units){
-        warnings.add('Optional ICM description or unit rows were skipped.');
+        if(marker==='fielddescription'||description)fieldLabels=fields;
+        if(marker==='userunits'||units)fieldUnits=fields;
+        warnings.add('Optional ICM description or unit rows were skipped as assets and retained as field metadata.');
         continue;
       }
       leadingMetadata=false;
     }
+    const sourceAttributes={table:section,file,row:sourceRow,
+      fields:fieldNames.flatMap((name,i)=>name?[{
+        name,label:fieldLabels[i]||'',unit:fieldUnits[i]||'',value:raw[i],
+      }]:[]),
+    };
     const number=key=>{
       const value=row[key];
       if(!value)return null;
@@ -290,7 +348,7 @@ function importNativeContext(text){
         fail('invalid or duplicate node ID or metre coordinates.');
       const kind=row.node_type?.toLowerCase(),type=nodeTypes.get(kind)||'junction';
       if(!nodeTypes.has(kind))warnings.add('Missing or unfamiliar node types use a generic junction symbol.');
-      nodes.set(id,{id:row.node_id,name:row.node_id,type,x,y:-y,colour:'blue',bindings:[],
+      nodes.set(id,{id:row.node_id,name:row.node_id,type,x,y:-y,colour:'blue',bindings:[],sourceAttributes,
         icm:{nodeType:row.node_type||null,groundLevelM:number('ground_level'),chamberFloorM:number('chamber_floor')}});
       if(nodes.size>2000)fail('network exceeds 2,000 points.');
     }else{
@@ -303,7 +361,7 @@ function importNativeContext(text){
       for(const key of ['conduit_length','conduit_width','conduit_height','number_of_barrels'])
         if(icm[key]!==null&&icm[key]<=0)fail('non-positive '+key+'.');
       const edge={id:'ICM '+section.slice(3)+' '+JSON.stringify([from,suffix]),from,to,
-        name:(row.us_node_id||row.upstream_node_id)+'.'+row.link_suffix,colour:'blue',icm};
+        name:(row.us_node_id||row.upstream_node_id)+'.'+row.link_suffix,colour:'blue',icm,sourceAttributes};
       if(row.point_array){
         const packed=/^\{(.*)\}$/.exec(row.point_array);
         const coordinates=packed?.[1].split(',').map(value=>value.trim());
@@ -317,7 +375,7 @@ function importNativeContext(text){
       if(pending.length>5000)fail('network exceeds 5,000 connectors.');
     }
   }
-  if(!nodes.size||!blocks.has('hw_conduit'))throw new Error('Expected hw_node and hw_conduit tables in a combined ICM CSV export.');
+  if(!nodes.size)throw new Error('Expected populated hw_node data in an ICM CSV export.');
   if(pending.some(edge=>!nodes.has(edge.from)||!nodes.has(edge.to)))throw new Error('An ICM conduit references an unknown node.');
   network.nodes=[...nodes.values()];
   network.edges=pending.map(({vertices,...edge})=>{
@@ -365,6 +423,13 @@ function importNetworkContext(text){
   }
   return validateNetwork(result);
 }
+function sameContextFields(previous,next){
+  // Compare original values and units, excluding file/row and translated coordinates.
+  const attributes=asset=>(asset.sourceAttributes?.fields||[]).filter(field=>!['x','y','point_array'].includes(field.name.toLowerCase()))
+    .map(({name,unit,value})=>[name.toLowerCase(),unit,value]).sort((a,b)=>a[0].localeCompare(b[0]));
+  return JSON.stringify(previous.icm)===JSON.stringify(next.icm)&&
+    JSON.stringify(attributes(previous))===JSON.stringify(attributes(next));
+}
 function applyContextRevision(current,imported,format){
   if(current.nodes.length&&current.contextFormat!==format)
     throw new Error('Use an empty schematic or revise a previously imported context of the same format.');
@@ -375,10 +440,12 @@ function applyContextRevision(current,imported,format){
   const nodes=imported.nodes.map(node=>{
     const old=previousNodes.get(node.id);
     if(old&&!old.contextSource)throw new Error('An imported node ID conflicts with a manually drawn node.');
-    const next={...node,contextSource:true,sourcePosition:{x:node.x,y:node.y}};
+    const next={...node,contextSource:true,sourceName:node.name,sourcePosition:{x:node.x,y:node.y}};
     if(old?.type===node.type){
-      for(const key of ['pinned','nameOffset','labelOffset','review','bindings','defaults','gap','exclusions','confirmed','monitorId'])
+      for(const key of ['pinned','nameOffset','labelOffset','review','bindings','defaults','gap','exclusions','confirmed','monitorId','customProperties','seriesLinks','colour'])
         if(old[key]!==undefined)next[key]=old[key];
+      if(old.name!==(old.sourceName??node.name))next.name=old.name;
+      if(sameContextFields(old,node))for(const key of ['applied','detrimentLinks'])if(old[key]!==undefined)next[key]=old[key];
       if(old.pinned||old.x!==old.sourcePosition?.x||old.y!==old.sourcePosition?.y){
         next.x=old.x;next.y=old.y;
       }
@@ -389,15 +456,26 @@ function applyContextRevision(current,imported,format){
   const edges=imported.edges.map(edge=>{
     const old=previousEdges.get(edge.id);
     if(old&&!old.contextSource)throw new Error('An imported link ID conflicts with a manually drawn connector.');
-    const next={...edge,contextSource:true,sourceBends:edge.bends||[]};
+    const next={...edge,contextSource:true,sourceName:edge.name,sourceBends:edge.bends||[]};
     if(old?.from===edge.from&&old?.to===edge.to){
       if(JSON.stringify(old.bends||[])!==JSON.stringify(old.sourceBends||[]))next.bends=old.bends||[];
-      for(const key of ['labelOffset','review','arrow'])
+      if(old.name!==(old.sourceName??edge.name))next.name=old.name;
+      if(sameContextFields(old,edge)&&old.detrimentLinks!==undefined)next.detrimentLinks=old.detrimentLinks;
+      for(const key of ['labelOffset','review','arrow','customProperties','seriesLinks','colour','monitorId'])
         if(old[key]!==undefined)next[key]=old[key];
     }
     return next;
   }).concat(current.edges.filter(edge=>!edge.contextSource&&ids.has(edge.from)&&ids.has(edge.to)));
-  return validateNetwork({...current,contextFormat:format,nodes,edges,views:[]});
+  const nextNodes=new Map(nodes.map(n=>[n.id,n])),nextEdges=new Map(edges.map(e=>[e.id,e]));
+  const views=(current.views||[]).flatMap(view=>{
+    const positions=view.positions.filter(({id})=>nextNodes.has(id)&&previousNodes.get(id)?.type===nextNodes.get(id).type);
+    const geometry=(view.edges||[]).filter(({id})=>{
+      const old=previousEdges.get(id),next=nextEdges.get(id);
+      return old&&next&&old.from===next.from&&old.to===next.to;
+    });
+    return positions.length||geometry.length?[{...view,positions,edges:geometry}]:[];
+  });
+  return validateNetwork({...current,contextFormat:format,nodes,edges,views});
 }
 function conduitTrial(edge){
   const fields=edge?.icm;
