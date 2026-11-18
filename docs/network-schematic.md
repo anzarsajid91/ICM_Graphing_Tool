@@ -147,11 +147,20 @@ trimmed or aligned to obtain a colour.
 ## Save and capture
 
 Layouts and applied evidence are saved in the browser and included in the existing
-workspace JSON export. The **Save / export** dropdown overlays the canvas without moving the toolbar,
+workspace JSON export. The **Save / Export / Load** dropdown overlays the canvas without moving the toolbar,
 and closes after selecting an action, clicking outside or pressing Escape.
 **Save network / Load network** provides a separate network
 JSON. Raw files are not embedded: reimport files with matching SHA-256 fingerprints
 to validate saved evidence. Missing or changed files cannot retain current RAG.
+
+Turn on **Zoom** to zoom at the pointer with the mouse wheel. Press and drag the
+middle mouse button to pan in any mode. Turn Zoom off to scroll the page with
+the wheel. The **Pan**, **−**, **+** and **Fit** buttons remain available.
+
+**Clear map** asks for confirmation before removing the current schematic and its
+saved views, snapshots and evidence. Imported source files and exported copies
+remain available. Use **Edit network → Undo** to restore the cleared map before
+reloading. Unlock a locked map under **Tools → Layout** before clearing it.
 
 **Capture PNG** exports the visible canvas at twice its screen resolution, including
 the currently visible portion of the open evidence table. Pan/zoom/Fit first to
@@ -190,7 +199,7 @@ be recalculated; their original evidence remains available for audit.
 
 ### Canonical network context CSV preview
 
-Open an empty schematic and select the CSV using **Save / export → Load network**.
+Open an empty schematic and select the CSV using **Save / Export / Load → Load network**.
 Use UTF-8, metre coordinates, separate node and link IDs, and explicit nominal
 upstream and downstream node IDs. Fields may be quoted on one line. Coordinates
 use x east and y north, within ±1,000,000 m per axis.

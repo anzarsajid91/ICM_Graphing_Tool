@@ -307,6 +307,7 @@ function renderCanvas(){
     replacement?.focus({preventScroll:true});
   }
   $('nsZoom').textContent=Number((network.camera.zoom*100).toFixed(1))+'%';$('nsUndo').disabled=!history.length||busy;
+  $('nsClearMap').disabled=!canClearMap();
   renderPopup();
   applyDecorations();
 }
@@ -423,6 +424,8 @@ function render(){
   $('nsEdit').textContent=editing?'Done editing':'Edit network';$('nsEdit').setAttribute('aria-pressed',String(editing));
   $('nsEditTools').hidden=!editing;$('nsLayout').classList.toggle('ns-editing',editing);
   $('nsPan').setAttribute('aria-pressed',String(tool==='pan'));$('nsConnect').setAttribute('aria-pressed',String(tool==='connect'));
+  $('nsZoomMode').setAttribute('aria-pressed',String(tool==='zoom'));
+  $('nsCanvas').dataset.tool=tool;
   $('nsColourChoices').innerHTML=colours(colour,'data-ns-colour');renderFilters();renderDrawer();renderCanvas();renderReview();
 }
 function add(type){
@@ -543,6 +546,22 @@ function updateField(target){
 function removeSelected(){
   if(busy||prefs().locked)return;checkpoint();const ids=new Set([...multi,selected]);network.nodes=network.nodes.filter(n=>!ids.has(n.id));network.edges=network.edges.filter(e=>!ids.has(e.id)&&!ids.has(e.from)&&!ids.has(e.to));multi.clear();selected=null;popupVisible=false;changed();renderDrawer();
 }
+function canClearMap(){
+  return !busy&&!drag&&!prefs().locked&&Boolean(
+    network.nodes.length||network.edges.length||network.views.length||network.reviewSnapshots.length||network.contextFormat
+  );
+}
+function clearMap(){
+  checkpoint();
+  network=C.empty();
+  selected=null;connectFrom=null;highlight=null;popupVisible=false;tool='select';
+  multi.clear();freshness.clear();hideHover();
+  $('nsPicker').hidden=true;
+  $('nsAuditResult').textContent='';
+  persist();render();
+  $('nsCanvas').focus({preventScroll:true});
+  status('Map cleared. Imported sources are still available. Undo is available in Edit network until you reload.');
+}
 function addBend(e,index,p){
   if(!e||busy||prefs().locked||(e.bends||[]).length>=32)return false;
   checkpoint();e.bends=e.bends||[];e.bends.splice(index,0,p);changed(true);renderDrawer();return true;
@@ -569,29 +588,38 @@ function onClick(event){
   }
   if(t.id==='nsCalculate'){void calculate();return;}
 }
+function captureDrag(event,details){
+  drag={...details,pointerId:event.pointerId};
+  const canvas=$('nsCanvas');
+  canvas.setPointerCapture(event.pointerId);
+  if(drag.kind==='pan')canvas.dataset.panning='';
+  event.preventDefault();
+}
 function onPointerDown(event){
-  if(event.button!==0||event.target.closest('#nsPopup,#nsPicker,#nsHover,.ns-camera-tools'))return;
+  if(drag||!event.target.closest('#nsSvg')||(event.button!==0&&event.button!==1))return;
+  const pan={kind:'pan',x:event.clientX,y:event.clientY,camera:{...network.camera},moved:false};
+  if(event.button===1||tool==='pan'||tool==='zoom'){
+    hideHover();captureDrag(event,pan);return;
+  }
   const canvas=$('nsCanvas'),rect=canvas.getBoundingClientRect(),id=event.target.closest('[data-ns-node]')?.dataset.nsNode,wire=event.target.closest('[data-ns-edge]')?.dataset.nsEdge;
-  if(wire&&editing&&tool!=='pan'){
+  if(wire&&editing){
     selected=wire;multi.clear();const e=edge(),edgeLabel=event.target.closest('[data-ns-edge-label]'),bend=event.target.closest('[data-ns-bend]'),add=event.target.closest('[data-ns-add-bend]');
-    if(tool==='select'&&!busy&&!prefs().locked&&edgeLabel){checkpoint();const offset=e.labelOffset||{x:0,y:0};drag={kind:'edge-label',id:wire,x:event.clientX,y:event.clientY,startX:offset.x,startY:offset.y};canvas.setPointerCapture(event.pointerId);event.preventDefault();}
+    if(tool==='select'&&!busy&&!prefs().locked&&edgeLabel){checkpoint();const offset=e.labelOffset||{x:0,y:0};captureDrag(event,{kind:'edge-label',id:wire,x:event.clientX,y:event.clientY,startX:offset.x,startY:offset.y});}
     if(tool==='select'&&!busy&&!prefs().locked&&(bend||add)){
       const index=Number(bend?.dataset.nsBend??add.dataset.nsAddBend);
       if(add){if(!addBend(e,index,world(event.clientX-rect.left,event.clientY-rect.top)))return;}else checkpoint();
-      const p=e.bends[index];drag={kind:'bend',id:wire,index,x:event.clientX,y:event.clientY,startX:p.x,startY:p.y,moved:false};
-      canvas.setPointerCapture(event.pointerId);event.preventDefault();
+      const p=e.bends[index];captureDrag(event,{kind:'bend',id:wire,index,x:event.clientX,y:event.clientY,startX:p.x,startY:p.y,moved:false});
     }
     renderDrawer();renderCanvas();return;
   }
   const label=event.target.closest('[data-ns-label],[data-ns-summary]');
-  if(id&&tool!=='pan'){if(event.shiftKey&&tool==='select'){if(multi.has(id))multi.delete(id);else multi.add(id);selected=id;popupVisible=false;renderCanvas();renderReview();return;}selectPoint(id);if(!editing||tool==='connect'||busy)return;}
+  if(id){if(event.shiftKey&&tool==='select'){if(multi.has(id))multi.delete(id);else multi.add(id);selected=id;popupVisible=false;renderCanvas();renderReview();return;}selectPoint(id);if(!editing||tool==='connect'||busy)return;}
   const n=id?network.nodes.find(n=>n.id===id):null;
-  if(n&&editing&&tool==='select'&&!prefs().locked&&(!n.pinned||label)){checkpoint();const offset=C.labelOffset(n);drag={kind:label?'label':'node',id,x:event.clientX,y:event.clientY,startX:label?offset.x:n.x,startY:label?offset.y:n.y,moved:false,group:network.nodes.filter(x=>multi.has(x.id)&&!x.pinned).map(x=>({id:x.id,x:x.x,y:x.y}))};}
-  else{drag={kind:'pan',x:event.clientX,y:event.clientY,camera:{...network.camera},moved:false};}
-  canvas.setPointerCapture(event.pointerId);event.preventDefault();
+  if(n&&editing&&tool==='select'&&!prefs().locked&&(!n.pinned||label)){checkpoint();const offset=C.labelOffset(n);captureDrag(event,{kind:label?'label':'node',id,x:event.clientX,y:event.clientY,startX:label?offset.x:n.x,startY:label?offset.y:n.y,moved:false,group:network.nodes.filter(x=>multi.has(x.id)&&!x.pinned).map(x=>({id:x.id,x:x.x,y:x.y}))});}
+  else captureDrag(event,pan);
 }
 function onPointerMove(event){
-  if(!drag)return;const dx=event.clientX-drag.x,dy=event.clientY-drag.y;drag.moved=drag.moved||Math.abs(dx)+Math.abs(dy)>3;
+  if(drag?.pointerId!==event.pointerId)return;const dx=event.clientX-drag.x,dy=event.clientY-drag.y;drag.moved=drag.moved||Math.abs(dx)+Math.abs(dy)>3;
   if(drag.kind==='node'){for(const saved of drag.group||[]){const n=network.nodes.find(n=>n.id===saved.id),step=prefs().snap?20:0;n.x=saved.x+dx/network.camera.zoom;n.y=saved.y+dy/network.camera.zoom;if(step){n.x=Math.round(n.x/step)*step;n.y=Math.round(n.y/step)*step;}}}
   else if(drag.kind==='label'){const n=network.nodes.find(n=>n.id===drag.id);if(n)n.nameOffset={x:Math.max(-10000,Math.min(10000,drag.startX+dx)),y:Math.max(-10000,Math.min(10000,drag.startY+dy))};}
   else if(drag.kind==='edge-label'){const e=edge();if(e)e.labelOffset={x:Math.max(-10000,Math.min(10000,drag.startX+dx)),y:Math.max(-10000,Math.min(10000,drag.startY+dy))};}
@@ -599,7 +627,23 @@ function onPointerMove(event){
   else{network.camera.x=drag.camera.x+dx;network.camera.y=drag.camera.y+dy;}
   if(frame===null)frame=requestAnimationFrame(()=>{frame=null;if(drag?.kind==='label')renderCanvas();else renderGeometry();});
 }
-function onPointerUp(event){if(!drag)return;if(frame!==null){cancelAnimationFrame(frame);frame=null;}drag=null;renderCanvas();try{$('nsCanvas').releasePointerCapture(event.pointerId);}catch{}persist();if(editing)renderDrawer();}
+function onPointerUp(event){
+  if(drag?.pointerId!==event.pointerId)return;
+  if(frame!==null){cancelAnimationFrame(frame);frame=null;}
+  const canvas=$('nsCanvas');
+  drag=null;delete canvas.dataset.panning;renderCanvas();
+  if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);
+  persist();if(editing)renderDrawer();
+}
+function onWheel(event){
+  if(tool!=='zoom'||event.ctrlKey||event.metaKey||!event.deltaY)return;
+  event.preventDefault();
+  if(drag)return;
+  const canvas=$('nsCanvas'),rect=canvas.getBoundingClientRect();
+  const pixels=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?canvas.clientHeight:1);
+  const factor=Math.exp(Math.max(-.5,Math.min(.5,-pixels*.0015)));
+  hideHover();zoom(factor,{x:event.clientX-rect.left,y:event.clientY-rect.top});
+}
 function exportRows(){
   const headers=['asset_id','asset_name','type','year','role','scenario','spill_count','duration_hours','eligible','analysis_start','analysis_end','valid_hours','unknown_hours','excluded_hours','count_status','counting_basis','source_name','source_sha256','column','threshold','comparison','continuous_spill','value_min','value_max','unit','quantity','context_start','max_gap_seconds','exclusions','comparison_basis_confirmed','calculated_at','current'];
   const rows=network.nodes.flatMap(n=>(n.applied?.rows||[]).map(r=>({...r,asset_id:n.id,asset_name:n.name,type:n.type,max_gap_seconds:n.applied.settings?.gap??'',exclusions:JSON.stringify(r.exclusions||[]),comparison_basis_confirmed:n.applied.settings?.confirmed??'',calculated_at:n.applied.calculated_at,current:isFresh(n)})));
@@ -1062,14 +1106,17 @@ function mountReview(){
 }
 function mount(){
   const container=root();if(!container)return;
-  container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / export</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network or context CSV</button><button id="nsCsv">Export evidence CSV</button></div></details><input id="nsLoadInput" type="file" accept=".csv,.json" multiple hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
+  container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / Export / Load</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network or context CSV</button><button id="nsCsv">Export evidence CSV</button></div></details><button id="nsClearMap" type="button">Clear map</button><input id="nsLoadInput" type="file" accept=".csv,.json" multiple hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
     '<div id="nsEditTools" class="ns-edit-tools" hidden>'+selectHtml('id="nsAddType"',Object.entries(C.types).filter(([key])=>!['manhole','label'].includes(key)),'cso')+'<button id="nsAddAsset">+ Asset</button><button id="nsAddManhole">+ Manhole</button><button id="nsAddLabel">+ Label</button><button id="nsConnect" aria-pressed="false">Connect</button><span id="nsColourChoices"></span><button id="nsUndo" aria-label="Undo last edit">Undo</button><button id="nsDelete">Delete selected</button></div>'+
-    '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag background to pan; select an asset to review evidence."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button></div></div><aside id="nsPopup" aria-label="Selected asset evidence" hidden></aside><aside id="nsDrawer" aria-label="Asset properties" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
+    '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag the background or use the middle mouse button to pan. Turn on Zoom to use the mouse wheel."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomMode" aria-pressed="false" title="Use the mouse wheel to zoom at the pointer. Drag with the middle mouse button to pan.">Zoom</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button></div></div><aside id="nsPopup" aria-label="Selected asset evidence" hidden></aside><aside id="nsDrawer" aria-label="Asset properties" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
   mounted=true;container.addEventListener('click',onClick);container.addEventListener('change',event=>updateField(event.target));
   $('nsEdit').onclick=()=>{editing=!editing;popupVisible=false;tool='select';connectFrom=null;render();};
   $('nsAddAsset').onclick=()=>add($('nsAddType').value);$('nsAddManhole').onclick=()=>add('manhole');$('nsAddLabel').onclick=()=>add('label');
   $('nsConnect').onclick=()=>{tool=tool==='connect'?'select':'connect';connectFrom=null;render();status('Click the upstream point, then the downstream point.');};
   $('nsPan').onclick=()=>{tool=tool==='pan'?'select':'pan';connectFrom=null;render();};
+  $('nsZoomMode').onclick=()=>{tool=tool==='zoom'?'select':'zoom';connectFrom=null;hideHover();render();
+    status(tool==='zoom'?'Zoom mode on. Scroll the wheel to zoom at the pointer. Drag with the middle mouse button to pan.':'Zoom mode off. The wheel scrolls the page.');
+  };
   $('nsUndo').onclick=()=>undoEdit();$('nsDelete').onclick=removeSelected;
   $('nsZoomIn').onclick=()=>zoom(1.25);$('nsZoomOut').onclick=()=>zoom(.8);$('nsFit').onclick=fit;
   for(const [id,key] of [['nsYear','year'],['nsMetric','metric']])$(id).onchange=()=>{network[key]=$(id).value;changed(true);};
@@ -1080,6 +1127,18 @@ function mount(){
   importDialog.innerHTML='<h3 id="nsContextTitle">Model Context Import Audit</h3><p id="nsContextAudit"></p><ul id="nsContextWarnings"></ul><label id="nsContextUnitsLabel"><input id="nsContextUnits" type="checkbox"> Export uses metres for coordinates, lengths and levels, and millimetres for conduit dimensions and Colebrook–White roughness.</label><label id="nsContextLayoutLabel">Layout <select id="nsContextLayout"><option value="geographic">Geographic coordinates</option><option value="schematic">Engineering schematic</option></select></label><p id="nsContextMessage" role="status"></p><div class="actions"><button id="nsContextApply" type="button">Apply network context</button><button id="nsContextCancel" type="button">Cancel</button></div>';
   container.append(importDialog);
   let stagedContext=null,importGeneration=0;
+  const clearDialog=document.createElement('dialog');
+  clearDialog.setAttribute('aria-labelledby','nsClearMapTitle');
+  clearDialog.setAttribute('aria-describedby','nsClearMapDescription');
+  clearDialog.innerHTML='<h3 id="nsClearMapTitle">Clear map</h3><p id="nsClearMapDescription">Remove all assets, connections, schematic evidence, saved views and snapshots from this map? Imported source files are kept. Undo is available in Edit network until you reload.</p><form method="dialog" class="actions"><button autofocus value="cancel">Cancel</button><button id="nsConfirmClearMap" type="button">Clear map</button></form>';
+  $('nsWorkbench').append(clearDialog);
+  $('nsClearMap').onclick=()=>{if(canClearMap())clearDialog.showModal();};
+  $('nsConfirmClearMap').onclick=()=>{
+    if(!canClearMap()){clearDialog.close();return;}
+    ++importGeneration;
+    $('nsLoadInput').value='';
+    clearDialog.close();clearMap();
+  };
   importDialog.addEventListener('close',()=>{stagedContext=null;});
   $('nsContextCancel').onclick=()=>importDialog.close();
   $('nsContextApply').onclick=()=>{
@@ -1154,6 +1213,11 @@ function mount(){
   root().addEventListener('keydown',event=>{if(event.key==='Escape'){const menu=root().querySelector('.ns-export-menu');if(menu?.open){menu.open=false;menu.querySelector('summary').focus();}}});
   $('nsCsv').onclick=()=>{root().querySelector('.ns-export-menu').open=false;exportRows();};$('nsCapture').onclick=()=>capture().catch(error=>status(error.message));
   const canvas=$('nsCanvas');canvas.addEventListener('pointerdown',onPointerDown);canvas.addEventListener('pointermove',onPointerMove);canvas.addEventListener('pointerup',onPointerUp);canvas.addEventListener('pointercancel',onPointerUp);
+  canvas.addEventListener('lostpointercapture',onPointerUp);
+  const svg=$('nsSvg');
+  svg.addEventListener('wheel',onWheel,{passive:false});
+  canvas.addEventListener('auxclick',event=>{if(event.button===1&&(event.target===canvas||svg.contains(event.target)))event.preventDefault();});
+
   $('nsPicker').addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeSourcePicker();}});
   canvas.addEventListener('keydown',event=>{if(event.target.closest('#nsPopup,#nsPicker'))return;const n=event.target.closest('[data-ns-node]'),e=event.target.closest('[data-ns-edge]');if(['Enter',' '].includes(event.key)&&(n||e)){event.preventDefault();if(n)selectPoint(n.dataset.nsNode);else{selected=e.dataset.nsEdge;renderDrawer();renderCanvas();}return;}
     if(event.key==='Escape'){connectFrom=null;popupVisible=false;$('nsPicker').hidden=true;renderPopup();return;}
