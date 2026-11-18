@@ -78,6 +78,173 @@ try {
       "Filechooser events, unchanged empty selection count, Ready row and observed-series option checked",
   });
 
+  // Exercise the real directory traversal with synthetic handles. This tests the
+  // application process, not the browser/OS permission dialog itself.
+  const beforeDirectory = await page.evaluate(() =>
+    [...state.files.values()].map((file) => ({
+      id: file.id,
+      hash: file.hash,
+      status: file.status,
+    })),
+  );
+  await page.evaluate((csv) => {
+    window.directoryPickerCase = "success";
+    window.directoryPickerCalls = [];
+    const entry = (name) => ({
+      kind: "file",
+      getFile: async () => new File([csv], name, { type: "text/csv" }),
+    });
+    const hidden = {
+      kind: "file",
+      getFile: async () => {
+        throw new Error("Hidden directory entry must not be read");
+      },
+    };
+    const nested = {
+      kind: "directory",
+      async *entries() {
+        yield ["Native-B.csv", entry("Native-B.csv")];
+      },
+    };
+    const root = {
+      kind: "directory",
+      async *entries() {
+        yield ["Native-A.csv", entry("Native-A.csv")];
+        yield ["nested", nested];
+        yield [".hidden.csv", hidden];
+        yield [
+          ".private",
+          {
+            kind: "directory",
+            async *entries() {
+              throw new Error("Hidden directory must not be traversed");
+            },
+          },
+        ];
+        yield ["ignored.txt", entry("ignored.txt")];
+      },
+    };
+    window.showDirectoryPicker = async (options) => {
+      window.directoryPickerCalls.push({ ...options });
+      if (window.directoryPickerCase === "abort")
+        throw new DOMException("Synthetic cancellation", "AbortError");
+      if (window.directoryPickerCase === "denied")
+        throw new DOMException(
+          "Synthetic folder permission denied",
+          "NotAllowedError",
+        );
+      return root;
+    };
+  }, csv);
+  await page.locator("#chooseFolderBtn").click();
+  await page.waitForFunction(
+    () =>
+      ["Native-A.csv", "Native-B.csv"].every((name) =>
+        [...state.files.values()].some(
+          (file) => file.file.name === name && file.status === "ready",
+        ),
+      ) && !document.body.classList.contains("operation-busy"),
+    null,
+    { timeout: 90000 },
+  );
+  const directoryRows = await page.evaluate(() =>
+    [...state.files.values()]
+      .filter((file) => file.file.name.startsWith("Native-"))
+      .map((file) => ({
+        name: file.file.name,
+        path: file.displayName,
+        status: file.status,
+      })),
+  );
+  assert.deepEqual(directoryRows.map((row) => row.path).sort(), [
+    "Native-A.csv",
+    "nested/Native-B.csv",
+  ]);
+  assert.equal(
+    await page.evaluate(() => state.files.size),
+    beforeDirectory.length + 2,
+  );
+  assert.deepEqual(
+    await page.evaluate(
+      (ids) =>
+        [...state.files.values()]
+          .filter((file) => ids.includes(file.id))
+          .map((file) => ({
+            id: file.id,
+            hash: file.hash,
+            status: file.status,
+          })),
+      beforeDirectory.map((file) => file.id),
+    ),
+    beforeDirectory,
+  );
+  assert.ok(
+    (await page.locator("#observedSelect option").allTextContents()).some(
+      (text) => text.includes("Native-B.csv"),
+    ),
+  );
+  outcomes.push({
+    route: "data/time-series",
+    control: "#chooseFolderBtn",
+    status: "PASS",
+    expected:
+      "Traverse synthetic read-only directory handles recursively; skip hidden/unrecognised entries and preserve prior sources",
+    observed: directoryRows,
+    scope: "Synthetic API handles; native permission dialog unverified",
+  });
+  const afterDirectory = await page.evaluate(() =>
+    [...state.files.values()].map((file) => ({
+      id: file.id,
+      hash: file.hash,
+      status: file.status,
+    })),
+  );
+  for (const pickerCase of ["abort", "denied"]) {
+    await page.evaluate((value) => {
+      window.directoryPickerCase = value;
+    }, pickerCase);
+    await page.locator("#chooseFolderBtn").click();
+    await page.waitForFunction(
+      () => !document.body.classList.contains("operation-busy"),
+    );
+    assert.deepEqual(
+      await page.evaluate(() =>
+        [...state.files.values()].map((file) => ({
+          id: file.id,
+          hash: file.hash,
+          status: file.status,
+        })),
+      ),
+      afterDirectory,
+    );
+    if (pickerCase === "denied")
+      assert.match(
+        await page.locator("#poolSummary").innerText(),
+        /Synthetic folder permission denied/,
+      );
+    else
+      assert.doesNotMatch(
+        await page.locator("#poolSummary").innerText(),
+        /Operation failed/,
+      );
+    outcomes.push({
+      route: "data/time-series",
+      control: "#chooseFolderBtn",
+      status: "PASS",
+      expected:
+        pickerCase === "abort"
+          ? "Cancellation preserves all source state without an error"
+          : "Denied directory access shows a local error and preserves all source state",
+      observed: { sourceCount: afterDirectory.length, unchanged: true },
+      scope: "Synthetic API rejection; native permission dialog unverified",
+    });
+  }
+  assert.deepEqual(await page.evaluate(() => window.directoryPickerCalls), [
+    { mode: "read" },
+    { mode: "read" },
+    { mode: "read" },
+  ]);
+
   // Exercise the documented folder-input fallback used without File System Access.
   // Native OS directory dialogs remain outside headless browser automation.
   await page.evaluate(() => {
@@ -203,11 +370,59 @@ try {
     );
     if (!(await page.locator("#chooseAssocBtn").isVisible()))
       await collapse.click();
+    // The real handler publishes association records before awaiting the source
+    // fingerprint and rendering. Hold that real digest result on the first
+    // route to reproduce the pre-render state deterministically.
+    if (route === "fdv-check") {
+      await page.evaluate(() => {
+        const original = sha256;
+        sha256 = async (file) => {
+          const digest = await original(file);
+          if (file.name !== "fm_rg_assoc.xlsx") return digest;
+          window.associationDigestHeld = true;
+          return new Promise((resolve) => {
+            window.releaseAssociationDigest = () => {
+              sha256 = original;
+              resolve(digest);
+            };
+          });
+        };
+      });
+    }
     chooser = page.waitForEvent("filechooser");
     await page.locator("#chooseAssocBtn").click();
     await (await chooser).setFiles(associationPath);
+    if (route === "fdv-check") {
+      await page.waitForFunction(() => window.associationDigestHeld === true);
+      assert.equal(
+        await page.evaluate(
+          () => window.__ICM_WORKBENCH__.survey.association.records.length,
+        ),
+        9,
+      );
+      assert.equal(
+        await page.locator("#surveyAssociationTable tbody > tr").count(),
+        0,
+      );
+      assert.equal(
+        await page.evaluate(() =>
+          document.body.classList.contains("operation-busy"),
+        ),
+        true,
+      );
+      await page.evaluate(() => window.releaseAssociationDigest());
+    }
     await page.waitForFunction(
       () => window.__ICM_WORKBENCH__.survey.association?.records?.length === 9,
+      null,
+      { timeout: 90000 },
+    );
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll("#surveyAssociationTable tbody > tr")
+          .length === 9 &&
+        !!window.__ICM_WORKBENCH__.survey.associationSource?.sha256 &&
+        !document.body.classList.contains("operation-busy"),
       null,
       { timeout: 90000 },
     );
