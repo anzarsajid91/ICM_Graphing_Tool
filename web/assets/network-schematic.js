@@ -7,11 +7,13 @@ const $=id=>document.getElementById(id),uid=()=>crypto.randomUUID();
 // Keep escaping explicit in this module so static analysis resolves every sink.
 function html(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 let network=C.empty(),selected=null,editing=false,tool='select',colour='red',connectFrom=null,drag=null,busy=false,history=[],mounted=false,popupVisible=false,observer=null,saveTimer=null;
+let inspectorTab='evidence',selectionKind='node';
 let redo=[],multi=new Set(),highlight=null,hoverTimer=null,frame=null,analysisGeneration=0,analysisContext=null,analysisTimer=null,analysisReturnFocus=null,pickerReturnFocus=null;
 const freshness=new Map();
 const prefs=()=>R.preferences(network);
 const root=()=>$('tab-spill-network');
-const node=()=>network.nodes.find(n=>n.id===selected),edge=()=>network.edges.find(n=>n.id===selected);
+const node=()=>selectionKind==='node'?network.nodes.find(n=>n.id===selected):null;
+const edge=()=>selectionKind==='edge'?network.edges.find(e=>e.id===selected):null;
 const asset=n=>n&&!['manhole','label','junction','outfall'].includes(n.type);
 const finite=(v,d=0)=>Number.isFinite(Number(v))?Number(v):d;
 const f=(v,d=1)=>v===null||v===undefined?'—':Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
@@ -31,7 +33,7 @@ function persist(){state.networkSchematicWorkspace=snapshot();clearTimeout(saveT
 function status(message){if($('nsStatus'))$('nsStatus').textContent=message;}
 function changed(geometry=false){if(!geometry)freshness.clear();persist();renderCanvas();if(!geometry)renderFilters();renderReview();}
 function restore(value){
-  network=value?C.validateNetwork(value):C.empty();selected=null;popupVisible=false;history=[];redo=[];multi.clear();highlight=null;freshness.clear();
+  network=value?C.validateNetwork(value):C.empty();branchIsolated=false;selected=null;popupVisible=false;history=[];redo=[];multi.clear();highlight=null;freshness.clear();
   state.networkSchematicWorkspace=snapshot();if(mounted){render();persist();}
 }
 function point(x,y){return {x:x*network.camera.zoom+Number(network.camera.x),y:y*network.camera.zoom+Number(network.camera.y)};}
@@ -130,8 +132,8 @@ const detrimentKinds=[['flooding','Flooding'],['level','Level / freeboard'],['sp
 function detrimentKind(){
   return detrimentKinds.some(([id])=>id===prefs().detrimentKind)?prefs().detrimentKind:'flooding';
 }
-function detrimentView(){
-  return window.ICMDetriment?.schematicEvidence(detrimentKind());
+function detrimentView(kind=detrimentKind()){
+  return window.ICMDetriment?.schematicEvidence(kind);
 }
 function detrimentBadge(object,view,x,y){
   const link=object.detrimentLinks?.[detrimentKind()];
@@ -193,22 +195,23 @@ function renderScene(includeHandles=true){
   const shown=visibleNodes(),shownIds=new Set(shown.map(n=>n.id)),byId=new Map(network.nodes.map(n=>[n.id,n]));
   const routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y));
   for(const e of network.edges){
-    if(!shownIds.has(e.from)||!shownIds.has(e.to))continue;
+    if(!shownIds.has(e.from)||!shownIds.has(e.to)||(branchIsolated&&highlight&&!highlight.wires.has(e.id)))continue;
     const route=routes.get(e.id);if(!route)continue;
     const a=byId.get(e.from),b=byId.get(e.to),colour=C.colours[e.colour];
     const group=svgElement('g',{'data-ns-edge':e.id,tabindex:0,role:'button','aria-label':'Connector '+(e.name||a.name+' to '+b.name)});
     group.append(svgElement('path',{d:route.path,fill:'none',stroke:'transparent','stroke-width':14}),
-      svgElement('path',{'data-ns-wire':'',d:route.path,fill:'none',stroke:colour,'stroke-width':e.id===selected?3:2}));
+      svgElement('path',{'data-ns-wire':'',d:route.path,fill:'none',stroke:colour,'stroke-width':selectionKind==='edge'&&e.id===selected?4:2}));
     if(e.arrow!==false&&route.arrow.length){
       group.append(svgElement('polygon',{'data-ns-direction':'',points:polygonPoints(route.arrow),fill:colour}));
     }
-    if(e.name){
+    const showLinkLabel=editing||selectionKind==='edge'&&e.id===selected||prefs().detail==='full'||prefs().detail==='auto'&&network.camera.zoom>=.65;
+    if(e.name&&showLinkLabel){
       group.append(svgElement('text',{'data-ns-edge-label':'',x:route.label.x+Number(e.labelOffset?.x||0),
         y:route.label.y+Number(e.labelOffset?.y||0),fill:colour,'font-size':13},e.name));
     }
     const badge=detrimentLayer&&detrimentBadge(e,comparison,route.label.x-10,route.label.y-5);
     if(badge)group.append(badge);
-    if(includeHandles&&editing&&e.id===selected)renderEdgeHandles(group,route,(e.bends||[]).length);
+    if(includeHandles&&editing&&selectionKind==='edge'&&e.id===selected)renderEdgeHandles(group,route,(e.bends||[]).length);
     scene.append(group);
   }
   for(const n of shown){
@@ -217,7 +220,7 @@ function renderScene(includeHandles=true){
     const title=n.name+' · '+C.types[n.type];
     const group=svgElement('g',{'data-ns-node':n.id,transform:translate(p.x,p.y),tabindex:0,role:'button','aria-label':title});
     group.append(svgElement('title',{},title));
-    if(selected===n.id||multi.has(n.id)){
+    if(selectionKind==='node'&&selected===n.id||multi.has(n.id)){
       group.append(svgElement('rect',{x:-42,y:-32,width:84,height:64,rx:8,fill:'none',stroke:'#0b8f96','stroke-width':2}));
     }
     if(!box.circle){
@@ -293,6 +296,141 @@ function declutterLabels(svg){
     }
   }
 }
+let branchIsolated=false,traceOwner=null,minimapBounds=null,minimapPointer=null,lastInspectClick=null;
+const touchPointers=new Map();
+let touchTap=null;
+function objectAt(target){
+  const point=target.closest('[data-ns-node]'),wire=target.closest('[data-ns-edge]');
+  if(point)return {id:point.dataset.nsNode,kind:'node'};
+  if(wire)return {id:wire.dataset.nsEdge,kind:'edge'};
+  return null;
+}
+function inspectObject(object){
+  if(object.kind==='edge')selectConnector(object.id);else selectPoint(object.id);
+}
+function focusSelected(){
+  const n=node(),e=edge();
+  if(!n&&!e)return;
+  const points=n?[n]:[network.nodes.find(item=>item.id===e.from),...(e.bends||[]),network.nodes.find(item=>item.id===e.to)].filter(Boolean);
+  if(!points.length)return;
+  const {width,height}=dimensions(),xs=points.map(p=>p.x),ys=points.map(p=>p.y);
+  const x=(Math.max(...xs)+Math.min(...xs))/2,y=(Math.max(...ys)+Math.min(...ys))/2;
+  const spanX=Math.max(...xs)-Math.min(...xs),spanY=Math.max(...ys)-Math.min(...ys);
+  const z=n?Math.max(.7,network.camera.zoom):Math.max(network.contextFormat ? .002 : .2,Math.min(1.5,(width-110)/Math.max(1,spanX),(height-110)/Math.max(1,spanY)));
+  network.camera={x:width/2-x*z,y:height/2-y*z,zoom:z};changed(true);
+  status('Selected object centred.');
+}
+function resetView(){
+  highlight=null;branchIsolated=false;
+  network.preferences={...prefs(),type:'all',health:'all',result:'all',detail:'auto'};
+  render();fit();status('Full network view restored.');
+}
+function traceSelection(direction){
+  const e=edge(),start=node()?.id||(direction==='up'?e?.from:e?.to);
+  if(!start){status('Select an asset or link to trace.');return;}
+  network.preferences={...prefs(),type:'all',health:'all',result:'all'};
+  highlight=R.trace(network.nodes,network.edges,start,direction);
+  traceOwner=selectionKind+':'+selected;
+  if(e){highlight.ids.add(e.from);highlight.ids.add(e.to);highlight.wires.add(e.id);}
+  persist();renderCanvas();renderReview();
+  status((direction==='up'?'Upstream':'Downstream')+' trace · '+highlight.ids.size+' points and '+highlight.wires.size+' links.');
+}
+function toggleIsolation(){
+  if(!highlight)return;
+  branchIsolated=!branchIsolated;
+  renderCanvas();renderReview();status(branchIsolated?'Showing only the traced branch.':'Showing the full filtered network.');
+}
+function renderMinimap(){
+  const map=$('nsMinimap');if(!map)return;
+  const empty=!network.nodes.length;
+  map.toggleAttribute('hidden',empty);
+  if(empty){minimapBounds=null;map.replaceChildren();return;}
+  let left=Infinity,right=-Infinity,top=Infinity,bottom=-Infinity;
+  for(const point of [...network.nodes,...network.edges.flatMap(e=>e.bends||[])]){
+    left=Math.min(left,point.x);right=Math.max(right,point.x);
+    top=Math.min(top,point.y);bottom=Math.max(bottom,point.y);
+  }
+  const scale=Math.min(140/Math.max(1,right-left),80/Math.max(1,bottom-top));
+  minimapBounds={scale,x:80-(left+right)/2*scale,y:50-(top+bottom)/2*scale};
+  const byId=new Map(network.nodes.map(n=>[n.id,n]));
+  const vertex=point=>[Math.round((point.x*scale+minimapBounds.x)*100)/100,Math.round((point.y*scale+minimapBounds.y)*100)/100];
+  const lines=network.edges.map(e=>[byId.get(e.from),...(e.bends||[]),byId.get(e.to)].filter(Boolean).map(vertex).join('L')).join('M');
+  const dots=network.nodes.map(n=>{const [x,y]=vertex(n);return 'M'+x+' '+y+'h.1';}).join('');
+  map.replaceChildren(svgElement('rect',{width:160,height:100,rx:4,fill:'#fff'}),
+    svgElement('path',{d:lines?'M'+lines:'',fill:'none',stroke:'#9ca8b6','stroke-width':.7}),
+    svgElement('path',{d:dots,fill:'none',stroke:'#345788','stroke-width':2.7,'stroke-linecap':'round'}),
+    svgElement('rect',{'data-ns-minimap-viewport':'',fill:'#4f3da51a',stroke:'#4f3da5','stroke-width':1}));
+  updateMinimapViewport();
+}
+function updateMinimapViewport(){
+  const box=$('nsMinimap')?.querySelector('[data-ns-minimap-viewport]');
+  if(!box||!minimapBounds)return;
+  const {width,height}=dimensions(),{scale,x,y}=minimapBounds,topLeft=world(0,0);
+  box.setAttribute('x',topLeft.x*scale+x);box.setAttribute('y',topLeft.y*scale+y);
+  box.setAttribute('width',width/network.camera.zoom*scale);box.setAttribute('height',height/network.camera.zoom*scale);
+}
+function panFromMinimap(event){
+  if(!minimapBounds)return;
+  const rect=$('nsMinimap').getBoundingClientRect(),{width,height}=dimensions();
+  const x=((event.clientX-rect.left)*160/rect.width-minimapBounds.x)/minimapBounds.scale;
+  const y=((event.clientY-rect.top)*100/rect.height-minimapBounds.y)/minimapBounds.scale;
+  network.camera.x=width/2-x*network.camera.zoom;network.camera.y=height/2-y*network.camera.zoom;
+  renderGeometry();persist();
+}
+function closeContext(focus=false){
+  const menu=$('nsContextActions');
+  if(!menu||menu.hidden)return;
+  menu.hidden=true;
+  if(focus)$('nsCanvas').focus({preventScroll:true});
+}
+function showContext(event){
+  const object=objectAt(event.target);
+  if(!object||editing)return;
+  event.preventDefault();
+  inspectObject(object);
+  const canvas=$('nsCanvas'),rect=canvas.getBoundingClientRect(),menu=$('nsContextActions');
+  menu.hidden=false;
+  menu.style.left=Math.max(4,Math.min(event.clientX-rect.left,rect.width-menu.offsetWidth-4))+'px';
+  menu.style.top=Math.max(4,Math.min(event.clientY-rect.top,rect.height-menu.offsetHeight-4))+'px';
+  menu.querySelector('button').focus({preventScroll:true});
+}
+function startTouch(event){
+  if(editing||event.pointerType!=='touch')return false;
+  touchPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+  touchTap=touchPointers.size===1?objectAt(event.target):null;
+  $('nsCanvas').setPointerCapture(event.pointerId);event.preventDefault();hideHover();
+  return true;
+}
+function moveTouch(event){
+  const previous=touchPointers.get(event.pointerId);
+  if(!previous)return false;
+  const next={x:event.clientX,y:event.clientY};
+  touchPointers.set(event.pointerId,next);
+  const dx=next.x-previous.x,dy=next.y-previous.y;
+  if(dx||dy)touchTap=null;
+  const other=[...touchPointers].find(([id])=>id!==event.pointerId)?.[1];
+  if(!other){network.camera.x+=dx;network.camera.y+=dy;}
+  else{
+    const rect=$('nsCanvas').getBoundingClientRect();
+    const before={x:(previous.x+other.x)/2-rect.left,y:(previous.y+other.y)/2-rect.top};
+    const after={x:before.x+dx/2,y:before.y+dy/2};
+    const focus=world(before.x,before.y),distance=Math.hypot(previous.x-other.x,previous.y-other.y);
+    const ratio=distance>1?Math.hypot(next.x-other.x,next.y-other.y)/distance:1;
+    const z=Math.max(network.contextFormat ? .002 : .2,Math.min(4,network.camera.zoom*ratio));
+    network.camera={x:after.x-focus.x*z,y:after.y-focus.y*z,zoom:z};
+  }
+  if(frame===null)frame=requestAnimationFrame(()=>{frame=null;renderGeometry();});
+  return true;
+}
+function endTouch(event){
+  if(!touchPointers.delete(event.pointerId))return false;
+  if(touchPointers.size)return true;
+  if(frame!==null){cancelAnimationFrame(frame);frame=null;}
+  const picked=touchTap;touchTap=null;
+  if(picked&&event.type==='pointerup')inspectObject(picked);
+  persist();renderCanvas();
+  return true;
+}
 function renderCanvas(){
   const svg=$('nsSvg');if(!svg)return;
   const active=document.activeElement;
@@ -309,22 +447,30 @@ function renderCanvas(){
   $('nsZoom').textContent=Number((network.camera.zoom*100).toFixed(1))+'%';$('nsUndo').disabled=!history.length||busy;
   $('nsClearMap').disabled=!canClearMap();
   renderPopup();
-  applyDecorations();
+  applyDecorations();renderMinimap();
+  $('nsFocusSelected').disabled=!node()&&!edge();
+  $('nsIsolateBranch').disabled=!highlight;
+  $('nsIsolateBranch').setAttribute('aria-pressed',String(branchIsolated));
 }
 function renderGeometry(){
   const edges=new Map(network.edges.map(e=>[e.id,e])),nodes=new Map(network.nodes.map(n=>[n.id,n])),routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y));
   for(const g of $('nsSvg').querySelectorAll('[data-ns-node]')){const n=nodes.get(g.dataset.nsNode),p=point(n.x,n.y);g.setAttribute('transform','translate('+p.x+' '+p.y+')');}
   for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]')){const route=routes.get(g.dataset.nsEdge);if(!route){g.style.visibility='hidden';continue;}g.style.visibility='';for(const path of g.querySelectorAll(':scope > path'))path.setAttribute('d',route.path);g.querySelector('[data-ns-direction]')?.setAttribute('points',route.arrow.map(p=>p.x+','+p.y).join(' '));const e=edges.get(g.dataset.nsEdge),offset=e.labelOffset||{x:0,y:0},label=g.querySelector('[data-ns-edge-label]');g.querySelector('[data-ns-detriment]')?.setAttribute('transform','translate('+(route.label.x-10)+' '+(route.label.y-5)+')');if(label){label.setAttribute('x',route.label.x+offset.x);label.setAttribute('y',route.label.y+offset.y);}for(const handle of g.querySelectorAll('[data-ns-bend]')){const p=route.points[Number(handle.dataset.nsBend)+1];handle.setAttribute('cx',p.x);handle.setAttribute('cy',p.y);}for(const handle of g.querySelectorAll('[data-ns-add-bend]')){const i=Number(handle.dataset.nsAddBend),a=route.points[i],b=route.points[i+1],x=(a.x+b.x)/2,y=(a.y+b.y)/2;handle.querySelector('circle').setAttribute('cx',x);handle.querySelector('circle').setAttribute('cy',y);handle.querySelector('path').setAttribute('d','M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6');}}
+  if(drag?.kind==='node'||drag?.kind==='bend')renderMinimap();else updateMinimapViewport();
 }
 function fit(){
   const d=dimensions();if(!network.nodes.length){network.camera={x:0,y:0,zoom:1};changed(true);return;}
-  const geometry=[...network.nodes,...network.edges.flatMap(e=>e.bends||[])],xs=geometry.map(n=>n.x),ys=geometry.map(n=>n.y),left=Math.min(...xs),right=Math.max(...xs),top=Math.min(...ys),bottom=Math.max(...ys);
+  const geometry=[...network.nodes,...network.edges.flatMap(e=>e.bends||[])];
+  const extents=points=>points.reduce(([left,right,top,bottom],p)=>[Math.min(left,p.x),Math.max(right,p.x),Math.min(top,p.y),Math.max(bottom,p.y)],[Infinity,-Infinity,Infinity,-Infinity]);
+  const [left,right,top,bottom]=extents(geometry);
   const offsets=new Map([...$('nsSvg').querySelectorAll('[data-ns-node]')].map(el=>[el.dataset.nsNode,el.getBBox()]));
   const scene=z=>{
     const xs=[],ys=[];
     for(const n of network.nodes){const box=offsets.get(n.id)||{x:-45,y:-45,width:90,height:90};xs.push(n.x*z+box.x,n.x*z+box.x+box.width);ys.push(n.y*z+box.y,n.y*z+box.y+box.height);}
     for(const p of network.edges.flatMap(e=>e.bends||[])){xs.push(p.x*z);ys.push(p.y*z);}
-    return {left:Math.min(...xs),right:Math.max(...xs),top:Math.min(...ys),bottom:Math.max(...ys)};
+    const [left,right]=xs.reduce(([min,max],x)=>[Math.min(min,x),Math.max(max,x)],[Infinity,-Infinity]);
+    const [top,bottom]=ys.reduce(([min,max],y)=>[Math.min(min,y),Math.max(max,y)],[Infinity,-Infinity]);
+    return {left,right,top,bottom};
   };
   const minZoom=network.contextFormat ? .002 : .2;
   let z=Math.max(minZoom,Math.min(2,(d.width-160)/Math.max(200,right-left),(d.height-150)/Math.max(180,bottom-top))),box;
@@ -375,13 +521,16 @@ function renderDrawer(){
   }
   drawer.innerHTML=common+monitorAssociations(n)+detrimentAssociation(n)+fields('Type',selectHtml('id="nsType"',Object.entries(C.types),n.type))+
     '<label class="ns-check"><input id="nsPinned" type="checkbox" '+(n.pinned?'checked':'')+'> Pin position</label><div class="ns-two">'+fields('Label X','<input id="nsLabelX" type="number" min="-10000" max="10000" value="'+html(C.labelOffset(n).x)+'">')+fields('Label Y','<input id="nsLabelY" type="number" min="-10000" max="10000" value="'+html(C.labelOffset(n).y)+'">')+'</div><button id="nsResetLabel">Reset label</button><small>Drag the name or combined summary on the canvas. A leader arrow keeps the label tied to this point.</small>'+
-    (asset(n)?'<section><h4>Observed</h4>'+fields('Shared threshold · blank rows inherit','<input id="nsObservedDefault" type="number" step="any" value="'+html(n.defaults?.observed??'')+'">')+bindingRows(n,'observed')+'<button data-ns-add-sources="observed">+ Add datasets</button></section>'+
+    (asset(n)?spillLinkControls(n):'')+
+    reviewFields(n)+'<button data-ns-delete class="ns-danger">Delete point</button>';
+}
+function spillLinkControls(n){
+  return '<section><h4>Observed</h4>'+fields('Shared threshold · blank rows inherit','<input id="nsObservedDefault" type="number" step="any" value="'+html(n.defaults?.observed??'')+'">')+bindingRows(n,'observed')+'<button data-ns-add-sources="observed">+ Add datasets</button></section>'+
       '<section><h4>Modelled scenarios</h4>'+fields('Scenario for new assignments','<input id="nsNewScenario" value="'+html(n.newScenario||'Baseline')+'" maxlength="100">')+fields('Shared model threshold · blank rows inherit','<input id="nsModelDefault" type="number" step="any" value="'+html(n.defaults?.model??'')+'">')+bindingRows(n,'model')+'<button data-ns-add-sources="model">+ Add datasets to scenario</button></section>'+
       '<details><summary>Assessment settings</summary>'+fields('Maximum valid gap (s)','<input id="nsGap" type="number" min="1" value="'+html(n.gap)+'">')+fields('Exclusions · start, end, reason (one per line)','<textarea id="nsExclusions" rows="3" placeholder="2024-05-01T00:00, 2024-05-02T00:00, logger fault">'+html((n.exclusions||[]).map(x=>[x.start,x.end,x.reason].join(', ')).join('\n'))+'</textarea>')+'<small>Local to this asset. Use model-clock ISO dates. Other workspaces are unaffected.</small></details>'+
       '<label class="ns-check"><input id="nsConfirmed" type="checkbox" '+(n.confirmed?'checked':'')+'> Matching clocks, units/datum and model/rainfall basis confirmed for this asset’s comparisons</label>'+
       '<p class="ns-note">Each source defaults to its main reporting year; override years per row. At least three calendar months of valid reporting data are required.</p>'+
-      '<button id="nsCalculate" class="ns-primary" '+(busy?'disabled':'')+'>'+(busy?'Calculating…':'Apply & calculate')+'</button>':'')+
-    reviewFields(n)+'<button data-ns-delete class="ns-danger">Delete point</button>';
+      '<button id="nsCalculate" class="ns-primary" '+(busy?'disabled':'')+'>'+(busy?'Calculating…':'Apply & calculate')+'</button>';
 }
 function popupTable(n){
   if(!n.applied)return '<div data-ns-empty-table></div><small>Assign datasets and calculate.</small>';
@@ -413,14 +562,224 @@ function linkedMonitorEvidence(n){
     '<div class="ns-linked-actions"><button type="button" id="nsOpenFlowSurvey">Open Flow Survey week</button> '+
     '<button type="button" id="nsOpenVerification">Open Verification evidence</button></div></section>';
 }
+const inspectorTabs=[['properties','Properties'],['upload','Upload data'],['linking','Data linking'],['evidence','Evidence']];
+const attributeGroups=['Identifiers and classification','Geometry and levels','Hydraulic and control settings','Other source attributes'];
+function inspectorElement(tag,text,className){
+  const element=document.createElement(tag);
+  if(text!==undefined)element.textContent=text;
+  if(className)element.className=className;
+  return element;
+}
+function inspectorButton(text,id){
+  const button=inspectorElement('button',text);button.type='button';if(id)button.id=id;
+  return button;
+}
+function attributeGroup(field){
+  const name=field.toLowerCase();
+  if(/(?:^|_)(?:id|type|suffix|table|name|system)(?:_|$)/.test(name))return attributeGroups[0];
+  if(/^(?:x|y|point_array)$|length|width|height|level|floor|invert|depth|diameter|gradient|position|geometry/.test(name))return attributeGroups[1];
+  if(/roughness|throttle|shape|coefficient|capacity|control|setting|discharge|flow|barrel/.test(name))return attributeGroups[2];
+  return attributeGroups[3];
+}
+const legacyAttributeUnits={groundLevelM:'m',chamberFloorM:'m',conduit_length:'m',conduit_width:'mm',conduit_height:'mm',
+  us_invert:'m',ds_invert:'m',gradient:'m/m',bottom_roughness_cw:'mm',top_roughness_cw:'mm',sediment_depth:'mm'};
+function inspectorProperties(panel,object){
+  const source=object.sourceAttributes;
+  panel.append(inspectorElement('h4','ICM source properties'));
+  if(source)panel.append(inspectorElement('p',[source.file,source.table,'row '+source.row].filter(Boolean).join(' · '),'ns-source-provenance'));
+  const imported=source?.fields||Object.entries(object.icm||{}).map(([name,value])=>({name,value,unit:legacyAttributeUnits[name]||''}));
+  if(!imported.length)panel.append(inspectorElement('p','No ICM source properties are available for this object.'));
+  for(const group of attributeGroups){
+    const properties=imported.filter(item=>attributeGroup(item.name)===group);
+    if(!properties.length)continue;
+    const section=inspectorElement('details'),title=inspectorElement('summary',group),list=inspectorElement('dl',undefined,'ns-property-list');
+    section.open=group===attributeGroups[0];
+    for(const {name,label,unit,value} of properties){
+      const key=inspectorElement('dt',label||name);
+      if(label&&label!==name)key.title=name;
+      const display=value===null||value===''?'—':String(value);
+      list.append(key,inspectorElement('dd',display+(unit&&display!=='—'?' '+unit:'')));
+    }
+    section.append(title,list);panel.append(section);
+  }
+  panel.append(inspectorElement('h4','Custom properties'));
+  panel.append(inspectorElement('p','Changes stay in Hydra Bench. The original ICM database is read-only here.','ns-note'));
+  const custom=object.customProperties||[];
+  const form=inspectorElement('form',undefined,'ns-custom-form'),inputs={};
+  for(const [key,label,max] of [['name','Property name',128],['value','Value',4096],['unit','Unit (optional)',64]]){
+    const field=inspectorElement('label',label,'ns-field');
+    const input=inspectorElement('input');input.name=key;input.maxLength=max;input.required=key==='name';
+    inputs[key]=input;field.append(input);form.append(field);
+  }
+  const list=inspectorElement('ul',undefined,'ns-custom-list'),error=inspectorElement('p');
+  error.setAttribute('role','status');
+  let editIndex=null;
+  const save=inspectorButton('Add property');save.type='submit';
+  const cancel=inspectorButton('Cancel edit');cancel.hidden=true;
+  cancel.onclick=()=>{editIndex=null;form.reset();save.textContent='Add property';cancel.hidden=true;error.textContent='';};
+  for(const [index,property] of custom.entries()){
+    const row=inspectorElement('li'),title=inspectorElement('span',property.name+': '+property.value+(property.unit?' '+property.unit:''));
+    const edit=inspectorButton('Edit'),remove=inspectorButton('Remove');
+    edit.setAttribute('aria-label','Edit custom property '+property.name);
+    remove.setAttribute('aria-label','Remove custom property '+property.name);
+    edit.onclick=()=>{
+      editIndex=index;for(const key of Object.keys(inputs))inputs[key].value=property[key];
+      save.textContent='Save property';cancel.hidden=false;inputs.name.focus();
+    };
+    remove.onclick=()=>{if(busy)return;checkpoint();object.customProperties=custom.filter((_,i)=>i!==index);persist();renderPopup();status('Custom property removed.');};
+    row.append(title,edit,remove);list.append(row);
+  }
+  form.append(save,cancel,error);
+  form.onsubmit=event=>{
+    event.preventDefault();
+    if(busy)return;
+    const property={name:inputs.name.value.trim(),value:inputs.value.value,unit:inputs.unit.value.trim()};
+    if(!property.name){error.textContent='Enter a property name.';return;}
+    if(custom.some((item,index)=>index!==editIndex&&item.name.toLowerCase()===property.name.toLowerCase())){
+      error.textContent='A custom property with this name already exists.';return;
+    }
+    if(editIndex===null&&custom.length>=64){error.textContent='This object already has 64 custom properties.';return;}
+    checkpoint();
+    object.customProperties=editIndex===null?[...custom,property]:custom.map((item,index)=>index===editIndex?property:item);
+    persist();renderPopup();status('Custom property saved in Hydra Bench.');
+  };
+  if(!custom.length)panel.append(inspectorElement('p','No custom properties yet.'));
+  panel.append(list,form);
+}
+function readySeries(){
+  return [...state.files.values()].filter(item=>item.status==='ready'&&item.hash&&!item.reportKind&&item.parsed?.columns?.length);
+}
+function inspectorUpload(panel){
+  panel.append(inspectorElement('p','Add local time series or an assessment report to the shared source pool. Then use Data linking to connect evidence to this object.'));
+  const button=inspectorButton('Upload local files','nsInspectorUpload');
+  button.onclick=()=>$('fileInput').click();
+  panel.append(button);
+  const files=[...state.files.values()];
+  if(!files.length){panel.append(inspectorElement('p','No local files are loaded.'));return;}
+  const list=inspectorElement('ul',undefined,'ns-custom-list');
+  for(const item of files)list.append(inspectorElement('li',item.displayName+' · '+item.status));
+  panel.append(list);
+}
+function inspectorSeriesLinks(panel,object){
+  panel.append(inspectorElement('h4','Time series references'));
+  panel.append(inspectorElement('p','References identify the source and channel for this object. Use spill assignments separately to calculate annual evidence.'));
+  const links=object.seriesLinks||[],files=readySeries();
+  const list=inspectorElement('ul',undefined,'ns-custom-list');
+  for(const [index,link] of links.entries()){
+    const current=files.some(file=>file.hash===link.sha256&&file.parsed.columns.includes(link.column));
+    const row=inspectorElement('li'),remove=inspectorButton('Remove reference');
+    row.append(inspectorElement('span',link.sourceName+' · '+link.column+(current?' · Source ready':' · Reload matching file')),remove);
+    remove.onclick=()=>{if(busy)return;checkpoint();object.seriesLinks=links.filter((_,i)=>i!==index);persist();renderPopup();};
+    list.append(row);
+  }
+  panel.append(list);
+  if(!files.length){panel.append(inspectorElement('p','Upload a supported time series to add a reference.'));return;}
+  const source=inspectorElement('select'),channel=inspectorElement('select');
+  source.setAttribute('aria-label','Reference source');channel.setAttribute('aria-label','Reference channel');
+  source.add(new Option('Select a source',''));
+  for(const file of files)source.add(new Option(file.displayName,file.id));
+  const button=inspectorButton('Link time series','nsLinkSeries');button.disabled=true;
+  source.onchange=()=>{
+    channel.replaceChildren();const file=state.files.get(source.value);
+    for(const column of file?.parsed?.columns||[])channel.add(new Option(column,column));
+    button.disabled=!channel.options.length;
+  };
+  button.onclick=()=>{
+    const file=state.files.get(source.value),column=channel.value;
+    if(busy||file?.status!=='ready'||!file.hash||!file.parsed?.columns?.includes(column))return;
+    if(links.some(link=>link.sha256===file.hash&&link.column===column)){status('That time series is already linked.');return;}
+    if(links.length>=100){status('This object already has 100 time series references.');return;}
+    checkpoint();object.seriesLinks=[...links,{sourceId:file.id,sourceName:file.displayName,sha256:file.hash,column}];
+    persist();renderPopup();status('Time series reference linked.');
+  };
+  panel.append(source,channel,button);
+}
+function inspectorDetriment(panel,object){
+  if(!object.detrimentLinks)return;
+  for(const [kind,label] of detrimentKinds){
+    const link=object.detrimentLinks[kind];if(!link)continue;
+    const view=detrimentView(kind),row=link.signature===view?.signature?view.rows.get(link.id):null;
+    const section=inspectorElement('section',undefined,'ns-linked-evidence');
+    section.append(inspectorElement('strong',label+' · '+link.id));
+    section.append(inspectorElement('p',row?view.caption+' · '+row.status:'Stale or unavailable comparison'));
+    if(row){
+      if(row.delta!=null)section.append(inspectorElement('p','Change: '+f(row.delta,6)+' '+row.unit));
+      if(row.duration_delta_hours!=null)section.append(inspectorElement('p','Duration change: '+f(row.duration_delta_hours,6)+' h'));
+      if(row.freeboard_b!=null)section.append(inspectorElement('p','Proposed freeboard: '+f(row.freeboard_b,6)+' m'));
+      const open=inspectorButton('Open '+label+' evidence');
+      open.onclick=()=>{
+        const current=detrimentView(kind);
+        if(current?.signature===link.signature&&current.rows.has(link.id))window.ICMDetriment.openSchematicEvidence(kind,link.id);
+        else status('Detriment evidence has changed. Reconfirm the association.');
+      };
+      section.append(open);
+    }
+    panel.append(section);
+  }
+}
+function openInspectorTab(id){
+  inspectorTab=id;renderPopup();
+  $('nsInspectorTab-'+id)?.focus({preventScroll:true});
+}
 function renderPopup(){
-  const pop=$('nsPopup'),n=node();if(!pop)return;pop.hidden=editing||!popupVisible||!n;
+  const pop=$('nsPopup'),n=node(),object=n||edge();if(!pop)return;
+  pop.hidden=editing||!popupVisible||!object;
   $('nsLayout').classList.toggle('ns-inspecting',!pop.hidden);
   if(pop.hidden){pop.replaceChildren();return;}
-  const oldScroll=pop.querySelector('.ns-popup-body')?.scrollTop||0;pop.innerHTML='<div class="ns-popup-head"><div><h3>'+html(n.name)+'</h3><small>'+html(C.types[n.type])+' · all reporting years</small></div><button data-ns-close-popup aria-label="Close asset evidence">×</button></div><div class="ns-popup-body">'+linkedMonitorEvidence(n)+popupTable(n)+reviewFields(n)+'</div><div class="ns-popup-footer"><button data-ns-open-analysis="series">Time series</button><button data-ns-open-analysis="spills">Spill analysis</button><button data-ns-edit-selected>Edit asset</button></div>';pop.querySelector('[data-ns-empty-table]')?.replaceWith(annualTable(n));pop.querySelector('.ns-popup-body').scrollTop=oldScroll;
+  const oldScroll=pop.querySelector('.ns-popup-body')?.scrollTop||0;
+  const openDetails=new Set([...pop.querySelectorAll('details[open] > summary')].map(summary=>summary.textContent));
+  const header=inspectorElement('div',undefined,'ns-popup-head');
+  const heading=inspectorElement('div');
+  heading.append(inspectorElement('h3',object.name||(n?'Asset':'Connector')),inspectorElement('small',n?C.types[n.type]:object.icm?.table?.replace(/^hw_/,'').replaceAll('_',' ')||'Connector'));
+  const close=inspectorButton('×');close.dataset.nsClosePopup='';close.setAttribute('aria-label','Close asset evidence');
+  header.append(heading,close);
+  const tabs=inspectorElement('div',undefined,'ns-inspector-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Asset inspector');
+  const panel=inspectorElement('div',undefined,'ns-popup-body');
+  panel.id='nsInspectorPanel';panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby','nsInspectorTab-'+inspectorTab);
+  for(const [id,label] of inspectorTabs){
+    const tab=inspectorButton(label,'nsInspectorTab-'+id);tab.setAttribute('role','tab');
+    tab.setAttribute('aria-selected',String(id===inspectorTab));tab.setAttribute('aria-controls',panel.id);
+    tab.tabIndex=id===inspectorTab?0:-1;tab.onclick=()=>openInspectorTab(id);tabs.append(tab);
+  }
+  tabs.onkeydown=event=>{
+    const current=inspectorTabs.findIndex(([id])=>id===inspectorTab);
+    const next={ArrowLeft:(current+3)%4,ArrowRight:(current+1)%4,Home:0,End:3}[event.key];
+    if(next===undefined)return;event.preventDefault();openInspectorTab(inspectorTabs[next][0]);
+  };
+  const footer=inspectorElement('div',undefined,'ns-popup-footer');
+  if(inspectorTab==='properties')inspectorProperties(panel,object);
+  if(inspectorTab==='upload')inspectorUpload(panel);
+  if(inspectorTab==='linking'){
+    inspectorSeriesLinks(panel,object);
+    if(object.contextSource){
+      const label=inspectorElement('label','Detriment association theme','ns-field'),type=inspectorElement('select');
+      for(const [kind,text] of detrimentKinds)type.add(new Option(text,kind));
+      type.value=detrimentKind();
+      type.onchange=()=>{
+        network.preferences={...prefs(),detrimentKind:type.value};changed(true);
+      };
+      label.append(type);panel.append(label);
+    }
+    panel.insertAdjacentHTML('beforeend',monitorAssociations(object)+detrimentAssociation(object)+(asset(n)?spillLinkControls(n):''));
+  }
+  if(inspectorTab==='evidence'){
+    panel.innerHTML=linkedMonitorEvidence(object)+(n?popupTable(n):'<p>Connect compatible evidence in Data linking. Annual spill calculations are available on eligible nodes.</p>')+reviewFields(object);
+    if(n)panel.querySelector('[data-ns-empty-table]')?.replaceWith(annualTable(n));
+    inspectorDetriment(panel,object);
+    if(asset(n)){
+      for(const [mode,label] of [['series','Time series'],['spills','Spill analysis']]){
+        const button=inspectorButton(label);button.dataset.nsOpenAnalysis=mode;footer.append(button);
+      }
+    }
+  }
+  const edit=inspectorButton('Edit asset');edit.dataset.nsEditSelected='';footer.append(edit);
+  pop.replaceChildren(header,tabs,panel,footer);
+  for(const detail of panel.querySelectorAll('details'))if(openDetails.has(detail.querySelector('summary')?.textContent))detail.open=true;
+  panel.scrollTop=oldScroll;
 }
 function render(){
   if(!mounted)return;
+  $('nsModeLabel').textContent=editing?'Edit mode':'Explore mode';
   $('nsEdit').textContent=editing?'Done editing':'Edit network';$('nsEdit').setAttribute('aria-pressed',String(editing));
   $('nsEditTools').hidden=!editing;$('nsLayout').classList.toggle('ns-editing',editing);
   $('nsPan').setAttribute('aria-pressed',String(tool==='pan'));$('nsConnect').setAttribute('aria-pressed',String(tool==='connect'));
@@ -431,7 +790,7 @@ function render(){
 function add(type){
   if(busy||prefs().locked)return;checkpoint();const d=dimensions(),p=world(d.width*.35+network.nodes.length%4*30,d.height*.4+network.nodes.length%4*35);
   if(network.nodes.length>=2000){status('Maximum 2,000 points.');return;}const n={id:uid(),name:C.types[type]+' '+(network.nodes.filter(n=>n.type===type).length+1),type,colour,x:p.x,y:p.y,labelOffset:{x:30,y:-20},bindings:[],defaults:{observed:'',model:''},newScenario:'Baseline',gap:900,exclusions:[],confirmed:false,applied:null};
-  network.nodes.push(n);selected=n.id;popupVisible=false;editing=true;changed();render();$('nsName')?.focus();
+  network.nodes.push(n);selected=n.id;selectionKind='node';popupVisible=false;editing=true;changed();render();$('nsName')?.focus();
 }
 function selectPoint(id){
   if(tool==='connect'&&editing){
@@ -442,7 +801,12 @@ function selectPoint(id){
     if(network.edges.length>=5000){status('Maximum 5,000 connectors.');connectFrom=null;return;}if(!network.edges.some(e=>e.from===connectFrom&&e.to===id)){checkpoint();network.edges.push({id:uid(),from:connectFrom,to:id,colour,name:'',arrow:true});changed();}
     connectFrom=null;status('Connector added. Connections do not alter spill calculations.');return;
   }
-  selected=id;if(!multi.has(id))multi=new Set([id]);popupVisible=!editing;hideHover();renderDrawer();renderCanvas();renderReview();
+  if(selected!==id||selectionKind!=='node')inspectorTab='evidence';
+  selected=id;selectionKind='node';if(!multi.has(id))multi=new Set([id]);popupVisible=!editing;hideHover();renderDrawer();renderCanvas();renderReview();
+}
+function selectConnector(id){
+  if(selected!==id||selectionKind!=='edge')inspectorTab='properties';
+  selected=id;selectionKind='edge';multi.clear();popupVisible=!editing;hideHover();renderDrawer();renderCanvas();renderReview();
 }
 function showSourcePicker(role){
   const n=node();if(!n||busy)return;
@@ -544,7 +908,12 @@ function updateField(target){
   }catch(error){status(error.message);target.setAttribute('aria-invalid','true');}
 }
 function removeSelected(){
-  if(busy||prefs().locked)return;checkpoint();const ids=new Set([...multi,selected]);network.nodes=network.nodes.filter(n=>!ids.has(n.id));network.edges=network.edges.filter(e=>!ids.has(e.id)&&!ids.has(e.from)&&!ids.has(e.to));multi.clear();selected=null;popupVisible=false;changed();renderDrawer();
+  if(busy||prefs().locked||!selected)return;
+  checkpoint();
+  const ids=selectionKind==='node'?new Set([...multi,selected]):new Set();
+  network.nodes=network.nodes.filter(n=>!ids.has(n.id));
+  network.edges=network.edges.filter(e=>(selectionKind!=='edge'||e.id!==selected)&&!ids.has(e.from)&&!ids.has(e.to));
+  multi.clear();selected=null;popupVisible=false;changed();renderDrawer();
 }
 function canClearMap(){
   return !busy&&!drag&&!prefs().locked&&Boolean(
@@ -553,7 +922,7 @@ function canClearMap(){
 }
 function clearMap(){
   checkpoint();
-  network=C.empty();
+  network=C.empty();branchIsolated=false;
   selected=null;connectFrom=null;highlight=null;popupVisible=false;tool='select';
   multi.clear();freshness.clear();hideHover();
   $('nsPicker').hidden=true;
@@ -597,13 +966,23 @@ function captureDrag(event,details){
 }
 function onPointerDown(event){
   if(drag||!event.target.closest('#nsSvg')||(event.button!==0&&event.button!==1))return;
+  closeContext();
+  if(startTouch(event))return;
   const pan={kind:'pan',x:event.clientX,y:event.clientY,camera:{...network.camera},moved:false};
   if(event.button===1||tool==='pan'||tool==='zoom'){
     hideHover();captureDrag(event,pan);return;
   }
   const canvas=$('nsCanvas'),rect=canvas.getBoundingClientRect(),id=event.target.closest('[data-ns-node]')?.dataset.nsNode,wire=event.target.closest('[data-ns-edge]')?.dataset.nsEdge;
+  const object=objectAt(event.target);
+  if(object&&!editing){
+    const before=lastInspectClick;
+    const double=before&&before.id===object.id&&before.kind===object.kind&&
+      event.timeStamp-before.time<450&&Math.hypot(event.clientX-before.x,event.clientY-before.y)<6;
+    lastInspectClick=double?null:{...object,time:event.timeStamp,x:event.clientX,y:event.clientY};
+    inspectObject(object);if(double)focusSelected();return;
+  }
   if(wire&&editing){
-    selected=wire;multi.clear();const e=edge(),edgeLabel=event.target.closest('[data-ns-edge-label]'),bend=event.target.closest('[data-ns-bend]'),add=event.target.closest('[data-ns-add-bend]');
+    selected=wire;selectionKind='edge';multi.clear();const e=edge(),edgeLabel=event.target.closest('[data-ns-edge-label]'),bend=event.target.closest('[data-ns-bend]'),add=event.target.closest('[data-ns-add-bend]');
     if(tool==='select'&&!busy&&!prefs().locked&&edgeLabel){checkpoint();const offset=e.labelOffset||{x:0,y:0};captureDrag(event,{kind:'edge-label',id:wire,x:event.clientX,y:event.clientY,startX:offset.x,startY:offset.y});}
     if(tool==='select'&&!busy&&!prefs().locked&&(bend||add)){
       const index=Number(bend?.dataset.nsBend??add.dataset.nsAddBend);
@@ -613,13 +992,14 @@ function onPointerDown(event){
     renderDrawer();renderCanvas();return;
   }
   const label=event.target.closest('[data-ns-label],[data-ns-summary]');
-  if(id){if(event.shiftKey&&tool==='select'){if(multi.has(id))multi.delete(id);else multi.add(id);selected=id;popupVisible=false;renderCanvas();renderReview();return;}selectPoint(id);if(!editing||tool==='connect'||busy)return;}
+  if(id){if(event.shiftKey&&tool==='select'){if(multi.has(id))multi.delete(id);else multi.add(id);selected=id;selectionKind='node';popupVisible=false;renderCanvas();renderReview();return;}selectPoint(id);if(!editing||tool==='connect'||busy)return;}
   const n=id?network.nodes.find(n=>n.id===id):null;
   if(n&&editing&&tool==='select'&&!prefs().locked&&(!n.pinned||label)){checkpoint();const offset=C.labelOffset(n);captureDrag(event,{kind:label?'label':'node',id,x:event.clientX,y:event.clientY,startX:label?offset.x:n.x,startY:label?offset.y:n.y,moved:false,group:network.nodes.filter(x=>multi.has(x.id)&&!x.pinned).map(x=>({id:x.id,x:x.x,y:x.y}))});}
   else captureDrag(event,pan);
 }
 function onPointerMove(event){
-  if(drag?.pointerId!==event.pointerId)return;const dx=event.clientX-drag.x,dy=event.clientY-drag.y;drag.moved=drag.moved||Math.abs(dx)+Math.abs(dy)>3;
+  if(moveTouch(event))return;
+  if(!drag||drag.pointerId!==event.pointerId)return;const dx=event.clientX-drag.x,dy=event.clientY-drag.y;drag.moved=drag.moved||Math.abs(dx)+Math.abs(dy)>3;
   if(drag.kind==='node'){for(const saved of drag.group||[]){const n=network.nodes.find(n=>n.id===saved.id),step=prefs().snap?20:0;n.x=saved.x+dx/network.camera.zoom;n.y=saved.y+dy/network.camera.zoom;if(step){n.x=Math.round(n.x/step)*step;n.y=Math.round(n.y/step)*step;}}}
   else if(drag.kind==='label'){const n=network.nodes.find(n=>n.id===drag.id);if(n)n.nameOffset={x:Math.max(-10000,Math.min(10000,drag.startX+dx)),y:Math.max(-10000,Math.min(10000,drag.startY+dy))};}
   else if(drag.kind==='edge-label'){const e=edge();if(e)e.labelOffset={x:Math.max(-10000,Math.min(10000,drag.startX+dx)),y:Math.max(-10000,Math.min(10000,drag.startY+dy))};}
@@ -628,7 +1008,8 @@ function onPointerMove(event){
   if(frame===null)frame=requestAnimationFrame(()=>{frame=null;if(drag?.kind==='label')renderCanvas();else renderGeometry();});
 }
 function onPointerUp(event){
-  if(drag?.pointerId!==event.pointerId)return;
+  if(endTouch(event))return;
+  if(!drag||drag.pointerId!==event.pointerId)return;
   if(frame!==null){cancelAnimationFrame(frame);frame=null;}
   const canvas=$('nsCanvas');
   drag=null;delete canvas.dataset.panning;renderCanvas();
@@ -701,7 +1082,7 @@ function resultRag(n){
   return values.includes('red')?'red':values.includes('amber')?'amber':values.includes('green')?'green':null;
 }
 function visibleNodes(){
-  const p=prefs();return network.nodes.filter(n=>(p.type==='all'||n.type===p.type)&&(p.health==='all'||nodeHealth(n)===p.health)&&(p.result==='all'||(resultRag(n)||'neutral')===p.result));
+  const p=prefs();return network.nodes.filter(n=>(!branchIsolated||!highlight||highlight.ids.has(n.id))&&(p.type==='all'||n.type===p.type)&&(p.health==='all'||nodeHealth(n)===p.health)&&(p.result==='all'||(resultRag(n)||'neutral')===p.result));
 }
 function applyDecorations(){
   const byId=new Map(network.nodes.map(n=>[n.id,n]));
@@ -710,7 +1091,7 @@ function applyDecorations(){
   const hidden=network.nodes.length-visibleNodes().length;if($('nsHiddenCount'))$('nsHiddenCount').textContent=hidden?hidden+' hidden':'';
 }
 function healthLabel(value){return {ready:'Ready',missing:'Reload source',stale:'Recalculate',short:'Short coverage',provisional:'Provisional count',unassigned:'No datasets',uncalculated:'Not calculated'}[value]||value;}
-function centre(id){const n=network.nodes.find(n=>n.id===id);if(!n)return;const d=dimensions();network.camera.x=d.width*.3-n.x*network.camera.zoom;network.camera.y=d.height*.5-n.y*network.camera.zoom;selected=id;multi=new Set([id]);popupVisible=!editing;persist();render();renderReview();}
+function centre(id){const n=network.nodes.find(n=>n.id===id);if(!n)return;const d=dimensions();network.camera.x=d.width*.3-n.x*network.camera.zoom;network.camera.y=d.height*.5-n.y*network.camera.zoom;selected=id;selectionKind='node';multi=new Set([id]);popupVisible=!editing;persist();render();renderReview();}
 function hideHover(){clearTimeout(hoverTimer);if($('nsHover'))$('nsHover').hidden=true;}
 function hoverCard(id){
   const n=network.nodes.find(n=>n.id===id);if(!n||!asset(n)||editing||drag||popupVisible)return;
@@ -813,7 +1194,7 @@ function renderMatrix(){
   }
 }
 function undoEdit(forward=false){
-  if(busy)return;const source=forward?redo:history,dest=forward?history:redo;if(!source.length)return;dest.push(JSON.stringify(network));network=JSON.parse(source.pop());selected=null;multi.clear();highlight=null;popupVisible=false;freshness.clear();persist();render();renderReview();
+  if(busy)return;const source=forward?redo:history,dest=forward?history:redo;if(!source.length)return;dest.push(JSON.stringify(network));network=JSON.parse(source.pop());branchIsolated=false;selected=null;multi.clear();highlight=null;popupVisible=false;freshness.clear();persist();render();renderReview();
 }
 function arrange(kind){
   if(busy||prefs().locked)return;checkpoint();
@@ -835,11 +1216,11 @@ function saveReviewSnapshot(){
 }
 function downloadReviewSnapshot(index){if(index==='')return;const saved=network.reviewSnapshots[Number(index)];if(saved)downloadBlob('hydra-network-review-snapshot.json',JSON.stringify({...saved,network:C.validateNetwork(saved.network)},null,2),'application/json');}
 function wholeSceneSvg(){
-  const before={camera:network.camera,preferences:network.preferences};
+  const before={camera:network.camera,preferences:network.preferences,branchIsolated};
   const svg=svgElement('svg'),scene=svgElement('g',{'font-family':'Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif',fill:'#182732'});
   let bounds;
   try{
-    network.camera={x:0,y:0,zoom:1};
+    network.camera={x:0,y:0,zoom:1};branchIsolated=false;
     network.preferences={...prefs(),detail:'full',type:'all',health:'all',result:'all'};
     scene.append(renderScene(false));
     svg.append(scene);
@@ -851,6 +1232,7 @@ function wholeSceneSvg(){
     svg.removeAttribute('style');
     network.camera=before.camera;
     network.preferences=before.preferences;
+    branchIsolated=before.branchIsolated;
   }
   const width=Math.max(300,bounds.width+60),height=Math.max(200,bounds.height+100),x=bounds.x-30,y=bounds.y-30;
   svg.setAttribute('width',Math.ceil(width));
@@ -990,7 +1372,7 @@ async function calculateCommon(){
 }
 function mountReview(){
   $('nsWorkbench').querySelector('.ns-main-toolbar').insertAdjacentHTML('afterbegin','<input id="nsAssetSearch" type="search" placeholder="Find asset" aria-label="Find asset" list="nsAssetNames"><datalist id="nsAssetNames"></datalist>');
-  $('nsWorkbench').querySelector('.ns-main-toolbar').insertAdjacentHTML('beforeend','<button id="nsAnnualTable">Annual table</button><details id="nsReviewTools"><summary>Tools</summary><div class="ns-tool-panel"><div class="ns-tool-row"><label>Type'+selectHtml('id="nsTypeFilter"',[['all','All assets'],...Object.entries(C.types)],'all')+'</label><label>Evidence'+selectHtml('id="nsHealthFilter"',[['all','Any'],...['ready','missing','stale','provisional','short','unassigned','uncalculated'].map(s=>[s,healthLabel(s)])],'all')+'</label><label>Result'+selectHtml('id="nsResultFilter"',[['all','Any'],['green','Green'],['amber','Amber'],['red','Red'],['neutral','Neutral']],'all')+'</label><label>Detail'+selectHtml('id="nsDetail"',[['auto','Automatic'],['full','Full'],['minimal','Minimal']],'auto')+'</label></div><div class="ns-tool-row"><button data-ns-trace="up">Upstream</button><button data-ns-trace="down">Downstream</button><button id="nsClearTrace">Clear trace</button><button id="nsAudit">Connectivity</button><span id="nsHiddenCount"></span></div><details><summary>Scenarios</summary><div id="nsScenarioChoices"></div></details><details><summary>Layout</summary><div class="ns-tool-row"><label><input id="nsSnap" type="checkbox"> Snap</label><label><input id="nsLocked" type="checkbox"> Lock</label><button data-ns-arrange="auto">Auto layout</button><button data-ns-arrange="left">Align left</button><button data-ns-arrange="top">Align top</button><button data-ns-arrange="horizontal">Distribute horizontally</button><button data-ns-arrange="vertical">Distribute vertically</button><button id="nsRedo">Redo</button><span id="nsSelectionCount"></span></div><small>Shift-click to select several assets. Pinned assets stay in place.</small></details><details><summary>Views & snapshots</summary><div class="ns-tool-row"><input id="nsViewName" placeholder="View / review name" maxlength="100"><button id="nsSaveView">Save view</button><select id="nsViewSelect"></select><button id="nsSaveSnapshot">Save review snapshot</button><select id="nsSnapshotSelect"></select></div></details><p id="nsAuditResult"></p></div></details>');
+  $('nsWorkbench').querySelector('.ns-main-toolbar').insertAdjacentHTML('beforeend','<button id="nsAnnualTable">Annual table</button><details id="nsReviewTools"><summary>Tools</summary><div class="ns-tool-panel"><div class="ns-tool-row"><label>Type'+selectHtml('id="nsTypeFilter"',[['all','All assets'],...Object.entries(C.types)],'all')+'</label><label>Evidence'+selectHtml('id="nsHealthFilter"',[['all','Any'],...['ready','missing','stale','provisional','short','unassigned','uncalculated'].map(s=>[s,healthLabel(s)])],'all')+'</label><label>Result'+selectHtml('id="nsResultFilter"',[['all','Any'],['green','Green'],['amber','Amber'],['red','Red'],['neutral','Neutral']],'all')+'</label><label>Detail'+selectHtml('id="nsDetail"',[['auto','Automatic'],['full','Full'],['minimal','Minimal']],'auto')+'</label></div><div class="ns-tool-row"><button data-ns-trace="up">Upstream</button><button data-ns-trace="down">Downstream</button><button id="nsIsolateBranch" aria-pressed="false">Isolate branch</button><button id="nsClearTrace">Clear trace</button><button id="nsAudit">Connectivity</button><span id="nsHiddenCount"></span></div><details><summary>Scenarios</summary><div id="nsScenarioChoices"></div></details><details><summary>Layout</summary><div class="ns-tool-row"><label><input id="nsSnap" type="checkbox"> Snap</label><label><input id="nsLocked" type="checkbox"> Lock</label><button data-ns-arrange="auto">Auto layout</button><button data-ns-arrange="left">Align left</button><button data-ns-arrange="top">Align top</button><button data-ns-arrange="horizontal">Distribute horizontally</button><button data-ns-arrange="vertical">Distribute vertically</button><button id="nsRedo">Redo</button><span id="nsSelectionCount"></span></div><small>Shift-click to select several assets. Pinned assets stay in place.</small></details><details><summary>Views & snapshots</summary><div class="ns-tool-row"><input id="nsViewName" placeholder="View / review name" maxlength="100"><button id="nsSaveView">Save view</button><select id="nsViewSelect"></select><button id="nsSaveSnapshot">Save review snapshot</button><select id="nsSnapshotSelect"></select></div></details><p id="nsAuditResult"></p></div></details>');
   $('nsWorkbench').querySelector('.ns-export-actions').insertAdjacentHTML('beforeend','<button id="nsSvgExport">Export SVG</button><button id="nsReportExport">Annual report / PDF</button>');
   $('nsCanvas').insertAdjacentHTML('beforeend','<aside id="nsHover" hidden></aside>');
   $('nsWorkbench').insertAdjacentHTML('beforeend','<section id="nsMatrix" hidden><div class="ns-matrix-toolbar"><strong>Annual comparison</strong><input id="nsMatrixSearch" type="search" placeholder="Filter assets"><label><input id="nsMatrixSelected" type="checkbox"> Selected only</label><small>Δ = M − O</small><button id="nsCloseMatrix">Close</button></div><div id="nsMatrixBody"></div></section><dialog id="nsAnalysis" role="dialog" aria-modal="true" aria-label="Asset analysis" hidden><div class="ns-analysis-toolbar"><strong id="nsAnalysisTitle"></strong><select id="nsAnalysisYear" aria-label="Graph year"></select><button id="nsAnalysisMode">Show annual spills</button><button id="nsCloseAnalysis">Close</button></div><div class="ns-analysis-body"><details id="nsAnalysisSettings"><summary>Channels, units &amp; thresholds</summary><div id="nsAnalysisSources"></div><button id="nsAnalysisCalculate" class="ns-primary">Apply &amp; recalculate annual spills</button></details><div id="nsAnalysisPlot"></div><small id="nsAnalysisMessage"></small><strong id="nsAnalysisBasis">Annual evidence</strong><div id="nsAnalysisCounts"></div><details><summary>Common-period comparison</summary><div class="ns-tool-row"><select id="nsCommonYear" aria-label="Common period year"></select><select id="nsCommonScenario" aria-label="Common period scenario"></select><button id="nsCommonCalculate">Calculate overlap</button></div><small id="nsCommonMessage">Annual totals remain unchanged.</small><div id="nsCommonResult" hidden></div></details><details><summary>Assessment details</summary><div id="nsAnalysisAudit"></div></details></div></dialog>');
@@ -1043,7 +1425,7 @@ function mountReview(){
   };
   root().addEventListener('click',event=>{
     if(!event.target.closest('#nsOpenFlowSurvey'))return;
-    const point=node(),view=surveyLayerView(),row=view?.byMonitor.get(point?.monitorId);
+    const point=node()||edge(),view=surveyLayerView(),row=view?.byMonitor.get(point?.monitorId);
     if(!row||row.status!=='current'){
       status('Run a current Flow Survey assessment for the linked monitor and select a week.');return;
     }
@@ -1056,12 +1438,12 @@ function mountReview(){
   };
   root().addEventListener('change',event=>{
     if(event.target.id!=='nsMonitorAssociation')return;
-    const point=node(),id=event.target.value;
+    const point=node()||edge(),id=event.target.value;
     if(!point||point.type==='label')return;
     const monitor=window.ICMProjectRegistry?.snapshot()?.assets.find(asset=>asset.id===id&&asset.kind==='flow-monitor');
     if(id&&!monitor)return;
-    if(id&&network.nodes.some(other=>other.id!==point.id&&other.monitorId===id)){
-      status('This monitor is already associated with another point. Remove that association before moving it.');
+    if(id&&[...network.nodes,...network.edges].some(other=>other!==point&&other.monitorId===id)){
+      status('This monitor is already associated with another object. Remove that association before moving it.');
       event.target.value=point.monitorId||'';return;
     }
     checkpoint();
@@ -1070,18 +1452,38 @@ function mountReview(){
   });
   root().addEventListener('click',event=>{
     if(!event.target.closest('#nsOpenVerification'))return;
-    const point=node(),assessment=window.__ICM_WORKBENCH__?.readVerificationEvidence?.();
+    const point=node()||edge(),assessment=window.__ICM_WORKBENCH__?.readVerificationEvidence?.();
     if(!point?.monitorId||assessment?.asset.kind!=='flow-monitor'||assessment.asset.id!==point.monitorId){
       status('Run a comparison for the linked monitor before opening Verification evidence.');return;
     }
     window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','overview',true);
   });
-  $('nsAssetSearch').oninput=()=>{$('nsAssetNames').innerHTML=network.nodes.filter(n=>n.name.toLowerCase().includes($('nsAssetSearch').value.toLowerCase())).slice(0,30).map(n=>'<option value="'+html(n.name)+'"></option>').join('');};
-  $('nsAssetSearch').onchange=()=>{const query=$('nsAssetSearch').value.toLowerCase(),n=network.nodes.find(n=>n.name.toLowerCase()===query)||network.nodes.find(n=>n.name.toLowerCase().includes(query));if(n){const p=prefs();if(selected!==n.id||p.type!=='all'||p.health!=='all'||p.result!=='all'){network.preferences={...p,type:'all',health:'all',result:'all'};centre(n.id);}}else status('Asset not found.');};
+  const searchable=()=>[
+    ...network.nodes.map(n=>({id:n.id,kind:'node',name:n.name})),
+    ...network.edges.map(e=>({id:e.id,kind:'edge',name:e.name||e.id})),
+  ];
+  const matchingAssets=query=>searchable().filter(item=>[item.id,item.name].some(value=>String(value).toLowerCase().includes(query)));
+  $('nsAssetSearch').oninput=()=>{
+    const candidates=matchingAssets($('nsAssetSearch').value.trim().toLowerCase()).slice(0,30);
+    $('nsAssetNames').replaceChildren(...candidates.map(item=>new Option(item.kind==='edge'?'Connector':'Asset',item.name)));
+  };
+  const search=()=>{
+    const query=$('nsAssetSearch').value.trim().toLowerCase();if(!query)return;
+    const results=matchingAssets(query),item=results.find(item=>[item.name,item.id].some(value=>String(value).toLowerCase()===query))||results[0];
+    if(!item){status('Asset not found.');return;}
+    const p=prefs();
+    if(selected===item.id&&selectionKind===item.kind&&p.type==='all'&&p.health==='all'&&p.result==='all'&&!branchIsolated)return;
+    network.preferences={...p,type:'all',health:'all',result:'all'};
+    branchIsolated=false;
+    if(item.kind==='node')centre(item.id);else{selectConnector(item.id);focusSelected();}
+  };
+  $('nsAssetSearch').onchange=search;
+  $('nsAssetSearch').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();search();}});
   for(const [id,key] of [['nsTypeFilter','type'],['nsHealthFilter','health'],['nsResultFilter','result'],['nsDetail','detail'],['nsSnap','snap'],['nsLocked','locked']])$(id).onchange=()=>{network.preferences={...prefs(),[key]:['snap','locked'].includes(key)?$(id).checked:$(id).value};changed(true);};
   $('nsRedo').onclick=()=>undoEdit(true);$('nsSaveView').onclick=saveView;$('nsViewSelect').onchange=()=>loadView($('nsViewSelect').value);$('nsSaveSnapshot').onclick=saveReviewSnapshot;$('nsSnapshotSelect').onchange=()=>downloadReviewSnapshot($('nsSnapshotSelect').value);
   $('nsAnnualTable').onclick=()=>{$('nsMatrix').hidden=!$('nsMatrix').hidden;renderMatrix();};$('nsCloseMatrix').onclick=()=>{$('nsMatrix').hidden=true;};$('nsMatrixSearch').oninput=renderMatrix;$('nsMatrixSelected').onchange=renderMatrix;
-  $('nsClearTrace').onclick=()=>{highlight=null;renderCanvas();};$('nsAudit').onclick=()=>{const a=R.audit(network.nodes,network.edges);$('nsAuditResult').textContent=a.components.length+' components · '+a.isolated.length+' isolated · '+a.cycleAffected.length+' cycle-affected';highlight={ids:new Set([...a.isolated,...a.cycleAffected]),wires:new Set()};if(!highlight.ids.size)highlight=null;renderCanvas();};
+  $('nsIsolateBranch').onclick=toggleIsolation;
+  $('nsClearTrace').onclick=()=>{highlight=null;branchIsolated=false;renderCanvas();};$('nsAudit').onclick=()=>{const a=R.audit(network.nodes,network.edges);$('nsAuditResult').textContent=a.components.length+' components · '+a.isolated.length+' isolated · '+a.cycleAffected.length+' cycle-affected';highlight={ids:new Set([...a.isolated,...a.cycleAffected]),wires:new Set()};if(!highlight.ids.size)highlight=null;renderCanvas();};
   $('nsSvgExport').onclick=async()=>{
     const svg=wholeSceneSvg();
     root().querySelector('.ns-export-menu').open=false;
@@ -1094,7 +1496,7 @@ function mountReview(){
     }catch(error){status(error.message);}
   };
   $('nsReportExport').onclick=()=>{root().querySelector('.ns-export-menu').open=false;exportReport();};
-  root().addEventListener('click',event=>{const t=event.target,trace=t.closest('[data-ns-trace]'),arrangeButton=t.closest('[data-ns-arrange]'),focus=t.closest('[data-ns-centre],[data-ns-focus]'),analysis=t.closest('[data-ns-open-analysis]');if(trace&&selected){highlight=R.trace(network.nodes,network.edges,selected,trace.dataset.nsTrace);renderCanvas();}if(arrangeButton)arrange(arrangeButton.dataset.nsArrange);if(focus){if(focus.dataset.nsYear)network.year=focus.dataset.nsYear;centre(focus.dataset.nsCentre||focus.dataset.nsFocus);}if(analysis)void openAnalysis(analysis.dataset.nsOpenAnalysis);});
+  root().addEventListener('click',event=>{const t=event.target,trace=t.closest('[data-ns-trace]'),arrangeButton=t.closest('[data-ns-arrange]'),focus=t.closest('[data-ns-centre],[data-ns-focus]'),analysis=t.closest('[data-ns-open-analysis]');if(trace&&selected)traceSelection(trace.dataset.nsTrace);if(arrangeButton)arrange(arrangeButton.dataset.nsArrange);if(focus){if(focus.dataset.nsYear)network.year=focus.dataset.nsYear;centre(focus.dataset.nsCentre||focus.dataset.nsFocus);}if(analysis)void openAnalysis(analysis.dataset.nsOpenAnalysis);});
   root().addEventListener('change',event=>{if(event.target.hasAttribute('data-ns-scenario-choice')){network.preferences={...prefs(),scenarios:[...$('nsScenarioChoices').querySelectorAll('input:checked')].map(x=>x.dataset.nsScenarioChoice)};changed(true);}});
   $('nsSvg').addEventListener('pointerover',event=>{const id=event.target.closest('[data-ns-node]')?.dataset.nsNode;if(id){clearTimeout(hoverTimer);hoverTimer=setTimeout(()=>hoverCard(id),250);}});$('nsSvg').addEventListener('pointerout',event=>{if(!event.relatedTarget?.closest?.('[data-ns-node]'))hideHover();});
   $('nsAnalysis').addEventListener('keydown',event=>{if(event.key==='Escape')$('nsCloseAnalysis').click();if(event.key==='Tab'){const controls=[...$('nsAnalysis').querySelectorAll('button,select,summary,input,textarea,a[href],[tabindex]')].filter(el=>el.getClientRects().length&&!el.disabled&&el.tabIndex>=0&&!el.closest('[hidden],[inert]')),first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}});
@@ -1106,9 +1508,9 @@ function mountReview(){
 }
 function mount(){
   const container=root();if(!container)return;
-  container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / Export / Load</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network or context CSV</button><button id="nsCsv">Export evidence CSV</button></div></details><button id="nsClearMap" type="button">Clear map</button><input id="nsLoadInput" type="file" accept=".csv,.json" multiple hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
+  container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><span id="nsModeLabel">Explore mode</span><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / Export / Load</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network or context CSV</button><button id="nsCsv">Export evidence CSV</button></div></details><button id="nsClearMap" type="button">Clear map</button><input id="nsLoadInput" type="file" accept=".csv,.json" multiple hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
     '<div id="nsEditTools" class="ns-edit-tools" hidden>'+selectHtml('id="nsAddType"',Object.entries(C.types).filter(([key])=>!['manhole','label'].includes(key)),'cso')+'<button id="nsAddAsset">+ Asset</button><button id="nsAddManhole">+ Manhole</button><button id="nsAddLabel">+ Label</button><button id="nsConnect" aria-pressed="false">Connect</button><span id="nsColourChoices"></span><button id="nsUndo" aria-label="Undo last edit">Undo</button><button id="nsDelete">Delete selected</button></div>'+
-    '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag the background or use the middle mouse button to pan. Turn on Zoom to use the mouse wheel."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomMode" aria-pressed="false" title="Use the mouse wheel to zoom at the pointer. Drag with the middle mouse button to pan.">Zoom</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button></div></div><aside id="nsPopup" aria-label="Selected asset evidence" hidden></aside><aside id="nsDrawer" aria-label="Asset properties" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
+    '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag the background or use the middle mouse button to pan. Turn on Zoom to use the mouse wheel."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><svg id="nsMinimap" viewBox="0 0 160 100" tabindex="0" role="img" aria-label="Network minimap. Click or drag to move the view. Arrow keys pan; Enter fits the network." hidden></svg><div id="nsContextActions" aria-label="Asset actions" hidden><button type="button" data-ns-context="focus">Focus selected</button><button type="button" data-ns-context="up">Trace upstream</button><button type="button" data-ns-context="down">Trace downstream</button><button type="button" data-ns-context="isolate">Isolate branch</button></div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomMode" aria-pressed="false" title="Use the mouse wheel to zoom at the pointer. Drag with the middle mouse button to pan.">Zoom</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button><button id="nsFocusSelected">Focus selected</button><button id="nsResetView">Reset view</button></div></div><aside id="nsPopup" aria-label="Selected asset evidence" hidden></aside><aside id="nsDrawer" aria-label="Asset properties" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
   mounted=true;container.addEventListener('click',onClick);container.addEventListener('change',event=>updateField(event.target));
   $('nsEdit').onclick=()=>{editing=!editing;popupVisible=false;tool='select';connectFrom=null;render();};
   $('nsAddAsset').onclick=()=>add($('nsAddType').value);$('nsAddManhole').onclick=()=>add('manhole');$('nsAddLabel').onclick=()=>add('label');
@@ -1119,6 +1521,7 @@ function mount(){
   };
   $('nsUndo').onclick=()=>undoEdit();$('nsDelete').onclick=removeSelected;
   $('nsZoomIn').onclick=()=>zoom(1.25);$('nsZoomOut').onclick=()=>zoom(.8);$('nsFit').onclick=fit;
+  $('nsFocusSelected').onclick=focusSelected;$('nsResetView').onclick=resetView;
   for(const [id,key] of [['nsYear','year'],['nsMetric','metric']])$(id).onchange=()=>{network[key]=$(id).value;changed(true);};
   $('nsScenario').onchange=()=>{const value=$('nsScenario').value;network.evidenceMode=value==='combined'?'combined':'single';if(value!=='combined')network.scenario=value==='observed'?'observed':value.slice(6);changed(true);};
   $('nsSave').onclick=()=>downloadBlob('hydra-network-schematic.json',JSON.stringify(snapshot(),null,2),'application/json');$('nsLoad').onclick=()=>$('nsLoadInput').click();
@@ -1154,7 +1557,7 @@ function mount(){
         for(const point of revised.nodes)Object.assign(point,points.get(point.id));
         for(const conduit of revised.edges)conduit.bends=[];
       }
-      checkpoint();network=revised;selected=null;popupVisible=false;multi.clear();highlight=null;connectFrom=null;freshness.clear();
+      checkpoint();network=revised;branchIsolated=false;selected=null;popupVisible=false;multi.clear();highlight=null;connectFrom=null;freshness.clear();
       render();if(first)fit();persist();
       status('Model context import: '+network.nodes.length+' nodes and '+network.edges.length+' links. Arrows follow nominal topology.');
       importDialog.close();
@@ -1175,8 +1578,8 @@ function mount(){
         }));
         if(request!==importGeneration)return;
         const csv=csvs[0];
-        const native=files.length>1||/^\s*\*{4}/.test(csv)||/(?:^|_)(node|conduit)\.csv$/i.test(file.name)&&!csv.trimStart().startsWith('HydraBench');
-        const imported=native?C.importNativeContext(csvs.map((content,index)=>C.nativeContextText(files[index].name,content)).join('\n')):
+        const native=files.length>1||/^\s*\*{4}/.test(csv)||/(?:^|_)(node|conduit|pump|weir|orifice|sluice|flap_valve|screen|user_control|outlet)\.csv$/i.test(file.name)&&!csv.trimStart().startsWith('HydraBench');
+        const imported=native?C.importNativeContext(csvs.map((text,index)=>({name:files[index].name,text}))):
           {network:C.importNetworkContext(csv),warnings:[]};
         const format=native?'icm-csv-v1':'canonical-v1';
         C.applyContextRevision(network,imported.network,format);
@@ -1192,7 +1595,7 @@ function mount(){
         if(endpointPairs.size<imported.network.edges.length)messages.push('Parallel conduits share one or more directed endpoint pairs.');
         $('nsContextLayoutLabel').hidden=Boolean(network.nodes.length);
         $('nsContextLayout').value='geographic';
-        if(network.nodes.length)messages.push('Apply only for a revised export of the same network. Calculated spill evidence, confirmed detriment associations and saved views for imported context will be cleared. Applicable manual edits will be retained.');
+        if(network.nodes.length)messages.push('Apply only for a revised export of the same network. Compatible saved views, geometry, properties and evidence will be retained. Changed source attributes invalidate linked results.');
         for(const warning of messages){const row=document.createElement('li');row.textContent=warning;warnings.append(row);}
         $('nsContextUnitsLabel').hidden=!native;
         $('nsContextUnits').checked=false;
@@ -1216,12 +1619,37 @@ function mount(){
   canvas.addEventListener('lostpointercapture',onPointerUp);
   const svg=$('nsSvg');
   svg.addEventListener('wheel',onWheel,{passive:false});
+  svg.addEventListener('contextmenu',showContext);
+  $('nsContextActions').onclick=event=>{
+    const action=event.target.closest('[data-ns-context]')?.dataset.nsContext;
+    if(!action)return;
+    closeContext(true);
+    if(action==='focus')focusSelected();
+    else if(action==='isolate'){if(!highlight||traceOwner!==selectionKind+':'+selected)traceSelection('down');if(!branchIsolated)toggleIsolation();}
+    else traceSelection(action);
+  };
+  document.addEventListener('pointerdown',event=>{if(!event.target.closest('#nsContextActions'))closeContext();});
+  const map=$('nsMinimap');
+  map.addEventListener('pointerdown',event=>{
+    if(event.button!==0||minimapPointer!==null)return;
+    minimapPointer=event.pointerId;map.setPointerCapture(event.pointerId);panFromMinimap(event);
+  });
+  map.addEventListener('pointermove',event=>{if(minimapPointer===event.pointerId)panFromMinimap(event);});
+  const endMinimap=event=>{if(minimapPointer===event.pointerId){minimapPointer=null;renderCanvas();}};
+  map.addEventListener('pointerup',endMinimap);map.addEventListener('pointercancel',endMinimap);
+  map.addEventListener('lostpointercapture',endMinimap);
+  map.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();fit();}});
+
   canvas.addEventListener('auxclick',event=>{if(event.button===1&&(event.target===canvas||svg.contains(event.target)))event.preventDefault();});
 
   $('nsPicker').addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeSourcePicker();}});
-  canvas.addEventListener('keydown',event=>{if(event.target.closest('#nsPopup,#nsPicker'))return;const n=event.target.closest('[data-ns-node]'),e=event.target.closest('[data-ns-edge]');if(['Enter',' '].includes(event.key)&&(n||e)){event.preventDefault();if(n)selectPoint(n.dataset.nsNode);else{selected=e.dataset.nsEdge;renderDrawer();renderCanvas();}return;}
-    if(event.key==='Escape'){connectFrom=null;popupVisible=false;$('nsPicker').hidden=true;renderPopup();return;}
-    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const target=editing&&!prefs().locked&&!node()?.pinned&&node();if(target){checkpoint();target.x+=event.key==='ArrowLeft'?-10:event.key==='ArrowRight'?10:0;target.y+=event.key==='ArrowUp'?-10:event.key==='ArrowDown'?10:0;}else{network.camera.x+=event.key==='ArrowLeft'?30:event.key==='ArrowRight'?-30:0;network.camera.y+=event.key==='ArrowUp'?30:event.key==='ArrowDown'?-30:0;}changed(true);}
+  canvas.addEventListener('keydown',event=>{if(event.target.closest('#nsPopup,#nsPicker'))return;const n=event.target.closest('[data-ns-node]'),e=event.target.closest('[data-ns-edge]');if(['Enter',' '].includes(event.key)&&(n||e)){event.preventDefault();if(n)selectPoint(n.dataset.nsNode);else selectConnector(e.dataset.nsEdge);return;}
+    if((event.key==='ContextMenu'||event.shiftKey&&event.key==='F10')&&(n||e)){
+      const r=event.target.getBoundingClientRect();
+      showContext({target:event.target,clientX:r.x+r.width/2,clientY:r.y+r.height/2,preventDefault:()=>event.preventDefault()});return;
+    }
+    if(event.key==='Escape'){if(!$('nsContextActions').hidden){closeContext(true);return;}connectFrom=null;popupVisible=false;$('nsPicker').hidden=true;renderPopup();return;}
+    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const target=event.target.id!=='nsMinimap'&&editing&&!prefs().locked&&!node()?.pinned&&node();if(target){checkpoint();target.x+=event.key==='ArrowLeft'?-10:event.key==='ArrowRight'?10:0;target.y+=event.key==='ArrowUp'?-10:event.key==='ArrowDown'?10:0;}else{network.camera.x+=event.key==='ArrowLeft'?30:event.key==='ArrowRight'?-30:0;network.camera.y+=event.key==='ArrowUp'?30:event.key==='ArrowDown'?-30:0;}changed(true);}
   });
   container.addEventListener('input',event=>{if(event.target.id==='nsSourceSearch'){const value=event.target.value.toLowerCase();container.querySelectorAll('[data-ns-file-name]').forEach(row=>row.hidden=!row.dataset.nsFileName.includes(value));}});
   observer=new ResizeObserver(()=>renderCanvas());observer.observe(canvas);

@@ -7,6 +7,7 @@ import {
 } from "./browser-environment.mjs";
 import { installPrivacyGuard } from "./privacy-network.mjs";
 import { writeEvidence } from "./evidence-output.mjs";
+import { verifyNetworkExplorer } from "./network-explorer-acceptance.mjs";
 const base = process.env.ICM_BASE_URL || "http://127.0.0.1:8008/",
   name = process.env.ICM_BROWSER || "chromium";
 const browser = await { chromium, firefox }[name].launch(
@@ -401,6 +402,7 @@ try {
     "Confirm and clear the full schematic, preserving imported files and undoing in-session",
     "Escape preserves state, confirm empties geometry, Undo restores the full snapshot, reload retains a confirmed clear",
   );
+  await verifyNetworkExplorer(page, name, record);
   guard.assertClean();
   assert.deepEqual(errors, []);
 } finally {

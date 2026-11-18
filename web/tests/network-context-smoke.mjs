@@ -104,6 +104,16 @@ try{
   await page.evaluate(()=>{document.querySelector('#gapInput').value='150';});
   await page.getByLabel('Flow Survey evidence layer').check();
   await point.locator('[data-ns-survey="Stale survey evidence"]').waitFor({state:'attached'});
+  await page.locator('#nsEdit').click();
+  await point.focus();await point.press('Enter');
+  await page.getByRole('tab',{name:'Evidence',exact:true}).click();
+  const inspectorPanel=page.locator('#nsInspectorPanel');
+  assert.match(await inspectorPanel.innerText(),/Flow Survey · Stale survey evidence/);
+  assert.match(await inspectorPanel.innerText(),/Verification · Stale evidence/);
+  await page.getByRole('tab',{name:'Data linking',exact:true}).click();
+  await inspectorPanel.getByText('Monitoring association',{exact:true}).click();
+  assert.equal(await inspectorPanel.getByLabel('Flow monitor').inputValue(),'FM01');
+  await page.locator('#nsEdit').click();
   // Calculate a real comparison from synthetic ICM reports. A matching ID
   // alone must never attach that comparison to an imported network object.
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series'));
@@ -130,12 +140,17 @@ try{
   const badge=point.locator('[data-ns-detriment="detriment"]');
   assert.match(await badge.locator('title').textContent(),/flood-a.csv → flood-b.csv.*Δ 6 m³/);
   if(process.env.ICM_DETRIMENT_LAYER_SCREENSHOT)await page.screenshot({path:process.env.ICM_DETRIMENT_LAYER_SCREENSHOT,animations:'disabled'});
-  await page.getByRole('button',{name:'Open detriment evidence'}).click();
+  await page.locator('#nsEdit').click();
+  await point.focus();await point.press('Enter');
+  await page.getByRole('tab',{name:'Evidence',exact:true}).click();
+  assert.match(await inspectorPanel.innerText(),/Change: 6 m³/);
+  await inspectorPanel.getByRole('button',{name:'Open Flooding evidence',exact:true}).click();
   assert.match(await page.locator('#dtDrawer h2').innerText(),/^001$/);
   await page.locator('#dtForm [data-key="threshold"]').fill('6');
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('network','schematic'));
   await point.locator('[data-ns-detriment="stale"]').waitFor({state:'attached'});
   assert.doesNotMatch(await point.locator('[data-ns-detriment="stale"] title').textContent(),/m³/);
+  await page.locator('#nsEdit').click();
   await point.focus();
   await point.press('Enter');
   await page.getByText('Detriment association',{exact:true}).click();
@@ -171,7 +186,8 @@ try{
   await point.focus();
   await point.press('Enter');
   const inspector=page.getByRole('complementary',{name:'Selected asset evidence'});
-  assert.match(await inspector.locator('.ns-linked-evidence').innerText(),/Flow monitor FM01/);
+  await page.getByRole('tab',{name:'Evidence',exact:true}).click();
+  assert.match(await inspector.locator('.ns-linked-evidence').filter({hasText:'Flow monitor FM01'}).innerText(),/Flow monitor FM01/);
   await inspector.getByRole('button',{name:'Open Verification evidence'}).click();
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='graphs');
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('network','schematic'));
