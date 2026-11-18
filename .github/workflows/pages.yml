@@ -427,6 +427,13 @@ jobs:
           node web/tests/verification-overview-smoke.mjs
           ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs
           ICM_BROWSER=firefox node web/tests/network-schematic-smoke.mjs
+          for browser in chromium firefox; do
+            for suite in link-controls-smoke import-controls-acceptance network-controls-acceptance plot-controls-acceptance survey-controls-acceptance queue-controls-acceptance uiux-review; do
+              evidence="/tmp/icm-interaction-evidence/control-assurance/$browser/$suite"
+              export ICM_BASE_URL=http://127.0.0.1:8000/
+              ICM_BROWSER="$browser" ICM_EVIDENCE_DIR="$evidence" ICM_UIUX_EVIDENCE="$evidence" node "web/tests/$suite.mjs"
+            done
+          done
       - name: Retain workspace interaction evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

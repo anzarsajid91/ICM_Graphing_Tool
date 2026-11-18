@@ -20,8 +20,8 @@ included in the v2 branch.
 
 [The control matrix](hydrabench-v2-control-results.csv) records 743 route/control
 identities from the two synthetic CI artifacts, including 691 observed enabled.
-The matrix currently reconciles 353 identities to passing assertions or executed
-keyboard disclosure checks. The other 390 are explicitly BLOCKED pending
+The matrix currently reconciles 639 identities to passing assertions or executed
+keyboard disclosure checks. The other 104 are explicitly BLOCKED pending
 per-control assertion reconciliation or a prerequisite-state outcome check.
 These rows include disabled states and repeated shared controls. The matrix does
 not infer failure from a missing activation, or acceptance from a recorded click.
@@ -69,3 +69,13 @@ The baseline public build was verified at v1.071 / `5483d3f` with 106 published
 resource hashes and Firefox shell acceptance. The candidate still requires owner
 merge approval, the authenticated administrative release record, production CI,
 and actual live acceptance. No merge or deployment is performed by this review.
+
+About shortcuts, licence text navigation and source links were checked in both desktop browsers with 54 outcomes per browser. Source-link requests were fulfilled locally to verify exact destination, omitted referrer and isolated popup. Remote GitHub response availability is outside that assertion.
+
+Additional desktop acceptance on 2026-11-18 passed network control outcomes (43 per browser), survey UI identity and review outcomes (85 per browser), native chart controls (41 per browser), import choosers (6 per browser), and About/licence/fixed source links (54 per browser). All used synthetic data and the tested product asset identity 9f4d5b2. Graph fixtures for Data/Comparison/Rating isolate native modebar wiring. Detriment controls use normal report imports and calculated charts. Survey injected ratings isolate UI handlers from engine correctness. Native operating-system directory interaction remains outside headless evidence.
+
+Queue acceptance passed 40 outcomes per browser across ten routes. Prioritization, waiting-job cancellation, active-worker restart, ready-source identity/hash preservation and a fresh 202.65 L/s calculation were checked. The first real result was held at the test message boundary to keep waiting jobs deterministic.
+
+## CI security impact review
+
+The browser-interactions job now executes the six focused control suites and the route audit in Chromium and Firefox against its own built artifact. The change adds test commands and synthetic artifact paths. Runner image, pinned action revisions, job permissions, branch/environment restrictions, mandatory check names, failure behavior, publication commands and retention period are unchanged. The existing source/claim gates still run before build and the request observers remain active. The focused licence navigation suite adds only the fixed built LICENSE.txt path to its own allowed-resource set. External source-link tests intercept only the two fixed GitHub destination forms locally and assert GET, empty body, absent referrer and isolated popup. No application runtime, engineering method or browser data destination changed in this assurance patch. This is AI-assisted source review within the authorised single-maintainer process, not independent human approval. Fresh final-head CI remains required.
