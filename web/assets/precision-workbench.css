@@ -551,8 +551,10 @@ body.precision-workbench{
 @media(max-width:700px){.assessment-canvas-head,.assessment-popup-head{flex-direction:column;gap:12px}.assessment-canvas-head label{width:100%;min-width:0}.weekly-editor-fields{grid-template-columns:1fr}.assessment-popup{padding:16px}.weekly-evidence{grid-template-columns:1fr}.assessment-canvas{padding:12px}}
 
 /* A decorative pill moves independently; button hit areas, focus and route content never move. */
-.pw-secondary-nav.pw-has-indicator button[aria-current="page"]{background:transparent;box-shadow:none}
-.pw-tab-indicator{position:absolute;z-index:0;pointer-events:none;top:4px;bottom:4px;border-radius:var(--hb-radius-pill);background:var(--hb-elevated);box-shadow:var(--hb-shadow)}
+.pw-secondary-nav.hb-has-selection button[aria-current="page"]{background:transparent;box-shadow:none}
+.pw-tab-indicator{border-radius:var(--hb-radius-pill);background:var(--hb-elevated);box-shadow:var(--hb-shadow)}
+.pw-rail-indicator{border-radius:var(--hb-radius-control);background:var(--hb-selection)}
+.pw-rail :is(.pw-primary-nav,.pw-about-nav) button{position:relative;z-index:1}
 .pw-primary-nav button,.pw-about-nav button{font-size:15px;border-radius:var(--hb-radius-control)}
 .pw-primary-nav button[aria-current="page"] .pw-nav-icon,.pw-about-nav button[aria-current="page"] .pw-nav-icon{color:var(--hb-accent)}
 .pw-context{background:transparent;border-bottom:0;padding-bottom:0}
@@ -609,6 +611,7 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 .pw-primary-nav button[aria-current="page"],.pw-about-nav button[aria-current="page"]{
   background:var(--hb-selection);color:var(--hb-accent-hover);font-weight:600
 }
+.pw-rail.hb-has-selection :is(.pw-primary-nav,.pw-about-nav) button[aria-current="page"]{background:transparent}
 .precision-workbench .data-table th{background:var(--hb-soft);font-size:13px;letter-spacing:0;text-transform:none}
 .precision-workbench .data-table td,.precision-workbench .summary-box{font-variant-numeric:tabular-nums}
 .precision-workbench .dropzone{background:var(--hb-soft);border-color:#afa6cf}

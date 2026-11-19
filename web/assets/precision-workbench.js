@@ -581,21 +581,17 @@ function navigate(workspace,page,push=false){
     }
   }
   applyPageComposition();
+  const railPrevious=qs('.pw-rail-indicator')?.getBoundingClientRect();
   qsa('.pw-primary-nav button,.pw-about-nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.workspace===workspace?'page':'false'));
   $('pwBreadcrumbWorkspace').textContent=spec.label;$('pwBreadcrumbPage').textContent=p.label;$('pwPageTitle').textContent=p.title;$('pwPageDescription').textContent=p.description;
   const sn=$('pwSecondaryNav');
   const sameWorkspace=sn.dataset.workspace===workspace;
-  const previous=sameWorkspace?qs('.pw-tab-indicator',sn):null;
-  // Retain the pill and controls within a workspace. Capture the currently
-  // painted position so a rapid second selection continues from mid-motion.
-  const previousRect=previous?.getBoundingClientRect(),navRect=previous?sn.getBoundingClientRect():null;
-  const previousPill=previousRect?{left:previousRect.left-navRect.left-sn.clientLeft+sn.scrollLeft,width:previousRect.width}:null;
+  const previousPill=sameWorkspace?qs('.pw-tab-indicator',sn)?.getBoundingClientRect():null;
   if(!sameWorkspace){
     sn.innerHTML='';sn.dataset.workspace=workspace;sn.setAttribute('role','tablist');sn.setAttribute('aria-label',spec.label+' pages');
     Object.entries(spec.pages).forEach(([key,entry])=>{const b=document.createElement('button');b.type='button';b.dataset.page=key;b.textContent=entry.label;b.id='pw-tab-'+workspace+'-'+key;b.setAttribute('role','tab');b.addEventListener('click',()=>navigate(workspace,key,true));sn.appendChild(b);});
   }
   qsa('button',sn).forEach(b=>{const active=b.dataset.page===page;b.setAttribute('aria-current',active?'page':'false');b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;const target=spec.pages[b.dataset.page].root?.();if(target){b.setAttribute('aria-controls',target.id);target.setAttribute('role','tabpanel');if(active)target.setAttribute('aria-labelledby',b.id);}});
-  positionTabIndicator(previousPill);
   inspectorContext(p);refreshScope();renderAssets();
   // A route change must preserve the layout chosen by the engineer.
   qs('.pw-rail')?.classList.remove('is-open');
@@ -615,6 +611,7 @@ function navigate(workspace,page,push=false){
     void window.ICMNetworkSchematic?.open();
   }
   routeMounted=true;restoreRouteScroll();
+  positionRailIndicator(railPrevious);positionTabIndicator(previousPill);
 }
 function syncNavigationToggle(){
   const toggle=$('pwBrandToggle'),rail=$('pwNavigation'),opener=$('pwRailToggle');if(!toggle||!rail||!opener)return;
@@ -628,6 +625,7 @@ function syncNavigationToggle(){
   }
   rail.inert=drawer&&!expanded;
   opener.hidden=!drawer||expanded;
+  positionRailIndicator();
 }
 function inspectorOverlay(){return matchMedia('(max-width:1260px)').matches||document.body.classList.contains('pw-focus-canvas');}
 function syncInspectorAccessibility(){
@@ -636,21 +634,17 @@ function syncInspectorAccessibility(){
   inspector.inert=!expanded;
   toggle?.setAttribute('aria-expanded',String(expanded));
 }
-function positionTabIndicator(previous=null){
+function positionRailIndicator(previous){
+  const rail=$('pwNavigation'),active=rail&&qs('button[aria-current="page"]',rail);
+  if(active)window.HydraDesign?.moveSelection(rail,active,'pw-rail-indicator',previous);
+}
+function positionTabIndicator(previous){
   const nav=$('pwSecondaryNav'),active=nav&&qs('button[aria-current="page"]',nav);if(!active)return;
-  let pill=qs('.pw-tab-indicator',nav);
-  if(!pill){pill=document.createElement('span');pill.className='pw-tab-indicator';pill.setAttribute('aria-hidden','true');nav.prepend(pill);}
   const left=active.offsetLeft,width=active.offsetWidth;
-  pill.style.left=left+'px';pill.style.width=width+'px';nav.classList.add('pw-has-indicator');
   // Keep the selected route discoverable without moving the document or charts.
   if(left<nav.scrollLeft)nav.scrollLeft=left;
   else if(left+width>nav.scrollLeft+nav.clientWidth)nav.scrollLeft=left+width-nav.clientWidth+4;
-  const reducedMotion=matchMedia('(prefers-reduced-motion:reduce)').matches;
-  if(previous||reducedMotion)pill.getAnimations().forEach(animation=>animation.cancel());
-  if(previous&&width>0&&!reducedMotion){
-    pill.style.transformOrigin='left center';
-    pill.animate([{transform:'translateX('+(previous.left-left)+'px) scaleX('+(previous.width/width)+')'},{transform:'none'}],{duration:200,easing:'cubic-bezier(.2,.8,.2,1)'});
-  }
+  window.HydraDesign?.moveSelection(nav,active,'pw-tab-indicator',previous);
 }
 function isFocusRoute(){
   return true;
@@ -762,7 +756,9 @@ function wireContextUpdates(){
   matchMedia('(max-width:620px)').addEventListener?.('change',syncNavigationToggle);
   matchMedia('(max-width:1260px)').addEventListener?.('change',syncInspectorAccessibility);
   new ResizeObserver(()=>positionTabIndicator()).observe(secondary);
-  matchMedia('(prefers-reduced-motion:reduce)').addEventListener?.('change',()=>positionTabIndicator());
+  const railObserver=new ResizeObserver(()=>positionRailIndicator());
+  for(const group of qsa('.pw-rail .pw-primary-nav,.pw-rail-bottom'))railObserver.observe(group);
+  matchMedia('(prefers-reduced-motion:reduce)').addEventListener?.('change',()=>{positionRailIndicator();positionTabIndicator();});
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&qs('.pw-rail.is-open')){qs('.pw-rail').classList.remove('is-open');syncNavigationToggle();$('pwRailToggle')?.focus({preventScroll:true});}});
 }
 function buildAboutPage(){

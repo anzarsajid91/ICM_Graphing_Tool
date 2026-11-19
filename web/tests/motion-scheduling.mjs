@@ -12,6 +12,17 @@ page.on('pageerror',error=>errors.push(error.message));
 const settle=()=>page.waitForTimeout(450);
 try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
+  await page.locator('.pw-rail-indicator').waitFor({timeout:5000});
+  const railMotion=await page.evaluate(()=>{
+    const indicator=document.querySelector('.pw-rail-indicator'),before=indicator.getBoundingClientRect();
+    const next=document.querySelector('.pw-primary-nav [data-workspace="spills"]');
+    next.click();
+    const after=indicator.getBoundingClientRect();
+    return {active:next.getAttribute('aria-current'),moving:indicator.getAnimations().length>0,start:Math.abs(before.top-after.top)};
+  });
+  assert.equal(railMotion.active,'page','The destination is selected synchronously');
+  assert.ok(railMotion.moving&&railMotion.start<6,'The sidebar highlight starts from the currently visible position');
+  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('home','overview',false));
   await page.getByRole('link',{name:'Open Data / time series'}).click();
   await page.locator('#timeChart').waitFor({state:'visible'});
   await page.evaluate(async()=>{
@@ -41,6 +52,46 @@ try{
   await page.evaluate(()=>window.motionPill=document.querySelector('.pw-tab-indicator'));
   await page.click('#pwSecondaryNav [data-page="storage"]');
   assert.equal(await page.evaluate(()=>window.motionPill===document.querySelector('.pw-tab-indicator')),true,'Subtab selection preserves its indicator for uninterrupted motion');
+  await page.click('#pwSecondaryNav [data-page="assessment"]');
+  await page.waitForFunction(()=>document.querySelector('.pw-tab-indicator').getAnimations().length===0);
+  const reselect=await page.evaluate(()=>{
+    const assessment=document.querySelector('#pwSecondaryNav [data-page="assessment"]');
+    const pill=document.querySelector('.pw-tab-indicator');
+    document.querySelector('#pwSecondaryNav [data-page="storage"]').click();
+    const animation=pill.getAnimations()[0];
+    animation.pause();animation.currentTime=60;
+    const before=pill.getBoundingClientRect();
+    assessment.click();
+    const after=pill.getBoundingClientRect();
+    return {active:assessment.getAttribute('aria-selected'),moving:pill.getAnimations().length>0,jump:Math.abs(before.left-after.left)};
+  });
+  assert.equal(reselect.active,'true');
+  assert.ok(reselect.moving&&reselect.jump<6,'Rapid tab selection continues from the painted highlight');
+  await page.emulateMedia({reducedMotion:'reduce'});
+  const reduced=await page.evaluate(()=>{
+    const target=document.querySelector('#pwSecondaryNav [data-page="storage"]');
+    target.click();
+    return {active:target.getAttribute('aria-selected'),motion:document.querySelector('.pw-tab-indicator').getAnimations().length};
+  });
+  assert.deepEqual(reduced,{active:'true',motion:0},'Reduced motion switches tabs without movement');
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.getByRole('button',{name:'Network Schematic',exact:true}).click();
+  await page.locator('#nsSvg').waitFor();
+  await page.evaluate(()=>{
+    const network=ICMNetworkCore.empty();
+    network.nodes=[{id:'motion-test',name:'Synthetic pump',type:'pump',colour:'blue',x:180,y:130,bindings:[]}];
+    ICMNetworkSchematic.restore(network);
+  });
+  await page.locator('[data-ns-node="motion-test"] [data-ns-frame]').click();
+  const inspectorMotion=await page.evaluate(()=>{
+    const previous=document.querySelector('.ns-tab-indicator').getBoundingClientRect();
+    document.querySelector('#nsInspectorTab-properties').click();
+    const indicator=document.querySelector('.ns-tab-indicator');
+    const after=indicator.getBoundingClientRect();
+    return {panel:document.querySelector('#nsInspectorPanel').getAttribute('aria-labelledby'),motion:indicator.getAnimations().length,jump:Math.hypot(previous.x-after.x,previous.y-after.y)};
+  });
+  assert.equal(inspectorMotion.panel,'nsInspectorTab-properties');
+  assert.ok(inspectorMotion.motion>0&&inspectorMotion.jump<6,'Inspector panels switch immediately while the highlight moves');
   // Three source notifications in one task must produce one survey presentation.
   const renders=await page.evaluate(async()=>{
     let count=0;const observer=new MutationObserver(records=>count+=records.filter(r=>r.type==='childList'&&r.target.id==='surveyReviewReadiness').length);
