@@ -153,7 +153,7 @@ and closes after selecting an action, clicking outside or pressing Escape.
 JSON. Raw files are not embedded: reimport files with matching SHA-256 fingerprints
 to validate saved evidence. Missing or changed files cannot retain current RAG.
 
-Turn on **Zoom** to zoom at the pointer with the mouse wheel. Press and drag the
+Turn on **Zoom** to zoom at the pointer with the mouse wheel. Zoom reaches 3,200%. Above 100%, asset symbols shrink gradually to leave more room around connections. Labels and click targets stay readable. Press and drag the
 middle mouse button to pan in any mode. Turn Zoom off to scroll the page with
 the wheel. The **Pan**, **−**, **+** and **Fit** buttons remain available.
 

@@ -184,6 +184,12 @@ function renderEdgeHandles(group,route,bendCount){
     group.append(handle);
   }
 }
+function renderNodeLeader(group,n,scale){
+  const leader=C.labelLeader(n,scale);
+  group.replaceChildren();
+  if(leader)group.append(svgElement('path',{'data-ns-leader':'',d:'M'+leader.start.x+' '+leader.start.y+'L'+leader.end.x+' '+leader.end.y,
+    stroke:'#82939f','stroke-width':1,fill:'none'}),svgElement('polygon',{points:polygonPoints(leader.arrow),fill:'#82939f'}));
+}
 function renderScene(includeHandles=true){
   const {width,height}=dimensions(),scene=document.createDocumentFragment();
   const verificationLayer=prefs().verification===true;
@@ -193,7 +199,8 @@ function renderScene(includeHandles=true){
   const surveyView=surveyLayer?surveyLayerView():null;
   const detrimentLayer=prefs().detriment===true,comparison=detrimentLayer?detrimentView():null;
   const shown=visibleNodes(),shownIds=new Set(shown.map(n=>n.id)),byId=new Map(network.nodes.map(n=>[n.id,n]));
-  const routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y));
+  const scale=C.symbolScale(network.camera.zoom),markerTransform='scale('+scale+')';
+  const routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y),scale);
   for(const e of network.edges){
     if(!shownIds.has(e.from)||!shownIds.has(e.to)||(branchIsolated&&highlight&&!highlight.wires.has(e.id)))continue;
     const route=routes.get(e.id);if(!route)continue;
@@ -216,26 +223,25 @@ function renderScene(includeHandles=true){
   }
   for(const n of shown){
     const p=point(n.x,n.y),colour=C.colours[n.colour],box=C.bounds(n.type),offset=C.labelOffset(n);
-    const small=['manhole','label'].includes(n.type),leader=C.labelLeader(n);
+    const small=['manhole','label'].includes(n.type);
     const title=n.name+' · '+C.types[n.type];
     const group=svgElement('g',{'data-ns-node':n.id,transform:translate(p.x,p.y),tabindex:0,role:'button','aria-label':title});
     group.append(svgElement('title',{},title));
     if(selectionKind==='node'&&selected===n.id||multi.has(n.id)){
-      group.append(svgElement('rect',{x:-42,y:-32,width:84,height:64,rx:8,fill:'none',stroke:'#0b8f96','stroke-width':2}));
+      group.append(svgElement('rect',{'data-ns-selection':'',transform:markerTransform,x:-42,y:-32,width:84,height:64,rx:8,fill:'none',stroke:'#0b8f96','stroke-width':2}));
     }
     if(!box.circle){
-      group.append(svgElement('rect',{'data-ns-frame':'',x:-box.x,y:-box.y,width:box.x*2,height:box.y*2,
+      group.append(svgElement('rect',{'data-ns-frame':'',transform:markerTransform,x:-box.x,y:-box.y,width:box.x*2,height:box.y*2,
         rx:6,fill:'white',stroke:colour,'stroke-width':1.5}));
     }
     group.append(svgElement('rect',{x:-37,y:-28,width:74,height:56,fill:'transparent'}));
-    const symbol=svgElement('g',{'data-ns-symbol':'',stroke:colour,'stroke-width':1.8,fill:'white',
+    const symbol=svgElement('g',{'data-ns-symbol':'',transform:markerTransform,stroke:colour,'stroke-width':1.8,fill:'white',
       'stroke-linecap':'round','stroke-linejoin':'round'});
     renderIcon(symbol,n.type);
     group.append(symbol);
-    if(leader){
-      group.append(svgElement('path',{'data-ns-leader':'',d:`M${leader.start.x} ${leader.start.y}L${Number(leader.end.x)} ${Number(leader.end.y)}`,
-        stroke:'#82939f','stroke-width':1,fill:'none'}),
-        svgElement('polygon',{points:polygonPoints(leader.arrow),fill:'#82939f'}));
+    if(small||n.nameOffset){
+      const leader=svgElement('g',{'data-ns-node-leader':''});
+      renderNodeLeader(leader,n,scale);group.append(leader);
     }
     group.append(svgElement('text',{'data-ns-label':n.id,x:Number(offset.x)+(small?5:0),y:Number(offset.y),
       'text-anchor':small?'start':'middle','font-size':small?13:14,'font-weight':small?400:600,fill:'#182732'},n.name));
@@ -416,7 +422,7 @@ function moveTouch(event){
     const after={x:before.x+dx/2,y:before.y+dy/2};
     const focus=world(before.x,before.y),distance=Math.hypot(previous.x-other.x,previous.y-other.y);
     const ratio=distance>1?Math.hypot(next.x-other.x,next.y-other.y)/distance:1;
-    const z=Math.max(network.contextFormat ? .002 : .2,Math.min(4,network.camera.zoom*ratio));
+    const z=C.cameraZoom(network.camera.zoom*ratio,network.contextFormat);
     network.camera={x:after.x-focus.x*z,y:after.y-focus.y*z,zoom:z};
   }
   if(frame===null)frame=requestAnimationFrame(()=>{frame=null;renderGeometry();});
@@ -436,6 +442,7 @@ function renderCanvas(){
   const active=document.activeElement;
   const focused=svg.contains(active)&&active.closest('[data-ns-node],[data-ns-edge]');
   const d=dimensions();svg.setAttribute('viewBox','0 0 '+d.width+' '+d.height);svg.replaceChildren(renderScene());
+  svg.dataset.nsMarkerScale=C.symbolScale(network.camera.zoom);
   declutterLabels(svg);
   const selectedGroup=[...svg.children].find(group=>group.dataset.nsNode===selected&&selected!==null);
   if(selectedGroup)svg.append(selectedGroup);
@@ -453,8 +460,17 @@ function renderCanvas(){
   $('nsIsolateBranch').setAttribute('aria-pressed',String(branchIsolated));
 }
 function renderGeometry(){
-  const edges=new Map(network.edges.map(e=>[e.id,e])),nodes=new Map(network.nodes.map(n=>[n.id,n])),routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y));
-  for(const g of $('nsSvg').querySelectorAll('[data-ns-node]')){const n=nodes.get(g.dataset.nsNode),p=point(n.x,n.y);g.setAttribute('transform','translate('+p.x+' '+p.y+')');}
+  const svg=$('nsSvg'),scale=C.symbolScale(network.camera.zoom),scaleChanged=Number(svg.dataset.nsMarkerScale)!==scale;
+  const edges=new Map(network.edges.map(e=>[e.id,e])),nodes=new Map(network.nodes.map(n=>[n.id,n])),routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y),scale);
+  for(const g of svg.querySelectorAll('[data-ns-node]')){
+    const n=nodes.get(g.dataset.nsNode),p=point(n.x,n.y);
+    g.setAttribute('transform',translate(p.x,p.y));
+    if(scaleChanged){
+      for(const marker of g.querySelectorAll('[data-ns-frame],[data-ns-symbol],[data-ns-selection]'))marker.setAttribute('transform','scale('+scale+')');
+      const leader=g.querySelector('[data-ns-node-leader]');if(leader)renderNodeLeader(leader,n,scale);
+    }
+  }
+  svg.dataset.nsMarkerScale=scale;
   for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]')){const route=routes.get(g.dataset.nsEdge);if(!route){g.style.visibility='hidden';continue;}g.style.visibility='';for(const path of g.querySelectorAll(':scope > path'))path.setAttribute('d',route.path);g.querySelector('[data-ns-direction]')?.setAttribute('points',route.arrow.map(p=>p.x+','+p.y).join(' '));const e=edges.get(g.dataset.nsEdge),offset=e.labelOffset||{x:0,y:0},label=g.querySelector('[data-ns-edge-label]');g.querySelector('[data-ns-detriment]')?.setAttribute('transform','translate('+(route.label.x-10)+' '+(route.label.y-5)+')');if(label){label.setAttribute('x',route.label.x+offset.x);label.setAttribute('y',route.label.y+offset.y);}for(const handle of g.querySelectorAll('[data-ns-bend]')){const p=route.points[Number(handle.dataset.nsBend)+1];handle.setAttribute('cx',p.x);handle.setAttribute('cy',p.y);}for(const handle of g.querySelectorAll('[data-ns-add-bend]')){const i=Number(handle.dataset.nsAddBend),a=route.points[i],b=route.points[i+1],x=(a.x+b.x)/2,y=(a.y+b.y)/2;handle.querySelector('circle').setAttribute('cx',x);handle.querySelector('circle').setAttribute('cy',y);handle.querySelector('path').setAttribute('d','M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6');}}
   if(drag?.kind==='node'||drag?.kind==='bend')renderMinimap();else updateMinimapViewport();
 }
@@ -478,7 +494,7 @@ function fit(){
   box=scene(z);network.camera={zoom:z,x:d.width/2-(box.left+box.right)/2,y:(d.height-30)/2-(box.top+box.bottom)/2};changed(true);
 }
 function zoom(factor,anchor){
-  const d=dimensions(),p=anchor||{x:d.width/2,y:d.height/2},before=world(p.x,p.y),z=Math.max(network.contextFormat ? .002 : .2,Math.min(4,network.camera.zoom*factor));
+  const d=dimensions(),p=anchor||{x:d.width/2,y:d.height/2},before=world(p.x,p.y),z=C.cameraZoom(network.camera.zoom*factor,network.contextFormat);
   network.camera={zoom:z,x:p.x-before.x*z,y:p.y-before.y*z};changed(true);
 }
 function renderFilters(){

@@ -403,6 +403,44 @@ try {
     "Escape preserves state, confirm empties geometry, Undo restores the full snapshot, reload retains a confirmed clear",
   );
   await verifyNetworkExplorer(page, name, record);
+  await page.evaluate(() => {
+    const test = ICMNetworkCore.empty();
+    test.nodes = [
+      { id: "pump", type: "pump", name: "Synthetic pump", x: 70, y: 80, colour: "blue", bindings: [] },
+      { id: "outfall", type: "outfall", name: "Synthetic outfall", x: 440, y: 130, colour: "blue", bindings: [] },
+    ];
+    test.edges = [{ id: "pipe", from: "pump", to: "outfall", colour: "blue" }];
+    ICMNetworkSchematic.restore(test);
+  });
+  const markerWidths = () => page.locator("#nsSvg [data-ns-symbol]").evaluateAll(
+    (markers) => markers.map((marker) => marker.getBoundingClientRect().width),
+  );
+  const normal = await markerWidths();
+  const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true });
+  for (let i = 0; i < 8; i++) await zoomIn.click();
+  const close = await markerWidths();
+  assert.ok((await snapshot()).camera.zoom > 4, "Zoom passes 400%");
+  assert.ok(close.every((width, i) => width > 0 && width < normal[i]));
+  for (let i = 0; i < 9; i++) await zoomIn.click();
+  const closest = await markerWidths();
+  assert.equal((await snapshot()).camera.zoom, 32, "Zoom caps at 3,200%");
+  assert.ok(closest.every((width, i) => width > 0 && width < close[i]));
+  await tools(true);
+  await page.getByText("Views & snapshots", { exact: true }).click();
+  await page.locator("#nsViewName").fill("Synthetic deep view");
+  await page.locator("#nsSaveView").click();
+  await tools(false);
+  await page.locator("#nsResetView").click();
+  assert.ok((await snapshot()).camera.zoom <= 2);
+  await tools(true);
+  await page.locator("#nsViewSelect").selectOption("0");
+  assert.equal((await snapshot()).camera.zoom, 32);
+  assert.deepEqual(await markerWidths(), closest);
+  record(
+    "nsZoomIn",
+    "Zoom to 3,200% with proportionately smaller asset symbols",
+    "Pump and outfall markers shrink, Reset view fits, and the saved camera restores deep zoom",
+  );
   guard.assertClean();
   assert.deepEqual(errors, []);
 } finally {
