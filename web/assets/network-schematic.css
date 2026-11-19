@@ -143,6 +143,10 @@
 #nsWorkbench .ns-inspector-tabs{display:flex;flex-wrap:wrap;gap:4px;padding:0 10px 8px;border-bottom:1px solid var(--hb-border)}
 #nsWorkbench .ns-inspector-tabs button{font-size:12px;padding:5px 8px;min-height:32px}
 #nsWorkbench .ns-inspector-tabs button[aria-selected=true]{border-color:var(--hb-action);background:var(--hb-soft);color:var(--hb-action)}
+#nsWorkbench .ns-inspector-tabs{position:relative;isolation:isolate}
+#nsWorkbench .ns-inspector-tabs.hb-has-selection button{position:relative;z-index:1;background:transparent}
+#nsWorkbench .ns-inspector-tabs.hb-has-selection button[aria-selected=true]{border-color:transparent}
+#nsWorkbench .ns-tab-indicator{background:var(--hb-selection);border:1px solid var(--hb-action);border-radius:var(--hb-radius-control)}
 #nsWorkbench .ns-property-list{display:grid;grid-template-columns:minmax(90px,42%) minmax(0,1fr);gap:5px 10px;font-size:12px}
 #nsWorkbench .ns-property-list dt{font-weight:600;overflow-wrap:anywhere}
 #nsWorkbench .ns-property-list dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}

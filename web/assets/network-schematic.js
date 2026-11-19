@@ -734,10 +734,11 @@ function inspectorDetriment(panel,object){
   }
 }
 function openInspectorTab(id){
-  inspectorTab=id;renderPopup();
+  const previous=$('nsPopup').querySelector('.ns-tab-indicator')?.getBoundingClientRect();
+  inspectorTab=id;renderPopup(previous);
   $('nsInspectorTab-'+id)?.focus({preventScroll:true});
 }
-function renderPopup(){
+function renderPopup(previous){
   const pop=$('nsPopup'),n=node(),object=n||edge();if(!pop)return;
   pop.hidden=editing||!popupVisible||!object;
   $('nsLayout').classList.toggle('ns-inspecting',!pop.hidden);
@@ -790,6 +791,7 @@ function renderPopup(){
   }
   const edit=inspectorButton('Edit asset');edit.dataset.nsEditSelected='';footer.append(edit);
   pop.replaceChildren(header,tabs,panel,footer);
+  window.HydraDesign?.moveSelection(tabs,tabs.querySelector('[aria-selected="true"]'),'ns-tab-indicator',previous);
   for(const detail of panel.querySelectorAll('details'))if(openDetails.has(detail.querySelector('summary')?.textContent))detail.open=true;
   panel.scrollTop=oldScroll;
 }
