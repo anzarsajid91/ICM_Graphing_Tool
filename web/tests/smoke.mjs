@@ -2541,8 +2541,14 @@ try{
   if(flowSurveySubtabs.map(x=>x.trim()).join('|')!=='FDV check|Rainfall check|Volume balance|Monthly review')throw new Error('Unexpected Flow survey subtab sequence: '+JSON.stringify(flowSurveySubtabs));
   const workflowGuide=await page.locator('#workflowGuide').textContent();
   if(!workflowGuide.includes('Workflow')||!workflowGuide.includes('Survey')||!workflowGuide.includes('FSAT event response')||!workflowGuide.includes('volume balance'))throw new Error('Contextual Survey workflow guide is incomplete: '+workflowGuide);
-  const activeTabStyle=await page.locator('.pw-primary-nav button[aria-current="page"]').evaluate(el=>({fontWeight:getComputedStyle(el).fontWeight,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
-  if(Number(activeTabStyle.fontWeight)<600||activeTabStyle.background==='rgba(0, 0, 0, 0)')throw new Error('Active Precision workspace does not visually stand out: '+JSON.stringify(activeTabStyle));
+  const activeTabStyle=await page.locator('.pw-primary-nav button[aria-current="page"]').evaluate(async el=>{
+    const indicator=el.closest('.pw-rail').querySelector('.pw-rail-indicator');
+    await Promise.all(indicator.getAnimations().map(animation=>animation.finished.catch(()=>{})));
+    const button=el.getBoundingClientRect(),highlight=indicator.getBoundingClientRect();
+    return {fontWeight:getComputedStyle(el).fontWeight,background:getComputedStyle(indicator).backgroundColor,
+      aligned:['top','left','width','height'].every(key=>Math.abs(button[key]-highlight[key])<1)};
+  });
+  if(Number(activeTabStyle.fontWeight)<600||activeTabStyle.background==='rgba(0, 0, 0, 0)'||!activeTabStyle.aligned)throw new Error('Active Precision workspace does not visually stand out: '+JSON.stringify(activeTabStyle));
   await page.setInputFiles('#assocFileInput',await associationWorkbook());
   await page.waitForFunction(()=>window.__ICM_WORKBENCH__.survey?.association?.records?.length===3&&document.querySelectorAll('#surveyAssociationTable tbody > tr').length===3,null,{timeout:60000});
   if(await page.locator('#surveyAssociationTable tbody > tr').count()!==3)throw new Error('Association workbook did not produce three survey relationships');
