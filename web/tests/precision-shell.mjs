@@ -114,7 +114,7 @@ try{
   if(migrated.workspace!=='spills'||migrated.page!=='storage')throw new Error('Legacy Storage route did not migrate: '+JSON.stringify(migrated));
   const productTitle=((await page.locator('.pw-brand-title').textContent())||'').trim();
   if(productTitle!=='HydraBench')throw new Error('Product wordmark must be HydraBench, got '+JSON.stringify(productTitle));
-  if(await page.locator('#pwRailToggle').count()!==1)throw new Error('Navigation rail needs an explicit collapse/expand control.');
+  if(await page.locator('#pwBrandToggle').count()!==1)throw new Error('Navigation rail needs an explicit collapse/expand control.');
   if(await page.locator('[data-pw-page="provenance"]').count()!==0)throw new Error('User-facing provenance route should be removed.');
 
   // Navigation is expanded by default on every route. Focus canvas remains
@@ -124,7 +124,7 @@ try{
     focus:document.body.classList.contains('pw-focus-canvas'),
     rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
     labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none'),
-    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden===true,
+    railToggleHidden:!document.querySelector('#pwBrandToggle')?.getClientRects().length,
     scopebarCount:document.querySelectorAll('#pwScopebar,.pw-scopebar').length
   }));
   if(defaultLayout.focus||defaultLayout.rail<180||!defaultLayout.labelled||defaultLayout.railToggleHidden||defaultLayout.scopebarCount!==0)throw new Error('Every route must default to expanded labelled navigation without the global analysis scope strip: '+JSON.stringify(defaultLayout));
@@ -133,9 +133,9 @@ try{
   const explicitFocus=await page.evaluate(()=>({
     focus:document.body.classList.contains('pw-focus-canvas'),
     rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
-    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden===true
+    railToggleHidden:!document.querySelector('#pwBrandToggle')?.getClientRects().length
   }));
-  if(!explicitFocus.focus||explicitFocus.rail>90||!explicitFocus.railToggleHidden)throw new Error('Explicit Focus canvas did not maximise the analytical workspace: '+JSON.stringify(explicitFocus));
+  if(!explicitFocus.focus||explicitFocus.rail>90||explicitFocus.railToggleHidden)throw new Error('Explicit Focus canvas did not maximise the analytical workspace: '+JSON.stringify(explicitFocus));
   const graphDominance=await page.evaluate(()=>({
     viewport:document.documentElement.clientWidth,
     panel:document.querySelector('#tab-graph>.panel')?.getBoundingClientRect().width||0,
@@ -147,14 +147,14 @@ try{
   const railExpanded=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
   if(railExpanded<180)throw new Error('Standard layout did not restore labelled navigation width: '+railExpanded);
   await page.evaluate(()=>window.scrollTo(0,0));
-  await page.click('#pwRailToggle');
+  await page.click('#pwBrandToggle');
   const railCollapsed=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
   if(!(railCollapsed<railExpanded))throw new Error('Rail collapse control did not reduce navigation width: '+JSON.stringify({railExpanded,railCollapsed}));
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('survey','fdv-check',false));
   const railAfterRoute=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
   if(Math.abs(railAfterRoute-railCollapsed)>2)throw new Error('Route change mutated the user-selected rail collapse state: '+JSON.stringify({railCollapsed,railAfterRoute}));
   await page.evaluate(()=>window.scrollTo(0,0));
-  await page.click('#pwRailToggle');
+  await page.click('#pwBrandToggle');
   const inspectorContainment=await page.evaluate(()=>{
     const inspector=document.querySelector('#pwInspector'),toolbar=document.querySelector('#v2GraphToolbar');
     return{inspectorClient:inspector?.clientWidth||0,inspectorScroll:inspector?.scrollWidth||0,toolbarClient:toolbar?.clientWidth||0,toolbarScroll:toolbar?.scrollWidth||0};
@@ -428,7 +428,7 @@ try{
     overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
     reportButtonVisible:Boolean(document.querySelector('#downloadReportBtn')?.getClientRects().length),
     secondaryNavVisible:Boolean(document.querySelector('#pwSecondaryNav')?.getClientRects().length),
-    menuVisible:Boolean(document.querySelector('#pwRailToggle')?.getClientRects().length),
+    menuVisible:Boolean(document.querySelector('#pwBrandToggle')?.getClientRects().length),
   }));
   if(zoom200.overflow>1||!zoom200.reportButtonVisible||!zoom200.secondaryNavVisible||!zoom200.menuVisible)throw new Error('200% zoom-equivalent layout lost navigation or report actions: '+JSON.stringify(zoom200));
   await page.setViewportSize({width:1440,height:1000});

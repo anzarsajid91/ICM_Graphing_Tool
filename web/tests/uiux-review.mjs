@@ -57,7 +57,7 @@ try{
     assert.equal(await focus.getAttribute('aria-pressed'),'false');
     assert.equal(await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.focus()),false);
     sharedControls.push({route,control:'#pwFocusToggle',status:'PASS',expected:'Toggle focus layout and restore standard layout',browser:browserName});
-    const railMenu=page.locator('#pwRailToggle');
+    const railMenu=page.locator('#pwBrandToggle');
     if(await railMenu.isVisible()){
       const before=await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width);
       await railMenu.click();
@@ -69,7 +69,7 @@ try{
       await railMenu.click();
       await page.waitForFunction(w=>(document.querySelector('.pw-rail').getBoundingClientRect().width<100)===w,before<100);
       assert.equal(await page.locator('.pw-rail').evaluate(el=>el.getBoundingClientRect().width<100),before<100);
-      sharedControls.push({route,control:'#pwRailToggle',status:'PASS',expected:'Change rail width, update expanded state, restore on repeat',browser:browserName});
+      sharedControls.push({route,control:'#pwBrandToggle',status:'PASS',expected:'Change rail width, update expanded state, restore on repeat',browser:browserName});
     }
     const inspectorToggle=page.locator('#pwInspectorToggle');
     if(await inspectorToggle.isVisible()){

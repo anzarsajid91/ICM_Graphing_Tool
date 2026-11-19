@@ -1899,7 +1899,7 @@ try{
     focus:document.body.classList.contains('pw-focus-canvas'),
     rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
     labelled:[...document.querySelectorAll('.pw-primary-nav .pw-nav-label')].every(x=>getComputedStyle(x).display!=='none'),
-    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden,
+    railToggleHidden:!document.querySelector('#pwBrandToggle')?.getClientRects().length,
     scopebarCount:document.querySelectorAll('#pwScopebar,.pw-scopebar').length
   }));
   if(standardLayout.focus||standardLayout.rail<180||!standardLayout.labelled||standardLayout.railToggleHidden||standardLayout.scopebarCount!==0)throw new Error('Time Series must default to expanded labelled navigation with no global scope strip: '+JSON.stringify(standardLayout));
@@ -1912,9 +1912,9 @@ try{
     rail:document.querySelector('.pw-rail')?.getBoundingClientRect().width||0,
     work:document.querySelector('.pw-workarea')?.getBoundingClientRect().width||0,
     inspectorPosition:getComputedStyle(document.querySelector('.pw-inspector')).position,
-    railToggleHidden:document.querySelector('#pwRailToggle')?.hidden
+    railToggleHidden:!document.querySelector('#pwBrandToggle')?.getClientRects().length
   }));
-  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||focusLayout.railToggleHidden!==true)throw new Error('Explicit Focus canvas must still maximise the graph workspace: '+JSON.stringify(focusLayout));
+  if(!focusLayout.focus||focusLayout.rail>90||focusLayout.work<1100||focusLayout.inspectorPosition!=='fixed'||focusLayout.railToggleHidden)throw new Error('Explicit Focus canvas must still maximise the graph workspace: '+JSON.stringify(focusLayout));
   await page.click('#pwInspectorToggle');
   await page.waitForFunction(()=>document.querySelector('#pwInspector')?.classList.contains('is-open'));
   await page.click('#pwInspectorClose');
