@@ -1,5 +1,5 @@
 import {trackControls} from './control-evidence.mjs';
-// Browser regressions for route scroll memory, the shared HB toggle, and both
+// Browser regressions for route scroll memory, the shared navigation toggle, and both
 // schematic cameras. Synthetic survey results isolate UI behaviour from engines.
 import {chromium,firefox} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
@@ -21,6 +21,27 @@ try{
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__?.navigate&&window.__ICM_WORKBENCH__?.workflow26,null,{timeout:30000});
   assert.match(await page.title(),/Hydra Bench/);
   assert((await page.locator('body').innerText()).length>100);
+  const navToggle=page.locator('#pwBrandToggle');
+  const brand=page.locator('.pw-brand-title');
+  assert.equal(await navToggle.locator('svg.pw-navigation-icon').count(),1,'Navigation uses the dedicated panel icon');
+  assert.equal(await navToggle.innerText(),'','The sidebar control is icon-only');
+  const toggleBox=await navToggle.boundingBox(),brandBox=await brand.boundingBox();
+  assert.ok(toggleBox.x>=brandBox.x+brandBox.width,'The icon is at the top right of the navigation header');
+  assert.equal(await page.locator('#pwRailToggle').isVisible(),false,'Desktop has one navigation toggle');
+  assert.equal(await navToggle.getAttribute('aria-label'),'Collapse navigation');
+  await page.setViewportSize({width:600,height:900});
+  const drawerOpener=page.locator('#pwRailToggle');
+  await drawerOpener.click();
+  assert.equal(await navToggle.getAttribute('aria-expanded'),'true');
+  assert.equal(await drawerOpener.isVisible(),false);
+  await navToggle.click();
+  assert.equal(await navToggle.getAttribute('aria-expanded'),'false');
+  assert.equal(await drawerOpener.evaluate(el=>el===document.activeElement),true);
+  await drawerOpener.press('Enter');
+  await page.keyboard.press('Escape');
+  assert.equal(await drawerOpener.evaluate(el=>el===document.activeElement),true);
+  await page.setViewportSize({width:1440,height:1000});
+  await settle();
   // Give every route sufficient height to distinguish independent positions.
   // The navigation and actual document scroller are used without mocking them.
   await page.evaluate(()=>document.querySelector('main.shell').style.minHeight='3600px');
@@ -81,8 +102,9 @@ try{
       const before=await width();
       await page.click('#pwBrandToggle');await settle();
       const after=await width();
-      assert((before<100&&after>180)||(before>180&&after<100),'HB toggles actual rail width on '+workspace+'/'+tab+' at '+size);
+      assert((before<100&&after>180)||(before>180&&after<100),'The navigation icon toggles actual rail width on '+workspace+'/'+tab+' at '+size);
       assert.equal(await page.locator('#pwBrandToggle').getAttribute('aria-expanded'),String(after>100));
+      assert.equal(await navToggle.getAttribute('aria-label'),after<100?'Expand navigation':'Collapse navigation');
       await page.click('#pwBrandToggle');await settle();
       evidence.navigation.push({workspace,tab,viewport:size,before,after});
     }
@@ -91,7 +113,7 @@ try{
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.setFocus(true));
   assert(await width()<100);
   await page.click('#pwBrandToggle');await settle();
-  assert(await width()>180,'HB can expand navigation from Focus canvas');
+  assert(await width()>180,'The navigation icon can expand from Focus canvas');
   assert.equal(await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.focus()),false);
   await page.focus('#pwBrandToggle');await page.keyboard.press('Enter');await settle();assert(await width()<100);
   await page.keyboard.press('Space');await settle();assert(await width()>180);

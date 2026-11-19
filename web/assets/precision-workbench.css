@@ -40,9 +40,15 @@ body.precision-workbench{
   background:var(--hb-rail);color:var(--pw-text);border-right:1px solid var(--pw-border);
   padding:16px;display:flex;flex-direction:column;gap:16px
 }
-.pw-brand{padding:4px 8px 12px;border-bottom:1px solid var(--pw-border)}
-.pw-brand-mark{display:flex;align-items:center;gap:12px;font-weight:600;letter-spacing:.01em}
-.pw-brand-icon{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;padding:0;border:0;border-radius:var(--hb-radius-control);background:var(--pw-teal);font-weight:600;color:white;cursor:pointer}
+.pw-brand{padding:4px 0 12px;border-bottom:1px solid var(--pw-border)}
+.pw-brand-mark{display:flex;align-items:center;gap:6px;font-weight:600;letter-spacing:.01em}
+.pw-brand-icon{display:grid;place-items:center;flex:0 0 38px;height:38px}
+.pw-brand-title{margin-inline-end:auto}
+.pw-navigation-toggle{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;padding:0;border:1px solid var(--pw-border);border-radius:var(--hb-radius-control);background:var(--hb-surface);color:var(--pw-text);cursor:pointer}
+.pw-navigation-toggle:hover{background:var(--hb-selection);color:var(--hb-accent-hover)}
+.pw-navigation-toggle:focus-visible{outline:2px solid var(--hb-accent);outline-offset:2px}
+.pw-navigation-icon{display:block;width:20px;height:20px}
+.pw-navigation-toggle[aria-expanded="false"] .pw-navigation-chevron{transform:rotate(180deg);transform-origin:14.5px 12px}
 .pw-brand small{display:block;margin-top:8px;color:var(--pw-muted);line-height:1.35}
 .pw-primary-nav{display:grid;gap:4px}
 .pw-primary-nav button{
@@ -90,8 +96,8 @@ body.precision-workbench{
 .pw-page-title{font-size:clamp(23px,2.5vw,33px);line-height:1.15;margin:0;font-weight:600;letter-spacing:-.028em}
 .pw-page-description{margin:4px 0 0;color:var(--pw-muted);max-width:900px;font-size:14px;line-height:21px}
 .pw-context-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.pw-rail-toggle,.pw-inspector-toggle,.pw-focus-toggle{display:none;border:1px solid var(--pw-border);background:#fff;border-radius:var(--hb-radius-control);padding:8px 12px;cursor:pointer;font-weight:600;color:var(--pw-text)}
-.pw-rail-toggle{display:inline-flex;align-items:center;gap:8px}
+.pw-inspector-toggle,.pw-focus-toggle{display:none;border:1px solid var(--pw-border);background:#fff;border-radius:var(--hb-radius-control);padding:8px 12px;cursor:pointer;font-weight:600;color:var(--pw-text)}
+.pw-rail-toggle{display:none}
 .pw-focus-toggle:not([hidden]){display:inline-flex;align-items:center;gap:8px}
 .pw-focus-toggle[aria-pressed="true"]{background:#edf8f8;border-color:#a9d6d8;color:var(--pw-teal-strong)}
 .pw-secondary-nav{position:relative;isolation:isolate;display:flex;gap:4px;overflow:auto;padding:4px;background:var(--hb-soft);border:1px solid var(--pw-border);border-radius:var(--hb-radius-pill);width:fit-content;max-width:100%}
@@ -287,6 +293,7 @@ body.precision-workbench{
   .precision-workbench.pw-rail-collapsed .pw-rail{padding-left:12px;padding-right:12px}
   .precision-workbench.pw-rail-collapsed .pw-brand{padding-left:0;padding-right:0}
   .precision-workbench.pw-rail-collapsed .pw-brand-mark{justify-content:center}
+  .precision-workbench.pw-rail-collapsed .pw-brand-icon,
   .precision-workbench.pw-rail-collapsed .pw-brand-title,
   .precision-workbench.pw-rail-collapsed .pw-brand small,
   .precision-workbench.pw-rail-collapsed .pw-primary-nav .pw-nav-label,
@@ -300,7 +307,8 @@ body.precision-workbench{
   .precision-workbench.pw-focus-canvas .pw-rail{padding-left:12px;padding-right:12px}
   .precision-workbench.pw-focus-canvas .pw-brand{padding-left:0;padding-right:0}
   .precision-workbench.pw-focus-canvas .pw-brand-mark{justify-content:center}
-  .precision-workbench.pw-focus-canvas .pw-brand-mark>span:last-child,
+  .precision-workbench.pw-focus-canvas .pw-brand-icon,
+  .precision-workbench.pw-focus-canvas .pw-brand-title,
   .precision-workbench.pw-focus-canvas .pw-brand small,
   .precision-workbench.pw-focus-canvas .pw-primary-nav .pw-nav-label,
   .precision-workbench.pw-focus-canvas .pw-asset-browser{display:none}
@@ -332,12 +340,14 @@ body.precision-workbench{
 @media(max-width:900px){
   :root{--pw-rail:72px;--pw-gap:16px}
   .pw-brand small,.pw-primary-nav .pw-nav-label,.pw-asset-browser{display:none}
-  .pw-brand-mark{justify-content:center}.pw-brand-mark>span:last-child{display:none}
+  .pw-brand-mark{justify-content:center}
   .pw-primary-nav button{justify-content:center;padding:12px}
   .pw-nav-icon{margin:auto}
   .pw-scope-item strong{max-width:150px}
 }
 @media(min-width:621px) and (max-width:900px){
+  .precision-workbench:not(.pw-rail-expanded) .pw-brand-title,
+  .precision-workbench:not(.pw-rail-expanded) .pw-brand-icon{display:none}
   .precision-workbench.pw-rail-expanded .pw-app{grid-template-columns:216px minmax(0,1fr)}
   .precision-workbench.pw-rail-expanded .pw-brand-mark{justify-content:flex-start}
   .precision-workbench.pw-rail-expanded .pw-brand-title,
@@ -355,7 +365,7 @@ body.precision-workbench{
   .pw-rail.is-open{transform:translateX(0)}
   .pw-brand small,.pw-primary-nav .pw-nav-label,.pw-asset-browser{display:block}
   .pw-primary-nav button{justify-content:flex-start}
-  .pw-rail-toggle{display:inline-flex}
+  .pw-rail-toggle:not([hidden]){display:grid}
   .pw-context-head{align-items:center}
   .pw-page-title{font-size:18px}
   .pw-workarea{padding-top:16px}
@@ -545,7 +555,6 @@ body.precision-workbench{
 .pw-tab-indicator{position:absolute;z-index:0;pointer-events:none;top:4px;bottom:4px;border-radius:var(--hb-radius-pill);background:var(--hb-elevated);box-shadow:var(--hb-shadow)}
 .pw-primary-nav button,.pw-about-nav button{font-size:15px;border-radius:var(--hb-radius-control)}
 .pw-primary-nav button[aria-current="page"] .pw-nav-icon,.pw-about-nav button[aria-current="page"] .pw-nav-icon{color:var(--hb-accent)}
-.pw-brand-icon{background:var(--hb-text);border-radius:12px}
 .pw-context{background:transparent;border-bottom:0;padding-bottom:0}
 .pw-page-description{font-size:13px;line-height:20px}
 .pw-scopebar{background:transparent}
@@ -569,8 +578,6 @@ body.precision-workbench{
 
 body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 
-/* The fixed mark remains readable with the rail collapsed. */
-.pw-brand-icon:has(.hb-brand-mark){background:transparent}
 .hb-brand-mark{width:34px;height:34px;display:block;flex:none}
 .hb-brand-bench{color:#4740b6}
 .hb-brand-pulse{

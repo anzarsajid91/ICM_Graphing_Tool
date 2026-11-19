@@ -68,8 +68,8 @@ try{
   assert.equal(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth+2),true,'No card overflow');
   await page.screenshot({path:evidence+'/it-security-'+size.width+'.png',fullPage:true});
  }
- await page.locator('#pwBrandToggle').count().then(async n=>{if(n)await page.locator('#pwBrandToggle').click();});
- await page.locator('#pwRailToggle').click();assert.equal(await panel.isVisible(),true);
+ const navigationToggle=page.locator('#pwBrandToggle');
+ await navigationToggle.click();await navigationToggle.click();assert.equal(await panel.isVisible(),true);
  assert.deepEqual(errors,[]);guard.assertClean();
  console.log('PASS IT Security: content, exact build identity, keyboard, layout and zero navigation requests.');
 }finally{await browser.close();}

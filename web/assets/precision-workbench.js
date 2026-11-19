@@ -169,6 +169,7 @@ function navIcon(name){
   };
   return '<span class="pw-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+(paths[name]||paths.data)+'</svg></span>';
 }
+const navigationToggleIcon='<svg class="pw-navigation-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path class="pw-navigation-chevron" d="m16 9-3 3 3 3"/></svg>';
 function identifySubpanels(){
   qsa('#tab-compare .subpanel').forEach(panel=>{
     const t=(qs('h3',panel)?.textContent||'').toLowerCase();
@@ -383,7 +384,7 @@ function buildShell(){
   const app=document.createElement('div');app.className='pw-app';
   const rail=document.createElement('aside');rail.className='pw-rail';rail.setAttribute('aria-label','Primary workspaces');
   rail.id='pwNavigation';
-  rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><button type="button" id="pwBrandToggle" class="pw-brand-icon" aria-controls="pwNavigation" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation"><svg class="hb-brand-mark" aria-hidden="true" focusable="false" viewBox="0 0 48 48"><path fill="#fff" stroke="#20252a" stroke-width="3.5" stroke-linejoin="round" d="M9 4h4a5 5 0 0 1 5 5v6a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4V9a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v30a5 5 0 0 1-5 5h-4a5 5 0 0 1-5-5v-6a4 4 0 0 0-4-4h-4a4 4 0 0 0-4 4v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9a5 5 0 0 1 5-5Z"/><path stroke="#20252a" stroke-width="3" d="M11 11v15m26 1v10"/><path fill="none" stroke="#4740b6" stroke-width="3.5" stroke-linecap="round" d="M5 37h4c4 0 5-3 5.5-6.5C15.2 25.7 20 24 24 24h16c-3-3-3.5-6-3.5-12"/><path class="hb-brand-pulse" pathLength="100" fill="none" stroke="#c2bcff" stroke-width="2.1" stroke-linecap="round" d="M5 37h4c4 0 5-3 5.5-6.5C15.2 25.7 20 24 24 24h16c-3-3-3.5-6-3.5-12"/><g fill="#fff" stroke="#20252a" stroke-width="2.5"><circle cx="11" cy="11" r="3.1"/><circle cx="37" cy="11" r="3.1"/><circle cx="24" cy="24" r="3.1"/><circle cx="11" cy="37" r="3.1"/><circle cx="37" cy="37" r="3.1"/></g></svg></button><span class="pw-brand-title">Hydra<span class="hb-brand-bench">Bench</span></span></div><small>Browser-local hydraulic evidence and assessment.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
+  rail.innerHTML='<div class="pw-brand"><div class="pw-brand-mark"><span class="pw-brand-icon" aria-hidden="true"><svg class="hb-brand-mark" aria-hidden="true" focusable="false" viewBox="0 0 48 48"><path fill="#fff" stroke="#20252a" stroke-width="3.5" stroke-linejoin="round" d="M9 4h4a5 5 0 0 1 5 5v6a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4V9a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v30a5 5 0 0 1-5 5h-4a5 5 0 0 1-5-5v-6a4 4 0 0 0-4-4h-4a4 4 0 0 0-4 4v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9a5 5 0 0 1 5-5Z"/><path stroke="#20252a" stroke-width="3" d="M11 11v15m26 1v10"/><path fill="none" stroke="#4740b6" stroke-width="3.5" stroke-linecap="round" d="M5 37h4c4 0 5-3 5.5-6.5C15.2 25.7 20 24 24 24h16c-3-3-3.5-6-3.5-12"/><path class="hb-brand-pulse" pathLength="100" fill="none" stroke="#c2bcff" stroke-width="2.1" stroke-linecap="round" d="M5 37h4c4 0 5-3 5.5-6.5C15.2 25.7 20 24 24 24h16c-3-3-3.5-6-3.5-12"/><g fill="#fff" stroke="#20252a" stroke-width="2.5"><circle cx="11" cy="11" r="3.1"/><circle cx="37" cy="11" r="3.1"/><circle cx="24" cy="24" r="3.1"/><circle cx="11" cy="37" r="3.1"/><circle cx="37" cy="37" r="3.1"/></g></svg></span><span class="pw-brand-title">Hydra<span class="hb-brand-bench">Bench</span></span><button type="button" id="pwBrandToggle" class="pw-navigation-toggle" aria-controls="pwNavigation" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">'+navigationToggleIcon+'</button></div><small>Browser-local hydraulic evidence and assessment.</small></div><nav class="pw-primary-nav"></nav><section class="pw-asset-browser"><label for="pwAssetSearch">Assets & scenarios</label><input class="pw-asset-search" id="pwAssetSearch" type="search" placeholder="Filter assets…"><div class="pw-assets" id="pwAssets"></div></section>';
   const bottom=document.createElement('div');bottom.className='pw-rail-bottom';
   bottom.innerHTML='<nav class="pw-about-nav" aria-label="About the tool"></nav>';
   bottom.appendChild(qs('.pw-asset-browser',rail));rail.appendChild(bottom);
@@ -393,7 +394,7 @@ function buildShell(){
   });
   const stage=document.createElement('div');stage.className='pw-stage';
   const context=document.createElement('section');context.className='pw-context';
-  context.innerHTML='<div class="pw-context-head"><div><div class="pw-breadcrumb"><span id="pwBreadcrumbWorkspace"></span><span>›</span><strong id="pwBreadcrumbPage"></strong></div><h2 class="pw-page-title" id="pwPageTitle"></h2><p class="pw-page-description" id="pwPageDescription"></p></div><div class="pw-context-actions"><button class="pw-focus-toggle" id="pwFocusToggle" type="button" aria-pressed="false" hidden>Focus canvas</button><button class="pw-rail-toggle" id="pwRailToggle" type="button">Menu</button><button class="pw-inspector-toggle" id="pwInspectorToggle" type="button" aria-controls="pwInspector" aria-expanded="false">Inspector</button></div></div><nav class="pw-secondary-nav" id="pwSecondaryNav" aria-label="Workspace pages"></nav>';
+  context.innerHTML='<div class="pw-context-head"><div><div class="pw-breadcrumb"><span id="pwBreadcrumbWorkspace"></span><span>›</span><strong id="pwBreadcrumbPage"></strong></div><h2 class="pw-page-title" id="pwPageTitle"></h2><p class="pw-page-description" id="pwPageDescription"></p></div><div class="pw-context-actions"><button class="pw-focus-toggle" id="pwFocusToggle" type="button" aria-pressed="false" hidden>Focus canvas</button><button class="pw-rail-toggle pw-navigation-toggle" id="pwRailToggle" type="button" aria-controls="pwNavigation" aria-expanded="false" aria-label="Expand navigation" title="Expand navigation" hidden>'+navigationToggleIcon+'</button><button class="pw-inspector-toggle" id="pwInspectorToggle" type="button" aria-controls="pwInspector" aria-expanded="false">Inspector</button></div></div><nav class="pw-secondary-nav" id="pwSecondaryNav" aria-label="Workspace pages"></nav>';
   const workarea=document.createElement('div');workarea.className='pw-workarea';
   const inspector=document.createElement('aside');inspector.className='pw-inspector';inspector.id='pwInspector';inspector.innerHTML='<div class="pw-inspector-head"><div><strong>Inspector</strong><span id="pwInspectorSubtitle">Context and settings</span></div><button class="pw-inspector-drawer-close" id="pwInspectorClose" type="button" aria-label="Close inspector">×</button></div><div class="pw-inspector-body" id="pwInspectorBody"></div>';
   const parent=topbar?.parentNode||document.body;
@@ -408,11 +409,10 @@ function buildShell(){
   const applyRailState=()=>{
     document.body.classList.toggle('pw-rail-collapsed',railCollapsed);
     document.body.classList.toggle('pw-rail-expanded',railExplicit&&!railCollapsed);
-    const toggle=$('pwRailToggle');if(toggle){toggle.setAttribute('aria-pressed',railCollapsed?'true':'false');toggle.textContent=railCollapsed?'Expand navigation':'Collapse navigation';}
-    syncBrandToggle();
+    syncNavigationToggle();
   };
   const toggleRail=()=>{
-    if(matchMedia('(max-width:620px)').matches){rail.classList.toggle('is-open');syncBrandToggle();const target=rail.classList.contains('is-open')?qs('button[aria-current="page"]',rail):$('pwRailToggle');target?.focus({preventScroll:true});return;}
+    if(matchMedia('(max-width:620px)').matches){rail.classList.toggle('is-open');syncNavigationToggle();const target=rail.classList.contains('is-open')?qs('button[aria-current="page"]',rail):$('pwRailToggle');target?.focus({preventScroll:true});return;}
     const expanding=rail.getBoundingClientRect().width<100;
     if(expanding&&document.body.classList.contains('pw-focus-canvas')){
       focusPreference=false;
@@ -616,14 +616,18 @@ function navigate(workspace,page,push=false){
   }
   routeMounted=true;restoreRouteScroll();
 }
-function syncBrandToggle(){
-  const button=$('pwBrandToggle'),rail=qs('.pw-rail');if(!button||!rail)return;
-  const expanded=matchMedia('(max-width:620px)').matches?rail.classList.contains('is-open'):rail.getBoundingClientRect().width>=100;
-  button.setAttribute('aria-expanded',String(expanded));
-  button.setAttribute('aria-label',expanded?'Collapse navigation':'Expand navigation');
-  button.title=expanded?'Collapse navigation':'Expand navigation';
-  if(rail)rail.inert=matchMedia('(max-width:620px)').matches&&!expanded;
-  const menu=$('pwRailToggle');if(menu){menu.setAttribute('aria-controls','pwNavigation');menu.setAttribute('aria-expanded',String(expanded));if(matchMedia('(max-width:620px)').matches)menu.textContent=expanded?'Close menu':'Menu';}
+function syncNavigationToggle(){
+  const toggle=$('pwBrandToggle'),rail=$('pwNavigation'),opener=$('pwRailToggle');if(!toggle||!rail||!opener)return;
+  const drawer=matchMedia('(max-width:620px)').matches;
+  const expanded=drawer?rail.classList.contains('is-open'):rail.getBoundingClientRect().width>=100;
+  const label=expanded?'Collapse navigation':'Expand navigation';
+  for(const button of [toggle,opener]){
+    button.setAttribute('aria-expanded',String(expanded));
+    button.setAttribute('aria-label',label);
+    button.title=label;
+  }
+  rail.inert=drawer&&!expanded;
+  opener.hidden=!drawer||expanded;
 }
 function inspectorOverlay(){return matchMedia('(max-width:1260px)').matches||document.body.classList.contains('pw-focus-canvas');}
 function syncInspectorAccessibility(){
@@ -686,11 +690,9 @@ function applyFocusCanvas(userInitiated=false){
     button.textContent=active?'Standard layout':'Focus canvas';
     button.title=active?'Restore the full navigation and docked inspector':'Maximise chart width; keep controls in an overlay inspector';
   }
-  const railToggle=$('pwRailToggle');
-  if(railToggle)railToggle.hidden=active;
   const inspector=$('pwInspector');
   if(!active&&userInitiated)inspector?.classList.remove('is-open');
-  syncBrandToggle();syncInspectorAccessibility();
+  syncNavigationToggle();syncInspectorAccessibility();
   resizeVisuals();
 }
 function selectionLabel(id,fallback='—'){
@@ -757,11 +759,11 @@ function wireContextUpdates(){
   });
   const focusMedia=matchMedia('(min-width:901px)');
   focusMedia.addEventListener?.('change',()=>applyFocusCanvas(false));
-  matchMedia('(max-width:620px)').addEventListener?.('change',syncBrandToggle);
+  matchMedia('(max-width:620px)').addEventListener?.('change',syncNavigationToggle);
   matchMedia('(max-width:1260px)').addEventListener?.('change',syncInspectorAccessibility);
   new ResizeObserver(()=>positionTabIndicator()).observe(secondary);
   matchMedia('(prefers-reduced-motion:reduce)').addEventListener?.('change',()=>positionTabIndicator());
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&qs('.pw-rail.is-open')){qs('.pw-rail').classList.remove('is-open');syncBrandToggle();$('pwRailToggle')?.focus({preventScroll:true});}});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&qs('.pw-rail.is-open')){qs('.pw-rail').classList.remove('is-open');syncNavigationToggle();$('pwRailToggle')?.focus({preventScroll:true});}});
 }
 function buildAboutPage(){
   if($('tab-about'))return;
