@@ -36,9 +36,13 @@ function comparable(a,b,confirmed,metric='spill_count'){
   if(JSON.stringify(mask(a.exclusions,start,end))!==JSON.stringify(mask(b.exclusions,start,end)))return 'Exclusion masks differ.';
   return '';
 }
-// Fixed screen-size ports keep each connection independent at its asset boundary.
+const maxCameraZoom=32;
+function cameraZoom(value,contextFormat){return Math.max(contextFormat ? .002 : .2,Math.min(maxCameraZoom,value));}
+// At close range, reduce the marker footprint while preserving legibility.
+function symbolScale(zoom){return Math.max(1,zoom)**(-.2);}
+// Keep each connection independently attached to its scaled asset boundary.
 function bounds(type){return type==='manhole'?{x:8,y:8,circle:true}:type==='label'?{x:3,y:3,circle:true}:type==='junction'?{x:24,y:24}:{x:38,y:28};}
-function connectionRoutes(nodes,edges,project=v=>v){
+function connectionRoutes(nodes,edges,project=v=>v,scale=1){
   const byId=new Map(nodes.map(n=>[n.id,n])),positions=new Map(nodes.map(n=>[n.id,project(n)])),bins=new Map(),ports=new Map(),routes=new Map();
   const waypoints=new Map(edges.map(e=>[e.id,(e.bends||[]).map(project)]));
   function face(n,target){const p=positions.get(n.id),box=bounds(n.type),dx=target.x-p.x,dy=target.y-p.y;return Math.abs(dx)/box.x>=Math.abs(dy)/box.y?(dx>=0?'right':'left'):(dy>=0?'bottom':'top');}
@@ -56,6 +60,7 @@ function connectionRoutes(nodes,edges,project=v=>v){
       if(box.circle){const t=angle(x)+spread*.45;port={x:centre.x+box.x*Math.cos(t),y:centre.y+box.y*Math.sin(t)};}
       else if(x.side==='right'||x.side==='left')port={x:centre.x+(x.side==='right'?box.x:-box.x),y:centre.y+spread*(box.y-9)};
       else port={x:centre.x+spread*(box.x-9),y:centre.y+(x.side==='bottom'?box.y:-box.y)};
+      if(scale!==1)port={x:centre.x+(port.x-centre.x)*scale,y:centre.y+(port.y-centre.y)*scale};
       if(!ports.has(x.e.id))ports.set(x.e.id,new Map());ports.get(x.e.id).set(x.n.id,port);
     });
   }
@@ -80,12 +85,12 @@ function connectionRoutes(nodes,edges,project=v=>v){
 }
 function connector(e,nodes,edges,project=v=>v){return connectionRoutes(nodes,edges,project).get(e.id)||null;}
 function labelOffset(n){return n.nameOffset||(['manhole','label'].includes(n.type)?n.labelOffset||{x:30,y:-20}:{x:0,y:-35});}
-function labelLeader(n){
+function labelLeader(n,scale=1){
   const p=labelOffset(n),small=['manhole','label'].includes(n.type),box=bounds(n.type);
   if(!small&&!n.nameOffset)return null;
   if(!small&&Math.abs(p.x)<1&&Math.abs(p.y+35)<1)return null;
   const dx=p.x,dy=p.y+4,length=Math.hypot(dx,dy);if(!length)return null;
-  const ux=dx/length,uy=dy/length,d=box.circle?box.x:Math.min(ux?box.x/Math.abs(ux):Infinity,uy?box.y/Math.abs(uy):Infinity);
+  const ux=dx/length,uy=dy/length,d=scale*(box.circle?box.x:Math.min(ux?box.x/Math.abs(ux):Infinity,uy?box.y/Math.abs(uy):Infinity));
   if(length<=d+6)return null;
   const start={x:ux*d,y:uy*d},end={x:dx,y:dy};
   return {start,end,arrow:[start,{x:start.x+ux*6-uy*3,y:start.y+uy*6+ux*3},{x:start.x+ux*6+uy*3,y:start.y+uy*6-ux*3}]};
@@ -193,7 +198,7 @@ function validateNetwork(value){
   for(const e of result.edges){if(e.labelOffset&&![e.labelOffset.x,e.labelOffset.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=10000))throw new Error('Invalid connector label placement.');if(e.review&&(typeof e.review.comment!=='string'||e.review.comment.length>10000||!['unreviewed','in-review','reviewed'].includes(e.review.status)))throw new Error('Invalid connector review.');}
   result.views=result.views||[];result.reviewSnapshots=result.reviewSnapshots||[];
   if(!Array.isArray(result.views)||result.views.length>30||!Array.isArray(result.reviewSnapshots)||result.reviewSnapshots.length>20)throw new Error('Invalid saved review views.');
-  for(const view of result.views)if(typeof view.name!=='string'||view.name.length>100||!Array.isArray(view.positions)||view.positions.length>2000||!view.camera||![view.camera.x,view.camera.y,view.camera.zoom].every(Number.isFinite)||view.camera.zoom<.002||view.camera.zoom>4||view.positions.some(p=>typeof p.id!=='string'||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)))throw new Error('Invalid saved view.');
+  for(const view of result.views)if(typeof view.name!=='string'||view.name.length>100||!Array.isArray(view.positions)||view.positions.length>2000||!view.camera||![view.camera.x,view.camera.y,view.camera.zoom].every(Number.isFinite)||view.camera.zoom<.002||view.camera.zoom>maxCameraZoom||view.positions.some(p=>typeof p.id!=='string'||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)))throw new Error('Invalid saved view.');
   for(const view of result.views){
     if(view.edges!==undefined&&(!Array.isArray(view.edges)||view.edges.length>5000)||view.evidenceMode!==undefined&&!['single','combined'].includes(view.evidenceMode)||view.metric!==undefined&&!['spill_count','duration_hours'].includes(view.metric))throw new Error('Invalid saved view display.');
     const test={...result,views:[],reviewSnapshots:[],camera:view.camera,preferences:view.preferences||result.preferences};
@@ -204,7 +209,7 @@ function validateNetwork(value){
   for(const saved of result.reviewSnapshots)if(typeof saved.name!=='string'||saved.name.length>100||typeof saved.saved_at!=='string'||!saved.network||!Array.isArray(saved.network.nodes)||!Array.isArray(saved.network.edges)||saved.network.nodes.length>2000||saved.network.edges.length>5000)throw new Error('Invalid review snapshot.');
   for(const saved of result.reviewSnapshots){if(saved.network.views?.length||saved.network.reviewSnapshots?.length)throw new Error('Nested review snapshots are unsupported.');saved.network=validateNetwork(saved.network);}
   result.camera=result.camera||{x:0,y:0,zoom:1};
-  if(![result.camera.x,result.camera.y,result.camera.zoom].every(Number.isFinite)||result.camera.zoom<.002||result.camera.zoom>4)throw new Error('Invalid schematic camera.');
+  if(![result.camera.x,result.camera.y,result.camera.zoom].every(Number.isFinite)||result.camera.zoom<.002||result.camera.zoom>maxCameraZoom)throw new Error('Invalid schematic camera.');
   return result;
 }
 function readContextRow(line,lineNumber){
@@ -495,5 +500,5 @@ function conduitTrial(edge){
 function reportingConflicts(rows){
   const seen=new Set();for(const row of rows){for(const y of row.years){const key=row.role+'|'+(row.role==='model'?row.scenario:'Observed')+'|'+y;if(seen.has(key))throw new Error('Overlapping assignments for '+(row.role==='model'?row.scenario:'Observed')+' in '+y+'. Keep one authoritative source per reporting year.');seen.add(key);}}
 }
-globalThis.ICMNetworkCore={colours,types,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,nativeContextText,applyContextRevision,conduitTrial,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
+globalThis.ICMNetworkCore={colours,types,cameraZoom,symbolScale,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,nativeContextText,applyContextRevision,conduitTrial,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
 })();

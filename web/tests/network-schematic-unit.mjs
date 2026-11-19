@@ -17,6 +17,10 @@ C.reportingConflicts([{role:'observed',years:[2024]},{role:'model',scenario:'Bas
 assert.throws(()=>C.validateYears('2024, nope'));
 assert.deepEqual(Array.from(C.validateYears('2024,2022,2024')), [2022,2024]);
 assert.throws(()=>C.validateNetwork({schema:1,nodes:[],edges:[{id:'e',from:'missing',to:'missing',colour:'red'}]}));
+const deepCamera={x:-3000,y:1400,zoom:32};
+const deepWorkspace={...C.empty(),camera:deepCamera,views:[{name:'Deep view',camera:deepCamera,positions:[]}]};
+assert.equal(C.validateNetwork(deepWorkspace).views[0].camera.zoom,32);
+assert.throws(()=>C.validateNetwork({...deepWorkspace,camera:{...deepCamera,zoom:33}}),/Invalid schematic camera/);
 console.log('Network reporting, independent evidence groups, RAG and import contracts passed.');
 const binding={role:'model',quantity:'flow',threshold:'',sourceName:'Baseline'};
 assert.equal(C.thresholdRule(binding),'gt');
@@ -39,6 +43,9 @@ for(const r of routes){assert.ok(r);assert.match(r.path,/^M[-\d.]+ [-\d.]+L[-\d.
 assert.notEqual(routes[0].start.y,routes[1].start.y,'Two outgoing connectors attach to distinct asset ports');
 assert.equal(routes[0].start.x,138,'Wire starts on the asset box');
 assert.equal(routes[0].end.x,462,'Wire ends on the asset box');
+const reducedRoute=C.connectionRoutes(nodes,edges,p=>p,.5).get('ab');
+assert.equal(reducedRoute.start.x,119,'Wire attaches to the reduced asset boundary');
+assert.equal(reducedRoute.end.x,481,'The receiving port also follows the reduced bounds');
 const collinear=[{id:'a',type:'pump',x:100,y:300},{id:'b',type:'outfall',x:500,y:300},{id:'c',type:'cso',x:700,y:300}];
 assert.notEqual(C.connector(edges[0],collinear,edges).start.y,C.connector(edges[1],collinear,edges).start.y);
 for(const type of Object.keys(C.types))assert.ok(C.bounds(type).x>0);
