@@ -23,10 +23,11 @@ const sequence=[];
 const cold={survey:{},document:{getElementById:()=>({textContent:''})},window:{ICMWorkbookReader:{read:()=>({})}},
  workbookCandidate:()=>{},extractAssociationMatrix:()=>({headers:['monitor'],rows:[['FM01']],sheetName:'Sheet1'}),
  inferredSurveyMetadata:()=>[],sha256:async()=> 'hash',renderAssociation:()=>{},invalidateSurveyResults:()=>{},
+ loadVendorScript:async name=>{assert.equal(name,'XLSX');sequence.push('reader');},
  ensureEngineBoot:async()=>{sequence.push('boot');},engine:{call:async()=>{assert.equal(sequence.at(-1),'boot');sequence.push('call');return {records:[{monitor:'FM01',upstream:[]}]};}},
  file:{name:'fm_rg_assoc.xlsx',size:1,lastModified:1,arrayBuffer:async()=>new ArrayBuffer(1)}};
 vm.createContext(cold);vm.runInContext(functionText('loadAssociationWorkbook')+'\n'+functionText('refreshAssociationConflicts'),cold);
 await vm.runInContext('loadAssociationWorkbook(file)',cold);
 await vm.runInContext('refreshAssociationConflicts()',cold);
-assert.deepEqual(sequence,['boot','call','boot','call']);
+assert.deepEqual(sequence,['reader','boot','call','boot','call']);
 console.log('Cold workbook import and association refresh boot the engine before authoritative RPC.');

@@ -317,6 +317,7 @@
     workbookCandidate();
     const status = document.getElementById('surveyAssociationStatus');
     status.textContent = 'Reading ' + file.name + '…';
+    await loadVendorScript('XLSX');
     const workbook = window.ICMWorkbookReader.read(await file.arrayBuffer());
     const table = extractAssociationMatrix(workbook);
     await ensureEngineBoot();

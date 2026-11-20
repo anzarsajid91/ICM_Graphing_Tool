@@ -11,6 +11,12 @@
   <link rel="stylesheet" href="assets/app.css" />
 </head>
 <body>
+  <div id="hbStartup" hidden>
+    <img src="assets/hydrabench-mark.svg" alt="" width="40" height="40" />
+    <strong>Hydra Bench</strong>
+    <span role="status">Opening workbench…</span>
+    <noscript>Enable JavaScript and reload to open Hydra Bench.</noscript>
+  </div>
   <header class="topbar">
     <div><h1>Hydra Bench</h1><p>Zero-install, browser-local review of ICM CSV, FDV and rainfall R exports.</p></div>
     <div class="engine-status" id="engineStatus"><span class="status-dot booting"></span><span>Opening Hydra Bench…</span></div>
@@ -396,8 +402,6 @@
   </main>
 
   <section class="panel"><label>Review notes and assumptions<textarea id="reviewNotes" rows="3" placeholder="Notes are exported separately from computed results"></textarea></label></section><footer class="hb-app-footer"><span data-icm-copyright="true">© 2026 Anzar Sajid and other applicable rights holders · <span id="appVersion">v1.000</span></span><span class="hb-licence-links"><a href="LICENSE.txt">GNU AGPLv3</a><a id="hbBuildSource" href="https://github.com/anzarsajid91/ICM_Graphing_Tool" rel="noopener noreferrer" referrerpolicy="no-referrer" target="_blank">Source for this build</a></span><span id="footerBuild">Reference engine: Python worker / canonical core</span></footer>
-  <!-- Keep the large plotting runtime off the document-head critical path.
-       It still executes before every graph/workbench script in the release build. -->
   <script src="vendor/plotly-3.1.0/plotly.min.js" charset="utf-8"></script>
   <script type="module" src="assets/runtime.js"></script>
 </body>

@@ -42,6 +42,32 @@ function notifySourcePoolChanged(reason='changed'){
 const buildToken=document.querySelector('meta[name="icm-build-sha"]')?.content||'local';
 diagnostic.buildToken=buildToken;
 
+const vendorScripts={
+  Plotly:{path:'vendor/plotly-3.1.0/plotly.min.js',label:'Chart renderer'},
+  XLSX:{path:'vendor/sheetjs-0.20.3/xlsx.full.min.js',label:'Excel reader'},
+};
+function vendorScriptSource(name){
+  return vendorScripts[name].path+'?v='+encodeURIComponent(buildToken);
+}
+function loadVendorScript(name){
+  if(globalThis[name])return Promise.resolve(globalThis[name]);
+  const vendor=vendorScripts[name];
+  if(!vendor.pending){
+    vendor.pending=new Promise((resolve,reject)=>{
+      const script=document.createElement('script');
+      const unavailable=()=>{
+        script.remove();
+        reject(new Error(vendor.label+' could not load. Check your connection and retry.'));
+      };
+      script.src=vendorScriptSource(name);
+      script.onload=()=>globalThis[name]?resolve(globalThis[name]):unavailable();
+      script.onerror=unavailable;
+      document.head.append(script);
+    }).catch(error=>{vendor.pending=null;throw error;});
+  }
+  return vendor.pending;
+}
+
 const recognised = (name) => { const n=String(name||'').toLowerCase(); return n.endsWith('.hyd')||n.endsWith('.csv')||n.endsWith('.fdv')||n.endsWith('.fdv.txt')||n.endsWith('.r')||n.endsWith('.r.txt'); };
 const esc = (s) => String(s ?? '').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]));
 const fmt = (v,digits=4) => (v===null||v===undefined||Number.isNaN(Number(v)))?'—':Number(v).toLocaleString(undefined,{maximumFractionDigits:digits});
@@ -1015,9 +1041,19 @@ async function ingestFiles(files){
           diagnostic.fastpathActiveSourceId=item.id;
           // Prepare the first useful graph immediately, but keep route selection under
           // user control. FastPath is a display accelerator, not a navigation action.
-          const painted=await window.ICMFastPath.renderPreview(item,null,false);
-          item.fastpathTiming.t4=painted&&painted.graphPaintAt||performance.now();
-          item.fastpathTiming.t5=painted&&painted.statsPaintAt||item.fastpathTiming.t4;
+          try{
+            const painted=await window.ICMFastPath.renderPreview(item,null,false);
+            if(painted){
+              item.fastpathTiming.t4=painted.graphPaintAt;
+              item.fastpathTiming.t5=painted.statsPaintAt;
+            }
+          }catch(error){
+            if(!itemIsCurrent(item))return;
+            window.ICMFastPath.clear();
+            item.previewWarning='Fast preview unavailable; continuing with authoritative analysis.';
+            diagnostic.fastpathWarnings??=[];
+            diagnostic.fastpathWarnings.push({time:new Date().toISOString(),file:displayName,message:String(error?.message||error)});
+          }
         }
       }else{
         item.status='waiting-engine';
@@ -1171,7 +1207,7 @@ async function removeSourceById(sourceId){
     state.comparisonSnapshot=null;
     state.spills={};
     state.spillSnapshot=null;
-    for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])Plotly.purge(id);
+    for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])globalThis.Plotly?.purge(id);
     renderSpills();
   }
   if(rainfallAnalysisAffected){
@@ -1192,7 +1228,7 @@ async function removeSourceById(sourceId){
   if(ratingAffected){
     state.rating=null;
     diagnostic.lastRating=null;
-    Plotly.purge('ratingChart');
+    globalThis.Plotly?.purge('ratingChart');
     if($('ratingSummary'))$('ratingSummary').innerHTML='<div class="pool-summary">Rating input source removed. Select valid replacement series and recalculate.</div>';
   }
   if(storageAffected){
@@ -1570,10 +1606,12 @@ async function renderComparisons(){
     const issues=state.comparisons.map(x=>({name:`${x.model?.item?.displayName||'Model'} · ${x.model?.col||'series'}`,error:x.error||'Comparison returned no usable result.'}));
     $('metricGrid').innerHTML='<div class="pool-summary audit-bad"><strong>Comparison could not be calculated.</strong><br>'+issues.map(x=>esc(x.name)+': '+esc(x.error)).join('<br>')+'<br><small>Check quantity mapping, the shared analysis period, exclusions and the maximum interpolation gap. The error above is retained instead of hiding it behind a generic “no pairs” message.</small></div>';
     $('scenarioBody').innerHTML=issues.map(x=>'<tr><td>'+esc(x.name)+'</td><td colspan="15" class="audit-bad">'+esc(x.error)+'</td></tr>').join('');
-    for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])Plotly.purge(id);
+    for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])globalThis.Plotly?.purge(id);
     window.__ICM_WORKBENCH__.renderTimeSeriesComparisonMetrics?.();
     return;
   }
+  await loadVendorScript('Plotly');
+  if(state.comparisons.find(x=>x.result)!==first)return;
   const log=$('scatterScale').value==='log',firstPopulation=scatterPopulation(first.result,log),m=firstPopulation.metrics||{};
   const status=first.result.calculation_status||'unavailable',coverage=first.result.coverage_fraction,unit=comparisonUnit(first.result);
   const metric=(label,key,withUnit=false)=>{const p=metricPresentation(m,key,withUnit?unit:'');return metricCard(label,p.text,p.reason);};
@@ -1726,6 +1764,7 @@ async function runRating(){
   const od=mappingObject($('ratingObsDepth').value),of=mappingObject($('ratingObsFlow').value),md=mappingObject($('ratingModelDepth').value),mf=mappingObject($('ratingModelFlow').value);
   if(!od)throw new Error('Select observed depth or level.');
   const gap=Number($('gapInput').value||900),requestSignature=ratingInputSignature();
+  await loadVendorScript('Plotly');
 
   // Depth/level agreement uses the canonical Python comparison regression. Do
   // not create a second JavaScript regression implementation.
@@ -2114,7 +2153,7 @@ async function applyWorkspace(w){
   ++state.healthGeneration;state.healthResult=null;state.healthSignature=null;
   state.rating=null;
   diagnostic.lastRating=null;
-  Plotly.purge('ratingChart');
+  globalThis.Plotly?.purge('ratingChart');
   if($('ratingSummary'))$('ratingSummary').innerHTML='<div class="pool-summary">Workspace restored. Recalculate the fitted relationship for the restored inputs.</div>';
   renderSeriesOptions();
   state.seriesQuantityOverrides.clear();
@@ -2450,7 +2489,7 @@ async function staticReportFallbackHtml(html,reason='Interactive Plotly runtime 
       placeholder.replaceWith(img);
       payloadNode.remove();
     }finally{
-      try{Plotly.purge(host);}catch{}
+      try{globalThis.Plotly?.purge(host);}catch{}
       host.remove();
     }
   }
@@ -2465,10 +2504,8 @@ async function staticReportFallbackHtml(html,reason='Interactive Plotly runtime 
 async function interactiveReportHtml(html){
   const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,displayModeBar:true,scrollZoom:false,toImageButtonOptions:{format:'png',filename:el.id,width:1600,height:Number(p.layout.height)||850,scale:2}}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
   if(!reportPlotlyBundle){
-    const source=[...document.scripts].find(s=>/\/vendor\/plotly-[\d.]+\/plotly\.min\.js(?:\?|$)/.test(s.src))?.src;
-    if(!source)return staticReportFallbackHtml(html,'The packaged Plotly script source was not available for embedding.');
     try{
-      const response=await fetch(source);
+      const response=await fetch(vendorScriptSource('Plotly'));
       if(!response.ok)throw new Error('Plotly bundle request returned HTTP '+response.status+'.');
       const bundle=await response.text();
       if(bundle.length<10000||!bundle.includes('Plotly'))throw new Error('The retrieved Plotly runtime was invalid.');
@@ -2764,7 +2801,7 @@ async function chooseFolder(){if('showDirectoryPicker'in window){try{const handl
 function switchTab(btn){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$(`tab-${btn.dataset.tab}`).classList.add('active');setTimeout(()=>window.dispatchEvent(new Event('resize')),0);}
 function eventGuard(buttonId,target,fn){$(buttonId).addEventListener('click',()=>guarded(target,fn));}
 function wireEvents(){
-  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;advancedSelectionTouched.clear();state.exclusions=[];state.exclusionHistory=[];state.modelColours={};state.seriesQuantityOverrides.clear();state.seriesUnitOverrides.clear();state.seriesSemanticsModelOrder=[];for(const id of ['obsThreshold','modelThreshold','graphObsThreshold','graphModelThreshold'])if($(id))$(id).value='';diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])Plotly.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
+  $('chooseFolderBtn').addEventListener('click',()=>void importGuard(chooseFolder));$('addFilesBtn').addEventListener('click',()=>$('fileInput').click());$('fileInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));$('folderInput').addEventListener('change',e=>void importGuard(()=>ingestFiles(e.target.files)));eventGuard('clearPoolBtn','poolSummary',async()=>{const hadSources=state.files.size>0;invalidatePendingSourceImports();state.files.clear();window.ICMProjectRegistry?.clearSources();state.mapping={observed:'',models:[],rain:''};state.comparisons=[];state.spills={};state.spillSnapshot=null;state.comparisonSnapshot=null;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;++state.rainEventGeneration;state.dwfResult=null;state.dwfSignature=null;++state.dwfGeneration;state.healthResult=null;state.healthSignature=null;++state.healthGeneration;state.storage=null;state.storageSignature=null;state.rating=null;advancedSelectionTouched.clear();state.exclusions=[];state.exclusionHistory=[];state.modelColours={};state.seriesQuantityOverrides.clear();state.seriesUnitOverrides.clear();state.seriesSemanticsModelOrder=[];for(const id of ['obsThreshold','modelThreshold','graphObsThreshold','graphModelThreshold'])if($(id))$(id).value='';diagnostic.fastpathActiveSourceId=null;window.ICMFastPath?.clear?.();await engine.clear();renderPool();renderSeriesOptions();renderExclusions();for(const id of ['timeChart','scatterChart','residualChart','cumulativeChart','exceedanceChart','ratingChart'])globalThis.Plotly?.purge(id);$('mappingStatus').textContent='Source pool cleared. Mappings, exclusions and derived analytical state were invalidated.';if(hadSources)notifySourcePoolChanged('clear');});
   const dz=$('dropzone');for(const ev of ['dragenter','dragover'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');});for(const ev of ['dragleave','drop'])dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');});dz.addEventListener('drop',e=>{const snapshot=snapshotDrop(e.dataTransfer);void importGuard(async()=>{const files=await droppedFiles(snapshot);$('poolSummary').textContent=files.length+' dropped file'+(files.length===1?'':'s')+' detected · preparing import…';await ingestFiles(files);});});
   eventGuard('applyMappingBtn','mappingStatus',applyMapping);$('applyMappingBtn').addEventListener('click',()=>{state.rating=null;});$('observedSelect').addEventListener('change',()=>{renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('modelSelect').addEventListener('change',()=>{orderedSelectedModelKeys();renderModelColourControls();renderSeriesSemanticsOverrides();autoSuggestAdvanced(allSeries());});$('rainSelect').addEventListener('change',renderSeriesSemanticsOverrides);eventGuard('refreshGraphBtn','mappingStatus',drawTimeChart);for(const id of ['obsColor','rainColor','rainFactor','rainAxisMax','threshold1Label','threshold1Color','threshold2Label','threshold2Color','showEventOverlay','rainEventColor'])$(id).addEventListener('change',()=>guarded('mappingStatus',drawTimeChart));
   eventGuard('runCompareBtn','metricGrid',runCompare);$('scatterScale').addEventListener('change',()=>{if(state.comparisons.length)void guarded('metricGrid',renderComparisons);});$('useZoomPeriodBtn').addEventListener('click',useGraphZoom);$('clearPeriodBtn').addEventListener('click',()=>{$('analysisStart').value='';$('analysisEnd').value='';$('analysisStart').dispatchEvent(new Event('change',{bubbles:true}));$('analysisEnd').dispatchEvent(new Event('change',{bubbles:true}));});eventGuard('runRatingBtn','ratingSummary',runRating);for(const id of ['ratingObsDepth','ratingObsDepthUnit','ratingObsFlow','ratingObsFlowUnit','ratingModelDepth','ratingModelDepthUnit','ratingModelFlow','ratingModelFlowUnit'])$(id)?.addEventListener('change',()=>{if(id==='ratingObsFlow'||id==='ratingModelFlow')advancedSelectionTouched.add(id);state.rating=null;});eventGuard('runDwfBtn','dwfSummary',runDwf);

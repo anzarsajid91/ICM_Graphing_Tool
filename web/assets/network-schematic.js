@@ -1343,7 +1343,7 @@ async function openAnalysis(mode='series'){
   renderAnalysisSettings(n);
   $('nsAnalysisCounts').replaceChildren(annualTable(n,true));
   $('nsAnalysisAudit').replaceChildren(auditDetails(n));
-  $('nsAnalysisBasis').textContent='Annual evidence';$('nsCommonResult').innerHTML='';$('nsCommonResult').hidden=true;$('nsCommonMessage').textContent='';$('nsAnalysisMessage').textContent='';Plotly.purge('nsAnalysisPlot');
+  $('nsAnalysisBasis').textContent='Annual evidence';$('nsCommonResult').innerHTML='';$('nsCommonResult').hidden=true;$('nsCommonMessage').textContent='';$('nsAnalysisMessage').textContent='';globalThis.Plotly?.purge('nsAnalysisPlot');
   const names=[...new Set(n.bindings.filter(b=>b.role==='model').map(b=>b.scenario))].sort();$('nsCommonScenario').innerHTML=names.map(s=>'<option>'+html(s)+'</option>').join('');
   $('nsCommonYear').innerHTML=years.map(y=>'<option '+(y===year?'selected':'')+'>'+y+'</option>').join('');
   $('nsAnalysisPlot').hidden=mode==='spills';$('nsAnalysisMode').textContent=mode==='spills'?'Show time series':'Show annual spills';
@@ -1354,8 +1354,10 @@ async function plotAnalysis(generation=analysisGeneration,range=null){
   const current=signature(n),year=Number($('nsAnalysisYear').value),start=range?.[0]||year+'-01-01T00:00:00',end=range?.[1]||(year+1)+'-01-01T00:00:00',chosen=prefs().scenarios;
   const bindings=n.bindings.filter(b=>b.years.includes(year)&&(b.role==='observed'||chosen===null||chosen.includes(b.scenario)));
   $('nsAnalysisMessage').textContent='Loading series…';
-  Plotly.purge('nsAnalysisPlot');
+  globalThis.Plotly?.purge('nsAnalysisPlot');
   try{
+    await loadVendorScript('Plotly');
+    if(generation!==analysisGeneration)return;
     const traces=[],shapes=[],groups=new Map(),colours=['#6554c0','#147d92','#d88925','#43854f'];
     for(const b of bindings){
       const source=sourceFor(b);if(!source)throw new Error('Reload '+b.sourceName);const scale=C.valueScale(b.quantity,contract(b).unit,b.unit),key=b.quantity+'|'+b.unit+'|'+(b.datum||'');if(!groups.has(key))groups.set(key,groups.size);const axis=groups.get(key)+1,colour=b.role==='observed'?'#e33434':colours[traces.filter(t=>t.name!=='Observed').length%colours.length];
@@ -1520,7 +1522,7 @@ function mountReview(){
   $('nsAnalysis').addEventListener('keydown',event=>{if(event.key==='Escape')$('nsCloseAnalysis').click();if(event.key==='Tab'){const controls=[...$('nsAnalysis').querySelectorAll('button,select,summary,input,textarea,a[href],[tabindex]')].filter(el=>el.getClientRects().length&&!el.disabled&&el.tabIndex>=0&&!el.closest('[hidden],[inert]')),first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}});
   $('nsAnalysis').addEventListener('cancel',event=>{event.preventDefault();$('nsCloseAnalysis').click();});
   window.addEventListener('icm:route-changed',event=>{if($('nsAnalysis').open&&(event.detail.workspace!=='network'||event.detail.page!=='schematic'))$('nsCloseAnalysis').click();});
-  $('nsCloseAnalysis').onclick=()=>{++analysisGeneration;clearTimeout(analysisTimer);$('nsAnalysis').close();$('nsAnalysis').hidden=true;Plotly.purge('nsAnalysisPlot');analysisContext=null;const target=analysisReturnFocus?.isConnected?analysisReturnFocus:$('nsCanvas');target?.focus({preventScroll:true});analysisReturnFocus=null;};$('nsAnalysisYear').onchange=()=>{const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n)renderAnalysisSettings(n);if(analysisContext?.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsAnalysisMode').onclick=()=>{if(!analysisContext)return;analysisContext.mode=analysisContext.mode==='series'?'spills':'series';$('nsAnalysisPlot').hidden=analysisContext.mode==='spills';$('nsAnalysisMode').textContent=analysisContext.mode==='spills'?'Show time series':'Show annual spills';if(analysisContext.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsCommonCalculate').onclick=()=>void calculateCommon();
+  $('nsCloseAnalysis').onclick=()=>{++analysisGeneration;clearTimeout(analysisTimer);$('nsAnalysis').close();$('nsAnalysis').hidden=true;globalThis.Plotly?.purge('nsAnalysisPlot');analysisContext=null;const target=analysisReturnFocus?.isConnected?analysisReturnFocus:$('nsCanvas');target?.focus({preventScroll:true});analysisReturnFocus=null;};$('nsAnalysisYear').onchange=()=>{const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n)renderAnalysisSettings(n);if(analysisContext?.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsAnalysisMode').onclick=()=>{if(!analysisContext)return;analysisContext.mode=analysisContext.mode==='series'?'spills':'series';$('nsAnalysisPlot').hidden=analysisContext.mode==='spills';$('nsAnalysisMode').textContent=analysisContext.mode==='spills'?'Show time series':'Show annual spills';if(analysisContext.mode==='series')void plotAnalysis(++analysisGeneration);};$('nsCommonCalculate').onclick=()=>void calculateCommon();
   $('nsAnalysisCalculate').onclick=async()=>{if(busy)return;await calculate();const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n){$('nsAnalysisCounts').replaceChildren(annualTable(n,true));$('nsAnalysisAudit').replaceChildren(auditDetails(n));if(analysisContext.mode==='series')await plotAnalysis(++analysisGeneration);}};
   renderReview();
 }
@@ -1675,7 +1677,7 @@ function mount(){
   // changes still waiting in the short autosave debounce.
   window.addEventListener('pagehide',flushSave);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSave();});
-  window.addEventListener('icm:source-pool-changed',()=>{freshness.clear();if(analysisContext){++analysisGeneration;Plotly.purge('nsAnalysisPlot');$('nsAnalysisCounts').replaceChildren(annualTable(network.nodes.find(n=>n.id===analysisContext.id)||{id:'missing',bindings:[]},true));$('nsCommonResult').hidden=true;$('nsAnalysisMessage').textContent='Sources changed. Reopen this analysis to refresh.';}renderCanvas();renderReview();if(editing)renderDrawer();});
+  window.addEventListener('icm:source-pool-changed',()=>{freshness.clear();if(analysisContext){++analysisGeneration;globalThis.Plotly?.purge('nsAnalysisPlot');$('nsAnalysisCounts').replaceChildren(annualTable(network.nodes.find(n=>n.id===analysisContext.id)||{id:'missing',bindings:[]},true));$('nsCommonResult').hidden=true;$('nsAnalysisMessage').textContent='Sources changed. Reopen this analysis to refresh.';}renderCanvas();renderReview();if(editing)renderDrawer();});
   mountReview();render();
 }
 async function open(){

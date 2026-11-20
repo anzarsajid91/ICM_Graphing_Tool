@@ -227,6 +227,14 @@ async function calculate(){
     const result=await engine.call('detriment_result',{kind,scenario_a_json:JSON.stringify(a),scenario_b_json:JSON.stringify(b),criteria_json:JSON.stringify(criteria),ground_json:JSON.stringify(kind==='level'?sourceConfig('ground'):null),detail_a_json:JSON.stringify(kind==='spill'?sourceConfig('detail_a'):null),detail_b_json:JSON.stringify(kind==='spill'?sourceConfig('detail_b'):null)},'advanced_bridge');
     if(runGeneration!==generation||runKind!==kind)return;
     results[kind]=result;selected=null;renderIdPreview();renderResults();
+    if(!window.Plotly){
+      try{
+        await loadVendorScript('Plotly');
+        if(runGeneration===generation&&runKind===kind)drawCharts(result);
+      }catch(error){
+        if(runGeneration===generation&&runKind===kind)$('dtStatus').textContent=assessmentErrorMessage(error);
+      }
+    }
   }catch(err){if(runGeneration===generation&&runKind===kind){results[kind]=null;renderResults();$('dtStatus').textContent=assessmentErrorMessage(err);}}finally{busy=false;$('runDetrimentBtn').disabled=false;}
 }
 async function exportHtml(currentView=false){
@@ -234,6 +242,7 @@ async function exportHtml(currentView=false){
   const rows=currentView?visibleRows():scopedRows(),exportKind=kind,exportGeneration=generation,exportView=exportViewSignature(),selection=idSelectionEvidence();
   const button=$(currentView?'dtExportViewHtml':'dtExportHtml');button.disabled=true;
   try{
+    await loadVendorScript('Plotly');
     const figures=[];
     if(currentView)for(const [id,title] of [['dtChart','Change by asset'],['dtPairedChart','Scenario A / B'],['dtDurationChart','Actual duration change'],['dtSectionChart','Selected asset · elevation section'],['dtTimelineChart','Selected asset · exported event spans']]){
       if(['dtSectionChart','dtTimelineChart'].includes(id)&&$('dtDrawer').hidden)continue;

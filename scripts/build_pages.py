@@ -28,9 +28,26 @@ def _inject_v2_assets(build_token: str) -> None:
         '<link rel="stylesheet" href="assets/app.css" />',
         '<link rel="stylesheet" href="assets/app.css" />\n  <link rel="stylesheet" href="assets/workbench-v2.css" />\n  <link rel="stylesheet" href="assets/workbench-survey.css" />\n  <link rel="stylesheet" href="assets/workflow-26.css" />\n  <link rel="stylesheet" href="assets/detriment-workspace.css" />\n  <link rel="stylesheet" href="assets/precision-workbench.css" />\n  <link rel="stylesheet" href="assets/network-schematic.css" />',
     )
+    scripts = (
+        "csv-output.js", "design-system.js", "domain-registry.js", "runtime.js",
+        "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js",
+        "workbench-v3.js", "workbook-reader.js", "workbench-survey.js",
+        "workflow-26.js", "detriment-workspace.js", "network-schematic-loader.js",
+        "precision-workbench.js",
+    )
+    html = html.replace('<body>', '<body class="hb-starting">', 1)
+    html = html.replace('id="hbStartup" hidden', 'id="hbStartup"', 1)
+    html = html.replace('<script src="vendor/plotly-3.1.0/plotly.min.js" charset="utf-8"></script>', '')
+    html = html.replace(
+        '<link rel="stylesheet" href="assets/app.css" />',
+        '<meta name="hb-plotly-src" content="vendor/plotly-3.1.0/plotly.min.js" />\n'
+        '  <meta name="hb-xlsx-src" content="vendor/sheetjs-0.20.3/xlsx.full.min.js" />\n'
+        '  <link rel="stylesheet" href="assets/app.css" />',
+        1,
+    )
     html = html.replace(
         '<script type="module" src="assets/runtime.js"></script>',
-        '<script src="assets/csv-output.js"></script>\n  <script src="assets/design-system.js"></script>\n  <script src="assets/domain-registry.js"></script>\n  <script src="assets/runtime.js"></script>\n  <script src="assets/workbench-v2.js"></script>\n  <script src="assets/fastpath-preview.js"></script>\n  <script src="assets/workbench-v2-domfix.js"></script>\n  <script src="assets/workbench-v3.js"></script>\n  <script src="vendor/sheetjs-0.20.3/xlsx.full.min.js"></script>\n  <script src="assets/workbook-reader.js"></script>\n  <script src="assets/workbench-survey.js"></script>\n  <script src="assets/workflow-26.js"></script>\n  <script src="assets/detriment-workspace.js"></script>\n  <script src="assets/network-schematic-loader.js"></script>\n  <script src="assets/precision-workbench.js"></script>',
+        '\n  '.join(f'<script defer src="assets/{name}"></script>' for name in scripts),
     )
     required = ["csv-output.js", "design-system.js", "domain-registry.js", "workbench-v2.css", "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "workflow-26.css", "workflow-26.js", "precision-workbench.css", "precision-workbench.js", "detriment-workspace.css", "detriment-workspace.js", "vendor/sheetjs-0.20.3/xlsx.full.min.js"]
     required.extend(["network-schematic.css", "network-schematic-loader.js"])
