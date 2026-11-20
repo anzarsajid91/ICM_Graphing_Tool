@@ -92,6 +92,8 @@
     if(!item||!item.preview||!item.preview.eligible||!item.preview.series||!item.preview.series.length)return null;
     previewState.item=item;
     if(requestedMode)previewState.mode=requestedMode;
+    await loadVendorScript('Plotly');
+    if(previewState.item!==item)return null;
     renderBar(item);
     if(navigate!==false&&root.__ICM_PRECISION_WORKBENCH__&&root.__ICM_PRECISION_WORKBENCH__.navigate)root.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false);
     const series=selectedSeries(item,previewState.mode);

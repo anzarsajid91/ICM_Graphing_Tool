@@ -7,6 +7,7 @@ import {
 } from "./browser-environment.mjs";
 import { installPrivacyGuard } from "./privacy-network.mjs";
 import { writeEvidence } from "./evidence-output.mjs";
+import XLSX from "../vendor/sheetjs-0.20.3/xlsx.full.min.js";
 const base = process.env.ICM_BASE_URL || "http://127.0.0.1:8008/";
 const browserName = process.env.ICM_BROWSER || "chromium";
 const browser = await { chromium, firefox }[browserName].launch(
@@ -93,27 +94,22 @@ try {
     null,
     { timeout: 120000 },
   );
-  const bytes = await page.evaluate(() => {
-    const book = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(
-      book,
-      XLSX.utils.aoa_to_sheet([
-        ["FDV_Name", "RG", "Pipe Diameter (mm)", "Upstream Trace"],
-        ["FM03", "RG01", 600, "FM01, FM02"],
-        ["FM01", "RG01", 450, ""],
-        ["FM02", "RG01", 450, ""],
-      ]),
-      "Associations",
-    );
-    return [
-      ...new Uint8Array(XLSX.write(book, { type: "array", bookType: "xlsx" })),
-    ];
-  });
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    book,
+    XLSX.utils.aoa_to_sheet([
+      ["FDV_Name", "RG", "Pipe Diameter (mm)", "Upstream Trace"],
+      ["FM03", "RG01", 600, "FM01, FM02"],
+      ["FM01", "RG01", 450, ""],
+      ["FM02", "RG01", 450, ""],
+    ]),
+    "Associations",
+  );
   await page.setInputFiles("#assocFileInput", {
     name: "fm_rg_assoc.xlsx",
     mimeType:
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    buffer: Buffer.from(bytes),
+    buffer: Buffer.from(XLSX.write(book, { type: "array", bookType: "xlsx" })),
   });
   await page.waitForFunction(
     () =>

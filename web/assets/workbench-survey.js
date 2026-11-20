@@ -255,10 +255,6 @@
     });
   }
 
-  function workbookCandidate() {
-    if (typeof XLSX === 'undefined') throw new Error('Excel reader did not load. Reload the application to restore the packaged Excel reader.');
-  }
-
   function scoreHeader(row) {
     const cells = (row || []).map(token);
     let score = 0;
@@ -314,9 +310,9 @@
   }
 
   async function loadAssociationWorkbook(file) {
-    workbookCandidate();
     const status = document.getElementById('surveyAssociationStatus');
     status.textContent = 'Reading ' + file.name + '…';
+    await loadVendorScript('XLSX');
     const workbook = window.ICMWorkbookReader.read(await file.arrayBuffer());
     const table = extractAssociationMatrix(workbook);
     await ensureEngineBoot();

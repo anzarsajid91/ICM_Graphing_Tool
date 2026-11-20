@@ -88,7 +88,7 @@
 
     const items = rainfallRItems();
     if (!items.length) {
-      Plotly.purge(chart);
+      globalThis.Plotly?.purge(chart);
       summary.textContent = 'No parsed .R / .R.txt rainfall files are currently loaded.';
       totals.innerHTML = '';
       if(qaSummary)qaSummary.textContent='Load at least two rainfall gauges for spatial screening.';
@@ -132,6 +132,8 @@
       line:{width:2,color:RAIN_COLOURS[index % RAIN_COLOURS.length]},
       hovertemplate:`%{x}<br>${esc(item.displayName)}<br>Cumulative %{y:.3f} mm<extra></extra>`,
     }));
+    await loadVendorScript('Plotly');
+    if(generation!==v3.rainGeneration)return;
     await Plotly.react(chart, traces, {
       template:'plotly_white',...(window.HydraDesign?.chartLayout()||{}),
       title:{text:'Cumulative rainfall depth by source .R file',font:{size:15}},

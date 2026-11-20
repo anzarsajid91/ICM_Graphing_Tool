@@ -23,6 +23,14 @@
 }
 *{box-sizing:border-box}
 html,body{max-width:100%}
+body.hb-starting{margin:0;background:var(--hb-bg,#f4f7fa);overflow:hidden}
+.hb-starting> :not(#hbStartup){visibility:hidden!important}
+.hb-starting>#hbStartup{
+  position:fixed;inset:0;z-index:10000;display:grid;align-content:center;justify-items:center;gap:.75rem;
+  background:var(--hb-bg,#f4f7fa);
+  color:var(--hb-text,#233747);font-family:var(--hb-font,system-ui,sans-serif);
+}
+#hbStartup strong{font-size:1.5rem}
 body.precision-workbench{
   margin:0;
   min-height:100vh;

@@ -531,12 +531,12 @@
       if($('metricGrid'))$('metricGrid').innerHTML='';
       if($('comparisonMethodNote'))$('comparisonMethodNote').innerHTML='';
       if($('scenarioBody'))$('scenarioBody').innerHTML='';
-      for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])Plotly.purge(id);
+      for(const id of ['scatterChart','residualChart','cumulativeChart','exceedanceChart'])globalThis.Plotly?.purge(id);
     }
     if(mappingChanged&&state.rating){
       state.rating=null;
       diagnostic.lastRating=null;
-      Plotly.purge('ratingChart');
+      globalThis.Plotly?.purge('ratingChart');
       const summary=$('ratingSummary');
       if(summary)summary.innerHTML='<div class="pool-summary">Rating inputs changed. Recalculate the fitted relationship before interpreting or exporting it.</div>';
     }
@@ -863,7 +863,7 @@
 
   async function v2DrawGraph(range=ui.graphRange,options={}) {
     if (!state.mapping.observed && !(state.mapping.models||[]).length && !state.mapping.rain) {
-      Plotly.purge('timeChart');
+      globalThis.Plotly?.purge('timeChart');
       return;
     }
     const generation=++ui.graphGeneration;
@@ -876,6 +876,8 @@
     }
     const pointCounts={};
     try{
+      await loadVendorScript('Plotly');
+      if(generation!==ui.graphGeneration)return;
       let observedSources=observedGraphSeries();
       const sourceFdvMode=observedSources.length>=2;
       if(ui.channelMode!=='combined')observedSources=observedSources.filter(source=>String(source.quantity||mappedQuantity(source.key)).toLowerCase()===ui.channelMode);

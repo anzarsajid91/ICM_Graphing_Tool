@@ -36,9 +36,7 @@ for (const browserName of browserNames) {
     await guard.navigate(page, base, { waitUntil: "domcontentloaded" });
     assert.match(await page.title(), /Hydra Bench/);
     await page.waitForFunction(
-      () =>
-        typeof Plotly !== "undefined" &&
-        window.__ICM_PRECISION_WORKBENCH__?.navigate,
+      () => window.__ICM_PRECISION_WORKBENCH__?.navigate,
       null,
       { timeout: 60000 },
     );
@@ -65,6 +63,7 @@ for (const browserName of browserNames) {
       // Time series retains the production exclusion of Box/Lasso selection.
       await page.evaluate(
         async ({ id, selection }) => {
+          if (typeof Plotly === "undefined") await loadVendorScript("Plotly");
           const chart = document.getElementById(id);
           await Plotly.newPlot(
             chart,

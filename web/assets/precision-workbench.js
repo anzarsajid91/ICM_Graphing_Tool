@@ -1219,6 +1219,9 @@ function mount(){
   buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wireVerificationEvents();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,openPipeTrial,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
+  const startup=$('hbStartup');
+  if(startup)startup.hidden=true;
+  document.body.classList.remove('hb-starting');
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
 })();
