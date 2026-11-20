@@ -55,3 +55,14 @@ def test_v2_milestone_and_following_releases(monkeypatch):
     assert module.release_version()['app_version'] == 'v2.1.0'
     commits.append('Subsequent patch (#112)')
     assert module.release_version()['app_version'] == 'v2.1.1'
+
+    monkeypatch.setenv('GITHUB_EVENT_NAME', 'pull_request')
+    monkeypatch.setenv('GITHUB_REF', 'refs/pull/117/merge')
+    assert module.release_version()['app_version'] == 'v2.2.0-rc.1'
+
+    commits.append('Merge pull request #117 from anzarsajid91/feature/network-review-v22')
+    monkeypatch.setenv('GITHUB_EVENT_NAME', 'push')
+    monkeypatch.setenv('GITHUB_REF', 'refs/heads/main')
+    assert module.release_version()['app_version'] == 'v2.2.0'
+    commits.append('Subsequent patch (#118)')
+    assert module.release_version()['app_version'] == 'v2.2.1'

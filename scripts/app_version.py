@@ -16,7 +16,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 V2_RELEASE_PR = 108
 V21_RELEASE_PR = 111
-SEMVER_MILESTONES = {V2_RELEASE_PR: (2, 0), V21_RELEASE_PR: (2, 1)}
+V22_RELEASE_PR = 117
+SEMVER_MILESTONES = {V2_RELEASE_PR: (2, 0), V21_RELEASE_PR: (2, 1), V22_RELEASE_PR: (2, 2)}
 
 
 def git(*args: str) -> str:

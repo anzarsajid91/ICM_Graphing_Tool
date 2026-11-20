@@ -60,7 +60,9 @@ try{
   await field('nsGap','3800');assert.equal((await page.evaluate(()=>window.ICMNetworkSchematic.debug())).fresh[0].fresh,false,'Changed gap marks applied evidence stale');
   const toolbarBefore=await page.locator('.ns-main-toolbar').boundingBox();
   await page.locator('.ns-export-menu summary').click();
-  const toolbarOpen=await page.locator('.ns-main-toolbar').boundingBox();assert.equal(toolbarOpen.height,toolbarBefore.height,'Opening export menu does not reflow toolbar');
+  const toolbarOpen=await page.locator('.ns-main-toolbar').boundingBox();
+  // Gecko can round the same DOMRect height differently after focus moves.
+  assert.ok(Math.abs(toolbarOpen.height-toolbarBefore.height)<0.02,'Opening export menu does not reflow toolbar');
   const csvPromise=page.waitForEvent('download');csvPromise.catch(()=>{});
   await page.click('#nsCsv');assert.equal(await page.locator('.ns-export-menu').getAttribute('open'),null,'Export menu closes after action');
   const exported=await csvPromise;await exported.saveAs(evidence+'/network-evidence-'+name+'.csv');

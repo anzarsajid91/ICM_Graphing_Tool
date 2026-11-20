@@ -203,6 +203,16 @@ function ensureDataTimeSeriesSurface(){
     setup.innerHTML='<div class="pw-surface-head"><div><h3>Data setup</h3><p>Upload, inspect and assign every source here. Automatic interpretation is a starting point; generic CSV quantities remain independently overridable.</p></div></div>';
     const source=qs('.source-panel'),mapping=qs('.mapping-panel'),shared=$('sharedAnalysisPanel');
     if(source){source.classList.add('pw-embedded-panel','pw-data-source-panel');setup.appendChild(source);}
+    const locations=document.createElement('button');
+    locations.id='pwImportMonitorLocations';locations.type='button';locations.textContent='Import monitor locations';
+    const locationActions=makeActionGroup();locationActions.append(locations);setup.append(locationActions);
+    locations.addEventListener('click',async()=>{
+      locations.disabled=true;
+      try{
+        await window.ICMNetworkSchematic.open();
+        window.ICMNetworkSchematic.openMonitorImport?.();
+      }finally{locations.disabled=false;}
+    });
     if(mapping){mapping.classList.add('pw-embedded-panel','pw-data-mapping-panel');setup.appendChild(mapping);}
     if(shared){shared.classList.add('pw-embedded-panel');setup.appendChild(shared);}
     graphPanel.prepend(setup);
