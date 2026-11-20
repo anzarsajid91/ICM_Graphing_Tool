@@ -2466,9 +2466,9 @@ function reportStorageHtml(){
   return '<div class="note">Whole-episode capture assumes storage reset between episodes. Partial capture, drawdown and tank routing are outside this screening. Episode totals follow counting-year attribution; calendar totals split discharge at 1 January.</div>'+storageSummaryHtml(r)+'<h3>Calendar-year discharge volume</h3>'+storageCalendarHtml(r.calendar_volumes||[])+'<h3>Monthly discharge volume and support</h3>'+monthlyVolumeHtml(r.monthly_volumes||[]);
 }
 async function staticReportFallbackHtml(html,reason='Interactive Plotly runtime could not be embedded.'){
-  if(!window.Plotly)throw new Error('Plotly is unavailable for report rendering.');
   const doc=new DOMParser().parseFromString(html,'text/html');
   const plots=[...doc.querySelectorAll('.report-plot')];
+  if(plots.length)await loadVendorScript('Plotly');
   for(const placeholder of plots){
     const payloadNode=doc.getElementById(placeholder.id+'-data');
     if(!payloadNode)continue;
@@ -2504,7 +2504,8 @@ async function interactiveReportHtml(html){
   const boot=`document.querySelectorAll('.report-plot').forEach(el=>{const p=JSON.parse(document.getElementById(el.id+'-data').textContent);Plotly.newPlot(el,p.data,p.layout,{responsive:true,displaylogo:false,displayModeBar:true,scrollZoom:false,toImageButtonOptions:{format:'png',filename:el.id,width:1600,height:Number(p.layout.height)||850,scale:2}}).catch(e=>{el.textContent='Graph could not be rendered: '+e.message;});});`;
   if(!reportPlotlyBundle){
     try{
-      const response=await fetch(vendorScriptSource('Plotly'));
+      const source=new URL(vendorScriptSource('Plotly'),document.baseURI);
+      const response=await fetch(source.href);
       if(!response.ok)throw new Error('Plotly bundle request returned HTTP '+response.status+'.');
       const bundle=await response.text();
       if(bundle.length<10000||!bundle.includes('Plotly'))throw new Error('The retrieved Plotly runtime was invalid.');

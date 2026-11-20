@@ -21,7 +21,7 @@ const coldSource=fs.readFileSync('web/assets/workbench-survey.js','utf8');
 const functionText=name=>{const start=coldSource.indexOf('  async function '+name+'(');const end=coldSource.indexOf('\n  ',start+3);return coldSource.slice(start,coldSource.indexOf('\n  }',start)+5);};
 const sequence=[];
 const cold={survey:{},document:{getElementById:()=>({textContent:''})},window:{ICMWorkbookReader:{read:()=>({})}},
- workbookCandidate:()=>{},extractAssociationMatrix:()=>({headers:['monitor'],rows:[['FM01']],sheetName:'Sheet1'}),
+ extractAssociationMatrix:()=>({headers:['monitor'],rows:[['FM01']],sheetName:'Sheet1'}),
  inferredSurveyMetadata:()=>[],sha256:async()=> 'hash',renderAssociation:()=>{},invalidateSurveyResults:()=>{},
  loadVendorScript:async name=>{assert.equal(name,'XLSX');sequence.push('reader');},
  ensureEngineBoot:async()=>{sequence.push('boot');},engine:{call:async()=>{assert.equal(sequence.at(-1),'boot');sequence.push('call');return {records:[{monitor:'FM01',upstream:[]}]};}},
