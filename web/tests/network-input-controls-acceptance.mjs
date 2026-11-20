@@ -299,10 +299,30 @@ try {
   );
   await zoomMode.press("Space");
   assert.equal(await zoomMode.getAttribute("aria-pressed"), "false");
-  const beforeScroll = await page.evaluate(() => window.scrollY);
-  await page.mouse.move(box.x + anchor.x, box.y + anchor.y);
-  await page.mouse.wheel(0, 160);
-  await page.waitForFunction((value) => window.scrollY > value, beforeScroll);
+  // The keyboard toggle can scroll its control into view. Use the current
+  // canvas position and a direction with room to scroll.
+  const scroll = await canvas.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const top = Math.max(rect.top, 140);
+    const bottom = Math.min(rect.bottom, innerHeight);
+    const x = rect.left + rect.width * 0.35;
+    const y = top + (bottom - top) * 0.4;
+    const root = document.scrollingElement;
+    const up = root.scrollTop;
+    const down = root.scrollHeight - root.clientHeight - up;
+    return {
+      x, y, before: up, delta: down >= up ? 160 : -160,
+      room: Math.max(up, down),
+      onCanvas: !!document.elementFromPoint(x, y)?.closest("#nsSvg"),
+    };
+  });
+  assert.ok(scroll.room > 0 && scroll.onCanvas, "The wheel is over the canvas with available page scroll");
+  await page.mouse.move(scroll.x, scroll.y);
+  await page.mouse.wheel(0, scroll.delta);
+  await page.waitForFunction(
+    ({ before, delta }) => (window.scrollY - before) * delta > 0,
+    scroll,
+  );
   assert.deepEqual((await snapshot()).camera, afterPan.camera);
   record(
     "nsZoomMode",
