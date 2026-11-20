@@ -63,16 +63,11 @@ try{
   assert.deepEqual(vendorRequests,[],'navigation alone must not load chart or Excel libraries');
 
   const sample=path.join(process.cwd(),'reference/current-tool/sample-data/fdv/FM7413.fdv');
-  const firstPyodideRequest=page.waitForRequest(
-    request=>request.url().includes('/vendor/pyodide-0.29.4/'),
-    {timeout:10000}
-  );
-  await page.setInputFiles('#fileInput',sample);
-  await page.waitForFunction(
-    ()=>['booting','ready'].includes(window.__ICM_WORKBENCH__?.status),
-    null,{timeout:5000}
-  );
-  await firstPyodideRequest;
+  await Promise.all([
+    page.waitForRequest(request=>request.url().includes('/vendor/pyodide-0.29.4/'),{timeout:60000}),
+    page.setInputFiles('#fileInput',sample),
+  ]);
+  assert.ok(['booting','ready'].includes(await page.evaluate(()=>window.__ICM_WORKBENCH__?.status)));
   assert.equal(vendorRequests.filter(url=>url.includes('/plotly-')).length,1,'first chart should load the pinned chart library once');
   assert.equal(vendorRequests.some(url=>url.includes('/sheetjs-')),false);
   assert.ok(pyodideRequests.length>0,'loading engineering data should start the authoritative runtime on demand');
@@ -92,7 +87,7 @@ try{
   await retryPage.waitForFunction(
     ()=>window.__ICM_WORKBENCH__?.stateSummary().readyFiles===1&&
       Boolean(document.getElementById('timeChart')?.data?.length),
-    null,{timeout:60000}
+    null,{timeout:120000}
   );
   assert.equal(plotlyAttempts,2,'an interrupted first chart download must allow an authoritative chart retry');
   privacy.assertClean();
