@@ -10,6 +10,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import XLSX from '../vendor/sheetjs-0.20.3/xlsx.full.min.js';
 
 const execFileAsync=promisify(execFile);
 
@@ -1221,18 +1222,15 @@ async function verifyRealFlowSurveyReference(){
 let cachedAssociationWorkbook=null;
 async function associationWorkbook({variant=false}={}){
   if(!variant&&cachedAssociationWorkbook)return {name:'fm_rg_assoc.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(cachedAssociationWorkbook)};
-  const bytes=await page.evaluate(variant=>{
-    const wb=XLSX.utils.book_new();
-    const ws=XLSX.utils.aoa_to_sheet([
-      ['FDV_Name','RG','Pipe Diameter (mm)','Upstream Trace'],
-      ['FM7424','RG4922',600,variant?'FM7413':'FM7413, FM8356'],
-      ['FM7413','RG5097',450,''],
-      ['FM8356','RG5097',450,''],
-    ]);
-    XLSX.utils.book_append_sheet(wb,ws,'Associations');
-    return Array.from(new Uint8Array(XLSX.write(wb,{type:'array',bookType:'xlsx'})));
-  },variant);
-  const buffer=Buffer.from(bytes);
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet([
+    ['FDV_Name','RG','Pipe Diameter (mm)','Upstream Trace'],
+    ['FM7424','RG4922',600,variant?'FM7413':'FM7413, FM8356'],
+    ['FM7413','RG5097',450,''],
+    ['FM8356','RG5097',450,''],
+  ]);
+  XLSX.utils.book_append_sheet(wb,ws,'Associations');
+  const buffer=XLSX.write(wb,{type:'buffer',bookType:'xlsx'});
   if(!variant)cachedAssociationWorkbook=Buffer.from(buffer);
   return {name:'fm_rg_assoc.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer};
 }
