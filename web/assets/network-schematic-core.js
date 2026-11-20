@@ -138,7 +138,7 @@ function validateYears(value){
   if(!years.length||years.some(y=>!Number.isInteger(y)||y<1900||y>2200))throw new Error('Enter reporting years separated by commas (1900–2200).');
   return [...new Set(years)].sort((a,b)=>a-b);
 }
-function empty(){return {schema:2,nodes:[],edges:[],camera:{x:0,y:0,zoom:1},year:'all',scenario:'observed',evidenceMode:'combined',metric:'spill_count',preferences:{snap:false,locked:false,detail:'auto',type:'all',health:'all',result:'all',scenarios:null},views:[],reviewSnapshots:[]};}
+function empty(){return {schema:2,nodes:[],edges:[],camera:{x:0,y:0,zoom:1},year:'all',scenario:'observed',evidenceMode:'combined',metric:'spill_count',preferences:{snap:false,locked:false,detail:'auto',showLabels:true,showMonitors:true,overview:false,type:'all',health:'all',result:'all',scenarios:null},views:[],reviewSnapshots:[]};}
 function validateInspectorProperties(object){
   const bounded=(value,max)=>typeof value==='string'&&value.length<=max;
   if(object.monitorId!==undefined&&!bounded(object.monitorId,128))throw new Error('Invalid monitoring association.');
@@ -178,7 +178,7 @@ function validateNetwork(value){
     n.defaults=n.defaults||{observed:'',model:''};n.gap=n.gap||900;n.exclusions=n.exclusions||[];
     ids.add(n.id);
   }
-  const edges=new Set();for(const e of value.edges){if(!e.id||edges.has(e.id)||!ids.has(e.from)||!ids.has(e.to)||e.from===e.to||!Object.hasOwn(colours,e.colour))throw new Error('Invalid connector.');if(e.bends!==undefined&&(!Array.isArray(e.bends)||e.bends.length>32||e.bends.some(p=>!p||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6))))throw new Error('Invalid connector bends (maximum 32).');edges.add(e.id);}
+  const edges=new Set();for(const e of value.edges){if(!e.id||edges.has(e.id)||!ids.has(e.from)||!ids.has(e.to)||e.from===e.to||!Object.hasOwn(colours,e.colour))throw new Error('Invalid connector.');if(e.direction!==undefined&&!['nominal','unknown'].includes(e.direction))throw new Error('Invalid connector direction.');if(e.bends!==undefined&&(!Array.isArray(e.bends)||e.bends.length>32||e.bends.some(p=>!p||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6))))throw new Error('Invalid connector bends (maximum 32).');edges.add(e.id);}
   for(const object of [...value.nodes,...value.edges]){
     validateInspectorProperties(object);
     if(object.detrimentLinks===undefined)continue;
@@ -192,10 +192,11 @@ function validateNetwork(value){
   if(value.evidenceMode!==undefined&&!['single','combined'].includes(value.evidenceMode))throw new Error('Invalid evidence display mode.');
   const result=JSON.parse(JSON.stringify(value));
   result.schema=2;
-  result.preferences={snap:false,locked:false,detail:'auto',type:'all',health:'all',result:'all',scenarios:null,...result.preferences};
-  if(!['auto','full','minimal'].includes(result.preferences.detail)||!['all',...Object.keys(types)].includes(result.preferences.type)||!['all','ready','missing','stale','provisional','short','unassigned','uncalculated'].includes(result.preferences.health)||!['all','green','amber','red','neutral'].includes(result.preferences.result)||![result.preferences.snap,result.preferences.locked].every(v=>typeof v==='boolean')||result.preferences.scenarios!==null&&(!Array.isArray(result.preferences.scenarios)||result.preferences.scenarios.length>1000||result.preferences.scenarios.some(s=>typeof s!=='string'||s.length>100)))throw new Error('Invalid schematic display preferences.');
+  result.preferences={snap:false,locked:false,detail:'auto',showLabels:true,showMonitors:true,overview:false,type:'all',health:'all',result:'all',scenarios:null,...result.preferences};
+  if(!['auto','full','minimal'].includes(result.preferences.detail)||!['all',...Object.keys(types)].includes(result.preferences.type)||!['all','ready','missing','stale','provisional','short','unassigned','uncalculated'].includes(result.preferences.health)||!['all','green','amber','red','neutral'].includes(result.preferences.result)||![result.preferences.snap,result.preferences.locked,result.preferences.showLabels,result.preferences.showMonitors,result.preferences.overview].every(v=>typeof v==='boolean')||result.preferences.scenarios!==null&&(!Array.isArray(result.preferences.scenarios)||result.preferences.scenarios.length>1000||result.preferences.scenarios.some(s=>typeof s!=='string'||s.length>100)))throw new Error('Invalid schematic display preferences.');
   for(const n of result.nodes){if(n.pinned!==undefined&&typeof n.pinned!=='boolean')throw new Error('Invalid pinned point.');if(n.review&&(typeof n.review.comment!=='string'||n.review.comment.length>10000||!['unreviewed','in-review','reviewed'].includes(n.review.status)))throw new Error('Invalid review note.');}
   for(const e of result.edges){if(e.labelOffset&&![e.labelOffset.x,e.labelOffset.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=10000))throw new Error('Invalid connector label placement.');if(e.review&&(typeof e.review.comment!=='string'||e.review.comment.length>10000||!['unreviewed','in-review','reviewed'].includes(e.review.status)))throw new Error('Invalid connector review.');}
+  validateRouteWorkspace(result);
   result.views=result.views||[];result.reviewSnapshots=result.reviewSnapshots||[];
   if(!Array.isArray(result.views)||result.views.length>30||!Array.isArray(result.reviewSnapshots)||result.reviewSnapshots.length>20)throw new Error('Invalid saved review views.');
   for(const view of result.views)if(typeof view.name!=='string'||view.name.length>100||!Array.isArray(view.positions)||view.positions.length>2000||!view.camera||![view.camera.x,view.camera.y,view.camera.zoom].every(Number.isFinite)||view.camera.zoom<.002||view.camera.zoom>maxCameraZoom||view.positions.some(p=>typeof p.id!=='string'||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)))throw new Error('Invalid saved view.');
@@ -212,6 +213,47 @@ function validateNetwork(value){
   if(![result.camera.x,result.camera.y,result.camera.zoom].every(Number.isFinite)||result.camera.zoom<.002||result.camera.zoom>maxCameraZoom)throw new Error('Invalid schematic camera.');
   return result;
 }
+// Route and monitor records share the existing local schematic snapshot.
+function validateRouteWorkspace(result){
+  const text=(value,max)=>typeof value==='string'&&value.length<=max;
+  function records(key,limit,valid){
+    result[key]??=[];
+    if(!Array.isArray(result[key])||result[key].length>limit||!result[key].every(valid))
+      throw new Error('Invalid saved '+key+'.');
+  }
+  const reference=value=>value&&['node','edge'].includes(value.kind)&&text(value.id,256)&&value.id.length>0;
+  const nullableNumber=value=>value===null||Number.isFinite(value);
+  records('monitorLocations',10000,row=>row&&text(row.monitor,256)&&row.monitor.trim()&&reference(row.asset)&&
+    text(row.sourceId,256)&&text(row.identity,1024));
+  if(new Set(result.monitorLocations.map(row=>row.monitor)).size!==result.monitorLocations.length)
+    throw new Error('Duplicate saved monitor names.');
+  records('monitorReview',10000,row=>row&&text(row.monitor,256)&&text(row.assetId,256)&&text(row.status,128));
+  records('overviewPins',7000,reference);
+  records('routeReviews',30,review=>review&&text(review.name,100)&&review.name.trim()&&text(review.note,10000)&&
+    text(review.start,256)&&text(review.end,256)&&Array.isArray(review.steps)&&review.steps.length>0&&review.steps.length<=5000&&
+    review.steps.every(step=>step&&text(step.id,256)&&text(step.from,256)&&text(step.to,256)&&text(step.name,256)&&
+      text(step.type,128)&&['known','missing','structure'].includes(step.lengthStatus)&&
+      ['length','us','ds','groundFrom','groundTo','height','chainageStart','chainageEnd'].every(key=>nullableNumber(step[key]))&&
+      Array.isArray(step.sources)&&step.sources.length<=3&&step.sources.every(source=>source&&text(source.file,512)&&
+        text(source.table,128)&&Number.isSafeInteger(source.row)&&source.row>=1))&&
+    Array.isArray(review.trials)&&review.trials.length<=100&&review.trials.every(trial=>trial&&text(trial.id,256)&&
+      ['diameter','gradient','roughness','viscosity'].every(key=>Number.isFinite(trial[key]))&&
+      Number.isFinite(trial.capacity)&&trial.capacity>=0)&&validModel(review.model));
+  function validModel(model){
+    return model==null||text(model.scenario,100)&&text(model.time,32)&&text(model.datum,128)&&
+      Array.isArray(model.values)&&model.values.length<=2000&&model.values.every(row=>row&&text(row.node,256)&&
+        Number.isFinite(row.level)&&text(row.source,1024)&&text(row.column,512)&&text(row.sha256,128));
+  }
+}
+
+function monitorTable(text){
+  const rows=splitNativeRecords(text.replace(/^\uFEFF/,'')).filter(record=>record.line.trim())
+    .map(({line,row})=>readContextRow(line,row).map(value=>value.trim()));
+  if(rows.length<2||rows.length>10001||rows.some(row=>row.length!==2||row.some(value=>value.length>256)))
+    throw new Error('Use a header and 1–10,000 rows of two columns, with values up to 256 characters.');
+  return {headers:rows[0],rows:rows.slice(1)};
+}
+
 function readContextRow(line,lineNumber){
   const fields=[];
   const item=/("(?:[^"]|"")*"|[^",]*)(?:,|$)/gy;
@@ -275,7 +317,7 @@ function importNativeContext(input){
   });
   const network=empty(),nodes=new Map(),blocks=new Set(),warnings=new Set();
   const nodeTypes=new Map([['manhole','manhole'],['outfall','outfall'],['outfall 2d','outfall'],
-    ['storage','tank'],['pond','tank'],['break','junction'],['connect 2d','junction']]);
+    ['storage','tank'],['pond','tank'],['cso','cso'],['pumping station','pump'],['break','junction'],['connect 2d','junction']]);
   const supported=type=>type==='hw_node'||nativeLinks.has(type);
   let section=null,headers=null,fieldNames=[],fieldLabels=[],fieldUnits=[],leadingMetadata=true;
   const pending=[];
@@ -469,7 +511,7 @@ function applyContextRevision(current,imported,format){
       if(JSON.stringify(old.bends||[])!==JSON.stringify(old.sourceBends||[]))next.bends=old.bends||[];
       if(old.name!==(old.sourceName??edge.name))next.name=old.name;
       if(sameContextFields(old,edge)&&old.detrimentLinks!==undefined)next.detrimentLinks=old.detrimentLinks;
-      for(const key of ['labelOffset','review','arrow','customProperties','seriesLinks','colour','monitorId'])
+      for(const key of ['labelOffset','review','arrow','direction','customProperties','seriesLinks','colour','monitorId'])
         if(old[key]!==undefined)next[key]=old[key];
     }
     return next;
@@ -500,5 +542,5 @@ function conduitTrial(edge){
 function reportingConflicts(rows){
   const seen=new Set();for(const row of rows){for(const y of row.years){const key=row.role+'|'+(row.role==='model'?row.scenario:'Observed')+'|'+y;if(seen.has(key))throw new Error('Overlapping assignments for '+(row.role==='model'?row.scenario:'Observed')+' in '+y+'. Keep one authoritative source per reporting year.');seen.add(key);}}
 }
-globalThis.ICMNetworkCore={colours,types,cameraZoom,symbolScale,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,nativeContextText,applyContextRevision,conduitTrial,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
+globalThis.ICMNetworkCore={colours,types,cameraZoom,symbolScale,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,nativeContextText,applyContextRevision,conduitTrial,monitorTable,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
 })();

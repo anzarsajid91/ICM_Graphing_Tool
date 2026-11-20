@@ -74,6 +74,7 @@ jobs:
           node web/tests/network-schematic-unit.mjs
           node --check web/assets/network-review-core.js
           node web/tests/network-review-unit.mjs
+          node web/tests/network-route-unit.mjs
           node --check web/assets/precision-workbench.js
           node --check web/assets/detriment-workspace.js
           node web/tests/survey-source-unit.mjs
@@ -422,6 +423,7 @@ jobs:
           done
           ICM_BROWSER=chromium node web/tests/workspace-interactions.mjs
           ICM_BROWSER=chromium node web/tests/network-schematic-smoke.mjs
+          ICM_BROWSER=chromium node web/tests/network-route-smoke.mjs
           node web/tests/network-review-smoke.mjs
           node web/tests/network-layout-smoke.mjs
           node web/tests/network-context-smoke.mjs
@@ -429,6 +431,7 @@ jobs:
           node web/tests/verification-overview-smoke.mjs
           ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs
           ICM_BROWSER=firefox node web/tests/network-schematic-smoke.mjs
+          ICM_BROWSER=firefox node web/tests/network-route-smoke.mjs
           for browser in chromium firefox; do
             for suite in link-controls-smoke import-controls-acceptance network-controls-acceptance plot-controls-acceptance survey-controls-acceptance queue-controls-acceptance shared-controls-acceptance source-controls-acceptance data-process-controls-acceptance survey-process-controls-acceptance shared-input-controls-acceptance hydraulic-input-controls-acceptance appearance-input-controls-acceptance verification-input-controls-acceptance network-input-controls-acceptance storage-input-controls-acceptance detriment-smoke uiux-review; do
               evidence="/tmp/icm-interaction-evidence/control-assurance/$browser/$suite"

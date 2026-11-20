@@ -52,9 +52,9 @@ try{
   assert.equal(await conduit.evaluate(element=>document.activeElement===element),true,'Keyboard focus survives the schematic resize');
   await conduit.press('Enter');
   await page.getByRole('button',{name:'Open in Hydraulic Calculations'}).click();
-  assert.equal(await page.getByLabel(/Diameter/).inputValue(),'450');
-  assert.equal(await page.getByLabel('Gradient (m/m)').inputValue(),'0.005');
-  await page.getByLabel(/Diameter/).fill('600');
+  assert.equal(await page.locator('#pipeCapacityForm').getByLabel(/Diameter/).inputValue(),'450');
+  assert.equal(await page.locator('#pipeCapacityForm').getByLabel('Gradient (m/m)').inputValue(),'0.005');
+  await page.locator('#pipeCapacityForm').getByLabel(/Diameter/).fill('600');
   assert.equal(await page.evaluate(()=>window.ICMNetworkSchematic.snapshot().edges[0].icm.conduit_width),450);
   await page.evaluate(()=>{
     const registry=window.ICMProjectRegistry;

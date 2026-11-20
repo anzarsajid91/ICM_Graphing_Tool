@@ -11,6 +11,52 @@ let inspectorTab='evidence',selectionKind='node';
 let redo=[],multi=new Set(),highlight=null,hoverTimer=null,frame=null,analysisGeneration=0,analysisContext=null,analysisTimer=null,analysisReturnFocus=null,pickerReturnFocus=null;
 const freshness=new Map();
 const prefs=()=>R.preferences(network);
+let overviewCache=null,monitorCache=null,detailedCamera=null;
+const inOverview=()=>prefs().overview&&!editing;
+const overviewGraph=()=>overviewCache??=R.overview(network);
+const sceneGraph=()=>inOverview()?overviewGraph():network;
+function monitorGroups(){
+  if(monitorCache)return monitorCache;
+  const {byAsset}=R.monitorIndex(network);
+  monitorCache=new Map();
+  for(const location of network.monitorLocations||[]){
+    const key=R.refKey(location.asset);
+    if(byAsset.get(key)?.identity!==location.identity)continue;
+    if(!monitorCache.has(key))monitorCache.set(key,[]);
+    monitorCache.get(key).push(location.monitor);
+  }
+  return monitorCache;
+}
+function resetReviewCaches(){overviewCache=null;monitorCache=null;}
+function changeOverview(value){
+  if(inOverview()===value)return;
+  if(value)detailedCamera={...network.camera};
+  network.preferences={...prefs(),overview:value};
+  if(!value&&detailedCamera)network.camera=detailedCamera;
+  render();
+  if(value||!detailedCamera)fit();
+  else persist();
+}
+const structureCodes={hw_pump:'P',hw_weir:'W',hw_orifice:'O',hw_sluice:'S',hw_flap_valve:'F',hw_screen:'S',hw_user_control:'C',hw_outlet:'O'};
+function structureMarker(link,x,y){
+  const kind=link.icm?.table;
+  if(!Object.hasOwn(structureCodes,kind))return null;
+  const code=structureCodes[kind];
+  const marker=svgElement('g',{'data-ns-structure':'',transform:translate(x,y)});
+  marker.append(svgElement('title',{},kind.slice(3).replaceAll('_',' ')),
+    svgElement('rect',{x:-9,y:-9,width:18,height:18,rx:3,fill:'#f8f5ff',stroke:'#6947a1'}),
+    svgElement('text',{y:3.5,'text-anchor':'middle',fill:'#513885','font-size':10,'font-weight':700},code));
+  return marker;
+}
+function monitorMarker(kind,id,x,y){
+  const names=monitorGroups().get(R.refKey({kind,id}));
+  if(!prefs().showMonitors||!names?.length)return null;
+  const marker=svgElement('g',{'data-ns-monitor':'',transform:translate(x,y)});
+  marker.append(svgElement('title',{},names.join(', ')+(kind==='edge'?' · installed on host link':'')),
+    svgElement('circle',{r:10,fill:'#174b64',stroke:'#fff','stroke-width':2}),
+    svgElement('text',{y:3.5,'text-anchor':'middle',fill:'#fff','font-size':9,'font-weight':700},names.length>1?String(Math.min(names.length,99)):'M'));
+  return marker;
+}
 const root=()=>$('tab-spill-network');
 const node=()=>selectionKind==='node'?network.nodes.find(n=>n.id===selected):null;
 const edge=()=>selectionKind==='edge'?network.edges.find(e=>e.id===selected):null;
@@ -26,14 +72,14 @@ function sourceFor(b){
 function contract(b){const item=sourceFor(b);return item?{quantity:seriesQuantity(item,b.column)||'',unit:seriesUnit(item,b.column)||'',datum:seriesReference(item,b.column)||''}:{};}
 function signature(n){return JSON.stringify({methodVersion:2,bindings:n.bindings.map(b=>({sha256:b.sha256,column:b.column,role:b.role,scenario:b.scenario,years:b.years,threshold:b.threshold,comparison:C.thresholdRule(b),quantity:b.quantity,unit:b.unit,datum:b.datum,current:contract(b),found:Boolean(sourceFor(b))})),defaults:n.defaults,gap:n.gap,exclusions:n.exclusions,confirmed:n.confirmed});}
 function isFresh(n){if(!freshness.has(n.id))freshness.set(n.id,Boolean(n.applied&&n.applied.signature===signature(n)));return freshness.get(n.id);}
-function checkpoint(){redo=[];history.push(JSON.stringify(network));if(history.length>30)history.shift();}
+function checkpoint(){resetReviewCaches();redo=[];history.push(JSON.stringify(network));if(history.length>30)history.shift();}
 function snapshot(){return JSON.parse(JSON.stringify(network));}
 function flushSave(){clearTimeout(saveTimer);try{localStorage.setItem(STORE,JSON.stringify(network));}catch(error){status('Browser save unavailable; use Save network to keep this layout.');}}
 function persist(){state.networkSchematicWorkspace=snapshot();clearTimeout(saveTimer);saveTimer=setTimeout(flushSave,250);}
 function status(message){if($('nsStatus'))$('nsStatus').textContent=message;}
 function changed(geometry=false){if(!geometry)freshness.clear();persist();renderCanvas();if(!geometry)renderFilters();renderReview();}
 function restore(value){
-  network=value?C.validateNetwork(value):C.empty();branchIsolated=false;selected=null;popupVisible=false;history=[];redo=[];multi.clear();highlight=null;freshness.clear();
+  resetReviewCaches();resetRouteDraft();detailedCamera=null;network=value?C.validateNetwork(value):C.empty();branchIsolated=false;selected=null;popupVisible=false;history=[];redo=[];multi.clear();highlight=null;freshness.clear();
   state.networkSchematicWorkspace=snapshot();if(mounted){render();persist();}
 }
 function point(x,y){return {x:x*network.camera.zoom+Number(network.camera.x),y:y*network.camera.zoom+Number(network.camera.y)};}
@@ -191,6 +237,7 @@ function renderNodeLeader(group,n,scale){
     stroke:'#82939f','stroke-width':1,fill:'none'}),svgElement('polygon',{points:polygonPoints(leader.arrow),fill:'#82939f'}));
 }
 function renderScene(includeHandles=true){
+  const graph=sceneGraph();
   const {width,height}=dimensions(),scene=document.createDocumentFragment();
   const verificationLayer=prefs().verification===true;
   const evidence=verificationLayer?window.__ICM_WORKBENCH__?.readVerificationEvidence?.():null;
@@ -198,26 +245,33 @@ function renderScene(includeHandles=true){
   const surveyLayer=prefs().flowSurvey===true;
   const surveyView=surveyLayer?surveyLayerView():null;
   const detrimentLayer=prefs().detriment===true,comparison=detrimentLayer?detrimentView():null;
-  const shown=visibleNodes(),shownIds=new Set(shown.map(n=>n.id)),byId=new Map(network.nodes.map(n=>[n.id,n]));
+  const shown=visibleNodes(graph.nodes),shownIds=new Set(shown.map(n=>n.id)),byId=new Map(graph.nodes.map(n=>[n.id,n]));
   const scale=C.symbolScale(network.camera.zoom),markerTransform='scale('+scale+')';
-  const routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y),scale);
-  for(const e of network.edges){
-    if(!shownIds.has(e.from)||!shownIds.has(e.to)||(branchIsolated&&highlight&&!highlight.wires.has(e.id)))continue;
+  const routes=C.connectionRoutes(graph.nodes,graph.edges,n=>point(n.x,n.y),scale);
+  for(const e of graph.edges){
+    if(!shownIds.has(e.from)||!shownIds.has(e.to)||(branchIsolated&&highlight&&!e.sourceEdges?.some(id=>highlight.wires.has(id))&&!highlight.wires.has(e.id)))continue;
     const route=routes.get(e.id);if(!route)continue;
     const a=byId.get(e.from),b=byId.get(e.to),colour=C.colours[e.colour];
+    const chosen=selectionKind==='edge'&&(e.id===selected||e.sourceEdges?.includes(selected))||
+      selectionKind==='node'&&e.sourceNodes?.slice(1,-1).includes(selected);
     const group=svgElement('g',{'data-ns-edge':e.id,tabindex:0,role:'button','aria-label':'Connector '+(e.name||a.name+' to '+b.name)});
     group.append(svgElement('path',{d:route.path,fill:'none',stroke:'transparent','stroke-width':14}),
-      svgElement('path',{'data-ns-wire':'',d:route.path,fill:'none',stroke:colour,'stroke-width':selectionKind==='edge'&&e.id===selected?4:2}));
-    if(e.arrow!==false&&route.arrow.length){
+      svgElement('path',{'data-ns-wire':'',d:route.path,fill:'none',stroke:colour,'stroke-width':chosen?4:2,
+        'stroke-dasharray':e.direction==='unknown'?'6 4':''}));
+    if(e.direction!=='unknown'&&e.arrow!==false&&route.arrow.length){
       group.append(svgElement('polygon',{'data-ns-direction':'',points:polygonPoints(route.arrow),fill:colour}));
     }
     const showLinkLabel=editing||selectionKind==='edge'&&e.id===selected||prefs().detail==='full'||prefs().detail==='auto'&&network.camera.zoom>=.65;
-    if(e.name&&showLinkLabel){
+    if(e.name&&showLinkLabel&&prefs().showLabels){
       group.append(svgElement('text',{'data-ns-edge-label':'',x:route.label.x+Number(e.labelOffset?.x||0),
         y:route.label.y+Number(e.labelOffset?.y||0),fill:colour,'font-size':13},e.name));
     }
     const badge=detrimentLayer&&detrimentBadge(e,comparison,route.label.x-10,route.label.y-5);
     if(badge)group.append(badge);
+    const structure=inOverview()&&structureMarker(e,route.label.x,route.label.y+12);
+    if(structure)group.append(structure);
+    const monitor=monitorMarker('edge',e.id,route.label.x+14,route.label.y-13);
+    if(monitor)group.append(monitor);
     if(includeHandles&&editing&&selectionKind==='edge'&&e.id===selected)renderEdgeHandles(group,route,(e.bends||[]).length);
     scene.append(group);
   }
@@ -239,16 +293,17 @@ function renderScene(includeHandles=true){
       'stroke-linecap':'round','stroke-linejoin':'round'});
     renderIcon(symbol,n.type);
     group.append(symbol);
-    if(small||n.nameOffset){
+    if(prefs().showLabels&&(small||n.nameOffset)){
       const leader=svgElement('g',{'data-ns-node-leader':''});
       renderNodeLeader(leader,n,scale);group.append(leader);
     }
-    group.append(svgElement('text',{'data-ns-label':n.id,x:Number(offset.x)+(small?5:0),y:Number(offset.y),
+    if(prefs().showLabels)group.append(svgElement('text',{'data-ns-label':n.id,x:Number(offset.x)+(small?5:0),y:Number(offset.y),
       'text-anchor':small?'start':'middle','font-size':small?13:14,'font-weight':small?400:600,fill:'#182732'},n.name));
     for(const badge of [asset(n)&&resultBadge(n),verificationLayer&&verificationBadge(n,evidence,reviews),
       surveyLayer&&flowSurveyBadge(n,surveyView),detrimentLayer&&detrimentBadge(n,comparison,52,24)]){
       if(badge)group.append(badge);
     }
+    const monitor=monitorMarker('node',n.id,19,13);if(monitor)group.append(monitor);
     scene.append(group);
   }
   if(!network.nodes.length){
@@ -260,7 +315,7 @@ function renderScene(includeHandles=true){
   return scene;
 }
 function declutterLabels(svg){
-  if(prefs().detail==='full'||!svg.getClientRects().length)return;
+  if(!prefs().showLabels||prefs().detail==='full'||!svg.getClientRects().length)return;
   const viewport=svg.getBoundingClientRect();
   const manualNodes=new Set(network.nodes.filter(n=>n.nameOffset||n.labelOffset).map(n=>n.id));
   const manualEdges=new Set(network.edges.filter(e=>e.labelOffset).map(e=>e.id));
@@ -280,7 +335,7 @@ function declutterLabels(svg){
     return keys;
   }
   const overlaps=(a,b)=>a.left<b.right+padding&&a.right>b.left-padding&&a.top<b.bottom+padding&&a.bottom>b.top-padding;
-  const obstacles=Array.from(svg.querySelectorAll('[data-ns-symbol], [data-ns-verification], [data-ns-survey], [data-ns-detriment]'),el=>el.getBoundingClientRect());
+  const obstacles=Array.from(svg.querySelectorAll('[data-ns-symbol], [data-ns-monitor], [data-ns-structure], [data-ns-verification], [data-ns-survey], [data-ns-detriment]'),el=>el.getBoundingClientRect());
   for(const box of obstacles){
     if(!box.width||!overlaps(box,viewport))continue;
     for(const key of buckets(box)){
@@ -312,12 +367,16 @@ function objectAt(target){
   return null;
 }
 function inspectObject(object){
+  const reach=inOverview()&&object.kind==='edge'&&overviewGraph().edgeToReach.get(object.id);
+  if(reach?.sourceEdges?.length>1){showReach(reach);return;}
   if(object.kind==='edge')selectConnector(object.id);else selectPoint(object.id);
 }
 function focusSelected(){
-  const n=node(),e=edge();
+  const graph=sceneGraph();
+  const n=graph.nodes.find(n=>selectionKind==='node'&&n.id===selected);
+  const e=inOverview()?(selectionKind==='node'?graph.nodeToReach:graph.edgeToReach).get(selected):edge();
   if(!n&&!e)return;
-  const points=n?[n]:[network.nodes.find(item=>item.id===e.from),...(e.bends||[]),network.nodes.find(item=>item.id===e.to)].filter(Boolean);
+  const points=n?[n]:[graph.nodes.find(item=>item.id===e.from),...(e.bends||[]),graph.nodes.find(item=>item.id===e.to)].filter(Boolean);
   if(!points.length)return;
   const {width,height}=dimensions(),xs=points.map(p=>p.x),ys=points.map(p=>p.y);
   const x=(Math.max(...xs)+Math.min(...xs))/2,y=(Math.max(...ys)+Math.min(...ys))/2;
@@ -335,7 +394,7 @@ function traceSelection(direction){
   const e=edge(),start=node()?.id||(direction==='up'?e?.from:e?.to);
   if(!start){status('Select an asset or link to trace.');return;}
   network.preferences={...prefs(),type:'all',health:'all',result:'all'};
-  highlight=R.trace(network.nodes,network.edges,start,direction);
+  highlight=R.trace(network.nodes,network.edges.filter(link=>link.direction!=='unknown'),start,direction);
   traceOwner=selectionKind+':'+selected;
   if(e){highlight.ids.add(e.from);highlight.ids.add(e.to);highlight.wires.add(e.id);}
   persist();renderCanvas();renderReview();
@@ -348,20 +407,20 @@ function toggleIsolation(){
 }
 function renderMinimap(){
   const map=$('nsMinimap');if(!map)return;
-  const empty=!network.nodes.length;
+  const graph=sceneGraph(),empty=!graph.nodes.length;
   map.toggleAttribute('hidden',empty);
   if(empty){minimapBounds=null;map.replaceChildren();return;}
   let left=Infinity,right=-Infinity,top=Infinity,bottom=-Infinity;
-  for(const point of [...network.nodes,...network.edges.flatMap(e=>e.bends||[])]){
+  for(const point of [...graph.nodes,...graph.edges.flatMap(e=>e.bends||[])]){
     left=Math.min(left,point.x);right=Math.max(right,point.x);
     top=Math.min(top,point.y);bottom=Math.max(bottom,point.y);
   }
   const scale=Math.min(140/Math.max(1,right-left),80/Math.max(1,bottom-top));
   minimapBounds={scale,x:80-(left+right)/2*scale,y:50-(top+bottom)/2*scale};
-  const byId=new Map(network.nodes.map(n=>[n.id,n]));
+  const byId=new Map(graph.nodes.map(n=>[n.id,n]));
   const vertex=point=>[Math.round((point.x*scale+minimapBounds.x)*100)/100,Math.round((point.y*scale+minimapBounds.y)*100)/100];
-  const lines=network.edges.map(e=>[byId.get(e.from),...(e.bends||[]),byId.get(e.to)].filter(Boolean).map(vertex).join('L')).join('M');
-  const dots=network.nodes.map(n=>{const [x,y]=vertex(n);return 'M'+x+' '+y+'h.1';}).join('');
+  const lines=graph.edges.map(e=>[byId.get(e.from),...(e.bends||[]),byId.get(e.to)].filter(Boolean).map(vertex).join('L')).join('M');
+  const dots=graph.nodes.map(n=>{const [x,y]=vertex(n);return 'M'+x+' '+y+'h.1';}).join('');
   map.replaceChildren(svgElement('rect',{width:160,height:100,rx:4,fill:'#fff'}),
     svgElement('path',{d:lines?'M'+lines:'',fill:'none',stroke:'#9ca8b6','stroke-width':.7}),
     svgElement('path',{d:dots,fill:'none',stroke:'#345788','stroke-width':2.7,'stroke-linecap':'round'}),
@@ -444,7 +503,7 @@ function renderCanvas(){
   const d=dimensions();svg.setAttribute('viewBox','0 0 '+d.width+' '+d.height);svg.replaceChildren(renderScene());
   svg.dataset.nsMarkerScale=C.symbolScale(network.camera.zoom);
   declutterLabels(svg);
-  const selectedGroup=[...svg.children].find(group=>group.dataset.nsNode===selected&&selected!==null);
+  const selectedGroup=selectionKind==='node'&&[...svg.children].find(group=>group.dataset.nsNode===selected&&selected!==null);
   if(selectedGroup)svg.append(selectedGroup);
   if(focused){
     const key=focused.hasAttribute('data-ns-node')?'nsNode':'nsEdge';
@@ -453,7 +512,7 @@ function renderCanvas(){
   }
   $('nsZoom').textContent=Number((network.camera.zoom*100).toFixed(1))+'%';$('nsUndo').disabled=!history.length||busy;
   $('nsClearMap').disabled=!canClearMap();
-  renderPopup();
+  renderPopup();renderReviewControls();
   applyDecorations();renderMinimap();
   $('nsFocusSelected').disabled=!node()&&!edge();
   $('nsIsolateBranch').disabled=!highlight;
@@ -461,7 +520,8 @@ function renderCanvas(){
 }
 function renderGeometry(){
   const svg=$('nsSvg'),scale=C.symbolScale(network.camera.zoom),scaleChanged=Number(svg.dataset.nsMarkerScale)!==scale;
-  const edges=new Map(network.edges.map(e=>[e.id,e])),nodes=new Map(network.nodes.map(n=>[n.id,n])),routes=C.connectionRoutes(network.nodes,network.edges,n=>point(n.x,n.y),scale);
+  const graph=sceneGraph();
+  const edges=new Map(graph.edges.map(e=>[e.id,e])),nodes=new Map(graph.nodes.map(n=>[n.id,n])),routes=C.connectionRoutes(graph.nodes,graph.edges,n=>point(n.x,n.y),scale);
   for(const g of svg.querySelectorAll('[data-ns-node]')){
     const n=nodes.get(g.dataset.nsNode),p=point(n.x,n.y);
     g.setAttribute('transform',translate(p.x,p.y));
@@ -471,19 +531,19 @@ function renderGeometry(){
     }
   }
   svg.dataset.nsMarkerScale=scale;
-  for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]')){const route=routes.get(g.dataset.nsEdge);if(!route){g.style.visibility='hidden';continue;}g.style.visibility='';for(const path of g.querySelectorAll(':scope > path'))path.setAttribute('d',route.path);g.querySelector('[data-ns-direction]')?.setAttribute('points',route.arrow.map(p=>p.x+','+p.y).join(' '));const e=edges.get(g.dataset.nsEdge),offset=e.labelOffset||{x:0,y:0},label=g.querySelector('[data-ns-edge-label]');g.querySelector('[data-ns-detriment]')?.setAttribute('transform','translate('+(route.label.x-10)+' '+(route.label.y-5)+')');if(label){label.setAttribute('x',route.label.x+offset.x);label.setAttribute('y',route.label.y+offset.y);}for(const handle of g.querySelectorAll('[data-ns-bend]')){const p=route.points[Number(handle.dataset.nsBend)+1];handle.setAttribute('cx',p.x);handle.setAttribute('cy',p.y);}for(const handle of g.querySelectorAll('[data-ns-add-bend]')){const i=Number(handle.dataset.nsAddBend),a=route.points[i],b=route.points[i+1],x=(a.x+b.x)/2,y=(a.y+b.y)/2;handle.querySelector('circle').setAttribute('cx',x);handle.querySelector('circle').setAttribute('cy',y);handle.querySelector('path').setAttribute('d','M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6');}}
+  for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]')){const route=routes.get(g.dataset.nsEdge);if(!route){g.style.visibility='hidden';continue;}g.style.visibility='';for(const path of g.querySelectorAll(':scope > path'))path.setAttribute('d',route.path);g.querySelector('[data-ns-direction]')?.setAttribute('points',route.arrow.map(p=>p.x+','+p.y).join(' '));g.querySelector('[data-ns-monitor]')?.setAttribute('transform',translate(route.label.x+14,route.label.y-13));g.querySelector('[data-ns-structure]')?.setAttribute('transform',translate(route.label.x,route.label.y+12));const e=edges.get(g.dataset.nsEdge),offset=e.labelOffset||{x:0,y:0},label=g.querySelector('[data-ns-edge-label]');g.querySelector('[data-ns-detriment]')?.setAttribute('transform','translate('+(route.label.x-10)+' '+(route.label.y-5)+')');if(label){label.setAttribute('x',route.label.x+offset.x);label.setAttribute('y',route.label.y+offset.y);}for(const handle of g.querySelectorAll('[data-ns-bend]')){const p=route.points[Number(handle.dataset.nsBend)+1];handle.setAttribute('cx',p.x);handle.setAttribute('cy',p.y);}for(const handle of g.querySelectorAll('[data-ns-add-bend]')){const i=Number(handle.dataset.nsAddBend),a=route.points[i],b=route.points[i+1],x=(a.x+b.x)/2,y=(a.y+b.y)/2;handle.querySelector('circle').setAttribute('cx',x);handle.querySelector('circle').setAttribute('cy',y);handle.querySelector('path').setAttribute('d','M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6');}}
   if(drag?.kind==='node'||drag?.kind==='bend')renderMinimap();else updateMinimapViewport();
 }
 function fit(){
-  const d=dimensions();if(!network.nodes.length){network.camera={x:0,y:0,zoom:1};changed(true);return;}
-  const geometry=[...network.nodes,...network.edges.flatMap(e=>e.bends||[])];
+  const graph=sceneGraph(),d=dimensions();if(!graph.nodes.length){network.camera={x:0,y:0,zoom:1};changed(true);return;}
+  const geometry=[...graph.nodes,...graph.edges.flatMap(e=>e.bends||[])];
   const extents=points=>points.reduce(([left,right,top,bottom],p)=>[Math.min(left,p.x),Math.max(right,p.x),Math.min(top,p.y),Math.max(bottom,p.y)],[Infinity,-Infinity,Infinity,-Infinity]);
   const [left,right,top,bottom]=extents(geometry);
   const offsets=new Map([...$('nsSvg').querySelectorAll('[data-ns-node]')].map(el=>[el.dataset.nsNode,el.getBBox()]));
   const scene=z=>{
     const xs=[],ys=[];
-    for(const n of network.nodes){const box=offsets.get(n.id)||{x:-45,y:-45,width:90,height:90};xs.push(n.x*z+box.x,n.x*z+box.x+box.width);ys.push(n.y*z+box.y,n.y*z+box.y+box.height);}
-    for(const p of network.edges.flatMap(e=>e.bends||[])){xs.push(p.x*z);ys.push(p.y*z);}
+    for(const n of graph.nodes){const box=offsets.get(n.id)||{x:-45,y:-45,width:90,height:90};xs.push(n.x*z+box.x,n.x*z+box.x+box.width);ys.push(n.y*z+box.y,n.y*z+box.y+box.height);}
+    for(const p of graph.edges.flatMap(e=>e.bends||[])){xs.push(p.x*z);ys.push(p.y*z);}
     const [left,right]=xs.reduce(([min,max],x)=>[Math.min(min,x),Math.max(max,x)],[Infinity,-Infinity]);
     const [top,bottom]=ys.reduce(([min,max],y)=>[Math.min(min,y),Math.max(max,y)],[Infinity,-Infinity]);
     return {left,right,top,bottom};
@@ -526,7 +586,7 @@ function renderDrawer(){
   if(!n&&!e){drawer.innerHTML='<h3>Edit network</h3><p>Add a point or select an existing asset to name it and assign imported evidence.</p><p>Use Connect and click two points to draw a directed wire. Drag points to arrange the site.</p>';return;}
   const common='<div class="ns-drawer-head"><h3>'+html(n?n.name:e.name||'Connector')+'</h3><button data-ns-close-selection aria-label="Close settings">×</button></div>'+
     fields('Name','<input id="nsName" value="'+html(n?n.name:e.name||'')+'" maxlength="160">')+fields('Network colour',colours((n||e).colour,'data-ns-object-colour'));
-  if(e){drawer.innerHTML=common+detrimentAssociation(e)+(e.icm?'<button type="button" id="nsPipeTrial">Open in Hydraulic Calculations</button>':'')+'<label class="ns-check"><input id="nsArrow" type="checkbox" '+(e.arrow!==false?'checked':'')+'> Show direction</label><p class="ns-note">Click + on the line to add a bend; drag the round handles to position it.</p><button id="nsAddBend" '+((e.bends||[]).length>=32?'disabled':'')+'>+ Add bend</button> <button id="nsStraighten" '+(!(e.bends||[]).length?'disabled':'')+'>Straighten</button>'+((e.bends||[]).length?'<div class="ns-bend-list">'+e.bends.map((p,i)=>'<button data-ns-remove-bend="'+i+'">Remove bend '+(i+1)+'</button>').join('')+'</div>':'')+reviewFields(e)+'<button data-ns-delete class="ns-danger">Delete connector</button>';
+  if(e){drawer.innerHTML=common+detrimentAssociation(e)+(e.icm?'<button type="button" id="nsPipeTrial">Open in Hydraulic Calculations</button>':'')+fields('Topology direction',selectHtml('id="nsTopologyDirection"',[['nominal','Nominal from / to'],['unknown','Unconfirmed']],e.direction||'nominal'))+'<label class="ns-check"><input id="nsArrow" type="checkbox" '+(e.arrow!==false?'checked':'')+'> Show direction</label><p class="ns-note">Click + on the line to add a bend; drag the round handles to position it.</p><button id="nsAddBend" '+((e.bends||[]).length>=32?'disabled':'')+'>+ Add bend</button> <button id="nsStraighten" '+(!(e.bends||[]).length?'disabled':'')+'>Straighten</button>'+((e.bends||[]).length?'<div class="ns-bend-list">'+e.bends.map((p,i)=>'<button data-ns-remove-bend="'+i+'">Remove bend '+(i+1)+'</button>').join('')+'</div>':'')+reviewFields(e)+'<button data-ns-delete class="ns-danger">Delete connector</button>';
     const trial=$('nsPipeTrial');
     if(trial)trial.onclick=()=>{
       const inputs=C.conduitTrial(e);
@@ -764,7 +824,11 @@ function renderPopup(previous){
     if(next===undefined)return;event.preventDefault();openInspectorTab(inspectorTabs[next][0]);
   };
   const footer=inspectorElement('div',undefined,'ns-popup-footer');
-  if(inspectorTab==='properties')inspectorProperties(panel,object);
+  if(inspectorTab==='properties'){
+    inspectorProperties(panel,object);
+    const locations=monitorGroups().get(R.refKey({kind:n?'node':'edge',id:object.id}));
+    if(locations?.length)panel.prepend(inspectorElement('p','Installed monitors · '+locations.join(', '),'ns-note'));
+  }
   if(inspectorTab==='upload')inspectorUpload(panel);
   if(inspectorTab==='linking'){
     inspectorSeriesLinks(panel,object);
@@ -789,6 +853,17 @@ function renderPopup(previous){
       }
     }
   }
+  const reference={id:object.id,kind:n?'node':'edge'};
+  const pinned=(network.overviewPins||[]).some(pin=>R.refKey(pin)===R.refKey(reference));
+  const pin=inspectorButton(pinned?'Unpin from overview':'Pin in overview');
+  pin.setAttribute('aria-pressed',String(pinned));
+  pin.onclick=()=>{
+    checkpoint();
+    const pins=(network.overviewPins||[]).filter(item=>R.refKey(item)!==R.refKey(reference));
+    network.overviewPins=pinned?pins:[...pins,reference];changed(true);
+    $('nsPopup').querySelector('[aria-pressed]')?.focus({preventScroll:true});
+  };
+  if(object.type!=='label')footer.append(pin);
   const edit=inspectorButton('Edit asset');edit.dataset.nsEditSelected='';footer.append(edit);
   pop.replaceChildren(header,tabs,panel,footer);
   window.HydraDesign?.moveSelection(tabs,tabs.querySelector('[aria-selected="true"]'),'ns-tab-indicator',previous);
@@ -887,6 +962,10 @@ async function calculate(){
   finally{busy=false;render();}
 }
 function updateField(target){
+  if(target.id==='nsTopologyDirection'){
+    const link=edge();if(!link||prefs().locked||busy)return;
+    checkpoint();link.direction=target.value;highlight=null;branchIsolated=false;changed();return;
+  }
   if(!target.closest('[data-ns-binding]')&&!['nsName','nsType','nsArrow','nsLabelX','nsLabelY','nsObservedDefault','nsModelDefault','nsNewScenario','nsGap','nsConfirmed','nsExclusions','nsPinned','nsReviewComment','nsReviewStatus'].includes(target.id))return;
   const n=node(),e=edge();if(!n&&!e)return;
   target.removeAttribute('aria-invalid');
@@ -940,7 +1019,7 @@ function canClearMap(){
 }
 function clearMap(){
   checkpoint();
-  network=C.empty();branchIsolated=false;
+  network=C.empty();resetRouteDraft();detailedCamera=null;branchIsolated=false;
   selected=null;connectFrom=null;highlight=null;popupVisible=false;tool='select';
   multi.clear();freshness.clear();hideHover();
   $('nsPicker').hidden=true;
@@ -962,7 +1041,7 @@ function onClick(event){
   if(t.closest('[data-ns-delete]')){removeSelected();return;}
   if(t.closest('[data-ns-close-selection]')){selected=null;renderDrawer();renderCanvas();return;}
   if(t.closest('[data-ns-close-popup]')){popupVisible=false;renderPopup();return;}
-  if(t.closest('[data-ns-edit-selected]')){editing=true;popupVisible=false;render();return;}
+  if(t.closest('[data-ns-edit-selected]')){if(inOverview())changeOverview(false);editing=true;popupVisible=false;render();return;}
   const swatch=t.closest('[data-ns-colour]');if(swatch){colour=swatch.dataset.nsColour;render();return;}
   const objectColour=t.closest('[data-ns-object-colour]');if(objectColour){checkpoint();(node()||edge()).colour=objectColour.dataset.nsObjectColour;changed();renderDrawer();return;}
   if(t.id==='nsResetLabel'){if(prefs().locked)return;checkpoint();delete node().nameOffset;delete node().labelOffset;changed(true);renderDrawer();return;}
@@ -1099,13 +1178,16 @@ function resultRag(n){
   const values=groups.filter(g=>(network.year==='all'||g.year===Number(network.year))&&g.model&&!C.comparable(g.observed,g.model,n.confirmed,network.metric)).map(g=>C.rag(g.observed[network.metric],g.model[network.metric]));
   return values.includes('red')?'red':values.includes('amber')?'amber':values.includes('green')?'green':null;
 }
-function visibleNodes(){
-  const p=prefs();return network.nodes.filter(n=>(!branchIsolated||!highlight||highlight.ids.has(n.id))&&(p.type==='all'||n.type===p.type)&&(p.health==='all'||nodeHealth(n)===p.health)&&(p.result==='all'||(resultRag(n)||'neutral')===p.result));
+function visibleNodes(nodes=network.nodes){
+  const p=prefs();return nodes.filter(n=>(!branchIsolated||!highlight||highlight.ids.has(n.id))&&(p.type==='all'||n.type===p.type)&&(p.health==='all'||nodeHealth(n)===p.health)&&(p.result==='all'||(resultRag(n)||'neutral')===p.result));
 }
 function applyDecorations(){
   const byId=new Map(network.nodes.map(n=>[n.id,n]));
   for(const g of $('nsSvg').querySelectorAll('[data-ns-node]')){const n=byId.get(g.dataset.nsNode);g.style.opacity=highlight&&!highlight.ids.has(n.id)?'.2':'1';g.classList.toggle('ns-multi-selected',multi.has(n.id));if(asset(n)){const h=nodeHealth(n);if(h!=='ready'){const dot=document.createElementNS(NS,'circle');dot.setAttribute('cx','-34');dot.setAttribute('cy','-24');dot.setAttribute('r','4');dot.setAttribute('fill',h==='stale'?'#9a6500':h==='missing'?'#b93838':'#82939f');const title=document.createElementNS(NS,'title');title.textContent=healthLabel(h);dot.append(title);g.append(dot);}}}
-  for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]'))g.style.opacity=highlight&&!highlight.wires.has(g.dataset.nsEdge)?'.15':'1';
+  for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]')){
+    const members=inOverview()?overviewGraph().edgeToReach.get(g.dataset.nsEdge)?.sourceEdges:[g.dataset.nsEdge];
+    g.style.opacity=highlight&&!members?.some(id=>highlight.wires.has(id))?'.15':'1';
+  }
   const hidden=network.nodes.length-visibleNodes().length;if($('nsHiddenCount'))$('nsHiddenCount').textContent=hidden?hidden+' hidden':'';
 }
 function healthLabel(value){return {ready:'Ready',missing:'Reload source',stale:'Recalculate',short:'Short coverage',provisional:'Provisional count',unassigned:'No datasets',uncalculated:'Not calculated'}[value]||value;}
@@ -1212,7 +1294,7 @@ function renderMatrix(){
   }
 }
 function undoEdit(forward=false){
-  if(busy)return;const source=forward?redo:history,dest=forward?history:redo;if(!source.length)return;dest.push(JSON.stringify(network));network=JSON.parse(source.pop());branchIsolated=false;selected=null;multi.clear();highlight=null;popupVisible=false;freshness.clear();persist();render();renderReview();
+  if(busy)return;const source=forward?redo:history,dest=forward?history:redo;if(!source.length)return;dest.push(JSON.stringify(network));resetReviewCaches();resetRouteDraft();network=JSON.parse(source.pop());branchIsolated=false;selected=null;multi.clear();highlight=null;popupVisible=false;freshness.clear();persist();render();renderReview();
 }
 function arrange(kind){
   if(busy||prefs().locked)return;checkpoint();
@@ -1526,13 +1608,566 @@ function mountReview(){
   $('nsAnalysisCalculate').onclick=async()=>{if(busy)return;await calculate();const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n){$('nsAnalysisCounts').replaceChildren(annualTable(n,true));$('nsAnalysisAudit').replaceChildren(auditDetails(n));if(analysisContext.mode==='series')await plotAnalysis(++analysisGeneration);}};
   renderReview();
 }
+let routeDraft={start:'',end:'',choices:new Map(),steps:[],trials:[],model:null};
+let routeRevision=0;
+function resetRouteDraft(){
+  routeDraft={start:'',end:'',choices:new Map(),steps:[],trials:[],model:null};
+  ++routeRevision;
+  if($('nsRoute')){
+    $('nsRoute').hidden=true;$('nsProfile').hidden=true;
+    $('nsRouteName').value='';$('nsRouteNote').value='';$('nsRouteSavedMessage').textContent='';
+  }
+}
+let monitorDialog,monitorTable=null,monitorColumn=0,monitorGeneration=0;
+const monitorResolutions=new Map(),monitorChanges=new Set();
+
+function tableWithHeaders(labels){
+  const table=inspectorElement('table');
+  const heading=table.createTHead().insertRow();
+  for(const label of labels){
+    const cell=inspectorElement('th',label);cell.scope='col';heading.append(cell);
+  }
+  table.createTBody();
+  return table;
+}
+function addCells(row,values){
+  for(const value of values){
+    const cell=row.insertCell();
+    if(value instanceof Node)cell.append(value);else cell.textContent=value;
+  }
+}
+
+function openMonitorImport(){
+  if(!monitorDialog.open){renderMonitorImport();monitorDialog.showModal();}
+}
+function renderMonitorImport(){
+  const target=$('nsMonitorPreview'),apply=$('nsMonitorApply');
+  $('nsMonitorClose').textContent=monitorTable?'Cancel':'Close';
+  target.replaceChildren();apply.disabled=true;
+  const matches=monitorTable?R.monitorMatches(monitorTable,monitorColumn,network,monitorResolutions):[];
+  if(!monitorTable){
+    const {byAsset}=R.monitorIndex(network);
+    const review=network.monitorReview||[];
+    const saved=network.monitorLocations||[];
+    target.append(inspectorElement('p',saved.length+' saved monitor locations · '+review.length+' unresolved import rows.'));
+    if(saved.length||review.length){
+      const table=tableWithHeaders(['Monitor','Installed asset','Status']);
+      for(const row of saved){
+        const asset=byAsset.get(R.refKey(row.asset));
+        addCells(table.tBodies[0].insertRow(),[row.monitor,asset?.label||row.sourceId,
+          asset?.identity===row.identity?'Linked':'Review after network change']);
+      }
+      for(const row of review)addCells(table.tBodies[0].insertRow(),[row.monitor,row.assetId,row.status]);
+      target.append(table);
+    }
+    return;
+  }
+  const table=tableWithHeaders(['Row','Monitor name','Installed asset ID','Match and review']);
+  for(const row of matches){
+    const decision=inspectorElement('div',row.state+(row.match?' · '+row.match.label:''));
+    if(row.choices.length>1){
+      const pick=inspectorElement('select');
+      pick.setAttribute('aria-label','Choose installed asset for row '+(row.index+2));
+      pick.add(new Option('Choose node or link',''));
+      for(const choice of row.choices)pick.add(new Option((choice.kind==='node'?'Node · ':'Link · ')+choice.label+' · '+choice.id,R.refKey(choice)));
+      pick.value=monitorResolutions.get(row.index)||'';
+      pick.onchange=()=>{
+        for(const candidate of matches){
+          if(candidate.monitor===row.monitor&&candidate.assetId===row.assetId){
+            monitorResolutions.set(candidate.index,pick.value);monitorChanges.delete(candidate.index);
+          }
+        }
+        renderMonitorImport();target.querySelector('[aria-label="'+pick.getAttribute('aria-label')+'"]')?.focus();
+      };
+      decision.append(pick);
+    }
+    if(row.state==='Confirm change'){
+      const label=inspectorElement('label'),check=inspectorElement('input');check.type='checkbox';
+      check.checked=monitorChanges.has(row.index);
+      check.onchange=()=>{if(check.checked)monitorChanges.add(row.index);else monitorChanges.delete(row.index);};
+      label.append(check,document.createTextNode(' Move from '+row.prior.sourceId));decision.append(label);
+    }
+    addCells(table.tBodies[0].insertRow(),[String(row.index+2),row.monitor,row.assetId,decision]);
+  }
+  target.append(table);apply.disabled=false;
+}
+function mountMonitorImport(){
+  monitorDialog=inspectorElement('dialog',undefined,'ns-review-dialog');
+  monitorDialog.setAttribute('aria-labelledby','nsMonitorTitle');
+  monitorDialog.innerHTML='<header class="ns-review-heading"><h3 id="nsMonitorTitle">Import monitor locations</h3><button type="button" id="nsMonitorClose">Close</button></header>'+
+    '<p>Choose a local two-column CSV with a header row. Confirm the monitor name and installed manhole or pipe ID columns.</p>'+
+    '<label class="ns-field">Monitor locations CSV<input id="nsMonitorFile" type="file" accept=".csv,text/csv"></label>'+
+    '<div class="ns-review-actions" id="nsMonitorColumns" hidden><label>Monitor name<select id="nsMonitorNameColumn"></select></label>'+
+    '<label>Installed asset ID<select id="nsMonitorAssetColumn"></select></label></div>'+
+    '<p id="nsMonitorMessage" role="status"></p><div id="nsMonitorPreview" class="ns-review-table"></div>'+
+    '<footer class="ns-review-actions"><button id="nsMonitorApply" class="ns-primary" type="button" disabled>Apply confirmed rows</button></footer>';
+  document.body.append(monitorDialog);
+  $('nsMonitorClose').onclick=()=>monitorDialog.close();
+  monitorDialog.addEventListener('close',()=>{
+    ++monitorGeneration;monitorTable=null;$('nsMonitorFile').value='';$('nsMonitorColumns').hidden=true;
+    $('nsMonitorMessage').textContent='';renderMonitorImport();
+  });
+  $('nsMonitorFile').onchange=async event=>{
+    const request=++monitorGeneration,file=event.target.files[0];
+    monitorTable=null;monitorResolutions.clear();monitorChanges.clear();
+    $('nsMonitorColumns').hidden=true;$('nsMonitorMessage').textContent='';renderMonitorImport();
+    if(!file)return;
+    try{
+      if(file.size>4*1024*1024)throw new Error('Choose a monitor CSV no larger than 4 MiB.');
+      const bytes=await file.arrayBuffer();
+      if(request!==monitorGeneration)return;
+      let text;
+      try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}
+      catch{text=new TextDecoder('windows-1252').decode(bytes);}
+      monitorTable=C.monitorTable(text);
+      const named=monitorTable.headers.map(header=>/^(flow[ _-]*)?monitor([ _-]*(name|id))?$/i.test(header));
+      const host=monitorTable.headers.map(header=>/(asset|manhole|pipe|conduit|node|link)/i.test(header));
+      monitorColumn=named.filter(Boolean).length===1?named.indexOf(true):host.filter(Boolean).length===1?1-host.indexOf(true):0;
+      for(const id of ['nsMonitorNameColumn','nsMonitorAssetColumn']){
+        const select=$(id);select.replaceChildren();
+        for(const [index,header] of monitorTable.headers.entries())select.add(new Option('Column '+(index+1)+(header?' · '+header:''),String(index)));
+      }
+      $('nsMonitorColumns').hidden=false;syncMonitorColumns();
+      if(!named.some(Boolean)&&!host.some(Boolean))$('nsMonitorMessage').textContent='Generic headers detected. Confirm the column mapping before applying.';
+      renderMonitorImport();
+    }catch(error){$('nsMonitorMessage').textContent=error.message;}
+  };
+  function syncMonitorColumns(){
+    $('nsMonitorNameColumn').value=String(monitorColumn);$('nsMonitorAssetColumn').value=String(1-monitorColumn);
+  }
+  for(const [id,offset] of [['nsMonitorNameColumn',0],['nsMonitorAssetColumn',1]])$(id).onchange=()=>{
+    monitorColumn=Math.abs(Number($(id).value)-offset);monitorResolutions.clear();monitorChanges.clear();
+    syncMonitorColumns();renderMonitorImport();
+  };
+  $('nsMonitorApply').onclick=()=>{
+    if(!monitorTable)return;
+    const rows=R.monitorMatches(monitorTable,monitorColumn,network,monitorResolutions);
+    const saved=new Map((network.monitorLocations||[]).map(row=>[row.monitor,row]));
+    const review=new Map((network.monitorReview||[]).map(row=>[JSON.stringify([row.monitor,row.assetId]),row]));
+    let applied=0;
+    for(const row of rows){
+      const key=JSON.stringify([row.monitor,row.assetId]);
+      if(row.state==='Matched'||row.state==='Confirm change'&&monitorChanges.has(row.index)){
+        saved.set(row.monitor,{monitor:row.monitor,asset:{kind:row.match.kind,id:row.match.id},sourceId:row.assetId,identity:row.match.identity});
+        review.delete(key);applied++;
+      }else if(row.state==='Already linked')review.delete(key);
+      else if(row.state==='Duplicate')continue;
+      else review.set(key,{monitor:row.monitor,assetId:row.assetId,status:row.state});
+    }
+    if(saved.size>10000||review.size>10000){$('nsMonitorMessage').textContent='The workspace supports 10,000 locations and 10,000 unresolved rows.';return;}
+    checkpoint();network.monitorLocations=[...saved.values()];network.monitorReview=[...review.values()];changed(true);
+    monitorTable=null;$('nsMonitorColumns').hidden=true;$('nsMonitorFile').value='';renderMonitorImport();
+    $('nsMonitorMessage').textContent=applied+' applied · '+review.size+' unresolved. Save the network to share these locations locally.';
+  };
+  renderMonitorImport();
+}
+
+function renderReviewControls(){
+  if(!$('nsOverview'))return;
+  $('nsOverview').setAttribute('aria-pressed',String(inOverview()));
+  $('nsOverview').disabled=editing||!network.nodes.length;
+  $('nsShowLabels').checked=prefs().showLabels;
+  $('nsShowMonitors').checked=prefs().showMonitors;
+  $('nsLongSection').disabled=!network.edges.length&&!network.routeReviews?.length;
+  $('nsWorkbench').querySelector('.ns-canvas-note').textContent=inOverview()?
+    'Overview · M: monitor · Purple: structure · Dashed: direction unconfirmed':
+    'Connections show topology only · M: installed monitor';
+  const panel=$('nsReach');
+  if(panel&&!panel.hidden&&(!inOverview()||panel.dataset.selection!==selectionKind+':'+selected))panel.hidden=true;
+  if($('nsRoute')&&!$('nsRoute').hidden)updateProfileSelection();
+}
+function showReach(reach){
+  selectConnector(reach.id);
+  const panel=$('nsReach');panel.dataset.selection=selectionKind+':'+selected;
+  panel.replaceChildren(inspectorElement('h3','Schematic reach'),inspectorElement('p',reach.sourceEdges.length+' source links in nominal order.'));
+  const select=inspectorElement('select');select.setAttribute('aria-label','Source asset in reach');
+  const graph=R.monitorIndex(network).byAsset;
+  for(const [index,id] of reach.sourceNodes.entries()){
+    const nodeRef={kind:'node',id};
+    select.add(new Option('Node · '+(graph.get(R.refKey(nodeRef))?.label||id),R.refKey(nodeRef)));
+    if(index<reach.sourceEdges.length){
+      const edgeRef={kind:'edge',id:reach.sourceEdges[index]};
+      select.add(new Option('Link · '+(graph.get(R.refKey(edgeRef))?.label||edgeRef.id),R.refKey(edgeRef)));
+    }
+  }
+  const show=inspectorButton('Show in detailed network');
+  show.onclick=()=>{
+    const [kind,id]=JSON.parse(select.value);changeOverview(false);inspectObject({kind,id});focusSelected();$('nsCanvas').focus();
+  };
+  panel.append(select,show);panel.hidden=false;
+}
+function reviewRoute(){
+  const planner=R.routePlanner(network,routeDraft.start,routeDraft.end),visited=new Set();
+  const edges=[],branches=[];
+  let id=routeDraft.start;
+  while(id!==routeDraft.end){
+    const options=planner.options(id,visited);
+    if(!options.length)return {edges,branches,issue:planner.issue()};
+    const preferred=routeDraft.choices.get(id);
+    const branch=options.find(edge=>edge.id===preferred);
+    if(options.length>1){
+      branches.push({id,options,branch});
+      if(!branch)return {edges,branches,pending:true};
+    }
+    visited.add(id);
+    const edge=branch||options[0];edges.push(edge);id=edge.to;
+  }
+  return {edges,branches,issue:edges.length?'':planner.issue()};
+}
+function clearProfile(){
+  routeDraft.steps=[];routeDraft.trials=[];routeDraft.model=null;++routeRevision;
+  $('nsRouteSavedMessage').textContent='';$('nsModelLevelsMessage').textContent='';
+  displayProfile();
+}
+function routeEndpointOptions(select,value){
+  select.replaceChildren(new Option('Choose an endpoint',''));
+  for(const n of network.nodes.filter(node=>node.type!=='label')){
+    select.add(new Option((n.name||n.id)+(n.name&&n.name!==n.id?' · '+n.id:''),n.id));
+  }
+  select.value=value;
+}
+function updateProfileSelection(){
+  const panel=$('nsRoute');
+  const selectedInside=selectionKind==='edge'&&routeDraft.steps.some(step=>step.id===selected);
+  $('nsProfileFocus').disabled=!selectedInside&&!node();
+  $('nsUseStart').disabled=!node()||node().type==='label';
+  $('nsUseEnd').disabled=$('nsUseStart').disabled;
+  for(const el of panel.querySelectorAll('[data-ns-profile-link]')){
+    el.setAttribute('aria-pressed',String(selectionKind==='edge'&&selected===el.dataset.nsProfileLink));
+  }
+}
+function renderRoute(){
+  const start=$('nsRouteStart'),end=$('nsRouteEnd'),branches=$('nsRouteBranch');
+  routeEndpointOptions(start,routeDraft.start);routeEndpointOptions(end,routeDraft.end);
+  branches.replaceChildren();
+  const solved=reviewRoute();
+  const nodes=new Map(network.nodes.map(node=>[node.id,node]));
+  for(const [index,{id,options,branch}] of solved.branches.entries()){
+    const point=nodes.get(id);
+    const label=inspectorElement('label','Outgoing link at '+(point?.name||id));
+    const select=inspectorElement('select');select.add(new Option('Choose a branch',''));
+    for(const link of options)select.add(new Option((link.name||link.id)+' → '+(nodes.get(link.to)?.name||link.to),link.id));
+    select.value=branch?.id||'';
+    select.onchange=()=>{
+      routeDraft.choices=new Map(solved.branches.slice(0,index).map(item=>[item.id,item.branch.id]));
+      routeDraft.choices.set(id,select.value);
+      clearProfile();renderRoute();
+      branches.querySelectorAll('select')[index]?.focus();
+    };
+    label.append(select);branches.append(label);
+  }
+  const complete=solved.edges.length&&!solved.issue&&!solved.pending;
+  $('nsRouteMessage').textContent=solved.pending?'Multiple forward routes reach the endpoint. Confirm the branch to continue.':
+    complete?solved.edges.length+' ordered links. Open the long section to review levels and chainage.':solved.issue;
+  $('nsOpenProfile').disabled=!complete;
+  const saved=$('nsSavedRoutes'),active=saved.value;
+  saved.replaceChildren(new Option('Choose a saved review',''));
+  for(const entry of network.routeReviews||[])saved.add(new Option(entry.name,entry.name));
+  saved.value=active;
+  if(saved.selectedIndex<0)saved.selectedIndex=0;
+}
+function plotProfile(steps){
+  const view=$('nsProfilePlot');view.replaceChildren();
+  const segments=[];
+  let chainage=0,section=[];
+  for(const step of steps){
+    if(step.lengthStatus==='missing'){
+      if(section.length)segments.push(section);
+      section=[];chainage=0;continue;
+    }
+    if(step.lengthStatus==='structure')continue;
+    section.push({...step,x1:chainage,x2:chainage+step.length});chainage+=step.length;
+  }
+  if(section.length)segments.push(section);
+  const model=routeDraft.model;
+  const imported=new Map((model?.values||[]).map(record=>[record.node,record.level]));
+  const levels=steps.flatMap(step=>[step.us,step.ds,step.groundFrom,step.groundTo,
+    step.us!==null&&step.height!==null?step.us+step.height:null,
+    step.ds!==null&&step.height!==null?step.ds+step.height:null]).filter(Number.isFinite).concat([...imported.values()]);
+  if(!segments.length||!levels.length){
+    view.append(inspectorElement('p','A profile needs source conduit lengths and levels. Review the source data in the asset table.'));
+    return;
+  }
+  const low=Math.floor(Math.min(...levels)),high=Math.max(low+1,Math.ceil(Math.max(...levels)));
+  if(steps.some(step=>step.lengthStatus==='missing'))view.append(inspectorElement('p','A conduit length is missing. Each downstream plot starts at its own local distance; absolute chainage is unavailable after the gap.','ns-note'));
+  for(const items of segments){
+    const absolute=items[0].chainageStart!==null;
+    const distance=items.at(-1).x2,origin=items[0].chainageStart||0;
+    const x=value=>76+value/distance*774,y=value=>245-(value-low)/(high-low)*213;
+    const svg=svgElement('svg',{viewBox:'0 0 890 285','aria-label':absolute?'Long section by chainage':'Long section by local distance',role:'group'});
+    for(let i=0;i<=5;i++){
+      const level=low+(high-low)*i/5,offset=distance*i/5;
+      svg.append(svgElement('path',{d:'M76 '+y(level)+'H850 M'+x(offset)+' 245V32',stroke:'#dfe6eb',fill:'none'}),
+        svgElement('text',{x:68,y:y(level)+4,'text-anchor':'end'},f(level,2)),
+        svgElement('text',{x:x(offset),y:265,'text-anchor':'middle'},f(origin+offset,2)));
+    }
+    svg.append(svgElement('text',{x:12,y:18},'Level (m)'),svgElement('text',{x:460,y:283,'text-anchor':'middle'},absolute?'Chainage (m)':'Local distance (m)'));
+    const drawnLevels=new Set(),structures=new Map();
+    for(const step of steps.filter(step=>step.lengthStatus==='structure'&&step.chainageStart!==null)){
+      const distance=step.chainageStart-origin;
+      if(absolute&&distance>=0&&distance<=items.at(-1).x2){
+        if(!structures.has(distance))structures.set(distance,[]);
+        structures.get(distance).push(step.name);
+      }
+    }
+    for(const [station,names] of structures){
+      const marker=svgElement('path',{d:'M'+x(station)+' 29l5 5-5 5-5-5z',fill:'#6947a1'});
+      marker.append(svgElement('title',{},names.join(' · ')));svg.append(marker);
+    }
+    for(const step of items){
+      const group=svgElement('g',{'data-ns-profile-link':step.id,tabindex:0,role:'button','aria-label':'Inspect '+step.name});
+      const attrs={fill:'none','stroke-width':2};
+      const line=(a,b,stroke,dash)=>a===null||b===null?null:
+        svgElement('path',{...attrs,d:'M'+x(step.x1)+' '+y(a)+'L'+x(step.x2)+' '+y(b),stroke,'stroke-dasharray':dash||''});
+      group.append(svgElement('title',{},step.name),svgElement('rect',{x:x(step.x1),y:28,width:Math.max(3,x(step.x2)-x(step.x1)),height:220,fill:'transparent'}));
+      for(const path of [line(step.groundFrom,step.groundTo,'#936329','5 4'),
+        step.height!==null&&step.us!==null&&step.ds!==null?line(step.us+step.height,step.ds+step.height,'#477384','3 3'):null,
+        line(step.us,step.ds,'#14527c')])if(path)group.append(path);
+      for(const [station,level] of [[step.x1,step.us],[step.x2,step.ds]])if(level!==null)
+        group.append(svgElement('circle',{cx:x(station),cy:y(level),r:3,fill:'#14527c'}));
+      for(const [nodeId,station] of [[step.from,step.x1],[step.to,step.x2]]){
+        const level=imported.get(nodeId);
+        if(!Number.isFinite(level)||drawnLevels.has(nodeId))continue;
+        drawnLevels.add(nodeId);
+        const dot=svgElement('circle',{cx:x(station),cy:y(level),r:5,fill:'#8a3891',stroke:'#fff','stroke-width':1.5});
+        dot.append(svgElement('title',{},nodeId+' · modelled level '+f(level,3)+' m'));group.append(dot);
+      }
+      group.onclick=()=>{if(network.edges.some(edge=>edge.id===step.id))selectConnector(step.id);};
+      group.onkeydown=event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();group.onclick();}};
+      svg.append(group);
+    }
+    view.append(svg);
+  }
+}
+function displayProfile(){
+  const steps=routeDraft.steps;
+  $('nsProfile').hidden=!steps.length;$('nsCapacityScreen').hidden=true;
+  if(!steps.length)return;
+  plotProfile(steps);
+  const model=routeDraft.model;
+  const nodes=new Set(steps.flatMap(step=>[step.from,step.to]));
+  const scenarios=new Set(network.nodes.filter(node=>nodes.has(node.id)).flatMap(node=>
+    node.bindings.filter(binding=>binding.role==='model'&&binding.quantity==='level').map(binding=>binding.scenario)));
+  $('nsProfileScenarios').replaceChildren(...[...scenarios].sort().map(name=>new Option(name,name)));
+  $('nsProfileModelLegend').hidden=!model;
+  $('nsProfileModelInfo').textContent=model?model.scenario+' · '+model.time+' model clock · '+model.datum+
+    ' · '+model.values.length+' exact level samples from '+new Set(model.values.map(row=>row.source)).size+' sources.':'';
+  $('nsClearModelLevels').disabled=!model;
+  const table=tableWithHeaders(['Link','Chainage (m)','Length (m)','Invert upstream / downstream (m)','Review','Source']);
+  const current=new Set(network.edges.map(edge=>edge.id));
+  for(const step of steps){
+    const inspect=inspectorButton(step.name);inspect.dataset.nsProfileLink=step.id;
+    inspect.disabled=!current.has(step.id);inspect.onclick=()=>selectConnector(step.id);
+    const messages=[];
+    if(step.lengthStatus==='structure')messages.push(step.type.replace(/^hw_/,'').replaceAll('_',' ')+' · structure at route station');
+    if(step.lengthStatus==='missing')messages.push('Missing length');
+    if(step.us===null||step.ds===null)messages.push('Missing invert');
+    if(step.us!==null&&step.ds!==null&&step.ds>step.us)messages.push('Adverse gradient');
+    const provenance=step.sources.map(source=>source.table+' · row '+source.row+(source.file?' · '+source.file:'')).join(' / ');
+    addCells(table.tBodies[0].insertRow(),[inspect,f(step.chainageStart,3)+' → '+f(step.chainageEnd,3),f(step.length,3),
+      f(step.us,3)+' / '+f(step.ds,3),messages.join(' · '),provenance||'Manual or unavailable']);
+  }
+  $('nsProfileRows').replaceChildren(table);
+  const trials=$('nsSavedCapacity');
+  trials.replaceChildren();
+  if(routeDraft.trials.length){
+    const summaries=tableWithHeaders(['Link','Diameter (mm)','Gradient (m/m)','Roughness (mm)','Viscosity (m²/s)','Capacity (L/s)']);
+    for(const trial of routeDraft.trials){
+      const row=summaries.tBodies[0].insertRow(),reopen=inspectorButton(steps.find(step=>step.id===trial.id)?.name||trial.id);
+      reopen.onclick=()=>openCapacityScreen(trial.id,trial);
+      addCells(row,[reopen,f(trial.diameter,6),f(trial.gradient,12),f(trial.roughness,8),f(trial.viscosity,12),f(trial.capacity,3)]);
+    }
+    trials.append(summaries);
+  }
+  updateProfileSelection();
+}
+function openCapacityScreen(id=selected,saved=null){
+  const link=network.edges.find(edge=>edge.id===id),inputs=C.conduitTrial(link);
+  const panel=$('nsCapacityScreen'),form=$('nsCapacityForm');
+  ++routeRevision;
+  panel.hidden=false;form.hidden=!inputs&&!saved;form.dataset.asset=id||'';
+  $('nsCapacityMessage').textContent=saved?'Saved screening capacity · '+f(saved.capacity,3)+' L/s.':
+    inputs?'Review the source inputs and enter the kinematic viscosity.':
+    !link?'Select a conduit in the route profile or list.':
+    Number.isFinite(link.icm?.gradient)||[link.icm?.conduit_length,link.icm?.us_invert,link.icm?.ds_invert].every(Number.isFinite)?
+      'This conduit needs supported circular geometry, one barrel, zero sediment, uniform Colebrook–White roughness and a non-adverse gradient.':
+      'Missing gradient or source length and inverts. Review the source conduit attributes.';
+  if(!inputs&&!saved)return;
+  for(const [key,value] of Object.entries(saved||inputs)){
+    if(['diameter','gradient','roughness','viscosity'].includes(key))form.elements[key].value=String(Number(value.toPrecision(14)));
+  }
+  if(!saved)form.elements.viscosity.value='0.000001';
+  form.elements.diameter.focus();
+}
+async function applyModelLevels(event){
+  event.preventDefault();
+  const fields=event.currentTarget.elements,button=event.submitter,message=$('nsModelLevelsMessage');
+  const scenario=fields.scenario.value.trim(),datum=fields.datum.value.trim(),time=fields.time.value;
+  if(!scenario||!datum||!time)return;
+  const nodeIds=new Set(routeDraft.steps.flatMap(step=>[step.from,step.to]));
+  const request=++routeRevision,values=[];
+  const normal=value=>String(value||'').trim().toLowerCase();
+  const expected=normal(datum),sample=Date.parse(time+'Z');
+  const candidates=network.nodes.filter(node=>nodeIds.has(node.id)).flatMap(node=>{
+    const matches=node.bindings.filter(binding=>binding.role==='model'&&binding.scenario===scenario&&
+      binding.quantity==='level'&&normal(binding.datum)===expected&&binding.years.includes(Number(time.slice(0,4))));
+    if(matches.length!==1)return [];
+    const binding=matches[0],source=sourceFor(binding);
+    if(!source||seriesQuantity(source,binding.column)==='depth')return [];
+    const meta=contract(binding);
+    if(meta.datum&&normal(meta.datum)!==expected)return [];
+    return [{node,binding,source,meta,signature:signature(node)}];
+  });
+  if(!candidates.length){
+    message.textContent='No unique loaded modelled level bindings match the scenario, datum and year.';
+    return;
+  }
+  button.disabled=true;message.textContent='Reading exact model samples…';
+  try{
+    for(const {node,binding,source,meta,signature:before} of candidates){
+      const scale=C.valueScale('level',meta.unit,binding.unit)*C.unitFactor('level',binding.unit);
+      const result=await engine.call('series_data',{path:source.virtualPath,column:binding.column,
+        max_points:2,start:time,end:time,exclusions_json:JSON.stringify(node.exclusions)});
+      if(request!==routeRevision||before!==signature(node))return;
+      const index=result.timestamp.findIndex(stamp=>stamp&&Date.parse(stamp+'Z')===sample);
+      if(index>=0&&Number.isFinite(result.value[index])&&!node.exclusions.some(range=>range.start<=time&&time<range.end))
+        values.push({node:node.id,level:result.value[index]*scale,source:source.displayName,column:binding.column,sha256:binding.sha256});
+    }
+    if(!values.length){message.textContent='No matching samples at that exact time. Existing overlay retained.';return;}
+    routeDraft.model={scenario,time,datum,values};displayProfile();
+    message.textContent=values.length+' route node samples plotted · '+(nodeIds.size-values.length)+' unavailable.';
+  }catch(error){if(request===routeRevision)message.textContent=error.message;}
+  finally{button.disabled=false;}
+}
+
+function mountRouteReview(){
+  const toolbar=$('nsWorkbench').querySelector('.ns-main-toolbar');
+  const controls=inspectorElement('div',undefined,'ns-review-actions ns-view-controls');
+  controls.innerHTML='<button type="button" id="nsOverview" aria-pressed="false">Overview</button>'+
+    '<label><input id="nsShowLabels" type="checkbox" role="switch"> Show labels</label>'+
+    '<label><input id="nsShowMonitors" type="checkbox" role="switch"> Flow monitors</label>'+
+    '<button type="button" id="nsLongSection">Long section</button>'+
+    '<button type="button" id="nsOpenMonitorImport">Import monitor locations</button>';
+  toolbar.after(controls);
+  $('nsStatus').insertAdjacentHTML('beforebegin','<section id="nsReach" class="ns-review-section" hidden></section>'+
+    '<section id="nsRoute" class="ns-review-section" aria-labelledby="nsRouteTitle" hidden>'+
+    '<header class="ns-review-heading"><div><h3 id="nsRouteTitle">Route long section</h3><p>Follow nominal topology and confirm the route before reviewing its profile.</p></div><button id="nsCloseRoute">Close</button></header>'+
+    '<div class="ns-review-actions"><label>Start node<select id="nsRouteStart"></select></label>'+
+    '<label>End node<select id="nsRouteEnd"></select></label><div id="nsRouteBranch"></div>'+
+    '<button id="nsUseStart">Use selection as start</button><button id="nsUseEnd">Use selection as end</button><button id="nsOpenProfile" class="ns-primary">Open profile</button></div><p id="nsRouteMessage" role="status"></p>'+
+    '<label class="ns-field">Saved route reviews<select id="nsSavedRoutes"></select></label>'+
+    '<div id="nsProfile" hidden><div class="ns-review-actions"><button id="nsFitRoute">Fit route</button>'+
+    '<button id="nsProfileFocus">Focus selected</button><button id="nsProfileCapacity">Check pipe capacity</button></div>'+
+    '<p class="ns-profile-legend"><span>Invert</span><span>Soffit</span><span>Ground</span><span>Structure</span><span id="nsProfileModelLegend" hidden>Modelled level</span></p>'+
+    '<p class="ns-note">Elevations are source levels in metres. Confirm the vertical datum in the ICM export. Horizontal and vertical scales differ.</p>'+
+    '<p id="nsProfileModelInfo"></p><div id="nsProfilePlot"></div><div id="nsProfileRows" class="ns-review-table"></div>'+
+    '<details class="ns-model-overlay"><summary>Overlay modelled levels</summary>'+
+    '<p>Use modelled level evidence linked to route nodes. Enter an exact time in the model clock and confirm the datum shared with the geometry.</p>'+
+    '<form id="nsProfileModelForm" class="ns-review-actions"><label>Scenario<input name="scenario" list="nsProfileScenarios" maxlength="100" required></label>'+
+    '<datalist id="nsProfileScenarios"></datalist><label>Model clock time<input name="time" type="datetime-local" step="1" required></label>'+
+    '<label>Shared vertical datum<input name="datum" maxlength="128" required></label>'+
+    '<button class="ns-primary" type="submit" id="nsApplyModelLevels">Plot modelled levels</button>'+
+    '<button type="button" id="nsClearModelLevels">Remove overlay</button></form><p id="nsModelLevelsMessage" role="status"></p></details>'+
+    '<section id="nsCapacityScreen" class="ns-review-section" hidden><h4>Pipe capacity screening</h4>'+
+    '<form id="nsCapacityForm" class="ns-review-actions">'+
+    '<label>Diameter (mm)<input required name="diameter" type="number" min="1" max="20000" step="any"></label>'+
+    '<label>Gradient (m/m)<input required name="gradient" type="number" min="0" max="1" step="any"></label>'+
+    '<label>Roughness (mm)<input required name="roughness" type="number" min="0" step="any"></label>'+
+    '<label>Kinematic viscosity (m²/s)<input required name="viscosity" type="number" min="0.000000001" max="0.01" step="any"></label>'+
+    '<button type="submit" class="ns-primary">Calculate and keep trial</button></form><p id="nsCapacityMessage" role="status"></p></section>'+
+    '<div id="nsSavedCapacity" class="ns-review-table"></div>'+
+    '<label class="ns-field">Review name<input id="nsRouteName" maxlength="100"></label>'+
+    '<label class="ns-field">Engineering review note<textarea id="nsRouteNote" maxlength="10000" rows="3"></textarea></label>'+
+    '<button id="nsSaveRoute" class="ns-primary">Save route review</button><p id="nsRouteSavedMessage" role="status"></p></div></section>');
+  $('nsOverview').onclick=()=>changeOverview(!inOverview());
+  $('nsShowLabels').onchange=()=>{network.preferences={...prefs(),showLabels:$('nsShowLabels').checked};changed(true);};
+  $('nsShowMonitors').onchange=()=>{network.preferences={...prefs(),showMonitors:$('nsShowMonitors').checked};changed(true);};
+  $('nsLongSection').onclick=()=>{
+    $('nsRoute').hidden=false;renderRoute();updateProfileSelection();$('nsRouteStart').focus();
+  };
+  $('nsCloseRoute').onclick=()=>{$('nsRoute').hidden=true;$('nsLongSection').focus();};
+  $('nsOpenMonitorImport').onclick=openMonitorImport;
+  for(const [id,key] of [['nsRouteStart','start'],['nsRouteEnd','end']])$(id).onchange=()=>{
+    setRouteEndpoint(key,$(id).value);
+  };
+  $('nsUseStart').onclick=()=>{if(node())setRouteEndpoint('start',node().id);};
+  $('nsUseEnd').onclick=()=>{if(node())setRouteEndpoint('end',node().id);};
+  function setRouteEndpoint(key,id){
+    routeDraft[key]=id;routeDraft.choices.clear();
+    clearProfile();renderRoute();
+  }
+  $('nsOpenProfile').onclick=()=>{
+    routeDraft.steps=R.longSection(network,reviewRoute().edges);routeDraft.trials=[];routeDraft.model=null;++routeRevision;
+    displayProfile();$('nsFitRoute').focus();
+  };
+  $('nsSavedRoutes').onchange=()=>{
+    const saved=(network.routeReviews||[]).find(entry=>entry.name===$('nsSavedRoutes').value);
+    if(!saved)return;
+    routeDraft={...structuredClone(saved),choices:new Map(saved.steps.map(step=>[step.from,step.id]))};++routeRevision;
+    $('nsRouteName').value=saved.name;$('nsRouteNote').value=saved.note;
+    const fields=$('nsProfileModelForm').elements;
+    for(const key of ['scenario','time','datum'])fields[key].value=saved.model?.[key]||'';
+    renderRoute();displayProfile();
+    const live=reviewRoute();
+    const same=live.edges.length===saved.steps.length&&JSON.stringify(R.longSection(network,live.edges))===JSON.stringify(saved.steps);
+    $('nsRouteSavedMessage').textContent=same?'Saved profile and screening assumptions restored.':
+      'Saved profile restored. Source geometry or route has changed. Confirm the current route before recalculating.';
+  };
+  $('nsSaveRoute').onclick=()=>{
+    const name=$('nsRouteName').value.trim(),message=$('nsRouteSavedMessage');
+    if(!name){message.textContent='Enter a review name.';$('nsRouteName').focus();return;}
+    const others=(network.routeReviews||[]).filter(entry=>entry.name!==name);
+    if(others.length>=30){message.textContent='The network supports up to 30 saved route reviews.';return;}
+    checkpoint();network.routeReviews=[...others,structuredClone({name,note:$('nsRouteNote').value,
+      start:routeDraft.start,end:routeDraft.end,steps:routeDraft.steps,trials:routeDraft.trials,model:routeDraft.model})];
+    persist();renderRoute();$('nsSavedRoutes').value=name;message.textContent='Route review saved. Use Save network for a portable copy.';
+  };
+  $('nsFitRoute').onclick=()=>{
+    const graph=sceneGraph(),assetIds=new Set(routeDraft.steps.flatMap(step=>[step.from,step.to]));
+    if(inOverview())for(const id of assetIds){
+      const reach=graph.nodeToReach.get(id);
+      if(reach){assetIds.add(reach.from);assetIds.add(reach.to);}
+    }
+    const points=graph.nodes.filter(node=>assetIds.has(node.id));
+    if(!points.length)return;
+    const xs=points.map(point=>point.x),ys=points.map(point=>point.y),width=Math.max(...xs)-Math.min(...xs),
+      height=Math.max(...ys)-Math.min(...ys),view=dimensions(),z=C.cameraZoom(Math.min(2,(view.width-120)/Math.max(1,width),
+        (view.height-100)/Math.max(1,height)),network.contextFormat);
+    network.camera={zoom:z,x:view.width/2-(Math.min(...xs)+width/2)*z,y:view.height/2-(Math.min(...ys)+height/2)*z};
+    changed(true);$('nsCanvas').scrollIntoView({block:'nearest'});
+  };
+  $('nsProfileFocus').onclick=()=>{focusSelected();$('nsCanvas').scrollIntoView({block:'nearest'});};
+  $('nsProfileCapacity').onclick=()=>openCapacityScreen(selectionKind==='edge'&&routeDraft.steps.some(step=>step.id===selected)?selected:null);
+  $('nsCapacityForm').onsubmit=async event=>{
+    event.preventDefault();
+    const form=event.currentTarget,message=$('nsCapacityMessage'),id=form.dataset.asset,request=routeRevision;
+    const trial={id};
+    for(const key of ['diameter','gradient','roughness','viscosity'])trial[key]=form.elements[key].valueAsNumber;
+    const button=event.submitter;button.disabled=true;message.textContent='Calculating screening capacity…';
+    try{
+      await ensureEngineBoot();
+      const values=await engine.call('circular_pipe_capacity',{diameter_m:trial.diameter/1000,gradient:trial.gradient,
+        roughness_m:trial.roughness/1000,viscosity_m2_s:trial.viscosity});
+      if(request!==routeRevision||form.dataset.asset!==id)return;
+      if(!Number.isFinite(values.discharge_m3_s)||values.regime==='transitional')throw new Error('Capacity is unavailable in this flow regime.');
+      trial.capacity=values.discharge_m3_s*1000;
+      routeDraft.trials=[...routeDraft.trials.filter(entry=>entry.id!==id),trial];
+      displayProfile();openCapacityScreen(id,trial);
+    }catch(error){if(request===routeRevision&&form.dataset.asset===id)message.textContent=error.message;}
+    finally{button.disabled=false;}
+  };
+  $('nsProfileModelForm').onsubmit=event=>void applyModelLevels(event);
+  $('nsClearModelLevels').onclick=()=>{routeDraft.model=null;++routeRevision;displayProfile();$('nsModelLevelsMessage').textContent='Modelled levels removed.';};
+  mountMonitorImport();
+}
+
 function mount(){
   const container=root();if(!container)return;
   container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><span id="nsModeLabel">Explore mode</span><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / Export / Load</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network or context CSV</button><button id="nsCsv">Export evidence CSV</button></div></details><button id="nsClearMap" type="button">Clear map</button><input id="nsLoadInput" type="file" accept=".csv,.json" multiple hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
     '<div id="nsEditTools" class="ns-edit-tools" hidden>'+selectHtml('id="nsAddType"',Object.entries(C.types).filter(([key])=>!['manhole','label'].includes(key)),'cso')+'<button id="nsAddAsset">+ Asset</button><button id="nsAddManhole">+ Manhole</button><button id="nsAddLabel">+ Label</button><button id="nsConnect" aria-pressed="false">Connect</button><span id="nsColourChoices"></span><button id="nsUndo" aria-label="Undo last edit">Undo</button><button id="nsDelete">Delete selected</button></div>'+
     '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag the background or use the middle mouse button to pan. Turn on Zoom to use the mouse wheel."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><svg id="nsMinimap" viewBox="0 0 160 100" tabindex="0" role="img" aria-label="Network minimap. Click or drag to move the view. Arrow keys pan; Enter fits the network." hidden></svg><div id="nsContextActions" aria-label="Asset actions" hidden><button type="button" data-ns-context="focus">Focus selected</button><button type="button" data-ns-context="up">Trace upstream</button><button type="button" data-ns-context="down">Trace downstream</button><button type="button" data-ns-context="isolate">Isolate branch</button></div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomMode" aria-pressed="false" title="Use the mouse wheel to zoom at the pointer. Drag with the middle mouse button to pan.">Zoom</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button><button id="nsFocusSelected">Focus selected</button><button id="nsResetView">Reset view</button></div></div><aside id="nsPopup" aria-label="Selected asset evidence" hidden></aside><aside id="nsDrawer" aria-label="Asset properties" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
   mounted=true;container.addEventListener('click',onClick);container.addEventListener('change',event=>updateField(event.target));
-  $('nsEdit').onclick=()=>{editing=!editing;popupVisible=false;tool='select';connectFrom=null;render();};
+  $('nsEdit').onclick=()=>{if(inOverview())changeOverview(false);editing=!editing;popupVisible=false;tool='select';connectFrom=null;render();};
   $('nsAddAsset').onclick=()=>add($('nsAddType').value);$('nsAddManhole').onclick=()=>add('manhole');$('nsAddLabel').onclick=()=>add('label');
   $('nsConnect').onclick=()=>{tool=tool==='connect'?'select':'connect';connectFrom=null;render();status('Click the upstream point, then the downstream point.');};
   $('nsPan').onclick=()=>{tool=tool==='pan'?'select':'pan';connectFrom=null;render();};
@@ -1577,7 +2212,7 @@ function mount(){
         for(const point of revised.nodes)Object.assign(point,points.get(point.id));
         for(const conduit of revised.edges)conduit.bends=[];
       }
-      checkpoint();network=revised;branchIsolated=false;selected=null;popupVisible=false;multi.clear();highlight=null;connectFrom=null;freshness.clear();
+      checkpoint();network=revised;resetRouteDraft();branchIsolated=false;selected=null;popupVisible=false;multi.clear();highlight=null;connectFrom=null;freshness.clear();
       render();if(first)fit();persist();
       status('Model context import: '+network.nodes.length+' nodes and '+network.edges.length+' links. Arrows follow nominal topology.');
       importDialog.close();
@@ -1663,7 +2298,7 @@ function mount(){
   canvas.addEventListener('auxclick',event=>{if(event.button===1&&(event.target===canvas||svg.contains(event.target)))event.preventDefault();});
 
   $('nsPicker').addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeSourcePicker();}});
-  canvas.addEventListener('keydown',event=>{if(event.target.closest('#nsPopup,#nsPicker'))return;const n=event.target.closest('[data-ns-node]'),e=event.target.closest('[data-ns-edge]');if(['Enter',' '].includes(event.key)&&(n||e)){event.preventDefault();if(n)selectPoint(n.dataset.nsNode);else selectConnector(e.dataset.nsEdge);return;}
+  canvas.addEventListener('keydown',event=>{if(event.target.closest('#nsPopup,#nsPicker'))return;const n=event.target.closest('[data-ns-node]'),e=event.target.closest('[data-ns-edge]');if(['Enter',' '].includes(event.key)&&(n||e)){event.preventDefault();inspectObject(n?{kind:'node',id:n.dataset.nsNode}:{kind:'edge',id:e.dataset.nsEdge});return;}
     if((event.key==='ContextMenu'||event.shiftKey&&event.key==='F10')&&(n||e)){
       const r=event.target.getBoundingClientRect();
       showContext({target:event.target,clientX:r.x+r.width/2,clientY:r.y+r.height/2,preventDefault:()=>event.preventDefault()});return;
@@ -1678,13 +2313,14 @@ function mount(){
   window.addEventListener('pagehide',flushSave);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSave();});
   window.addEventListener('icm:source-pool-changed',()=>{freshness.clear();if(analysisContext){++analysisGeneration;globalThis.Plotly?.purge('nsAnalysisPlot');$('nsAnalysisCounts').replaceChildren(annualTable(network.nodes.find(n=>n.id===analysisContext.id)||{id:'missing',bindings:[]},true));$('nsCommonResult').hidden=true;$('nsAnalysisMessage').textContent='Sources changed. Reopen this analysis to refresh.';}renderCanvas();renderReview();if(editing)renderDrawer();});
-  mountReview();render();
+  mountReview();mountRouteReview();render();
 }
 async function open(){
   if(!mounted){let value=state.networkSchematicWorkspace;if(!value){try{value=JSON.parse(localStorage.getItem(STORE)||'null');}catch{}}
     if(value){try{network=C.validateNetwork(value);}catch(error){network=C.empty();}}
     mount();
+    if(inOverview())fit();
   }else render();
 }
-window.ICMNetworkSchematic={open,snapshot,restore,capture,calculate,core:C,debug:()=>({selected,editing,busy,fresh:network.nodes.map(n=>({id:n.id,fresh:isFresh(n)}))})};
+window.ICMNetworkSchematic={open,snapshot,restore,capture,calculate,openMonitorImport,core:C,debug:()=>({selected,editing,busy,fresh:network.nodes.map(n=>({id:n.id,fresh:isFresh(n)}))})};
 })();
