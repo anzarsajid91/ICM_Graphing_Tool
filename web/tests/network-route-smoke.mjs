@@ -69,7 +69,7 @@ try{
     await page.click('#nsEdit');
     const camera=(await snapshot()).camera;
     await page.uncheck('#nsShowLabels');
-    assert.equal(await page.locator('#nsSvg [data-ns-label],#nsSvg [data-ns-edge-label]').count(),0);
+    assert.equal(await page.locator('#nsSvg :is([data-ns-label],[data-ns-edge-label]):visible').count(),0);
     assert.deepEqual((await snapshot()).camera,camera);
     assert.equal(await page.locator('#nsSvg [data-ns-monitor]').count(),2);
     await page.uncheck('#nsShowMonitors');

@@ -237,7 +237,7 @@ function renderNodeLeader(group,n,scale){
     stroke:'#82939f','stroke-width':1,fill:'none'}),svgElement('polygon',{points:polygonPoints(leader.arrow),fill:'#82939f'}));
 }
 function renderScene(includeHandles=true){
-  const graph=sceneGraph();
+  const graph=sceneGraph(),includeLabels=includeHandles||prefs().showLabels;
   const {width,height}=dimensions(),scene=document.createDocumentFragment();
   const verificationLayer=prefs().verification===true;
   const evidence=verificationLayer?window.__ICM_WORKBENCH__?.readVerificationEvidence?.():null;
@@ -262,7 +262,7 @@ function renderScene(includeHandles=true){
       group.append(svgElement('polygon',{'data-ns-direction':'',points:polygonPoints(route.arrow),fill:colour}));
     }
     const showLinkLabel=editing||selectionKind==='edge'&&e.id===selected||prefs().detail==='full'||prefs().detail==='auto'&&network.camera.zoom>=.65;
-    if(e.name&&showLinkLabel&&prefs().showLabels){
+    if(e.name&&showLinkLabel&&includeLabels){
       group.append(svgElement('text',{'data-ns-edge-label':'',x:route.label.x+Number(e.labelOffset?.x||0),
         y:route.label.y+Number(e.labelOffset?.y||0),fill:colour,'font-size':13},e.name));
     }
@@ -293,11 +293,11 @@ function renderScene(includeHandles=true){
       'stroke-linecap':'round','stroke-linejoin':'round'});
     renderIcon(symbol,n.type);
     group.append(symbol);
-    if(prefs().showLabels&&(small||n.nameOffset)){
+    if(includeLabels&&(small||n.nameOffset)){
       const leader=svgElement('g',{'data-ns-node-leader':''});
       renderNodeLeader(leader,n,scale);group.append(leader);
     }
-    if(prefs().showLabels)group.append(svgElement('text',{'data-ns-label':n.id,x:Number(offset.x)+(small?5:0),y:Number(offset.y),
+    if(includeLabels)group.append(svgElement('text',{'data-ns-label':n.id,x:Number(offset.x)+(small?5:0),y:Number(offset.y),
       'text-anchor':small?'start':'middle','font-size':small?13:14,'font-weight':small?400:600,fill:'#182732'},n.name));
     for(const badge of [asset(n)&&resultBadge(n),verificationLayer&&verificationBadge(n,evidence,reviews),
       surveyLayer&&flowSurveyBadge(n,surveyView),detrimentLayer&&detrimentBadge(n,comparison,52,24)]){
@@ -500,7 +500,9 @@ function renderCanvas(){
   const svg=$('nsSvg');if(!svg)return;
   const active=document.activeElement;
   const focused=svg.contains(active)&&active.closest('[data-ns-node],[data-ns-edge]');
-  const d=dimensions();svg.setAttribute('viewBox','0 0 '+d.width+' '+d.height);svg.replaceChildren(renderScene());
+  const d=dimensions();svg.setAttribute('viewBox','0 0 '+d.width+' '+d.height);
+  svg.toggleAttribute('data-ns-labels-hidden',!prefs().showLabels);
+  svg.replaceChildren(renderScene());
   svg.dataset.nsMarkerScale=C.symbolScale(network.camera.zoom);
   declutterLabels(svg);
   const selectedGroup=selectionKind==='node'&&[...svg.children].find(group=>group.dataset.nsNode===selected&&selected!==null);
@@ -2091,7 +2093,16 @@ function mountRouteReview(){
     '<label class="ns-field">Engineering review note<textarea id="nsRouteNote" maxlength="10000" rows="3"></textarea></label>'+
     '<button id="nsSaveRoute" class="ns-primary">Save route review</button><p id="nsRouteSavedMessage" role="status"></p></div></section>');
   $('nsOverview').onclick=()=>changeOverview(!inOverview());
-  $('nsShowLabels').onchange=()=>{network.preferences={...prefs(),showLabels:$('nsShowLabels').checked};changed(true);};
+  $('nsShowLabels').onchange=()=>{
+    const enabled=$('nsShowLabels').checked,svg=$('nsSvg');
+    network.preferences={...prefs(),showLabels:enabled};
+    svg.toggleAttribute('data-ns-labels-hidden',!enabled);
+    persist();
+    if(enabled){
+      for(const label of svg.querySelectorAll('[data-ns-label-suppressed]'))label.removeAttribute('data-ns-label-suppressed');
+      declutterLabels(svg);
+    }
+  };
   $('nsShowMonitors').onchange=()=>{network.preferences={...prefs(),showMonitors:$('nsShowMonitors').checked};changed(true);};
   $('nsLongSection').onclick=()=>{
     $('nsRoute').hidden=false;renderRoute();updateProfileSelection();renderRouteTrace();$('nsRouteStart').focus();
