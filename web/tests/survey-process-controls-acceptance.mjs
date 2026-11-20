@@ -109,7 +109,7 @@ try {
     name: "fm_rg_assoc.xlsx",
     mimeType:
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    buffer: XLSX.write(book, { type: "buffer", bookType: "xlsx" }),
+    buffer: Buffer.from(XLSX.write(book, { type: "array", bookType: "xlsx" })),
   });
   await page.waitForFunction(
     () =>

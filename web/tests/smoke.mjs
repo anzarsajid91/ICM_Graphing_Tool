@@ -1230,7 +1230,7 @@ async function associationWorkbook({variant=false}={}){
     ['FM8356','RG5097',450,''],
   ]);
   XLSX.utils.book_append_sheet(wb,ws,'Associations');
-  const buffer=XLSX.write(wb,{type:'buffer',bookType:'xlsx'});
+  const buffer=Buffer.from(XLSX.write(wb,{type:'array',bookType:'xlsx'}));
   if(!variant)cachedAssociationWorkbook=Buffer.from(buffer);
   return {name:'fm_rg_assoc.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer};
 }
