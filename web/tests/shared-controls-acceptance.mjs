@@ -65,6 +65,7 @@ try {
     if (periodRoutes.includes(route)) {
       // Synthetic chart domain isolates the global period callback from parsing.
       await page.evaluate(async () => {
+        if (typeof Plotly === "undefined") await loadVendorScript("Plotly");
         await Plotly.newPlot(
           "timeChart",
           [

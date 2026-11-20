@@ -26,6 +26,7 @@ try{
   await page.getByRole('link',{name:'Open Data / time series'}).click();
   await page.locator('#timeChart').waitFor({state:'visible'});
   await page.evaluate(async()=>{
+    if(typeof Plotly==='undefined')await loadVendorScript('Plotly');
     const chart=document.querySelector('#timeChart');
     await Plotly.newPlot(chart,[{x:[0,1,2],y:[0,1,0]}],{autosize:true},{responsive:true});
   });
