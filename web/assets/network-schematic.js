@@ -1775,6 +1775,7 @@ function renderReviewControls(){
   const panel=$('nsReach');
   if(panel&&!panel.hidden&&(!inOverview()||panel.dataset.selection!==selectionKind+':'+selected))panel.hidden=true;
   if($('nsRoute')&&!$('nsRoute').hidden)updateProfileSelection();
+  renderRouteTrace();
 }
 function showReach(reach){
   selectConnector(reach.id);
@@ -1825,6 +1826,16 @@ function routeEndpointOptions(select,value){
     select.add(new Option((n.name||n.id)+(n.name&&n.name!==n.id?' · '+n.id:''),n.id));
   }
   select.value=value;
+}
+function renderRouteTrace(){
+  const panel=$('nsRoute');
+  if(!panel||panel.hidden&&!$('nsSvg').querySelector('[data-ns-route-member]'))return;
+  const route=new Set(panel.hidden?[]:routeDraft.steps.map(step=>step.id));
+  const graph=inOverview()?overviewGraph():null;
+  for(const group of $('nsSvg').querySelectorAll('[data-ns-edge]')){
+    const id=group.dataset.nsEdge,members=graph?.edgeToReach.get(id)?.sourceEdges||[id];
+    group.toggleAttribute('data-ns-route-member',members.some(member=>route.has(member)));
+  }
 }
 function updateProfileSelection(){
   const panel=$('nsRoute');
@@ -1941,7 +1952,7 @@ function plotProfile(steps){
 }
 function displayProfile(){
   const steps=routeDraft.steps;
-  $('nsProfile').hidden=!steps.length;$('nsCapacityScreen').hidden=true;
+  $('nsProfile').hidden=!steps.length;$('nsCapacityScreen').hidden=true;renderRouteTrace();
   if(!steps.length)return;
   plotProfile(steps);
   const model=routeDraft.model;
@@ -2083,9 +2094,9 @@ function mountRouteReview(){
   $('nsShowLabels').onchange=()=>{network.preferences={...prefs(),showLabels:$('nsShowLabels').checked};changed(true);};
   $('nsShowMonitors').onchange=()=>{network.preferences={...prefs(),showMonitors:$('nsShowMonitors').checked};changed(true);};
   $('nsLongSection').onclick=()=>{
-    $('nsRoute').hidden=false;renderRoute();updateProfileSelection();$('nsRouteStart').focus();
+    $('nsRoute').hidden=false;renderRoute();updateProfileSelection();renderRouteTrace();$('nsRouteStart').focus();
   };
-  $('nsCloseRoute').onclick=()=>{$('nsRoute').hidden=true;$('nsLongSection').focus();};
+  $('nsCloseRoute').onclick=()=>{$('nsRoute').hidden=true;renderRouteTrace();$('nsLongSection').focus();};
   $('nsOpenMonitorImport').onclick=openMonitorImport;
   for(const [id,key] of [['nsRouteStart','start'],['nsRouteEnd','end']])$(id).onchange=()=>{
     setRouteEndpoint(key,$(id).value);

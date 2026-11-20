@@ -216,3 +216,6 @@
 #nsWorkbench .ns-profile-legend span:nth-child(5)::before{width:9px;height:9px;border:0;border-radius:50%;background:#8a3891}
 #nsWorkbench .ns-model-overlay{margin-block:16px}
 #nsWorkbench .ns-view-controls label{display:inline-flex}
+#nsWorkbench #nsSvg [data-ns-route-member] [data-ns-wire]{stroke:#057783;stroke-width:4}
+#nsWorkbench #nsRoute,#nsWorkbench #nsProfilePlot{scroll-margin-top:92px}
+#nsWorkbench .ns-popup-body .ns-property-list{row-gap:8px}
