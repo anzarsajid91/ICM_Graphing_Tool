@@ -1049,7 +1049,6 @@ async function ingestFiles(files){
             }
           }catch(error){
             if(!itemIsCurrent(item))return;
-            window.ICMFastPath.clear();
             item.previewWarning='Fast preview unavailable; continuing with authoritative analysis.';
             diagnostic.fastpathWarnings??=[];
             diagnostic.fastpathWarnings.push({time:new Date().toISOString(),file:displayName,message:String(error?.message||error)});

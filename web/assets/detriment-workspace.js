@@ -225,16 +225,11 @@ async function calculate(){
     const a=sourceConfig('a'),b=sourceConfig('b');if(a.path===b.path)throw Error('Select separate baseline and proposed reports.');
     const criteria={policy_schema_version:2,scope_confirmed:c.scope_confirmed,elevation_confirmed:c.elevation_confirmed,threshold:kind==='spill'?0:c.threshold,freeboard_required:c.freeboard_required===''?null:c.freeboard_required,counting_mode:c.counting_mode,new_flooding_policy:c.new_flooding_policy,count_tolerance:c.count_tolerance,duration_tolerance_hours:c.duration_tolerance_hours,spill_combination_policy:c.spill_combination_policy};
     const result=await engine.call('detriment_result',{kind,scenario_a_json:JSON.stringify(a),scenario_b_json:JSON.stringify(b),criteria_json:JSON.stringify(criteria),ground_json:JSON.stringify(kind==='level'?sourceConfig('ground'):null),detail_a_json:JSON.stringify(kind==='spill'?sourceConfig('detail_a'):null),detail_b_json:JSON.stringify(kind==='spill'?sourceConfig('detail_b'):null)},'advanced_bridge');
+    let chartError=null;
+    try{await loadVendorScript('Plotly');}catch(error){chartError=error;}
     if(runGeneration!==generation||runKind!==kind)return;
     results[kind]=result;selected=null;renderIdPreview();renderResults();
-    if(!window.Plotly){
-      try{
-        await loadVendorScript('Plotly');
-        if(runGeneration===generation&&runKind===kind)drawCharts(result);
-      }catch(error){
-        if(runGeneration===generation&&runKind===kind)$('dtStatus').textContent=assessmentErrorMessage(error);
-      }
-    }
+    if(chartError)$('dtStatus').textContent+=' '+assessmentErrorMessage(chartError);
   }catch(err){if(runGeneration===generation&&runKind===kind){results[kind]=null;renderResults();$('dtStatus').textContent=assessmentErrorMessage(err);}}finally{busy=false;$('runDetrimentBtn').disabled=false;}
 }
 async function exportHtml(currentView=false){

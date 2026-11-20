@@ -79,6 +79,24 @@ try{
   assert.deepEqual(errors,[]);
   privacy.assertClean();
   console.log('PASS desktop cold start: shell ready in '+shellReadyMs+' ms with no Pyodide request before data load.');
+
+  await page.close();
+  const retryPage=await context.newPage();
+  let plotlyAttempts=0;
+  await retryPage.route('**/vendor/plotly-*/plotly.min.js*',route=>{
+    plotlyAttempts++;
+    return plotlyAttempts===1?route.abort():route.continue();
+  });
+  await privacy.navigate(retryPage,base+'#/data/time-series');
+  await retryPage.setInputFiles('#fileInput',sample);
+  await retryPage.waitForFunction(
+    ()=>window.__ICM_WORKBENCH__?.stateSummary().readyFiles===1&&
+      Boolean(document.getElementById('timeChart')?.data?.length),
+    null,{timeout:60000}
+  );
+  assert.equal(plotlyAttempts,2,'an interrupted first chart download must allow an authoritative chart retry');
+  privacy.assertClean();
+  console.log('PASS authoritative FDV import and chart after a failed first chart-library request.');
 } finally {
   await browser.close();
 }
