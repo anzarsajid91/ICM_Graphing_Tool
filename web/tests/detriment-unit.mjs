@@ -113,6 +113,28 @@ assert.equal(population.length,4,'Scoping does not mutate the authoritative popu
 assert.match(api.csv({...r,asset_selection:{ids:['001','ABSENT'],absent:['ABSENT'],column:'0',duplicates_removed:1}},r.rows),/asset_selection_absent_ids/);
 assert.equal(typeof api.scopedRows,'function','Full-assessment scope is distinct from transient visibleRows filters');
 console.log('ID selection units passed: clipboard lists/grids, quotes, ambiguity, leading zeros, exact matches, missing scenarios, empty views and scoped summaries.');
+
+vm.runInContext(fs.readFileSync('web/assets/detriment-scenarios.js','utf8'),sandbox);
+const batch=(baseline,assetKind,kind,scenarios)=>({baseline,assetKind,data:{kind,scenarios:scenarios.map(([label,rows])=>
+  ({label,result:rows?{kind,rows}:null}))}});
+const asset=(asset_id,delta)=>({asset_id,delta});
+const register=sandbox.window.HydraDetrimentScenarios.buildRegister([
+  batch('Ref-A','node','flooding',[['Expansion',[asset('001',6),asset('01',4)]],['Mitigation',[asset('001',-1)]]]),
+  batch('Ref-A','node','level',[['Expansion',[asset('001',.3)]],['Mitigation',null]]),
+  batch('Ref-A','link','spill',[['Expansion',[asset('001',2)]]]),
+  batch('Ref-A','unclassified','flooding',[['Expansion',[asset('999',1)]]]),
+  batch('Ref-A','unclassified','spill',[['Expansion',[asset('999',2)]]]),
+  batch('Ref-B','node','level',[['Expansion',[asset('001',3)]]])
+],'Ref-A');
+const joined=register.find(row=>row.assetKind==='node'&&row.assetId==='001'&&row.proposal==='Expansion');
+assert.equal(joined.entries.flooding.row.delta,6);
+assert.equal(joined.entries.level.row.delta,.3);
+assert.equal(joined.entries.spill,undefined,'A same-text link ID cannot be joined to a node');
+assert.equal(register.filter(row=>row.assetId==='999').length,2,'Unclassified IDs remain within their report category');
+assert.equal(register.filter(row=>row.assetId==='01').length,1,'Leading zeroes remain part of identity');
+assert.equal(register.find(row=>row.proposal==='Mitigation').entries.flooding.row.delta,-1);
+assert.equal(register.find(row=>row.proposal==='Mitigation').entries.level,undefined,'Unavailable proposals have no inferred values');
+console.log('Combined detriment register preserves typed identity, baseline and proposal boundaries.');
 assert.deepEqual(ids('Node ID,X\n"MH;1",123').ids,['MH;1'],'Quoted semicolon does not change CSV grid delimiter');
 assert.deepEqual(ids('Node ID,X\n"MH\t1",123').ids,['MH\t1'],'Quoted tab does not change CSV grid delimiter');
 assert.deepEqual(ids('Node ID;X\n"MH,1";123').ids,['MH,1']);

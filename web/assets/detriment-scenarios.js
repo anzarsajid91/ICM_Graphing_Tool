@@ -39,6 +39,21 @@ function independentValues(result,row){
     measured(row.duration_delta_hours,'h'),row.count_status||'Unavailable',row.duration_status||'Unavailable'];
   return [];
 }
+function buildRegister(resultSets,baseline){
+  const index=new Map();
+  for(const {baseline:reference,assetKind,data} of resultSets){
+    if(reference!==baseline)continue;
+    const namespace=assetKind==='unclassified'?assetKind+':'+data.kind:assetKind;
+    for(const {label:proposal,result} of data.scenarios){
+      for(const row of result?.rows||[]){
+        const key=JSON.stringify([namespace,row.asset_id,proposal]);
+        if(!index.has(key))index.set(key,{assetId:row.asset_id,assetKind,proposal,entries:{}});
+        index.get(key).entries[data.kind]={result,row};
+      }
+    }
+  }
+  return [...index.values()].sort((a,b)=>a.assetId.localeCompare(b.assetId)||a.assetKind.localeCompare(b.assetKind)||a.proposal.localeCompare(b.proposal));
+}
 function auditRows(batch,args){
   const rows=[['Record','Proposal','Category','Asset ID','Baseline','Proposed','Change','Unit','Overall status','Count status','Duration status',
     'Duration A (h)','Duration B (h)','Duration change (h)','Level criterion','Freeboard A (m)','Freeboard B (m)','Freeboard change (m)','Freeboard criterion',
@@ -50,7 +65,7 @@ function auditRows(batch,args){
     return provenance;
   };
   batch.scenarios.forEach(({label,result,unavailable},index)=>{
-    const basis={baseline:exportSource(result?.scenario_a||base),proposed:exportSource(result?.scenario_b||sources[index].report),
+    const basis={schema:'hydra-detriment-scenarios-v1',build:buildToken,baseline:exportSource(result?.scenario_a||base),proposed:exportSource(result?.scenario_b||sources[index].report),
       criteria:result?.criteria||JSON.parse(args.criteria_json),ground:exportSource(result?.ground_source),
       baselineDetail:exportSource(result?.detail_source_a),proposalDetail:exportSource(result?.detail_source_b),method:result?.method||null};
     rows.push(['Proposal',label,batch.kind,...Array(16).fill(''),base.scope,base.period_start,base.period_end,JSON.stringify(basis),'','','',unavailable]);
@@ -61,6 +76,106 @@ function auditRows(batch,args){
       JSON.stringify({values:row.evidence_a,details:row.details_a}),JSON.stringify({values:row.evidence_b,details:row.details_b}),row.flags.join('; '),'']);}
   });
   return rows;
+}
+function saveCsv(filename,rows){
+  downloadBlob(filename,rows.map(row=>row.map(value=>ICMSafeCSV.cell(value??'')).join(',')).join('\r\n'),'text/csv');
+}
+function combinedSummary(category,result,row){
+  if(category==='level')return 'Δ level '+measured(row.delta,row.unit)+' · '+levelCriterion(row)+
+    ' · Proposed freeboard '+measured(row.freeboard_b,'m')+' · '+freeboardCriterion(result,row);
+  if(category==='spill')return 'Δ count '+measured(row.delta,row.unit)+' · '+(row.count_status||'Unavailable')+
+    ' · Δ duration '+measured(row.duration_delta_hours,'h')+' · '+(row.duration_status||'Unavailable');
+  return 'Δ flood volume '+measured(row.delta,row.unit)+' · '+row.status;
+}
+function mountCombined(currentCategory,currentBatch,inspect){
+  const assetKinds={node:'Node',link:'Link',unclassified:'Unclassified report ID'};
+  const groupings=new Map();
+  const controls=make('div'),toggle=make('details'),summary=make('summary','Include category in combined register'),form=make('div');
+  const baseline=make('input');baseline.type='text';baseline.maxLength=120;
+  const identity=make('select');choices(identity,[['','Choose report identity'],...Object.entries(assetKinds)]);
+  const notice=make('p');notice.setAttribute('role','status');
+  const include=button('Use this category',()=>{
+    const category=currentCategory(),source=currentBatch(category),reference=baseline.value.trim();
+    if(!source?.data.scenarios.some(entry=>entry.result)){notice.textContent='Compare compatible proposals for this category first.';return;}
+    if(!reference){notice.textContent='Enter the reviewed baseline model revision.';baseline.focus();return;}
+    if(!identity.value){notice.textContent='Choose the report asset identity.';identity.focus();return;}
+    groupings.set(category,{assetKind:identity.value,baseline:reference,stamp:source.stamp});
+    notice.textContent=categories[category]+' included in the combined register.';
+    refresh();
+  });
+  const remove=button('Remove this category',()=>{
+    groupings.delete(currentCategory());notice.textContent='Category removed from the combined register.';refresh();
+  });
+  const open=button('Open combined asset register',()=>{
+    const available=eligible();
+    const names=[...new Set(available.map(entry=>entry.baseline))];
+    choices(reference,names.map(name=>[name,name]));
+    if(names.includes(baseline.value.trim()))reference.value=baseline.value.trim();
+    rebuild();dialog.showModal();
+  });
+  form.className='dt-fields';form.append(labelled('Baseline model revision',baseline),labelled('Report asset identity',identity),include,remove);
+  toggle.append(summary,make('p','Use the same baseline revision and proposal names for matching exports. Select Node or Link only when the exact report IDs identify the same physical assets across categories. Unclassified IDs stay within their own report category.'),form,notice);
+  controls.append(toggle,open);
+  const dialog=make('dialog'),heading=make('h3','Combined detriment asset register'),filters=make('div'),body=make('div');
+  heading.id='hbCombinedDetrimentTitle';dialog.setAttribute('aria-labelledby',heading.id);dialog.className='dt-combined-dialog';
+  const reference=make('select'),search=make('input');search.type='search';
+  filters.className='dt-fields';filters.append(labelled('Combined register baseline',reference),labelled('Find combined asset',search));
+  const download=button('Download combined audit CSV',()=>{
+    const included=eligible().filter(group=>group.baseline===reference.value);
+    const parts=included.map(group=>auditRows(group.data,group.args));
+    if(!parts.length)return;
+    const rows=[['Baseline model revision','Report asset identity',...parts[0][0]]];
+    for(let index=0;index<included.length;index++)for(const row of parts[index].slice(1))
+      rows.push([reference.value,included[index].assetKind,...row]);
+    saveCsv('hydra-combined-detriment.csv',rows);
+  });
+  download.id='hbDetrimentCombinedExport';
+  const previous=button('Previous combined results',()=>{page--;render();}),next=button('Next combined results',()=>{page++;render();});
+  const actions=make('div');actions.className='actions';actions.append(previous,next,download,button('Close',()=>dialog.close()));
+  dialog.append(heading,make('p','Results retain their own units, thresholds and assessment periods. Open an individual criterion to review its basis.'),filters,body,actions);
+  let joined=[],page=0;
+  function eligible(){
+    const accepted=[];
+    for(const [kind,definition] of groupings){
+      const group=currentBatch(kind);
+      if(group?.stamp===definition.stamp)accepted.push({...definition,data:group.data,args:group.args});
+    }
+    return accepted;
+  }
+  function refresh(){
+    const existing=groupings.get(currentCategory()),available=eligible();
+    remove.disabled=!existing;include.disabled=!currentBatch(currentCategory());open.disabled=!available.length;
+    if(existing&&existing.stamp!==currentBatch(currentCategory())?.stamp){
+      notice.textContent='This category has different inputs. Compare it again and confirm its identity before including it.';
+    }
+    if(dialog.open){
+      const names=[...new Set(available.map(entry=>entry.baseline))],selected=reference.value;
+      choices(reference,names.map(name=>[name,name]));
+      if(names.includes(selected))reference.value=selected;
+      rebuild();
+    }
+  }
+  function rebuild(){joined=buildRegister(eligible(),reference.value);page=0;render();}
+  function render(){
+    const term=search.value.trim().toLowerCase(),count=75;
+    const visible=term?joined.filter(item=>item.assetId.toLowerCase().includes(term)):joined;
+    const table=makeTable('Combined asset evidence',['Asset ID','Asset identity','Proposal',...Object.values(categories)]);
+    for(const group of visible.slice(page*count,(page+1)*count)){
+      const details=Object.keys(categories).map(category=>{
+        const entry=group.entries[category];
+        if(!entry)return 'No reviewed evidence';
+        const {result,row}=entry,box=make('div',combinedSummary(category,result,row));
+        box.append(button('Inspect '+categories[category].toLowerCase(),()=>{dialog.close();inspect(group.proposal,result,row);}));
+        return box;
+      });
+      table.row([group.assetId,assetKinds[group.assetKind],group.proposal,...details]);
+    }
+    body.replaceChildren(visible.length?table.wrapper:make('p','No reviewed assets match the selected baseline and search.'),
+      make('p',visible.length?((page*count+1)+'–'+Math.min((page+1)*count,visible.length)+' of '+visible.length+' assets and proposals'):''));
+    previous.disabled=page<=0;next.disabled=(page+1)*count>=visible.length;download.disabled=!joined.length;
+  }
+  reference.onchange=rebuild;search.oninput=()=>{page=0;render();};
+  return {controls,dialog,refresh};
 }
 function mount(navigate){
   const api=window.ICMDetriment,root=document.getElementById('tab-detriment-scenarios');
@@ -85,10 +200,11 @@ function mount(navigate){
   dialog.setAttribute('aria-labelledby',heading.id);dialog.append(heading,detail,button('Close',()=>dialog.close()));
   const actions=make('div');actions.className='actions';actions.append(add,run,save);
   controls.append(labelled('Assessment category',select),configure);
-  article.append(intro,controls,basis,mapping,draft,confirmLabel,actions,message,output,dialog);root.replaceChildren(article);
   const savedDrafts=new Map(),savedResults=new Map();
   let active=null,running=false,page=0;
   const category=()=>select.value;
+  const combined=mountCombined(category,currentBatch,showEvidence);
+  article.append(intro,controls,basis,mapping,draft,confirmLabel,actions,message,output,combined.controls,combined.dialog,dialog);root.replaceChildren(article);
   function drafts(){
     if(!savedDrafts.has(category())){const context=api.batchContext(category());
       savedDrafts.set(category(),{rows:[{label:'',id:context.initialProposal,detail:context.initialDetail}],confirmed:false});}
@@ -118,6 +234,12 @@ function mount(navigate){
     draft.replaceChildren(grid);
   }
   function readArgs(){return api.batchArguments(category(),drafts().rows);}
+  function currentBatch(key){
+    const candidate=savedResults.get(key);
+    if(!candidate)return null;
+    try{return candidate.stamp===JSON.stringify(api.batchArguments(key,savedDrafts.get(key).rows))?candidate:null;}
+    catch{return null;}
+  }
   function invalidate(){savedResults.delete(category());active=null;message.textContent='Inputs changed. Compare the proposals to update results.';renderResults();}
   function refresh(){
     drawDraft(draftRows());active=savedResults.get(category())||null;
@@ -148,6 +270,7 @@ function mount(navigate){
   }
   function renderResults(){
     output.hidden=!active;save.disabled=!active||running;page=0;
+    combined.refresh();
     if(!active){summary.replaceChildren();assets.replaceChildren();return;}
     const old=proposalFilter.value;
     choices(proposalFilter,[['','All proposals'],...active.data.scenarios.filter(group=>group.result).map(group=>[group.label,group.label])]);
@@ -201,7 +324,7 @@ function mount(navigate){
   }
   function download(){
     if(!active)return;
-    downloadBlob('hydra-detriment-scenarios.csv',auditRows(active.data,active.args).map(row=>row.map(value=>ICMSafeCSV.cell(value??'')).join(',')).join('\r\n'),'text/csv');
+    saveCsv('hydra-detriment-scenarios.csv',auditRows(active.data,active.args));
   }
   select.onchange=refresh;
   confirm.onchange=()=>{drafts().confirmed=confirm.checked;invalidate();};
@@ -210,5 +333,5 @@ function mount(navigate){
   window.addEventListener('icm:route-changed',event=>{if(event.detail.workspace==='detriment'&&event.detail.page==='comparison')refresh();});
   refresh();
 }
-window.HydraDetrimentScenarios={mount};
+window.HydraDetrimentScenarios={mount,buildRegister};
 })();

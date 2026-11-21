@@ -47,7 +47,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial |
 | 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Open |
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
-| 10.2 | Category result tables and evidence | Asset register displaying each independent result, criterion, period and threshold | Partial. Cross-category typed joins remain open |
+| 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
 | 10.3 | Detriment schematic overlay | Filter hotspots and affected branch and navigate directly to evidence | Open |
 | 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Open |
 | 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Open |
@@ -789,7 +789,7 @@ other state.
   independent level and freeboard, or spill count and duration, criteria.
   Exact raw rows, mappings, thresholds and source fingerprints are kept in
   the explicit local audit. Changed report inputs invalidate previous
-  comparisons. Cross-category typed joins and spatial review remain open.
+  comparisons. Spatial review remains open.
 - The independent flooding fixtures retained +6 m³ detriment and −1 m³
   improvement while holding a mismatched assessment period. The level
   fixture reported a new breach at 0.35 m against a 0.5 m minimum. The
@@ -805,3 +805,24 @@ other state.
   It returned 21,645,699 bytes and peaked at 154,928 KiB RSS, up from
   54,104 KiB after programme startup. This excludes browser and worker
   costs. The comparison limits retained results to 120,000 rows per batch.
+
+### Combined detriment asset evidence
+
+- A combined register joins only reviewer-declared node or link IDs with
+  the same baseline revision, proposal name and exact identifier.
+  Unclassified report IDs stay within their category. Independent flooding,
+  level, freeboard, spill-count and duration values retain their original
+  assessment basis and can be inspected separately. The register has no
+  aggregate severity score.
+- Changes to a source, mapping or criterion withdraw the affected category
+  from the register pending recalculation and renewed identity review.
+  The local audit includes the selected baseline identity, asset type,
+  build, source fingerprints, assessment basis and raw comparison evidence.
+- Unit tests cover same-text node/link collisions, exact leading zeros,
+  separate baseline revisions and unavailable proposal evidence. Both
+  desktop browser suites exercised category inclusion and removal, a 91-row
+  paged register, distinct baseline selection, the raw evidence drill-down,
+  copied criteria, stale withholding and local CSV. Chromium and Firefox
+  saw 116 and 103 guarded requests respectively, with no violations.
+  The build, source and network-policy gates passed. Register selections
+  are local to the current work session.
