@@ -4,6 +4,7 @@ import {chromium,firefox} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {nativeNetwork} from './network-route-fixture.mjs';
+import '../assets/simulation-results-core.js';
 
 const engine=process.env.ICM_BROWSER||'chromium',base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browser=await (engine==='firefox'?firefox:chromium).launch(browserLaunchOptions());
@@ -126,6 +127,22 @@ try {
   await panel.getByLabel('Mapping 1 Node or upstream ID').fill('B');
   await upload('synthetic-node-level.csv','Time,B\n,m\n2025-01-01 00:00:00,10.25\n2025-01-01 00:07:00,#N/A\n2025-01-01 00:15:00,10.7\n');
   await submit.click();await status.filter({hasText:'3 timestamps indexed for 1 result series'}).waitFor();
+  await panel.getByLabel('Asset type').selectOption('link');
+  await panel.getByLabel('Result quantity').selectOption('level');
+  await panel.getByLabel('Vertical datum').fill('AOD');
+  await panel.getByLabel('Mapping 1 Node or upstream ID').fill('00127');
+  await panel.getByLabel('Mapping 1 Link suffix').fill('1');
+  const levelHeader='Time,00127.1\n,m\n';
+  await panel.getByLabel('Link end').selectOption('upstream');
+  await panel.getByLabel('Source result attribute').fill('Upstream reported link level');
+  await upload('synthetic-profile-us.csv',levelHeader+'2025-01-01 00:00:00,10.2\n2025-01-01 00:07:00,10\n'+
+    '2025-01-01 00:15:00,11.2\n2025-01-01 00:20:00,10.3\n');
+  await submit.click();await status.filter({hasText:'4 timestamps indexed for 1 result series'}).waitFor();
+  await panel.getByLabel('Link end').selectOption('downstream');
+  await panel.getByLabel('Source result attribute').fill('Downstream reported link level');
+  await upload('synthetic-profile-ds.csv',levelHeader+'2025-01-01 00:00:00,10.1\n2025-01-01 00:07:00,10.1\n2025-01-01 00:15:00,10.1\n');
+  await submit.click();await status.filter({hasText:'3 timestamps indexed for 1 result series'}).waitFor();
+  await panel.getByLabel('Indexed source').selectOption({label:'Baseline · synthetic-node-level.csv'});
   const events=panel.getByLabel('Filter indexed events',{exact:true});
   await events.selectOption('Design storm');
   assert.equal(await panel.getByLabel('Indexed source').locator('option').count(),3);
@@ -171,6 +188,25 @@ try {
   await page.click('#nsLongSection');
   await page.selectOption('#nsRouteStart','00127');await page.selectOption('#nsRouteEnd','B');
   await page.click('#nsOpenProfile');
+  const conduitProfile=page.locator('#nsProfilePlot'),water=conduitProfile.locator('[data-ns-profile-water]');
+  await indexed.selectOption({label:'Baseline · synthetic-profile-us.csv'});
+  await playback.getByLabel('Other conduit end',{exact:true}).selectOption({label:'synthetic-profile-ds.csv · downstream end'},{timeout:5000});
+  await playback.getByLabel('Geometry datum').fill('AOD');await confirmation.check();await layer.click();
+  await conduitProfile.locator('[data-ns-profile-hydraulic="wet"]').waitFor();
+  assert.equal(await water.count(),1);
+  assert.equal(await conduitProfile.locator('[data-ns-profile-end-level]').count(),2);
+  await playback.getByRole('button',{name:'Next sample'}).click();
+  await conduitProfile.locator('[data-ns-profile-hydraulic="dry-or-transition"]').waitFor();
+  assert.equal(await water.count(),0);
+  await playback.getByRole('button',{name:'Next sample'}).click();
+  await conduitProfile.locator('[data-ns-profile-hydraulic="surcharge"]').waitFor();
+  assert.equal(await water.count(),1);
+  assert.match(await conduitProfile.locator('[data-ns-profile-end-level="upstream"] title').textContent(),/11\.2 m.*ground freeboard -0\.2 m.*head above soffit 0\.6 m/);
+  if(process.env.ICM_EVIDENCE_DIR)await conduitProfile.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-conduit-surcharge-'+engine+'.png'});
+  await playback.getByRole('button',{name:'Next sample'}).click();
+  await conduitProfile.locator('[data-ns-profile-hydraulic="sample-missing"]').waitFor();
+  assert.equal(await water.count(),0);
+  assert.equal(await conduitProfile.locator('[data-ns-profile-end-level]').count(),1);
   await indexed.selectOption({label:'Baseline · synthetic-node-level.csv'});
   await playback.getByLabel('Geometry datum').fill('Unknown');await confirmation.check();await layer.click();
   await playback.getByText('must exactly match the declared results datum',{exact:false}).waitFor();
@@ -254,6 +290,24 @@ try {
   await confirmation.check();await layer.click();
   await wire.waitFor();
   assert.match(await wire.getAttribute('aria-label'),/Flow · 0 m³\/s/);
+  const mixedIndex=await globalThis.HydraSimulationResults.importCsv(new Blob(['Time,B,00127.1\n,m,L/s\n2025-01-01 00:00:00,10.1,-200\n']),{
+    simulation:'Mixed synthetic simulation',modelRevision:'SYNTHETIC-REV-ID',scenario:'Baseline',event:'Validation event',clock:'iso',
+    clockConfirmed:true,temporalSupport:'instantaneous',headerRecord:1,timeColumn:0,unitsRecord:2,columns:[
+      {column:1,asset:{kind:'node',id:'B'},quantity:'level',location:'node',unit:'m',datum:'AOD',sourceAttribute:'Node level'},
+      {column:2,asset:{kind:'link',table:'hw_conduit',upstream:'00127',suffix:'1'},quantity:'flow',location:'downstream',unit:'L/s',sourceAttribute:'Link flow'}]});
+  const mixedFile=Buffer.from(await mixedIndex.exportPackage().arrayBuffer());
+  await page.getByRole('tab',{name:'Simulation results'}).click();
+  await packaged.setInputFiles({name:'synthetic-mixed-layer.hbresults',mimeType:'application/octet-stream',buffer:mixedFile});
+  await panel.getByRole('status').filter({hasText:'1 timestamps, 2 mapped series'}).waitFor();
+  await indexPackage.click();await status.filter({hasText:'1 timestamps indexed for 2 result series'}).waitFor();
+  await page.getByRole('tab',{name:'Schematic',exact:true}).click();
+  await indexed.selectOption({label:'Baseline · synthetic-mixed-layer.hbresults'});
+  const metric=playback.getByLabel('Result layer',{exact:true});
+  assert.equal(await metric.locator('option').count(),2);
+  await metric.selectOption({label:'Flow · downstream · m³/s'});
+  await confirmation.check();await layer.click();
+  await wire.waitFor();assert.match(await wire.getAttribute('aria-label'),/Flow · -0\.2 m³\/s/);
+  assert.equal(await page.locator('#nsSvg [data-ns-node][data-ns-sample]').count(),0);
   assert.deepEqual(errors,[]);
   guard.assertClean();
   console.log('SIMULATION_RESULTS_PASS '+engine);

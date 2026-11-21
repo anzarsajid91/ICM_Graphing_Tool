@@ -147,7 +147,9 @@ the browser's typed-data budget.
 Open **Simulation playback** in the detailed schematic. Choose an indexed
 source, review the original model revision and typed asset mapping and
 choose the display bounds in the stated unit. Apply the results layer to the
-current native geometry. The legend is fixed during playback. Unmapped
+current native geometry. If a package contains several result quantities,
+end positions or vertical datums, select the required **Result layer**. The legend is
+fixed during playback. Unmapped
 assets keep their schematic style. A matched asset with no value at the
 exact timestamp has a hollow marker or dashed link. Link arrows still
 show nominal topology. Read the signed value from the asset label.
@@ -164,5 +166,26 @@ removing the source clears the layer. Its session index remains local.
 The initial desktop smoke tests use a synthetic, explicitly mapped export
 following the documented CSV options. ICM-generated fixtures across versions
 and locales are still needed. The registry retains only local session data.
-Automated revision binding, conduit-end profiles and scenario comparison
-remain outstanding.
+### Inspect reported conduit-end levels
+
+Select a link level result layer, confirm the source run and enter the
+geometry datum. Optionally select **Other conduit end** to pair a second
+indexed source from the same simulation, model revision, scenario and
+event, using the same units and datum. The paired source contributes only
+its exact samples at the selected project-clock time, for links on the open
+route. Opposite-end depth and total head cannot substitute for level.
+
+The Autodesk reference identifies link level as a time-varying result and
+defines total head separately as level plus velocity head. In the long
+section, both supported water levels are shown as end markers, with a
+straight display line between wet ends. Known circular barrel geometry
+allows water fill up to the soffit, while a level above soffit stays visible
+as a dashed hydraulic grade depiction and is reported as head above soffit.
+Freeboard is the available ground elevation less the reported level. It
+does not validate flood risk or reproduce Autodesk's separate surcharge-state
+classification. The straight line is a depiction of endpoint evidence. It
+does not estimate the internal conduit solution. Missing exact samples,
+levels at or below invert, and unsupported barrel geometry withhold the fill.
+[Autodesk link results reference](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm)
+
+Automated revision binding and scenario comparison remain outstanding.

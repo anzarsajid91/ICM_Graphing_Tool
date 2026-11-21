@@ -250,6 +250,24 @@ function longSection(network,edges){
   });
 }
 
+function conduitEndProfile(step,upstream,downstream){
+  const {height}=step;
+  const ends=[[upstream,step.us,step.groundFrom],[downstream,step.ds,step.groundTo]].map(([sample,invert,ground])=>{
+    const level=Number.isFinite(sample)?sample:null;
+    const soffit=Number.isFinite(invert)&&Number.isFinite(height)&&height>0?invert+height:null;
+    return {level,invert,soffit,freeboard:level!==null&&Number.isFinite(ground)?ground-level:null,
+      aboveSoffit:level!==null&&soffit!==null?Math.max(0,level-soffit):null};
+  });
+  if(ends.some(end=>end.level===null))return {ends,waterTop:null,status:'sample-missing'};
+  if(step.lengthStatus!=='known'||ends.some(end=>end.soffit===null))return {ends,waterTop:null,status:'geometry-unavailable'};
+  if(ends.some(end=>end.level<=end.invert))return {ends,waterTop:null,status:'dry-or-transition'};
+  const [up,down]=ends.map(end=>end.level-end.soffit);
+  const fraction=up*down<0?up/(up-down):null;
+  const cap=fraction===null?null:{fraction,level:ends[0].soffit+fraction*(ends[1].soffit-ends[0].soffit)};
+  return {ends,waterTop:ends.map(end=>Math.min(end.level,end.soffit)),cap,
+    status:ends.some(end=>end.aboveSoffit>0)?'surcharge':'wet'};
+}
+
 function profileAxis(minimum,maximum,zoom,pan){
   if(!Number.isFinite(minimum)||!Number.isFinite(maximum)||maximum<=minimum)throw new Error('A profile axis needs increasing source bounds.');
   const boundedZoom=Number.isFinite(zoom)?Math.min(8,Math.max(1,zoom)):1;
@@ -293,9 +311,19 @@ function simulationBindings(network,columns){
   return matches;
 }
 
+function simulationLayers(columns){
+  const layers=new Map();
+  for(const column of columns){
+    const key=JSON.stringify([column.asset.kind,column.quantity,column.unit,column.location,column.datum]);
+    if(!layers.has(key))layers.set(key,[]);
+    layers.get(key).push(column);
+  }
+  return layers;
+}
+
 function simulationBand(value,low,high){
   if(!Number.isFinite(value))return 'missing';
   return String(Math.min(4,Math.max(0,Math.floor(5*(value-low)/(high-low)))));
 }
-globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,longSection,profileAxis,sameProfileSteps,simulationBindings,simulationBand};
+globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,simulationBand};
 })();

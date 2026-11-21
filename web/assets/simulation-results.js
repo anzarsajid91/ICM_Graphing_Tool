@@ -165,6 +165,7 @@ function mount() {
   session=Object.freeze({
     sources:()=>Array.from(datasets.values()),
     frame:(sourceId,index,keys)=>client.request("frame",{sourceId,index,keys}).result,
+    frameAtTime:(sourceId,time,keys)=>client.request("frame",{sourceId,time,keys}).result,
     range:(sourceId,start,end)=>client.request("range",{sourceId,start,end}).result,
     envelope:(sourceId,key,start,end)=>client.request("envelope",{sourceId,key,start,end}).result
   });

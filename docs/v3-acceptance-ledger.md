@@ -937,3 +937,24 @@ other state.
   class. The hotspot now uses the general review section class. The unchanged
   400-point layout regression passed in Chromium and Firefox. Hosted
   confirmation remains tied to the next exact candidate revision.
+
+### Exact conduit-end profiles and result layers
+
+- A mixed indexed package offers result layers grouped by typed asset kind,
+  quantity, unit, location and datum. A reviewed absolute-level layer can
+  pair opposite conduit ends from the same simulation, revision, scenario
+  and event. Each end uses the exact project-clock sample.
+- The long section depicts separate end inverts and levels. For supported
+  circular geometry, a diagrammatic fill is clipped at the soffit and
+  pressure above it is drawn separately. Dry or unavailable ends withhold
+  the fill. Link-end level and total head are kept distinct per the
+  [Autodesk reference](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm).
+- Independent cases exercise a known two-thirds soffit crossing,
+  0.6 m head above soffit, −0.2 m freeboard, dry and missing ends, and
+  missing barrel geometry. Chromium and Firefox exercised wet, dry,
+  surcharged and missing exact-clock data, a signed mixed-layer flow and
+  the existing node-level plot. Both simulation runs observed 32 guarded
+  requests with no violations. Route regressions independently observed
+  135 Chromium and 134 Firefox requests with no violations.
+- Scenario comparison, additional cross-section geometry and the exact
+  release assurance gates remain open.

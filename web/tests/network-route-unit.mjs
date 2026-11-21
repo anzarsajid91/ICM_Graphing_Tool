@@ -15,6 +15,19 @@ const steps=R.longSection(network,[e1,e2,e3]);
 assert.deepEqual(steps.map(({chainageStart,chainageEnd,us,ds,height})=>[chainageStart,chainageEnd,us,ds,height]),[
   [0,100,10,9.8,.6],[100,220,9.75,9.35,.6],[220,null,9.3,null,.6]]);
 assert.deepEqual(steps[0].sources.map(({table,row})=>[table,row]),[['hw_conduit',12],['hw_node',3],['hw_node',4]]);
+const paired=R.conduitEndProfile(steps[0],11.2,10.1);
+assert.equal(paired.status,'surcharge');
+assert.deepEqual(paired.waterTop,[10.6,10.1],'Water fill is clipped to the pipe soffit at each end');
+assert(Math.abs(paired.cap.fraction-2/3)<1e-12&&Math.abs(paired.cap.level-10.466666666666667)<1e-12);
+assert(Math.abs(paired.ends[0].aboveSoffit-.6)<1e-12);
+assert(Math.abs(paired.ends[0].freeboard-(-.2))<1e-12);
+assert.equal(paired.ends[1].aboveSoffit,0);
+const free=R.conduitEndProfile(steps[0],10.2,10);
+assert.equal(free.status,'wet');assert.deepEqual(free.waterTop,[10.2,10]);
+assert.equal(R.conduitEndProfile(steps[0],10,10).status,'dry-or-transition');
+assert.equal(R.conduitEndProfile(steps[0],10,null).waterTop,null);
+assert.equal(R.conduitEndProfile({...steps[0],height:null},11.2,10).status,'geometry-unavailable');
+assert.equal(R.conduitEndProfile({...steps[0],lengthStatus:'missing'},10.2,10).waterTop,null);
 assert.equal(R.longSection(network,[byName('B.3'),byName('D.P'),e3])[1].lengthStatus,'structure');
 assert.equal(steps[0].chamberFrom,network.nodes.find(node=>node.id==='00127').icm.chamberFloorM);
 assert.deepEqual(R.profileAxis(0,100,4,0),{low:0,high:25,span:25});
@@ -34,6 +47,12 @@ assert.throws(()=>C.validateNetwork({...network,routeReviews:[{...savedRoute,pro
 const nodeResult={series:'node',asset:{kind:'node',id:'00127'}};
 const conduitResult={series:'conduit',asset:{kind:'link',upstream:'b',table:'hw_conduit',suffix:'1'}};
 const wrongTable={series:'weir',asset:{...conduitResult.asset,table:'hw_weir'}};
+const layerColumns=[{...conduitResult,series:'level-us',quantity:'level',location:'upstream',unit:'m',datum:'AOD'},
+  {...conduitResult,series:'level-ds',quantity:'level',location:'downstream',unit:'m',datum:'AOD'},
+  {...conduitResult,series:'head-ds',quantity:'total-head',location:'downstream',unit:'m',datum:'AOD'},
+  {...nodeResult,series:'level-other-datum',quantity:'level',location:'node',unit:'m',datum:'AD'}];
+assert.equal(R.simulationLayers(layerColumns).size,4,'Endpoints, quantity, datum and asset type stay explicit');
+assert.equal(R.simulationLayers([...layerColumns,layerColumns[0]]).values().next().value.length,2);
 const trimmedZero={series:'trimmed',asset:{kind:'node',id:'127'}};
 const resultNetwork={...network,contextFormat:'icm-csv-v1'};
 assert.deepEqual([...R.simulationBindings(resultNetwork,[nodeResult,conduitResult,wrongTable,trimmedZero])],
