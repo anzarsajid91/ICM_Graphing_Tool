@@ -504,6 +504,30 @@ single, double, tangent and absent intersections. The worker uses SI
 units. Existing gravity-capacity calculations use their original methods.
 See the [U.S. Department of Energy pumping system sourcebook](https://www1.eere.energy.gov/manufacturing/tech_assistance/pdfs/pump.pdf).
 
+The system-curve workspace also supports a calculated friction factor when
+absolute roughness and fluid viscosity are known. It uses the same
+[laminar and Colebrook regime definitions](#darcy-full-bore-gravity-sizing).
+For each parallel stage, the calculation partitions the common-head axis at
+each branch's Reynolds transition limits. Within a supported interval, it
+uses the closed-form laminar velocity and the head-substituted Colebrook
+equation to find each branch flow. It brackets the common head to match the
+total flow. Series stage losses then add to the signed static head.
+
+The screen withholds a duty when any branch's transition cannot be resolved
+by a supported regime. Gaps in the 41-sample display curve remain visible even
+if they fall between display samples. The separate pump intersection engine
+uses specified Darcy factors and its documented quadratic equation.
+
+A reference 600 mm pipe at 1.5 m/s, Darcy f of 0.020, length of 120 m and
+coefficient sum of 3.5 loses `7.5 × 1.5²/(2g)` m. The 240 m companion
+stage loses `11.5 × 1.5²/(2g)` m. Both combine with a signed −2 m static
+head. A parallel check balances the turbulent pipe at the same head as a
+10 mm laminar branch at 0.1 m/s using its independently selected length.
+The case verifies flow and branch-loss agreement within a relative tolerance
+of 10⁻⁸. Use up to 100 branches in one calculated-friction system. This
+screen assumes steady, full-pipe operation, forward flow and fixed local loss
+coefficients. It does not establish priming or transient behaviour.
+
 ## England continuation-flow screening
 
 Enter reviewed contributing catchments using explicit daily allowances.

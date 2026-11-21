@@ -7,6 +7,7 @@ const number = (key, label, min, max, step = "any") => ({key, label, type:"numbe
 const pipeFields = [
   number("stage", "Stage", 1, 100, 1), number("diameter_m", "Internal diameter (m)", .001, 20),
   number("length_m", "Length (m)", .001, 1e7), number("darcy_factor", "Darcy friction factor", .0001, 1),
+  number("roughness_mm", "Absolute roughness (mm)", 0, 1000),
   number("minor_k", "Fittings K", 0, 100000), number("entrance_k", "Entrance K", 0, 100000),
   number("exit_k", "Exit K", 0, 100000)
 ];
@@ -95,9 +96,10 @@ function editableRows(title, specs, defaults, configure, minimum = 1) {
   const grid = element("table");
   grid.createCaption().textContent = title;
   const heading = grid.createTHead().insertRow();
-  for (const label of [...specs.map(spec => spec.label),"Action"]) {
+  const headers = new Map();
+  for (const {key,label} of [...specs,{key:"actions",label:"Action"}]) {
     const cell = element("th",label);
-    cell.scope = "col";
+    cell.scope = "col";headers.set(key,cell);
     heading.append(cell);
   }
   const body = grid.createTBody(), records = new Map(), removeButtons = new Map();
@@ -107,7 +109,10 @@ function editableRows(title, specs, defaults, configure, minimum = 1) {
     const row = body.insertRow(), name = title+" row "+(++serial);
     const controls = Object.fromEntries(specs.map(spec => {
       const {control} = labelledControl(spec,initial[spec.key],name);
-      row.insertCell().append(control);
+      const cell = row.insertCell();
+      cell.hidden = headers.get(spec.key).hidden;
+      control.disabled = cell.hidden;
+      cell.append(control);
       return [spec.key,control];
     }));
     records.set(row,controls);
@@ -133,7 +138,13 @@ function editableRows(title, specs, defaults, configure, minimum = 1) {
   });
   wrapper.append(grid,addButton);
   for (const row of defaults) add(row);
-  return {wrapper,replace(rows){
+  return {wrapper,setColumnVisibility(key,visible){
+    headers.get(key).hidden = !visible;
+    for (const controls of records.values()) {
+      controls[key].parentElement.hidden = !visible;
+      controls[key].disabled = !visible;
+    }
+  },replace(rows){
     body.replaceChildren();records.clear();removeButtons.clear();serial=0;
     for(const row of rows)add(row);
     wrapper.dispatchEvent(new Event("input",{bubbles:true}));
@@ -195,7 +206,8 @@ function chart(series,xLabel="Flow (m³/s)",yLabel="Head (m)") {
   const width=720,height=250,left=75,right=width-18,top=16,bottom=height-42;
   const bounds=series.flatMap(s=>s.points);
   const maxFlow=Math.max(1e-12,...bounds.map(p=>p[0]));
-  const low=Math.min(0,...bounds.map(p=>p[1])),high=Math.max(low+1,...bounds.map(p=>p[1]));
+  const levels=bounds.flatMap(([,head])=>head===null?[]:[head]);
+  const low=Math.min(0,...levels),high=Math.max(low+1,...levels);
   const x=q=>left+(right-left)*q/maxFlow,y=h=>bottom-(bottom-top)*(h-low)/(high-low);
   const svg=(tag,attrs,text)=>{
     const node=document.createElementNS("http://www.w3.org/2000/svg",tag);
@@ -213,23 +225,46 @@ function chart(series,xLabel="Flow (m³/s)",yLabel="Head (m)") {
   root.append(svg("text",{x:left,y:height-5,"font-size":11},xLabel),
     svg("text",{x:8,y:height-20,"font-size":11},yLabel));
   for (const s of series) {
-    root.append(svg("polyline",{points:s.points.map(([q,h])=>x(q)+","+y(h)).join(" "),
-      stroke:s.color,"stroke-width":2.5,fill:"none"}));
-    if (s.markers) for (const [q,h] of s.points) root.append(svg("circle",{cx:x(q),cy:y(h),r:3.5,fill:s.color}));
+    let segment=[];
+    const draw=()=>{
+      if (segment.length>1) root.append(svg("polyline",{points:segment.map(([q,h])=>x(q)+","+y(h)).join(" "),
+        stroke:s.color,"stroke-width":2.5,fill:"none"}));
+      if (segment.length===1||s.markers) for (const [q,h] of segment) root.append(svg("circle",{cx:x(q),cy:y(h),r:3.5,fill:s.color}));
+      segment=[];
+    };
+    for (const point of s.points) {
+      if (point[1]===null) draw();
+      else segment.push(point);
+    }
+    draw();
   }
   const summary=element("figure");
   summary.append(root,element("figcaption",series.map(s=>s.label).join(" · ")));
   return summary;
 }
 function systemInputs() {
-  const settings=fields([number("static_head_m","Static head (m)",-100000,100000),
-    number("flow_m3_s","Duty flow (m³/s)",0,1000),number("curve_max_m3_s","Maximum curve flow (m³/s)",1e-9,1000)]);
+  const settings=fields([{key:"friction_method",label:"Friction method",options:[
+    ["fixed","Specified Darcy factors"],["calculated","Calculated from roughness and Reynolds number"]]},
+    number("static_head_m","Static head (m)",-100000,100000),number("flow_m3_s","Duty flow (m³/s)",0,1000),
+    number("curve_max_m3_s","Maximum curve flow (m³/s)",1e-9,1000),
+    number("viscosity_m2_s","Kinematic viscosity (m²/s)",1e-9,.01)]);
   const pipes=editableRows("Pipe branches",pipeFields,[{stage:1,minor_k:0,entrance_k:0,exit_k:0}]);
-  return {settings,pipes,stages:()=>{
+  const calculated=()=>settings.controls.friction_method.value==="calculated";
+  const update=()=>{
+    const active=calculated(), viscosity=settings.controls.viscosity_m2_s;
+    viscosity.disabled=!active;
+    viscosity.parentElement.hidden=!active;
+    pipes.setColumnVisibility("darcy_factor",!active);
+    pipes.setColumnVisibility("roughness_mm",active);
+  };
+  settings.controls.friction_method.addEventListener("change",update);
+  update();
+  return {settings,pipes,calculated,stages:()=>{
     const stages=[];
-    for (const {stage,...pipe} of pipes.values()) {
+    for (const {stage,roughness_mm,darcy_factor,...pipe} of pipes.values()) {
       if (!Number.isInteger(stage)) throw new Error("Enter a whole stage number.");
-      (stages[stage-1] ??= []).push(pipe);
+      const friction=calculated()?{roughness_m:roughness_mm/1000}:{darcy_factor};
+      (stages[stage-1] ??= []).push({...pipe,...friction});
     }
     if (Object.keys(stages).length !== stages.length) throw new Error("Number stages consecutively from 1.");
     return stages;
@@ -523,7 +558,7 @@ function mount(navigate) {
   mountStorageRouting(navigate,worker);
   mountStructures(worker);
   const system=panel("tab-pipe-system","Pipe head loss and system curves",
-    "Use full circular pipes and a justified fixed Darcy friction factor. Each stage is in series and branches within a stage are in parallel. Static head includes elevation and pressure head differences.");
+    "Use steady flow in full circular pipes. Stages are in series and branches within a stage are in parallel. Static head includes elevation and pressure head differences.");
   const design=systemInputs(),systemForm=element("form");
   systemForm.id="pipeSystemForm";systemForm.append(design.settings.group,design.pipes.wrapper);
   const systemHeaders=["Stage","Branch","Diameter (m)","Length (m)","Darcy f","Fittings K","Entrance K","Exit K",
@@ -535,16 +570,26 @@ function mount(navigate) {
     const r=await worker("pipe_system_curve",{...inputs,stages:design.stages()});
     const detail=systemRows(r),metrics=[["Duty flow (m³/s)",inputs.flow_m3_s],["Static head (m)",r.static_head_m],
       ["System loss (m)",r.loss_m],["Total required head (m)",r.total_head_m]];
-    return {content:[table(["Quantity","Value"],metrics,"System duty"),
-      table(systemHeaders,detail,"Pipe loss contributions"),
-      chart([{label:"System head",points:r.curve,color:"#136b7f"}])],summary:"System curve calculated.",
-      filename:"hydra-pipe-system.csv",rows:[["Method",r.method],["Reference",pumpReference],
-        ["Equation","H = Hstatic + Σ(fL/D + K) V²/(2g) along each path"],...metrics,systemHeaders,...detail,
+    const headers=[...systemHeaders], assumptions=[];
+    if (design.calculated()) {
+      headers.push("Absolute roughness (mm)","Reynolds number","Regime");
+      detail.forEach((row,index)=>row.push(r.rows[index].roughness_m*1000,r.rows[index].reynolds,r.rows[index].regime));
+      assumptions.push(["Kinematic viscosity (m²/s)",r.viscosity_m2_s],
+        ["Reference","Colebrook (1939) and DOE Fundamentals Handbook, Fluid Flow"],
+        ["Supported-flow limits","The curve has gaps where at least one pipe lacks a supported flow regime."]);
+    }
+    const content=[table(["Quantity","Value"],metrics,"System duty")];
+    if (detail.length) content.push(table(headers,detail,"Pipe loss contributions"));
+    content.push(chart([{label:"System head",points:r.curve,color:"#136b7f"}]));
+    if (assumptions.length) content.push(element("p",assumptions.at(-1)[1]));
+    return {content,summary:r.total_head_m===null?"Duty withheld because a branch has no supported flow regime.":"System curve calculated.",
+      filename:"hydra-pipe-system.csv",rows:[["Method",r.method],["Reference",pumpReference],...assumptions,
+        ["Equation","H = Hstatic + Σ(fL/D + K) V²/(2g) along each path"],...metrics,headers,...detail,
         ["Curve flow (m³/s)","Curve head (m)"],...r.curve]};
   });
 
   const pump=panel("tab-pump-duty","Pump duty screening",
-    "Compare a supplied curve with the pipe system. Identical pumps in series add head and identical pumps in parallel add flow. This screen uses steady, full-pipe resistance.");
+    "Compare a supplied curve with a system using specified Darcy factors. Identical pumps in series add head and identical pumps in parallel add flow.");
   pump.append(action("Edit pipe system",()=>navigate("hydraulics","system-curve",true)));
   const pumpForm=element("form");pumpForm.id="pumpDutyForm";
   const pumpControls=fields([{key:"arrangement",label:"Arrangement",options:[
@@ -557,6 +602,7 @@ function mount(navigate) {
     // Pump duty uses the system geometry and static head. Display and selected
     // head-loss duty flows belong to the other calculation.
     const staticHead=design.settings.controls.static_head_m;
+    if (design.calculated()) throw new Error("Select fixed Darcy friction in System curve before calculating pump duty.");
     if (!staticHead.checkValidity() || [...design.pipes.wrapper.querySelectorAll("input")].some(input=>!input.checkValidity())) {
       throw new Error("Enter valid pipe branches and static head under System curve first.");
     }

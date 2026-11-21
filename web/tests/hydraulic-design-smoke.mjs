@@ -52,6 +52,32 @@ try{
   assert.equal(await pump.getByRole('button',{name:'Download calculation CSV'}).isDisabled(),true);
   await submit(pump);await status(pump,/No intersection within/);
 
+  await pump.getByRole('button',{name:'Edit pipe system'}).click();
+  const friction=systemForm.getByRole('combobox',{name:'Friction method',exact:true});
+  await friction.selectOption('calculated',{timeout:5000});
+  assert(await systemForm.locator('[name=darcy_factor]').isHidden());
+  const referenceRoughnessMm=600*3.7*(10**(-.5/Math.sqrt(.02))-2.51/(900000*Math.sqrt(.02)));
+  await set(systemForm,{static_head_m:-2,flow_m3_s:1.5*Math.PI*.6**2/4,curve_max_m3_s:.6,diameter_m:.6,
+    length_m:120,roughness_mm:referenceRoughnessMm,viscosity_m2_s:1e-6});
+  await submit(system);await status(system,/System curve calculated/);
+  const calculated=await downloaded(system);
+  const duty=calculated.match(/"Total required head \(m\)","([^"]+)"/);
+  assert(Math.abs(Number(duty?.[1])-(-2+7.5*1.5**2/(2*9.80665)))<1e-10);
+  for(const expected of [/steady-calculated-darcy-v1/, /Kinematic viscosity/])assert.match(calculated,expected);
+  const turbulentRow=calculated.match(/"([\d.]+)","turbulent"\r?\n/);
+  assert(Math.abs(Number(turbulentRow?.[1])-900000)<1e-7);
+  await set(systemForm,{diameter_m:.01,length_m:2,roughness_mm:0,flow_m3_s:.3*Math.PI*.01**2/4,curve_max_m3_s:.01});
+  await submit(system);await status(system,/Duty withheld/);
+  assert.match(await downloaded(system),/Supported-flow limits/);
+  assert(await system.getByRole('img',{name:'System head'}).locator('circle').count()>0);
+  await page.getByRole('tab',{name:'Pump duty',exact:true}).click();
+  await submit(pump);await status(pump,/Select fixed Darcy friction/);
+  await pump.getByRole('button',{name:'Edit pipe system'}).click();
+  await friction.selectOption('fixed');
+  assert.equal(Number(await systemForm.locator('[name=darcy_factor]').inputValue()),.02);
+  assert(await systemForm.locator('[name=roughness_mm]').isHidden());
+  assert(await system.getByRole('button',{name:'Download calculation CSV'}).isDisabled());
+
   await page.getByRole('tab',{name:'Formula A',exact:true}).click();
   const design=page.locator('#tab-formula-a'),form=design.locator('form'),rows=form.locator('tbody tr');
   await set(rows.nth(0),{id:'Combined-A',population:100,domestic_l_head_day:150,infiltration_l_day:3000,trade_l_day:2000});

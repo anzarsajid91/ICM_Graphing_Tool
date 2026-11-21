@@ -15,8 +15,7 @@ def _number(value, label, low, high):
     return value
 
 
-def _system(stages, static_head_m):
-    static = _number(static_head_m, "Static head in metres", -100000, 100000)
+def _pipe_properties(stages):
     if not isinstance(stages, list) or not 1 <= len(stages) <= 100:
         raise ValueError("Provide 1–100 stages in series.")
     prepared = []
@@ -29,26 +28,51 @@ def _system(stages, static_head_m):
                 raise ValueError("Provide every pipe as a record.")
             diameter = _number(row.get("diameter_m"), "Diameter in metres", .001, 20)
             length = _number(row.get("length_m"), "Length in metres", .001, 1e7)
-            darcy = _number(row.get("darcy_factor"), "Darcy friction factor", .0001, 1)
             minor = _number(row.get("minor_k"), "Fitting loss coefficient", 0, 100000)
             entrance = _number(row.get("entrance_k"), "Entrance loss coefficient", 0, 100000)
             exit_k = _number(row.get("exit_k"), "Exit loss coefficient", 0, 100000)
+            pipes.append(dict(diameter_m=diameter, length_m=length, minor_k=minor, entrance_k=entrance, exit_k=exit_k))
+        prepared.append(pipes)
+    return prepared
+
+
+def _system(stages, static_head_m):
+    static = _number(static_head_m, "Static head in metres", -100000, 100000)
+    prepared = []
+    for source_stage, stage in zip(stages, _pipe_properties(stages)):
+        pipes = []
+        for source, properties in zip(source_stage, stage):
+            darcy = _number(source.get("darcy_factor"), "Darcy friction factor", .0001, 1)
+            diameter, length = properties["diameter_m"], properties["length_m"]
             area = pi * diameter**2 / 4
             velocity_factor = 1 / (2 * GRAVITY * area**2)
-            components = (darcy * length / diameter, minor, entrance, exit_k)
+            components = (darcy * length / diameter, properties["minor_k"], properties["entrance_k"], properties["exit_k"])
             resistance = fsum(components) * velocity_factor
-            pipes.append((dict(diameter_m=diameter, length_m=length, darcy_factor=darcy, minor_k=minor,
-                               entrance_k=entrance, exit_k=exit_k), area, velocity_factor, components, resistance))
+            pipes.append((dict(properties, darcy_factor=darcy), area, velocity_factor, components, resistance))
         conductance = fsum(1 / sqrt(pipe[-1]) for pipe in pipes)
         prepared.append((pipes, conductance))
     return static, prepared, fsum(1 / conductance**2 for _, conductance in prepared)
 
 
-def system_curve(stages, static_head_m, flow_m3_s, curve_max_m3_s):
+def system_curve(stages, static_head_m, flow_m3_s, curve_max_m3_s, *, friction_method="fixed", viscosity_m2_s=None):
     """Evaluate duty head, component losses and a bounded display curve."""
-    static, prepared, resistance = _system(stages, static_head_m)
     flow = _number(flow_m3_s, "Duty flow in m³/s", 0, 1000)
     upper = _number(curve_max_m3_s, "Maximum curve flow in m³/s", 1e-9, 1000)
+    if friction_method == "calculated":
+        from .system_friction import calculated_system_curve
+
+        static = _number(static_head_m, "Static head in metres", -100000, 100000)
+        viscosity = _number(viscosity_m2_s, "Kinematic viscosity in m²/s", 1e-9, .01)
+        prepared = _pipe_properties(stages)
+        if sum(map(len, prepared)) > 100:
+            raise ValueError("Use at most 100 branches for a calculated-friction system curve.")
+        for stage, raw_stage in zip(prepared, stages):
+            for pipe, raw in zip(stage, raw_stage):
+                pipe["roughness_m"] = _number(raw.get("roughness_m"), "Absolute roughness in metres", 0, .05*pipe["diameter_m"])
+        return calculated_system_curve(prepared, static, flow, upper, viscosity)
+    if friction_method != "fixed":
+        raise ValueError("Choose fixed or calculated Darcy friction.")
+    static, prepared, resistance = _system(stages, static_head_m)
     rows = []
     for stage, (pipes, conductance) in enumerate(prepared, start=1):
         for pipe, (properties, area, factor, components, r) in enumerate(pipes, start=1):

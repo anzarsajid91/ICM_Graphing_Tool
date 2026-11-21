@@ -40,7 +40,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 8.2 | Existing event comparison and alignment | Qualifying event sets with multiple monitor–scenario pairings, independent criteria, true common time support, comments, plots and audit | Verified locally for the matrix |
 | 8.3 | Existing comparison evidence stamps and review history | Review current matrix against named baseline snapshots with the same recorded observations, criteria, support and qualification | Verified locally for portable snapshots |
 | 9.1 | Circular full/part-full Colebrook–White and comparisons | Shared circular solver, Manning capacity and depth, full-bore Manning and Darcy diameter/gradient, section and depth chart, pipe trials | Partial. Additional geometry criteria remain open |
-| 9.2 | SI circular pipe engine | Head-loss components, static/dynamic head, forward series/parallel, system curve and auditable sheets with independent cases | Partial |
+| 9.2 | SI circular pipe engine | Head-loss components, signed static/dynamic head, series/parallel, fixed and calculated Darcy factors, supported curve intervals and calculation sheets | Verified locally for steady forward full-pipe screening |
 | 9.3 | Candidate system-curve model | Validated curves, intersections, limits, configurations and power; distinguish unsupported conditions | Partial |
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
 | 9.5 England and framework research | Official permitting guidance | Versioned, cited England and Scotland retained-flow methods. Review remaining jurisdictions before any preset and provide documented custom methodology | Partial |
@@ -725,3 +725,24 @@ other state.
   202.65 L/s. Request observers recorded 101 and 100 requests with no
   violations. The method-library and deferred-workspace checks passed in
   both browsers. The source, privacy and network-contract checks passed.
+
+### Calculated-friction pipe system curves
+
+- The system screen offers specified Darcy factors or an absolute
+  roughness and viscosity basis. The engine computes branch losses, solves
+  the common head at parallel branches, adds series head and keeps gaps
+  where transition is unsupported. The quadratic pump solver still requires
+  the specified-factor basis. [Engineering methods](methods.md#fixed-factor-pipe-system-screening-and-pump-duty)
+- The independently constructed reference recovered Darcy f of 0.020 at
+  Reynolds 900,000, with the single 600 mm stage reporting 0.860385555 m
+  of dynamic loss and −1.139614445 m of total head. Separate tests cover
+  series, a laminar branch in parallel with a turbulent branch, zero, a
+  10⁻³⁰ m³/s mathematical boundary and transition between chart samples.
+  A 100-branch synthetic CPython computation took 0.91 s including the
+  41 display samples. Flow residual was 8.89×10⁻¹⁵ m³/s and the branch
+  head range was 6.58×10⁻¹⁶ m. This excludes browser and worker startup.
+- Chromium and Firefox verified controls, exact CSV values, transition
+  gaps, switching modes and specified-factor pump and design-flow
+  regressions. Request observers saw 101 and 100 requests respectively
+  with no violations. Python passed 450 tests and 111 subtests. The source,
+  28 Python privacy and network-contract checks passed.

@@ -81,6 +81,64 @@ def test_series_and_unequal_parallel_branches():
         system_curve([[pipe(darcy_factor=0)]],0,.05,.1)
 
 
+def test_calculated_darcy_friction_for_turbulent_series_and_negative_static_head():
+    # Choose roughness to satisfy the published Colebrook equation at f = .02.
+    diameter, velocity, reynolds = .6, 1.5, 900000
+    roughness = diameter * 3.7 * (10**(-.5/sqrt(.02)) - 2.51/(reynolds*sqrt(.02)))
+    q = velocity * pi * diameter**2 / 4
+    raw = pipe(diameter_m=diameter, length_m=120, roughness_m=roughness, darcy_factor=None)
+    result = system_curve([[raw], [dict(raw, length_m=240)]], -2, q, .6,
+                          friction_method="calculated", viscosity_m2_s=1e-6)
+    dynamic_head = 1.5**2/(2*9.80665)
+    assert result["total_head_m"] == pytest.approx(-2 + 19*dynamic_head, abs=1e-10)
+    assert result["rows"][0]["darcy_factor"] == pytest.approx(.02)
+    assert result["rows"][0]["reynolds"] == pytest.approx(900000)
+    assert result["rows"][0]["fittings_m"] == pytest.approx(2*dynamic_head)
+    assert result["rows"][0]["entrance_m"] == pytest.approx(.5*dynamic_head)
+    assert result["rows"][0]["exit_m"] == pytest.approx(dynamic_head)
+
+
+def test_calculated_parallel_common_head_with_different_flow_regimes():
+    g = 9.80665
+    q_large = 1.5 * pi*.6**2/4
+    q_small = .1 * pi*.01**2/4
+    head = 7.5*1.5**2/(2*g)
+    # Independently select a laminar tube's length at the reference common head.
+    length_small = g*.01**2*head/(32*1e-6*.1)
+    roughness = .6*3.7*(10**(-.5/sqrt(.02)) - 2.51/(900000*sqrt(.02)))
+    pipes = [pipe(diameter_m=.6, length_m=120, roughness_m=roughness),
+             pipe(diameter_m=.01, length_m=length_small, roughness_m=0, minor_k=0, entrance_k=0, exit_k=0)]
+    result = system_curve([pipes], 0, q_large+q_small, .5,
+                          friction_method="calculated", viscosity_m2_s=1e-6)
+    assert [row["regime"] for row in result["rows"]] == ["turbulent", "laminar"]
+    assert [row["flow_m3_s"] for row in result["rows"]] == pytest.approx([q_large,q_small], rel=1e-8)
+    assert [row["loss_m"] for row in result["rows"]] == pytest.approx([head,head], rel=1e-8)
+
+
+def test_calculated_transition_is_a_gap_even_between_curve_samples():
+    pipes = [[pipe(diameter_m=.01, length_m=2, roughness_m=0)]]
+    q = .3 * pi*.01**2/4  # Re 3,000, with the first positive display sample above Re 4,000.
+    result = system_curve(pipes, -1, q, .01, friction_method="calculated", viscosity_m2_s=1e-6)
+    assert result["total_head_m"] is None
+    assert result["rows"] == []
+    assert result["curve"][0] == (0, -1)
+    assert any(0 < flow < .00025 and head is None for flow, head in result["curve"])
+    assert result["curve"][-1][1] > 0
+    with pytest.raises(ValueError, match="roughness"):
+        system_curve([[dict(pipes[0][0], roughness_m=.001)]], 0, q, .01,
+                     friction_method="calculated", viscosity_m2_s=1e-6)
+
+
+def test_calculated_parallel_solves_positive_flows_near_zero():
+    raw = pipe(diameter_m=.01, length_m=2, roughness_m=0, minor_k=0, entrance_k=0, exit_k=0)
+    result = system_curve([[raw, dict(raw, length_m=4)]], 0, 1e-30, .01,
+                          friction_method="calculated", viscosity_m2_s=1e-6)
+    assert [row["flow_m3_s"] for row in result["rows"]] == pytest.approx([2e-30/3, 1e-30/3], rel=1e-8, abs=0)
+    zero = system_curve([[raw, raw]], 0, 0, .01, friction_method="calculated", viscosity_m2_s=1e-6)
+    assert [row["darcy_factor"] for row in zero["rows"]] == [None, None]
+    assert zero["total_head_m"] == 0
+
+
 def unit_resistance():
     # A = 1 m². Setting fL/D = 2g makes R exactly 1 in the
     # closed-form head equation with zero minor losses.

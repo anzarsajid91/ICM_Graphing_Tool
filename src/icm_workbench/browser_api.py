@@ -1450,11 +1450,12 @@ def scotland_treatment_design_flows(inputs):
     return json.dumps(calculate(**inputs), allow_nan=False)
 
 
-def pipe_system_curve(stages, static_head_m, flow_m3_s, curve_max_m3_s):
-    """Evaluate full-pipe resistance with explicitly specified Darcy factors."""
+def pipe_system_curve(stages, static_head_m, flow_m3_s, curve_max_m3_s, friction_method="fixed", viscosity_m2_s=None):
+    """Evaluate full-pipe resistance with specified or calculated Darcy factors."""
     from icm_workbench.analysis.pumping import system_curve
 
-    return json.dumps(system_curve(stages, static_head_m, flow_m3_s, curve_max_m3_s), allow_nan=False)
+    return json.dumps(system_curve(stages, static_head_m, flow_m3_s, curve_max_m3_s, friction_method=friction_method,
+                                   viscosity_m2_s=viscosity_m2_s), allow_nan=False)
 
 
 def pump_system_duty(stages, static_head_m, points, arrangement, pump_count, density_kg_m3, efficiency=None):
