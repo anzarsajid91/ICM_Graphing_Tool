@@ -715,3 +715,7 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #hbVerifyRevisions :is(td,p){overflow-wrap:anywhere}
 #hbRevisionEvidence>.actions{align-items:end}
 #hbRevisionRows td:nth-child(6){white-space:nowrap}
+#hbCalibrationPanel{border-top:1px solid var(--hb-border);margin-top:16px;padding-top:16px}
+#hbCalibrationPanel form>details{padding:8px 0}
+#hbCalibrationPanel .mapping-grid{margin-block:8px}
+#hbCalibrationPanel .hb-transform-confirm{display:flex;align-items:start;gap:8px}

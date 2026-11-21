@@ -36,7 +36,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
 | 7.2 | Gauge qualification, cumulative/event data | Common-clock spatial comparison, event totals, correlation, peak offset, coverage, suspect bins and WAPUG linkage | Verified locally |
 | 7.3 | Weekly review, coverage and WAPUG/FSAT | Suitability screen for a selected monitored location and rainfall candidate, using measured support, reviewed range, site evidence and current qualification | Verified locally for candidate screening |
-| 8.1 | DWF, comparison and event diagnostics | Explain evidence and alternate investigation paths for baseflow/infiltration, runoff, peaks/timing/recession and restrictions/backwater | Open |
+| 8.1 | DWF, comparison and event diagnostics | Explain preceding-flow, storm, peak, timing, recovery and paired-depth differences with exact support and investigation prompts | Verified locally for the phase investigation |
 | 8.2 | Existing event comparison and alignment | Qualifying event sets with multiple monitor–scenario pairings, independent criteria, true common time support, comments, plots and audit | Verified locally for the matrix |
 | 8.3 | Existing comparison evidence stamps and review history | Review current matrix against named baseline snapshots with the same recorded observations, criteria, support and qualification | Verified locally for portable snapshots |
 | 9.1 | Circular full/part-full Colebrook–White and comparisons | Preserve verified outputs; justify additional methods, geometries, target diameter/gradient and plots | Open |
@@ -645,7 +645,7 @@ other state.
   Shared workspace persistence and other report types remain separately
   tracked under sections 11 and 13.
 
-### Hosted browser-source gate correction
+### Hosted browser-source gate correction (`126b391`)
 
 - The [hosted verify job](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44920994590/job/136896832452)
   failed when its Node sandbox evaluated browser interface registration
@@ -655,3 +655,26 @@ other state.
   step passed locally, including FastPath/Python reference equivalence. The
   source, Python privacy and network-contract checks passed. Hosted check
   status remains specific to the exact candidate revision.
+
+### Calibration investigation across hydrograph phases
+
+- A selected flow comparison opens a local investigation with optional
+  preceding, recovery and paired depth records. The preceding reference
+  requires exact rainfall support and a reviewed limit. The screen preserves
+  native agreement metrics and shows supporting observations, quantities and
+  reasons independently. Suggested investigations cover loading,
+  infiltration, storm response, timing, storage, controls and backwater.
+  [Engineering methods](methods.md#calibration-investigation-across-hydrograph-phases)
+- Independent cases verified 18 and 24 m³ of storm excess, residual recovery
+  means of 0.08 and 0.15 m³/s, and 0.30 m of peak depth difference. Incomplete
+  rainfall, wet and mismatched preceding periods, gapped storm flow and missing
+  companion depth each have explicit withholding. The local Python suite
+  passed 439 tests and 111 subtests.
+- Chromium and Firefox exercised an ordinary flow-matrix entry, unavailable
+  evidence, required confirmation, invalid preceding window, explicit time
+  selection, paired depth and optional thresholds, exact support, local
+  formula-safe CSV and close/focus restoration. The browser fixture returned
+  60 versus 72 m³ of storm excess, 0.20 m depth difference and 60 of 60 s
+  supported dry rainfall. Its guards saw 101 and 99 requests with no
+  violations. The separate spatial rainfall and WAPUG regression passed
+  with 104 and 102 requests and no violations.

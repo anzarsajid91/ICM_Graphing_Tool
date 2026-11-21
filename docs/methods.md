@@ -377,6 +377,37 @@ reduces error magnitude by 5 percentage points. A volume change from −2% to
 +4% increases error magnitude by 2 points. The separate outcome for each
 criterion and the original review comments are exported in the local audit.
 
+### Calibration investigation across hydrograph phases
+
+Open a flow comparison in the Verification matrix. Peak and delay findings
+use its existing event criteria. A separately chosen preceding period can
+support a dry-reference comparison after an appropriate gauge and site
+conditions are reviewed. The rainfall record must cover the entire selected
+preceding period and its measured depth must meet the engineer's maximum.
+The observed and simulated flow records also need full common support.
+
+Preceding mean flow is the signed volume divided by elapsed seconds. The
+storm excess for each record is its supported storm volume minus its own
+preceding mean multiplied by the storm duration. Recovery reports the
+supported mean over the selected recovery period above the same preceding
+reference. These signed screens do not isolate runoff or infiltration.
+Both preceding and recovery periods are explicit. Optional paired depth
+evidence must use the same monitor location, reviewed depth reference and
+project clock. Independent event depth peaks may occur at different times.
+
+A 120 s reference event with 30 and 48 m³ and preceding means of 0.10 and
+0.20 m³/s gives 18 and 24 m³ of excess. Recovery means 0.18 and 0.35 m³/s
+give residuals 0.08 and 0.15 m³/s. The observed and simulated differences
+remain separate from project tolerances. Missing coverage or an excluded
+interval withholds the affected full-period metric. An unset optional
+tolerance leaves its numerical result as recorded evidence.
+
+Compare several events, diurnal records, independent site evidence and
+controls before changing the model. A difference can support investigation
+of rainfall input, loading, infiltration, storage response, downstream
+levels or hydraulic restrictions. The local audit retains the selected
+periods, fingerprints, criteria, support and investigation prompts.
+
 ## Fixed-factor pipe system screening and pump duty
 
 Use full circular pipes, a steady forward flow and an engineering-specified

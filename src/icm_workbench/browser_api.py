@@ -1363,6 +1363,58 @@ def verification_revision_delta(baseline, candidate):
     return json.dumps(compare_verification_revisions(baseline, candidate), allow_nan=False)
 
 
+def verification_calibration_diagnostics(observed, scenario, event, criteria, settings,
+                                         max_gap_seconds, offset_minutes=0, exclusions=None,
+                                         preceding=None, recovery=None, rainfall=None, depth=None):
+    """Inspect native storm, preceding and recovery evidence without altering verification."""
+    from icm_workbench.analysis.series_transform import integrate_periods
+    from icm_workbench.analysis.verification_diagnostics import investigate_calibration
+
+    def bounds(period):
+        start, end = (_model_clock_timestamp(period[key]) for key in ("start", "end"))
+        if start is None or end is None or pd.isna(start) or pd.isna(end) or end <= start:
+            raise ValueError("Review each increasing analysis window on the common project clock.")
+        return start, end
+
+    def compare(before, after, window, applied):
+        start, end = bounds(window)
+        return json.loads(verification_event_comparison(before["path"], before["column"], after["path"], after["column"],
+                                                        start, end, max_gap_seconds, offset_minutes, applied, window_only=True))
+
+    if _comparison_quantity(observed["path"], observed["column"]) != "flow":
+        raise ValueError("Calibration investigation requires an observed and modelled flow pairing.")
+    first, last = bounds(event)
+    dry = recovery_result = rain = depth_result = None
+    if preceding:
+        start, end = bounds(preceding)
+        if end > first:
+            raise ValueError("The preceding period must end by the start of the selected storm.")
+        if not rainfall or rainfall.get("confirmed") is not True:
+            raise ValueError("Confirm the appropriate rainfall source and review preceding conditions.")
+        dry = compare(observed, scenario, preceding, exclusions)
+        prepared = _reviewed_rainfall_channel(rainfall, start, end)
+        duration = (end - start).value / 1e9
+        total, covered = integrate_periods(prepared["times"], prepared["samples"], np.array([0.0, duration]),
+                                           convention=prepared["convention"], maximum_gap=max_gap_seconds,
+                                           trailing_support=prepared["trailing"], exclusions=prepared["exclusions"])
+        rain = {"depth_mm": float(total[0]) if covered[0] > 0 else None,
+                "valid_seconds": float(covered[0]), "requested_seconds": duration}
+    if recovery:
+        start, _ = bounds(recovery)
+        if start < last:
+            raise ValueError("The recovery period must start at or after the selected storm ends.")
+        recovery_result = compare(observed, scenario, recovery, exclusions)
+    if depth:
+        if not depth.get("confirmed") or any(_comparison_quantity(depth[role]["path"], depth[role]["column"]) != "depth"
+                                              for role in ("observed", "scenario")):
+            raise ValueError("Confirm both depth records refer to the flow monitor's section and invert reference.")
+        depth_result = compare(depth["observed"], depth["scenario"], event, depth.get("exclusions"))
+    storm = json.loads(verification_matrix_event(observed, scenario, event, criteria, max_gap_seconds, offset_minutes, exclusions))
+    result = investigate_calibration(storm, settings=settings, dry=dry, rainfall=rain, recovery=recovery_result, depth=depth_result)
+    result["support"] = {"storm": storm["values"], "preceding": dry, "recovery": recovery_result, "depth": depth_result}
+    return json.dumps(result, allow_nan=False)
+
+
 def england_continuation_flow(catchments):
     """Review explicit England catchment allowances in the local worker."""
     from icm_workbench.analysis.design_flows import england_continuation_flow as calculate
@@ -1532,10 +1584,41 @@ def _relative_clock_seconds(origin, nanoseconds):
     return seconds - origin_s + (fraction - origin_ns) / 1e9
 
 
+def _reviewed_rainfall_channel(source, first, last):
+    from icm_workbench.analysis.series_transform import MAX_SOURCE_SAMPLES
+
+    path, column = source["path"], source["column"]
+    parsed = _require_model_clock(_load(path), "Rainfall source")
+    if any(parsed.audit.get(key, 0) for key in ("invalid_timestamps", "malformed_rows", "duplicate_timestamps")):
+        raise ValueError("Resolve invalid or repeated rainfall source timestamps before comparing.")
+    contract = _series_contract(path, column)
+    semantics = source.get("rainfall_semantics") or parsed.metadata.get("rainfall_semantics")
+    convention = {("intensity", "mm/h"): "interval_average", ("incremental_depth", "mm"): "interval_depth"}.get(
+        (semantics, contract["canonical_unit"]))
+    if contract["quantity"] != "rainfall" or column not in parsed.frame or convention is None:
+        raise ValueError("Resolve rainfall quantities, units and interval semantics in Data / time series.")
+    times = pd.DatetimeIndex(parsed.frame["timestamp"]).as_unit("ns")
+    if not len(times) or times.hasnans or not times.is_monotonic_increasing or times.has_duplicates:
+        raise ValueError("Choose rainfall sources with valid, unique timestamps in order.")
+    left = max(0, int(times.searchsorted(first, side="right")) - 1)
+    right = min(len(times), int(times.searchsorted(last, side="left")) + 1)
+    if right - left > MAX_SOURCE_SAMPLES:
+        raise ValueError("Use a shorter window. This review supports up to 500,000 samples per gauge.")
+    # Give trailing declared support only to an actual final source sample.
+    interval = parsed.metadata.get("interval_min")
+    trailing = float(interval) * 60 if interval is not None and right == len(times) else None
+    values = pd.to_numeric(parsed.frame[column].iloc[left:right], errors="coerce").to_numpy(dtype=float)
+    blocked = tuple((_relative_clock_seconds(first, pd.Timestamp(item.start).value),
+                     _relative_clock_seconds(first, pd.Timestamp(item.end).value))
+                    for item in _exclusions(source.get("exclusions")))
+    return {"times": _relative_clock_seconds(first, times[left:right].asi8),
+            "samples": values / 3600 if convention == "interval_average" else values,
+            "trailing": trailing, "convention": convention, "exclusions": blocked}
+
+
 def compare_local_rain_gauges(sources, start, end, interval_s, max_gap_s, suspect_rate_mm_h=None):
     """Compare resolved rainfall sources independently of qualification criteria."""
     from icm_workbench.analysis.rainfall_spatial import compare_rainfall
-    from icm_workbench.analysis.series_transform import MAX_SOURCE_SAMPLES
 
     first, last = _model_clock_timestamp(start), _model_clock_timestamp(end)
     if first is None or last is None or pd.isna(first) or pd.isna(last) or first >= last:
@@ -1548,32 +1631,7 @@ def compare_local_rain_gauges(sources, start, end, interval_s, max_gap_s, suspec
         if (path, column) in seen:
             raise ValueError("Choose distinct rainfall channels.")
         seen.add((path, column))
-        parsed = _require_model_clock(_load(path), "Rainfall source")
-        if any(parsed.audit.get(key, 0) for key in ("invalid_timestamps", "malformed_rows", "duplicate_timestamps")):
-            raise ValueError("Resolve invalid or repeated rainfall source timestamps before comparing.")
-        contract = _series_contract(path, column)
-        semantics = source.get("rainfall_semantics") or parsed.metadata.get("rainfall_semantics")
-        convention = {("intensity", "mm/h"): "interval_average", ("incremental_depth", "mm"): "interval_depth"}.get(
-            (semantics, contract["canonical_unit"]))
-        if contract["quantity"] != "rainfall" or column not in parsed.frame or convention is None:
-            raise ValueError("Resolve rainfall quantities, units and interval semantics in Data / time series.")
-        times = pd.DatetimeIndex(parsed.frame["timestamp"]).as_unit("ns")
-        if not len(times) or times.hasnans or not times.is_monotonic_increasing or times.has_duplicates:
-            raise ValueError("Choose rainfall sources with valid, unique timestamps in order.")
-        left = max(0, int(times.searchsorted(first, side="right")) - 1)
-        right = min(len(times), int(times.searchsorted(last, side="left")) + 1)
-        if right - left > MAX_SOURCE_SAMPLES:
-            raise ValueError("Use a shorter window. This review supports up to 500,000 samples per gauge.")
-        # Give trailing declared support only to an actual final source sample.
-        interval = parsed.metadata.get("interval_min")
-        trailing = float(interval) * 60 if interval is not None and right == len(times) else None
-        values = pd.to_numeric(parsed.frame[column].iloc[left:right], errors="coerce").to_numpy(dtype=float)
-        blocked = tuple((_relative_clock_seconds(first, pd.Timestamp(item.start).value),
-                         _relative_clock_seconds(first, pd.Timestamp(item.end).value))
-                        for item in _exclusions(source.get("exclusions")))
-        gauges.append({"times": _relative_clock_seconds(first, times[left:right].asi8),
-                       "samples": values / 3600 if convention == "interval_average" else values,
-                       "trailing": trailing, "convention": convention, "exclusions": blocked})
+        gauges.append(_reviewed_rainfall_channel(source, first, last))
     result = compare_rainfall(gauges, duration=(last - first).value / 1e9, interval=float(interval_s),
                               maximum_gap=float(max_gap_s), suspect_rate=suspect_rate_mm_h)
     result["timestamps"] = [stamp.isoformat() for stamp in first + pd.to_timedelta(result.pop("endpoints_seconds"), unit="s")]

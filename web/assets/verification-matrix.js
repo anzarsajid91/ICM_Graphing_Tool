@@ -43,8 +43,10 @@ function mount(){
     <th scope="col">Peak error</th><th scope="col">Volume error</th><th scope="col">Peak delay</th><th scope="col">Evidence</th></tr></thead><tbody></tbody></table></div>
     <section id="hbVerifyDetail" aria-label="Selected comparison evidence" hidden><h3 tabindex="-1"></h3><p id="hbVerifyDetailText"></p><ul id="hbVerifyCriterionDetails"></ul>
       <label>Engineer comment<textarea id="hbVerifyNotes" maxlength="3000" rows="3"></textarea></label>
-      <div class="actions"><button type="button" class="btn" id="hbVerifyPlotButton">Plot event records</button></div>
-      <p id="hbVerifyPlotStatus" role="status"></p><div id="hbVerifyPlot" role="group" aria-label="Observed and modelled event plot"></div></section>
+      <div class="actions"><button type="button" class="btn" id="hbVerifyPlotButton">Plot event records</button>
+      <button type="button" class="btn" id="hbCalibrationOpen">Investigate calibration</button></div>
+      <p id="hbVerifyPlotStatus" role="status"></p><div id="hbVerifyPlot" role="group" aria-label="Observed and modelled event plot"></div>
+      <div id="hbCalibrationPanel" hidden></div></section>
     </section><section id="hbVerifyRevisions" aria-label="Scenario revision tracking"><h3>Scenario revision tracking</h3>
     <p>Save the reviewed results under a revision name. Compare a current matrix with a baseline using the same observations, rainfall evidence, time windows and tolerances.</p>
     <div class="mapping-grid"><label>Revision name<input id="hbRevisionName" type="text" maxlength="160" autocomplete="off"></label>
@@ -71,6 +73,7 @@ function mount(){
   let sources=[],events=[],eventStamp='',generation=0,plotGeneration=0,activeRun=null,result=null,activeCell=null,page=0;
   let baseline=null,revisionResult=null,revisionPage=0,revisionGeneration=0,revisionBusy=false;
   const active=()=>window.__ICM_PRECISION_WORKBENCH__?.route()?.page==='matrix';
+  const calibration=mountCalibration($('hbCalibrationPanel'),()=>({activeCell,result}),plan);
 
   function stateOfEvents(){
     if(fields.rain.value==='data')return rainEventsFresh()?{basis:state.rainEventSignature,rows:state.rainEvents}:null;
@@ -80,6 +83,7 @@ function mount(){
   function clearPlot(){++plotGeneration;if(plot.data)globalThis.Plotly?.purge(plot);plotStatus.textContent='';}
   function clear(message){
     ++generation;result=null;activeCell=null;view.hidden=true;details.hidden=true;clearPlot();clearRevisionResult();
+    calibration.reset();
     if(message)status.textContent=message;
   }
   function selectBox(select,options,placeholder){
@@ -228,7 +232,7 @@ function mount(){
     $('hbVerifyPrev').disabled=page===0;$('hbVerifyNext').disabled=(page+1)*pageSize>=rows.length;
   }
   function openCell(cell){
-    clearPlot();activeCell=cell;details.hidden=false;const title=details.querySelector('h3');
+    clearPlot();calibration.reset();activeCell=cell;details.hidden=false;const title=details.querySelector('h3');
     title.textContent=cell.pair.observed.name+' / '+cell.pair.scenario.name;
     const values=cell.values?.values;
     $('hbVerifyDetailText').textContent=values?cell.window.label+' · '+print(values.common_support_seconds)+' of '+print(values.requested_seconds)+
@@ -237,7 +241,9 @@ function mount(){
     $('hbVerifyCriterionDetails').replaceChildren(...Object.entries(cell.values?.checks||{}).map(([key,item])=>
       node('li',titles[key]+' · '+summary(item)+' · project threshold '+print(item.tolerance)+' '+item.unit+(item.reason?' · '+item.reason:''))));
     notes.value=cell.comment;notes.oninput=()=>{cell.comment=notes.value;if(revisionResult||revisionBusy)clearRevisionResult();};$('hbVerifyPlotButton').disabled=!values;title.focus();
+    $('hbCalibrationOpen').hidden=cell.values?.quantity!=='flow';
   }
+  $('hbCalibrationOpen').onclick=()=>calibration.open();
   $('hbVerifyPrev').onclick=()=>{page--;renderRows();};$('hbVerifyNext').onclick=()=>{page++;renderRows();};
   $('hbVerifyFilter').onchange=()=>{page=0;renderRows();};
   const shifted=(text,minutes)=>minutes&&text?new Date(new Date(text+'Z').valueOf()+60000*minutes).toISOString().slice(0,-1):text;
@@ -420,6 +426,133 @@ function mount(){
   for(const type of ['icm:source-pool-changed','icm:rainfall-interpretation-changed'])window.addEventListener(type,()=>{
     if(active())refresh();
   });
+}
+
+function mountCalibration(root, context, plan){
+  root.innerHTML=`<section aria-labelledby="hbCalibrationTitle"><div class="panel-head"><div><h3 id="hbCalibrationTitle" tabindex="-1">Calibration investigation</h3>
+    <p>Review evidence from the selected storm, a preceding period and recovery. Compare the findings with site records before changing model parameters.</p></div>
+    <button class="btn" id="hbCalibrationClose" type="button">Close investigation</button></div>
+    <form><details open><summary>Preceding conditions and recovery</summary><div class="mapping-grid">
+    <label>Preceding start<input name="pre_start" type="datetime-local" step="1"></label><label>Preceding end<input name="pre_end" type="datetime-local" step="1"></label>
+    <label>Rainfall channel for preceding period<select name="rain"></select></label><label>Antecedent rainfall limit (mm)<input name="dry_rain_mm" type="number" min="0" step="any"></label>
+    <label>Recovery start<input name="post_start" type="datetime-local" step="1"></label><label>Recovery end<input name="post_end" type="datetime-local" step="1"></label></div>
+    <label class="hb-transform-confirm"><input name="rain_confirmed" type="checkbox"> Reviewed the gauge and preceding conditions at this location</label></details>
+    <details><summary>Paired depth evidence</summary><div class="mapping-grid"><label>Observed depth<select name="obs_depth"></select></label>
+    <label>Modelled depth<select name="model_depth"></select></label></div>
+    <label class="hb-transform-confirm"><input name="depth_confirmed" type="checkbox"> Confirmed the same site, clock and depth reference as the selected flow pairing</label></details>
+    <details><summary>Optional project tolerances</summary><div class="mapping-grid">
+    <label>Preceding mean flow difference (m³/s)<input name="dry_mean_m3_s" type="number" min="0" step="any"></label>
+    <label>Storm excess volume difference (m³)<input name="storm_excess_m3" type="number" min="0" step="any"></label>
+    <label>Recovery residual flow difference (m³/s)<input name="recovery_mean_m3_s" type="number" min="0" step="any"></label>
+    <label>Depth peak difference (m)<input name="depth_difference_m" type="number" min="0" step="any"></label></div></details>
+    <div class="actions"><button class="btn primary" type="submit">Review calibration evidence</button></div></form>
+    <p id="hbCalibrationStatus" role="status"></p><div id="hbCalibrationEvidence" hidden><p id="hbCalibrationCoverage"></p><p id="hbCalibrationHydraulicSupport"></p>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Calibration evidence results"><table class="data-table"><caption>Calibration evidence by phase</caption>
+    <thead><tr><th scope="col">Evidence</th><th scope="col">Observed</th><th scope="col">Modelled</th><th scope="col">Difference</th><th scope="col">Investigation</th></tr></thead><tbody></tbody></table></div>
+    <div class="actions"><button class="btn" id="hbCalibrationExport" type="button">Download calibration evidence CSV</button></div></div></section>`;
+  const $=id=>root.querySelector('#'+id),form=root.querySelector('form'),fields=form.elements,status=$('hbCalibrationStatus');
+  const report=$('hbCalibrationEvidence'),submit=form.querySelector('[type=submit]'),body=report.querySelector('tbody');
+  const names={dry_mean:'Preceding dry-period mean flow',storm_excess:'Storm volume above preceding mean',peak:'Peak flow error',
+    timing:'Peak delay',recovery:'Recovery flow above preceding mean',hydraulic_context:'Paired depth peaks'};
+  const supportNames={storm:'Storm flow',preceding:'Preceding flow',recovery:'Recovery flow',depth:'Storm depth'};
+  let sequence=0,record=null,available=[];
+  function clear(message){++sequence;record=null;report.hidden=true;status.textContent=message||'';}
+  function reset(){clear();form.reset();root.hidden=true;submit.disabled=false;}
+  function refresh(){
+    available=allSeries().filter(({item,col})=>item.status==='ready'&&item.hash&&item.parsed?.metadata?.time_basis!=='timezone-aware/unresolved'&&
+      ((seriesQuantity(item,col)==='depth'&&seriesUnit(item,col)==='m')||
+        (seriesQuantity(item,col)==='rainfall'&&rainfallSemanticsFor(item,col)!=='unresolved')));
+    const groups={rain:available.filter(({item,col})=>seriesQuantity(item,col)==='rainfall'),
+      obs_depth:available.filter(({item,col,role})=>seriesQuantity(item,col)==='depth'&&role!=='model'),
+      model_depth:available.filter(({item,col,role})=>seriesQuantity(item,col)==='depth'&&role!=='observed')};
+    for(const [key,rows] of Object.entries(groups)){
+      fields[key].replaceChildren(new Option('No source selected',''),...rows.map(row=>new Option(row.label,row.key)));
+      if(key==='rain'&&rows.some(row=>row.key===state.mapping.rain))fields[key].value=state.mapping.rain;
+    }
+  }
+  function inputs(){
+    const {activeCell:cell,result}=context();
+    if(!cell||!result||result.signature!==JSON.stringify(plan()))throw new Error('Calculate a current verification matrix and select a flow pairing.');
+    const period=(prefix,caption)=>{
+      const start=fields[prefix+'_start'].value,end=fields[prefix+'_end'].value;
+      if(!start&&!end)return null;
+      if(!start||!end||start>=end)throw new Error('Review both times for the '+caption+' period.');
+      return {start,end};
+    };
+    const chosen=(key,role)=>{
+      const row=available.find(item=>item.key===fields[key].value);
+      if(!row)return null;
+      const {item,col}=row;
+      return {key:row.key,name:row.label,sha256:item.hash,path:item.virtualPath,column:col,exclusions:exclusionPayload(true,role,row.key),
+        ...(role==='rainfall'?{rainfall_semantics:rainfallSemanticsFor(item,col)}:{})};
+    };
+    const preceding=period('pre','preceding'),recovery=period('post','recovery');
+    const rain=preceding?chosen('rain','rainfall'):null,observedDepth=chosen('obs_depth','observed'),modelDepth=chosen('model_depth','model');
+    if(preceding&&(!rain||!fields.rain_confirmed.checked))throw new Error('Confirm the appropriate rainfall source and review preceding conditions.');
+    if(Boolean(observedDepth)!==Boolean(modelDepth))throw new Error('Select both depth records for the same flow location.');
+    if(observedDepth&&(observedDepth.key===modelDepth.key||!fields.depth_confirmed.checked))throw new Error('Confirm distinct compatible depth records for the flow location.');
+    const unique=rows=>[...new Map(rows.map(item=>[item.id,item])).values()];
+    const settings=Object.fromEntries([...form.querySelectorAll('input[type=number]')].map(input=>[input.name,
+      input.value===''?null:input.valueAsNumber]));
+    const {observed,scenario}=cell.pair;
+    const worker={observed,scenario,event:cell.window,criteria:result.input.criteria,settings,
+      max_gap_seconds:result.input.max_gap_seconds,offset_minutes:result.input.offset_minutes,
+      exclusions:unique([...observed.exclusions,...scenario.exclusions]),preceding,recovery,
+      rainfall:rain?{...rain,confirmed:true}:null,
+      depth:observedDepth?{observed:observedDepth,scenario:modelDepth,confirmed:true,
+        exclusions:unique([...observedDepth.exclusions,...modelDepth.exclusions])}:null};
+    return {worker,signature:result.signature};
+  }
+  form.oninput=()=>{if(record)clear('Inputs changed. Review the selected evidence again.');};
+  form.onsubmit=async event=>{
+    event.preventDefault();clear('Reviewing the selected periods in the local worker…');const run=sequence;submit.disabled=true;
+    try{
+      const current=inputs(),signature=JSON.stringify(current);
+      const result=await engine.call('verification_calibration_diagnostics',current.worker);
+      if(run!==sequence)return;
+      if(signature!==JSON.stringify(inputs()))throw new Error('Inputs changed during calculation. Review the current evidence again.');
+      record={current,result,signature};body.replaceChildren();
+      for(const [key,item] of Object.entries(result.findings)){
+        const row=node('tr'),unit=item.unit||'';
+        const format=(value,units)=>typeof value==='string'?value.replace('T',' '):Number.isFinite(value)?
+          print(value)+(units&&units!=='%'?' ':'')+units:'—';
+        const sourceUnit=item.source_unit||unit;
+        for(const value of [names[key],format(item.observed,sourceUnit),format(item.modelled,sourceUnit),format(item.difference??item.value,unit),
+          [item.status,item.basis,item.investigate].filter(Boolean).join(' · ')])row.append(node('td',value));
+        body.append(row);
+      }
+      const rain=result.rainfall;
+      $('hbCalibrationCoverage').textContent=rain?'Recorded preceding rainfall '+print(rain.depth_mm)+' mm · '+print(rain.valid_seconds)+' of '+
+        print(rain.requested_seconds)+' s supported.':'Preceding rainfall evidence is unavailable.';
+      $('hbCalibrationHydraulicSupport').textContent=Object.entries(result.support).filter(([,value])=>value).map(([key,value])=>
+        supportNames[key]+' '+print(value.common_support_seconds)+' of '+print(value.requested_seconds)+' s supported · '+
+        print(value.excluded_seconds)+' s excluded').join(' | ')+'.';
+      status.textContent='Calibration evidence ready.';report.hidden=false;
+    }catch(error){if(run===sequence)status.textContent=conciseErrorMessage(error);}
+    finally{if(run===sequence)submit.disabled=false;}
+  };
+  $('hbCalibrationExport').onclick=()=>{
+    try{
+      if(!record||record.signature!==JSON.stringify(inputs()))throw new Error('Review the current evidence again before exporting.');
+      const {result,current}=record,{worker}=current;
+      const rows=[['Build',buildToken],['Method',result.method],['Storm start',worker.event.start],['Storm end',worker.event.end],
+        ['Preceding start',worker.preceding?.start],['Preceding end',worker.preceding?.end],['Recovery start',worker.recovery?.start],['Recovery end',worker.recovery?.end],
+        ['Model clock shift (min)',worker.offset_minutes],['Reviewed thresholds',JSON.stringify(worker.settings)],
+        ['Recorded preceding rainfall (mm)',result.rainfall?.depth_mm],['Supported rainfall (s)',result.rainfall?.valid_seconds],
+        ['Requested rainfall (s)',result.rainfall?.requested_seconds],['Source','SHA-256','Channel','Exclusions']];
+      for(const source of [worker.observed,worker.scenario,worker.rainfall,worker.depth?.observed,worker.depth?.scenario].filter(Boolean))
+        rows.push([source.name,source.sha256,source.column,JSON.stringify(source.exclusions)]);
+      rows.push(['Hydraulic period','Requested seconds','Common valid seconds','Excluded seconds']);
+      for(const [key,value] of Object.entries(result.support))if(value)
+        rows.push([supportNames[key],value.requested_seconds,value.common_support_seconds,value.excluded_seconds]);
+      rows.push(['Phase','Observed','Modelled','Measurement unit','Difference','Difference unit','Threshold','Screen','Basis','Investigation']);
+      for(const [key,row] of Object.entries(result.findings))rows.push([names[key],row.observed,row.modelled,row.source_unit??row.unit,
+        row.difference??row.value,row.unit,row.threshold??row.tolerance,row.status,row.basis,row.investigate]);
+      downloadBlob('hydra-verification-calibration.csv',rows.map(row=>row.map(ICMSafeCSV.cell).join(',')).join('\r\n'),'text/csv');
+    }catch(error){clear(error.message);}
+  };
+  $('hbCalibrationClose').onclick=()=>{reset();root.ownerDocument.getElementById('hbCalibrationOpen')?.focus();};
+  return {reset,open(){refresh();root.hidden=false;$('hbCalibrationTitle').focus();}};
 }
 
 window.HydraVerificationMatrix={mount};
