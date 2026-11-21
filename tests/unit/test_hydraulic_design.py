@@ -174,6 +174,34 @@ def test_pump_no_extrapolation_shared_vertex_and_identical_configurations():
         pump_duty(stages, 0, [[1,4],[1,3]], "single", 1, 1000, None)
 
 
+def test_pump_curve_csv_preserves_order_and_converts_reviewed_columns():
+    from icm_workbench.analysis.pumping import map_pump_curve_csv, preview_pump_curve_csv
+
+    text = '\ufeff"Test head",Setup,"Rated flow"\r\n"10",A,"0"\r\n\r\n"8",A,"360"\r\n'
+    assert preview_pump_curve_csv(text)["headers"] == ["Test head", "Setup", "Rated flow"]
+    result = map_pump_curve_csv(text, 2, 0, "m³/h", "ft")
+    assert result["points"][0] == pytest.approx([0, 3.048])
+    assert result["points"][1] == pytest.approx([.1, 2.4384])
+    assert result["head_column"] == "Test head"
+
+
+def test_pump_curve_csv_rejects_ambiguous_units_or_invalid_rows():
+    from icm_workbench.analysis.pumping import map_pump_curve_csv, preview_pump_curve_csv
+
+    for text, message in [('q,h\n0,2\n0,3', "strictly"), ('q,h\n0,2\n1,', "numeric"),
+                          ('q,h\n0,2\n1,=1+2', "numeric"), ('q,h\n0,2\n1,1e999', "finite")]:
+        with pytest.raises(ValueError, match=message):
+            map_pump_curve_csv(text, 0, 1, "L/s", "m")
+    with pytest.raises(ValueError, match="unit"):
+        map_pump_curve_csv('q,h\n0,2\n1,3', 0, 1, "gpm", "m")
+    with pytest.raises(ValueError, match="distinct"):
+        map_pump_curve_csv('q,h\n0,2\n1,3', 0, 0, "L/s", "m")
+    with pytest.raises(ValueError, match="quoting"):
+        preview_pump_curve_csv('q,h\n0,2\n1,"untied')
+    with pytest.raises(ValueError, match="500"):
+        preview_pump_curve_csv('q,h\n'+"1,2\n"*501)
+
+
 def test_native_catchment_preview_retains_units_and_missing_population():
     from icm_workbench.analysis.design_flows import preview_catchment_csv
 

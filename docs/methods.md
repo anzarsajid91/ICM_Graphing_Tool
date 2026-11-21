@@ -497,6 +497,17 @@ efficiency. A local residual slope is an investigation cue. Manufacturer
 allowable operating region, controls and system dynamics govern suitability.
 The calculations use the supplied curve domain.
 
+For local curve import, use CSV headings plus at least two measured flow
+and head rows in increasing flow order. Review which columns and units the
+source uses. Supported flow units are m³/s, L/s and m³/h. Supported head
+units are metres and international feet. The worker converts the latter
+using exactly 0.3048 m per foot. It neither sorts points nor substitutes
+missing measurements. The local calculation sheet records the original file
+fingerprint, mapped column titles and units, supplied SI curve and whether
+the points were edited after import. Use the curve for the manufacturer's
+specified speed and impeller configuration.
+[NIST Guide to the SI, Appendix B](https://www.nist.gov/pml/special-publication-811/nist-guide-si-appendix-b-conversion-factors)
+
 Independent tests calculate one 1,000 m by 300 mm pipe directly from
 the component equation, unequal parallel branches from square-root flow
 partition, and pump roots from a unit-resistance quadratic with known

@@ -41,7 +41,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 8.3 | Existing comparison evidence stamps and review history | Review current matrix against named baseline snapshots with the same recorded observations, criteria, support and qualification | Verified locally for portable snapshots |
 | 9.1 | Circular full/part-full Colebrook–White and comparisons | Shared circular solver, Manning capacity and depth, full-bore Manning and Darcy diameter/gradient, section and depth chart, pipe trials | Partial. Additional geometry criteria remain open |
 | 9.2 | SI circular pipe engine | Head-loss components, signed static/dynamic head, series/parallel, fixed and calculated Darcy factors, supported curve intervals and calculation sheets | Verified locally for steady forward full-pipe screening |
-| 9.3 | Candidate system-curve model | Validated curves, intersections, limits, configurations and power; distinguish unsupported conditions | Partial |
+| 9.3 | Candidate system-curve model | Manual and mapped CSV pump curves, exact specified-factor intersections including multiple and absent duties, identical arrangements, power and operating limits | Verified locally for the specified-factor system model |
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
 | 9.5 England and framework research | Official permitting guidance | Versioned, cited England and Scotland retained-flow methods. Review remaining jurisdictions before any preset and provide documented custom methodology | Partial |
 | 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial |
@@ -758,3 +758,21 @@ other state.
 - Chromium and Firefox both passed the delayed-load test and full simulation
   results smoke with 32 guarded requests each and no violations. Hosted
   status must be checked on the subsequent PR revision.
+
+### Mapped pump curve CSV
+
+- A local preview lets an engineer choose independent pump curve columns
+  and source units. The same authoritative validator checks imported and
+  typed curves. The worksheet retains manifested source columns, units,
+  SHA-256, actual single-pump and composite curve points, and whether
+  the inputs were edited after import. No curve data or source labels are
+  used in requests. [Engineering methods](methods.md#fixed-factor-pipe-system-screening-and-pump-duty)
+- Independent checks convert 360 m³/h to 0.1 m³/s and 8 ft to 2.4384 m,
+  preserve row order and reject duplicate flows, unsupported unit choices,
+  formulas, missing cells, malformed quoting, non-finite values and excess
+  points. Python passed 452 tests and 111 subtests.
+- Chromium and Firefox checked file selection, malformed recovery,
+  cancellation without replacement, explicit reversed-column mapping,
+  720 m³/h and 5 ft conversion, edit provenance and the manual duty
+  regressions. Request observers saw 101 and 100 requests with no
+  violations. The method-library reference and privacy checks passed.

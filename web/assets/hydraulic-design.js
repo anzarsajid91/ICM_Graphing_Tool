@@ -90,7 +90,7 @@ function fields(specs, initial = {}) {
   }));
   return {group, controls, values: () => Object.fromEntries(Object.entries(controls).map(([key,input]) => [key,read(input)]))};
 }
-function editableRows(title, specs, defaults, configure, minimum = 1) {
+function editableRows(title, specs, defaults, configure, minimum = 1, maximum = 100) {
   const wrapper = element("div");
   wrapper.className = "table-wrap";
   const grid = element("table");
@@ -105,7 +105,7 @@ function editableRows(title, specs, defaults, configure, minimum = 1) {
   const body = grid.createTBody(), records = new Map(), removeButtons = new Map();
   let serial = 0;
   function add(initial = {}, focus = false) {
-    if (records.size >= 100) return;
+    if (records.size >= maximum) return;
     const row = body.insertRow(), name = title+" row "+(++serial);
     const controls = Object.fromEntries(specs.map(spec => {
       const {control} = labelledControl(spec,initial[spec.key],name);
@@ -129,7 +129,7 @@ function editableRows(title, specs, defaults, configure, minimum = 1) {
     if (focus) Object.values(controls)[0].focus();
   }
   function updateButtons(){
-    addButton.disabled = records.size >= 100;
+    addButton.disabled = records.size >= maximum;
     for (const button of removeButtons.values()) button.disabled = records.size <= minimum;
   }
   const addButton = action("Add row",() => {
@@ -284,6 +284,79 @@ function configureCatchment(controls) {
   controls.classification.addEventListener("change",update);
   update();
 }
+async function readLocalCSV(file,kind,preview){
+  if(file.size>1024*1024)throw new Error("Choose a "+kind+" CSV up to 1 MiB.");
+  const bytes=await file.arrayBuffer();
+  let text;
+  try{text=new TextDecoder("utf-8",{fatal:true}).decode(bytes);}
+  catch{text=new TextDecoder("windows-1252").decode(bytes);}
+  const [data,digest]=await Promise.all([preview(text),globalThis.crypto.subtle.digest("SHA-256",bytes)]);
+  const fingerprint=[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,"0")).join("");
+  return {data,text,filename:file.name,fingerprint};
+}
+
+function mountPumpImport(article,form,points,worker){
+  const dialog=element("dialog"),heading=element("h3","Review pump curve CSV");
+  heading.id="hbPumpImportTitle";dialog.setAttribute("aria-labelledby",heading.id);
+  const upload=element("input");upload.type="file";upload.accept=".csv,text/csv";
+  const fileLabel=element("label","Local pump curve CSV");fileLabel.append(upload);
+  const message=element("p"),preview=element("div"),applied=element("p");
+  message.setAttribute("role","status");applied.setAttribute("role","status");
+  const controls=element("div"),buttons=element("div");buttons.className="actions";
+  const open=action("Import pump curve CSV",()=>dialog.showModal());
+  const cancel=action("Cancel",()=>dialog.close());
+  const apply=action("Apply curve",async()=>{
+    if(!staged)return;
+    const mapping=picks.values();
+    if(Object.values(mapping).some(value=>value==="")){message.textContent="Select both columns and their source units.";return;}
+    const id=++revision,packet=staged;
+    apply.disabled=true;message.textContent="Checking the mapped curve…";
+    try{
+      const result=await worker("map_pump_curve_csv",{...mapping,text:packet.text,
+        flow_column:Number(mapping.flow_column),head_column:Number(mapping.head_column)});
+      if(id!==revision||!dialog.open)return;
+      source={...result,filename:packet.filename,fingerprint:packet.fingerprint};
+      points.replace(result.points.map(([flow,head])=>({flow,head})));
+      applied.textContent=result.points.length+" measured points imported. The table shows converted SI values.";
+      dialog.close();
+    }catch(error){if(id===revision&&dialog.open){message.textContent=error.message;apply.disabled=false;}}
+  });
+  let revision=0,staged=null,picks=null,source=null;
+  apply.disabled=true;buttons.append(cancel,apply);
+  dialog.append(heading,element("p","Choose the measured flow and head columns and their units. The source order is preserved."),
+    fileLabel,message,preview,controls,buttons);
+  const tools=element("div");tools.className="actions";tools.append(open);
+  form.append(tools,applied);article.append(dialog);
+  function reset(){staged=null;picks=null;apply.disabled=true;preview.replaceChildren();controls.replaceChildren();}
+  dialog.addEventListener("close",()=>{revision++;reset();upload.value="";message.textContent="";});
+  upload.addEventListener("change",async()=>{
+    const id=++revision,file=upload.files[0];reset();
+    if(!file){message.textContent="";return;}
+    message.textContent="Reading the local curve…";
+    try{
+      const packet=await readLocalCSV(file,"pump curve",text=>worker("preview_pump_curve_csv",{text}));
+      if(id!==revision||!dialog.open)return;
+      staged=packet;
+      const {headers,first_rows,row_count}=packet.data;
+      const columns=[["","Select a column"],...headers.map((header,index)=>[String(index),header])];
+      const units=(label,values)=>[["",label],...values.map(unit=>[unit,unit])];
+      picks=fields([{key:"flow_column",label:"Flow column",options:columns},{key:"head_column",label:"Head column",options:columns},
+        {key:"flow_unit",label:"Flow unit",options:units("Select the flow unit",["m³/s","L/s","m³/h"])},
+        {key:"head_unit",label:"Head unit",options:units("Select the head unit",["m","ft"])}]);
+      controls.append(picks.group);preview.append(table(headers,first_rows,"Source preview"));
+      message.textContent=row_count+" measured points available.";apply.disabled=false;
+    }catch(error){if(id===revision&&dialog.open)message.textContent=error.message;}
+  });
+  return values=>{
+    if(!source)return [["Curve input","Entered manually"]];
+    const matches=values.length===source.points.length&&values.every(([flow,head],index)=>
+      flow===source.points[index][0]&&head===source.points[index][1]);
+    return [["Curve input",matches?"As imported":"Edited after import"],["Source file",source.filename],
+      ["Source SHA-256",source.fingerprint],["Flow source column",source.flow_column,source.flow_unit],
+      ["Head source column",source.head_column,source.head_unit]];
+  };
+}
+
 function mountCatchmentImport(article,form,catchments,worker) {
   const definitions=[["id","Catchment ID","subcatchment_id"],["population","Reviewed population","population"],
     ["domestic_l_head_day","Reviewed domestic allowance (L/head/day)",null],
@@ -316,16 +389,9 @@ function mountCatchmentImport(article,form,catchments,worker) {
     reset();if(!file)return;
     message.textContent="Validating imported rows…";
     try{
-      if(file.size>1024*1024)throw new Error("Choose a catchment CSV up to 1 MiB.");
-      const bytes=await file.arrayBuffer();
-      let text;
-      try{text=new TextDecoder("utf-8",{fatal:true}).decode(bytes);}
-      catch{text=new TextDecoder("windows-1252").decode(bytes);}
-      const [data,digest]=await Promise.all([worker("preview_design_catchments",{text}),
-        globalThis.crypto.subtle.digest("SHA-256",bytes)]);
+      const {data,filename,fingerprint}=await readLocalCSV(file,"catchment",text=>worker("preview_design_catchments",{text}));
       if(generation!==revision)return;
-      const fingerprint=[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,"0")).join("");
-      staged={data,filename:file.name,fingerprint};
+      staged={data,filename,fingerprint};
       const options=[["","Enter manually"],...data.header.map((field,i)=>
         [String(i),(field||"Column "+(i+1))+(data.units?.[i]?" ("+data.units[i]+")":"")])];
       const fields=element("div");fields.className="mapping-grid";
@@ -596,8 +662,10 @@ function mount(navigate) {
     ["single","Single pump"],["series","Identical pumps in series"],["parallel","Identical pumps in parallel"]]},
     number("pump_count","Number of pumps",1,20,1),number("density_kg_m3","Fluid density (kg/m³)",100,3000),
     {...number("efficiency","Overall efficiency (%)",1,100),required:false}],{pump_count:1});
-  const points=editableRows("Pump curve points",pumpFields,[{},{}],undefined,2);
-  pumpForm.append(pumpControls.group,points.wrapper);
+  const points=editableRows("Pump curve points",pumpFields,[{},{}],undefined,2,500);
+  pumpForm.append(pumpControls.group);
+  const curveProvenance=mountPumpImport(pump,pumpForm,points,worker);
+  pumpForm.append(points.wrapper);
   const invalidatePump=results(pump,pumpForm,async()=>{
     // Pump duty uses the system geometry and static head. Display and selected
     // head-loss duty flows belong to the other calculation.
@@ -607,8 +675,9 @@ function mount(navigate) {
       throw new Error("Enter valid pipe branches and static head under System curve first.");
     }
     const {efficiency,...args}=pumpControls.values();
+    const supplied=points.values().map(p=>[p.flow,p.head]);
     const r=await worker("pump_system_duty",{...args,static_head_m:read(staticHead),stages:design.stages(),
-      points:points.values().map(p=>[p.flow,p.head]),efficiency:Number.isNaN(efficiency)?null:efficiency/100});
+      points:supplied,efficiency:Number.isNaN(efficiency)?null:efficiency/100});
     const header=["Flow (m³/s)","Head (m)","Hydraulic power (kW)","Input power (kW)","Local slope indication"];
     const duties=r.duties.map(d=>[d.flow_m3_s,d.head_m,d.hydraulic_kw,d.input_kw,d.local_slope]);
     return {content:[chart([{label:"System head",points:r.system_curve,color:"#136b7f"},
@@ -616,8 +685,10 @@ function mount(navigate) {
       element("p","Slope indicates the local residual trend. Review manufacturer operating limits and system dynamics before selecting a duty point.")],
       summary:duties.length?duties.length+" supported intersection(s) in the supplied range.":"No intersection within the supplied pump range.",
       filename:"hydra-pump-duty.csv",rows:[["Method",r.method],["Reference",pumpReference],["Interpolation","Linear pump segments within measured range"],
+        ...curveProvenance(supplied),
         ["Static head (m)",read(staticHead)],["Arrangement",args.arrangement],["Identical pumps",args.pump_count],["Density (kg/m³)",args.density_kg_m3],
         ["Overall efficiency (%)",Number.isNaN(efficiency)?null:efficiency],header,...duties,
+        ["Supplied single-pump flow (m³/s)","Supplied head (m)"],...supplied,
         ["System curve flow (m³/s)","Head (m)"],...r.system_curve,["Composite pump curve flow (m³/s)","Head (m)"],...r.pump_curve]};
   });
   systemForm.addEventListener("input",invalidatePump);

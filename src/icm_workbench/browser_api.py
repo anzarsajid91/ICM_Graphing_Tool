@@ -1466,6 +1466,20 @@ def pump_system_duty(stages, static_head_m, points, arrangement, pump_count, den
                       allow_nan=False)
 
 
+def preview_pump_curve_csv(text):
+    """Preview bounded local pump CSV records for explicit mapping."""
+    from icm_workbench.analysis.pumping import preview_pump_curve_csv as preview
+
+    return json.dumps(preview(text), allow_nan=False)
+
+
+def map_pump_curve_csv(text, flow_column, head_column, flow_unit, head_unit):
+    """Return the SI points of a confirmed local pump CSV mapping."""
+    from icm_workbench.analysis.pumping import map_pump_curve_csv as convert
+
+    return json.dumps(convert(text, flow_column, head_column, flow_unit, head_unit), allow_nan=False)
+
+
 def preview_design_catchments(text):
     """Validate a local catchment table for explicit Formula A mappings."""
     from icm_workbench.analysis.design_flows import preview_catchment_csv

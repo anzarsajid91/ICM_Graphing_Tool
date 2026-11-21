@@ -52,6 +52,38 @@ try{
   assert.equal(await pump.getByRole('button',{name:'Download calculation CSV'}).isDisabled(),true);
   await submit(pump);await status(pump,/No intersection within/);
 
+  const importPump=pump.getByRole('button',{name:'Import pump curve CSV',exact:true});
+  await importPump.click({timeout:5000});
+  const pumpImport=pump.getByRole('dialog',{name:'Review pump curve CSV'});
+  const supplyCurve=(text)=>pumpImport.getByLabel('Local pump curve CSV').setInputFiles({name:'synthetic-pump-curve.csv',
+    mimeType:'text/csv',buffer:Buffer.from(text)});
+  await supplyCurve('Head,Rate\n12,0\n5,"unterminated');
+  await status(pumpImport,/Check quoting/);
+  assert(await pumpImport.getByRole('button',{name:'Apply curve'}).isDisabled());
+  await supplyCurve('Head,Rate\n12,0\n5,720');
+  await status(pumpImport,/2 measured points/);
+  await pumpImport.getByRole('button',{name:'Cancel'}).click();
+  assert.equal(Number(await pumpForm.locator('[name=head]').nth(0).inputValue()),10);
+  await importPump.click();
+  await supplyCurve('Head,Rate\n12,0\n5,720');
+  await status(pumpImport,/2 measured points/);
+  await pumpImport.getByLabel('Flow column',{exact:true}).selectOption('1');
+  await pumpImport.getByLabel('Head column',{exact:true}).selectOption('0');
+  await pumpImport.getByLabel('Flow unit',{exact:true}).selectOption('m³/h');
+  await pumpImport.getByLabel('Head unit',{exact:true}).selectOption('ft');
+  await pumpImport.getByRole('button',{name:'Apply curve'}).click();
+  await pumpImport.waitFor({state:'hidden'});
+  assert.equal(Number(await pumpForm.locator('[name=flow]').nth(1).inputValue()),.2);
+  assert.equal(Number(await pumpForm.locator('[name=head]').nth(1).inputValue()),1.524);
+  await submit(pump);await status(pump,/No intersection within/);
+  const pumpAudit=await downloaded(pump);
+  assert.match(pumpAudit,/synthetic-pump-curve\.csv/);assert.match(pumpAudit,/Source SHA-256/);
+  assert.match(pumpAudit,/"Flow source column","Rate","m³\/h"/);
+  assert.match(pumpAudit,/"Head source column","Head","ft"/);
+  await pumpForm.locator('[name=head]').nth(1).fill('2');
+  await submit(pump);await status(pump,/No intersection within/);
+  assert.match(await downloaded(pump),/Edited after import/);
+
   await pump.getByRole('button',{name:'Edit pipe system'}).click();
   const friction=systemForm.getByRole('combobox',{name:'Friction method',exact:true});
   await friction.selectOption('calculated',{timeout:5000});

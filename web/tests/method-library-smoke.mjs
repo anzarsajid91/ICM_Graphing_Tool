@@ -83,6 +83,11 @@ try {
     const link=panel.getByRole('link',{name:label,exact:true});
     assert.equal(await link.getAttribute('href'),url);assert.equal(await link.getAttribute('referrerpolicy'),'no-referrer');
   }
+  await search.fill('Fixed-factor pipe system screening and pump duty');
+  await panel.getByText('Fixed-factor pipe system screening and pump duty',{exact:true}).click();
+  const nist=panel.getByRole('link',{name:'NIST Guide to the SI, Appendix B',exact:true});
+  assert.equal(await nist.getAttribute('href'),'https://www.nist.gov/pml/special-publication-811/nist-guide-si-appendix-b-conversion-factors');
+  assert.equal(await nist.getAttribute('referrerpolicy'),'no-referrer');
   await page.setViewportSize({width:400,height:850});
   const sizes=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
   assert(sizes[0]<=sizes[1]+2);
