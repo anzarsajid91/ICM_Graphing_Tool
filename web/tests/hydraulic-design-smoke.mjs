@@ -69,6 +69,31 @@ try{
   await set(rows.nth(1),{id:'Combined-A'});
   await submit(design);await status(design,/Catchment IDs must be unique/);
   assert.equal(await design.getByRole('button',{name:'Download calculation CSV'}).isDisabled(),true);
+  await form.getByRole('button',{name:'Import catchment CSV'}).click();
+  const mapping=design.getByRole('dialog',{name:'Review catchment CSV'});
+  await mapping.getByLabel('Catchment CSV').setInputFiles({name:'synthetic-subcatchment.csv',mimeType:'text/csv',
+    buffer:Buffer.from('**** hw_subcatchment\nsubcatchment_id,population,Domestic,I,E\n'+
+      'UserUnits,,L/head/day,m3/day,L/day\n0012,100,150,3,2000\n0013,#D,120,1,500\n')});
+  await mapping.getByRole('status').filter({hasText:/2 catchment/}).waitFor();
+  await mapping.getByLabel('Reviewed domestic allowance (L/head/day)').selectOption('2');
+  await mapping.getByLabel('Reviewed infiltration (L/day)').selectOption('3');
+  await mapping.getByLabel('Reviewed trade (L/day)').selectOption('4');
+  await mapping.getByRole('button',{name:'Apply mapped rows'}).click();
+  assert.match(await mapping.getByRole('status').innerText(),/Confirm the units/);
+  await mapping.getByLabel('I checked mapped units and reviewed daily allowances').check();
+  await mapping.getByRole('button',{name:'Apply mapped rows'}).click();
+  await mapping.waitFor({state:'hidden'});
+  assert.equal(await rows.nth(0).locator('[name=id]').inputValue(),'0012');
+  assert.equal(await rows.nth(1).locator('[name=population]').inputValue(),'');
+  assert.equal(await rows.nth(1).locator('[name=classification]').inputValue(),'');
+  await rows.nth(0).locator('[name=classification]').selectOption('combined');
+  await rows.nth(1).locator('[name=classification]').selectOption('qualifying-separate');
+  await set(rows.nth(1),{population:50,evidence:'Inherited population reviewed from synthetic source'});
+  await rows.nth(1).locator('[name=eligibility_confirmed]').check();
+  await submit(design);await status(design,/Retained flow calculated/);
+  const importedSheet=await downloaded(design);
+  assert.match(importedSheet,/180500/);assert.match(importedSheet,/Source SHA-256/);
+  assert.match(importedSheet,/synthetic-subcatchment.csv/);assert.match(importedSheet,/#D/);
   await page.getByRole('tab',{name:'Pipe capacity',exact:true}).click();
   assert.equal(await page.locator('#pipeCapacityForm').isVisible(),true);
   assert.deepEqual(errors,[]);

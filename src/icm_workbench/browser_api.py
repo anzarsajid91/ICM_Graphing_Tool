@@ -1205,3 +1205,10 @@ def pump_system_duty(stages, static_head_m, points, arrangement, pump_count, den
 
     return json.dumps(pump_duty(stages, static_head_m, points, arrangement, pump_count, density_kg_m3, efficiency),
                       allow_nan=False)
+
+
+def preview_design_catchments(text):
+    """Validate a local catchment table for explicit Formula A mappings."""
+    from icm_workbench.analysis.design_flows import preview_catchment_csv
+
+    return json.dumps(preview_catchment_csv(text), allow_nan=False)

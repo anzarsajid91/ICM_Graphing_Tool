@@ -13,7 +13,7 @@ const pipeFields = [
 const catchmentFields = [
   {key:"id", label:"Catchment ID", type:"text", maxLength:128},
   {key:"classification", label:"Reviewed class", options:[
-    ["combined","Combined"], ["partially-separate","Partially separate"],
+    ["","Review classification"], ["combined","Combined"], ["partially-separate","Partially separate"],
     ["qualifying-separate","Qualifying separate foul"], ["surface-water","Surface water"], ["excluded","Excluded"]
   ]},
   number("population", "Population", 0, 1e9), number("domestic_l_head_day", "Domestic (L/head/day)", 0, 1e6),
@@ -132,7 +132,11 @@ function editableRows(title, specs, defaults, configure, minimum = 1) {
   });
   wrapper.append(grid,addButton);
   for (const row of defaults) add(row);
-  return {wrapper, values: () => [...records.values()].map(controls =>
+  return {wrapper,replace(rows){
+    body.replaceChildren();records.clear();removeButtons.clear();serial=0;
+    for(const row of rows)add(row);
+    wrapper.dispatchEvent(new Event("input",{bubbles:true}));
+  }, values: () => [...records.values()].map(controls =>
     Object.fromEntries(Object.entries(controls).map(([key,control]) => [key,read(control)])))};
 }
 function panel(id,title,description) {
@@ -239,6 +243,121 @@ function configureCatchment(controls) {
   controls.classification.addEventListener("change",update);
   update();
 }
+function mountCatchmentImport(article,form,catchments,worker) {
+  const definitions=[["id","Catchment ID","subcatchment_id"],["population","Reviewed population","population"],
+    ["domestic_l_head_day","Reviewed domestic allowance (L/head/day)",null],
+    ["infiltration_l_day","Reviewed infiltration (L/day)",null],["trade_l_day","Reviewed trade (L/day)",null]];
+  const actionbar=element("div");actionbar.className="actions";
+  const notice=element("p");
+  const dialog=element("dialog"),heading=element("h3","Review catchment CSV");
+  heading.id="hbCatchmentImportTitle";dialog.setAttribute("aria-labelledby",heading.id);
+  const upload=element("input");upload.type="file";upload.accept=".csv,text/csv";
+  const label=element("label","Catchment CSV");label.append(upload);
+  const description=element("p","Choose a native ICM subcatchment table or a reviewed catchment CSV. Imported rows replace the draft only when applied.");
+  const message=element("p");message.setAttribute("role","status");
+  const content=element("div"),controls=element("div");controls.className="actions";
+  const apply=action("Apply mapped rows",()=>applyRows());
+  const cancel=action("Cancel",()=>dialog.close());
+  controls.append(cancel,apply);dialog.append(heading,description,label,message,content,controls);
+  article.append(dialog);
+  let source=null,staged=null,revision=0,mappings={},confirmed=null;
+  const open=action("Import catchment CSV",()=>dialog.showModal());
+  actionbar.append(open);form.append(actionbar,notice);
+  apply.disabled=true;
+  function reset(){
+    staged=null;content.replaceChildren();mappings={};confirmed=null;apply.disabled=true;
+  }
+  dialog.addEventListener("close",()=>{
+    revision++;reset();upload.value="";message.textContent="";
+  });
+  upload.addEventListener("change",async()=>{
+    const generation=++revision,file=upload.files[0];
+    reset();if(!file)return;
+    message.textContent="Validating imported rows…";
+    try{
+      if(file.size>1024*1024)throw new Error("Choose a catchment CSV up to 1 MiB.");
+      const bytes=await file.arrayBuffer();
+      let text;
+      try{text=new TextDecoder("utf-8",{fatal:true}).decode(bytes);}
+      catch{text=new TextDecoder("windows-1252").decode(bytes);}
+      const [data,digest]=await Promise.all([worker("preview_design_catchments",{text}),
+        globalThis.crypto.subtle.digest("SHA-256",bytes)]);
+      if(generation!==revision)return;
+      const fingerprint=[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,"0")).join("");
+      staged={data,filename:file.name,fingerprint};
+      const options=[["","Enter manually"],...data.header.map((field,i)=>
+        [String(i),(field||"Column "+(i+1))+(data.units?.[i]?" ("+data.units[i]+")":"")])];
+      const fields=element("div");fields.className="mapping-grid";
+      for(const [key,title,suggestion] of definitions){
+        const start=suggestion?data.header.findIndex(field=>field.toLowerCase()===suggestion):-1;
+        const entry=labelledControl({key,label:title,options,required:key==="id"},start<0?"":start);
+        mappings[key]=entry.control;fields.append(entry.label);
+      }
+      const check=labelledControl({key:"reviewBasis",label:"I checked mapped units and reviewed daily allowances",type:"checkbox"});
+      confirmed=check.control;
+      content.append(fields,element("p","Blank and inherited values require explicit input. Model base flow and nominal trade flow need a separate review before they can be used as daily allowances."),
+        check.label);
+      message.textContent=data.rows.length+" catchment row(s) available.";
+      apply.disabled=false;
+    }catch(error){if(generation===revision)message.textContent=error.message;}
+  });
+  function unitFactor(key,unit){
+    const token=String(unit||"").toLowerCase().replace(/\s+/g,"").replaceAll("³","3")
+      .replaceAll("litres","l").replaceAll("liters","l").replaceAll("day","d");
+    if(!token||key==="id")return 1;
+    if(key==="population")return ["number","person","persons","people","no.","-"].includes(token)?1:null;
+    if(key==="domestic_l_head_day")return ["l/head/d","l/person/d","l/capita/d","l/(head*d)"].includes(token)?1:null;
+    return new Map([["l/d",1],["l/s",86400],["m3/d",1000],["m3/s",86400000]]).get(token)??null;
+  }
+  function applyRows(){
+    if(!staged)return;
+    if(mappings.id.value===""){message.textContent="Select the catchment ID column.";mappings.id.focus();return;}
+    if(!confirmed.checked){message.textContent="Confirm the units and allowance basis before applying.";confirmed.focus();return;}
+    const choices=Object.fromEntries(definitions.map(([key])=>[key,mappings[key].value===""?null:Number(mappings[key].value)]));
+    const chosen=Object.values(choices).filter(i=>i!==null);
+    if(new Set(chosen).size!==chosen.length){message.textContent="Select a distinct source column for each mapped field.";return;}
+    const {data,filename,fingerprint}=staged;
+    const scales=Object.fromEntries(definitions.map(([key])=>[key,unitFactor(key,data.units?.[choices[key]])]));
+    const unsupported=definitions.find(([key])=>scales[key]===null);
+    if(unsupported){message.textContent="The declared source unit is unsupported for "+unsupported[1]+". Enter that allowance manually after review.";return;}
+    let missing=0;
+    const rows=data.rows.map(({cells})=>{
+      const result={classification:""};
+      for(const [key,i] of Object.entries(choices)){
+        const raw=String(i===null?"":cells[i]).trim();
+        if(key==="id"){
+          result.id=raw;
+          continue;
+        }
+        if(i!==null&&/^[+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(raw)&&Number.isFinite(Number(raw)*scales[key]))result[key]=Number(raw)*scales[key];
+        else missing++;
+      }
+      return result;
+    });
+    if(rows.some(row=>!row.id||row.id.length>128)){
+      message.textContent="Each imported row needs a catchment ID within 128 characters.";
+      return;
+    }
+    if(new Set(rows.map(row=>row.id.toLowerCase())).size!==rows.length){
+      message.textContent="The mapped catchment IDs contain duplicates. Review the source rows.";
+      return;
+    }
+    source={filename,fingerprint,choices,scales,data};
+    catchments.replace(rows);
+    notice.textContent=rows.length+" rows loaded from "+filename+". Review every classification and resolve "+missing+" missing or unmapped allowance fields.";
+    dialog.close();open.focus();
+  }
+  return ()=>{
+    if(!source)return [];
+    const {filename,fingerprint,choices,scales,data}=source;
+    const mapped=definitions.filter(([key])=>choices[key]!==null);
+    return [["Imported file",filename],["Source SHA-256",fingerprint],["Source schema",data.schema],
+      ...mapped.map(([key,title])=>[title,data.header[choices[key]],data.units?.[choices[key]]??"Reviewed units","Conversion factor",scales[key]]),
+      ["Original source line",...mapped.map(([key])=>data.header[choices[key]])],
+      ...data.rows.map(row=>[row.line,...mapped.map(([key])=>row.cells[choices[key]])])];
+  };
+}
+
 function mount(navigate) {
   const system=panel("tab-pipe-system","Pipe head loss and system curves",
     "Use full circular pipes and a justified fixed Darcy friction factor. Each stage is in series and branches within a stage are in parallel. Static head includes elevation and pressure head differences.");
@@ -299,9 +418,10 @@ function mount(navigate) {
   const formula=panel("tab-formula-a","Formula A and wastewater design flows",
     "Environment Agency screening for England. Enter reviewed daily allowances. Formula A is the retained continuation flow throughout spilling.");
   const form=element("form");form.id="designFlowForm";
-  const catchments=editableRows("Catchment",catchmentFields,[{}],configureCatchment);
+  const catchments=editableRows("Catchment",catchmentFields,[{classification:"combined"}],configureCatchment);
   form.append(element("p","A qualifying separate foul area requires evidence of minimal storm response at or below 3DWF. Record the evidence and confirm eligibility for each qualifying row."),
     catchments.wrapper);
+  const catchmentSource=mountCatchmentImport(formula,form,catchments,worker);
   results(formula,form,async()=>{
     const r=await worker("england_continuation_flow",{catchments:catchments.values()});
     const metrics=[["Population",r.totals.population],["Combined / partially separate population",r.totals.combined_population],
@@ -320,7 +440,7 @@ function mount(navigate) {
       summary:"Retained flow calculated from reviewed catchments.",filename:"hydra-england-continuation-flow.csv",
       rows:[["Method",r.method],["Reference",r.reference],["Regime",r.regime],
         ["Equation","DWF = sum(PᵢGᵢ) + I + E. Retained flow = DWF + 1360Pc + 2 × separate domestic flow + 2E."],
-        ...metrics,heading,...details]};
+        ...metrics,heading,...details,...catchmentSource()]};
   });
 }
 window.HydraDesignCalculations={mount};

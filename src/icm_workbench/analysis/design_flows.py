@@ -72,3 +72,57 @@ def england_continuation_flow(catchments):
                 retained_l_day=retained, retained_l_s=retained / 86400, retained_m3_s=retained / 86400000,
                 regime="qualifying separate PFF" if len(separate) == len(included) else
                 "mixed Formula A" if separate else "combined / partially separate Formula A")
+
+
+def preview_catchment_csv(text):
+    """Read one local catchment table and retain blank cells and original units."""
+    import csv
+    from io import StringIO
+
+    if not isinstance(text, str) or not 1 <= len(text) <= 1_048_576 or "\x00" in text:
+        raise ValueError("Choose a catchment CSV up to 1 MiB of decoded text without NUL bytes.")
+    rows, header, units, descriptions = [], None, None, None
+    native, in_table = False, True
+    reader = csv.reader(StringIO(text.removeprefix("\ufeff"), newline=""), strict=True)
+    try:
+        for values in reader:
+            line = reader.line_num
+            if not values or all(not value.strip() for value in values):
+                continue
+            # Native table markers occupy the first column. Read one
+            # hw_subcatchment table out of a native multi-table export.
+            marker = values[0].strip().casefold()
+            if marker.startswith("****") and not any(value.strip() for value in values[1:]):
+                if header is not None:
+                    if native:
+                        break
+                    raise ValueError("Unexpected native table marker inside a plain catchment CSV.")
+                native = True
+                in_table = marker.removeprefix("****").strip() == "hw_subcatchment"
+                continue
+            if not in_table:
+                continue
+            if header is None:
+                header = [value.strip() for value in values]
+                names = [value.casefold() for value in header if value]
+                if not 2 <= len(header) <= 512 or len(names) != len(set(names)) or any(len(value)>256 for value in header):
+                    raise ValueError("Supply 2–512 columns with unique named headings.")
+                continue
+            if len(values) != len(header) or any(len(value) > 32768 for value in values):
+                raise ValueError(f"Malformed catchment CSV near line {line}. Check the column count and field lengths.")
+            if native and not rows and marker in {"fielddescription","userunits"}:
+                field = [value.strip() for value in values]
+                field[0] = ""
+                if marker == "fielddescription":
+                    descriptions = field
+                else:
+                    units = field
+                continue
+            if len(rows) >= 100:
+                raise ValueError("The reviewed catchment table supports up to 100 rows per calculation. Select the contributing catchments before export.")
+            rows.append({"line":line,"cells":values})
+    except csv.Error as error:
+        raise ValueError(f"Malformed catchment CSV near line {reader.line_num}. Check quoting and delimiters.") from error
+    if not header or not rows:
+        raise ValueError("The CSV contains no catchment data rows.")
+    return dict(schema="hydra-catchment-mapping-v1",native=native,header=header,units=units,descriptions=descriptions,rows=rows)

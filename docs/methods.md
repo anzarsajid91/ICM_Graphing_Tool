@@ -147,3 +147,16 @@ Water publishes its [Sewers for Scotland technical specification](https://www.sc
 identifies Formula A calculations as relevant when applicable. Those
 references support further jurisdiction-specific review and the current
 calculator applies the verified England method.
+
+The catchment CSV review accepts a single table or the native ICM
+`hw_subcatchment` table in a multi-table export. It suggests only documented
+`subcatchment_id` and `population` mappings. Select any regulatory-flow
+columns and their units explicitly. A blank or `#D` value stays blank until
+the reviewer resolves it. The source schema may inherit population from
+other settings. Model trade flow, base flow and other source fields require
+engineering review before they can represent regulatory allowances.
+The calculation CSV retains the source fingerprint, field mappings, original
+cell values and conversion factors beside the reviewed results. The current
+review accepts up to 100 rows per table and 1 MiB per input. Source-only
+classification and network contribution remain separate review decisions.
+See Autodesk's [ICM Subcatchment data fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1F3FA957-FE1B-4BD6-A73C-3DF2F6ACD839.htm).

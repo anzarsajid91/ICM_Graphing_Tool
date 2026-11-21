@@ -114,3 +114,27 @@ def test_pump_no_extrapolation_shared_vertex_and_identical_configurations():
     assert parallel["measured_range_m3_s"] == [0,3]
     with pytest.raises(ValueError, match="strictly"):
         pump_duty(stages, 0, [[1,4],[1,3]], "single", 1, 1000, None)
+
+
+def test_native_catchment_preview_retains_units_and_missing_population():
+    from icm_workbench.analysis.design_flows import preview_catchment_csv
+
+    raw = ('\ufeff**** hw_node\nnode_id,x,y\nA,0,1\n'
+           '**** hw_subcatchment\nsubcatchment_id,population,trade_flow\n'
+           'FieldDescription,Population,Trade flow\nUserUnits,,l/s\n'
+           '0012,,0\n0013,#D,"0.1"\n'
+           '**** hw_conduit\nfrom,to\nA,B\n')
+    result = preview_catchment_csv(raw)
+    assert result["native"] is True
+    assert result["header"] == ["subcatchment_id","population","trade_flow"]
+    assert result["units"] == ["","","l/s"]
+    assert result["rows"] == [{"line":8,"cells":["0012","","0"]},{"line":9,"cells":["0013","#D","0.1"]}]
+
+
+def test_catchment_preview_rejects_malformed_and_oversized_tables():
+    from icm_workbench.analysis.design_flows import preview_catchment_csv
+
+    for raw,message in [("ID,id\nA,B","unique"),('ID,Pop\nA,"untied',"quoting"),("ID,Pop\nA,2,3","column count"),
+                        ("ID,Pop\n"+"A,1\n"*101,"100 rows"),("**\0**", "NUL")]:
+        with pytest.raises(ValueError,match=message):
+            preview_catchment_csv(raw)

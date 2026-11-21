@@ -96,7 +96,7 @@ other state.
   rebuilt Pages artifact passed locally. CI wiring runs the new smoke test
   in both established browsers without changing required contexts.
 - Remaining hydraulic acceptance includes documented custom and non-England
-  methods, mapped ICM inputs and catchment trace, sensitivity and comparisons,
+  methods, catchment trace, sensitivity and comparisons,
   printable calculation reports, broader gravity methods, structures and
   independent ICM cross-checks where genuine references are available.
 
@@ -138,3 +138,17 @@ other state.
   75 ms latency, 200 KiB/s throughput and fourfold CPU throttling. Candidate
   medians were 5,847 ms cold startup versus 5,667 ms and 2,080 ms for first
   schematic navigation versus 1,943 ms. Treat both differences as interim.
+
+### Formula A catchment file review
+
+- Formula A accepts a bounded, local CSV with explicit mappings and engineering
+  confirmation. It records file fingerprints and source values in the audit
+  CSV. Unknown units, duplicate IDs and unresolved daily allowances block
+  calculation. Source system type remains distinct from reviewed classification.
+- The expanded synthetic browser check mapped a native multi-table CSV, kept a
+  leading-zero ID, converted m³/day to L/day, and left an inherited `#D` value
+  for review. It passed in Chromium and Firefox with 85 and 84 requests and zero
+  violations. The Python suite passed 368 tests and 111 subtests.
+- The current table caps input at 100 catchments and 1 MiB. Larger catchment
+  files, imported default inheritance and integrated reviewed upstream trace
+  remain open.
