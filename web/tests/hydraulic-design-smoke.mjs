@@ -94,6 +94,41 @@ try{
   const importedSheet=await downloaded(design);
   assert.match(importedSheet,/180500/);assert.match(importedSheet,/Source SHA-256/);
   assert.match(importedSheet,/synthetic-subcatchment.csv/);assert.match(importedSheet,/#D/);
+  const method=form.getByRole('combobox',{name:'Permitting framework',exact:true});
+  await method.selectOption('scotland');
+  assert(await design.getByRole('button',{name:'Download calculation CSV'}).isDisabled());
+  const basis=form.getByRole('group',{name:'SEPA applicability'});
+  await set(basis,{dilution:8,population_equivalent:250,evidence:'Synthetic reviewed inland overflow conditions'});
+  for(const name of ['inland','no_interaction','imax_confirmed'])await basis.locator('[name='+name+']').check();
+  await submit(design);await status(design,/dilution greater than 8:1/);
+  await set(basis,{dilution:9});
+  await submit(design);await status(design,/Retained flow calculated/);
+  const scotland=await downloaded(design);
+  assert.match(scotland,/sepa-scotland-wat-g-058/);assert.match(scotland,/180500/);
+  assert.match(scotland,/Maximum infiltration Imax/);
+  await basis.locator('[name=simpler_combined]').check();
+  await set(basis,{separate_fraction_percent:18,allocation_basis:'Synthetic reviewed drainage allocation'});
+  await submit(design);await status(design,/Retained flow calculated/);
+  const simplified=await downloaded(design);
+  assert.match(simplified,/236500/);assert.match(simplified,/simpler combined equation/);
+  if(process.env.ICM_EVIDENCE_DIR){
+    await fs.mkdir(process.env.ICM_EVIDENCE_DIR,{recursive:true});
+    await design.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-sepa-formula-a-'+engine+'.png'});
+  }
+  await method.selectOption('england');assert(await basis.isHidden());
+  await submit(design);await status(design,/Retained flow calculated/);
+  assert.match(await downloaded(design),/180500/);
+
+  await page.getByRole('tab',{name:'Treatment flows',exact:true}).click();
+  const treatment=page.locator('#tab-design-treatment'),treatmentForm=treatment.locator('form');
+  await set(treatmentForm,{population:100,domestic_l_head_day:150,infiltration_dwf_l_day:2000,infiltration_max_l_day:6000,
+    trade_l_day:4000,evidence:'Synthetic separately reviewed dry-weather and maximum infiltration'});
+  await submit(treatment);await status(treatment,/DWF and full treatment flows calculated/);
+  const treatmentSheet=await downloaded(treatment);
+  assert.match(treatmentSheet,/wat-g-065/);assert.match(treatmentSheet,/"21000"/);assert.match(treatmentSheet,/"63000"/);
+  if(process.env.ICM_EVIDENCE_DIR)await treatment.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-sepa-treatment-'+engine+'.png'});
+  await set(treatmentForm,{infiltration_max_l_day:1000});
+  await submit(treatment);await status(treatment,/Maximum infiltration must be at least/);
   await page.getByRole('tab',{name:'Pipe capacity',exact:true}).click();
   assert.equal(await page.locator('#pipeCapacityForm').isVisible(),true);
   assert.deepEqual(errors,[]);

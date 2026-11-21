@@ -16,6 +16,8 @@ METHODS = {
     "Circular-pipe capacity and design flow preview": ("Hydraulics", "General", "hydraulics", "capacity"),
     "Fixed-factor pipe system screening and pump duty": ("Hydraulics", "General", "hydraulics", "system-curve"),
     "England continuation-flow screening": ("Design flows", "England", "hydraulics", "formula-a"),
+    "Scotland continuation-flow screening": ("Design flows", "Scotland", "hydraulics", "formula-a"),
+    "Scotland municipal treatment design flows": ("Design flows", "Scotland", "hydraulics", "treatment-flow"),
     "Hydraulic structures and supplied ratings": ("Hydraulics", "General", "hydraulics", "structures"),
 }
 REFERENCES = {

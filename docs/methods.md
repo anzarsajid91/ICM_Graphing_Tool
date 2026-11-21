@@ -251,12 +251,7 @@ and eligibility language were checked on 2026-11-21 against the [Environment
 Agency storm overflow permitting guidance](https://www.gov.uk/government/publications/water-companies-environmental-permits-for-storm-overflows-and-emergency-overflows/water-companies-environmental-permits-for-storm-overflows-and-emergency-overflows#formula-a).
 
 Reference cases are 160,000 L/day for the combined test, 20,500 L/day for
-the separate test and 180,500 L/day for their mixed catchment. Scottish
-Water publishes its [Sewers for Scotland technical specification](https://www.scottishwater.co.uk/Business-and-Developers/NEW-Connecting-to-Our-Network/Developing-housing-and-commercial-properties/Applying/Waste-Water-Connection-Technical-Standards).
-[SEPA's treatment-works authorisation page](https://www.sepa.org.uk/regulation/authorisations/easr-authorisations/water-activities/discharges/discharge-of-sewage-effluent/discharge-from-a-sewage-treatment-works-with-overflows-from-more-than-10-properties-or-50-population-equivalent/)
-identifies Formula A calculations as relevant when applicable. Those
-references support further jurisdiction-specific review and the current
-calculator applies the verified England method.
+the separate test and 180,500 L/day for their mixed catchment.
 
 The catchment CSV review accepts a single table or the native ICM
 `hw_subcatchment` table in a multi-table export. It suggests only documented
@@ -270,6 +265,51 @@ cell values and conversion factors beside the reviewed results. The current
 review accepts up to 100 rows per table and 1 MiB per input. Source-only
 classification and network contribution remain separate review decisions.
 See Autodesk's [ICM Subcatchment data fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1F3FA957-FE1B-4BD6-A73C-3DF2F6ACD839.htm).
+
+## Scotland continuation-flow screening
+
+The Scottish overflow screen uses SEPA WAT-G-058 version 1.0, August 2025,
+section 4.1.1. Confirm the applicability of the low-significance inland
+discharge method, with dilution above 8:1 on the guidance basis, fewer than
+10,000 population equivalent and no interaction with other discharges.
+Record project and permit evidence. More consequential discharges require
+the appropriate modelling and regulatory assessment. [SEPA sewer overflows
+method](https://www.sepa.org.uk/media/rdphwj00/wat-g-058_permit-guide_sewer_overflows.docx)
+
+Compute in litres per day. For fully combined drainage, the base flow is
+the sum of domestic flow, maximum infiltration Imax and trade effluent. Add
+1,360 L/person/day and twice the trade allowance. Fully separate systems
+use three times domestic and trade allowances plus Imax. Mixed systems add
+the 1,360 L/person/day contribution for combined drainage and twice the
+domestic contribution for separate foul drainage to the base flow and twice
+trade. Each row keeps its reviewed domestic allowance and classification.
+Use the simpler combined equation for a mixed catchment only with a reviewed
+separately drained share below 20% and a recorded allocation basis.
+
+Independent checks give 169,000 L/day for the fully combined case and
+63,000 L/day for the fully separate case with P = 100, G = 150 L/head/day,
+Imax = 6,000 L/day and trade = 4,000 L/day. A mixed case with P = 80 and 20,
+G = 150 and 160, the same total Imax and trade gives 148,400 L/day. The
+reviewed simpler combined basis for that fixture yields 169,200 L/day.
+Confirm the permit and review comparative measured or simulated evidence.
+Scottish Water publishes its separate design and construction specification
+for new infrastructure. [Sewers for Scotland technical specification](https://www.scottishwater.co.uk/Business-and-Developers/NEW-Connecting-to-Our-Network/Developing-housing-and-commercial-properties/Applying/Waste-Water-Connection-Technical-Standards)
+
+## Scotland municipal treatment design flows
+
+SEPA WAT-G-065 version 1.0, August 2025, sections 3.2 and 3.3 use distinct
+infiltration terms. Design DWF is PG + Idwf + E, based on reviewed daily
+allowances at the design horizon. Design full-treatment flow is
+3PG + Imax + 3E. Use the reviewed maximum infiltration for that calculation.
+The current calculator accepts those allowances and their provenance. The
+guidance describes Q80/Q90 reporting, empirical Imax estimation and conditions
+for limited monitoring. [SEPA municipal sewage treatment works guide](https://www.sepa.org.uk/media/zz4ereqb/wat-g-065_permit_guide_municipal_sewage_treatment-_works.docx)
+
+For 100 people at 150 L/head/day, Idwf = 2,000 L/day, Imax = 6,000 L/day and
+trade effluent = 4,000 L/day, the reference values are 21,000 L/day for DWF
+and 63,000 L/day for design full treatment. Results show L/day, L/s and m³/s
+and include the input basis. Check the applicable permit when reviewing
+performance against a limit.
 
 ## Hydraulic structures and supplied ratings
 

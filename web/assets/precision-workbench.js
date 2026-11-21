@@ -118,7 +118,8 @@ const ROUTES={
       'system-curve':{label:'System curve',title:'Pipe head loss and system curves',description:'Review the components of head loss in steady full-pipe systems.',component:'calculations',root:()=>optionalPanel('tab-pipe-system')},
       'pump-duty':{label:'Pump duty',title:'Pump duty screening',description:'Compare measured pump curves against the pipe system.',component:'calculations',root:()=>optionalPanel('tab-pump-duty')},
       structures:{label:'Structures',title:'Hydraulic structure screening',description:'Screen weir, orifice, sluice and supplied rating-curve discharge.',component:'calculations',root:()=>optionalPanel('tab-hydraulic-structures')},
-      'formula-a':{label:'Formula A',title:'Formula A and wastewater design flows',description:'Review Environment Agency retained continuation-flow screening for England.',component:'calculations',root:()=>optionalPanel('tab-formula-a')}
+      'formula-a':{label:'Formula A',title:'Formula A and wastewater design flows',description:'Review continuation flow using the Environment Agency or applicable SEPA framework.',component:'calculations',root:()=>optionalPanel('tab-formula-a')},
+      'treatment-flow':{label:'Treatment flows',title:'Dry weather flow and full treatment',description:'Calculate the reviewed SEPA design flows with distinct infiltration allowances.',component:'calculations',root:()=>optionalPanel('tab-design-treatment')}
     }
   },
   detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},

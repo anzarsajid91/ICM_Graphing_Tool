@@ -1234,6 +1234,20 @@ def england_continuation_flow(catchments):
     return json.dumps(calculate(catchments), allow_nan=False)
 
 
+def scotland_continuation_flow(catchments, applicability):
+    """Apply the documented SEPA low-significance continuation-flow method."""
+    from icm_workbench.analysis.design_flows import scotland_continuation_flow as calculate
+
+    return json.dumps(calculate(catchments, applicability), allow_nan=False)
+
+
+def scotland_treatment_design_flows(inputs):
+    """Calculate DWF and FFT with the distinct SEPA infiltration allowances."""
+    from icm_workbench.analysis.design_flows import scotland_treatment_design_flows as calculate
+
+    return json.dumps(calculate(**inputs), allow_nan=False)
+
+
 def pipe_system_curve(stages, static_head_m, flow_m3_s, curve_max_m3_s):
     """Evaluate full-pipe resistance with explicitly specified Darcy factors."""
     from icm_workbench.analysis.pumping import system_curve

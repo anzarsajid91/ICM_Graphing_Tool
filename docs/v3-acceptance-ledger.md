@@ -43,7 +43,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.2 | SI circular pipe engine | Head-loss components, static/dynamic head, forward series/parallel, system curve and auditable sheets with independent cases | Partial |
 | 9.3 | Candidate system-curve model | Validated curves, intersections, limits, configurations and power; distinguish unsupported conditions | Partial |
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
-| 9.5 England and framework research | Official permitting guidance | Versioned, cited England combined, qualifying separate and mixed calculations. Review Scotland and other jurisdictions before any preset and provide documented custom methodology | Partial |
+| 9.5 England and framework research | Official permitting guidance | Versioned, cited England and Scotland retained-flow methods. Review remaining jurisdictions before any preset and provide documented custom methodology | Partial |
 | 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial |
 | 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Open |
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Open |
@@ -457,3 +457,31 @@ other state.
 - The Firefox shell caught a five-pixel monitor-control gap at `53c593c`.
   The layout now uses the existing four-pixel spacing rhythm. The full local
   Firefox shell and both deferred component suites passed with the fix.
+
+### SEPA overflow and treatment design flows
+
+- The Formula A workspace adds the current Scottish low-significance inland
+  method from SEPA WAT-G-058 v1.0, August 2025. It requires reviewed evidence,
+  dilution over 8:1, population equivalent below 10,000, absence of interacting
+  discharges, and confirmed maximum infiltration allowances. Mixed rows retain
+  actual separate contributions. The simpler combined basis requires an explicit
+  reviewed separate share below 20% and an allocation basis. See the
+  [official Scottish method and limitations](methods.md#scotland-continuation-flow-screening).
+- The new Treatment flows route applies WAT-G-065 v1.0, August 2025. Its DWF
+  and FFT calculations use independently reviewed dry-weather and maximum
+  infiltration values. The same local worker reports all three flow units and
+  an audit export with the source and design horizon.
+- Seven Scotland unit cases and fifteen existing hydraulic cases passed.
+  The fixtures independently recovered 169,000, 63,000, 148,400 and 169,200
+  L/day for the stated continuation-flow cases, plus DWF 21,000 L/day and
+  FFT 63,000 L/day. Boundary rejection covers dilution 8:1, PE 10,000,
+  interaction, inland applicability, classification and Imax confirmation.
+- Both browsers verified England/Scotland switching, imported catchments,
+  Scottish applicability failure, the simpler combined branch, build-stamped
+  local CSV, separate treatment allowances and exact reference links in the
+  method library. The hydraulic observers counted 92 and 91 requests. The
+  library observers counted 29 and 30. All found zero violations. Deferred
+  loading, the Firefox shell and source confidentiality checks passed locally.
+- The workspace accepts reviewed SEPA allowances. Empirical Imax and Q80/Q90
+  estimation, extra jurisdictions, custom methodology, upstream trace, and
+  the full permit and simulated-continuation comparison remain open.
