@@ -445,6 +445,7 @@ jobs:
           ICM_BROWSER=chromium node web/tests/monitor-comparison-smoke.mjs
           ICM_BROWSER=chromium node web/tests/spill-inquiry-smoke.mjs
           ICM_BROWSER=chromium node web/tests/spill-scenarios-smoke.mjs
+          ICM_BROWSER=chromium node web/tests/local-security-diagnostics-smoke.mjs
           ICM_BROWSER=chromium node web/tests/simulation-results-smoke.mjs
           ICM_BROWSER=chromium node web/tests/icm-toolkit-smoke.mjs
           ICM_BROWSER=chromium node web/tests/series-quality-smoke.mjs
@@ -463,6 +464,7 @@ jobs:
           ICM_BROWSER=firefox node web/tests/monitor-comparison-smoke.mjs
           ICM_BROWSER=firefox node web/tests/spill-inquiry-smoke.mjs
           ICM_BROWSER=firefox node web/tests/spill-scenarios-smoke.mjs
+          ICM_BROWSER=firefox node web/tests/local-security-diagnostics-smoke.mjs
           ICM_BROWSER=firefox node web/tests/simulation-results-smoke.mjs
           ICM_BROWSER=firefox node web/tests/icm-toolkit-smoke.mjs
           ICM_BROWSER=firefox node web/tests/series-quality-smoke.mjs

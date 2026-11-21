@@ -52,7 +52,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Open |
 | 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Open |
 | 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Open |
-| 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Open |
+| 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
 | 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Partial |
 | 12.3 | Build metadata, security claims and release evidence | Versioned assurance covering actual feature, numerical, confidentiality and compatibility outcomes | Open |
 | 13 | Shared registry, workspace serialization and storage | Shared typed results and route context; deterministic stale state, bounded imports and prior workspace compatibility | Open |
@@ -506,3 +506,22 @@ other state.
   register is preserved. Session review and CSV export retain source
   fingerprints, assignments, assumptions, periods and applied exclusions.
   The shared registry and saved project integration remain open under §13.
+
+### Local data inventory and browser diagnostics
+
+- IT Security shows ready source counts and selected file sizes, indexed
+  result counts and typed allocation, named workspace and recovery copies,
+  schematic autosave and current tab navigation state. Runtime capability
+  checks describe observed API availability. Storage estimates are explicitly
+  origin-wide, with a distinct unavailable or denied state. Source sizes,
+  encoded text sizes and typed allocations have separate labels.
+- Project routes expose their existing source and simulation removal controls.
+  The new confirmed action removes only the named workspace storage key and
+  its recovery copies. It preserves the active tab's data and schematic and
+  unrelated keys on the shared origin. Claim SC-03 records this exact scope.
+- Chromium and Firefox tested real synthetic uploads, simulation indexing,
+  schematic import, saved workspace, cancel and confirm removal, a retained
+  unrelated key, and a denied storage estimate. The request observers saw
+  101 and 98 requests with zero violations. Both existing deferred and IT
+  Security navigation checks also passed. The complete development Python
+  suite at this point passed 414 tests and 111 subtests.

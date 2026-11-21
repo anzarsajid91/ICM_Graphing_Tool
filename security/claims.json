@@ -34,13 +34,14 @@
     {
       "id": "SC-03",
       "title": "Data storage and retention",
-      "statement": "Selected files and calculations use browser memory and the worker virtual filesystem. Named workspaces and network layouts can persist in localStorage; interface preferences use sessionStorage. To remove retained site data, use your browser\u2019s site-data controls for this origin and reload. Manage exported files separately.",
+      "statement": "Selected files and calculations use browser memory and the worker virtual filesystem. Named workspaces and network layouts can persist in localStorage. Interface preferences use sessionStorage. Local data diagnostics can remove named workspace and recovery copies after confirmation. Use browser site-data controls to clear other retained origin data, and manage exported files separately.",
       "evidence": [
         "web/assets/runtime.release.js",
         "web/assets/network-schematic.js",
         "web/assets/precision-workbench.js",
         "web/assets/analysis-worker.js",
-        "web/assets/simulation-results-worker.js"
+        "web/assets/simulation-results-worker.js",
+        "web/assets/local-security-diagnostics.js"
       ],
       "scope": "Browser storage calls in the reviewed source.",
       "limitation": "Clearing site data can also clear other applications on the same origin. Closing a tab does not erase downloads, caches or saved layouts.",
@@ -124,7 +125,7 @@
     "web/vendor/manifest.json": "bb70a1f4497a0f6307f836828522015ebb60293e91df66ac3778f986f2d96b82",
     "web/assets/runtime.release.js": "1f5f5312a59678e937aa4acd43e8f04d91228b13eb7eb013e2408bdc556ff766",
     "web/assets/network-schematic.js": "14a58d83b4090b5e4c1fb340f60d7038d8f6133c44c3baac8c89097aba4bbac9",
-    "web/assets/precision-workbench.js": "d2302a866075bb7355ac38e44fcefdd445cc6626b573ef54183fe1e293f9d967",
+    "web/assets/precision-workbench.js": "fc6769856820b31a3b170e1cb39878d92033c3c87aa4c44968929c3ee1c54818",
     "web/assets/simulation-results-worker.js": "879d0c3ea81fc3528ee4ff0b95fa0bf0b9e66d15fc6fbd3d08297739a463daba",
     "scripts/verify_data_confidentiality.py": "6aac0bd0fbd78f84f49c39be4f2ecd08b6812dd0974579df9178fd61c27801cb",
     "scripts/verify_vendor.py": "26272a33a524532c21d591a917a45096f79eccd7761690dcf73499804f8824c2",
@@ -133,6 +134,7 @@
     "scripts/app_version.py": "79302aa05028ef3b2fab7b9d8909e0f0833af3e0c410347420e4fca7ce435fad",
     "docs/security-audit.md": "252e1499ae41235e4f0ad0059c3ffbc6b00d446b81986f34324e15c6cf4a99a3",
     "AGENTS.md": "4f54bc69115e55eacf5650a0375b5a175eb73d7e408a151af5fcff3086ab2e5c",
-    "docs/security-governance.md": "e6e73035833f2f63ec2ab891456e65cbb2da054570b1d888c45c633b946de27b"
+    "docs/security-governance.md": "e6e73035833f2f63ec2ab891456e65cbb2da054570b1d888c45c633b946de27b",
+    "web/assets/local-security-diagnostics.js": "caa3d49528be5aaee2dc72b7056092a0231baced75d33b6df6660f510d9f8b25"
   }
 }

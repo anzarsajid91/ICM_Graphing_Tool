@@ -9,7 +9,8 @@ const optionalComponents=Object.freeze({
   simulation:{asset:'simulation-results.js',mount:()=>window.HydraResultsWorkspace.mount()},
   diagnostics:{asset:'series-quality.js',mount:()=>{}},
   monitorCompare:{asset:'monitor-comparison.js',mount:()=>{}},
-  spillInquiry:{asset:'spill-inquiry.js',mount:()=>{}}
+  spillInquiry:{asset:'spill-inquiry.js',mount:()=>{}},
+  localSecurity:{asset:'local-security-diagnostics.js',mount:()=>{}}
 });
 const componentLoads=new Map(),readyComponents=new Set();
 function loadComponent(key){
@@ -890,6 +891,16 @@ function buildSecurityPage(){
     }
     article.appendChild(cards);
   }else{const message=document.createElement('p');message.textContent='Security information is unavailable for this build.';article.appendChild(message);}
+  const runtime=document.createElement('button'),runtimeStatus=document.createElement('p');
+  runtime.type='button';runtime.className='btn';runtime.textContent='Open local data diagnostics';runtime.setAttribute('aria-haspopup','dialog');
+  runtimeStatus.setAttribute('role','status');article.append(runtime,runtimeStatus);
+  runtime.onclick=async()=>{
+    if(runtime.getAttribute('aria-busy')==='true')return;
+    runtime.setAttribute('aria-busy','true');runtimeStatus.textContent='';
+    try{await loadComponent('localSecurity');if(current.page==='security')window.HydraLocalSecurity.open(navigate);}
+    catch(error){runtimeStatus.textContent=error.message+' Select Open local data diagnostics to retry.';}
+    finally{runtime.removeAttribute('aria-busy');}
+  };
   const links=document.createElement('p');links.innerHTML='<a href="security/dependencies.json">Dependency inventory</a> · <a href="security/security-audit.md">Assessment and limitations</a> · <a href="security/claims.json">Claim–evidence register</a> · <a href="security/SECURITY.md">Security disclosure guidance</a>';article.appendChild(links);
   panel.appendChild(article);qs('main.shell').appendChild(panel);
 }
