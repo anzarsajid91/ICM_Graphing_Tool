@@ -1183,3 +1183,25 @@ def verification_event_comparison(obs_path, obs_col, model_path, model_col, star
     result.pop("observed_integral", None)
     result.pop("modelled_integral", None)
     return json.dumps(_jsonable(result))
+
+
+def england_continuation_flow(catchments):
+    """Review explicit England catchment allowances in the local worker."""
+    from icm_workbench.analysis.design_flows import england_continuation_flow as calculate
+
+    return json.dumps(calculate(catchments), allow_nan=False)
+
+
+def pipe_system_curve(stages, static_head_m, flow_m3_s, curve_max_m3_s):
+    """Evaluate full-pipe resistance with explicitly specified Darcy factors."""
+    from icm_workbench.analysis.pumping import system_curve
+
+    return json.dumps(system_curve(stages, static_head_m, flow_m3_s, curve_max_m3_s), allow_nan=False)
+
+
+def pump_system_duty(stages, static_head_m, points, arrangement, pump_count, density_kg_m3, efficiency=None):
+    """Intersect the measured pump curve with the idealised pipe system."""
+    from icm_workbench.analysis.pumping import pump_duty
+
+    return json.dumps(pump_duty(stages, static_head_m, points, arrangement, pump_count, density_kg_m3, efficiency),
+                      allow_nan=False)

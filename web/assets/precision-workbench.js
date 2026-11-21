@@ -53,7 +53,12 @@ const ROUTES={
   },
   hydraulics:{
     label:'Hydraulic Calculations',icon:'hydraulics',
-    pages:{capacity:{label:'Pipe capacity',title:'Hydraulic calculations',description:'Estimate full-bore uniform-flow capacity using Darcy–Weisbach.',root:()=>$('tab-hydraulics')}}
+    pages:{
+      capacity:{label:'Pipe capacity',title:'Hydraulic calculations',description:'Estimate full-bore uniform-flow capacity using Darcy–Weisbach.',root:()=>$('tab-hydraulics')},
+      'system-curve':{label:'System curve',title:'Pipe head loss and system curves',description:'Review the components of head loss in steady full-pipe systems.',root:()=>$('tab-pipe-system')},
+      'pump-duty':{label:'Pump duty',title:'Pump duty screening',description:'Compare measured pump curves against the pipe system.',root:()=>$('tab-pump-duty')},
+      'formula-a':{label:'Formula A',title:'Formula A and wastewater design flows',description:'Review Environment Agency retained continuation-flow screening for England.',root:()=>$('tab-formula-a')}
+    }
   },
   detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},
   about:{
@@ -1226,6 +1231,7 @@ function openPipeTrial(inputs){
 }
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
+  window.HydraDesignCalculations.mount(navigate);
   buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wireVerificationEvents();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,openPipeTrial,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
