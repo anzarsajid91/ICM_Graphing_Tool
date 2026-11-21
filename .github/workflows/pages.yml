@@ -431,12 +431,14 @@ jobs:
           node web/tests/network-context-smoke.mjs
           node web/tests/hydraulics-smoke.mjs
           ICM_BROWSER=chromium node web/tests/hydraulic-design-smoke.mjs
+          ICM_BROWSER=chromium node web/tests/project-home-smoke.mjs
           node web/tests/verification-overview-smoke.mjs
           ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs
           ICM_BROWSER=firefox node web/tests/network-schematic-smoke.mjs
           ICM_BROWSER=firefox node web/tests/network-route-smoke.mjs
           ICM_BROWSER=firefox node web/tests/network-revision-smoke.mjs
           ICM_BROWSER=firefox node web/tests/hydraulic-design-smoke.mjs
+          ICM_BROWSER=firefox node web/tests/project-home-smoke.mjs
           for browser in chromium firefox; do
             for suite in link-controls-smoke import-controls-acceptance network-controls-acceptance plot-controls-acceptance survey-controls-acceptance queue-controls-acceptance shared-controls-acceptance source-controls-acceptance data-process-controls-acceptance survey-process-controls-acceptance shared-input-controls-acceptance hydraulic-input-controls-acceptance appearance-input-controls-acceptance verification-input-controls-acceptance network-input-controls-acceptance storage-input-controls-acceptance detriment-smoke uiux-review; do
               evidence="/tmp/icm-interaction-evidence/control-assurance/$browser/$suite"

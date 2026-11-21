@@ -18,9 +18,9 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | Requirement | Existing feature to build on | Acceptance and evidence | Status |
 |---|---|---|---|
 | 1–2 | Protected Pages, versioned artifacts and v2.2 release evidence | Live SHA, PR #117, baseline suite and matched benchmarks, architecture and security audit, one development PR | Partial |
-| 3.1 | Home shortcuts, source pool, registry and assessment freshness APIs | Dashboard status reconciles to authoritative data and opens each relevant workspace | Open |
-| 3.2 | Home default, route state, named workspaces | Restore user-selected assessment context safely while preserving the default landing route and legacy saves | Open |
-| 3.3 | Current help text and workspace routes | Six guided journeys with actual prerequisites, results and next actions | Open |
+| 3.1 | Home shortcuts, source pool, registry and assessment freshness APIs | Dashboard status reconciles to authoritative data and opens each relevant workspace | Verified locally |
+| 3.2 | Home default, route state, named workspaces | Restore user-selected assessment context safely while preserving the default landing route and legacy saves | Partial |
+| 3.3 | Current help text and workspace routes | Six guided journeys with actual prerequisites, results and next actions | Verified locally |
 | 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Open |
 | 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Open |
 | 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Open |
@@ -66,7 +66,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 
 ## Work in progress
 
-Build the first hydraulic calculation milestone on the existing worker API and design system. Establish the primary-source ledger for jurisdiction and ICM-dependent work. No version milestone is assigned until the single PR number is known, and release approval depends on completed acceptance.
+Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
 
 ### Hydraulic calculation milestone source review
 
@@ -120,3 +120,21 @@ other state.
   text, numeric SVG geometry, and the existing local application state.
   The current source approval records the revised hash and scope. A broader
   assessment-dependency graph across workspaces remains open.
+
+### Home dashboard and guided workflows
+
+- Home remains the default. Project readiness and review links derive from the
+  shared project data, the existing workspace outputs and available freshness checks.
+  Six guides use the existing workspace entry points.
+- Recent work records up to six validated route keys in session storage.
+  In-tab navigation retains live selections through existing workspace context.
+  Reload restores route history. Restoring engineering selections after reload
+  still requires a named workspace save and remains open in this ledger.
+- Chromium and Firefox project-home smoke checks exercised project readiness,
+  guided navigation, opening Home by default and session-route privacy. Runtime
+  observation saw 117 and 109 requests with zero violations. The static builder
+  stages a fixed same-origin script using the existing version mechanism.
+- A matched five-run synthetic Chromium comparison used the exact v2.2 artifact,
+  75 ms latency, 200 KiB/s throughput and fourfold CPU throttling. Candidate
+  medians were 5,847 ms cold startup versus 5,667 ms and 2,080 ms for first
+  schematic navigation versus 1,943 ms. Treat both differences as interim.

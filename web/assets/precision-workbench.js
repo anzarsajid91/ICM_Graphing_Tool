@@ -1232,6 +1232,7 @@ function openPipeTrial(inputs){
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
   window.HydraDesignCalculations.mount(navigate);
+  window.HydraProjectHome.mount(navigate,ROUTES);
   buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wireVerificationEvents();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,openPipeTrial,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};

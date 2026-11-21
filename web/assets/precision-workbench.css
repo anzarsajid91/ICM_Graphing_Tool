@@ -650,3 +650,16 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 .hb-import-guidance p{font-size:13px;color:var(--hb-muted);margin:8px 0}
 @media(max-width:1180px){.hb-import-grid{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:1040px){.hb-review-grid{grid-template-columns:minmax(0,1fr)}}
+
+.hb-project-home{display:grid;gap:16px;margin-top:16px}
+.hb-project-home .panel>h2{margin-top:0}
+.hb-project-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:12px}
+.hb-project-status article{padding:12px;border:1px solid var(--hb-border);border-radius:var(--hb-radius-card);min-width:0}
+.hb-project-status p{margin:8px 0 0;color:var(--hb-muted)}
+.hb-project-actions{line-height:1.5}
+#hbRecentWork ul{margin:0 0 12px;padding:0;list-style:none;display:flex;gap:8px;flex-wrap:wrap}
+#hbGuidedWorkflows details{border-top:1px solid var(--hb-border);padding:12px 0}
+#hbGuidedWorkflows summary{font-weight:650;cursor:pointer}
+#hbGuidedWorkflows dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 16px}
+#hbGuidedWorkflows dt{font-weight:650}
+#hbGuidedWorkflows dd{margin:0}
