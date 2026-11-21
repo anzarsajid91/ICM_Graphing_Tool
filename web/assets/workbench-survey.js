@@ -478,6 +478,7 @@
     }
     return specs;
   }
+  window.__ICM_WORKBENCH__.surveyRainSources = rainSourceSpecs;
 
   function associationConflictText(record) {
     const conflicts = (survey.association && survey.association.conflicts || []).filter(x => token(x.monitor) === token(record.monitor));

@@ -11,7 +11,8 @@ const optionalComponents=Object.freeze({
   monitorCompare:{asset:'monitor-comparison.js',mount:()=>{}},
   spillInquiry:{asset:'spill-inquiry.js',mount:()=>{}},
   localSecurity:{asset:'local-security-diagnostics.js',mount:()=>{}},
-  monitorDiagnostics:{asset:'survey-monitor-diagnostics.js',mount:()=>{}}
+  monitorDiagnostics:{asset:'survey-monitor-diagnostics.js',mount:()=>{}},
+  rainfallSpatial:{asset:'rainfall-spatial.js',mount:()=>{}}
 });
 const componentLoads=new Map(),readyComponents=new Set();
 function loadComponent(key){
@@ -436,8 +437,23 @@ function installSectionHierarchy(){
   }
 }
 window.__ICM_WORKBENCH__.installSectionHierarchy=installSectionHierarchy;
+function installRainfallSpatialLauncher(){
+  const section=$('surveyRainfallReview');
+  if(!section||$('hbRainSpatialLauncher'))return;
+  const launcher=document.createElement('button'),status=document.createElement('p');
+  launcher.type='button';launcher.id='hbRainSpatialLauncher';launcher.className='btn';
+  launcher.textContent='Compare rain gauges';launcher.setAttribute('aria-haspopup','dialog');status.setAttribute('role','status');
+  qs(':scope > .subhead',section).append(launcher);$('surveyRainfallSummary').before(status);
+  launcher.onclick=async()=>{
+    if(launcher.getAttribute('aria-busy')==='true')return;
+    launcher.setAttribute('aria-busy','true');status.textContent='';
+    try{await loadComponent('rainfallSpatial');if(current.workspace==='survey'&&current.page==='rainfall-check')window.HydraRainfallSpatial.open();}
+    catch(error){status.textContent=error.message+' Select Compare rain gauges to retry.';}
+    finally{launcher.removeAttribute('aria-busy');}
+  };
+}
 function preparePageComposition(){
-  ensureDataTimeSeriesSurface();ensureDataHealthSurface();ensureSpillSurfaces();ensureReportSurfaces();
+  ensureDataTimeSeriesSurface();ensureDataHealthSurface();ensureSpillSurfaces();ensureReportSurfaces();installRainfallSpatialLauncher();
   const professional=qs('.survey-professional');
   const completeSurvey=$('completeSurveyPanel');
   own($('pwDataSetupSurface'),['data/time-series']);

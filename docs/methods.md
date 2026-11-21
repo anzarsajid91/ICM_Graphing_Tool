@@ -82,6 +82,42 @@ The tool reviews up to 250,000 rows, counts all candidates and shows the first
 2,000 retained candidate records. Decisions and notes can be exported with
 the source fingerprint and settings as an explicit local audit.
 
+## Spatial rainfall comparison
+
+**Flow Survey → Rainfall check → Compare rain gauges** compares 2–8 observed
+channels, either over a selected current WAPUG candidate or an explicit
+project-clock period. It carries the selected candidate and existing network
+qualification into the audit. The comparison leaves the WAPUG and survey
+qualification methods, gauge assessment and event decisions intact.
+
+The comparison integrates resolved mm/h or interval mm records on a shared
+left-labelled grid. It retains exact valid depth and support, and withholds a
+full-window total at a gauge with any incomplete bin. Missing, negative,
+excluded and over-gap input contributes no valid time. Valid dry observations
+remain zero. The chart breaks at incomplete bins and labels its accumulation
+as supported depth. The optional high-rate threshold flags complete bins for
+review. It neither removes an observation nor classifies the instrument.
+
+Pearson r compares rates from at least three simultaneously complete,
+equal-length bins. Constant or insufficient support has no reported r.
+Peak offsets use the midpoints of unique wettest intervals and require both
+records to have full support over the selected window. Positive offset means
+the second peak was later at the selected bin resolution. It does not establish
+a logger correction. Spatial CV uses the population standard deviation divided
+by the mean of the complete event totals. It requires complete records at all
+selected gauges and a positive mean.
+
+The hand-checkable one-minute sequences `[0, 2, 4, 0]` and `[0, 4, 0, 8]` mm
+give totals of 6 and 12 mm, Pearson r of −5/11, a +60 second second-gauge peak
+offset and spatial CV of 100/3%. The worker reviews up to 500,000 samples per
+gauge and 10,000 bins. The explicit CSV includes source fingerprints, applied
+exclusions, per-bin coverage and candidate flags.
+
+WaPUG User Note 6 advises consideration of the spatial distribution of storm
+rainfall alongside storm response and local catchment characteristics. WMO
+explains that gauge exposure and siting also affect representativeness. These
+comparison measures are descriptive Hydra Bench diagnostics. [WaPUG User Note 6, version 2, sections 2 and 5](https://www.ciwem.org/assets/pdf/Special%20Interest%20Groups/Urban%20Drainage%20Group/WAPUG_User_Note_06.pdf) · [WMO Guide to Hydrological Practices, volume I, chapter 3](https://unstats.un.org/unsd/envaccounting/waterGuidelines/Material/WMO_Guide_168_Vol_I_en_hydrological_practices.pdf) · [NIST Pearson correlation definition](https://www.itl.nist.gov/div898/software/dataplot/refman2/auxillar/correlat.htm)
+
 ## Spill intervals and 12/24 counting
 Physical spill intervals are threshold exceedances under linear interpolation between consecutive valid samples. Missing/long-gap intervals are unknown and break physical events. User exclusions remove time and break events. The 12/24 counting-window convention is applied to retained physical events without restarting at calendar month or year boundaries. The initial occupied 12-hour block counts once; each subsequent occupied 24-hour block contributes one additional count. A complete dry 24-hour block resets the sequence. Physical intervals are half-open: an interval ending exactly at a block boundary does not occupy the next block.
 

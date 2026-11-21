@@ -34,7 +34,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
 | 6.5 | Local worker, series parser, source identity and registry | Native and optional portable result package, explicit schema and time support, bounded indexed worker and cancellation, selective retrieval, measured storage/capacity trade-offs | Partial |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
-| 7.2 | Gauge qualification, cumulative/event data | Compare timing, totals, correlation, spatial variability and suspect/missing support without inferring dry periods | Open |
+| 7.2 | Gauge qualification, cumulative/event data | Common-clock spatial comparison, event totals, correlation, peak offset, coverage, suspect bins and WAPUG linkage | Verified locally |
 | 7.3 | Weekly review, coverage and WAPUG/FSAT | Explain suitability of selected periods and clearly attribute published versus project screening criteria | Open |
 | 8.1 | DWF, comparison and event diagnostics | Explain evidence and alternate investigation paths for baseflow/infiltration, runoff, peaks/timing/recession and restrictions/backwater | Open |
 | 8.2 | Existing event comparison and alignment | Multiple monitors, events and scenarios with criterion states, support, decisions and plot navigation | Open |
@@ -544,3 +544,29 @@ other state.
   observers saw 97 and 95 requests with zero violations. The separate lazy
   loading regression also passed on both. The full Python suite passed 417
   tests and 111 subtests, and the repository privacy suites passed.
+
+### Spatial rainfall comparison
+
+- Flow Survey Rainfall check compares up to eight local rainfall channels on
+  one explicit period. The engineer can select a current network WAPUG
+  candidate or manual dates. The comparison reports independent support and
+  flags without changing the WAPUG result. Exact global rainfall, mapped
+  gauge and reviewed source exclusions are retained in the local audit.
+- Complete hand-checkable gauges gave 6 and 12 mm, Pearson r of −5/11,
+  +60 seconds second-gauge peak offset and spatial CV of 100/3%. Invalid
+  and missing rainfall withheld event totals, produced chart gaps and left
+  genuine recorded dry periods at zero. Mixed rate and interval depth,
+  constant records, long gaps, an incomplete trailing bin and resource limits
+  have numerical regression coverage. See [Engineering methods](methods.md#spatial-rainfall-comparison).
+- Chromium and Firefox exercised ordinary Data import, optional gauge add and
+  remove, disabled duplicates, native R/FDV plus association spreadsheet,
+  calculation and selection of a fresh WAPUG event, invalidation after a
+  gauge-specific exclusion, independent totals at the unaffected gauge, a
+  formula-safe CSV and successful recovery from a resource limit. Request
+  monitors saw 98 and 96 requests with zero violations. The deferred module
+  and time-series transformation regressions also passed in both browsers.
+  The full Python suite reached 421 tests and 111 subtests.
+- A separate synthetic CPython check used 8 × 105,120 five-minute samples and
+  8,760 hourly bins. It returned exactly 636 mm at the reference gauge with
+  a measured 5.60 s and 19.85 MiB of traced new Python allocation. This run
+  excluded source parsing, browser costs and production comparison.

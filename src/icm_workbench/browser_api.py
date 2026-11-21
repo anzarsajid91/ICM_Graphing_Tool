@@ -1482,6 +1482,61 @@ def review_monitor_channels(path, depth_column, velocity_column, settings, flow_
     return json.dumps(result, allow_nan=False)
 
 
+def _relative_clock_seconds(origin, nanoseconds):
+    origin_s, origin_ns = divmod(origin.value, 10**9)
+    divide = np.divmod if isinstance(nanoseconds, np.ndarray) else divmod
+    seconds, fraction = divide(nanoseconds, 10**9)
+    return seconds - origin_s + (fraction - origin_ns) / 1e9
+
+
+def compare_local_rain_gauges(sources, start, end, interval_s, max_gap_s, suspect_rate_mm_h=None):
+    """Compare resolved rainfall sources independently of qualification criteria."""
+    from icm_workbench.analysis.rainfall_spatial import compare_rainfall
+    from icm_workbench.analysis.series_transform import MAX_SOURCE_SAMPLES
+
+    first, last = _model_clock_timestamp(start), _model_clock_timestamp(end)
+    if first is None or last is None or pd.isna(first) or pd.isna(last) or first >= last:
+        raise ValueError("Choose an increasing review period on the shared project clock.")
+    seen, gauges = set(), []
+    if not 2 <= len(sources) <= 8:
+        raise ValueError("Select two to eight distinct rainfall channels.")
+    for source in sources:
+        path, column = source["path"], source["column"]
+        if (path, column) in seen:
+            raise ValueError("Choose distinct rainfall channels.")
+        seen.add((path, column))
+        parsed = _require_model_clock(_load(path), "Rainfall source")
+        if any(parsed.audit.get(key, 0) for key in ("invalid_timestamps", "malformed_rows", "duplicate_timestamps")):
+            raise ValueError("Resolve invalid or repeated rainfall source timestamps before comparing.")
+        contract = _series_contract(path, column)
+        semantics = source.get("rainfall_semantics") or parsed.metadata.get("rainfall_semantics")
+        convention = {("intensity", "mm/h"): "interval_average", ("incremental_depth", "mm"): "interval_depth"}.get(
+            (semantics, contract["canonical_unit"]))
+        if contract["quantity"] != "rainfall" or column not in parsed.frame or convention is None:
+            raise ValueError("Resolve rainfall quantities, units and interval semantics in Data / time series.")
+        times = pd.DatetimeIndex(parsed.frame["timestamp"]).as_unit("ns")
+        if not len(times) or times.hasnans or not times.is_monotonic_increasing or times.has_duplicates:
+            raise ValueError("Choose rainfall sources with valid, unique timestamps in order.")
+        left = max(0, int(times.searchsorted(first, side="right")) - 1)
+        right = min(len(times), int(times.searchsorted(last, side="left")) + 1)
+        if right - left > MAX_SOURCE_SAMPLES:
+            raise ValueError("Use a shorter window. This review supports up to 500,000 samples per gauge.")
+        # Give trailing declared support only to an actual final source sample.
+        interval = parsed.metadata.get("interval_min")
+        trailing = float(interval) * 60 if interval is not None and right == len(times) else None
+        values = pd.to_numeric(parsed.frame[column].iloc[left:right], errors="coerce").to_numpy(dtype=float)
+        blocked = tuple((_relative_clock_seconds(first, pd.Timestamp(item.start).value),
+                         _relative_clock_seconds(first, pd.Timestamp(item.end).value))
+                        for item in _exclusions(source.get("exclusions")))
+        gauges.append({"times": _relative_clock_seconds(first, times[left:right].asi8),
+                       "samples": values / 3600 if convention == "interval_average" else values,
+                       "trailing": trailing, "convention": convention, "exclusions": blocked})
+    result = compare_rainfall(gauges, duration=(last - first).value / 1e9, interval=float(interval_s),
+                              maximum_gap=float(max_gap_s), suspect_rate=suspect_rate_mm_h)
+    result["timestamps"] = [stamp.isoformat() for stamp in first + pd.to_timedelta(result.pop("endpoints_seconds"), unit="s")]
+    return json.dumps(result, allow_nan=False)
+
+
 def transform_local_series(source, interval_s, max_gap_s, operation="single", reference=None,
                            output="mean", unit=None, start=None, end=None, datum=None):
     """Derive supported interval statistics from resolved, untouched source rows."""
@@ -1561,19 +1616,12 @@ def transform_local_series(source, interval_s, max_gap_s, operation="single", re
     if pd.isna(origin) or pd.isna(last):
         raise ValueError("Choose valid transformation limits on the project clock.")
     edges = period_boundaries((last - origin).value / 1e9, float(interval_s))
-    origin_s, origin_ns = divmod(origin.value, 10**9)
-
-    def relative(nanoseconds):
-        divide = np.divmod if isinstance(nanoseconds, np.ndarray) else divmod
-        seconds, fraction = divide(nanoseconds, 10**9)
-        return seconds - origin_s + (fraction - origin_ns) / 1e9
-
     totals, coverage = [], []
     metadata = []
     for times, samples, _, trailing, convention, contract, exclusions, offset in inputs:
-        blocked = tuple((relative((pd.Timestamp(item.start) + offset).value),
-                         relative((pd.Timestamp(item.end) + offset).value)) for item in exclusions)
-        total, covered = integrate_periods(relative(times.asi8), samples, edges, convention=convention,
+        blocked = tuple((_relative_clock_seconds(origin, (pd.Timestamp(item.start) + offset).value),
+                         _relative_clock_seconds(origin, (pd.Timestamp(item.end) + offset).value)) for item in exclusions)
+        total, covered = integrate_periods(_relative_clock_seconds(origin, times.asi8), samples, edges, convention=convention,
                                            maximum_gap=float(max_gap_s), trailing_support=trailing, exclusions=blocked)
         totals.append(total)
         coverage.append(covered)

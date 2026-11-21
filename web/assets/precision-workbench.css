@@ -670,9 +670,9 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #hbMethodResults>details{padding:12px 0;border-top:1px solid var(--hb-border)}
 #hbMethodResults summary{cursor:pointer;font-weight:650}
 #hbMethodResults details p{max-width:88ch}
-:is(#tab-series-quality,#tab-method-library,#hbTransformDialog,#hbMonitorCompare,#hbSpillInquiry,#hbSpillScenarios,#hbLocalSecurity,#hbMonitorDiagnostics){padding:0;width:min(1080px,calc(100% - 32px));max-height:calc(100% - 32px);border:1px solid var(--hb-border);border-radius:var(--hb-radius-card)}
-:is(#tab-series-quality,#tab-method-library,#hbTransformDialog,#hbMonitorCompare,#hbSpillInquiry,#hbSpillScenarios,#hbLocalSecurity,#hbMonitorDiagnostics)::backdrop{background:rgb(18 35 45 / 60%)}
-:is(#tab-series-quality,#tab-method-library,#hbTransformDialog,#hbMonitorCompare,#hbSpillInquiry,#hbSpillScenarios,#hbLocalSecurity,#hbMonitorDiagnostics)>.panel{margin:0;border:0}
+:is(#tab-series-quality,#tab-method-library,#hbTransformDialog,#hbMonitorCompare,#hbSpillInquiry,#hbSpillScenarios,#hbLocalSecurity,#hbMonitorDiagnostics,#hbRainSpatial){padding:0;width:min(1080px,calc(100% - 32px));max-height:calc(100% - 32px);border:1px solid var(--hb-border);border-radius:var(--hb-radius-card)}
+:is(#tab-series-quality,#tab-method-library,#hbTransformDialog,#hbMonitorCompare,#hbSpillInquiry,#hbSpillScenarios,#hbLocalSecurity,#hbMonitorDiagnostics,#hbRainSpatial)::backdrop{background:rgb(18 35 45 / 60%)}
+:is(#tab-series-quality,#tab-method-library,#hbTransformDialog,#hbMonitorCompare,#hbSpillInquiry,#hbSpillScenarios,#hbLocalSecurity,#hbMonitorDiagnostics,#hbRainSpatial)>.panel{margin:0;border:0}
 #tab-series-quality form>details{padding:8px 0}
 .precision-workbench .hb-transform-confirm{display:flex;align-items:flex-start;gap:8px}
 #hbTransformDialog caption{padding:8px 12px;text-align:left;color:var(--hb-muted)}
@@ -688,4 +688,8 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #hbSpillScenarios caption{padding:8px 12px;text-align:left;color:var(--hb-muted)}
 #hbMonitorDiagnostics form>details{padding:8px 0}
 #hbMonitorDiagnostics .mapping-grid{margin-top:8px}
-#hbMonitorDiagnostics caption{padding:8px 12px;text-align:left;color:var(--hb-muted)}
+:is(#hbMonitorDiagnostics,#hbRainSpatial) caption{padding:8px 12px;text-align:left;color:var(--hb-muted)}
+#hbRainSpatial fieldset{border:1px solid var(--hb-border);border-radius:var(--hb-radius-control);padding:8px 12px;margin:12px 0}
+#hbRainSpatialChoices>div{display:flex;align-items:end;gap:8px;min-width:0}
+#hbRainSpatialChoices label{flex:1;min-width:0}
+#hbRainSpatial :is(td,p){overflow-wrap:anywhere}
