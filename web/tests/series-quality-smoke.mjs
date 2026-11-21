@@ -9,7 +9,7 @@ const browser=await (engine==='firefox'?firefox:chromium).launch(browserLaunchOp
 const context=await browser.newContext({...browserContextOptions(),acceptDownloads:true,viewport:{width:1440,height:1000}});
 const guard=installPrivacyGuard(context,base,{canaries:['SYNTHETIC-REVIEW-LOCAL']});
 const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
-const panel=page.locator('#tab-series-quality'),quality=page.getByRole('tab',{name:'Source diagnostics'});
+const panel=page.locator('#tab-series-quality'),quality=page.getByRole('button',{name:'Source diagnostics',exact:true});
 const status=panel.locator('#hbQualityStatus');
 
 try {
@@ -17,7 +17,7 @@ try {
   await page.locator('button[data-workspace="data"]').click();
   await quality.click();
   assert.match(await panel.innerText(),/Import an instantaneous series/);
-  await panel.getByRole('button',{name:'Open Time series'}).click();
+  await panel.getByRole('button',{name:'Close diagnostics'}).click();
   const time=[0,60,120,180,240,300,360,360,480,510,570,630];
   const value=[10,10,10,10,50,10,'',20,20,-10,-10,-10];
   const fmt=(seconds)=>new Date(Date.UTC(2025,0,1,0,0,seconds)).toISOString().slice(0,-1);
@@ -76,6 +76,9 @@ try {
   assert.match(clock,/candidate reference shift -120 s/);
   assert.match(clock,/candidate reference shift -180 s/);
   assert.match(clock,/Change in candidate shift -60 s/);
+  await page.keyboard.press('Escape');
+  assert(await panel.isHidden());
+  assert(await quality.evaluate(button=>document.activeElement===button));
   assert.deepEqual(errors,[]);
   guard.assertClean();
   console.log('SERIES_QUALITY_PASS '+engine);

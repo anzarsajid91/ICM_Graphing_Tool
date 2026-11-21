@@ -42,7 +42,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.1 | Circular full/part-full Colebrook–White and comparisons | Preserve verified outputs; justify additional methods, geometries, target diameter/gradient and plots | Open |
 | 9.2 | SI circular pipe engine | Head-loss components, static/dynamic head, forward series/parallel, system curve and auditable sheets with independent cases | Partial |
 | 9.3 | Candidate system-curve model | Validated curves, intersections, limits, configurations and power; distinguish unsupported conditions | Partial |
-| 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Open |
+| 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
 | 9.5 England and framework research | Official permitting guidance | Versioned, cited England combined, qualifying separate and mixed calculations. Review Scotland and other jurisdictions before any preset and provide documented custom methodology | Partial |
 | 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial |
 | 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Open |
@@ -53,7 +53,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Open |
 | 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Open |
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Open |
-| 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Open |
+| 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Partial |
 | 12.3 | Build metadata, security claims and release evidence | Versioned assurance covering actual feature, numerical, confidentiality and compatibility outcomes | Open |
 | 13 | Shared registry, workspace serialization and storage | Shared typed results and route context; deterministic stale state, bounded imports and prior workspace compatibility | Open |
 | 14 | Precision Workbench / shared design tokens | Desktop usability, keyboard, responsive layout, contrast, reduced motion, progress and understandable empty/error states | Open |
@@ -249,6 +249,48 @@ other state.
   Python suite passed 386 tests and 111 subtests. Further unit/quantity
   conflict investigation and persistent decisions remain open.
 - CI recorded a PyPI TLS handshake timeout in the standalone dependency
-  audit at toolkit head `980eab2`. The release's separate security check
-  passed at that head. The standalone failed job was retried; all required
+  audit at toolkit head `980eab2`. That audit passed on retry. All required
   security checks still apply at the exact release candidate.
+
+### Hydraulic structures and engineering method search
+
+- The model screens thin-plate rectangular weirs, fully wetted circular or
+  rectangular orifices, vertical sluice gates in supported steady regimes,
+  and manually supplied passive ratings. It checks the common vertical
+  datum and applicability, requires justified coefficients, preserves sign
+  and withholds results in unsupported flow regimes. The entered evidence,
+  equations, units and numeric result appear in the calculation CSV.
+- Independent hand-calculated case values include 0.782889280 m³/s for a
+  free rectangular weir, 0.699733650 m³/s for its submerged case and
+  −0.220574800 m³/s for a reverse submerged rectangular orifice. The full
+  Python suite passed 394 tests and 111 subtests. Eight structure tests cover
+  basic cases, zero drive, unsafe regimes, unconfirmed reverse flow and
+  bounded rating interpolation. ICM parity requires suitable external cases.
+- Eleven explanatory sections are built directly from the repository's
+  methodology text with fourteen reviewed references. The About library
+  supports full-text search, category/jurisdiction filters, retry on load
+  failure and contextual navigation. It loads a fixed versioned resource
+  when opened. The wider WAPUG, FSAT, regulatory and assurance library
+  remains open. The new calculation panels initialise on their workspace
+  entry points to reduce initial Home work.
+- Chromium and Firefox verified the calculation and library workflows.
+  The structure request observers saw 91 and 90 requests and the method
+  library observers saw 31 and 32, all with zero violations.
+- The interim Chromium live-mode harness passed against the local candidate
+  with 542 requests and zero violations. Both mixed-file probes kept the
+  valid CSV usable after a malformed FDV failed, including the 1,200 ms
+  delayed worker case. The earlier production intermittency in issue #100
+  remains under monitoring. Exact final-head CI and live verification are
+  still required.
+- The previous Firefox shell job correctly rejected adding a second Data
+  tab at `72da977`. The source diagnostics now open from the existing
+  Source pool in an accessible dialog. The single Time series route and
+  the legacy shell acceptance assertion are retained. Both full local shell
+  suites passed after the correction. Chromium and Firefox rechecked the
+  diagnostic review and keyboard dismissal with 94 and 92 observed requests
+  and zero violations.
+- An interim five-pair cold Chromium test after the structure and library
+  changes found 6,512 ms versus 5,999 ms cold startup and 2,114 ms versus
+  2,020 ms for the first schematic visit. Under 75 ms network latency,
+  200 KB/s and fourfold CPU throttling, these changes are 8.6% and 4.7%.
+  Cold-start optimization and final matched performance remain open.

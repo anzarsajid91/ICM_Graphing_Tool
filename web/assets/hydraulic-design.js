@@ -41,7 +41,7 @@ function labelledControl(spec, value, rowTitle) {
   const label = element("label",spec.label);
   const control = element(spec.options ? "select" : "input");
   control.name = spec.key;
-  if (rowTitle) control.setAttribute("aria-label",rowTitle+" "+spec.label);
+  control.setAttribute("aria-label",rowTitle?rowTitle+" "+spec.label:spec.label);
   if (spec.options) {
     for (const [key,name] of spec.options) control.add(new Option(name,key));
   } else {
@@ -450,9 +450,74 @@ function mountStorageRouting(navigate,worker) {
   window.addEventListener("icm:source-pool-changed",refresh);
 }
 
+function mountStructures(worker) {
+  const article=panel("tab-hydraulic-structures","Hydraulic structure screening",
+    "Use steady water levels in one datum and a measured or justified discharge coefficient. Check approach effects, venting and gate geometry before relying on the screen.");
+  const form=element("form");form.id="structureScreenForm";
+  const inputs=fields([
+    {key:"kind",label:"Structure",options:[["sharp-crested-weir","Sharp-crested rectangular weir"],["orifice","Orifice"],["sluice","Sluice gate"]]},
+    number("level_up","Nominal upstream water level (m)",-1e5,1e5),number("level_down","Nominal downstream water level (m)",-1e5,1e5),
+    number("sill_m","Crest or opening invert level (m)",-1e5,1e5),{key:"datum",label:"Common vertical datum",type:"text",maxLength:128},
+    {key:"orifice_shape",label:"Orifice shape",options:[["rectangular","Rectangular"],["circular","Circular"]]},
+    number("width_m","Effective width (m)",1e-6,10000),number("opening_m","Opening height or diameter (m)",1e-6,10000),
+    {...number("coefficient","Free-flow discharge coefficient",1e-9,1),required:false},
+    {...number("submerged_coefficient","Submerged-opening discharge coefficient",1e-9,1),required:false},
+    {key:"coefficientEvidence",label:"Coefficient source and applicable range",type:"text",maxLength:2000},
+    {key:"allow_reverse",label:"Confirm symmetric, reversible flow",type:"checkbox",required:false},
+    {key:"applicability_confirmed",label:"I reviewed the setup, datum and applicability",type:"checkbox"}
+  ]);
+  form.append(inputs.group);
+  function showControl(key,shown,required=false) {
+    const control=inputs.controls[key];control.parentElement.hidden=!shown;control.disabled=!shown;control.required=shown&&required;
+  }
+  function configure() {
+    const kind=inputs.controls.kind.value,orifice=kind==="orifice",weir=kind==="sharp-crested-weir";
+    const circular=orifice&&inputs.controls.orifice_shape.value==="circular";
+    showControl("orifice_shape",orifice,true);showControl("width_m",!circular,true);
+    showControl("opening_m",!weir,true);showControl("submerged_coefficient",!weir);
+  }
+  inputs.controls.kind.onchange=configure;inputs.controls.orifice_shape.onchange=configure;configure();
+  const clean=value=>typeof value==="number"&&!Number.isFinite(value)?null:value;
+  const reference="USBR Water Measurement Manual chapters 2, 7 and 9, USBR PAP-0668 and USACE HEC-RAS Hydraulic Reference Manual gated spillways";
+  results(article,form,async()=>{
+    const {coefficientEvidence,...values}=inputs.values();
+    const arguments_=Object.fromEntries(Object.entries(values).map(([key,value])=>[key,inputs.controls[key].disabled?null:clean(value)]));
+    const r=await worker("hydraulic_structure",{inputs:arguments_});
+    const metrics=[["Regime",r.regime],["Flow (m³/s)",r.flow_m3_s],["Flow (L/s)",r.flow_m3_s===null?null:1000*r.flow_m3_s],
+      ["Signed level difference (m)",r.signed_level_difference_m],["Headwater rise above sill (m)",r.high_head_m],
+      ["Tailwater rise above sill (m)",r.low_head_m],["Tailwater ratio",r.tailwater_ratio],["Effective head (m)",r.effective_head_m],
+      ["Opening area (m²)",r.area_m2],["Discharge coefficient used",r.coefficient_used],["Equation",r.equation]];
+    return {content:[table(["Quantity","Value"],metrics,"Steady discharge screen"),element("p",r.explanation)],
+      summary:r.status==="available"?"Hydraulic structure screen completed.":"Discharge withheld for the selected conditions.",filename:"hydra-structure-screening.csv",
+      rows:[["Method",r.method],["References",reference],["Coefficient source and applicability",coefficientEvidence],
+        ...Object.entries(arguments_),...metrics,["Review note",r.explanation]]};
+  });
+
+  const ratingForm=element("form");ratingForm.id="structureRatingForm";
+  ratingForm.append(element("h3","Supplied control rating"),element("p","Use a passive, increasing head-difference rating measured for this configuration. The screen uses linear interpolation within the supplied range."));
+  const settings=fields([number("head_difference_m","Signed level difference (m)",-1e5,1e5),
+    {key:"provenance",label:"Rating source and configuration",type:"text",maxLength:2000},
+    {key:"reversible",label:"Confirm rating is symmetric in reverse",type:"checkbox",required:false}]);
+  const rating=editableRows("Rated head and flow pairs",[number("head","Head difference (m)",0,1e5),number("flow","Discharge (m³/s)",0,1e5)],[{},{}],undefined,2);
+  ratingForm.append(settings.group,rating.wrapper);
+  results(article,ratingForm,async()=>{
+    const {provenance,...input}=settings.values(),points=rating.values().map(row=>[row.head,row.flow]);
+    const r=await worker("hydraulic_control_rating",{...input,points});
+    const metrics=[["Status",r.status],["Signed level difference (m)",r.signed_head_difference_m],["Flow (m³/s)",r.flow_m3_s],
+      ["Flow (L/s)",r.flow_m3_s===null?null:r.flow_m3_s*1000]];
+    const message={available:"Rated discharge interpolated.","outside-curve":"The head difference is outside the measured range.",
+      "reverse-not-confirmed":"Confirm that the supplied rating applies in reverse."}[r.status];
+    return {content:[table(["Quantity","Value"],metrics,"Rated discharge"),
+      chart([{label:"Supplied rating",points,color:"#136b7f",markers:true}],"Head difference (m)","Discharge (m³/s)")],
+      summary:message,filename:"hydra-control-rating.csv",rows:[["Method",r.method],["Rating source",provenance],
+        ["Interpolation",r.interpolation],["Reversibility confirmed",r.reversible],...metrics,["Head difference (m)","Discharge (m³/s)"],...points]};
+  });
+}
+
 function mount(navigate) {
   const worker=async (api,args)=>{await ensureEngineBoot();return engine.call(api,args);};
   mountStorageRouting(navigate,worker);
+  mountStructures(worker);
   const system=panel("tab-pipe-system","Pipe head loss and system curves",
     "Use full circular pipes and a justified fixed Darcy friction factor. Each stage is in series and branches within a stage are in parallel. Static head includes elevation and pressure head differences.");
   const design=systemInputs(),systemForm=element("form");

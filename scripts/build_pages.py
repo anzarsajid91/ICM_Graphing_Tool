@@ -33,7 +33,7 @@ def _inject_v2_assets(build_token: str) -> None:
         "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js",
         "workbench-v3.js", "workbook-reader.js", "workbench-survey.js",
         "workflow-26.js", "detriment-workspace.js", "network-schematic-loader.js",
-        "hydraulic-design.js", "project-home.js", "simulation-results.js", "series-quality.js", "precision-workbench.js",
+        "hydraulic-design.js", "project-home.js", "simulation-results.js", "series-quality.js", "method-library.js", "precision-workbench.js",
     )
     html = html.replace('<body>', '<body class="hb-starting">', 1)
     html = html.replace('id="hbStartup" hidden', 'id="hbStartup"', 1)
@@ -50,7 +50,7 @@ def _inject_v2_assets(build_token: str) -> None:
         '\n  '.join(f'<script defer src="assets/{name}"></script>' for name in scripts),
     )
     required = ["csv-output.js", "design-system.js", "domain-registry.js", "workbench-v2.css", "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "workflow-26.css", "workflow-26.js", "precision-workbench.css", "precision-workbench.js", "detriment-workspace.css", "detriment-workspace.js", "vendor/sheetjs-0.20.3/xlsx.full.min.js"]
-    required.extend(["network-schematic.css", "network-schematic-loader.js", "hydraulic-design.js", "project-home.js", "simulation-results.js", "series-quality.js"])
+    required.extend(["network-schematic.css", "network-schematic-loader.js", "hydraulic-design.js", "project-home.js", "simulation-results.js", "series-quality.js", "method-library.js"])
     if not all(name in html for name in required):
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
 
@@ -84,6 +84,7 @@ def _inject_v2_assets(build_token: str) -> None:
         "assets/project-home.js",
         "assets/simulation-results.js",
         "assets/series-quality.js",
+        "assets/method-library.js",
         "assets/precision-workbench.js",
         "assets/network-schematic-loader.js",
     ]
@@ -117,6 +118,8 @@ def build() -> None:
     shutil.copy2(ROOT / "LICENSE", SITE / "LICENSE.txt")
     from stage_icm_exports import stage_icm_exports
     toolkit_version = stage_icm_exports(ROOT, SITE / "downloads" / "icm")
+    from stage_method_library import stage_method_library
+    stage_method_library(ROOT, SITE / "assets" / "method-library.json")
 
     security_root = SITE / 'security'
     security_root.mkdir()

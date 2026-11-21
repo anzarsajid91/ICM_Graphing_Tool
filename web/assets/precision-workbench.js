@@ -4,6 +4,10 @@
 const $=id=>document.getElementById(id);
 const qs=(sel,root=document)=>root.querySelector(sel);
 const qsa=(sel,root=document)=>[...root.querySelectorAll(sel)];
+function calculationPanel(id){
+  if(!$('tab-pipe-system'))window.HydraDesignCalculations.mount(navigate);
+  return $(id);
+}
 const ROUTES={
   home:{
     label:'Home',
@@ -14,8 +18,7 @@ const ROUTES={
     label:'Data / time series',
     icon:'data',
     pages:{
-      'time-series':{label:'Time series',title:'Data / time series',description:'Upload, interpret and assign local sources, then review hydraulic traces, thresholds, rainfall overlays and auditable statistics in one continuous workspace.',tab:'graph',root:()=>$('tab-graph')},
-      'series-quality':{label:'Source diagnostics',title:'Source diagnostics',description:'Review local sample coverage, timing, abrupt changes and plausible value ranges.',root:()=>$('tab-series-quality')||window.HydraSeriesQuality.mount(navigate)}
+      'time-series':{label:'Time series',title:'Data / time series',description:'Upload, interpret and assign local sources, then review hydraulic traces, thresholds, rainfall overlays and auditable statistics in one continuous workspace.',tab:'graph',root:()=>$('tab-graph')}
     }
   },
   spills:{
@@ -24,7 +27,7 @@ const ROUTES={
     pages:{
       assessment:{label:'Spill assessment',title:'EDM / model spill assessment',description:'Configure thresholds and exclusions, then review physical spill intervals, 12/24 counts and observed/model evidence.',tab:'spills',root:()=>$('tab-spills')},
       storage:{label:'Storage assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')},
-      'storage-routing':{label:'Storage routing',title:'Storage routing screening',description:'Test spill-volume sensitivity to storage capacity and a constant pass-forward limit.',root:()=>$('tab-storage-routing')}
+      'storage-routing':{label:'Storage routing',title:'Storage routing screening',description:'Test spill-volume sensitivity to storage capacity and a constant pass-forward limit.',root:()=>calculationPanel('tab-storage-routing')}
     }
   },
   network:{
@@ -60,15 +63,18 @@ const ROUTES={
     label:'Hydraulic Calculations',icon:'hydraulics',
     pages:{
       capacity:{label:'Pipe capacity',title:'Hydraulic calculations',description:'Estimate full-bore uniform-flow capacity using Darcy–Weisbach.',root:()=>$('tab-hydraulics')},
-      'system-curve':{label:'System curve',title:'Pipe head loss and system curves',description:'Review the components of head loss in steady full-pipe systems.',root:()=>$('tab-pipe-system')},
-      'pump-duty':{label:'Pump duty',title:'Pump duty screening',description:'Compare measured pump curves against the pipe system.',root:()=>$('tab-pump-duty')},
-      'formula-a':{label:'Formula A',title:'Formula A and wastewater design flows',description:'Review Environment Agency retained continuation-flow screening for England.',root:()=>$('tab-formula-a')}
+      'system-curve':{label:'System curve',title:'Pipe head loss and system curves',description:'Review the components of head loss in steady full-pipe systems.',root:()=>calculationPanel('tab-pipe-system')},
+      'pump-duty':{label:'Pump duty',title:'Pump duty screening',description:'Compare measured pump curves against the pipe system.',root:()=>calculationPanel('tab-pump-duty')},
+      structures:{label:'Structures',title:'Hydraulic structure screening',description:'Screen weir, orifice, sluice and supplied rating-curve discharge.',root:()=>calculationPanel('tab-hydraulic-structures')},
+      'formula-a':{label:'Formula A',title:'Formula A and wastewater design flows',description:'Review Environment Agency retained continuation-flow screening for England.',root:()=>calculationPanel('tab-formula-a')}
     }
   },
   detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},
   about:{
     label:'About',icon:'about',
-    pages:{overview:{label:'Overview',title:'About Hydra Bench',description:'A practical workbench for hydraulic evidence, model verification and scenario assessment.',root:()=>$('tab-about')},security:{label:'IT Security',title:'IT Security',description:'Data handling, implemented controls and verification limits.',root:()=>$('tab-security')}}
+    pages:{overview:{label:'Overview',title:'About Hydra Bench',description:'A practical workbench for hydraulic evidence, model verification and scenario assessment.',root:()=>$('tab-about')},
+      methodology:{label:'Method library',title:'Engineering method library',description:'Find the equations, supported inputs, reference cases and limitations used by this build.',root:()=>$('tab-method-library')||window.HydraMethodLibrary.mount(navigate,ROUTES)},
+      security:{label:'IT Security',title:'IT Security',description:'Data handling, implemented controls and verification limits.',root:()=>$('tab-security')}}
   },
   reports:{
     label:'Reports',
@@ -1236,8 +1242,8 @@ function openPipeTrial(inputs){
 }
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
-  window.HydraDesignCalculations.mount(navigate);
   window.HydraProjectHome.mount(navigate,ROUTES);
+  window.HydraSeriesQuality.install();
   buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wireVerificationEvents();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,openPipeTrial,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};

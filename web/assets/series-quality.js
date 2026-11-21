@@ -13,10 +13,11 @@ const labels=new Map([
 const node=(tag,text)=>{const element=document.createElement(tag);if(text!==undefined)element.textContent=text;return element;};
 const format=value=>value===null||value===undefined?"Unavailable":typeof value==="number"?new Intl.NumberFormat(undefined,{maximumSignificantDigits:8}).format(value):value;
 
-function mount(navigate) {
-  const root=node("section");root.id="tab-series-quality";root.className="tab-panel";root.hidden=true;
+function mount() {
+  const root=node("dialog");root.id="tab-series-quality";root.setAttribute("aria-labelledby","hbQualityTitle");
   root.innerHTML=`<article class="panel">
-    <div class="panel-head"><h2>Time-series quality diagnostics</h2><p>Review suspected issues in instantaneous readings. Use the source clock and channel units to choose thresholds.</p></div>
+    <div class="panel-head"><div><h2 id="hbQualityTitle">Time-series quality diagnostics</h2><p>Review suspected issues in instantaneous readings. Use the source clock and channel units to choose thresholds.</p></div>
+      <button type="button" id="hbQualityClose">Close diagnostics</button></div>
     <form id="hbQualityForm">
       <div class="mapping-grid">
         <label>Source series<select name="source" required></select></label>
@@ -44,7 +45,7 @@ function mount(navigate) {
         </div>
         <p>Peak correlation indicates a possible shift. Check recorded clock settings and other evidence.</p>
       </details>
-      <div class="actions"><button type="submit" class="primary">Review source quality</button><button type="button" id="hbQualityOpenData">Open Time series</button></div>
+      <div class="actions"><button type="submit" class="primary">Review source quality</button></div>
     </form>
     <p id="hbQualityStatus" role="status"></p>
     <section id="hbQualityResults" hidden>
@@ -59,7 +60,7 @@ function mount(navigate) {
       </tr></thead><tbody></tbody></table></div>
     </section>
   </article>`;
-  document.querySelector("main.shell").append(root);
+  document.body.append(root);
   const $=id=>root.querySelector("#"+id),form=$("hbQualityForm"),controls=form.elements;
   const status=$("hbQualityStatus"),view=$("hbQualityResults"),table=$("hbQualityRows").tBodies[0];
   const submit=form.querySelector('[type="submit"]'),ref=controls.reference,picker=controls.source,filter=$("hbQualityFilter");
@@ -94,7 +95,7 @@ function mount(navigate) {
   }
   picker.addEventListener("change",refreshSources);
   form.addEventListener("input",invalidate);form.addEventListener("change",invalidate);
-  $("hbQualityOpenData").onclick=()=>navigate("data","time-series",true);
+  $("hbQualityClose").onclick=()=>root.close();
 
   form.onsubmit=async event=>{
     event.preventDefault();
@@ -171,10 +172,15 @@ function mount(navigate) {
       ...candidates.findings.map((r,i)=>[labels.get(r.kind),r.start,r.end,r.observed,r.basis,decisions.get(i)?.decision,decisions.get(i)?.note,Boolean(decisions.get(i)?.excluded)])];
     downloadBlob("hydra-source-quality-review.csv",rows.map(row=>row.map(ICMSafeCSV.cell).join(",")).join("\r\n"),"text/csv");
   };
-  window.addEventListener("icm:route-changed",({detail})=>{if(detail.page==="series-quality")refreshSources();});
+  window.addEventListener("icm:route-changed",({detail})=>{if(detail.workspace!=="data"&&root.open)root.close();});
   window.addEventListener("icm:source-pool-changed",refreshSources);
-  refreshSources();return root;
+  return ()=>{refreshSources();if(!root.open)root.showModal();};
 }
 
-window.HydraSeriesQuality={mount};
+window.HydraSeriesQuality={install(){
+  const button=node("button","Source diagnostics");button.type="button";button.className="btn";button.setAttribute("aria-haspopup","dialog");
+  const tools=document.getElementById("clearPoolBtn");tools.after(button);
+  let open;
+  button.onclick=()=>{open??=mount();open();};
+}};
 })();

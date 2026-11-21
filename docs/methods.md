@@ -214,3 +214,43 @@ cell values and conversion factors beside the reviewed results. The current
 review accepts up to 100 rows per table and 1 MiB per input. Source-only
 classification and network contribution remain separate review decisions.
 See Autodesk's [ICM Subcatchment data fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1F3FA957-FE1B-4BD6-A73C-3DF2F6ACD839.htm).
+
+## Hydraulic structures and supplied ratings
+
+Hydra Bench screens steady flow using SI inputs and levels referenced to a
+common vertical datum. Review evidence for effective dimensions, discharge
+coefficients, geometry, approach losses and receiving conditions. The current
+form assumes negligible approach velocity where water levels stand in for
+energy heads. Sludge, blockage, dynamic operation, directional appurtenances,
+nonlevel crests and mixed flow at partially filled openings require suitable
+additional modelling.
+
+For an aerated rectangular thin-plate weir, use `Q = (2/3) Cd W √(2g) H^1.5`,
+where `H` is the higher head above the crest. Flow is withheld below the USBR
+0.2 ft (0.06096 m) sharp-crested nappe screening threshold. When the tailwater
+is above the crest, apply the Villemonte reduction `[1 − (Hd/H)^1.5]^0.385`.
+This requires a suitably measured tailwater and reviewed use of the empirical
+correction. See the [USBR thin-plate equations](https://www.usbr.gov/tsc/techreferences/mands/wmm/chap02_09.html),
+[sharp-crested weir conditions](https://www.usbr.gov/tsc/techreferences/mands/wmm/chap07_05.html)
+and the [USBR reference describing the Villemonte relation](https://www.usbr.gov/tsc/techreferences/hydraulics_lab/pubs/PAP/PAP-0668.pdf).
+
+A fully wetted orifice discharging freely uses `Cd A √(2g Hc)`, with head to
+the opening centre. A fully submerged opening uses `Cd A √(2g |ΔH|)`, with a
+separately justified coefficient and the level difference. Partial tailwater
+wetting and incomplete upstream opening coverage are outside this screen.
+See the [USBR orifice relationship](https://www.usbr.gov/tsc/techreferences/mands/wmm/chap02_08.html)
+and [submerged orifice method](https://www.usbr.gov/tsc/techreferences/mands/wmm/chap09_05.html).
+
+For a sluice gate, headwater must exceed 1.25 times the opening. In the free
+gate regime use `Cd W B √(2g H)` with upstream head above the sill. A tailwater
+ratio below 0.67 uses the free equation. Ratios from 0.67 to below 0.80 need a
+gate transition model. A fully wetted opening from 0.80 uses the submerged
+opening relation. See the [HEC-RAS gated-spillway reference](https://www.hec.usace.army.mil/confluence/rasdocs/ras1dtechref/latest/modeling-gated-spillways-weirs-and-drop-structures/hydraulic-computations-through-gated-spillways).
+
+Reverse flow requires confirmation of a symmetric configuration without
+directional restrictions. Signs refer to the entered nominal upstream and
+downstream sides. A supplied passive rating uses piecewise linear interpolation
+over reviewed head and flow pairs. It has no extrapolation and supports a
+symmetric reverse rating only when confirmed. These methods provide screening
+calculations with explicit formula and regime output. Agreement with an ICM
+structure needs a verified comparison using its selected hydraulic model.

@@ -1,0 +1,51 @@
+import assert from 'node:assert/strict';
+import {chromium,firefox} from 'playwright';
+import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
+import {installPrivacyGuard} from './privacy-network.mjs';
+
+const engine=process.env.ICM_BROWSER||'chromium',base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
+const browser=await (engine==='firefox'?firefox:chromium).launch(browserLaunchOptions());
+const context=await browser.newContext({...browserContextOptions(),viewport:{width:1280,height:900}});
+const guard=installPrivacyGuard(context,base,{canaries:['SYNTHETIC-USER-METHOD-FILTER']});
+const page=await context.newPage();
+const errors=[];page.on('pageerror',error=>errors.push(error.message));
+
+try {
+  await guard.navigate(page,base);
+  await page.route('**/assets/method-library.json*',route=>route.fulfill({status:503,body:'Synthetic unavailable'}),{times:1});
+  await page.getByRole('button',{name:'About',exact:true}).click();
+  await page.getByRole('tab',{name:'Method library',exact:true}).click();
+  const panel=page.locator('#tab-method-library'),status=panel.getByRole('status');
+  await status.filter({hasText:'could not be loaded'}).waitFor();
+  await panel.getByRole('button',{name:'Retry loading methods'}).click();
+  await status.filter({hasText:'11 of 11 methods'}).waitFor();
+  const search=panel.getByLabel('Search methods');
+  await search.fill('SYNTHETIC-USER-METHOD-FILTER');
+  assert.equal(await status.innerText(),'0 of 11 methods');
+  await search.fill('Villemonte');
+  assert.equal(await status.innerText(),'1 of 11 methods');
+  const structure=panel.locator('summary').filter({hasText:'Hydraulic structures and supplied ratings'});
+  await structure.focus();await page.keyboard.press('Space');
+  const source=panel.getByRole('link',{name:'USBR reference describing the Villemonte relation'});
+  await source.waitFor();
+  assert.match(await source.getAttribute('href'),/^https:\/\/www\.usbr\.gov\//);
+  assert.match(await source.getAttribute('rel'),/noreferrer/);
+  await panel.getByRole('button',{name:'Open Structures',exact:true}).click();
+  await page.locator('#structureScreenForm').waitFor();
+  await page.getByRole('button',{name:'About',exact:true}).click();
+  await page.getByRole('tab',{name:'Method library',exact:true}).click();
+  assert.equal(await search.inputValue(),'Villemonte');
+  await search.fill('');
+  await panel.getByLabel('Jurisdiction').selectOption('England');
+  assert.equal(await status.innerText(),'1 of 11 methods');
+  await panel.getByLabel('Category').selectOption('Hydraulics');
+  assert.equal(await status.innerText(),'0 of 11 methods');
+  await panel.getByLabel('Category').selectOption('Design flows');
+  assert.equal(await status.innerText(),'1 of 11 methods');
+  await page.setViewportSize({width:400,height:850});
+  const sizes=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
+  assert(sizes[0]<=sizes[1]+2);
+  assert.deepEqual(errors,[]);
+  guard.assertClean();
+  console.log('METHOD_LIBRARY_PASS '+engine);
+} finally {await browser.close();}

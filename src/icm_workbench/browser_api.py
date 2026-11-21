@@ -1302,3 +1302,17 @@ def inspect_local_series(path, column, criteria, start=None, end=None,
             raise ValueError("Use a different instantaneous record of the same measured quantity with matching resolved units.")
         result["clock"]=clock_candidates(frame,select(ref),column,reference_column,criteria["expected_step_s"],search_steps)
     return json.dumps(_jsonable(result), allow_nan=False)
+
+
+def hydraulic_structure(inputs):
+    """Evaluate the documented steady structure screen in the local worker."""
+    from icm_workbench.analysis.structures import screen_structure
+
+    return json.dumps(screen_structure(**inputs), allow_nan=False)
+
+
+def hydraulic_control_rating(points, head_difference_m, reversible=False):
+    """Evaluate a supplied passive head-difference rating curve."""
+    from icm_workbench.analysis.structures import screen_rating_curve
+
+    return json.dumps(screen_rating_curve(points, head_difference_m, reversible), allow_nan=False)
