@@ -32,7 +32,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized real-sample map/profile playback, transport controls, windowing, scenario comparison, extrema and missingness | Partial |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
-| 6.5 | Local worker, series parser, source identity and registry | Native and portable formats, typed provenance, bounded memory and optional file-backed worker, cancellation and exact selective lookup | Partial. Larger package production and full device-capacity review remain open |
+| 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for indexed ingestion and lookup. Broader capacity and release checks remain open |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
 | 7.2 | Gauge qualification, cumulative/event data | Common-clock spatial comparison, event totals, correlation, peak offset, coverage, suspect bins and WAPUG linkage | Verified locally |
 | 7.3 | Weekly review, coverage and WAPUG/FSAT | Suitability screen for a selected monitored location and rainfall candidate, using measured support, reviewed range, site evidence and current qualification | Verified locally for candidate screening |
@@ -895,6 +895,25 @@ other state.
 - The same Node engine test indexed in 205 ms, averaged 0.51 ms at
   representative cross-block frames and scanned one full-series extrema
   in 16.2 ms. The native source was smaller for this low-precision fixture.
-  The local browser exporter produces packages from indexed sources. A
-  streaming producer for sources that exceed the in-memory intake budget
-  remains open.
+  The local browser exporter produces packages from indexed sources.
+
+### Offline large-package production
+
+- **Download CSV mapping** validates the local review configuration and
+  exports its typed clock, units and column mappings in a fixed-name JSON.
+  The offline Node converter shares the application parser and package
+  writer, streams blocks to private temporary files, publishes only after
+  validation, refuses to overwrite existing output and handles cancellation.
+  No model access, network request or runtime dependency is involved.
+  [Local converter instructions](simulation-results.md#produce-a-larger-package-locally)
+- Tests verify byte-identical package production relative to the in-memory
+  writer, an exact partial final block, failure cleanup and refusal to
+  overwrite. The Chromium and Firefox regression exercised the mapping
+  download with `00127` and `00129` preserved as text, native and portable
+  import, file-backed playback and cancellation. Each observer saw 32
+  requests with no violations. The source and privacy gates passed.
+- The tool converted the 56,799,247-byte synthetic annual CSV to an
+  81,595,147-byte file with 105,121 timestamps and 96 channels in 2,133 ms.
+  Parsed header fields and the entire payload SHA-256 matched the
+  independent reference writer. The process recorded a peak of
+  128,452 KiB RSS with no retained results index during conversion.

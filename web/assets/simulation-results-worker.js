@@ -32,6 +32,7 @@ function resolveSource(id) {
 async function operation(id, name, data) {
   switch (name) {
     case "preview": return core.inspectCsv(data.file);
+    case "validate-csv-mapping": return core.validateCsvMapping(data.config);
     case "package-preview": return core.inspectPackage(data.file);
     case "export-package": return resolveSource(data.sourceId).exportPackage();
     case "import-package":

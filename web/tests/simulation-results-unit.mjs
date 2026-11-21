@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import fs from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import '../assets/simulation-results-core.js';
 
-const {assetKey,inspectCsv,importCsv,inspectPackage,importPackage}=globalThis.HydraSimulationResults;
+const {assetKey,inspectCsv,importCsv,inspectPackage,importPackage,streamPackageFromCsv}=globalThis.HydraSimulationResults;
 const asset={kind:'link',table:'hw_conduit',upstream:'00127',suffix:'b'};
 const config={simulation:'SIM-03',modelRevision:'REV-02',scenario:'Baseline',event:'Event A',
   clock:'iso',clockConfirmed:true,temporalSupport:'instantaneous',headerRecord:2,timeColumn:0,unitsRecord:3,
@@ -119,4 +122,24 @@ assert.deepEqual([...(await backed.seriesWindow(keys[1],before,after)).values],[
 assert.deepEqual(await backed.envelope(keys[1],before,after),many.envelope(keys[1],before,after));
 assert.equal((await backed.exportPackage()).size,backedFile.size);
 await assert.rejects(importPackage(backedFile,{fileBacked:true,byteLimit:1024}),/typed-data budget/);
+const bodyBlocks=[];
+const streamedHeader=await streamPackageFromCsv(new Blob(['Time,Flow,Level,Node\n'+manyRows.join('\n')]),
+  {...config,headerRecord:1,unitsRecord:undefined},async block=>bodyBlocks.push(block));
+assert.equal(bodyBlocks.length,2,'The writer emits a full block and an exact final block');
+const streamed=new Blob([streamedHeader,...bodyBlocks]);
+assert.deepEqual(new Uint8Array(await streamed.arrayBuffer()),new Uint8Array(await many.exportPackage().arrayBuffer()));
+const fromStream=await importPackage(streamed,{fileBacked:true});
+assert.deepEqual(await fromStream.frame(boundary,keys),[4096,null,20]);
+const {packSimulationResults}=await import('../../scripts/pack_simulation_results.mjs');
+const folder=await fs.mkdtemp(join(tmpdir(),'hydra-pack-unit-'));
+try{
+  const input=join(folder,'synthetic.csv'),mapping=join(folder,'mapping.json'),output=join(folder,'result.hbresults');
+  await fs.writeFile(input,csv);await fs.writeFile(mapping,JSON.stringify(config));
+  await packSimulationResults(input,mapping,output);
+  assert.deepEqual(new Uint8Array(await fs.readFile(output)),new Uint8Array(await packed.arrayBuffer()));
+  await assert.rejects(packSimulationResults(input,mapping,output),/already exists/);
+  await fs.writeFile(input,csv.replace('-1000','1e999'));
+  await assert.rejects(packSimulationResults(input,mapping,join(folder,'invalid.hbresults')),/Invalid numeric/);
+  assert.deepEqual((await fs.readdir(folder)).sort(),['mapping.json','result.hbresults','synthetic.csv']);
+}finally{await fs.rm(folder,{recursive:true,force:true});}
 console.log('SIMULATION_RESULTS_UNIT_PASS');

@@ -73,7 +73,7 @@ function mount() {
       <p><label><input type="checkbox" name="unitRow"> The next record contains units</label></p>
       <p><label><input type="checkbox" name="clockConfirmed" required> The file contains instantaneous samples on the confirmed project clock</label></p>
       <div class="table-wrap"><table id="hbResultMappings"><caption>Asset column mappings</caption><thead><tr><th scope="col">CSV column number</th><th scope="col">Node or upstream ID</th><th scope="col">Link suffix</th><th scope="col">Action</th></tr></thead><tbody></tbody></table></div>
-      <div class="actions"><button type="button" id="hbAddResultMapping">Add mapped column</button><button type="submit" class="primary">Index simulation results</button><button type="button" id="hbCancelResult" hidden>Cancel import</button></div>
+      <div class="actions"><button type="button" id="hbAddResultMapping">Add mapped column</button><button type="submit" class="primary">Index simulation results</button><button type="button" id="hbExportResultMapping">Download CSV mapping</button><button type="button" id="hbCancelResult" hidden>Cancel import</button></div>
       <details id="hbResultPortable"><summary>Portable results package</summary>
         <p>Reopen a Hydra Bench package with its reviewed typed mappings, project clock and units. Check the declared model revision before indexing.</p>
         <label>Local results package<input type="file" name="portable" accept=".hbresults,application/octet-stream"></label>
@@ -105,6 +105,7 @@ function mount() {
   const time=$("hbResultTime"), transport=$("hbResultTransport"), sample=$("hbResultSample"), envelope=$("hbResultEnvelope");
   const play=$("hbResultPlay"), back=$("hbResultBack"), step=$("hbResultStep"), remove=$("hbRemoveResult");
   const packageInput=controls.portable, packageStatus=$("hbResultPortableStatus"), indexPackage=$("hbIndexPortable"), exportPackage=$("hbExportPortable");
+  const exportMapping=$("hbExportResultMapping");
   const datasets=new Map(), mappings=[];
   let fileGeneration=0, packageGeneration=0, reviewedPackage=null, displayGeneration=0, envelopeGeneration=0, currentImport=null,
     playback=null, playbackGeneration=0, serial=0;
@@ -185,22 +186,36 @@ function mount() {
     if(reviewedPackage)void indexSource("import-package",{file:reviewedPackage,fileBacked:controls.fileBacked.checked});
   };
 
-  form.onsubmit=async event=>{
-    event.preventDefault();
-    if (currentImport) return;
-    const file=controls.file.files[0], f=new FormData(form), kind=f.get("kind"), headerRecord=Number(f.get("header"));
-    const config={simulation:f.get("simulation"),modelRevision:f.get("modelRevision"),scenario:f.get("scenario"),event:f.get("event"),
+  function csvMapping(){
+    const f=new FormData(form),kind=f.get("kind"),headerRecord=Number(f.get("header"));
+    return {simulation:f.get("simulation"),modelRevision:f.get("modelRevision"),scenario:f.get("scenario"),event:f.get("event"),
       clock:f.get("clock"),clockConfirmed:controls.clockConfirmed.checked,temporalSupport:"instantaneous",headerRecord,
       timeColumn:Number(f.get("time"))-1,unitsRecord:controls.unitRow.checked?headerRecord+1:undefined,missingToken:f.get("missing"),
       columns:mappings.map(row=>({column:row.column.valueAsNumber-1,quantity:f.get("quantity"),unit:f.get("unit"),datum:f.get("datum"),
         sourceAttribute:f.get("attribute"),location:kind==="node"?"node":f.get("location"),
         asset:kind==="node"?{kind,id:row.id.value}:{kind,upstream:row.id.value,suffix:row.suffix.value,
           table:"hw_"+f.get("assetTable").replaceAll("-","_")}}))};
-    await indexSource("import",{file,config});
+  }
+  exportMapping.onclick=async()=>{
+    if(currentImport||!form.reportValidity())return;
+    const config=csvMapping();
+    exportMapping.disabled=true;
+    try{
+      await client.request("validate-csv-mapping",{config}).result;
+      downloadBlob("hydra-results-mapping.json",JSON.stringify(config,null,2)+"\n","application/json");
+      importer.textContent="CSV mapping downloaded for the local portable-results tool.";
+    }catch(error){importer.textContent=error.message;}
+    finally{exportMapping.disabled=Boolean(currentImport);}
+  };
+  form.onsubmit=async event=>{
+    event.preventDefault();
+    if(currentImport)return;
+    await indexSource("import",{file:controls.file.files[0],config:csvMapping()});
   };
   async function indexSource(operation,data){
     if(currentImport)return;
-    submit.disabled=true;controls.file.disabled=true;packageInput.disabled=true;controls.fileBacked.disabled=true;indexPackage.disabled=true;
+    submit.disabled=true;controls.file.disabled=true;packageInput.disabled=true;controls.fileBacked.disabled=true;
+    indexPackage.disabled=true;exportMapping.disabled=true;
     cancel.hidden=false;progress.hidden=false;progress.value=0;
     importer.textContent=operation==="import-package"?"Checking and indexing the portable samples locally…":
       "Indexing the selected result columns in a browser worker…";
@@ -215,7 +230,7 @@ function mount() {
     } catch(error) {importer.textContent=error.message;}
     finally {
       currentImport=null;submit.disabled=false;controls.file.disabled=false;packageInput.disabled=false;controls.fileBacked.disabled=false;
-      indexPackage.disabled=!reviewedPackage;
+      indexPackage.disabled=!reviewedPackage;exportMapping.disabled=false;
       cancel.disabled=false;cancel.hidden=true;progress.hidden=true;
     }
   }

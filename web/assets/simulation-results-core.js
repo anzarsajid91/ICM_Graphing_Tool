@@ -45,7 +45,7 @@ function parseRecord(line) {
 
 // Scan independently of the browser's chosen delivery chunk size. Reuse these
 // fixed-size blocks when deriving the ordered source fingerprint.
-async function readRecords(blob, visit, {signal, onProgress, fingerprint = false} = {}) {
+async function readRecords(blob, visit, {signal, onProgress, afterBlock, fingerprint = false} = {}) {
   if (!(blob instanceof Blob) || !blob.size || blob.size > MAX_SOURCE)
     throw new Error("Choose a non-empty result CSV up to 2 GiB.");
   let decoder, pending = "", quoted = false, record = 0;
@@ -87,6 +87,7 @@ async function readRecords(blob, visit, {signal, onProgress, fingerprint = false
       const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
       hashes.set(new Uint8Array(hash), 32 * (offset / BLOCK_BYTES));
     }
+    if(afterBlock)await afterBlock();
     onProgress?.(Math.min(offset + bytes.byteLength, blob.size), blob.size);
   }
   signal?.throwIfAborted();
@@ -361,30 +362,38 @@ function fileIndex(blob,layout,lastTimes,first,metadata){
   };
 }
 
-function encodePackage(chunks,rowsPerChunk,count,metadata){
+function encodePackageHeader(rowsPerChunk,count,metadata){
   const {simulation,modelRevision,scenario,event,clock,temporalSupport,columns,missingToken}=metadata;
   const fields=columns.map(({asset,column,quantity,location,datum,unit,sourceUnit,sourceAttribute,sourceHeader,sourceUnitLabel})=>
     ({asset,column,quantity,location,datum,unit,sourceUnit,sourceAttribute,sourceHeader,sourceUnitLabel}));
   const header=new TextEncoder().encode(JSON.stringify({schemaVersion:1,count,rowsPerChunk,simulation,modelRevision,scenario,event,
     clock,temporalSupport,columns:fields,missingToken,originalFingerprint:metadata.originalFingerprint||metadata.fingerprint}));
   if(header.byteLength>PACKAGE_HEADER_BYTES)throw new Error("The portable results metadata exceeds 8 MiB. Use fewer mapped columns.");
+  if(PACKAGE_PREFIX_BYTES+header.byteLength+count*8*(columns.length+1)>MAX_SOURCE)
+    throw new Error("The portable package would exceed 2 GiB. Select fewer columns or export a shorter period.");
   const prefix=new Uint8Array(PACKAGE_PREFIX_BYTES);
   prefix.set(new TextEncoder().encode(PACKAGE_MAGIC));
   new DataView(prefix.buffer).setUint32(8,header.byteLength,true);
-  const parts=[prefix,header];
-  for(const [index,chunk] of chunks.entries()){
-    const rows=Math.min(rowsPerChunk,count-index*rowsPerChunk);
-    const sections=[chunk.time.subarray(0,rows),...fields.map((_,column)=>
-      chunk.values.subarray(column*chunk.time.length,column*chunk.time.length+rows))];
-    if(littleEndian)parts.push(new Blob(sections));
-    else{
-      const block=new DataView(new ArrayBuffer(8*rows*sections.length));
-      let offset=0;
-      for(const section of sections)for(const value of section){block.setFloat64(offset,value,true);offset+=8;}
-      parts.push(new Blob([block.buffer]));
-    }
+  return new Blob([prefix,header]);
+}
+
+function encodePackageBlock(chunk,rows,columnCount){
+  const sections=[chunk.time.subarray(0,rows)];
+  for(let column=0;column<columnCount;column++){
+    const start=column*chunk.time.length;
+    sections.push(chunk.values.subarray(start,start+rows));
   }
-  return new Blob(parts,{type:"application/octet-stream"});
+  if(littleEndian)return new Blob(sections);
+  const block=new DataView(new ArrayBuffer(8*rows*sections.length));
+  let offset=0;
+  for(const section of sections)for(const value of section){block.setFloat64(offset,value,true);offset+=8;}
+  return new Blob([block.buffer]);
+}
+
+function encodePackage(chunks,rowsPerChunk,count,metadata){
+  const prefix=encodePackageHeader(rowsPerChunk,count,metadata);
+  const blocks=chunks.map((chunk,index)=>encodePackageBlock(chunk,Math.min(rowsPerChunk,count-index*rowsPerChunk),metadata.columns.length));
+  return new Blob([prefix,...blocks],{type:"application/octet-stream"});
 }
 
 function sourceFingerprint(raw){
@@ -479,13 +488,16 @@ async function importPackage(blob,{signal,onProgress,byteLimit=DATA_BYTES,fileBa
   return fileBacked?fileIndex(blob,layout,lastTimes,first,details):makeIndex(chunks,rowsPerChunk,count,details);
 }
 
-async function importCsv(blob, config, options = {}) {
+async function scanCsv(blob,config,options,writeBlock){
   const {headerRecord,timeColumn,unitsRecord,columns,parseTime,missing,contract} = compile(config);
   const bytesPerRow = 8 * (columns.length + 1);
   const rowsPerChunk = blockRows(bytesPerRow);
   const byteLimit = Number.isFinite(options.byteLimit) ? Math.min(DATA_BYTES,options.byteLimit) : DATA_BYTES;
-  const chunks = [];
-  let header, unitLabels = null, last = -Infinity, count = 0, missingCount = 0;
+  const chunks=[];
+  async function flush(){
+    for(const chunk of chunks.splice(0))await writeBlock(encodePackageBlock(chunk,rowsPerChunk,columns.length));
+  }
+  let current,header,unitLabels=null,last=-Infinity,count=0,missingCount=0;
   const fingerprint = await readRecords(blob, (fields, record) => {
     if (record < headerRecord) return;
     if (record === headerRecord) {
@@ -509,29 +521,48 @@ async function importCsv(blob, config, options = {}) {
     last=t;
     const local=count%rowsPerChunk;
     if (local === 0) {
-      if ((chunks.length+1)*rowsPerChunk*bytesPerRow>byteLimit)
+      if(!writeBlock&&(chunks.length+1)*rowsPerChunk*bytesPerRow>byteLimit)
         throw new Error("Selected results exceed the available typed-data budget. Clear a results source, map fewer columns or export a smaller period.");
-      chunks.push({time:new Float64Array(rowsPerChunk),values:new Float64Array(rowsPerChunk*columns.length)});
+      if(writeBlock&&current)chunks.push(current);
+      current={time:new Float64Array(rowsPerChunk),values:new Float64Array(rowsPerChunk*columns.length)};
+      if(!writeBlock)chunks.push(current);
     }
-    const chunk=chunks.at(-1);
-    chunk.time[local]=t;
+    if(writeBlock&&(count+1)*bytesPerRow>=MAX_SOURCE)throw new Error("The portable package would exceed 2 GiB.");
+    current.time[local]=t;
     for (let index=0;index<columns.length;++index) {
       const column=columns[index], raw=fields[column.column].trim();
       const position=index*rowsPerChunk+local;
-      if (raw==="" || raw===missing) {chunk.values[position]=NaN;++missingCount;continue;}
+      if (raw==="" || raw===missing) {current.values[position]=NaN;++missingCount;continue;}
       const number=Number(raw)*column.scale;
       if (!decimal.test(raw) || !Number.isFinite(number)) throw new Error(`Invalid numeric value in column ${column.column+1}.`);
-      chunk.values[position]=number;
+      current.values[position]=number;
     }
     ++count;
-  }, {...options,fingerprint:true});
+  }, {...options,fingerprint:true,afterBlock:writeBlock?flush:undefined});
   if (!count || (unitsRecord && !unitLabels)) throw new Error("No samples or confirmed unit row were found.");
   const metadata = {...contract, fingerprint, missingToken:missing, missingCount,
     allocationBytes:chunks.length*rowsPerChunk*bytesPerRow,
     columns:columns.map(column=>({...column,sourceHeader:header[column.column].slice(0,256),
       sourceUnitLabel:unitLabels?.[column.column]?.slice(0,64)??null}))};
-  return makeIndex(chunks, rowsPerChunk, count, metadata);
+  if(writeBlock){
+    await flush();options.signal?.throwIfAborted();
+    await writeBlock(encodePackageBlock(current,count%rowsPerChunk||rowsPerChunk,columns.length));
+  }
+  return {chunks,rowsPerChunk,count,metadata};
 }
 
-globalThis.HydraSimulationResults=Object.freeze({inspectCsv,importCsv,inspectPackage,importPackage,assetKey});
+async function importCsv(blob,config,options={}){
+  const {chunks,rowsPerChunk,count,metadata}=await scanCsv(blob,config,options);
+  return makeIndex(chunks,rowsPerChunk,count,metadata);
+}
+
+async function streamPackageFromCsv(blob,config,writeBlock,options={}){
+  if(typeof writeBlock!=="function")throw new TypeError("Supply a local portable-results block writer.");
+  const {rowsPerChunk,count,metadata}=await scanCsv(blob,config,options,writeBlock);
+  return encodePackageHeader(rowsPerChunk,count,metadata);
+}
+
+function validateCsvMapping(config){compile(config);return true;}
+
+globalThis.HydraSimulationResults=Object.freeze({inspectCsv,importCsv,inspectPackage,importPackage,streamPackageFromCsv,validateCsvMapping,assetKey});
 })();

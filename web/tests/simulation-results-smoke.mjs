@@ -54,6 +54,13 @@ try {
   await panel.getByLabel('Mapping 3 CSV column number').fill('3');
   await panel.getByLabel('Mapping 3 Node or upstream ID').fill('00129');
   await panel.getByLabel('Mapping 3 Link suffix').fill('C');
+  const [csvMapping]=await Promise.all([page.waitForEvent('download'),
+    panel.getByRole('button',{name:'Download CSV mapping',exact:true}).click({timeout:5000})]);
+  assert.equal(csvMapping.suggestedFilename(),'hydra-results-mapping.json');
+  const mapping=JSON.parse(await fs.readFile(await csvMapping.path(),'utf8'));
+  assert.equal(mapping.clockConfirmed,true);
+  assert.equal(mapping.modelRevision,'SYNTHETIC-REV-ID');
+  assert.deepEqual(mapping.columns.map(column=>[column.column,column.unit,column.asset.upstream]),[[1,'L/s','00127'],[2,'L/s','00129']]);
   const submit=panel.getByRole('button',{name:'Index simulation results'});
   await submit.click();
   await status.filter({hasText:'3 timestamps indexed for 2 result series'}).waitFor();

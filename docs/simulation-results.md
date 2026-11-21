@@ -117,6 +117,26 @@ the previous index available. The package file must stay accessible while
 this tab is open. Select it again in another session. The portable file
 limit remains 2 GiB, subject to actual browser and device resources.
 
+### Produce a larger package locally
+
+Preview a native CSV and complete the same mapping you would use to index
+it. Select **Download CSV mapping**. This saves the reviewed inputs and
+canonical field selections without indexing the dataset. From the Hydra
+Bench source checkout, run the offline converter with Node.js 22 or later.
+
+```text
+node scripts/pack_simulation_results.mjs SOURCE.csv hydra-results-mapping.json OUTPUT.hbresults
+```
+
+The converter uses the same streaming CSV reader, clock checks and unit
+rules as Hydra Bench. It writes bounded blocks to a temporary local file
+and publishes the output after validation. It requires no extra package,
+network connection or ICM model access. Provide space for up to twice the
+result package size. The converter refuses to overwrite an existing output
+and clears its temporary files on validation failure or cancellation. Open
+the resulting package with file-backed access when a full copy would exceed
+the browser's typed-data budget.
+
 ## Review on the schematic and long section
 
 Open **Simulation playback** in the detailed schematic. Choose an indexed
