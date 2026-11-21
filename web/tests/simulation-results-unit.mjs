@@ -42,6 +42,11 @@ assert.deepEqual(index.frame(middle,['unavailable']),[null]);
 assert.deepEqual([...index.seriesWindow(keys[1],middle,end).values],[NaN,24]);
 assert.deepEqual(index.envelope(keys[0],start,end),{min:-1,max:2,minTime:middle,maxTime:end,valid:3,samples:3});
 assert.deepEqual(index.envelope(keys[1],middle,middle),{min:null,max:null,minTime:null,maxTime:null,valid:0,samples:1});
+assert.deepEqual(await index.envelopes([keys[2],keys[0],keys[1]],start,end),[
+  {min:20,max:21,minTime:start,maxTime:middle,valid:2,samples:3},
+  {min:-1,max:2,minTime:middle,maxTime:end,valid:3,samples:3},
+  {min:20,max:24,minTime:start,maxTime:end,valid:2,samples:3}]);
+await assert.rejects(index.envelopes(['unavailable'],start,end),/series is unavailable/);
 assert.deepEqual(index.range(start+1,end-1),{count:1,firstIndex:1,lastIndex:1,first:middle,last:middle});
 assert.deepEqual(index.range(start+1,middle-1),{count:0,firstIndex:null,lastIndex:null,first:null,last:null});
 assert.throws(()=>index.range(end,start),/valid result window/);
@@ -125,6 +130,14 @@ assert.deepEqual(await backed.frame(boundary,keys),[4096,null,20]);
 assert.equal(await backed.frame(boundary+1,keys),null);
 assert.deepEqual([...(await backed.seriesWindow(keys[1],before,after)).values],[4115,NaN,4117]);
 assert.deepEqual(await backed.envelope(keys[1],before,after),many.envelope(keys[1],before,after));
+assert.deepEqual(await backed.envelopes([keys[0],keys[2],keys[1]],before,after),[
+  {min:4095,max:4097,minTime:before,maxTime:after,valid:3,samples:3},
+  {min:20,max:20,minTime:before,maxTime:before,valid:3,samples:3},
+  {min:4115,max:4117,minTime:before,maxTime:after,valid:2,samples:3}]);
+const cancelExtrema=new AbortController();
+const selection=backed.envelopes(keys,before,after,{signal:cancelExtrema.signal,onProgress:()=>cancelExtrema.abort()});
+await assert.rejects(selection,{name:'AbortError'});
+assert.deepEqual(await backed.frame(after,[keys[0]]),[4097],'Cancelling a scan keeps the source usable');
 assert.equal((await backed.exportPackage()).size,backedFile.size);
 await assert.rejects(importPackage(backedFile,{fileBacked:true,byteLimit:1024}),/typed-data budget/);
 const bodyBlocks=[];

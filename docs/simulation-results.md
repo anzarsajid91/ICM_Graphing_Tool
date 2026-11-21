@@ -208,3 +208,19 @@ proposal's recorded node or selected conduit-end levels. The baseline may
 also show its reviewed opposite conduit end. Each source remains separate
 in the local index. Removing either source or changing network geometry
 clears the comparison.
+
+### Review independent window extrema
+
+Choose **Independent minimum** or **Independent maximum** in **Map results**.
+The worker scans the selected source and layer within the current sample
+window and returns each mapped asset's extreme, its exact first occurrence
+and the valid sample count. Equal values retain the first timestamp.
+The colours describe independent extrema. Assets can reach their extremes
+at different times. If a proposal comparison is active, the scan uses the
+selected baseline source. Choose the proposal as the primary layer to scan
+its own results.
+
+A scan processes one indexed block at a time with cancellation and progress.
+Return to **Instantaneous sample** to play the selected event again. The
+long section uses recorded instantaneous levels and does not connect
+independent extrema into a hydraulic state.

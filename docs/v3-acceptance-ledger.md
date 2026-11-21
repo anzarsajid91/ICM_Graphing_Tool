@@ -30,7 +30,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial |
-| 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Partial. Independent map extrema and expanded profile comparison remain open |
+| 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Verified locally for exact shared-clock comparison and independent layer extrema. Geometry-sensitive scenario review remains open under 6.1 and 6.4 |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
 | 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for indexed ingestion and lookup. Broader capacity and release checks remain open |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
@@ -979,3 +979,26 @@ other state.
 - This stage compares results on a reviewed common network. Independent
   schematic extrema, proposed opposite-end fills and review of scenario
   geometry differences remain open.
+
+### Independent schematic window extrema
+
+- The schematic switches from exact instantaneous playback to minimum or
+  maximum by selected asset and result layer. The source scan retains the
+  timestamp of the first tied extreme, valid sample counts and unavailable
+  values. A separate legend and status explain that extrema may occur at
+  different times. The independent layer withholds a playback profile.
+- The worker scans by indexed block and supports progress and cancellation.
+  Memory-backed and file-backed cases agree on coverage, ties, signed values
+  and exact timestamps. The file-backed tests cross an index block boundary
+  and demonstrate a usable source after cancellation. Chromium and Firefox
+  verified minimum −0.4 m³/s at 00:15, maximum 0 m³/s at 00:00, a restricted
+  one-sample window, cancellation and return to playback. Each browser
+  observed 32 guarded requests with no violations. Source and privacy
+  gates passed locally.
+- The hydrated annual synthetic package was 81,595,147 bytes with 96
+  channels and 105,121 timestamps. A Node file-backed scan returned all
+  exact reference extrema, occurrence timestamps and valid counts in
+  175 ms. Repeated independent single-column requests took 583 ms in the
+  same process. Observed peak process RSS was 116,376 KiB, including the
+  reference calculation and Node runtime. The indexed typed reserve
+  remained 1,049,000 bytes. This is a local engine measurement.

@@ -203,6 +203,44 @@ function rangeSummary(left,right,first=null,last=null){
   return {count,firstIndex:count?left:null,lastIndex:count?right-1:null,first,last};
 }
 
+const emptyEnvelope=samples=>({min:null,max:null,minTime:null,maxTime:null,valid:0,samples});
+
+function addExtrema(result,value,time){
+  if(Number.isNaN(value))return;
+  result.valid++;
+  if(result.min===null||value<result.min){result.min=value;result.minTime=time;}
+  if(result.max===null||value>result.max){result.max=value;result.maxTime=time;}
+}
+
+async function scanEnvelopes(left,right,rowsPerChunk,columns,read,{signal,onProgress}={}){
+  signal?.throwIfAborted();
+  const totals=columns.map(()=>emptyEnvelope(right-left));
+  let lastYield=performance.now();
+  for(let index=left;index<right;){
+    const block=Math.floor(index/rowsPerChunk),offset=index%rowsPerChunk;
+    const size=Math.min(rowsPerChunk-offset,right-index);
+    const [times,...series]=await read(block,columns);
+    signal?.throwIfAborted();
+    for(const [column,values] of series.entries()){
+      const total=totals[column];
+      for(let row=offset;row<offset+size;row++)addExtrema(total,values[row],times[row]);
+    }
+    index+=size;
+    if(index===right||performance.now()-lastYield>=24){
+      onProgress?.(index-left,right-left);
+      await new Promise(resolve=>setTimeout(resolve,0));
+      signal?.throwIfAborted();
+      lastYield=performance.now();
+    }
+  }
+  return totals;
+}
+
+function envelopeColumn(positions,key){
+  if(!positions.has(key))throw new Error("This result series is unavailable.");
+  return positions.get(key);
+}
+
 function makeIndex(chunks, rowsPerChunk, count, metadata) {
   const positions = new Map(metadata.columns.map((column,index)=>[column.series,index]));
   const at = index => chunks[Math.floor(index/rowsPerChunk)].time[index%rowsPerChunk];
@@ -248,17 +286,17 @@ function makeIndex(chunks, rowsPerChunk, count, metadata) {
       return {times,values};
     },
     envelope(key,start,end) {
-      if (!positions.has(key)) throw new Error("This result series is unavailable.");
-      const [left,right]=bounds(start,end), column=positions.get(key);
-      let min = null, max = null, minTime = null, maxTime = null, valid = 0;
-      for (let index=left;index<right;++index) {
-        const value = valueAt(index,column);
-        if (Number.isNaN(value)) continue;
-        ++valid;
-        if (min === null || value < min) {min=value;minTime=at(index);}
-        if (max === null || value > max) {max=value;maxTime=at(index);}
-      }
-      return {min,max,minTime,maxTime,valid,samples:right-left};
+      const [left,right]=bounds(start,end),column=envelopeColumn(positions,key);
+      const total=emptyEnvelope(right-left);
+      for(let index=left;index<right;index++)addExtrema(total,valueAt(index,column),at(index));
+      return total;
+    },
+    async envelopes(keys,start,end,options){
+      const [left,right]=bounds(start,end),columns=keys.map(key=>envelopeColumn(positions,key));
+      return scanEnvelopes(left,right,rowsPerChunk,columns,(block,slots)=>{
+        const {time,values}=chunks[block],rows=time.length;
+        return [time,...slots.map(slot=>values.subarray(slot*rows,(slot+1)*rows))];
+      },options);
     }
   };
 }
@@ -321,10 +359,10 @@ function fileIndex(blob,layout,lastTimes,first,metadata){
       index+=count;
     }
   }
-  const seriesPosition=key=>{
-    if(!positions.has(key))throw new Error("This result series is unavailable.");
-    return positions.get(key);
-  };
+  async function envelopes(keys,start,end,options){
+    const [left,right]=await bounds(start,end),columns=keys.map(key=>envelopeColumn(positions,key));
+    return scanEnvelopes(left,right,rowsPerChunk,columns,(block,slots)=>readColumns(block,[0,...slots]),options);
+  }
   async function readFrame(index,keys,includeTime){
     const slots=keys.flatMap(key=>positions.has(key)?[positions.get(key)]:[]);
     if(includeTime)slots.unshift(0);
@@ -350,7 +388,7 @@ function fileIndex(blob,layout,lastTimes,first,metadata){
       return target.exact?readFrame(target.index,keys,false):null;
     });},
     seriesWindow(key,start,end){return serial(async()=>{
-      const column=seriesPosition(key),[left,right]=await bounds(start,end),size=right-left;
+      const column=envelopeColumn(positions,key),[left,right]=await bounds(start,end),size=right-left;
       if(size>WINDOW_SAMPLES)throw new Error("Select a smaller time window to retrieve up to 250,000 samples.");
       const times=new Float64Array(size),values=new Float64Array(size);
       let offset=0;
@@ -359,19 +397,8 @@ function fileIndex(blob,layout,lastTimes,first,metadata){
       }
       return {times,values};
     });},
-    envelope(key,start,end){return serial(async()=>{
-      const column=seriesPosition(key),[left,right]=await bounds(start,end);
-      let min=null,max=null,minTime=null,maxTime=null,valid=0;
-      for await(const [times,series] of pieces(column,left,right)){
-        for(const [index,value] of series.entries()){
-          if(Number.isNaN(value))continue;
-          valid++;
-          if(min===null||value<min){min=value;minTime=times[index];}
-          if(max===null||value>max){max=value;maxTime=times[index];}
-        }
-      }
-      return {min,max,minTime,maxTime,valid,samples:right-left};
-    });}
+    envelope(key,start,end){return serial(async()=>(await envelopes([key],start,end))[0]);},
+    envelopes:(keys,start,end,options)=>serial(()=>envelopes(keys,start,end,options))
   };
 }
 

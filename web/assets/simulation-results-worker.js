@@ -10,7 +10,7 @@ const core = self.HydraSimulationResults;
 const sources = new Map();
 const SOURCE_LIMIT = 16;
 const BYTE_LIMIT = 64 * 1024 ** 2;
-let active = null, revision = 0;
+let active = null, extrema = null, revision = 0;
 
 function summary(index, sourceId, filename) {
   return {sourceId, filename, count:index.count, first:index.first,last:index.last, ...index.metadata};
@@ -74,6 +74,17 @@ async function operation(id, name, data) {
     }
     case "series": return resolveSource(data.sourceId).seriesWindow(data.key,data.start,data.end);
     case "envelope": return resolveSource(data.sourceId).envelope(data.key,data.start,data.end);
+    case "envelopes": {
+      const source=resolveSource(data.sourceId);
+      if(!Array.isArray(data.keys)||!data.keys.length||data.keys.length>20000)throw new Error("Select a valid set of result series.");
+      if(extrema&&!extrema.controller.signal.aborted)throw new Error("Wait for the current extrema scan or cancel it.");
+      const controller=new AbortController();
+      extrema={id,controller};
+      try{
+        return await source.envelopes(data.keys,data.start,data.end,{signal:controller.signal,
+          onProgress:(loaded,total)=>self.postMessage({id,type:"progress",loaded,total})});
+      }finally{if(extrema?.id===id)extrema=null;}
+    }
     case "range": return resolveSource(data.sourceId).range(core.parseProjectClock(data.start),core.parseProjectClock(data.end));
     default: throw new Error("Unsupported simulation results operation.");
   }
@@ -84,10 +95,12 @@ self.addEventListener("message", ({data:message}) => {
   const {id,name,data}=message;
   if (name === "cancel") {
     if (active?.id === data?.requestId) active.controller.abort();
+    if (extrema?.id === data?.requestId) extrema.controller.abort();
     return;
   }
   void operation(id,name,data||{}).then(value=>{
     const transfer=name==="series" ? [value.times.buffer,value.values.buffer] : [];
     self.postMessage({id,type:"result",value},transfer);
-  },error=>self.postMessage({id,type:"error",message:error.name==="AbortError" ? "Import cancelled. Existing results are available." : error.message}));
+  },error=>self.postMessage({id,type:"error",message:error.name==="AbortError" ?
+    (name==="envelopes"?"Extrema scan cancelled. Existing results are available.":"Import cancelled. Existing results are available.") : error.message}));
 });
