@@ -30,7 +30,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial |
-| 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls and independent extrema | Partial. Scenario comparison and result-layer selection remain open |
+| 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Partial. Independent map extrema and expanded profile comparison remain open |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
 | 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for indexed ingestion and lookup. Broader capacity and release checks remain open |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
@@ -958,3 +958,24 @@ other state.
   135 Chromium and 134 Firefox requests with no violations.
 - Scenario comparison, additional cross-section geometry and the exact
   release assurance gates remain open.
+
+### Exact baseline and proposal playback
+
+- Choose a compatible proposal after selecting the baseline result layer.
+  The two declarations must agree on event, temporal support, asset kind,
+  quantity, unit, location and datum. The engineer confirms the common
+  project clock and asset mappings. Values and proposal-minus-baseline
+  differences are independent fields. The map can shade each field and
+  the long section marks available exact proposal node or selected
+  conduit-end levels.
+- Unit cases verify a zero and signed difference, missing and overflowing
+  values, and rejection of mismatched event, datum, quantity, location or
+  support. Chromium and Firefox verified a zero sample difference, an
+  unmatched seven-minute versus eight-minute sample, a −0.3 m proposal
+  difference, three map shading modes, proposal level marks and layer
+  withdrawal after deleting either source. The request observer saw 32
+  requests in each browser with zero violations. Existing source,
+  privacy, and numeric unit checks passed locally.
+- This stage compares results on a reviewed common network. Independent
+  schematic extrema, proposed opposite-end fills and review of scenario
+  geometry differences remain open.

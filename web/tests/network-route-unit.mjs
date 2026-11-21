@@ -53,6 +53,17 @@ const layerColumns=[{...conduitResult,series:'level-us',quantity:'level',locatio
   {...nodeResult,series:'level-other-datum',quantity:'level',location:'node',unit:'m',datum:'AD'}];
 assert.equal(R.simulationLayers(layerColumns).size,4,'Endpoints, quantity, datum and asset type stay explicit');
 assert.equal(R.simulationLayers([...layerColumns,layerColumns[0]]).values().next().value.length,2);
+const baselineRun={scenario:'Baseline',event:'Storm E',temporalSupport:'instantaneous'};
+const proposalRun={scenario:'Proposal',event:'Storm E',temporalSupport:'instantaneous',columns:[
+  {...layerColumns[0],series:'proposed-level-us'},
+  {...layerColumns[0],series:'proposed-other-datum',datum:'AD'},
+  ...layerColumns.slice(1)]};
+assert.deepEqual(R.compatibleSimulationColumns(baselineRun,layerColumns.slice(0,1),proposalRun).map(column=>column.series),['proposed-level-us']);
+assert.deepEqual(R.compatibleSimulationColumns(baselineRun,layerColumns.slice(0,1),{...proposalRun,scenario:'Baseline'}),[]);
+assert.deepEqual(R.compatibleSimulationColumns(baselineRun,layerColumns.slice(0,1),{...proposalRun,event:'Other storm'}),[]);
+assert.deepEqual(R.compatibleSimulationColumns(baselineRun,layerColumns.slice(0,1),{...proposalRun,temporalSupport:'interval'}),[]);
+assert.deepEqual(R.compareSimulationSamples([0,5,null,1,2,Number.MAX_VALUE],[0,-1,7,null,3,-Number.MAX_VALUE]),
+  [0,-6,null,null,1,null]);
 const trimmedZero={series:'trimmed',asset:{kind:'node',id:'127'}};
 const resultNetwork={...network,contextFormat:'icm-csv-v1'};
 assert.deepEqual([...R.simulationBindings(resultNetwork,[nodeResult,conduitResult,wrongTable,trimmedZero])],

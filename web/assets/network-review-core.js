@@ -311,19 +311,37 @@ function simulationBindings(network,columns){
   return matches;
 }
 
+const simulationLayerKey=column=>JSON.stringify([column.asset.kind,column.quantity,column.unit,column.location,column.datum]);
+
 function simulationLayers(columns){
   const layers=new Map();
   for(const column of columns){
-    const key=JSON.stringify([column.asset.kind,column.quantity,column.unit,column.location,column.datum]);
+    const key=simulationLayerKey(column);
     if(!layers.has(key))layers.set(key,[]);
     layers.get(key).push(column);
   }
   return layers;
 }
 
+function compatibleSimulationColumns(baseline,columns,proposal){
+  if(!baseline||!columns.length||baseline.scenario===proposal.scenario||baseline.event!==proposal.event||
+    baseline.temporalSupport!=='instantaneous'||proposal.temporalSupport!==baseline.temporalSupport)return [];
+  const key=simulationLayerKey(columns[0]);
+  return proposal.columns.filter(column=>simulationLayerKey(column)===key);
+}
+
+function compareSimulationSamples(baseline,proposal){
+  return baseline.map((value,index)=>{
+    const other=proposal[index];
+    if(!Number.isFinite(value)||!Number.isFinite(other))return null;
+    const difference=other-value;
+    return Number.isFinite(difference)?difference:null;
+  });
+}
+
 function simulationBand(value,low,high){
   if(!Number.isFinite(value))return 'missing';
   return String(Math.min(4,Math.max(0,Math.floor(5*(value-low)/(high-low)))));
 }
-globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,simulationBand};
+globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand};
 })();

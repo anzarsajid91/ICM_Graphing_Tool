@@ -2004,12 +2004,16 @@ function plotProfile(steps){
   const routeNodes=new Set(steps.flatMap(step=>[step.from,step.to]));
   const imported=new Map((model?.values||[]).filter(record=>routeNodes.has(record.node)).map(record=>[record.node,record.level]));
   const conduitLevels=new Map((model?.ends||[]).map(record=>[record.edge,record]));
+  const profileLinks=new Set(segments.flat().map(step=>step.id));
+  const proposalLevels=new Map((model?.proposal?.levels||[])
+    .filter(row=>row.location==='node'?routeNodes.has(row.id):profileLinks.has(row.id)).map(row=>[row.id,row]));
   const shownEndLevels=segments.flat().flatMap(step=>{
     const ends=conduitLevels.get(step.id);return ends?[ends.upstream,ends.downstream]:[];
   }).filter(Number.isFinite);
   const levels=steps.flatMap(step=>[step.us,step.ds,step.groundFrom,step.groundTo,step.chamberFrom,step.chamberTo,
     step.us!==null&&step.height!==null?step.us+step.height:null,
-    step.ds!==null&&step.height!==null?step.ds+step.height:null]).filter(Number.isFinite).concat([...imported.values()],shownEndLevels);
+    step.ds!==null&&step.height!==null?step.ds+step.height:null]).filter(Number.isFinite)
+    .concat([...imported.values()],shownEndLevels,[...proposalLevels.values()].map(row=>row.level));
   if(!segments.length||!levels.length){
     view.append(inspectorElement('p','A profile needs source conduit lengths and levels. Review the source data in the asset table.'));
     return;
@@ -2037,7 +2041,13 @@ function plotProfile(steps){
     }
     svg.append(svgElement('text',{x:12,y:18},'Level (m'+(model?.datum?' '+model.datum:'')+')'),svgElement('text',{x:460,y:283,'text-anchor':'middle'},absolute?'Chainage (m)':'Local distance (m)'),
       svgElement('text',{x:850,y:18,'text-anchor':'end'},'Vertical exaggeration '+f((213/vertical.span)/(774/horizontal.span),2)+'×'));
-    const drawnLevels=new Set(),drawnNodes=new Set(),structures=new Map();
+    const drawnLevels=new Set(),drawnProposals=new Set(),drawnNodes=new Set(),structures=new Map();
+    const proposalMark=(station,level,id,location,ground)=>{
+      const mark=svgElement('circle',{'data-ns-profile-proposal':location,cx:x(station),cy:y(level),r:7,fill:'none',stroke:'#8f397c','stroke-width':2});
+      const freeboard=Number.isFinite(ground)?' · ground freeboard '+f(ground-level,3)+' m':'';
+      mark.append(svgElement('title',{},id+' · '+model.proposal.scenario+' proposal '+location+' level '+f(level,3)+' m'+freeboard));
+      return mark;
+    };
     for(const step of steps.filter(step=>step.lengthStatus==='structure'&&step.chainageStart!==null)){
       const distance=step.chainageStart-origin;
       if(absolute&&distance>=0&&distance<=items.at(-1).x2){
@@ -2092,6 +2102,11 @@ function plotProfile(steps){
           group.append(marker);
         }
       }
+      const proposal=proposalLevels.get(step.id);
+      if(proposal&&proposal.location!=='node'){
+        const upstream=proposal.location==='upstream';
+        group.append(proposalMark(upstream?step.x1:step.x2,proposal.level,step.name,proposal.location,upstream?step.groundFrom:step.groundTo));
+      }
       for(const [station,level] of [[step.x1,step.us],[step.x2,step.ds]])if(level!==null)
         group.append(svgElement('circle',{cx:x(station),cy:y(level),r:3,fill:'#14527c'}));
       for(const [nodeId,station,ground,floor] of [[step.from,step.x1,step.groundFrom,step.chamberFrom],[step.to,step.x2,step.groundTo,step.chamberTo]]){
@@ -2105,6 +2120,10 @@ function plotProfile(steps){
           shaft.onclick=()=>{if(network.nodes.some(node=>node.id===nodeId))selectPoint(nodeId);};
           shaft.onkeydown=event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();shaft.onclick();}};
           pointLayer.append(shaft);
+        }
+        const proposalNode=proposalLevels.get(nodeId);
+        if(proposalNode?.location==='node'&&!drawnProposals.has(nodeId)){
+          drawnProposals.add(nodeId);pointLayer.append(proposalMark(station,proposalNode.level,nodeId,'node',ground));
         }
         const level=imported.get(nodeId);
         if(!Number.isFinite(level)||drawnLevels.has(nodeId))continue;
@@ -2146,6 +2165,9 @@ function exportProfileSvg(){
 function renderProfileModel(){
   const active=simulationView?.profile(),model=active||routeDraft.model;
   const routeNodes=new Set(routeDraft.steps.flatMap(step=>[step.from,step.to]));
+  const routeLinks=new Set(routeDraft.steps.map(step=>step.id));
+  const comparison=model?.proposal?' '+model.proposal.scenario+' exact proposal level samples: '+model.proposal.levels
+    .filter(row=>row.location==='node'?routeNodes.has(row.id):routeLinks.has(row.id)).length+'. Purple rings mark available proposal levels.':'';
   $('nsProfileModelLegend').hidden=!model;
   $('nsProfileModelLegend').textContent=model?.ends?'Conduit-end level and supported water fill':'Modelled node level';
   if(model?.ends){
@@ -2159,12 +2181,12 @@ function renderProfileModel(){
     $('nsProfileModelInfo').textContent=model.scenario+' · '+model.time+' model clock · '+model.datum+' · Exact conduit-end level samples: '+
       count+'. '+(missing?missing+' link(s) with missing end levels. ':'')+(dry?dry+' link(s) at or below invert at an end. ':'')+
       (geometry?geometry+' link(s) with unavailable geometry. ':'')+'Straight lines join supported endpoint levels. '+
-      'The displayed line does not calculate levels within a conduit.';
+      'The displayed line does not calculate levels within a conduit.'+comparison;
     return;
   }
   $('nsProfileModelInfo').textContent=model?model.scenario+' · '+model.time+' model clock · '+model.datum+
     ' · Exact node level samples: '+model.values.filter(row=>routeNodes.has(row.node)).length+(active?' in simulation playback.':
-      ' from '+new Set(model.values.map(row=>row.source)).size+' sources.') : '';
+      ' from '+new Set(model.values.map(row=>row.source)).size+' sources.')+comparison : '';
 }
 
 function mountSimulationView(){
@@ -2178,12 +2200,16 @@ function mountSimulationView(){
     '<label>Scale minimum<input name="minimum" type="number" step="any" required></label>'+
     '<label>Scale maximum<input name="maximum" type="number" step="any" required></label>'+
     '<label id="nsSimulationDatum" hidden>Geometry datum<input name="datum" maxlength="128"></label>'+
-    '<label id="nsSimulationCompanion" hidden>Other conduit end<select name="companion" aria-label="Other conduit end"></select></label></div>'+
+    '<label id="nsSimulationCompanion" hidden>Other conduit end<select name="companion" aria-label="Other conduit end"></select></label>'+
+    '<label id="nsSimulationProposal" hidden>Proposal results<select name="proposal" aria-label="Proposal results"></select></label></div>'+
     '<p id="nsSimulationSourceInfo"></p><p><label><input name="confirm" type="checkbox" required> I reviewed the model revision, typed asset mappings and result convention against this network</label></p>'+
+    '<p id="nsSimulationComparison" hidden><span id="nsSimulationProposalInfo"></span><br><label><input name="verifyProposal" type="checkbox"> The proposal uses these same assets, event, result convention and project clock</label></p>'+
     '<div class="ns-review-actions"><button type="submit">Apply results layer</button><button type="button" id="nsClearSimulation" disabled>Remove results layer</button></div></form>'+
     '<div id="nsSimulationTransport" class="ns-review-actions" hidden><label>Simulation sample<input id="nsSimulationTime" type="range" min="0" max="0" step="1" value="0"></label>'+
     '<button type="button" id="nsSimulationBack">Previous sample</button><button type="button" id="nsSimulationPlay" aria-pressed="false">Play</button><button type="button" id="nsSimulationNext">Next sample</button>'+
-    '<label>Samples per second<select id="nsSimulationSpeed"><option>1</option><option selected>2</option><option>5</option></select></label></div>'+
+    '<label>Samples per second<select id="nsSimulationSpeed"><option>1</option><option selected>2</option><option>5</option></select></label>'+
+    '<label id="nsSimulationShadeChoice" hidden>Map shading<select id="nsSimulationShade" aria-label="Map shading"><option value="primary">Baseline</option>'+
+    '<option value="proposal">Proposal</option><option value="difference">Proposal minus baseline</option></select></label></div>'+
     '<div id="nsSimulationWindow" hidden></div><p id="nsSimulationStamp"></p><div id="nsSimulationLegend" class="ns-simulation-legend" hidden></div></details>');
   const panel=$('nsSimulation'),form=$('nsSimulationSetup'),fields=form.elements;
   const note=$('nsSimulationStatus'),stamp=$('nsSimulationStamp'),legend=$('nsSimulationLegend');
@@ -2191,7 +2217,8 @@ function mountSimulationView(){
   const back=$('nsSimulationBack'),next=$('nsSimulationNext'),clear=$('nsClearSimulation');
   const titles={level:'Level',flow:'Flow',velocity:'Velocity',depth:'Depth','total-head':'Total head',
     'flood-depth':'Flood depth','flood-volume':'Flood volume','surcharge-state':'Surcharge state'};
-  let layer=null,profile=null,generation=0,playing=0,timer=null,groups=new Map(),sampleWindow=null,layerChoices=new Map(),companions=new Map();
+  const shade=$('nsSimulationShade');
+  let layer=null,profile=null,generation=0,playing=0,timer=null,groups=new Map(),sampleWindow=null,layerChoices=new Map(),companions=new Map(),proposals=new Map();
   const session=()=>window.HydraResultsWorkspace?.session;
   const sources=()=>session()?.sources()||[];
   const candidate=()=>sources().find(item=>item.sourceId===Number(fields.source.value));
@@ -2232,9 +2259,12 @@ function mountSimulationView(){
       const match=layer.matches.get(column.series),group=groups.get(R.refKey(match));
       if(!group)continue;
       const value=layer.values[index],quantity=titles[column.quantity];
-      const text=quantity+' · '+(Number.isFinite(value)?f(value,6)+' '+column.unit:'Missing sample')+
+      const measure=sample=>Number.isFinite(sample)?f(sample,6)+' '+column.unit:'Missing sample';
+      const text=quantity+' · '+(layer.proposal?'Baseline '+measure(value)+' · Proposal '+measure(layer.proposedValues[index])+
+        ' · Proposal minus baseline '+measure(layer.difference[index]):measure(value))+
         (column.location!=='node'?' · '+column.location+' end':'');
-      group.dataset.nsSample=R.simulationBand(value,layer.low,layer.high);
+      const shaded={primary:value,proposal:layer.proposedValues?.[index],difference:layer.difference?.[index]}[shade.value];
+      group.dataset.nsSample=R.simulationBand(shaded,layer.low,layer.high);
       if(!group.dataset.nsSimulationLabel)group.dataset.nsSimulationLabel=group.getAttribute('aria-label');
       group.setAttribute('aria-label',group.dataset.nsSimulationLabel+' · '+text);
       let annotation=group.querySelector('[data-ns-result-value]');
@@ -2250,7 +2280,8 @@ function mountSimulationView(){
     const wasApplied=Boolean(profile);
     stop();++generation;layer=null;profile=null;removeMarks();
     sampleWindow?.setSource(null);
-    transport.hidden=true;legend.hidden=true;stamp.textContent='';clear.disabled=true;fields.confirm.checked=false;
+    transport.hidden=true;legend.hidden=true;stamp.textContent='';clear.disabled=true;shade.value='primary';
+    fields.confirm.checked=false;fields.verifyProposal.checked=false;
     if(message&&panel.open)note.textContent=message;
     if(wasApplied)redrawProfile();
   }
@@ -2269,6 +2300,7 @@ function mountSimulationView(){
     const canPair=column?.quantity==='level'&&column.asset.kind==='link';
     $('nsSimulationCompanion').hidden=!canPair;
     fields.companion.value='';refreshCompanions(source,column);
+    fields.proposal.value='';refreshProposals(source);
     if(!source||!column){$('nsSimulationSourceInfo').textContent='';return;}
     const [low,high]=ranges[column.quantity]||[0,1];
     fields.minimum.value=low;fields.maximum.value=high;
@@ -2291,16 +2323,36 @@ function mountSimulationView(){
       new Option(item.source.filename+' · '+item.columns[0].location+' end',item.source.sourceId)));
     if(companions.has(Number(wanted)))fields.companion.value=wanted;
   }
+  function showProposal(){
+    const proposal=proposals.get(Number(fields.proposal.value))?.source;
+    $('nsSimulationComparison').hidden=!proposal;
+    fields.verifyProposal.required=Boolean(proposal);
+    $('nsSimulationProposalInfo').textContent=proposal?'Proposal '+proposal.scenario+' · Simulation '+proposal.simulation+
+      ' · Revision '+proposal.modelRevision+' · '+proposal.event+'. Only exact shared timestamps are compared.':'';
+  }
+  function refreshProposals(source){
+    const wanted=fields.proposal.value;
+    proposals=new Map();
+    for(const entry of sources()){
+      const columns=R.compatibleSimulationColumns(source,selectedColumns(),entry);
+      if(columns.length)proposals.set(entry.sourceId,{source:entry,columns});
+    }
+    fields.proposal.replaceChildren(new Option('No comparison',''),...[...proposals.values()].map(item=>
+      new Option(item.source.scenario+' · '+item.source.filename,item.source.sourceId)));
+    if(proposals.has(Number(wanted)))fields.proposal.value=wanted;
+    $('nsSimulationProposal').hidden=!proposals.size;
+    showProposal();
+  }
   function refreshSources(){
     const wanted=fields.source.value,available=sources();
-    const removed=layer&&(!available.includes(layer.source)||(layer.companion&&!available.includes(layer.companion.source)));
+    const removed=layer&&[layer.source,layer.companion?.source,layer.proposal?.source].some(source=>source&&!available.includes(source));
     if(removed)reset('The results source was removed. Import it again to resume.');
     const filtered=window.HydraResultsWorkspace?.eventSources(fields.event,available)||[];
     fields.source.replaceChildren(new Option('Choose an indexed source',''),...filtered.map(item=>new Option(item.scenario+' · '+item.filename,item.sourceId)));
     fields.source.value=wanted;if(fields.source.selectedIndex<0)fields.source.selectedIndex=0;
     form.hidden=!eligible()||!available.length;
     if(wanted!==fields.source.value)selectSource();
-    else refreshCompanions(candidate(),selectedColumns()[0]);
+    else{refreshCompanions(candidate(),selectedColumns()[0]);refreshProposals(candidate());}
     if(removed)return;
     if(!eligible())note.textContent='Open a native ICM network in detailed Explore mode to use simulation playback.';
     else if(!available.length)note.textContent='Index simulation result columns before applying a layer.';
@@ -2315,6 +2367,14 @@ function mountSimulationView(){
       if(request!==generation)return;
       if(!frame.values||!Number.isFinite(frame.time))throw new Error('The selected sample is unavailable.');
       const datum=current.geometryDatum;
+      let proposedValues=null,difference=null;
+      if(current.proposal){
+        const {source,columns,alignment}=current.proposal;
+        const peer=await session().frameAtTime(source.sourceId,frame.time,columns.map(column=>column.series));
+        if(request!==generation)return;
+        proposedValues=alignment.map(index=>peer.values?.[index]??null);
+        difference=R.compareSimulationSamples(frame.values,proposedValues);
+      }
       let conduits=null;
       if(datum&&current.columns[0].asset.kind==='link'){
         const steps=new Set(routeDraft.steps.map(step=>step.id)),byEdge=new Map();
@@ -2338,14 +2398,24 @@ function mountSimulationView(){
         }
         conduits=[...byEdge.values()];
       }
-      current.values=frame.values;
+      Object.assign(current,{values:frame.values,proposedValues,difference});
       const timestamp=new Date(frame.time).toISOString().slice(0,-1).replace('T',' ');
       const valid=frame.values.filter(Number.isFinite).length;
       stamp.textContent=current.source.scenario+' · '+timestamp+' (project clock) · '+valid+' of '+current.columns.length+' matched assets have a sample.';
+      if(current.proposal)stamp.textContent+=' '+current.proposal.source.scenario+' · '+difference.filter(Number.isFinite).length+
+        ' of '+current.columns.length+' assets have an exact comparison.';
       time.setAttribute('aria-valuetext',timestamp+' project clock');
       decorate();
-      profile=datum?{scenario:current.source.scenario,time:timestamp,datum,...(conduits?{ends:conduits,values:[]}:{
-        values:current.columns.flatMap((column,i)=>Number.isFinite(frame.values[i])?[{node:current.matches.get(column.series).id,level:frame.values[i]}]:[])})}:null;
+      profile=null;
+      if(datum){
+        const levels=values=>current.columns.flatMap((column,index)=>{
+          const id=current.matches.get(column.series).id,level=values[index];
+          return Number.isFinite(level)?[{id,level,location:column.location}]:[];
+        });
+        profile={scenario:current.source.scenario,time:timestamp,datum,ends:conduits,
+          values:conduits?[]:levels(frame.values).map(({id,level})=>({node:id,level})),
+          proposal:current.proposal?{scenario:current.proposal.source.scenario,levels:levels(proposedValues)}:null};
+      }
       if(profile)redrawProfile();
     }catch(error){if(request===generation)reset(error.message);}
   }
@@ -2353,6 +2423,18 @@ function mountSimulationView(){
   fields.event.onchange=()=>{reset();refreshSources();};
   fields.metric.onchange=()=>{reset();refreshLayer();};
   fields.companion.onchange=()=>{reset();};
+  fields.proposal.onchange=()=>{reset();showProposal();};
+  shade.onchange=()=>{renderLegend();decorate();};
+  function renderLegend(){
+    const first=layer.columns[0],{low,high}=layer;
+    const description=layer.proposal?' · '+shade.selectedOptions[0].textContent:'';
+    legend.replaceChildren(inspectorElement('strong',titles[first.quantity]+description+' ('+first.unit+')'),
+      ...Array.from({length:5},(_,band)=>{
+        const a=low+(high-low)*(band/5),b=low+(high-low)*((band+1)/5);
+        const item=inspectorElement('span',(band===0?'< '+f(b,4):band===4?'≥ '+f(a,4):f(a,4)+' to < '+f(b,4)));
+        item.dataset.nsSample=String(band);return item;
+      }),inspectorElement('span','Dashed link or hollow marker: missing sample'));
+  }
   form.onsubmit=event=>{
     event.preventDefault();
     const source=candidate();if(!source||!eligible())return;
@@ -2371,22 +2453,27 @@ function mountSimulationView(){
       if(!peerColumns.length){note.textContent='No opposite-end columns match typed links in this network.';return;}
       companion={...companion,columns:peerColumns,matches:peerMatches};
     }
+    let proposal=proposals.get(Number(fields.proposal.value));
+    if(proposal){
+      if(!fields.verifyProposal.checked)return;
+      const baseAssets=new Set(columns.map(column=>R.refKey(matches.get(column.series))));
+      const proposedMatches=R.simulationBindings(network,proposal.columns);
+      const proposedColumns=proposal.columns.filter(column=>proposedMatches.has(column.series)&&baseAssets.has(R.refKey(proposedMatches.get(column.series))));
+      if(!proposedColumns.length){note.textContent='The proposal has no typed assets in common with the baseline layer.';return;}
+      const positions=new Map(proposedColumns.map((column,index)=>[R.refKey(proposedMatches.get(column.series)),index]));
+      proposal={...proposal,columns:proposedColumns,alignment:columns.map(column=>positions.get(R.refKey(matches.get(column.series)))??-1)};
+    }
     reset();
     fields.confirm.checked=true;
-    layer={source,columns,matches,low,high,values:null,companion,geometryDatum:first.quantity==='level'?datum:''};
+    fields.verifyProposal.checked=Boolean(proposal);
+    layer={source,columns,matches,low,high,values:null,companion,proposal,geometryDatum:first.quantity==='level'?datum:''};
     const resultsWorkspace=window.HydraResultsWorkspace;
     if(!sampleWindow)sampleWindow=resultsWorkspace.mountResultWindow($('nsSimulationWindow'),range=>{
       stop();resultsWorkspace.setSliderWindow(time,range);void drawFrame();
     });
     resultsWorkspace.setSliderWindow(time,sampleWindow.setSource(source));
     transport.hidden=false;clear.disabled=false;legend.hidden=false;
-    const unit=first.unit;
-    legend.replaceChildren(inspectorElement('strong',titles[first.quantity]+' ('+unit+')'),
-      ...Array.from({length:5},(_,band)=>{
-        const a=low+(high-low)*(band/5),b=low+(high-low)*((band+1)/5);
-        const item=inspectorElement('span',(band===0?'< '+f(b,4):band===4?'≥ '+f(a,4):f(a,4)+' to < '+f(b,4)));
-        item.dataset.nsSample=String(band);return item;
-      }),inspectorElement('span','Dashed link or hollow marker: missing sample'));
+    $('nsSimulationShadeChoice').hidden=!proposal;renderLegend();
     note.textContent=columns.length+' of '+requested.length+' result columns matched. Other assets retain their schematic styling.'+
       (first.asset.kind==='link'?' Link arrows show nominal topology. Signs are available in asset labels.':'');
     void drawFrame();

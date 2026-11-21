@@ -188,4 +188,23 @@ does not estimate the internal conduit solution. Missing exact samples,
 levels at or below invert, and unsupported barrel geometry withhold the fill.
 [Autodesk link results reference](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm)
 
-Automated revision binding and scenario comparison remain outstanding.
+### Compare scenarios at an exact sample
+
+Select the baseline result layer and choose **Proposal results**. Candidates
+must declare different scenarios, the same event and instantaneous project
+clock support. The asset kind, result quantity, unit, result location and
+datum must match. Review both model revisions, their shared project clock and
+the typed asset mappings. The current geometry is used as the shared review
+surface. The comparison requires common typed assets and does not establish
+that the two source models have equivalent geometry or hydraulic behaviour.
+
+Playback steps through recorded baseline samples. For each asset, inspect
+the baseline, proposal and proposal minus baseline values in its map label.
+Switch map shading among the three values and set the scale in the quantity's
+displayed unit. A valid difference requires both samples at the exact
+timestamp. A proposal sample at a different timestamp is unavailable for
+that frame. In a long section with a confirmed datum, purple rings mark the
+proposal's recorded node or selected conduit-end levels. The baseline may
+also show its reviewed opposite conduit end. Each source remains separate
+in the local index. Removing either source or changing network geometry
+clears the comparison.
