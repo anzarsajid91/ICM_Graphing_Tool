@@ -48,6 +48,40 @@ The U.S. Army Corps of Engineers documentation distinguishes instantaneous
 values, period means and period accumulations, and describes integrating source
 support to compute a period mean. [HEC-DSSVue time conventions](https://www.hec.usace.army.mil/confluence/dssdocs/dssvueum/introduction/time-series-conventions) · [HEC-DSSVue time functions](https://www.hec.usace.army.mil/confluence/dssdocs/dssvueum/math-and-statistical-functions/time-functions)
 
+## Paired flow-monitor investigation
+
+**Flow Survey → FDV health → Investigate monitor readings** reviews concurrent
+depth and signed velocity from one local record on the reviewed project clock.
+The engineer can set measurement ranges, maximum adjacent sample gap, near-flat
+depth and velocity-change criteria, and a rising-depth screen requiring a
+confirmed positive downstream sign. A reviewed circular diameter enables a
+separate crown check. Long gaps, missing values and confirmed source exclusions
+break pattern support. The existing FDV, WAPUG and FSAT methods retain their
+own criteria and outputs.
+
+For a reviewed circular section below its crown, the discharge check compares
+the concurrent reported flow with wetted cross-sectional area multiplied by
+the reviewed mean velocity. The denominator is the greater of the absolute
+reference discharge and the explicitly chosen near-zero floor. The result
+requires a common section, sign and time basis. For a diameter of 1 m and a
+depth of 0.5 m, the wetted area is π/8 m². At 1.2 m/s the reference discharge
+is about 0.471239 m³/s. A concurrent reading of 0.9 m³/s is about 90.99% above
+that reference. Crown or above-crown depth, missing discharge and unreviewed
+velocity conventions are outside this discharge check. The Environment Agency
+describes characteristic velocity and wetted area in its free-surface
+area–velocity guidance. [MCERTS flow monitoring, section 9](https://www.gov.uk/government/publications/minimum-requirements-for-self-monitoring-of-flow-mcerts-performance-standard/minimum-requirements-for-self-monitoring-of-flow-mcerts-performance-standard#9-installing-and-using-area-velocity-flowmeters-in-free-surface-flows)
+
+Rising depth and low or reverse velocity warrant investigation of backwater,
+transient response or measurement conditions. Near-flat depth with changing
+velocity warrants a check of instrument response, possible fouling and site
+hydraulics. Drift and clock offsets are reviewed in Data source diagnostics.
+These are configurable Hydra Bench screens. A discharge channel calculated by
+the monitor itself may share the same inputs. Site checks and independent
+measurements are needed to validate the installation or diagnose a fault.
+The tool reviews up to 250,000 rows, counts all candidates and shows the first
+2,000 retained candidate records. Decisions and notes can be exported with
+the source fingerprint and settings as an explicit local audit.
+
 ## Spill intervals and 12/24 counting
 Physical spill intervals are threshold exceedances under linear interpolation between consecutive valid samples. Missing/long-gap intervals are unknown and break physical events. User exclusions remove time and break events. The 12/24 counting-window convention is applied to retained physical events without restarting at calendar month or year boundaries. The initial occupied 12-hour block counts once; each subsequent occupied 24-hour block contributes one additional count. A complete dry 24-hour block resets the sequence. Physical intervals are half-open: an interval ending exactly at a block boundary does not occupy the next block.
 

@@ -10,7 +10,8 @@ const optionalComponents=Object.freeze({
   diagnostics:{asset:'series-quality.js',mount:()=>{}},
   monitorCompare:{asset:'monitor-comparison.js',mount:()=>{}},
   spillInquiry:{asset:'spill-inquiry.js',mount:()=>{}},
-  localSecurity:{asset:'local-security-diagnostics.js',mount:()=>{}}
+  localSecurity:{asset:'local-security-diagnostics.js',mount:()=>{}},
+  monitorDiagnostics:{asset:'survey-monitor-diagnostics.js',mount:()=>{}}
 });
 const componentLoads=new Map(),readyComponents=new Set();
 function loadComponent(key){
@@ -335,6 +336,21 @@ function ensureDataHealthSurface(){
   const section=ensureSection('pwDataHealthSummary','FDV data health','Coverage and source quality by monitor.');
   section.classList.add('pw-data-health-summary');
   const head=qs('.pw-surface-head',section),run=$('runHealthBtn');if(run){run.classList.remove('primary');run.textContent='Run data health assessment';head.appendChild(run);}
+  const monitor=document.createElement('button'),monitorStatus=document.createElement('p');
+  monitor.className='btn';monitor.type='button';monitor.textContent='Investigate monitor readings';monitor.setAttribute('aria-haspopup','dialog');
+  monitorStatus.setAttribute('role','status');head.appendChild(monitor);section.appendChild(monitorStatus);
+  async function openClockDiagnostics(){
+    navigate('data','time-series',true);
+    try{await loadComponent('diagnostics');if(current.workspace==='data')window.HydraSeriesQuality.open();}
+    catch(error){$('mappingStatus').textContent=error.message+' Select Source diagnostics to retry.';}
+  }
+  monitor.onclick=async()=>{
+    if(monitor.getAttribute('aria-busy')==='true')return;
+    monitor.setAttribute('aria-busy','true');monitorStatus.textContent='';
+    try{await loadComponent('monitorDiagnostics');if(current.page==='fdv-check')window.HydraMonitorDiagnostics.open(openClockDiagnostics);}
+    catch(error){monitorStatus.textContent=error.message+' Select Investigate monitor readings to retry.';}
+    finally{monitor.removeAttribute('aria-busy');}
+  };
   const empty=document.createElement('div');empty.id='pwHealthSummaryEmpty';empty.className='pw-empty-state';empty.textContent='Run data health to review source coverage and quality.';
   const wrap=document.createElement('div');wrap.className='table-wrap pw-summary-table-wrap';wrap.tabIndex=0;wrap.setAttribute('role','region');wrap.setAttribute('aria-label','Flow survey health summary table');wrap.innerHTML='<table class="data-table pw-summary-table"><thead><tr><th>Monitor / source</th><th>Minimum coverage</th><th>Finding severity</th><th>Affected quantity</th><th>Next action</th></tr></thead><tbody id="pwHealthSummaryBody"></tbody></table>';
   const details=document.createElement('details');details.id='pwDataHealthDetails';details.className='pw-evidence-details';details.innerHTML='<summary>Channel / week evidence</summary><p>Full native assessment records remain available for audit and export.</p>';

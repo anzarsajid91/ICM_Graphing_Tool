@@ -57,6 +57,13 @@ def _circular_section(diameter, fraction):
     return area, 4 * area / wetted_perimeter
 
 
+def circular_wetted_area(diameter_m, depth_m):
+    """Circular area at a known section depth in the supported open section."""
+    if not (isfinite(diameter_m) and isfinite(depth_m) and diameter_m > 0 and 0 <= depth_m <= diameter_m):
+        raise ValueError("Use a positive circular diameter and depth within the pipe section.")
+    return _circular_section(diameter_m, depth_m / diameter_m)[0] if depth_m > 0 else 0.0
+
+
 def normal_depth_assessment(diameter_m, gradient, roughness_m, viscosity_m2_s, discharge_m3_s):
     """Find supported turbulent normal depths for a specified circular-pipe discharge."""
     full = full_pipe_capacity(diameter_m, gradient, roughness_m, viscosity_m2_s)

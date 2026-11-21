@@ -33,7 +33,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized real-sample map/profile playback, transport controls, windowing, scenario comparison, extrema and missingness | Partial |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
 | 6.5 | Local worker, series parser, source identity and registry | Native and optional portable result package, explicit schema and time support, bounded indexed worker and cancellation, selective retrieval, measured storage/capacity trade-offs | Partial |
-| 7.1 | Flow Survey FDV health, evidence and ratings | Explainable review of fouling, drift, flatline, depth–velocity, backwater, suspect dimensions and measurement ranges | Open |
+| 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
 | 7.2 | Gauge qualification, cumulative/event data | Compare timing, totals, correlation, spatial variability and suspect/missing support without inferring dry periods | Open |
 | 7.3 | Weekly review, coverage and WAPUG/FSAT | Explain suitability of selected periods and clearly attribute published versus project screening criteria | Open |
 | 8.1 | DWF, comparison and event diagnostics | Explain evidence and alternate investigation paths for baseflow/infiltration, runoff, peaks/timing/recession and restrictions/backwater | Open |
@@ -525,3 +525,22 @@ other state.
   101 and 98 requests with zero violations. Both existing deferred and IT
   Security navigation checks also passed. The complete development Python
   suite at this point passed 414 tests and 111 subtests.
+
+### Paired monitor diagnostics
+
+- Flow Survey FDV Health reviews concurrent signed velocity and depth,
+  optionally with discharge and a confirmed circular section. Explicit
+  thresholds control range, velocity change, near-flat depth and rising-depth
+  candidates. Missing or excluded periods break adjacency. A source-timing
+  action opens the existing Data review for drift and clock evidence. Findings
+  are independent from the existing WAPUG, FSAT, RAG and volume-balance engines.
+- The half-full 1 m diameter reference gives π/8 m² and about 0.471239 m³/s
+  at 1.2 m/s. A synthetic 0.9 m³/s sample gives a roughly 90.99% difference.
+  The new tests cover signed reverse velocity, crown and measurement evidence,
+  source exclusions and elapsed-time gaps. See [Engineering methods](methods.md#paired-flow-monitor-investigation).
+- Chromium and Firefox validated empty state, required engineering confirmations,
+  channel selection, exact paired and checked sample counts, evidence filtering,
+  review decisions, notes, paging, local CSV and Data handoff. The request
+  observers saw 97 and 95 requests with zero violations. The separate lazy
+  loading regression also passed on both. The full Python suite passed 417
+  tests and 111 subtests, and the repository privacy suites passed.

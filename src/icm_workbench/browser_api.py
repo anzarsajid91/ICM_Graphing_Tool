@@ -1453,6 +1453,35 @@ def inspect_local_series(path, column, criteria, start=None, end=None,
     return json.dumps(_jsonable(result), allow_nan=False)
 
 
+def review_monitor_channels(path, depth_column, velocity_column, settings, flow_column=None,
+                            start=None, end=None, exclusions_json="[]"):
+    """Review concurrent channels without changing independent quality or survey results."""
+    from icm_workbench.analysis.survey_monitor_diagnostics import monitor_diagnostics
+
+    parsed = _require_model_clock(_load(path), "Monitor source")
+    if parsed.metadata.get("timestamp_convention") != "instantaneous" or any(
+            parsed.audit.get(key, 0) for key in ("invalid_timestamps", "duplicate_timestamps", "malformed_rows")):
+        raise ValueError("Resolve invalid or repeated timestamps before using concurrent monitor checks.")
+    roles = [(depth_column, "depth", "m"), (velocity_column, "velocity", "m/s")]
+    if flow_column is not None:
+        roles.append((flow_column, "flow", "m³/s"))
+    for name, quantity, unit in roles:
+        contract = _series_contract(path, name)
+        if name not in parsed.frame or (contract["quantity"], contract["canonical_unit"]) != (quantity, unit):
+            raise ValueError("Select concurrent depth, velocity and optional flow with resolved canonical units.")
+    frame = parsed.frame[["timestamp", *[name for name, *_ in roles]]]
+    a, b = _model_clock_timestamp(start), _model_clock_timestamp(end)
+    if (a is not None and pd.isna(a)) or (b is not None and pd.isna(b)) or (a is not None and b is not None and a >= b):
+        raise ValueError("Enter an increasing review period on the project clock.")
+    if a is not None:
+        frame = frame[frame.timestamp >= a]
+    if b is not None:
+        frame = frame[frame.timestamp <= b]
+    result = monitor_diagnostics(frame, depth_column, velocity_column, flow_column, settings=settings,
+                                 exclusions=_exclusions(exclusions_json))
+    return json.dumps(result, allow_nan=False)
+
+
 def transform_local_series(source, interval_s, max_gap_s, operation="single", reference=None,
                            output="mean", unit=None, start=None, end=None, datum=None):
     """Derive supported interval statistics from resolved, untouched source rows."""
