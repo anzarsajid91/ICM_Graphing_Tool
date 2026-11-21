@@ -100,6 +100,36 @@ function monitorMatches(table,monitorColumn,network,resolutions=new Map()){
   });
 }
 
+function mapDetrimentHotspots(network,records){
+  const sourceIds=new Map();
+  for(const [kind,objects] of [['node',network.nodes],['edge',network.edges]]){
+    for(const object of objects){
+      if(!object.contextSource||object.type==='label')continue;
+      const ref={kind,id:object.id};
+      for(const name of new Set([object.id,object.sourceName].filter(Boolean))){
+        const key=refKey({kind,id:name});
+        if(!sourceIds.has(key))sourceIds.set(key,[]);
+        sourceIds.get(key).push(ref);
+      }
+    }
+  }
+  const mapped=new Map(),unmatched=[],ambiguous=[],unclassified=[],conflicting=new Set();
+  for(const row of records){
+    const kind=row.assetKind==='link'?'edge':row.assetKind;
+    if(!['node','edge'].includes(kind)){unclassified.push(row);continue;}
+    const sources=sourceIds.get(refKey({kind,id:row.assetId}))||[];
+    if(!sources.length){unmatched.push(row);continue;}
+    if(sources.length!==1){ambiguous.push(row);continue;}
+    const ref=sources[0],key=refKey(ref);
+    if(mapped.has(key)){
+      ambiguous.push(mapped.get(key).row);mapped.delete(key);conflicting.add(key);
+    }
+    if(conflicting.has(key))ambiguous.push(row);
+    else mapped.set(key,{ref,row});
+  }
+  return {mapped,unmatched,ambiguous,unclassified};
+}
+
 function overview(network){
   const nodes=network.nodes.filter(node=>node.type!=='label').sort((a,b)=>a.id.localeCompare(b.id));
   const edges=[...network.edges].sort((a,b)=>a.id.localeCompare(b.id));
@@ -267,5 +297,5 @@ function simulationBand(value,low,high){
   if(!Number.isFinite(value))return 'missing';
   return String(Math.min(4,Math.max(0,Math.floor(5*(value-low)/(high-low)))));
 }
-globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,overview,routePlanner,longSection,profileAxis,sameProfileSteps,simulationBindings,simulationBand};
+globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,longSection,profileAxis,sameProfileSteps,simulationBindings,simulationBand};
 })();

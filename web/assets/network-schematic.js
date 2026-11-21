@@ -11,7 +11,7 @@ let inspectorTab='evidence',selectionKind='node';
 let redo=[],multi=new Set(),highlight=null,hoverTimer=null,frame=null,analysisGeneration=0,analysisContext=null,analysisTimer=null,analysisReturnFocus=null,pickerReturnFocus=null;
 const freshness=new Map();
 const prefs=()=>R.preferences(network);
-let overviewCache=null,monitorCache=null,detailedCamera=null,simulationView=null;
+let overviewCache=null,monitorCache=null,detailedCamera=null,simulationView=null,hotspots=null;
 const inOverview=()=>prefs().overview&&!editing;
 const overviewGraph=()=>overviewCache??=R.overview(network);
 const sceneGraph=()=>inOverview()?overviewGraph():network;
@@ -197,6 +197,23 @@ function detrimentBadge(object,view,x,y){
     link.id+' · '+(row?view.caption+' · '+state+delta+duration+freeboard+flags:'Stale or unavailable comparison'),
     {'pointer-events':'none'});
 }
+function hotspotAt(kind,id,applyFilter=false){
+  const matched=hotspots?.matches.mapped.get(R.refKey({kind,id}));
+  const metric=matched?.row.metrics[hotspots.criterion];
+  if(!metric)return null;
+  const severity=hotspots.severity;
+  if(applyFilter&&severity!=='all'&&(severity==='adverse'?!['risk','detriment'].includes(metric.status):metric.status!==severity))return null;
+  return {matched,metric};
+}
+function hotspotBadge(kind,id,x,y){
+  const evidence=hotspotAt(kind,id,true);
+  if(!evidence)return null;
+  const {matched,metric}=evidence;
+  const tone={detriment:'#b93838',risk:'#9a6500',improvement:'#267044'}[metric.status]||'#60717d';
+  const value=metric.value==null?'Unavailable':f(metric.value,6)+' '+metric.unit;
+  return evidenceBadge('data-ns-hotspot',metric.status,translate(x,y),tone,'H',
+    matched.row.assetId+' · '+metric.label+' · '+metric.status+' · '+value,{'pointer-events':'none'});
+}
 function detrimentAssociation(object){
   if(!object.contextSource)return '';
   const view=detrimentView(),kind=detrimentKind(),link=object.detrimentLinks?.[kind];
@@ -270,6 +287,8 @@ function renderScene(includeHandles=true){
     }
     const badge=detrimentLayer&&detrimentBadge(e,comparison,route.label.x-10,route.label.y-5);
     if(badge)group.append(badge);
+    const hotspot=hotspotBadge('edge',e.id,route.label.x-23,route.label.y+10);
+    if(hotspot)group.append(hotspot);
     const structure=inOverview()&&structureMarker(e,route.label.x,route.label.y+12);
     if(structure)group.append(structure);
     const monitor=monitorMarker('edge',e.id,route.label.x+14,route.label.y-13);
@@ -302,7 +321,7 @@ function renderScene(includeHandles=true){
     if(includeLabels)group.append(svgElement('text',{'data-ns-label':n.id,x:Number(offset.x)+(small?5:0),y:Number(offset.y),
       'text-anchor':small?'start':'middle','font-size':small?13:14,'font-weight':small?400:600,fill:'#182732'},n.name));
     for(const badge of [asset(n)&&resultBadge(n),verificationLayer&&verificationBadge(n,evidence,reviews),
-      surveyLayer&&flowSurveyBadge(n,surveyView),detrimentLayer&&detrimentBadge(n,comparison,52,24)]){
+      surveyLayer&&flowSurveyBadge(n,surveyView),detrimentLayer&&detrimentBadge(n,comparison,52,24),hotspotBadge('node',n.id,-29,19)]){
       if(badge)group.append(badge);
     }
     const monitor=monitorMarker('node',n.id,19,13);if(monitor)group.append(monitor);
@@ -1280,7 +1299,86 @@ function renderReview(){
   $('nsViewSelect').innerHTML='<option value="">Saved views</option>'+network.views.map((v,i)=>'<option value="'+i+'">'+html(v.name)+'</option>').join('');
   $('nsSnapshotSelect').innerHTML='<option value="">Review snapshots</option>'+network.reviewSnapshots.map((v,i)=>'<option value="'+i+'">'+html(v.name)+'</option>').join('');
   $('nsSelectionCount').textContent=multi.size>1?multi.size+' selected':'';
+  renderHotspotControls();
   if(!$('nsMatrix').hidden)renderMatrix();
+}
+function renderHotspotControls(){
+  const panel=$('nsHotspotLayer');
+  if(!panel)return;
+  panel.hidden=!hotspots;
+  if(!hotspots)return;
+  const evidence=hotspotAt(selectionKind,selected,true),matching=hotspots.matches;
+  $('nsHotspotTitle').textContent=hotspots.ops.revision+' → '+hotspots.ops.proposal;
+  $('nsHotspotSummary').textContent=matching.mapped.size+' matched · '+matching.unmatched.length+' unmatched · '+
+    matching.ambiguous.length+' ambiguous · '+matching.unclassified.length+' unclassified';
+  $('nsHotspotEvidence').disabled=!evidence;
+  $('nsHotspotUp').disabled=!evidence;$('nsHotspotDown').disabled=!evidence;
+}
+function clearHotspots(){
+  hotspots=null;
+  if(traceOwner?.startsWith('hotspot:')){highlight=null;traceOwner=null;branchIsolated=false;}
+  if($('nsHotspotNote'))$('nsHotspotNote').textContent='';
+}
+function showDetrimentHotspots(ops){
+  if(!mounted||!network.nodes.some(node=>node.contextSource)){
+    status('Import the reviewed source network before showing detriment hotspots.');return;
+  }
+  if(!ops.stillCurrent()){status('The detriment evidence changed. Review the proposal again.');return;}
+  clearHotspots();
+  const matches=R.mapDetrimentHotspots(network,ops.records);
+  const metrics=new Map();
+  for(const {row} of matches.mapped.values())for(const [key,metric] of Object.entries(row.metrics))metrics.set(key,metric.label);
+  if(!metrics.size){renderCanvas();renderReview();status('No unique typed report asset matches this source network.');return;}
+  const criterion=metrics.keys().next().value;
+  hotspots={ops,matches,criterion,severity:'adverse'};
+  const select=$('nsHotspotCriterion');select.replaceChildren(...[...metrics].map(([key,label])=>new Option(label,key)));
+  select.value=criterion;$('nsHotspotSeverity').value='adverse';
+  if(editing)$('nsEdit').click();
+  if(inOverview())changeOverview(false);
+  renderCanvas();renderReview();
+  $('nsHotspotLayer').scrollIntoView({block:'nearest'});select.focus({preventScroll:true});
+}
+function traceHotspot(direction){
+  const evidence=hotspotAt(selectionKind,selected,true);
+  if(!evidence)return;
+  const object=edge(),start=selectionKind==='node'?selected:(direction==='up'?object?.from:object?.to);
+  if(!start||(selectionKind==='edge'&&object?.direction==='unknown')){
+    $('nsHotspotNote').textContent='This link has unconfirmed direction. Select a mapped node to trace recorded connections.';return;
+  }
+  highlight=R.trace(network.nodes,network.edges.filter(item=>item.direction!=='unknown'),start,direction);
+  traceOwner='hotspot:'+R.refKey(evidence.matched.ref);branchIsolated=false;
+  if(selectionKind==='edge')highlight.wires.add(selected);
+  const count=highlight.ids.size;
+  $('nsHotspotNote').textContent=count+(count===1?' connected node':' connected nodes')+' along recorded '+(direction==='up'?'upstream':'downstream')+
+    ' topology. This trace identifies connections for review.';
+  renderCanvas();
+}
+function mountHotspots(){
+  $('nsStatus').insertAdjacentHTML('beforebegin',`<section id="nsHotspotLayer" class="ns-tool-panel" aria-label="Detriment hotspots" hidden>
+    <h3>Detriment hotspots</h3><p id="nsHotspotTitle"></p><p id="nsHotspotSummary"></p>
+    <p>Hotspots mark reported criterion outcomes. Connections identify branches to investigate.</p>
+    <div class="ns-tool-row"><label>Hotspot criterion <select id="nsHotspotCriterion" aria-label="Hotspot criterion"></select></label>
+    <label>Hotspot severity <select id="nsHotspotSeverity" aria-label="Hotspot severity"><option value="adverse">Detriment and risk</option>
+    <option value="detriment">Detriment only</option><option value="risk">Risk only</option><option value="all">All reported states</option></select></label>
+    <button type="button" id="nsHotspotUp">Trace upstream of hotspot</button><button type="button" id="nsHotspotDown">Trace downstream of hotspot</button>
+    <button type="button" id="nsHotspotEvidence">Open hotspot evidence</button><button type="button" id="nsHideHotspots">Hide hotspots</button></div>
+    <p id="nsHotspotNote" role="status"></p></section>`);
+  for(const [id,key] of [['nsHotspotCriterion','criterion'],['nsHotspotSeverity','severity']])$(id).onchange=()=>{
+    if(hotspots){hotspots[key]=$(id).value;renderCanvas();renderHotspotControls();}
+  };
+  $('nsHotspotUp').onclick=()=>traceHotspot('up');$('nsHotspotDown').onclick=()=>traceHotspot('down');
+  $('nsHotspotEvidence').onclick=()=>{
+    const evidence=hotspotAt(selectionKind,selected,true);
+    if(!evidence)return;
+    if(!hotspots.ops.openEvidence(evidence.matched.row,evidence.metric.category)){
+      clearHotspots();renderCanvas();renderReview();status('This detriment evidence is no longer current.');
+    }
+  };
+  $('nsHideHotspots').onclick=()=>{clearHotspots();renderCanvas();renderReview();};
+  const verify=()=>{
+    if(hotspots&&!hotspots.ops.stillCurrent()){clearHotspots();renderCanvas();renderReview();status('Detriment inputs changed. Review the proposal again.');}
+  };
+  window.addEventListener('icm:route-changed',verify);window.addEventListener('icm:source-pool-changed',verify);
 }
 function renderMatrix(){
   const selectedOnly=$('nsMatrixSelected').checked,query=$('nsMatrixSearch').value.toLowerCase();
@@ -1618,6 +1716,7 @@ let routeRevision=0;
 function resetRouteDraft(){
   routeDraft={start:'',end:'',choices:new Map(),steps:[],trials:[],model:null,profileView:{...defaultProfileView}};
   ++routeRevision;
+  clearHotspots();
   if($('nsRoute')){
     if($('nsProfileExpanded').open)$('nsProfileExpanded').close();
     $('nsRoute').hidden=true;$('nsProfile').hidden=true;
@@ -2560,7 +2659,7 @@ function mount(){
     '<div id="nsEditTools" class="ns-edit-tools" hidden>'+selectHtml('id="nsAddType"',Object.entries(C.types).filter(([key])=>!['manhole','label'].includes(key)),'cso')+'<button id="nsAddAsset">+ Asset</button><button id="nsAddManhole">+ Manhole</button><button id="nsAddLabel">+ Label</button><button id="nsConnect" aria-pressed="false">Connect</button><span id="nsColourChoices"></span><button id="nsUndo" aria-label="Undo last edit">Undo</button><button id="nsDelete">Delete selected</button></div>'+
     '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag the background or use the middle mouse button to pan. Turn on Zoom to use the mouse wheel."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><svg id="nsMinimap" viewBox="0 0 160 100" tabindex="0" role="img" aria-label="Network minimap. Click or drag to move the view. Arrow keys pan; Enter fits the network." hidden></svg><div id="nsContextActions" aria-label="Asset actions" hidden><button type="button" data-ns-context="focus">Focus selected</button><button type="button" data-ns-context="up">Trace upstream</button><button type="button" data-ns-context="down">Trace downstream</button><button type="button" data-ns-context="isolate">Isolate branch</button></div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomMode" aria-pressed="false" title="Use the mouse wheel to zoom at the pointer. Drag with the middle mouse button to pan.">Zoom</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button><button id="nsFocusSelected">Focus selected</button><button id="nsResetView">Reset view</button></div></div><aside id="nsPopup" aria-label="Selected asset evidence" hidden></aside><aside id="nsDrawer" aria-label="Asset properties" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
   mounted=true;container.addEventListener('click',onClick);container.addEventListener('change',event=>updateField(event.target));
-  $('nsEdit').onclick=()=>{if(inOverview())changeOverview(false);editing=!editing;simulationView?.reset();simulationView?.refreshSources();popupVisible=false;tool='select';connectFrom=null;render();};
+  $('nsEdit').onclick=()=>{if(inOverview())changeOverview(false);editing=!editing;if(editing)clearHotspots();simulationView?.reset();simulationView?.refreshSources();popupVisible=false;tool='select';connectFrom=null;render();};
   $('nsAddAsset').onclick=()=>add($('nsAddType').value);$('nsAddManhole').onclick=()=>add('manhole');$('nsAddLabel').onclick=()=>add('label');
   $('nsConnect').onclick=()=>{tool=tool==='connect'?'select':'connect';connectFrom=null;render();status('Click the upstream point, then the downstream point.');};
   $('nsPan').onclick=()=>{tool=tool==='pan'?'select':'pan';connectFrom=null;render();};
@@ -2707,7 +2806,7 @@ function mount(){
   window.addEventListener('pagehide',flushSave);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSave();});
   window.addEventListener('icm:source-pool-changed',()=>{freshness.clear();if(analysisContext){++analysisGeneration;globalThis.Plotly?.purge('nsAnalysisPlot');$('nsAnalysisCounts').replaceChildren(annualTable(network.nodes.find(n=>n.id===analysisContext.id)||{id:'missing',bindings:[]},true));$('nsCommonResult').hidden=true;$('nsAnalysisMessage').textContent='Sources changed. Reopen this analysis to refresh.';}renderCanvas();renderReview();if(editing)renderDrawer();});
-  mountReview();mountRouteReview();mountSimulationView();render();
+  mountReview();mountRouteReview();mountSimulationView();mountHotspots();render();
 }
 async function open(){
   if(!mounted){let value=state.networkSchematicWorkspace;if(!value){try{value=JSON.parse(localStorage.getItem(STORE)||'null');}catch{}}
@@ -2716,5 +2815,5 @@ async function open(){
     if(inOverview())fit();
   }else render();
 }
-window.ICMNetworkSchematic={open,snapshot,restore,capture,calculate,openMonitorImport,core:C,debug:()=>({selected,editing,busy,fresh:network.nodes.map(n=>({id:n.id,fresh:isFresh(n)}))})};
+window.ICMNetworkSchematic={open,snapshot,restore,capture,calculate,openMonitorImport,showDetrimentHotspots,core:C,debug:()=>({selected,editing,busy,fresh:network.nodes.map(n=>({id:n.id,fresh:isFresh(n)}))})};
 })();

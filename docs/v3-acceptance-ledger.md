@@ -48,7 +48,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Open |
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
-| 10.3 | Detriment schematic overlay | Filter hotspots and affected branch and navigate directly to evidence | Open |
+| 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
 | 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Open |
 | 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Open |
 | 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Open |
@@ -826,3 +826,23 @@ other state.
   saw 116 and 103 guarded requests respectively, with no violations.
   The build, source and network-policy gates passed. Register selections
   are local to the current work session.
+
+### Detriment proposal hotspots on imported networks
+
+- After the engineer confirms the reviewed model revision and exact report
+  IDs, a chosen proposal opens a temporary detailed-network layer. Matching
+  uses original typed IDs only. Same-text nodes and links stay distinct.
+  Ambiguous aliases, duplicate report identities, manually drawn objects and
+  unclassified records are not auto-associated.
+- Level, freeboard, flooding, spill count and duration are separate display
+  criteria. The upstream and downstream actions follow recorded topology
+  and skip unconfirmed link directions. Raw source evidence opens from a
+  matched selected asset. Geometry replacement, edit mode, stale inputs
+  and Hide clear the layer. It does not change geometry or saved evidence.
+- Synthetic browser checks exercised the explicit review gate, adverse
+  and all-state filters, a 0.35 m freeboard breach and independent
+  one-node upstream and two-node downstream traces, raw evidence and Hide.
+  Chromium and Firefox saw 119 and 106 guarded requests with no violations.
+  The route and revision suites also passed in both. Unit cases verify typed
+  collisions, duplicate aliases and unintended manual-name matches. The
+  confidentiality source check, 28 privacy tests and request contracts passed.

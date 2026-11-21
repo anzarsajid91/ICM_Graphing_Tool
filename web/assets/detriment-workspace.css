@@ -30,3 +30,5 @@
 .dt-scenarios .dt-combined-dialog{width:min(1100px,calc(100% - 32px));max-height:85vh;overflow:auto}
 .dt-scenarios .dt-combined-dialog td{min-width:90px}
 .dt-scenarios .dt-combined-dialog td button{display:block;margin-top:6px}
+.dt-scenarios .dt-scenario-map{margin-top:16px;padding:12px;border:1px solid var(--hb-border);border-radius:var(--hb-radius-control)}
+.dt-scenarios .dt-scenario-map .dt-field{max-width:350px}

@@ -315,6 +315,41 @@ try{
   await scenarios.getByLabel('Assessment category',{exact:true}).selectOption('flooding');
   await scenarios.getByRole('button',{name:'Remove proposal 3'}).click();
   assert.equal(await scenarios.getByLabel('Proposal 3 name',{exact:true}).count(),0);
+  await page.locator('button[data-workspace="network"]').click();
+  await page.locator('#nsLoadInput').setInputFiles({name:'synthetic-hotspot-network.csv',mimeType:'text/csv',buffer:Buffer.from(
+    '**** hw_node\nnode_id,node_type,x,y,ground_level,chamber_floor\nMH01,manhole,0,0,100,98\nMH02,manhole,120,0,99,97\n'+
+    '**** hw_conduit\nus_node_id,ds_node_id,link_suffix,shape,conduit_length\nMH01,MH02,1,CIRC,120\n')});
+  await page.locator('#nsContextUnits').check();await page.locator('#nsContextApply').click();
+  await page.locator('#nsStatus').filter({hasText:'Model context import'}).waitFor();
+  await page.locator('button[data-workspace="detriment"]').click();
+  await page.getByRole('tab',{name:'Scenario comparison',exact:true}).click();
+  await openCombined.click();
+  await combined.getByLabel('Combined register baseline',{exact:true}).selectOption('Synthetic base v1');
+  const showMap=combined.getByRole('button',{name:'Show proposal on network',exact:true});
+  await showMap.click({timeout:5000});
+  await combined.getByRole('status').filter({hasText:'Confirm the active network revision'}).waitFor();
+  await combined.getByLabel('I checked that these report IDs and model revisions match the active network',{exact:true}).check();
+  await showMap.click();
+  const hotspotLayer=page.getByRole('region',{name:'Detriment hotspots'});
+  await hotspotLayer.waitFor();
+  await hotspotLayer.getByLabel('Hotspot criterion',{exact:true}).selectOption('freeboard');
+  await page.waitForFunction(()=>document.querySelectorAll('[data-ns-hotspot="detriment"]').length===1);
+  assert.equal(await page.locator('[data-ns-hotspot="detriment"]').count(),1);
+  await hotspotLayer.getByLabel('Hotspot severity',{exact:true}).selectOption('all');
+  await page.waitForFunction(()=>document.querySelectorAll('[data-ns-hotspot]').length===2);
+  assert.equal(await page.locator('[data-ns-hotspot]').count(),2);
+  await page.locator('[data-ns-node="MH01"]').press('Enter');
+  await hotspotLayer.getByRole('button',{name:'Trace upstream of hotspot',exact:true}).click();
+  assert.match(await hotspotLayer.getByRole('status').innerText(),/1 connected node\b/);
+  await hotspotLayer.getByRole('button',{name:'Trace downstream of hotspot',exact:true}).click();
+  assert.match(await hotspotLayer.getByRole('status').innerText(),/2 connected nodes/);
+  await hotspotLayer.getByRole('button',{name:'Open hotspot evidence',exact:true}).click();
+  await scenarioEvidence.waitFor();assert.match(await scenarioEvidence.innerText(),/MH01.*Expansion/s);
+  await scenarioEvidence.getByRole('button',{name:'Close',exact:true}).click();
+  await page.locator('button[data-workspace="network"]').click();
+  await hotspotLayer.getByRole('button',{name:'Hide hotspots',exact:true}).click();
+  await page.waitForFunction(()=>!document.querySelector('[data-ns-hotspot]'));
+  assert.equal(await page.locator('[data-ns-hotspot]').count(),0);
   assert.deepEqual(errors,[]);console.log('Detriment acceptance passed: Data Sources → 3 tabs → evidence/export, precision boundaries, restoration, source removal and responsive containment.');
 privacy.assertClean();
 }catch(error){await page.screenshot({path:path.join(evidence,'detriment-failure.png'),fullPage:true}).catch(()=>{});await recordControls(page,evidence,'detriment-failure');console.error('Detriment state:',await page.locator('#dtStatus').textContent().catch(()=>''),errors);throw error;}finally{try{await writeControlEvidence?.();}finally{await browser.close();}}

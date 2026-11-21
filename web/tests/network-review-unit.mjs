@@ -22,3 +22,17 @@ const legacy=C.validateNetwork({schema:1,nodes,edges});assert.equal(legacy.schem
 assert.throws(()=>C.validateNetwork({...legacy,preferences:{...legacy.preferences,scenarios:'all'}}),/preferences/);
 assert.throws(()=>C.validateNetwork({...legacy,nodes:[{...nodes[0],review:{comment:'x',status:'made-up'}},...nodes.slice(1)]}),/review/i);
 console.log('Annual review: cycle-safe tracing/layout, pinned geometry, independent years/zero/missing, evidence health and legacy migration passed.');
+
+const mappedNetwork={nodes:[{id:'001',sourceName:'001',name:'Edited node',contextSource:true,type:'manhole'},
+  {id:'manual',name:'Manual node',type:'manhole'}],edges:[
+  {id:'K1',sourceName:'001',name:'Edited link',contextSource:true},
+  {id:'K2',sourceName:'001.B',contextSource:true},{id:'K3',sourceName:'001.B',contextSource:true},
+  {id:'K4',sourceName:'001.C',contextSource:true}]};
+const reviewItems=[['node','001'],['link','001'],['link','001.B'],['unclassified','001'],
+  ['node','manual'],['node','Edited node'],['link','001.C'],['link','K4']].map(([assetKind,assetId])=>({assetKind,assetId}));
+const hotspots=R.mapDetrimentHotspots(mappedNetwork,reviewItems);
+assert.deepEqual([...hotspots.mapped.keys()],['["node","001"]','["edge","K1"]']);
+assert.equal(hotspots.ambiguous.length,3,'Duplicate source IDs and duplicate report aliases stay unresolved');
+assert.deepEqual(Array.from(hotspots.unmatched,row=>row.assetId),['manual','Edited node']);
+assert.equal(hotspots.unclassified.length,1,'Unclassified report evidence stays in the register');
+console.log('Detriment hotspot matching preserves original typed identity and withholds ambiguous or unsupported matches.');

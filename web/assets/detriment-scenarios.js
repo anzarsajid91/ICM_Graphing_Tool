@@ -87,7 +87,23 @@ function combinedSummary(category,result,row){
     ' · Δ duration '+measured(row.duration_delta_hours,'h')+' · '+(row.duration_status||'Unavailable');
   return 'Δ flood volume '+measured(row.delta,row.unit)+' · '+row.status;
 }
-function mountCombined(currentCategory,currentBatch,inspect){
+function hotspotMetrics(entries){
+  const metrics={};
+  if(entries.flooding){const {row}=entries.flooding;
+    metrics.flooding={label:'Flood volume',category:'flooding',status:row.status,value:row.delta,unit:row.unit};}
+  if(entries.level){const {result,row}=entries.level,level=levelCriterion(row),freeboard=freeboardCriterion(result,row);
+    metrics.level={label:'Maximum level',category:'level',status:level==='Increase within tolerance'?'risk':level.toLowerCase(),value:row.delta,unit:row.unit};
+    const freeboardStatus=['New breach','Worsening breach'].includes(freeboard)?'detriment':freeboard==='Existing breach'?'risk':
+      row.flags.includes('freeboard_breach_resolved')?'improvement':freeboard==='Meets minimum'?'unchanged':'unavailable';
+    metrics.freeboard={label:'Minimum freeboard',category:'level',status:freeboardStatus,value:row.freeboard_b,unit:'m'};
+  }
+  if(entries.spill){const {row}=entries.spill;
+    metrics['spill-count']={label:'Spill count',category:'spill',status:row.count_status||'unavailable',value:row.delta,unit:row.unit};
+    metrics['spill-duration']={label:'Actual spill duration',category:'spill',status:row.duration_status||'unavailable',value:row.duration_delta_hours,unit:'h'};
+  }
+  return metrics;
+}
+function mountCombined(currentCategory,currentBatch,inspect,navigate){
   const assetKinds={node:'Node',link:'Link',unclassified:'Unclassified report ID'};
   const groupings=new Map();
   const controls=make('div'),toggle=make('details'),summary=make('summary','Include category in combined register'),form=make('div');
@@ -120,6 +136,30 @@ function mountCombined(currentCategory,currentBatch,inspect){
   heading.id='hbCombinedDetrimentTitle';dialog.setAttribute('aria-labelledby',heading.id);dialog.className='dt-combined-dialog';
   const reference=make('select'),search=make('input');search.type='search';
   filters.className='dt-fields';filters.append(labelled('Combined register baseline',reference),labelled('Find combined asset',search));
+  const mapProposal=make('select'),mapConfirmed=make('input');mapConfirmed.type='checkbox';
+  const mapStatus=make('p');mapStatus.setAttribute('role','status');
+  const mapLabel=make('label');mapLabel.className='dt-check';
+  mapLabel.append(mapConfirmed,'I checked that these report IDs and model revisions match the active network');
+  const map=button('Show proposal on network',async()=>{
+    if(!mapConfirmed.checked){mapStatus.textContent='Confirm the active network revision and asset IDs first.';mapConfirmed.focus();return;}
+    const selected=mapProposal.value,revision=reference.value;
+    const basisStamps=eligible().filter(group=>group.baseline===revision).map(group=>group.stamp);
+    const stillCurrent=()=>{
+      const stamps=new Set(eligible().filter(group=>group.baseline===revision).map(group=>group.stamp));
+      return stamps.size===basisStamps.length&&basisStamps.every(stamp=>stamps.has(stamp));
+    };
+    const records=joined.filter(group=>group.proposal===selected).map(group=>({...group,metrics:hotspotMetrics(group.entries)}));
+    if(!records.length){mapStatus.textContent='Choose a reviewed proposal to display.';return;}
+    dialog.close();navigate('network','schematic',true);
+    await window.ICMNetworkSchematic?.open();
+    if(window.__ICM_PRECISION_WORKBENCH__?.route().workspace!=='network')return;
+    window.ICMNetworkSchematic?.showDetrimentHotspots?.({revision,proposal:selected,records,stillCurrent,
+      openEvidence:(group,category)=>{
+        if(!stillCurrent()||!group.entries[category])return false;
+        const {result,row}=group.entries[category];
+        navigate('detriment','comparison',true);inspect(selected,result,row);return true;
+      }});
+  });
   const download=button('Download combined audit CSV',()=>{
     const included=eligible().filter(group=>group.baseline===reference.value);
     const parts=included.map(group=>auditRows(group.data,group.args));
@@ -132,7 +172,9 @@ function mountCombined(currentCategory,currentBatch,inspect){
   download.id='hbDetrimentCombinedExport';
   const previous=button('Previous combined results',()=>{page--;render();}),next=button('Next combined results',()=>{page++;render();});
   const actions=make('div');actions.className='actions';actions.append(previous,next,download,button('Close',()=>dialog.close()));
-  dialog.append(heading,make('p','Results retain their own units, thresholds and assessment periods. Open an individual criterion to review its basis.'),filters,body,actions);
+  const mapControls=make('div');mapControls.className='dt-scenario-map';
+  mapControls.append(make('h4','Network hotspots'),labelled('Proposal to show on network',mapProposal),mapLabel,map,mapStatus);
+  dialog.append(heading,make('p','Results retain their own units, thresholds and assessment periods. Open an individual criterion to review its basis.'),filters,body,actions,mapControls);
   let joined=[],page=0;
   function eligible(){
     const accepted=[];
@@ -155,7 +197,12 @@ function mountCombined(currentCategory,currentBatch,inspect){
       rebuild();
     }
   }
-  function rebuild(){joined=buildRegister(eligible(),reference.value);page=0;render();}
+  function rebuild(){
+    joined=buildRegister(eligible(),reference.value);page=0;render();
+    const names=[...new Set(joined.map(item=>item.proposal))];
+    choices(mapProposal,names.map(name=>[name,name]));map.disabled=!names.length;
+    mapConfirmed.checked=false;mapStatus.textContent='';
+  }
   function render(){
     const term=search.value.trim().toLowerCase(),count=75;
     const visible=term?joined.filter(item=>item.assetId.toLowerCase().includes(term)):joined;
@@ -175,6 +222,7 @@ function mountCombined(currentCategory,currentBatch,inspect){
     previous.disabled=page<=0;next.disabled=(page+1)*count>=visible.length;download.disabled=!joined.length;
   }
   reference.onchange=rebuild;search.oninput=()=>{page=0;render();};
+  mapProposal.onchange=()=>{mapConfirmed.checked=false;mapStatus.textContent='';};
   return {controls,dialog,refresh};
 }
 function mount(navigate){
@@ -203,7 +251,7 @@ function mount(navigate){
   const savedDrafts=new Map(),savedResults=new Map();
   let active=null,running=false,page=0;
   const category=()=>select.value;
-  const combined=mountCombined(category,currentBatch,showEvidence);
+  const combined=mountCombined(category,currentBatch,showEvidence,navigate);
   article.append(intro,controls,basis,mapping,draft,confirmLabel,actions,message,output,combined.controls,combined.dialog,dialog);root.replaceChildren(article);
   function drafts(){
     if(!savedDrafts.has(category())){const context=api.batchContext(category());
