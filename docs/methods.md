@@ -352,6 +352,31 @@ fingerprints, assumptions, outcomes and engineer comments. Set thresholds
 appropriate to the project and verify shape and agreement through recession.
 [CIWEM UDG verification guidance, sections 5.2 and 5.3](https://www.ciwem.org/assets/pdf/Special%20Interest%20Groups/Urban%20Drainage%20Group/Code%20of%20Practice%20for%20the%20Hydraulic%20Modelling%20of%20Ur.pdf)
 
+### Verification scenario revision tracking
+
+Save a baseline matrix with the reviewed revision name and one designated
+model per observed record and event. A portable JSON snapshot keeps its
+source hashes and channels, qualification fingerprint, dates, project
+criteria, common support, independent metrics and comments. Reopen the JSON
+locally as the baseline or retain the current matrix during this session.
+Create the proposed matrix using the same reviewed observational basis.
+
+Two rows can be compared only for identical observed fingerprints, channels,
+event boundaries and identified rainfall evidence. Both require the same
+method, gap rule, clock shift and tolerances, and the full event without
+exclusions. The engine also checks the recorded support values and observed
+peak and volume evidence. Changed, duplicate, missing and partial comparisons
+have individual reasons for being withheld. The engineer verifies provenance
+of reopened review files against the underlying sources.
+
+Improvement measures the change in the absolute value of each signed peak,
+volume or timing error. It leaves the baseline and proposed signed values
+visible. Values within `max(10⁻¹², 10⁻¹² × larger error magnitude)` count as
+unchanged in the reported units. For example, a peak change from +10% to −5%
+reduces error magnitude by 5 percentage points. A volume change from −2% to
++4% increases error magnitude by 2 points. The separate outcome for each
+criterion and the original review comments are exported in the local audit.
+
 ## Fixed-factor pipe system screening and pump duty
 
 Use full circular pipes, a steady forward flow and an engineering-specified

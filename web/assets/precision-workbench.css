@@ -711,3 +711,7 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #hbVerifyView td:last-child button{white-space:nowrap}
 .hb-verification-pair{align-items:end;margin-block:8px}
 #hbVerifyDetail textarea{width:100%}
+#hbVerifyRevisions{border-top:1px solid var(--hb-border);margin-top:24px;padding-top:16px}
+#hbVerifyRevisions :is(td,p){overflow-wrap:anywhere}
+#hbRevisionEvidence>.actions{align-items:end}
+#hbRevisionRows td:nth-child(6){white-space:nowrap}

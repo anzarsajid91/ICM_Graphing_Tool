@@ -38,7 +38,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 7.3 | Weekly review, coverage and WAPUG/FSAT | Suitability screen for a selected monitored location and rainfall candidate, using measured support, reviewed range, site evidence and current qualification | Verified locally for candidate screening |
 | 8.1 | DWF, comparison and event diagnostics | Explain evidence and alternate investigation paths for baseflow/infiltration, runoff, peaks/timing/recession and restrictions/backwater | Open |
 | 8.2 | Existing event comparison and alignment | Qualifying event sets with multiple monitor–scenario pairings, independent criteria, true common time support, comments, plots and audit | Verified locally for the matrix |
-| 8.3 | Existing comparison evidence stamps and review history | Compare revisions with a controlled observed basis and explicit non-comparability | Open |
+| 8.3 | Existing comparison evidence stamps and review history | Review current matrix against named baseline snapshots with the same recorded observations, criteria, support and qualification | Verified locally for portable snapshots |
 | 9.1 | Circular full/part-full Colebrook–White and comparisons | Preserve verified outputs; justify additional methods, geometries, target diameter/gradient and plots | Open |
 | 9.2 | SI circular pipe engine | Head-loss components, static/dynamic head, forward series/parallel, system curve and auditable sheets with independent cases | Partial |
 | 9.3 | Candidate system-curve model | Validated curves, intersections, limits, configurations and power; distinguish unsupported conditions | Partial |
@@ -590,7 +590,7 @@ other state.
   CSV with source fingerprints. The request monitors saw 100 and
   98 requests with zero violations. Deferred loading passed in both browsers.
 
-### Multi-event verification matrix
+### Multi-event verification matrix (`1f82fba`)
 
 - The Verification workspace calculates reviewed monitor–scenario pairings
   over current Data or Flow Survey network-qualified events. It retains
@@ -621,3 +621,26 @@ other state.
   references. Both browsers verified its navigation, fixed HTTPS sources,
   no-referrer behaviour and rejection of a modified CIWEM link from synthetic
   staged data. There were 30 and 31 observed requests with no violations.
+
+### Verification scenario revision tracking
+
+- A named baseline can be retained in the current session or reopened as a
+  validated local JSON snapshot. It records source fingerprints, channels,
+  rainfall qualification, exact support, assumptions, signed metrics and
+  review notes. The scenario comparison checks a common observed source and
+  window, full raw support, recorded observed values and matching project
+  criteria before comparing individual errors. Missing or duplicate matches,
+  withheld criteria and changed evidence retain separate explanations.
+  [Engineering methods](methods.md#verification-scenario-revision-tracking)
+- Independent cases cover a reduced peak error, an increased volume error,
+  unchanged timing magnitude, altered observations and support, missing or
+  ambiguous baseline, different thresholds and incompatible units. The full
+  development Python suite passed 433 tests and 111 subtests.
+- The two browser runs exercised baseline capture, exact JSON round-trip,
+  invalid file recovery, alternate simulated source, retained engineer note,
+  filtered and paged comparisons, formula-safe CSV and changed-tolerance
+  non-comparability. The −5% proposed peak improved from +10%. Other
+  unchanged comparisons remain visible. Request observers saw 100 and 98
+  requests with no violations. The responsive shell passed in both browsers.
+  Shared workspace persistence and other report types remain separately
+  tracked under sections 11 and 13.

@@ -45,13 +45,31 @@ function mount(){
       <label>Engineer comment<textarea id="hbVerifyNotes" maxlength="3000" rows="3"></textarea></label>
       <div class="actions"><button type="button" class="btn" id="hbVerifyPlotButton">Plot event records</button></div>
       <p id="hbVerifyPlotStatus" role="status"></p><div id="hbVerifyPlot" role="group" aria-label="Observed and modelled event plot"></div></section>
-    </section></article>`;
+    </section><section id="hbVerifyRevisions" aria-label="Scenario revision tracking"><h3>Scenario revision tracking</h3>
+    <p>Save the reviewed results under a revision name. Compare a current matrix with a baseline using the same observations, rainfall evidence, time windows and tolerances.</p>
+    <div class="mapping-grid"><label>Revision name<input id="hbRevisionName" type="text" maxlength="160" autocomplete="off"></label>
+    <label>Open baseline snapshot<input id="hbRevisionFile" type="file" accept=".json,application/json"></label></div>
+    <p id="hbRevisionBaseline">No baseline selected.</p><div class="actions">
+    <button class="btn" type="button" id="hbRevisionSave" disabled>Save verification snapshot</button>
+    <button class="btn" type="button" id="hbRevisionSet" disabled>Use current as baseline</button>
+    <button class="btn" type="button" id="hbRevisionClear" disabled>Clear baseline</button>
+    <button class="btn primary" type="button" id="hbRevisionCompare" disabled>Compare with baseline</button></div>
+    <p id="hbRevisionStatus" role="status"></p><div id="hbRevisionEvidence" hidden>
+      <div class="actions"><label>Filter revision results<select id="hbRevisionFilter"><option value="">All results</option>
+      <option>Improved</option><option>Deteriorated</option><option>Unchanged</option><option>Not comparable</option></select></label>
+      <button class="btn" id="hbRevisionPrev" type="button">Previous revisions page</button><button class="btn" id="hbRevisionNext" type="button">Next revisions page</button>
+      <button class="btn" id="hbRevisionExport" type="button">Download revision comparison CSV</button></div>
+      <p id="hbRevisionPage" aria-live="polite"></p><div class="table-wrap" tabindex="0" role="region" aria-label="Revision comparison results">
+      <table class="data-table"><caption>Verification change by criterion</caption><thead><tr><th scope="col">Observed record / period</th><th scope="col">Modelled records</th>
+      <th scope="col">Criterion</th><th scope="col">Baseline</th><th scope="col">Proposed</th><th scope="col">Result</th><th scope="col">Recorded evidence</th></tr></thead>
+      <tbody id="hbRevisionRows"></tbody></table></div></div></section></article>`;
   const $=id=>root.querySelector('#'+id),form=$('hbVerificationForm'),fields=form.elements;
   const status=$('hbVerifyStatus'),view=$('hbVerifyView'),details=$('hbVerifyDetail'),body=root.querySelector('tbody');
   const plot=$('hbVerifyPlot'),plotStatus=$('hbVerifyPlotStatus'),notes=$('hbVerifyNotes');
   const submit=form.querySelector('[type=submit]'),cancel=$('hbVerifyCancel'),addButton=$('hbVerifyAdd');
   const pairControls=[],eventSelections=new Set();
   let sources=[],events=[],eventStamp='',generation=0,plotGeneration=0,activeRun=null,result=null,activeCell=null,page=0;
+  let baseline=null,revisionResult=null,revisionPage=0,revisionGeneration=0,revisionBusy=false;
   const active=()=>window.__ICM_PRECISION_WORKBENCH__?.route()?.page==='matrix';
 
   function stateOfEvents(){
@@ -61,7 +79,8 @@ function mount(){
   }
   function clearPlot(){++plotGeneration;if(plot.data)globalThis.Plotly?.purge(plot);plotStatus.textContent='';}
   function clear(message){
-    ++generation;result=null;activeCell=null;view.hidden=true;details.hidden=true;clearPlot();if(message)status.textContent=message;
+    ++generation;result=null;activeCell=null;view.hidden=true;details.hidden=true;clearPlot();clearRevisionResult();
+    if(message)status.textContent=message;
   }
   function selectBox(select,options,placeholder){
     const before=select.value;select.replaceChildren(new Option(placeholder,''),...options.map(row=>new Option(row.label,row.key)));
@@ -178,6 +197,7 @@ function mount(){
       if(activeRun.cancelled){status.textContent='Calculation cancelled. '+rows.length+' of '+total+' comparisons finished before cancellation.';return;}
       if(signature!==JSON.stringify(plan()))throw new Error('Inputs changed while running. Calculate the matrix again.');
       result={input,rows,signature};page=0;$('hbVerifyFilter').value='';view.hidden=false;renderRows();
+      revisionControls();
       status.textContent='Verification matrix ready. '+rows.length+' comparisons · '+rows.filter(row=>row.error).length+' unavailable.';
     }catch(error){if(run===generation)status.textContent=conciseErrorMessage(error);}
     finally{activeRun=null;cancel.disabled=true;submit.disabled=!events.length||sources.length<2;addButton.disabled=pairControls.length>=pairsLimit;}
@@ -216,7 +236,7 @@ function mount(){
       ' · Modelled peak '+print(values.modelled_peak)+' '+values.unit:cell.error;
     $('hbVerifyCriterionDetails').replaceChildren(...Object.entries(cell.values?.checks||{}).map(([key,item])=>
       node('li',titles[key]+' · '+summary(item)+' · project threshold '+print(item.tolerance)+' '+item.unit+(item.reason?' · '+item.reason:''))));
-    notes.value=cell.comment;notes.oninput=()=>{cell.comment=notes.value;};$('hbVerifyPlotButton').disabled=!values;title.focus();
+    notes.value=cell.comment;notes.oninput=()=>{cell.comment=notes.value;if(revisionResult||revisionBusy)clearRevisionResult();};$('hbVerifyPlotButton').disabled=!values;title.focus();
   }
   $('hbVerifyPrev').onclick=()=>{page--;renderRows();};$('hbVerifyNext').onclick=()=>{page++;renderRows();};
   $('hbVerifyFilter').onchange=()=>{page=0;renderRows();};
@@ -262,6 +282,136 @@ function mount(){
       downloadBlob('hydra-verification-matrix.csv',out.map(row=>row.map(ICMSafeCSV.cell).join(',')).join('\r\n'),'text/csv');
     }catch(error){clear(error.message);}
   };
+
+  const revisionName=$('hbRevisionName'),revisionStatus=$('hbRevisionStatus'),revisionEvidence=$('hbRevisionEvidence');
+  const revisionFile=$('hbRevisionFile'),revisionLimit=8*1024*1024;
+  const onlyText=value=>typeof value==='string'?value:'';
+  function revisionControls(){
+    $('hbRevisionSave').disabled=$('hbRevisionSet').disabled=revisionBusy||!result;
+    $('hbRevisionCompare').disabled=revisionBusy||!result||!baseline;
+    $('hbRevisionClear').disabled=revisionBusy||!baseline;revisionFile.disabled=revisionBusy;
+    $('hbRevisionBaseline').textContent=baseline?baseline.summary.label+' · '+baseline.summary.comparisons+' saved comparisons.':'No baseline selected.';
+  }
+  function clearRevisionResult(){
+    ++revisionGeneration;revisionResult=null;revisionEvidence.hidden=true;revisionStatus.textContent='';revisionControls();
+  }
+  function rainBasis(mode){
+    const exclusions=rows=>rows.map(({start,end,scope,reason})=>[start,end,scope,reason]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    if(mode==='data'){
+      const current=JSON.parse(rainEventInputSignature()),source=mappingObject(state.mapping.rain);
+      if(!source?.item?.hash)throw new Error('The current rainfall evidence requires a ready local rainfall source.');
+      return [mode,source.item.hash,source.col,current.rainfall_semantics,current.conversion_factor,current.criteria,current.analysis,exclusions(current.exclusions)];
+    }
+    const wb=window.__ICM_WORKBENCH__,survey=wb.survey,ready=allSeries();
+    const gauges=wb.surveyRainSources().map(row=>[row.gauge,ready.find(item=>item.item.virtualPath===row.path&&item.col===row.column)?.item.hash,
+      row.column,row.rainfall_semantics]).sort((a,b)=>a[0].localeCompare(b[0]));
+    if(!gauges.length||gauges.some(row=>!row[1]))throw new Error('The current qualification requires ready, fingerprinted rain-gauge sources.');
+    const applied=exclusionPayload(true).filter(row=>row.enabled&&(row.scope==='rainfall'||row.scope.startsWith('survey:gauge:')));
+    return [mode,survey.batch.network.method,survey.batch.network.criteria,gauges,Number(document.getElementById('rainFactor').value),
+      survey.associationSource?.sha256||null,exclusions(applied)];
+  }
+  async function captureSnapshot(){
+    const known=result;
+    if(!known||known.signature!==JSON.stringify(plan()))throw new Error('Calculate a fresh matrix before capturing a revision.');
+    const label=revisionName.value.trim();if(!label)throw new Error('Enter a revision name.');
+    const {input,rows}=known;
+    const rainfall=await sha256Bytes(new TextEncoder().encode(JSON.stringify(rainBasis(input.rain))));
+    if(known!==result||known.signature!==JSON.stringify(plan()))throw new Error('The matrix changed while reading its evidence.');
+    const frozen={schema:'hydra-verification-snapshot-v1',build:buildToken,method:'project-event-screens-v1',label,
+      captured_at:new Date().toISOString(),quantity:input.quantity,rainfall_basis:input.rain,criteria:input.criteria,
+      maximum_gap_seconds:input.max_gap_seconds,model_offset_minutes:input.offset_minutes,
+      rows:rows.map(({window,pair,values,error,comment})=>({start:window.start,end:window.end,observed_name:pair.observed.name,
+        observed_sha256:pair.observed.sha256,observed_column:pair.observed.column,model_name:pair.scenario.name,
+        model_sha256:pair.scenario.sha256,model_column:pair.scenario.column,rainfall_provenance:rainfall,
+        complete_support:values?.support_complete===true,checks:values?.checks||{},evidence:values?.values||null,error,comment,
+        observed_exclusions:pair.observed.exclusions,model_exclusions:pair.scenario.exclusions}))};
+    return frozen;
+  }
+  async function revisionOperation(action){
+    if(revisionBusy)return;
+    const run=revisionGeneration;revisionBusy=true;revisionControls();revisionStatus.textContent='Preparing local revision evidence…';
+    try{await action(()=>run===revisionGeneration);}
+    catch(error){if(run===revisionGeneration)revisionStatus.textContent=conciseErrorMessage(error);}
+    finally{revisionBusy=false;revisionControls();}
+  }
+  async function setBaseline(snapshot,stillCurrent){
+    await ensureEngineBoot();
+    const summary=await engine.call('validate_verification_snapshot',{snapshot});
+    if(!stillCurrent())return;
+    baseline={snapshot,summary};clearRevisionResult();revisionStatus.textContent='Baseline ready. Calculate and name the proposed revision when available.';
+  }
+  $('hbRevisionSave').onclick=()=>void revisionOperation(async current=>{
+    const snapshot=await captureSnapshot(),content=JSON.stringify(snapshot,null,2)+'\n';
+    if(new Blob([content]).size>revisionLimit)throw new Error('Reduce the number of rows or review notes before saving this snapshot.');
+    if(!current())return;
+    downloadBlob('hydra-verification-snapshot.json',content,'application/json');
+    revisionStatus.textContent='Verification snapshot downloaded.';
+  });
+  $('hbRevisionSet').onclick=()=>void revisionOperation(async current=>await setBaseline(await captureSnapshot(),current));
+  revisionFile.onchange=()=>{
+    const file=revisionFile.files?.[0];revisionFile.value='';if(!file)return;
+    void revisionOperation(async current=>{
+      if(file.size>revisionLimit)throw new Error('Choose a verification snapshot no larger than 8 MiB.');
+      let snapshot;
+      try{snapshot=JSON.parse(await file.text());}catch{throw new Error('The selected file is not a readable verification snapshot.');}
+      await setBaseline(snapshot,current);
+    });
+  };
+  $('hbRevisionClear').onclick=()=>{baseline=null;clearRevisionResult();revisionStatus.textContent='Baseline cleared.';};
+  revisionName.oninput=()=>{if(revisionResult||revisionBusy)clearRevisionResult();};
+  $('hbRevisionCompare').onclick=()=>void revisionOperation(async current=>{
+    const known=baseline?.snapshot;if(!known)throw new Error('Select a baseline snapshot.');
+    const candidate=await captureSnapshot(),signature=result.signature;
+    const compared=await engine.call('verification_revision_delta',{baseline:known,candidate});
+    if(!current()||signature!==result?.signature||known!==baseline?.snapshot)return;
+    revisionResult={baseline:known,candidate,compared,signature};revisionPage=0;$('hbRevisionFilter').value='';revisionEvidence.hidden=false;
+    renderRevisions();revisionStatus.textContent='Revision comparison ready.';
+  });
+  function revisionRows(){
+    if(!revisionResult)return [];
+    const {baseline:known,candidate,compared}=revisionResult;
+    return compared.rows.flatMap(row=>{
+      const before=known.rows[row.baseline_row],after=candidate.rows[row.candidate_row];
+      return Object.entries(row.checks).map(([key,check])=>({before,after,key,check}));
+    });
+  }
+  function renderRevisions(){
+    const filter=$('hbRevisionFilter').value,rows=revisionRows().filter(row=>!filter||row.check.status===filter),target=$('hbRevisionRows');
+    target.replaceChildren();
+    for(const {before,after,key,check} of rows.slice(revisionPage*pageSize,(revisionPage+1)*pageSize)){
+      const row=node('tr'),source=after||before;
+      const names=[onlyText(before?.model_name),onlyText(after?.model_name)].filter(Boolean).join(' → ');
+      const notes=[onlyText(before?.comment),onlyText(after?.comment)].filter(Boolean).join(' · ');
+      const origin=node('td'),period=node('time',source.start.replace('T',' ')+' to '+
+        (source.start.slice(0,10)===source.end.slice(0,10)?source.end.slice(11):source.end.replace('T',' ')));
+      period.dateTime=source.start;origin.append(node('div',onlyText(source.observed_name)),period);row.append(origin);
+      const valueText=value=>Number.isFinite(value)?print(value)+(check.unit==='%'?'':' ')+(check.unit||''):print(value);
+      for(const value of [names,titles[key],valueText(check.baseline),valueText(check.candidate),check.status,
+        [check.reason,notes].filter(Boolean).join(' · ')])row.append(node('td',value));
+      target.append(row);
+    }
+    $('hbRevisionPage').textContent=rows.length?'Showing '+(revisionPage*pageSize+1)+'–'+Math.min(rows.length,(revisionPage+1)*pageSize)+' of '+rows.length:'No criteria match this filter.';
+    $('hbRevisionPrev').disabled=revisionPage===0;$('hbRevisionNext').disabled=(revisionPage+1)*pageSize>=rows.length;
+  }
+  $('hbRevisionFilter').onchange=()=>{revisionPage=0;renderRevisions();};
+  $('hbRevisionPrev').onclick=()=>{revisionPage--;renderRevisions();};$('hbRevisionNext').onclick=()=>{revisionPage++;renderRevisions();};
+  $('hbRevisionExport').onclick=()=>{
+    try{
+      if(!revisionResult||revisionResult.signature!==JSON.stringify(plan()))throw new Error('Recalculate the current revision before exporting.');
+      const {baseline:known,candidate,compared}=revisionResult;
+      const rows=[['Build',buildToken],['Method',compared.method],['Baseline revision',known.label],['Proposed revision',candidate.label],
+        ['Start','End','Observed','Observed SHA-256','Observed channel','Baseline model SHA-256','Proposed model SHA-256',
+        'Criterion','Baseline value','Proposed value','Change in error magnitude','Unit','Status','Reason','Baseline note','Proposed note']];
+      for(const {before,after,key,check} of revisionRows()){
+        const source=after||before;
+        rows.push([source.start,source.end,onlyText(source.observed_name),source.observed_sha256,source.observed_column,
+          onlyText(before?.model_sha256),onlyText(after?.model_sha256),titles[key],check.baseline,check.candidate,check.change_in_error_magnitude,
+          check.unit,check.status,check.reason,onlyText(before?.comment),onlyText(after?.comment)]);
+      }
+      downloadBlob('hydra-verification-revision-comparison.csv',rows.map(row=>row.map(ICMSafeCSV.cell).join(',')).join('\r\n'),'text/csv');
+    }catch(error){clearRevisionResult();revisionStatus.textContent=conciseErrorMessage(error);}
+  };
+
   addPair();refresh();
   window.addEventListener('icm:route-changed',({detail})=>{
     if(detail.workspace==='graphs'&&detail.page==='matrix')refresh();

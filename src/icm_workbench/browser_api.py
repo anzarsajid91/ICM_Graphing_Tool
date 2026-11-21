@@ -1351,6 +1351,18 @@ def verification_matrix_event(observed, scenario, event, criteria, max_gap_secon
     return json.dumps(result, allow_nan=False)
 
 
+def validate_verification_snapshot(snapshot):
+    from icm_workbench.analysis.verification_revisions import verification_snapshot_summary
+
+    return json.dumps(verification_snapshot_summary(snapshot), allow_nan=False)
+
+
+def verification_revision_delta(baseline, candidate):
+    from icm_workbench.analysis.verification_revisions import compare_verification_revisions
+
+    return json.dumps(compare_verification_revisions(baseline, candidate), allow_nan=False)
+
+
 def england_continuation_flow(catchments):
     """Review explicit England catchment allowances in the local worker."""
     from icm_workbench.analysis.design_flows import england_continuation_flow as calculate
