@@ -46,8 +46,8 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.5 England and framework research | Official permitting guidance | Versioned, cited England and Scotland retained-flow methods. Review remaining jurisdictions before any preset and provide documented custom methodology | Partial |
 | 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial |
 | 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Open |
-| 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Open |
-| 10.2 | Category result tables and evidence | Asset register displaying each independent result, criterion, period and threshold | Open |
+| 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
+| 10.2 | Category result tables and evidence | Asset register displaying each independent result, criterion, period and threshold | Partial. Cross-category typed joins remain open |
 | 10.3 | Detriment schematic overlay | Filter hotspots and affected branch and navigate directly to evidence | Open |
 | 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Open |
 | 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Open |
@@ -776,3 +776,32 @@ other state.
   720 m³/h and 5 ft conversion, edit provenance and the manual duty
   regressions. Request observers saw 101 and 100 requests with no
   violations. The method-library reference and privacy checks passed.
+
+### Detriment scenario comparison
+
+- The Detriment Assessment workspace compares up to six named proposals
+  under the same reviewed report basis. It applies the existing pairwise
+  engine with the same baseline, scope, threshold policy, units, datum and
+  period identities. A proposal with incompatible inputs is withheld on
+  its own. A scoped worker cache reuses prepared common reports without
+  persisting data or changing the existing pair results.
+- The per-category register pages through asset evidence and preserves the
+  independent level and freeboard, or spill count and duration, criteria.
+  Exact raw rows, mappings, thresholds and source fingerprints are kept in
+  the explicit local audit. Changed report inputs invalidate previous
+  comparisons. Cross-category typed joins and spatial review remain open.
+- The independent flooding fixtures retained +6 m³ detriment and −1 m³
+  improvement while holding a mismatched assessment period. The level
+  fixture reported a new breach at 0.35 m against a 0.5 m minimum. The
+  block-row fixture retained 2 h of additional actual duration under its
+  selected source basis. Python passed 454 tests and 111 subtests and the
+  focused detriment and privacy checks passed.
+- Chromium and Firefox tested all three categories, proposal controls,
+  confirmation, a held incompatible report, paging, filters, the raw
+  evidence dialog, local CSV, stale criteria and 960 px desktop containment.
+  Their request observers saw 116 and 103 requests with no violations.
+  Evidence screenshots use synthetic inputs only.
+- The local CPython engine processed six 10,000-asset proposals in 2.32 s.
+  It returned 21,645,699 bytes and peaked at 154,928 KiB RSS, up from
+  54,104 KiB after programme startup. This excludes browser and worker
+  costs. The comparison limits retained results to 120,000 rows per batch.

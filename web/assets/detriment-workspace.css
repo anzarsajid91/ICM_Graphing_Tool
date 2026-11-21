@@ -20,3 +20,10 @@
 
 .dt-field [aria-invalid="true"]{border-color:#a02d3e;outline:2px solid #a02d3e;outline-offset:2px}
 .dt-field-error{display:block;margin-top:8px;color:#a02d3e;font-size:11px}
+.dt-scenarios .dt-fields{grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr));align-items:end;margin-bottom:12px}
+.dt-scenarios .dt-fields>.dt-field{margin:0}
+.dt-scenarios .dt-fields>button{justify-self:start}
+.dt-scenarios .dt-check{flex-direction:row;align-items:center}
+.dt-scenarios .dt-scenario-entry{padding:12px;border:1px solid var(--hb-border);border-radius:var(--hb-radius-control);background:var(--hb-soft)}
+.dt-scenarios p,.dt-scenarios dialog td{overflow-wrap:anywhere;white-space:normal}
+.dt-scenarios table caption{text-align:left;font-weight:600;padding:10px 0}

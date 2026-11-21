@@ -200,7 +200,31 @@ function drawEvidenceCharts(row){
     Plotly.react($('dtTimelineChart'),traces,{...layout,height:270,margin:{l:90,r:12,t:15,b:75},showlegend:false,barmode:'overlay',xaxis:{type:'date',nticks:4,tickformat:'%b\n%Y',tickangle:0,automargin:true,title:{text:'Exported event span',standoff:15}},yaxis:{type:'category',automargin:true}},{responsive:true,displaylogo:false});
   }
 }
-function sourceConfig(slot){const c=config()[slot],item=state.files.get(c.id);if(!item){if(slot==='a'||slot==='b')throw Error('Select both reports from Data Sources.');return null;}return {...c,path:item.virtualPath,name:item.displayName,sha256:item.hash,report_kind:item.parsed.metadata.report_kind,source_context:item.parsed.metadata.source_context||{},datum:config().datum,scope:config().scope.trim(),period_start:config().period_start,period_end:config().period_end,template:config().template.trim()};}
+function sourceConfig(slot,basis=config(),id=basis[slot].id){const c=basis[slot],item=state.files.get(id);if(!isReport(item)){if(slot==='a'||slot==='b')throw Error('Select both reports from Data Sources.');return null;}return {...c,id,reference:{sha256:item.hash,name:item.displayName},path:item.virtualPath,name:item.displayName,sha256:item.hash,report_kind:item.parsed.metadata.report_kind,source_context:item.parsed.metadata.source_context||{},datum:basis.datum,scope:basis.scope.trim(),period_start:basis.period_start,period_end:basis.period_end,template:basis.template.trim()};}
+function assessmentCriteria(category,c){return {policy_schema_version:2,scope_confirmed:c.scope_confirmed,elevation_confirmed:c.elevation_confirmed,threshold:category==='spill'?0:c.threshold,freeboard_required:c.freeboard_required===''?null:c.freeboard_required,counting_mode:c.counting_mode,new_flooding_policy:c.new_flooding_policy,count_tolerance:c.count_tolerance,duration_tolerance_hours:c.duration_tolerance_hours,spill_combination_policy:c.spill_combination_policy};}
+function batchContext(category){
+  const c=configs[category]??defaults();
+  return {baseline:state.files.get(c.a.id)?.displayName||'',proposalTemplate:state.files.get(c.b.id)?.displayName||'',
+    mapping:Object.entries(c.b.mapping||{}).filter(([,column])=>column),scope:c.scope,initialProposal:c.b.id,initialDetail:c.detail_b.id,
+    reports:reports().filter(item=>item.id!==c.a.id).map(item=>[item.id,item.displayName])};
+}
+function batchArguments(category,drafts){
+  const c=configs[category]??defaults();
+  const baseline=sourceConfig('a',c);
+  if(!c.scope_confirmed||!c.scope.trim())throw Error('Configure and confirm a common assessment scope first.');
+  if(!isReport(state.files.get(c.b.id))||!c.b.mapping.asset_id)throw Error('Configure the reviewed Proposed B report mapping first.');
+  if(category==='level'&&!c.elevation_confirmed)throw Error('Confirm water-level elevations and the common vertical datum.');
+  const candidates=drafts.map(({label,id,detail})=>{
+    const report=sourceConfig('b',c,id);
+    if(category==='spill'&&detail&&(!c.detail_b.mapping.asset_id||!c.detail_b.mapping.duration))
+      throw Error('Configure the reviewed Scenario B detail mapping before including detail reports.');
+    return {label,report,detail:category==='spill'&&detail?sourceConfig('detail_b',c,detail):null};
+  });
+  return {kind:category,baseline_json:JSON.stringify(baseline),candidates_json:JSON.stringify(candidates),
+    criteria_json:JSON.stringify(assessmentCriteria(category,c)),ground_json:JSON.stringify(category==='level'?sourceConfig('ground',c):null),
+    detail_a_json:JSON.stringify(category==='spill'?sourceConfig('detail_a',c):null)};
+}
+async function calculateBatch(args){await ensureEngineBoot();return engine.call('detriment_scenario_batch',args,'advanced_bridge');}
 function setupError(key,message){
   const field=$('dtForm').querySelector('[data-key="'+key+'"]');
   if(field){
@@ -223,7 +247,7 @@ async function calculate(){
     if(!c.scope_confirmed)setupError('scope_confirmed','Confirm matching assessment scope and completed ICM runs.');
     if(kind==='level'&&!c.elevation_confirmed)setupError('elevation_confirmed','Confirm water-level elevations and the common vertical datum.');
     const a=sourceConfig('a'),b=sourceConfig('b');if(a.path===b.path)throw Error('Select separate baseline and proposed reports.');
-    const criteria={policy_schema_version:2,scope_confirmed:c.scope_confirmed,elevation_confirmed:c.elevation_confirmed,threshold:kind==='spill'?0:c.threshold,freeboard_required:c.freeboard_required===''?null:c.freeboard_required,counting_mode:c.counting_mode,new_flooding_policy:c.new_flooding_policy,count_tolerance:c.count_tolerance,duration_tolerance_hours:c.duration_tolerance_hours,spill_combination_policy:c.spill_combination_policy};
+    const criteria=assessmentCriteria(kind,c);
     const result=await engine.call('detriment_result',{kind,scenario_a_json:JSON.stringify(a),scenario_b_json:JSON.stringify(b),criteria_json:JSON.stringify(criteria),ground_json:JSON.stringify(kind==='level'?sourceConfig('ground'):null),detail_a_json:JSON.stringify(kind==='spill'?sourceConfig('detail_a'):null),detail_b_json:JSON.stringify(kind==='spill'?sourceConfig('detail_b'):null)},'advanced_bridge');
     let chartError=null;
     try{await loadVendorScript('Plotly');}catch(error){chartError=error;}
@@ -320,8 +344,8 @@ function openSchematicEvidence(page,id){
   renderDrawer();
   $('dtClose')?.focus();
 }
-window.ICMDetriment={schematicEvidence,openSchematicEvidence,escape,csvCell,csv,sectionData,timelineData,pairedData,relinkSource,reportOnlyWorkspace,filterRows,parseIdList,selectIdRows,idMatchSummary,summariseRows,idSelectionEvidence,visibleRows,scopedRows,isReport,detectReport,reportKind,assessmentErrorMessage,refresh,result:()=>results[kind],config:()=>config(),routes:{label:'Detriment Assessment',icon:'verify',pages:Object.fromEntries(Object.entries(titles).map(([k,t])=>[k,{label:t,title:t,description:'Compare baseline A with proposed B using ICM report evidence, explicit criteria and auditable asset-level results.',tab:'detriment',root:()=>$('tab-detriment')}]))}};
+window.ICMDetriment={schematicEvidence,openSchematicEvidence,escape,csvCell,csv,sectionData,timelineData,pairedData,relinkSource,reportOnlyWorkspace,filterRows,parseIdList,selectIdRows,idMatchSummary,summariseRows,idSelectionEvidence,visibleRows,scopedRows,isReport,detectReport,reportKind,assessmentErrorMessage,refresh,batchContext,batchArguments,calculateBatch,currentCategory:()=>kind,result:()=>results[kind],config:()=>config(),routes:{label:'Detriment Assessment',icon:'verify',pages:Object.fromEntries(Object.entries(titles).map(([k,t])=>[k,{label:t,title:t,description:'Compare baseline A with proposed B using ICM report evidence, explicit criteria and auditable asset-level results.',tab:'detriment',root:()=>$('tab-detriment')}]))}};
 window.addEventListener('icm:source-pool-changed',refresh);
-window.addEventListener('icm:route-changed',e=>{if(e.detail.workspace==='detriment'){if(kind!==e.detail.page){kind=e.detail.page;generation++;selected=null;}renderForm();renderResults();$('dtTitle').textContent=titles[kind];}});
+window.addEventListener('icm:route-changed',e=>{if(e.detail.workspace==='detriment'&&Object.hasOwn(titles,e.detail.page)){if(kind!==e.detail.page){kind=e.detail.page;generation++;selected=null;}renderForm();renderResults();$('dtTitle').textContent=titles[kind];}});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
 })();

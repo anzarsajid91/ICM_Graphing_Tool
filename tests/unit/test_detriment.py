@@ -36,6 +36,33 @@ def test_flooding_change_retains_id_and_critical_simulations(tmp_path):
     assert r['summary']['detriment']==1
 
 
+def test_scenario_batch_keeps_independent_results_and_rejects_a_conflicting_period(tmp_path):
+    baseline, expansion = floods(tmp_path)
+    mitigation = report(tmp_path, 'mitigation.csv', [{'Node ID':'001','Flood volume (m³)':'1','Simulation':'30y-90min'}], baseline['mapping'])
+    wrong_period = dict(mitigation, period_start='2024-01-01')
+    criteria = dict(scope_confirmed=True, threshold=5)
+    candidates = [{'label':'Expansion','report':expansion}, {'label':'Earlier window','report':wrong_period},
+                  {'label':'Mitigation','report':mitigation}]
+    reviewed = json.loads(api.detriment_scenario_batch('flooding', json.dumps(baseline), json.dumps(candidates), json.dumps(criteria)))
+    assert [entry['label'] for entry in reviewed['scenarios']] == ['Expansion','Earlier window','Mitigation']
+    expansion, rejected, mitigation = reviewed['scenarios']
+    assert 'period' in rejected['unavailable'].lower() and rejected['result'] is None
+    assert [(item['result']['rows'][0]['delta'], item['result']['rows'][0]['status']) for item in (expansion, mitigation)] == [
+        (6,'detriment'), (-1,'improvement')]
+    assert expansion['result']['scenario_a'] == mitigation['result']['scenario_a']
+
+
+def test_scenario_batch_requires_distinct_labels_and_a_declared_common_basis(tmp_path):
+    baseline, other = floods(tmp_path)
+    criteria = json.dumps(dict(scope_confirmed=True, threshold=5))
+    duplicates = json.dumps([{'label':'Option','report':other},{'label':'option','report':other}])
+    with pytest.raises(ValueError,match='unique'):
+        api.detriment_scenario_batch('flooding',json.dumps(baseline),duplicates,criteria)
+    with pytest.raises(ValueError,match='scope'):
+        api.detriment_scenario_batch('flooding',json.dumps(dict(baseline,scope='')),
+                                    json.dumps([{'label':'Option','report':other}]),criteria)
+
+
 @pytest.mark.parametrize('a,b,threshold,status,flag', [('0','.4',5,'risk','new_flooding'),('2','7',5,'risk','increase_within_tolerance'),('10','3',5,'improvement','improvement'),('2','2',0,'unchanged','unchanged')])
 def test_flood_threshold_boundaries_and_improvements(tmp_path,a,b,threshold,status,flag):
     row=calculate('flooding',*floods(tmp_path,a,b),criteria={'threshold':threshold})['rows'][0]

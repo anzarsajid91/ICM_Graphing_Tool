@@ -15,7 +15,8 @@ const optionalComponents=Object.freeze({
   rainfallSpatial:{asset:'rainfall-spatial.js',mount:()=>{}},
   surveySuitability:{asset:'survey-suitability.js',mount:()=>{}},
   verificationMatrix:{asset:'verification-matrix.js',mount:()=>window.HydraVerificationMatrix.mount()},
-  gravitySizing:{asset:'gravity-sizing.js',mount:()=>window.HydraGravitySizing.mount()}
+  gravitySizing:{asset:'gravity-sizing.js',mount:()=>window.HydraGravitySizing.mount()},
+  detrimentScenarios:{asset:'detriment-scenarios.js',mount:()=>window.HydraDetrimentScenarios.mount(navigate)}
 });
 const componentLoads=new Map(),readyComponents=new Set();
 function loadComponent(key){
@@ -130,7 +131,9 @@ const ROUTES={
       'treatment-flow':{label:'Treatment flows',title:'Dry weather flow and full treatment',description:'Calculate the reviewed SEPA design flows with distinct infiltration allowances.',component:'calculations',root:()=>optionalPanel('tab-design-treatment')}
     }
   },
-  detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},
+  detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment',pages:{...window.ICMDetriment.routes.pages,
+    comparison:{label:'Scenario comparison',title:'Detriment scenario comparison',description:'Review multiple proposals against the same assessed baseline.',
+      component:'detrimentScenarios',root:()=>optionalPanel('tab-detriment-scenarios')}}},
   about:{
     label:'About',icon:'about',
     pages:{overview:{label:'Overview',title:'About Hydra Bench',description:'A practical workbench for hydraulic evidence, model verification and scenario assessment.',root:()=>$('tab-about')},
