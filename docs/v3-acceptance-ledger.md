@@ -746,3 +746,15 @@ other state.
   regressions. Request observers saw 101 and 100 requests respectively
   with no violations. Python passed 450 tests and 111 subtests. The source,
   28 Python privacy and network-contract checks passed.
+
+### Hosted simulation workspace readiness check
+
+- The [hosted browser-interactions job](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44944611774/job/136969053630)
+  saw the visible deferred loading panel before the CSV controls had mounted.
+  The browser regression now holds the fixed simulation asset response,
+  observes the loading status, releases the response and waits for the input.
+  It retains the original empty-state check and all sample, import and
+  playback assertions. There is no runtime or privacy-policy change.
+- Chromium and Firefox both passed the delayed-load test and full simulation
+  results smoke with 32 guarded requests each and no violations. Hosted
+  status must be checked on the subsequent PR revision.

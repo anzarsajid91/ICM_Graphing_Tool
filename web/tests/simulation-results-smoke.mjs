@@ -18,9 +18,17 @@ const upload=(name,text)=>panel.getByLabel('Local results CSV').setInputFiles({n
 
 try {
   await guard.navigate(page,base);
+  let releaseWorkspace;
+  const pendingWorkspace=new Promise(resolve=>{releaseWorkspace=resolve;});
+  await page.route('**/assets/simulation-results.js*',async route=>{
+    await pendingWorkspace;
+    await route.continue();
+  },{times:1});
   await page.locator('button[data-workspace="network"]').click();
   await page.getByRole('tab',{name:'Simulation results'}).click();
-  await panel.waitFor();
+  await panel.getByText('Opening simulation results…',{exact:true}).waitFor();
+  releaseWorkspace();
+  await panel.getByLabel('Local results CSV').waitFor();
   assert.match(await panel.innerText(),/Import a results CSV to review available samples/);
   await upload('synthetic-icm-results.csv',fixture);
   await panel.getByText('Preview ready.',{exact:false}).waitFor();
