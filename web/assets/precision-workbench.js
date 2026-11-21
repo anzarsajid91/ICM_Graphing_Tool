@@ -42,15 +42,18 @@ function startOptionalPanel(route,root){
   });
 }
 function installDiagnosticLauncher(){
-  const launcher=document.createElement('button');launcher.type='button';launcher.className='btn';
-  launcher.textContent='Source diagnostics';launcher.setAttribute('aria-haspopup','dialog');$('clearPoolBtn').after(launcher);
-  launcher.onclick=async()=>{
-    if(launcher.getAttribute('aria-busy')==='true')return;
-    launcher.setAttribute('aria-busy','true');
-    try{await loadComponent('diagnostics');if(current.workspace==='data')window.HydraSeriesQuality.open();}
-    catch(error){$('mappingStatus').textContent=error.message+' Select Source diagnostics to retry.';}
-    finally{launcher.removeAttribute('aria-busy');}
-  };
+  let previous=$('clearPoolBtn');
+  for(const [caption,action] of [['Source diagnostics','open'],['Transform time series','transform']]){
+    const launcher=document.createElement('button');launcher.type='button';launcher.className='btn';
+    launcher.textContent=caption;launcher.setAttribute('aria-haspopup','dialog');previous.after(launcher);previous=launcher;
+    launcher.onclick=async()=>{
+      if(launcher.getAttribute('aria-busy')==='true')return;
+      launcher.setAttribute('aria-busy','true');
+      try{await loadComponent('diagnostics');if(current.workspace==='data')window.HydraSeriesQuality[action]();}
+      catch(error){$('mappingStatus').textContent=error.message+' Select '+caption+' to retry.';}
+      finally{launcher.removeAttribute('aria-busy');}
+    };
+  }
 }
 const ROUTES={
   home:{

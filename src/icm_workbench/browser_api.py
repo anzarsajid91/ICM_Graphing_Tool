@@ -1304,6 +1304,117 @@ def inspect_local_series(path, column, criteria, start=None, end=None,
     return json.dumps(_jsonable(result), allow_nan=False)
 
 
+def transform_local_series(source, interval_s, max_gap_s, operation="single", reference=None,
+                           output="mean", unit=None, start=None, end=None, datum=None):
+    """Derive supported interval statistics from resolved, untouched source rows."""
+    from icm_workbench.analysis.series_transform import MAX_SOURCE_SAMPLES, integrate_periods, period_boundaries
+
+    if operation not in {"single", "add", "subtract"} or (operation == "single") != (reference is None):
+        raise ValueError("Select one source, or two compatible sources for addition or subtraction.")
+    if output not in {"mean", "total"}:
+        raise ValueError("Select an interval mean or supported accumulated total.")
+
+    def load(spec):
+        path, column = spec["path"], spec["column"]
+        parsed = _require_model_clock(_load(path), "Transformation source")
+        if column not in parsed.frame or column == "timestamp":
+            raise ValueError("Select an available numeric source series.")
+        if len(parsed.frame) > MAX_SOURCE_SAMPLES:
+            raise ValueError("This operation supports up to 500,000 samples from each source.")
+        if any(parsed.audit.get(key, 0) for key in ("invalid_timestamps", "malformed_rows", "duplicate_timestamps")):
+            raise ValueError("Resolve invalid or duplicate source rows before transforming.")
+        contract = _series_contract(path, column)
+        quantity, canonical = contract["quantity"], contract["canonical_unit"]
+        convention = parsed.metadata.get("timestamp_convention")
+        if quantity == "rainfall":
+            semantics = spec.get("rainfall_semantics") or parsed.metadata.get("rainfall_semantics")
+            conventions = {("intensity", "mm/h"): "interval_average", ("incremental_depth", "mm"): "interval_depth"}
+            convention = conventions.get((semantics, canonical))
+            if not convention:
+                raise ValueError("Resolve the rainfall unit and interval semantics in Time series.")
+        elif (quantity, canonical) not in {("flow", "m³/s"), ("depth", "m"), ("level", "m"), ("velocity", "m/s")} or convention != "instantaneous":
+            raise ValueError("Use a resolved flow, depth, level, velocity or rainfall channel with supported temporal semantics.")
+        shift = float(spec.get("shift_s", 0))
+        if not np.isfinite(shift):
+            raise ValueError("Time shifts must be finite.")
+        offset = pd.to_timedelta(shift, unit="s")
+        times = pd.DatetimeIndex(parsed.frame["timestamp"]).as_unit("ns") + offset
+        if not len(times) or times.hasnans or not times.is_monotonic_increasing or times.has_duplicates:
+            raise ValueError("Use valid and unique source timestamps on the project clock.")
+        samples = pd.to_numeric(parsed.frame[column], errors="coerce").to_numpy(dtype=float)
+        if convention == "interval_average":  # Canonical tank/gauge unit is mm/h.
+            samples = samples / 3600
+        trailing = parsed.metadata.get("interval_min") if convention != "instantaneous" else None
+        support = float(trailing) * 60 if trailing is not None else None
+        if support is not None and (not np.isfinite(support) or support <= 0):
+            raise ValueError("Invalid declared source interval.")
+        last = times[-1] + pd.to_timedelta(support, unit="s") if support is not None else times[-1]
+        exclusions = _exclusions(spec.get("exclusions", ()))
+        return times, samples, last, support, convention, contract, exclusions, offset
+
+    first = load(source)
+    inputs = [first] if reference is None else [first, load(reference)]
+    quantity = first[5]["quantity"]
+    if any(record[5]["quantity"] != quantity for record in inputs):
+        raise ValueError("Select the same resolved quantity for both operands.")
+    if operation == "add" and quantity not in {"flow", "rainfall"}:
+        raise ValueError("Addition is supported for compatible flow and rainfall signals.")
+    if quantity == "level" and operation == "subtract" and not datum:
+        raise ValueError("Confirm a common vertical datum to calculate a level difference.")
+    if output == "total" and quantity not in {"flow", "rainfall"}:
+        raise ValueError("Only flow volume and accumulated rainfall have supported totals.")
+    default_unit = ({"flow": "m³", "rainfall": "mm"}[quantity] if output == "total"
+                    else "mm/h" if quantity == "rainfall" else first[5]["canonical_unit"])
+    unit = unit or default_unit
+    display_scale = 1.0
+    if output == "total":
+        if quantity == "flow" and unit == "L":
+            display_scale = 1000.0
+        elif unit != default_unit:
+            raise ValueError("Choose compatible units for the requested total.")
+    else:
+        canonical, scale = canonical_unit(quantity, unit)
+        if canonical != default_unit or scale is None:
+            raise ValueError("The output unit is incompatible with this quantity and temporal support.")
+        display_scale = (3600.0 if quantity == "rainfall" else 1.0) / scale
+
+    origin = _model_clock_timestamp(start) if start else max(record[0][0] for record in inputs)
+    last = _model_clock_timestamp(end) if end else min(record[2] for record in inputs)
+    if pd.isna(origin) or pd.isna(last):
+        raise ValueError("Choose valid transformation limits on the project clock.")
+    edges = period_boundaries((last - origin).value / 1e9, float(interval_s))
+    origin_s, origin_ns = divmod(origin.value, 10**9)
+
+    def relative(nanoseconds):
+        seconds, fraction = np.divmod(nanoseconds, 10**9)
+        return seconds - origin_s + (fraction - origin_ns) / 1e9
+
+    totals, coverage = [], []
+    metadata = []
+    for times, samples, _, trailing, convention, contract, exclusions, offset in inputs:
+        blocked = tuple((relative((pd.Timestamp(item.start) + offset).value),
+                         relative((pd.Timestamp(item.end) + offset).value)) for item in exclusions)
+        total, covered = integrate_periods(relative(times.asi8), samples, edges, convention=convention,
+                                           maximum_gap=float(max_gap_s), trailing_support=trailing, exclusions=blocked)
+        totals.append(total)
+        coverage.append(covered)
+        metadata.append({"contract": contract, "convention": convention, "shift_s": offset.value / 1e9,
+                         "source_samples": len(samples), "exclusions": len(exclusions)})
+    widths = np.diff(edges)
+    complete = np.logical_and.reduce([np.isclose(valid, widths, rtol=1e-12, atol=1e-8) for valid in coverage])
+    derived = totals[0] if reference is None else (totals[0] + totals[1] if operation == "add" else totals[0] - totals[1])
+    values = derived * display_scale if output == "total" else derived / widths * display_scale
+    if not np.isfinite(values[complete]).all():
+        raise ValueError("The derived value exceeds the finite supported range.")
+    stamps = origin + pd.to_timedelta(edges, unit="s")
+    rows = [[stamps[i].isoformat(), stamps[i + 1].isoformat(), float(values[i]) if good else None,
+             *[float(valid[i]) for valid in coverage]] for i, good in enumerate(complete)]
+    return json.dumps({"method": "temporal-support-grid-v1", "quantity": quantity, "operation": operation,
+                       "output": output, "unit": unit, "datum": datum, "interval_s": interval_s,
+                       "max_gap_s": max_gap_s, "complete_periods": int(complete.sum()),
+                       "inputs": metadata, "rows": rows}, allow_nan=False)
+
+
 def hydraulic_structure(inputs):
     """Evaluate the documented steady structure screen in the local worker."""
     from icm_workbench.analysis.structures import screen_structure

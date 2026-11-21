@@ -9,6 +9,45 @@ Timezone-naive data remains `model clock/unspecified` until confirmed. Compariso
 ## Integration
 Instantaneous values use piecewise-linear integration; interval-average values use declared rectangular support. Gaps larger than the configured maximum are unknown and excluded. Exclusions split support at exact boundaries. Positive-flow screening integrates the positive part only. Constant instantaneous 1 m³/s from 00:00 to 00:02 integrates to 120 m³.
 
+### Derived time-series intervals
+
+**Data / time series → Transform time series** produces a separate series on
+a reviewed project-clock grid. An output interval is half-open, with a shorter
+final interval when needed. The output is an interval mean or a supported
+accumulation. Hydraulics use linear support between valid adjacent samples.
+Rainfall intensities use the existing left-labelled rainfall support. An
+incremental rainfall depth is apportioned by the fraction of its declared or
+bounded source interval. A final rainfall sample contributes only when the
+source declares supporting interval length. Unresolved sources, negative
+rainfall, long gaps and exclusions have no valid support. Each derived value
+requires full support across its output period for every operand.
+
+Source shifts move the timestamp and its source-specific exclusions together.
+Addition combines flow or rainfall with the same resolved quantity. Subtraction
+derives a difference between resolved like quantities. An absolute-level
+difference requires reviewed common vertical datum. These operations use the
+same explicit period for both operands. Verify that timing, gauge footprints,
+flow sign convention and physical combination are appropriate for the project.
+
+Flow volumes are signed integrals in m³ or L. Interval rainfall depths are
+integrals in mm. Level, depth and velocity outputs are means. Supported unit
+changes use the existing canonical conversion table. The tool withholds an
+output when either source leaves part of the interval unsupported and reports
+both support durations. Shorter timesteps change the output grid, with no
+change to raw measurements or source files.
+
+Reference checks include a 120-second triangular flow with peak 1.2 m³/s
+compared against constant 0.2 m³/s. For three consecutive 40-second periods,
+the signed flow-volume differences are 8, 32 and 8 m³. A 2 mm incremental
+depth over 120 seconds contributes 1 mm to each fully supported half-period.
+The engine allows up to 500,000 samples per input and 25,000 output intervals.
+CSV and JSON output contain source hashes, assumptions and explicit interval
+bounds. The generic CSV importer continues to use its own temporal semantics.
+
+The U.S. Army Corps of Engineers documentation distinguishes instantaneous
+values, period means and period accumulations, and describes integrating source
+support to compute a period mean. [HEC-DSSVue time conventions](https://www.hec.usace.army.mil/confluence/dssdocs/dssvueum/introduction/time-series-conventions) · [HEC-DSSVue time functions](https://www.hec.usace.army.mil/confluence/dssdocs/dssvueum/math-and-statistical-functions/time-functions)
+
 ## Spill intervals and 12/24 counting
 Physical spill intervals are threshold exceedances under linear interpolation between consecutive valid samples. Missing/long-gap intervals are unknown and break physical events. User exclusions remove time and break events. The 12/24 counting-window convention is applied to retained physical events without restarting at calendar month or year boundaries. The initial occupied 12-hour block counts once; each subsequent occupied 24-hour block contributes one additional count. A complete dry 24-hour block resets the sequence. Physical intervals are half-open: an interval ending exactly at a block boundary does not occupy the next block.
 

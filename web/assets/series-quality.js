@@ -177,6 +177,143 @@ function mount() {
   return ()=>{refreshSources();if(!root.open)root.showModal();};
 }
 
-let openDialog;
-window.HydraSeriesQuality={open(){openDialog??=mount();openDialog();}};
+function mountTransformation(){
+  const root=node('dialog');root.setAttribute('aria-labelledby','hbTransformTitle');root.id='hbTransformDialog';
+  root.innerHTML=`<article class="panel">
+    <div class="panel-head"><div><h2 id="hbTransformTitle">Transform time series</h2><p>Derive new interval means or supported totals from local sources. Shifts and calculations apply to this output.</p></div>
+      <button type="button" class="btn" id="hbTransformClose">Close transformation</button></div>
+    <form id="hbTransformForm"><div class="mapping-grid">
+      <label>Source series<select name="source" required></select></label>
+      <label>Source time shift (s)<input name="shift" type="number" value="0" required step="any"></label>
+      <label>Operation<select name="operation"><option value="single">Resample source</option><option value="add">Add reference</option><option value="subtract">Subtract reference</option></select></label>
+      <label id="hbTransformReference" hidden>Reference series<select name="reference" disabled></select></label>
+      <label id="hbTransformReferenceShift" hidden>Reference time shift (s)<input name="referenceShift" type="number" value="0" step="any" disabled></label>
+      <label id="hbTransformDatum" hidden>Shared vertical datum<input name="datum" maxlength="128" disabled></label>
+      <label>Result type<select name="output"><option value="mean">Interval mean</option><option value="total">Interval total</option></select></label>
+      <label>Output unit<select name="unit"></select></label>
+      <label>Output interval (s)<input name="interval" type="number" value="900" min="0.001" step="any" required></label>
+      <label>Maximum valid source gap (s)<input name="gap" type="number" value="900" min="0.001" step="any" required></label>
+      <label>Start on project clock (optional)<input name="start" type="datetime-local" step="1"></label>
+      <label>End on project clock (optional)<input name="end" type="datetime-local" step="1"></label>
+      </div><p id="hbTransformBasis"></p>
+      <p><label class="hb-transform-confirm"><input name="confirm" type="checkbox" required> I reviewed the quantities, source timing, units and reference arithmetic</label></p>
+      <div class="actions"><button type="submit" class="btn primary">Derive time series</button></div>
+    </form>
+    <p id="hbTransformStatus" role="status"></p>
+    <section id="hbTransformOutput" hidden><h3>Derived intervals</h3><p id="hbTransformSummary"></p>
+      <div class="actions"><button type="button" class="btn" id="hbTransformPrevious">Previous page</button><button type="button" class="btn" id="hbTransformNext">Next page</button>
+        <button type="button" class="btn" id="hbTransformCsv">Download audit CSV</button><button type="button" class="btn" id="hbTransformJson">Download derived series JSON</button></div>
+      <div class="table-wrap"><table class="data-table"><caption>Resampled values and valid temporal support</caption><thead><tr>
+        <th scope="col">Start (included)</th><th scope="col">End (excluded)</th><th scope="col" id="hbTransformUnit">Value</th><th scope="col">Source support (s)</th><th scope="col" id="hbTransformRefSupport">Reference support (s)</th>
+      </tr></thead><tbody></tbody></table></div>
+    </section></article>`;
+  document.body.append(root);
+  const $=id=>root.querySelector('#'+id),form=$('hbTransformForm'),fields=form.elements;
+  const status=$('hbTransformStatus'),output=$('hbTransformOutput'),submit=form.querySelector('[type="submit"]');
+  const unitChoices={flow:['m³/s','L/s','m³/d','Ml/d'],rainfall:['mm/h'],depth:['m','mm'],level:['m','mm'],velocity:['m/s']};
+  let token=0,page=0,record=null,signature=null;
+  const available=()=>allSeries().filter(({item,col})=>item.status==='ready'&&item.hash&&
+    item.parsed?.metadata?.time_basis!=='timezone-aware/unresolved'&&seriesUnit(item,col)&&Object.hasOwn(unitChoices,seriesQuantity(item,col)));
+  const selected=field=>available().find(entry=>entry.key===fields[field].value);
+  const quantity=row=>row?seriesQuantity(row.item,row.col):'';
+  const support=row=>quantity(row)==='rainfall'?rainfallSemanticsFor(row.item,row.col):'instantaneous';
+  const contract=row=>row?[row.item.hash,row.col,quantity(row),seriesUnit(row.item,row.col),seriesReference(row.item,row.col),support(row)]:null;
+  const applicableExclusions=row=>exclusionPayload(true,'source',row.key);
+  const inputs=()=>{
+    const a=selected('source'),b=fields.operation.value==='single'?null:selected('reference');
+    return JSON.stringify([a&&[contract(a),applicableExclusions(a)],b&&[contract(b),applicableExclusions(b)]]);
+  };
+  function invalidate(){
+    ++token;
+    if(record||status.textContent)status.textContent='Inputs changed. Derive a new series for these settings.';
+    record=null;signature=null;output.hidden=true;
+  }
+  function options(select,choices,label){
+    const saved=select.value;
+    select.replaceChildren(new Option(label,''),...choices.map(row=>new Option(row.label,row.key)));
+    select.value=choices.some(row=>row.key===saved)?saved:'';
+  }
+  function refresh(){
+    const choices=available();
+    options(fields.source,choices,'Choose a source series');
+    const a=selected('source'),q=quantity(a),pair=fields.operation.value!=='single';
+    options(fields.reference,choices.filter(row=>row.key!==a?.key&&q===quantity(row)),'Choose a reference series');
+    $('hbTransformReference').hidden=$('hbTransformReferenceShift').hidden=!pair;
+    fields.reference.disabled=fields.referenceShift.disabled=!pair;fields.reference.required=pair;
+    const checkDatum=pair&&q==='level'&&fields.operation.value==='subtract';
+    $('hbTransformDatum').hidden=!checkDatum;fields.datum.disabled=!checkDatum;fields.datum.required=checkDatum;
+    fields.output.querySelector('[value="total"]').disabled=q!=='flow'&&q!=='rainfall';
+    if(fields.output.selectedOptions[0]?.disabled)fields.output.value='mean';
+    const units=fields.output.value==='total'?(q==='flow'?['m³','L']:['mm']):(unitChoices[q]||[]);
+    const wanted=fields.unit.value;
+    fields.unit.replaceChildren(...units.map(unit=>new Option(unit,unit)));
+    if(units.includes(wanted))fields.unit.value=wanted;
+    $('hbTransformBasis').textContent=a?(q==='rainfall'?'Rainfall samples use left-labelled interval support. ':'Hydraulic signals use linear support between adjacent valid samples. ')+
+      'Source-specific exclusions move with each source. A derived value requires complete support in each operand. Blank dates use the common source period.':
+      'Import a supported series and resolve its quantity, unit and clock in Time series.';
+    if(signature){try{if(signature!==inputs())invalidate();}catch{invalidate();}}
+  }
+  function display(){
+    const result=record.result,begin=page*pageSize,end=Math.min(begin+pageSize,result.rows.length);
+    $('hbTransformUnit').textContent='Value ('+result.unit+')';
+    $('hbTransformRefSupport').hidden=!record.reference;
+    $('hbTransformSummary').textContent='Rows '+(begin+1)+'–'+end+' of '+result.rows.length+' · '+result.complete_periods+' complete periods.';
+    const table=root.querySelector('tbody');table.replaceChildren();
+    for(const values of result.rows.slice(begin,end)){
+      const row=table.insertRow();
+      for(const value of values)row.insertCell().textContent=format(value);
+    }
+    $('hbTransformPrevious').disabled=begin===0;$('hbTransformNext').disabled=end===result.rows.length;
+  }
+  const details=(row,shift)=>({path:row.item.virtualPath,column:row.col,shift_s:shift,
+    rainfall_semantics:quantity(row)==='rainfall'?support(row):null,exclusions:applicableExclusions(row)});
+  const provenance=row=>row&&({name:row.label,sha256:row.item.hash,column:row.col,source_unit:seriesMetadata(row.item,row.col).original_unit||seriesUnit(row.item,row.col),exclusions:applicableExclusions(row)});
+  form.onsubmit=async event=>{
+    event.preventDefault();
+    invalidate();const current=++token;
+    const a=selected('source'),operation=fields.operation.value,b=operation==='single'?null:selected('reference');
+    if(!a||(operation!=='single'&&!b)){status.textContent='Choose all required source series.';return;}
+    const datum=fields.datum.disabled?null:fields.datum.value.trim();
+    if(datum&&[a,b].some(row=>row&&seriesReference(row.item,row.col)&&seriesReference(row.item,row.col)!==datum)){
+      status.textContent='The reviewed datum conflicts with a declared source datum. Resolve the datum before deriving a difference.';return;
+    }
+    submit.disabled=true;status.textContent='Calculating interval support in the local worker…';
+    try{
+      const reviewed=inputs(),source=provenance(a),reference=provenance(b);
+      const settings={source:details(a,fields.shift.valueAsNumber),reference:b?details(b,fields.referenceShift.valueAsNumber):null,
+        interval_s:fields.interval.valueAsNumber,max_gap_s:fields.gap.valueAsNumber,operation,output:fields.output.value,unit:fields.unit.value,
+        start:fields.start.value||null,end:fields.end.value||null,datum};
+      await ensureEngineBoot();const result=await engine.call('transform_local_series',settings);
+      if(current!==token||reviewed!==inputs())return;
+      record={schema:'hydra-derived-series-v1',build:buildToken,source,reference,result};signature=reviewed;page=0;
+      output.hidden=false;display();status.textContent='Derived series ready. Review unsupported intervals before export.';
+    }catch(error){if(current===token)status.textContent=conciseErrorMessage(error);}
+    finally{submit.disabled=false;}
+  };
+  function ensureCurrent(){
+    try{if(record&&signature===inputs())return true;}catch{}
+    invalidate();return false;
+  }
+  $('hbTransformCsv').onclick=()=>{
+    if(!ensureCurrent())return;
+    const {source,reference,result}=record;
+    const rows=[['Build',record.build],['Method',result.method],['Quantity',result.quantity],['Operation',result.operation],['Source',source.name],
+      ['Source SHA-256',source.sha256],['Reference',reference?.name||''],['Reference SHA-256',reference?.sha256||''],['Input contracts',JSON.stringify(result.inputs)],
+      ['Exclusions',JSON.stringify([source.exclusions,reference?.exclusions])],['Output interval (s)',result.interval_s],['Gap (s)',result.max_gap_s],['Datum',result.datum],
+      ['Included start','Excluded end',result.output+' ('+result.unit+')','Source support (s)',...(reference?['Reference support (s)']:[])],...result.rows];
+    downloadBlob('hydra-derived-series-audit.csv',rows.map(row=>row.map(ICMSafeCSV.cell).join(',')).join('\r\n'),'text/csv');
+  };
+  $('hbTransformJson').onclick=()=>{if(ensureCurrent())downloadBlob('hydra-derived-series.json',JSON.stringify(record,null,2),'application/json');};
+  $('hbTransformPrevious').onclick=()=>{--page;display();};$('hbTransformNext').onclick=()=>{++page;display();};
+  $('hbTransformClose').onclick=()=>root.close();
+  form.oninput=invalidate;form.onchange=()=>{invalidate();refresh();};
+  window.addEventListener('icm:route-changed',({detail})=>{if(detail.workspace!=='data'&&root.open)root.close();});
+  window.addEventListener('icm:source-pool-changed',refresh);
+  window.addEventListener('icm:rainfall-interpretation-changed',refresh);
+  return ()=>{refresh();if(!root.open)root.showModal();};
+}
+
+let openDialog,openTransformation;
+window.HydraSeriesQuality={open(){openDialog??=mount();openDialog();},
+  transform(){openTransformation??=mountTransformation();openTransformation();}};
 })();

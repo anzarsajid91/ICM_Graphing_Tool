@@ -23,7 +23,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 3.3 | Current help text and workspace routes | Six guided journeys with actual prerequisites, results and next actions | Verified locally |
 | 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Partial |
 | 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Partial |
-| 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Open |
+| 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Partial |
 | 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Open |
 | 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Open |
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Open |
@@ -341,7 +341,7 @@ other state.
   saw 123 and 122 requests with zero violations. Synthetic screenshots are
   retained in the local `hydra-evidence/v3/profile-view` folder.
 - Structure geometry beyond the current symbols, hydraulically valid water
-  fill, conduit-end integration and synchronized result playback remain
+  fill and synchronized conduit-end results remain
   open. The profile's shaft widths indicate node position symbolically.
 
 ### Exact-sample schematic and profile playback
@@ -373,3 +373,39 @@ other state.
   before its deferred script finished. The smoke test now waits for the
   required empty-state message and retains its original assertion and
   calculation checks.
+
+### Derived time-series intervals
+
+- The Data source pool opens a non-destructive transformation dialog. It
+  produces interval means or supported totals, with source-specific shifts,
+  units, selection of window and step, and reviewed same-quantity addition
+  or subtraction. A local vectorized worker calculation tracks exact source
+  and exclusion boundaries, signed volume, incremental rainfall and both
+  operand coverage values. Incomplete periods remain missing. Source bytes
+  and units are preserved. The audit CSV and derived JSON include provenance.
+- Independent checks recover 8, 32 and 8 m³ from the triangular flow residual.
+  A native .R fixture produces the same 0.7 mm from intensity or incremental
+  depth, includes the declared final interval and does not bridge a reviewed
+  gap. See [the temporal method and references](methods.md#derived-time-series-intervals).
+- Seven independent transformation tests passed. Chromium and Firefox
+  validated the local chooser, both shifts, addition and subtraction, explicit
+  date bounds, interval means and signed totals, output units, missing bins,
+  pagination, JSON provenance and a formula-like synthetic filename in the
+  CSV audit. Request observers saw 93 and 91 static requests and zero
+  violations. The existing diagnostics and method-library flows passed in
+  both browsers. The source gate, 28 privacy tests and JS request contract
+  passed locally.
+- A synthetic five-minute annual source of 105,121 samples produced 8,760
+  complete hourly bins in 0.142 s with 9.79 MiB traced peak allocation in
+  the local Python kernel. The integral matched 22,075,200 m³. This is an
+  algorithm measurement with array creation outside the measured interval.
+  Browser ingestion and UI latency at that size remain unmeasured.
+- The derived series currently has export evidence. Restoring derived series
+  into the common project registry, preserving text categorical states, and
+  providing period plots and graph handoffs remain open.
+- Protected browser interactions also caught a connector focus assertion at
+  `823f5fb`. An instrumented synthetic replay reproduced the failure while
+  tracing successful focus on both successive replacement SVG groups. The
+  test now reads the live DOM and exact focused connector ID together after
+  the retired group detaches. Six local Chromium runs passed with the control
+  evidence recorder enabled.

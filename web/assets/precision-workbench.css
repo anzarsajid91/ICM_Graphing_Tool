@@ -670,7 +670,10 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #hbMethodResults>details{padding:12px 0;border-top:1px solid var(--hb-border)}
 #hbMethodResults summary{cursor:pointer;font-weight:650}
 #hbMethodResults details p{max-width:88ch}
-#tab-series-quality,#tab-method-library{padding:0;width:min(1080px,calc(100% - 32px));max-height:calc(100% - 32px);border:1px solid var(--hb-border);border-radius:var(--hb-radius-card)}
-#tab-series-quality::backdrop,#tab-method-library::backdrop{background:rgb(18 35 45 / 60%)}
-#tab-series-quality>.panel,#tab-method-library>.panel{margin:0;border:0}
+:is(#tab-series-quality,#tab-method-library,#hbTransformDialog){padding:0;width:min(1080px,calc(100% - 32px));max-height:calc(100% - 32px);border:1px solid var(--hb-border);border-radius:var(--hb-radius-card)}
+:is(#tab-series-quality,#tab-method-library,#hbTransformDialog)::backdrop{background:rgb(18 35 45 / 60%)}
+:is(#tab-series-quality,#tab-method-library,#hbTransformDialog)>.panel{margin:0;border:0}
 #tab-series-quality form>details{padding:8px 0}
+#hbTransformDialog .hb-transform-confirm{display:flex;align-items:flex-start;gap:8px}
+#hbTransformDialog caption{padding:8px 12px;text-align:left;color:var(--hb-muted)}
+#hbTransformDialog .table-wrap{margin-top:8px}
