@@ -1063,6 +1063,48 @@ def network_spill_result(path, column, threshold, years_json="null", exclusions_
     return json.dumps(_jsonable(result), ensure_ascii=False)
 
 
+def review_spill_events(path, column, events, max_gap_s=900.0, exclusions_json="[]", flow=None, rainfall=None):
+    """Review already detected physical intervals with independently supported evidence."""
+    from icm_workbench.analysis.spill_inquiry import register_events
+
+    def source(spec, expected):
+        source_path, channel = spec["path"], spec["column"]
+        parsed = _require_model_clock(_load(source_path), expected)
+        contract = _series_contract(source_path, channel)
+        quantity, unit = contract["quantity"], contract["canonical_unit"]
+        if channel not in parsed.frame or channel == "timestamp":
+            raise ValueError(f"Select an available {expected.lower()} channel.")
+        trailing_support = None
+        convention = parsed.metadata.get("timestamp_convention")
+        if expected == "Threshold source" and quantity not in {"level", "depth"}:
+            raise ValueError("The event basis must be an eligible depth or level channel.")
+        if expected == "Spill flow" and (quantity != "flow" or unit != "m³/s"):
+            raise ValueError("Supply an eligible spill-flow channel with a resolved flow unit.")
+        if expected != "Rainfall" and convention != "instantaneous":
+            raise ValueError(f"{expected} requires instantaneous values on the project clock.")
+        if expected == "Rainfall":
+            meaning = spec.get("semantics") or parsed.metadata.get("rainfall_semantics")
+            if quantity != "rainfall" or (meaning, unit) not in {("intensity", "mm/h"), ("incremental_depth", "mm")}:
+                raise ValueError("Resolve the rainfall quantity, unit and support before linking it.")
+            convention = "interval_average" if meaning == "intensity" else "interval_depth"
+            interval = parsed.metadata.get("interval_min")
+            trailing_support = float(interval) * 60 if interval is not None else None
+        if expected != "Threshold source" and any(parsed.audit.get(key, 0) for key in ("invalid_timestamps", "duplicate_timestamps", "malformed_rows")):
+            raise ValueError(f"Resolve invalid or duplicate rows in the selected {expected.lower()} record.")
+        frame, _ = _prepared_series(source_path, channel)
+        values = frame[channel].to_numpy(dtype=float)
+        if convention == "interval_average":
+            values = values / 3600
+        return {"times": pd.DatetimeIndex(frame.timestamp).as_unit("ns"), "values": values,
+                "convention": convention, "trailing_support": trailing_support,
+                "exclusions": _exclusions(spec.get("exclusions"))}
+
+    basis = source({"path": path, "column": column, "exclusions": exclusions_json}, "Threshold source")
+    result = register_events(events, basis, float(max_gap_s), flow_source=source(flow, "Spill flow") if flow else None,
+                             rain_source=source(rainfall, "Rainfall") if rainfall else None)
+    return json.dumps({"method": "physical-spill-register-v1", "rows": result}, allow_nan=False)
+
+
 def network_common_spill_result(path, column, threshold, start, end, exclusions_json="[]", max_gap_seconds=900.0, comparison="ge"):
     """Explicit common-period review; preserve source warm-up and shared mappings."""
     from icm_workbench.analysis.network_spills import common_period_assessment
@@ -1070,6 +1112,99 @@ def network_common_spill_result(path, column, threshold, start, end, exclusions_
     result = common_period_assessment(parsed.frame, column, threshold, start, end,
         max_gap_seconds=max_gap_seconds, comparison=comparison, exclusions=_exclusions(exclusions_json))
     return json.dumps(_jsonable(result), ensure_ascii=False)
+
+
+def compare_spill_scenarios(assets, start, end, baseline_name, max_gap_s):
+    """Compare reviewed asset-specific model sources against an explicit common baseline window."""
+    from icm_workbench.analysis.spill_scenarios import evaluate_scenario, reporting_windows, scenario_delta
+
+    def name(value, label):
+        if not isinstance(value, str) or not value.strip() or len(value) > 128:
+            raise ValueError(f"Enter a {label} within 128 characters.")
+        return value.strip()
+
+    if not isinstance(assets, list) or not 1 <= len(assets) <= 8:
+        raise ValueError("Review between one and eight assets in a comparison.")
+    gap = float(max_gap_s)
+    if not np.isfinite(gap) or gap < .001:
+        raise ValueError("Enter a finite positive maximum source gap.")
+    if not start or not end:
+        raise ValueError("Enter both explicit comparison limits on the project clock.")
+    windows = list(reporting_windows(start, end))
+    baseline_name = name(baseline_name, "common baseline name")
+
+    def read_series(spec, expected, datum=None):
+        path, column = spec["path"], spec["column"]
+        parsed = _require_model_clock(_load(path), "Scenario source")
+        if column not in parsed.frame or column == "timestamp":
+            raise ValueError("Choose an available scenario channel.")
+        if parsed.metadata.get("timestamp_convention") != "instantaneous" or any(
+                parsed.audit.get(key, 0) for key in ("invalid_timestamps", "duplicate_timestamps", "malformed_rows")):
+            raise ValueError("Resolve invalid or duplicate rows and use instantaneous model-clock samples.")
+        contract = _series_contract(path, column)
+        value = (contract["quantity"], contract["canonical_unit"])
+        allowed = {("level", "m"), ("depth", "m")} if expected == "threshold" else {("flow", "m³/s")}
+        if value not in allowed:
+            raise ValueError("Use resolved level or depth in metres, or confirmed discharge flow in m³/s.")
+        if value[0] == "level":
+            reviewed = name(datum, "reviewed common vertical datum")
+            detail = parsed.metadata.get("series_metadata", {}).get(column, {})
+            declared = detail.get("datum") or detail.get("vertical_reference") or parsed.metadata.get("datum")
+            if declared and str(declared).strip().casefold() != reviewed.casefold():
+                raise ValueError("The reviewed vertical datum differs from a declared source datum.")
+        frame, _ = _prepared_series(path, column)
+        exclusions = _exclusions(spec.get("exclusions"))
+        return frame, column, value[0], exclusions
+
+    def simulation(spec, datum):
+        frame, column, quantity, exclusions = read_series(spec, "threshold", datum)
+        flow = None
+        if spec.get("flow") is not None:
+            if spec.get("flow_confirmed") is not True:
+                raise ValueError("Confirm that each flow channel measures discharge for that asset and scenario.")
+            flow_frame, flow_column, _, flow_exclusions = read_series(spec["flow"], "flow")
+            flow = {"times": pd.DatetimeIndex(flow_frame.timestamp).as_unit("ns"), "values": flow_frame[flow_column].to_numpy(dtype=float),
+                    "convention": "instantaneous", "exclusions": flow_exclusions}
+        return {"frame": frame, "column": column, "quantity": quantity, "exclusions": exclusions, "flow": flow}
+
+    rows, seen = [], set()
+    for group in assets:
+        asset = name(group.get("id"), "reviewed asset identity")
+        if asset.casefold() in seen:
+            raise ValueError("Use each reviewed asset identity once.")
+        seen.add(asset.casefold())
+        proposed = group.get("proposed")
+        if not isinstance(proposed, list) or not 1 <= len(proposed) <= 8:
+            raise ValueError("Choose one to eight proposed scenarios for each asset.")
+        threshold = float(group["threshold_m"])
+        if not np.isfinite(threshold):
+            raise ValueError("Enter a finite reviewed threshold in metres.")
+        original = group["baseline"]
+        baseline = simulation(original, group.get("datum"))
+        scenario_names = {baseline_name.casefold()}
+        used = {(original["path"], original["column"])}
+        candidates = []
+        for spec in proposed:
+            label = name(spec.get("name"), "proposed scenario name")
+            key = spec["path"], spec["column"]
+            if label.casefold() in scenario_names or key in used:
+                raise ValueError("Use unique scenario names and distinct threshold channels per asset.")
+            scenario_names.add(label.casefold())
+            used.add(key)
+            item = simulation(spec, group.get("datum"))
+            if item["quantity"] != baseline["quantity"]:
+                raise ValueError("Use a common depth or level quantity for the asset and all scenarios.")
+            candidates.append((label, item))
+        if baseline["quantity"] == "depth" and threshold < 0:
+            raise ValueError("The depth threshold must be non-negative.")
+        for left, right in windows:
+            reference = evaluate_scenario(baseline, threshold, left, right, gap)
+            for label, item in candidates:
+                candidate = evaluate_scenario(item, threshold, left, right, gap)
+                rows.append({"asset": asset, "baseline_name": baseline_name, "proposed_name": label,
+                             "threshold_m": threshold, "quantity": baseline["quantity"], "datum": group.get("datum"),
+                             "baseline": reference, "proposed": candidate, "delta": scenario_delta(reference, candidate)})
+    return json.dumps({"method": "reviewed-common-period-spill-scenarios-v1", "rows": rows}, allow_nan=False)
 
 
 def _storage_threshold_m(threshold,contract,threshold_unit=None):
@@ -1158,8 +1293,15 @@ def circular_pipe_design_flow(diameter_m, gradient, roughness_m, viscosity_m2_s,
     return json.dumps(normal_depth_assessment(diameter_m, gradient, roughness_m, viscosity_m2_s, discharge_m3_s))
 
 
+def circular_manning_capacity(mode, n, viscosity_m2_s, diameter_m=None, gradient=None, depth_fraction=None, discharge_m3_s=None):
+    from icm_workbench.analysis.manning_pipe import circular_manning_screen
+
+    return json.dumps(circular_manning_screen(mode, n, viscosity_m2_s, diameter_m, gradient, depth_fraction, discharge_m3_s),
+                      allow_nan=False)
+
+
 def verification_event_comparison(obs_path, obs_col, model_path, model_col, start, end,
-                                  max_gap_seconds=900.0, offset_minutes=0, exclusions_json="[]"):
+                                  max_gap_seconds=900.0, offset_minutes=0, exclusions_json="[]", *, window_only=False):
     """Compare one selected wet-weather event using supported hydraulic channels."""
     from icm_workbench.analysis.verification_events import compare_event_support
 
@@ -1173,8 +1315,22 @@ def verification_event_comparison(obs_path, obs_col, model_path, model_col, star
     if any(source.metadata.get("timestamp_convention") != "instantaneous" for source in (obs_source, model_source)):
         raise ValueError("Event Review requires instantaneous hydraulic data.")
     obs, mod = obs_source.frame, model_source.frame
+    offset = pd.to_timedelta(offset_minutes, unit="m")
+    if window_only:
+        def bounded(source, first, last):
+            if any(source.audit.get(key, 0) for key in ("invalid_timestamps", "malformed_rows", "duplicate_timestamps")):
+                raise ValueError("Resolve malformed or repeated source timestamps before using the matrix.")
+            times = pd.DatetimeIndex(source.frame["timestamp"])
+            if times.hasnans or times.has_duplicates or not times.is_monotonic_increasing:
+                raise ValueError("The matrix needs unique, ordered source timestamps.")
+            left = max(0, int(times.searchsorted(first, side="right")) - 1)
+            right = min(len(times), int(times.searchsorted(last, side="left")) + 1)
+            return source.frame.iloc[left:right]
+
+        obs = bounded(obs_source, start, end)
+        mod = bounded(model_source, start - offset, end - offset)
     if offset_minutes:
-        mod = mod.assign(timestamp=pd.to_datetime(mod["timestamp"]) + pd.to_timedelta(offset_minutes, unit="m"))
+        mod = mod.assign(timestamp=pd.to_datetime(mod["timestamp"]) + offset)
     result = compare_event_support(obs, mod, obs_col, model_col, start, end,
                                    max_gap_seconds, _exclusions(exclusions_json))
     result["unit"] = unit
@@ -1183,3 +1339,426 @@ def verification_event_comparison(obs_path, obs_col, model_path, model_col, star
     result.pop("observed_integral", None)
     result.pop("modelled_integral", None)
     return json.dumps(_jsonable(result))
+
+
+def verification_matrix_event(observed, scenario, event, criteria, max_gap_seconds, offset_minutes=0, exclusions=None):
+    """Assess one matrix cell using the current native Event Review engine."""
+    from icm_workbench.analysis.verification_matrix import verification_event_criteria
+
+    quan = _comparison_quantity(observed["path"], observed["column"])
+    first, last = _model_clock_timestamp(event["start"]), _model_clock_timestamp(event["end"])
+    if first is None or last is None or pd.isna(first) or pd.isna(last) or first >= last:
+        raise ValueError("Choose a current qualifying event with valid project-clock bounds.")
+    if not np.isfinite(offset_minutes):
+        raise ValueError("The scenario clock shift must be finite.")
+    values = json.loads(verification_event_comparison(observed["path"], observed["column"], scenario["path"],
+                        scenario["column"], first, last, max_gap_seconds, offset_minutes, exclusions, window_only=True))
+    result = verification_event_criteria(values, quan, criteria)
+    result.update(quantity=quan, values=values)
+    return json.dumps(result, allow_nan=False)
+
+
+def validate_verification_snapshot(snapshot):
+    from icm_workbench.analysis.verification_revisions import verification_snapshot_summary
+
+    return json.dumps(verification_snapshot_summary(snapshot), allow_nan=False)
+
+
+def verification_revision_delta(baseline, candidate):
+    from icm_workbench.analysis.verification_revisions import compare_verification_revisions
+
+    return json.dumps(compare_verification_revisions(baseline, candidate), allow_nan=False)
+
+
+def verification_calibration_diagnostics(observed, scenario, event, criteria, settings,
+                                         max_gap_seconds, offset_minutes=0, exclusions=None,
+                                         preceding=None, recovery=None, rainfall=None, depth=None):
+    """Inspect native storm, preceding and recovery evidence without altering verification."""
+    from icm_workbench.analysis.series_transform import integrate_periods
+    from icm_workbench.analysis.verification_diagnostics import investigate_calibration
+
+    def bounds(period):
+        start, end = (_model_clock_timestamp(period[key]) for key in ("start", "end"))
+        if start is None or end is None or pd.isna(start) or pd.isna(end) or end <= start:
+            raise ValueError("Review each increasing analysis window on the common project clock.")
+        return start, end
+
+    def compare(before, after, window, applied):
+        start, end = bounds(window)
+        return json.loads(verification_event_comparison(before["path"], before["column"], after["path"], after["column"],
+                                                        start, end, max_gap_seconds, offset_minutes, applied, window_only=True))
+
+    if _comparison_quantity(observed["path"], observed["column"]) != "flow":
+        raise ValueError("Calibration investigation requires an observed and modelled flow pairing.")
+    first, last = bounds(event)
+    dry = recovery_result = rain = depth_result = None
+    if preceding:
+        start, end = bounds(preceding)
+        if end > first:
+            raise ValueError("The preceding period must end by the start of the selected storm.")
+        if not rainfall or rainfall.get("confirmed") is not True:
+            raise ValueError("Confirm the appropriate rainfall source and review preceding conditions.")
+        dry = compare(observed, scenario, preceding, exclusions)
+        prepared = _reviewed_rainfall_channel(rainfall, start, end)
+        duration = (end - start).value / 1e9
+        total, covered = integrate_periods(prepared["times"], prepared["samples"], np.array([0.0, duration]),
+                                           convention=prepared["convention"], maximum_gap=max_gap_seconds,
+                                           trailing_support=prepared["trailing"], exclusions=prepared["exclusions"])
+        rain = {"depth_mm": float(total[0]) if covered[0] > 0 else None,
+                "valid_seconds": float(covered[0]), "requested_seconds": duration}
+    if recovery:
+        start, _ = bounds(recovery)
+        if start < last:
+            raise ValueError("The recovery period must start at or after the selected storm ends.")
+        recovery_result = compare(observed, scenario, recovery, exclusions)
+    if depth:
+        if not depth.get("confirmed") or any(_comparison_quantity(depth[role]["path"], depth[role]["column"]) != "depth"
+                                              for role in ("observed", "scenario")):
+            raise ValueError("Confirm both depth records refer to the flow monitor's section and invert reference.")
+        depth_result = compare(depth["observed"], depth["scenario"], event, depth.get("exclusions"))
+    storm = json.loads(verification_matrix_event(observed, scenario, event, criteria, max_gap_seconds, offset_minutes, exclusions))
+    result = investigate_calibration(storm, settings=settings, dry=dry, rainfall=rain, recovery=recovery_result, depth=depth_result)
+    result["support"] = {"storm": storm["values"], "preceding": dry, "recovery": recovery_result, "depth": depth_result}
+    return json.dumps(result, allow_nan=False)
+
+
+def england_continuation_flow(catchments):
+    """Review explicit England catchment allowances in the local worker."""
+    from icm_workbench.analysis.design_flows import england_continuation_flow as calculate
+
+    return json.dumps(calculate(catchments), allow_nan=False)
+
+
+def scotland_continuation_flow(catchments, applicability):
+    """Apply the documented SEPA low-significance continuation-flow method."""
+    from icm_workbench.analysis.design_flows import scotland_continuation_flow as calculate
+
+    return json.dumps(calculate(catchments, applicability), allow_nan=False)
+
+
+def scotland_treatment_design_flows(inputs):
+    """Calculate DWF and FFT with the distinct SEPA infiltration allowances."""
+    from icm_workbench.analysis.design_flows import scotland_treatment_design_flows as calculate
+
+    return json.dumps(calculate(**inputs), allow_nan=False)
+
+
+def pipe_system_curve(stages, static_head_m, flow_m3_s, curve_max_m3_s):
+    """Evaluate full-pipe resistance with explicitly specified Darcy factors."""
+    from icm_workbench.analysis.pumping import system_curve
+
+    return json.dumps(system_curve(stages, static_head_m, flow_m3_s, curve_max_m3_s), allow_nan=False)
+
+
+def pump_system_duty(stages, static_head_m, points, arrangement, pump_count, density_kg_m3, efficiency=None):
+    """Intersect the measured pump curve with the idealised pipe system."""
+    from icm_workbench.analysis.pumping import pump_duty
+
+    return json.dumps(pump_duty(stages, static_head_m, points, arrangement, pump_count, density_kg_m3, efficiency),
+                      allow_nan=False)
+
+
+def preview_design_catchments(text):
+    """Validate a local catchment table for explicit Formula A mappings."""
+    from icm_workbench.analysis.design_flows import preview_catchment_csv
+
+    return json.dumps(preview_catchment_csv(text), allow_nan=False)
+
+
+def screen_storage_routing(path, column, capacities_m3, initial_m3, release_m3_s,
+                           max_gap_s, start=None, end=None, exclusions_json="[]"):
+    """Route the actual samples of a reviewed, resolved instantaneous inflow."""
+    from icm_workbench.analysis.storage_routing import route_storage
+
+    parsed = _require_model_clock(_load(path), "Inflow")
+    if parsed.metadata.get("timestamp_convention") != "instantaneous":
+        raise ValueError("Routing requires instantaneous inflow samples with a resolved project clock.")
+    contract = _series_contract(path, column)
+    if column not in parsed.frame or contract["quantity"] != "flow" or contract["canonical_unit"] != "m³/s":
+        raise ValueError("Choose an inflow series with a resolved flow unit in Data / time series.")
+    if any(parsed.audit.get(key, 0) for key in ("invalid_timestamps", "malformed_rows", "duplicate_timestamps")):
+        raise ValueError("Resolve malformed rows and repeated or invalid timestamps in the source before routing.")
+    times = pd.to_datetime(parsed.frame["timestamp"], errors="coerce")
+    if times.empty or times.isna().any() or not times.is_monotonic_increasing or times.duplicated().any():
+        raise ValueError("Routing requires valid, unique timestamps in chronological order.")
+    first = _model_clock_timestamp(start) if start else times.iloc[0]
+    last = _model_clock_timestamp(end) if end else times.iloc[-1]
+    if pd.isna(first) or pd.isna(last) or first >= last:
+        raise ValueError("Choose an increasing period on the source's project clock.")
+    left, right = int(times.searchsorted(first)), int(times.searchsorted(last, side="right"))
+    selected = times.iloc[left:right]
+    if len(selected) < 2 or selected.iloc[0] != first or selected.iloc[-1] != last:
+        raise ValueError("Start and end must match actual samples. Leave blank to use source endpoints.")
+    if len(selected) > 250_000:
+        raise ValueError("Select a smaller review period. This screening operation supports up to 250,000 samples per run.")
+    applicable = sorted(
+        (item for item in _exclusions(exclusions_json) if item.start < last and item.end > first),
+        key=lambda item: item.start,
+    )
+    # Use the first intersecting interval. If it includes any excluded time,
+    # the full interval is unsupported even when both endpoint samples exist.
+    blocked = int(selected.searchsorted(max(first, applicable[0].start), side="right")) if applicable else None
+    elapsed = (selected - first).dt.total_seconds().to_numpy()
+    rates = pd.to_numeric(parsed.frame[column].iloc[left:right], errors="coerce").to_numpy(dtype=float)
+    result = route_storage(elapsed, rates, capacities_m3, initial_m3, release_m3_s, max_gap_s, blocked)
+    result["assessed_through"] = selected.iloc[result.pop("last_sample")].isoformat()
+    result.update(window_start=first.isoformat(), window_end=last.isoformat(), sample_count=len(selected),
+                  max_gap_s=max_gap_s, original_unit=contract["original_unit"], canonical_unit="m³/s")
+    return json.dumps(result, allow_nan=False)
+
+
+def inspect_local_series(path, column, criteria, start=None, end=None,
+                         reference_path=None, reference_column=None, search_steps=None):
+    """Inspect local source rows without deduplicating or transforming them."""
+    from icm_workbench.analysis.series_quality import clock_candidates, inspect_series
+
+    source = _require_model_clock(_load(path), "Diagnostic source")
+    if source.metadata.get("timestamp_convention") != "instantaneous":
+        raise ValueError("This diagnostic requires instantaneous source samples on the project clock.")
+    contract = _series_contract(path, column)
+    if column not in source.frame or column == "timestamp":
+        raise ValueError("Select an available source series.")
+    thresholds = any(criteria.get(key) is not None for key in ("lower", "upper", "change_limit", "flat_amplitude"))
+    if thresholds and not contract["canonical_unit"]:
+        raise ValueError("Confirm source quantity and units in Data / time series before applying value thresholds.")
+    start = _model_clock_timestamp(start)
+    end = _model_clock_timestamp(end)
+    if (start is not None and pd.isna(start)) or (end is not None and pd.isna(end)) or (start is not None and end is not None and start >= end):
+        raise ValueError("Choose an increasing review period on the project clock.")
+
+    def select(parsed):
+        frame=parsed.frame
+        if start is not None:
+            frame=frame[frame.timestamp>=start]
+        if end is not None:
+            frame=frame[frame.timestamp<=end]
+        if len(frame)>250_000:
+            raise ValueError("Choose a smaller review period. Diagnostics support up to 250,000 samples per series per run.")
+        return frame
+
+    frame=select(source)
+    allowed={"expected_step_s","jitter_s","flat_amplitude","flat_seconds","change_limit","lower","upper"}
+    if any(key not in allowed for key in criteria):
+        raise ValueError("Unsupported diagnostic setting.")
+    result=inspect_series(frame,column,**criteria,rejected_time_rows=source.audit.get("invalid_timestamps",0))
+    result["source_contract"]=contract
+    result["clock"]=None
+    if reference_path is not None:
+        ref=_require_model_clock(_load(reference_path), "Reference series")
+        other_contract=_series_contract(reference_path,reference_column)
+        if (reference_column not in ref.frame or ref.metadata.get("timestamp_convention")!="instantaneous" or
+                not contract["canonical_unit"] or other_contract["canonical_unit"]!=contract["canonical_unit"] or
+                not contract["quantity"] or other_contract["quantity"]!=contract["quantity"] or
+                (path==reference_path and column==reference_column)):
+            raise ValueError("Use a different instantaneous record of the same measured quantity with matching resolved units.")
+        result["clock"]=clock_candidates(frame,select(ref),column,reference_column,criteria["expected_step_s"],search_steps)
+    return json.dumps(_jsonable(result), allow_nan=False)
+
+
+def review_monitor_channels(path, depth_column, velocity_column, settings, flow_column=None,
+                            start=None, end=None, exclusions_json="[]"):
+    """Review concurrent channels without changing independent quality or survey results."""
+    from icm_workbench.analysis.survey_monitor_diagnostics import monitor_diagnostics
+
+    parsed = _require_model_clock(_load(path), "Monitor source")
+    if parsed.metadata.get("timestamp_convention") != "instantaneous" or any(
+            parsed.audit.get(key, 0) for key in ("invalid_timestamps", "duplicate_timestamps", "malformed_rows")):
+        raise ValueError("Resolve invalid or repeated timestamps before using concurrent monitor checks.")
+    roles = [(depth_column, "depth", "m"), (velocity_column, "velocity", "m/s")]
+    if flow_column is not None:
+        roles.append((flow_column, "flow", "m³/s"))
+    for name, quantity, unit in roles:
+        contract = _series_contract(path, name)
+        if name not in parsed.frame or (contract["quantity"], contract["canonical_unit"]) != (quantity, unit):
+            raise ValueError("Select concurrent depth, velocity and optional flow with resolved canonical units.")
+    frame = parsed.frame[["timestamp", *[name for name, *_ in roles]]]
+    a, b = _model_clock_timestamp(start), _model_clock_timestamp(end)
+    if (a is not None and pd.isna(a)) or (b is not None and pd.isna(b)) or (a is not None and b is not None and a >= b):
+        raise ValueError("Enter an increasing review period on the project clock.")
+    if a is not None:
+        frame = frame[frame.timestamp >= a]
+    if b is not None:
+        frame = frame[frame.timestamp <= b]
+    result = monitor_diagnostics(frame, depth_column, velocity_column, flow_column, settings=settings,
+                                 exclusions=_exclusions(exclusions_json))
+    return json.dumps(result, allow_nan=False)
+
+
+def _relative_clock_seconds(origin, nanoseconds):
+    origin_s, origin_ns = divmod(origin.value, 10**9)
+    divide = np.divmod if isinstance(nanoseconds, np.ndarray) else divmod
+    seconds, fraction = divide(nanoseconds, 10**9)
+    return seconds - origin_s + (fraction - origin_ns) / 1e9
+
+
+def _reviewed_rainfall_channel(source, first, last):
+    from icm_workbench.analysis.series_transform import MAX_SOURCE_SAMPLES
+
+    path, column = source["path"], source["column"]
+    parsed = _require_model_clock(_load(path), "Rainfall source")
+    if any(parsed.audit.get(key, 0) for key in ("invalid_timestamps", "malformed_rows", "duplicate_timestamps")):
+        raise ValueError("Resolve invalid or repeated rainfall source timestamps before comparing.")
+    contract = _series_contract(path, column)
+    semantics = source.get("rainfall_semantics") or parsed.metadata.get("rainfall_semantics")
+    convention = {("intensity", "mm/h"): "interval_average", ("incremental_depth", "mm"): "interval_depth"}.get(
+        (semantics, contract["canonical_unit"]))
+    if contract["quantity"] != "rainfall" or column not in parsed.frame or convention is None:
+        raise ValueError("Resolve rainfall quantities, units and interval semantics in Data / time series.")
+    times = pd.DatetimeIndex(parsed.frame["timestamp"]).as_unit("ns")
+    if not len(times) or times.hasnans or not times.is_monotonic_increasing or times.has_duplicates:
+        raise ValueError("Choose rainfall sources with valid, unique timestamps in order.")
+    left = max(0, int(times.searchsorted(first, side="right")) - 1)
+    right = min(len(times), int(times.searchsorted(last, side="left")) + 1)
+    if right - left > MAX_SOURCE_SAMPLES:
+        raise ValueError("Use a shorter window. This review supports up to 500,000 samples per gauge.")
+    # Give trailing declared support only to an actual final source sample.
+    interval = parsed.metadata.get("interval_min")
+    trailing = float(interval) * 60 if interval is not None and right == len(times) else None
+    values = pd.to_numeric(parsed.frame[column].iloc[left:right], errors="coerce").to_numpy(dtype=float)
+    blocked = tuple((_relative_clock_seconds(first, pd.Timestamp(item.start).value),
+                     _relative_clock_seconds(first, pd.Timestamp(item.end).value))
+                    for item in _exclusions(source.get("exclusions")))
+    return {"times": _relative_clock_seconds(first, times[left:right].asi8),
+            "samples": values / 3600 if convention == "interval_average" else values,
+            "trailing": trailing, "convention": convention, "exclusions": blocked}
+
+
+def compare_local_rain_gauges(sources, start, end, interval_s, max_gap_s, suspect_rate_mm_h=None):
+    """Compare resolved rainfall sources independently of qualification criteria."""
+    from icm_workbench.analysis.rainfall_spatial import compare_rainfall
+
+    first, last = _model_clock_timestamp(start), _model_clock_timestamp(end)
+    if first is None or last is None or pd.isna(first) or pd.isna(last) or first >= last:
+        raise ValueError("Choose an increasing review period on the shared project clock.")
+    seen, gauges = set(), []
+    if not 2 <= len(sources) <= 8:
+        raise ValueError("Select two to eight distinct rainfall channels.")
+    for source in sources:
+        path, column = source["path"], source["column"]
+        if (path, column) in seen:
+            raise ValueError("Choose distinct rainfall channels.")
+        seen.add((path, column))
+        gauges.append(_reviewed_rainfall_channel(source, first, last))
+    result = compare_rainfall(gauges, duration=(last - first).value / 1e9, interval=float(interval_s),
+                              maximum_gap=float(max_gap_s), suspect_rate=suspect_rate_mm_h)
+    result["timestamps"] = [stamp.isoformat() for stamp in first + pd.to_timedelta(result.pop("endpoints_seconds"), unit="s")]
+    return json.dumps(result, allow_nan=False)
+
+
+def transform_local_series(source, interval_s, max_gap_s, operation="single", reference=None,
+                           output="mean", unit=None, start=None, end=None, datum=None):
+    """Derive supported interval statistics from resolved, untouched source rows."""
+    from icm_workbench.analysis.series_transform import MAX_SOURCE_SAMPLES, integrate_periods, period_boundaries
+
+    if operation not in {"single", "add", "subtract"} or (operation == "single") != (reference is None):
+        raise ValueError("Select one source, or two compatible sources for addition or subtraction.")
+    if output not in {"mean", "total"}:
+        raise ValueError("Select an interval mean or supported accumulated total.")
+
+    def load(spec):
+        path, column = spec["path"], spec["column"]
+        parsed = _require_model_clock(_load(path), "Transformation source")
+        if column not in parsed.frame or column == "timestamp":
+            raise ValueError("Select an available numeric source series.")
+        if len(parsed.frame) > MAX_SOURCE_SAMPLES:
+            raise ValueError("This operation supports up to 500,000 samples from each source.")
+        if any(parsed.audit.get(key, 0) for key in ("invalid_timestamps", "malformed_rows", "duplicate_timestamps")):
+            raise ValueError("Resolve invalid or duplicate source rows before transforming.")
+        contract = _series_contract(path, column)
+        quantity, canonical = contract["quantity"], contract["canonical_unit"]
+        convention = parsed.metadata.get("timestamp_convention")
+        if quantity == "rainfall":
+            semantics = spec.get("rainfall_semantics") or parsed.metadata.get("rainfall_semantics")
+            conventions = {("intensity", "mm/h"): "interval_average", ("incremental_depth", "mm"): "interval_depth"}
+            convention = conventions.get((semantics, canonical))
+            if not convention:
+                raise ValueError("Resolve the rainfall unit and interval semantics in Time series.")
+        elif (quantity, canonical) not in {("flow", "m³/s"), ("depth", "m"), ("level", "m"), ("velocity", "m/s")} or convention != "instantaneous":
+            raise ValueError("Use a resolved flow, depth, level, velocity or rainfall channel with supported temporal semantics.")
+        shift = float(spec.get("shift_s", 0))
+        if not np.isfinite(shift):
+            raise ValueError("Time shifts must be finite.")
+        offset = pd.to_timedelta(shift, unit="s")
+        times = pd.DatetimeIndex(parsed.frame["timestamp"]).as_unit("ns") + offset
+        if not len(times) or times.hasnans or not times.is_monotonic_increasing or times.has_duplicates:
+            raise ValueError("Use valid and unique source timestamps on the project clock.")
+        samples = pd.to_numeric(parsed.frame[column], errors="coerce").to_numpy(dtype=float)
+        if convention == "interval_average":  # Canonical tank/gauge unit is mm/h.
+            samples = samples / 3600
+        trailing = parsed.metadata.get("interval_min") if convention != "instantaneous" else None
+        support = float(trailing) * 60 if trailing is not None else None
+        if support is not None and (not np.isfinite(support) or support <= 0):
+            raise ValueError("Invalid declared source interval.")
+        last = times[-1] + pd.to_timedelta(support, unit="s") if support is not None else times[-1]
+        exclusions = _exclusions(spec.get("exclusions", ()))
+        return times, samples, last, support, convention, contract, exclusions, offset
+
+    first = load(source)
+    inputs = [first] if reference is None else [first, load(reference)]
+    quantity = first[5]["quantity"]
+    if any(record[5]["quantity"] != quantity for record in inputs):
+        raise ValueError("Select the same resolved quantity for both operands.")
+    if operation == "add" and quantity not in {"flow", "rainfall"}:
+        raise ValueError("Addition is supported for compatible flow and rainfall signals.")
+    if quantity == "level" and operation == "subtract" and not datum:
+        raise ValueError("Confirm a common vertical datum to calculate a level difference.")
+    if output == "total" and quantity not in {"flow", "rainfall"}:
+        raise ValueError("Only flow volume and accumulated rainfall have supported totals.")
+    default_unit = ({"flow": "m³", "rainfall": "mm"}[quantity] if output == "total"
+                    else "mm/h" if quantity == "rainfall" else first[5]["canonical_unit"])
+    unit = unit or default_unit
+    display_scale = 1.0
+    if output == "total":
+        if quantity == "flow" and unit == "L":
+            display_scale = 1000.0
+        elif unit != default_unit:
+            raise ValueError("Choose compatible units for the requested total.")
+    else:
+        canonical, scale = canonical_unit(quantity, unit)
+        if canonical != default_unit or scale is None:
+            raise ValueError("The output unit is incompatible with this quantity and temporal support.")
+        display_scale = (3600.0 if quantity == "rainfall" else 1.0) / scale
+
+    origin = _model_clock_timestamp(start) if start else max(record[0][0] for record in inputs)
+    last = _model_clock_timestamp(end) if end else min(record[2] for record in inputs)
+    if pd.isna(origin) or pd.isna(last):
+        raise ValueError("Choose valid transformation limits on the project clock.")
+    edges = period_boundaries((last - origin).value / 1e9, float(interval_s))
+    totals, coverage = [], []
+    metadata = []
+    for times, samples, _, trailing, convention, contract, exclusions, offset in inputs:
+        blocked = tuple((_relative_clock_seconds(origin, (pd.Timestamp(item.start) + offset).value),
+                         _relative_clock_seconds(origin, (pd.Timestamp(item.end) + offset).value)) for item in exclusions)
+        total, covered = integrate_periods(_relative_clock_seconds(origin, times.asi8), samples, edges, convention=convention,
+                                           maximum_gap=float(max_gap_s), trailing_support=trailing, exclusions=blocked)
+        totals.append(total)
+        coverage.append(covered)
+        metadata.append({"contract": contract, "convention": convention, "shift_s": offset.value / 1e9,
+                         "source_samples": len(samples), "exclusions": len(exclusions)})
+    widths = np.diff(edges)
+    complete = np.logical_and.reduce([np.isclose(valid, widths, rtol=1e-12, atol=1e-8) for valid in coverage])
+    derived = totals[0] if reference is None else (totals[0] + totals[1] if operation == "add" else totals[0] - totals[1])
+    values = derived * display_scale if output == "total" else derived / widths * display_scale
+    if not np.isfinite(values[complete]).all():
+        raise ValueError("The derived value exceeds the finite supported range.")
+    stamps = origin + pd.to_timedelta(edges, unit="s")
+    rows = [[stamps[i].isoformat(), stamps[i + 1].isoformat(), float(values[i]) if good else None,
+             *[float(valid[i]) for valid in coverage]] for i, good in enumerate(complete)]
+    return json.dumps({"method": "temporal-support-grid-v1", "quantity": quantity, "operation": operation,
+                       "output": output, "unit": unit, "datum": datum, "interval_s": interval_s,
+                       "max_gap_s": max_gap_s, "complete_periods": int(complete.sum()),
+                       "inputs": metadata, "rows": rows}, allow_nan=False)
+
+
+def hydraulic_structure(inputs):
+    """Evaluate the documented steady structure screen in the local worker."""
+    from icm_workbench.analysis.structures import screen_structure
+
+    return json.dumps(screen_structure(**inputs), allow_nan=False)
+
+
+def hydraulic_control_rating(points, head_difference_m, reversible=False):
+    """Evaluate a supplied passive head-difference rating curve."""
+    from icm_workbench.analysis.structures import screen_rating_curve
+
+    return json.dumps(screen_rating_curve(points, head_difference_m, reversible), allow_nan=False)

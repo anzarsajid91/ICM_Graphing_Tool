@@ -1,0 +1,103 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import {chromium,firefox} from 'playwright';
+import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
+import {installPrivacyGuard} from './privacy-network.mjs';
+
+const engine=process.env.ICM_BROWSER||'chromium',base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
+const browser=await (engine==='firefox'?firefox:chromium).launch(browserLaunchOptions());
+const context=await browser.newContext({...browserContextOptions(),acceptDownloads:true,viewport:{width:1024,height:900}});
+const guard=installPrivacyGuard(context,base,{canaries:['SYNTHETIC-REFERENCE-TRANSFORM','SYNTHETIC-ORIGINAL-TRANSFORM']});
+const page=await context.newPage(),errors=[];
+page.on('pageerror',error=>errors.push(error.message));
+const dialog=page.getByRole('dialog',{name:'Transform time series'});
+const get=(name)=>dialog.getByLabel(name,{exact:true});
+const select=(name)=>dialog.getByRole('combobox',{name,exact:true});
+const upload=(name,head,rows)=>({name,mimeType:'text/csv',buffer:Buffer.from('timestamp,'+head+'\n'+rows.map(row=>'2025-01-01 00:'+row.join(',')).join('\n')+'\n')});
+const inputs=[upload('=SYNTHETIC-ORIGINAL-TRANSFORM.csv','Flow (L/s)',[['00:00',0],['01:00',1200],['02:00',0]]),
+  upload('SYNTHETIC-REFERENCE-TRANSFORM.csv','Flow (m3/s)',[['00:30',.2],['01:30',.2],['02:30',.2]])];
+
+try{
+  await guard.navigate(page,base);
+  await page.locator('button[data-workspace="data"]').click();
+  const open=page.getByRole('button',{name:'Transform time series',exact:true});
+  await open.click();await dialog.getByText('Import a supported series',{exact:false}).waitFor();
+  await page.keyboard.press('Escape');assert(await dialog.isHidden());
+  await page.setInputFiles('#fileInput',inputs);
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.stateSummary().readyFiles===2,null,{timeout:90000});
+  await open.click();
+  const selectSource=async(field,name)=>select(field).selectOption(await select(field).locator('option').filter({hasText:name}).getAttribute('value'));
+  await selectSource('Source series','ORIGINAL-TRANSFORM');
+  await get('Output interval (s)').fill('40');await get('Maximum valid source gap (s)').fill('90');
+  await select('Output unit').selectOption('L/s');
+  await dialog.getByLabel('I reviewed the quantities',{exact:false}).check();
+  const derive=dialog.getByRole('button',{name:'Derive time series'});
+  const summary=dialog.locator('#hbTransformSummary'),table=dialog.getByRole('table');
+  await derive.click();await summary.getByText('3 complete periods.',{exact:false}).waitFor();
+  const readings=async()=>table.locator('tbody tr > td:nth-child(3)').allTextContents();
+  assert.deepEqual((await readings()).map(value=>Number(value.replaceAll(',',''))),[400,1000,400]);
+
+  await select('Operation').selectOption('subtract');
+  assert(await table.isHidden());
+  await selectSource('Reference series','REFERENCE-TRANSFORM');
+  await get('Reference time shift (s)').fill('-30');
+  await select('Result type').selectOption('total');await select('Output unit').selectOption('L');
+  await derive.click();await summary.getByText('3 complete periods.',{exact:false}).waitFor();
+  assert.deepEqual((await readings()).map(value=>Number(value.replaceAll(',',''))),[8000,32000,8000]);
+  assert.match(await table.locator('tbody').innerText(),/2025-01-01T00:00:00/);
+  const download=async name=>{
+    const pending=page.waitForEvent('download');await dialog.getByRole('button',{name}).click();
+    return fs.readFile(await (await pending).path(),'utf8');
+  };
+  const audit=await download('Download audit CSV');
+  assert.match(audit,/temporal-support-grid-v1[\s\S]*Source SHA-256[\s\S]*32000/);
+  assert.match(audit,/'=SYNTHETIC-ORIGINAL-TRANSFORM\.csv/);
+  const packageData=JSON.parse(await download('Download derived series JSON'));
+  assert.equal(packageData.schema,'hydra-derived-series-v1');
+  assert.match(packageData.source.sha256,/^[a-f0-9]{64}$/);
+  assert.equal(packageData.result.inputs[1].shift_s,-30);
+  assert.deepEqual(packageData.result.rows[1].slice(2),[32000,40,40]);
+
+  await select('Operation').selectOption('add');
+  await get('Source time shift (s)').fill('30');await get('Reference time shift (s)').fill('0');
+  await get('Start on project clock (optional)').fill('2025-01-01T00:00:30');
+  await get('End on project clock (optional)').fill('2025-01-01T00:02:30');
+  await select('Output unit').selectOption('m³');
+  await derive.click();await summary.getByText('3 complete periods.',{exact:false}).waitFor();
+  assert.deepEqual((await readings()).map(Number),[24,48,24]);
+  assert.match(await table.locator('tbody').innerText(),/2025-01-01T00:00:30/);
+  await get('Maximum valid source gap (s)').fill('30');await derive.click();
+  await summary.getByText('0 complete periods.',{exact:false}).waitFor();
+  assert.deepEqual(await readings(),['Unavailable','Unavailable','Unavailable']);
+  await get('Maximum valid source gap (s)').fill('90');await get('Output interval (s)').fill('2');await derive.click();
+  await summary.getByText('Rows 1–30 of 60',{exact:false}).waitFor();
+  await dialog.getByRole('button',{name:'Next page'}).click();
+  await summary.getByText('Rows 31–60 of 60',{exact:false}).waitFor();
+  await dialog.getByRole('button',{name:'Previous page'}).click();
+  await summary.getByText('Rows 1–30 of 60',{exact:false}).waitFor();
+  const evidence=process.env.ICM_EVIDENCE_DIR;
+  if(evidence){await fs.mkdir(evidence,{recursive:true});await dialog.screenshot({path:evidence+'/v3-series-transform-'+engine+'.png'});}
+  await dialog.getByRole('button',{name:'Close transformation'}).click();
+  assert(await dialog.isHidden());
+  await page.getByRole('button',{name:'Source diagnostics',exact:true}).click();
+  const diagnostics=page.getByRole('dialog',{name:'Time-series quality diagnostics'});
+  const examined=diagnostics.getByRole('combobox',{name:'Source series',exact:true});
+  await examined.selectOption(await examined.locator('option').filter({hasText:'ORIGINAL-TRANSFORM'}).getAttribute('value'));
+  await diagnostics.getByRole('spinbutton',{name:'Expected timestep (s)'}).fill('40');
+  await diagnostics.getByRole('button',{name:'Review source quality'}).click();
+  await diagnostics.getByText('Diagnostic review ready.',{exact:false}).waitFor();
+  await diagnostics.getByRole('combobox',{name:'Filter diagnostics'}).selectOption('long-timestep');
+  const firstGap=diagnostics.getByRole('table').locator('tbody tr').first();
+  await firstGap.getByLabel('Long timestep review note').fill('Synthetic reviewed period');
+  await firstGap.getByRole('button',{name:'Add review exclusion'}).click();
+  await firstGap.getByRole('button',{name:'Exclusion recorded'}).waitFor();
+  await diagnostics.getByRole('button',{name:'Close diagnostics'}).click();await open.click();
+  await get('Output interval (s)').fill('40');await derive.click();
+  await summary.getByText('1 complete periods.',{exact:false}).waitFor();
+  assert.deepEqual(await readings(),['Unavailable','Unavailable','24']);
+  assert.deepEqual((await table.locator('tbody tr').first().locator('td').allTextContents()).slice(3),['0','40']);
+  await dialog.getByRole('button',{name:'Close transformation'}).click();
+  assert.equal(await page.evaluate(()=>window.__ICM_WORKBENCH__.stateSummary().readyFiles),2);
+  assert.deepEqual(errors,[]);guard.assertClean();
+  console.log('SERIES_TRANSFORM_PASS '+engine);
+}finally{await browser.close();}

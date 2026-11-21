@@ -234,11 +234,17 @@ function validateRouteWorkspace(result){
     review.steps.every(step=>step&&text(step.id,256)&&text(step.from,256)&&text(step.to,256)&&text(step.name,256)&&
       text(step.type,128)&&['known','missing','structure'].includes(step.lengthStatus)&&
       ['length','us','ds','groundFrom','groundTo','height','chainageStart','chainageEnd'].every(key=>nullableNumber(step[key]))&&
+      ['chamberFrom','chamberTo','widthMm','heightMm'].every(key=>!Object.hasOwn(step,key)||nullableNumber(step[key]))&&
+      (step.shape==null||text(step.shape,128))&&
       Array.isArray(step.sources)&&step.sources.length<=3&&step.sources.every(source=>source&&text(source.file,512)&&
         text(source.table,128)&&Number.isSafeInteger(source.row)&&source.row>=1))&&
     Array.isArray(review.trials)&&review.trials.length<=100&&review.trials.every(trial=>trial&&text(trial.id,256)&&
       ['diameter','gradient','roughness','viscosity'].every(key=>Number.isFinite(trial[key]))&&
-      Number.isFinite(trial.capacity)&&trial.capacity>=0)&&validModel(review.model));
+      Number.isFinite(trial.capacity)&&trial.capacity>=0)&&validModel(review.model)&&validProfileView(review.profileView));
+  function validProfileView(view){
+    return view==null||typeof view.groundShading==='boolean'&&['zoomX','zoomY'].every(key=>[1,2,4,8].includes(view[key]))&&
+      ['panX','panY'].every(key=>Number.isFinite(view[key])&&view[key]>=0&&view[key]<=1);
+  }
   function validModel(model){
     return model==null||text(model.scenario,100)&&text(model.time,32)&&text(model.datum,128)&&
       Array.isArray(model.values)&&model.values.length<=2000&&model.values.every(row=>row&&text(row.node,256)&&
@@ -480,9 +486,74 @@ function sameContextFields(previous,next){
   return JSON.stringify(previous.icm)===JSON.stringify(next.icm)&&
     JSON.stringify(attributes(previous))===JSON.stringify(attributes(next));
 }
+function revisionChanges(current,imported){
+  const model = network=>({
+    nodes:new Map(network.nodes.map(node=>[node.id,node])),
+    edges:new Map(network.edges.map(edge=>[edge.id,edge])),
+  });
+  const before=model({nodes:current.nodes.filter(node=>node.contextSource),edges:current.edges.filter(edge=>edge.contextSource)});
+  const after=model(imported);
+  const incident=source=>{
+    const byNode=new Map();
+    for(const edge of source.edges.values()){
+      for(const [id,direction,other] of [[edge.from,'outgoing',edge.to],[edge.to,'incoming',edge.from]]){
+        if(!byNode.has(id))byNode.set(id,[]);
+        byNode.get(id).push([direction,edge.id,other]);
+      }
+    }
+    for(const links of byNode.values())links.sort((a,b)=>a[1].localeCompare(b[1]));
+    return byNode;
+  };
+  const beforeIncident=incident(before),afterIncident=incident(after);
+  const changedNodes=new Set(),changedEdges=new Set(),rows=[];
+  function attributes(object){
+    return new Map((object.sourceAttributes?.fields||[])
+      .filter(field=>!['x','y','point_array'].includes(field.name.toLowerCase()))
+      .map(field=>[field.name.toLowerCase(),{value:field.value,unit:field.unit}]));
+  }
+  const position=node=>node&&(node.sourcePosition||{x:node.x,y:node.y});
+  const bends=edge=>edge.sourceBends||edge.bends||[];
+  const assignments=new Set((current.monitorLocations||[]).map(({asset})=>JSON.stringify([asset.kind,asset.id])));
+  for(const kind of ['node','edge']){
+    const oldObjects=kind==='node'?before.nodes:before.edges,newObjects=kind==='node'?after.nodes:after.edges;
+    const changed=kind==='node'?changedNodes:changedEdges;
+    for(const id of new Set([...oldObjects.keys(),...newObjects.keys()])){
+      const old=oldObjects.get(id),next=newObjects.get(id),changes=[];
+      const change=(category,field,a,b)=>{
+        if(JSON.stringify(a)!==JSON.stringify(b))changes.push({category,field,before:a??null,after:b??null});
+      };
+      if(old&&next){
+        change('Attributes','Source name',old.sourceName??old.name,next.name);
+        if(kind==='node'){
+          change('Classification','Node type',old.type,next.type);
+          change('Geometry','Source position',position(old),position(next));
+          change('Connectivity','Incident links',beforeIncident.get(id)||[],afterIncident.get(id)||[]);
+        }else{
+          change('Classification','ICM table',old.icm?.table,next.icm?.table);
+          change('Connectivity','Upstream node',old.from,next.from);
+          change('Connectivity','Downstream node',old.to,next.to);
+          change('Geometry','Source vertices',bends(old),bends(next));
+          change('Geometry','Source endpoints',
+            [position(before.nodes.get(old.from)),position(before.nodes.get(old.to))],
+            [position(after.nodes.get(next.from)),position(after.nodes.get(next.to))]);
+        }
+        const a=attributes(old),b=attributes(next);
+        for(const field of new Set([...a.keys(),...b.keys()]))change('Attributes',field,a.get(field),b.get(field));
+        if(!changes.length&&!sameContextFields(old,next))change('Attributes','Engineering fields',old.icm,next.icm);
+        if(!changes.length)continue;
+      }
+      changed.add(id);
+      rows.push({kind,id,name:next?.name||old?.sourceName||old?.name||id,status:!old?'Added':!next?'Removed':'Modified',
+        changes,monitorReview:Boolean(old&&(old.monitorId||assignments.has(JSON.stringify([kind,id])))),
+        evidenceReview:Boolean(old&&(old.applied||old.detrimentLinks||old.bindings?.length||old.seriesLinks?.length))});
+    }
+  }
+  return {rows,changedNodes,changedEdges,before,after};
+}
 function applyContextRevision(current,imported,format){
   if(current.nodes.length&&current.contextFormat!==format)
     throw new Error('Use an empty schematic or revise a previously imported context of the same format.');
+  const {changedNodes,changedEdges}=revisionChanges(current,imported);
   const previousNodes=new Map(current.nodes.map(node=>[node.id,node]));
   const previousEdges=new Map(current.edges.map(edge=>[edge.id,edge]));
   if(current.nodes.some(node=>node.contextSource)&&!imported.nodes.some(node=>previousNodes.get(node.id)?.contextSource))
@@ -495,7 +566,7 @@ function applyContextRevision(current,imported,format){
       for(const key of ['pinned','nameOffset','labelOffset','review','bindings','defaults','gap','exclusions','confirmed','monitorId','customProperties','seriesLinks','colour'])
         if(old[key]!==undefined)next[key]=old[key];
       if(old.name!==(old.sourceName??node.name))next.name=old.name;
-      if(sameContextFields(old,node))for(const key of ['applied','detrimentLinks'])if(old[key]!==undefined)next[key]=old[key];
+      if(!changedNodes.has(node.id))for(const key of ['applied','detrimentLinks'])if(old[key]!==undefined)next[key]=old[key];
       if(old.pinned||old.x!==old.sourcePosition?.x||old.y!==old.sourcePosition?.y){
         next.x=old.x;next.y=old.y;
       }
@@ -510,7 +581,7 @@ function applyContextRevision(current,imported,format){
     if(old?.from===edge.from&&old?.to===edge.to){
       if(JSON.stringify(old.bends||[])!==JSON.stringify(old.sourceBends||[]))next.bends=old.bends||[];
       if(old.name!==(old.sourceName??edge.name))next.name=old.name;
-      if(sameContextFields(old,edge)&&old.detrimentLinks!==undefined)next.detrimentLinks=old.detrimentLinks;
+      if(!changedEdges.has(edge.id)&&old.detrimentLinks!==undefined)next.detrimentLinks=old.detrimentLinks;
       for(const key of ['labelOffset','review','arrow','direction','customProperties','seriesLinks','colour','monitorId'])
         if(old[key]!==undefined)next[key]=old[key];
     }
@@ -542,5 +613,5 @@ function conduitTrial(edge){
 function reportingConflicts(rows){
   const seen=new Set();for(const row of rows){for(const y of row.years){const key=row.role+'|'+(row.role==='model'?row.scenario:'Observed')+'|'+y;if(seen.has(key))throw new Error('Overlapping assignments for '+(row.role==='model'?row.scenario:'Observed')+' in '+y+'. Keep one authoritative source per reporting year.');seen.add(key);}}
 }
-globalThis.ICMNetworkCore={colours,types,cameraZoom,symbolScale,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,nativeContextText,applyContextRevision,conduitTrial,monitorTable,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
+globalThis.ICMNetworkCore={colours,types,cameraZoom,symbolScale,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,nativeContextText,applyContextRevision,revisionChanges,conduitTrial,monitorTable,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
 })();

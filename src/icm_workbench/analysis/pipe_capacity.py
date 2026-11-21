@@ -57,6 +57,47 @@ def _circular_section(diameter, fraction):
     return area, 4 * area / wetted_perimeter
 
 
+def circular_wetted_area(diameter_m, depth_m):
+    """Circular area at a known section depth in the supported open section."""
+    if not (isfinite(diameter_m) and isfinite(depth_m) and diameter_m > 0 and 0 <= depth_m <= diameter_m):
+        raise ValueError("Use a positive circular diameter and depth within the pipe section.")
+    return _circular_section(diameter_m, depth_m / diameter_m)[0] if depth_m > 0 else 0.0
+
+
+def _normal_depth_candidates(section_flow, discharge):
+    """Search the circular conveyance envelope and both sides of its peak."""
+    low, high = 0.5, 1.0
+    for _ in range(80):
+        left, right = (2*low + high) / 3, (low + 2*high) / 3
+        if section_flow(left) < section_flow(right):
+            low = left
+        else:
+            high = right
+    peak = (low + high) / 2
+    peak_flow = section_flow(peak)
+    tolerance = peak_flow * 1e-12
+    candidates = []
+    if abs(discharge - peak_flow) <= tolerance:
+        candidates.append(peak)
+    elif discharge < peak_flow:
+        for low, high in [(0.0, peak), (peak, 1.0)]:
+            left, right = section_flow(low) - discharge, section_flow(high) - discharge
+            if abs(right) <= tolerance and high == 1:
+                candidates.append(1.0)
+                continue
+            if left * right >= 0:
+                continue
+            for _ in range(75):
+                mid = (low + high) / 2
+                value = section_flow(mid) - discharge
+                if (value > 0) == (left > 0):
+                    low = mid
+                else:
+                    high = mid
+            candidates.append((low + high) / 2)
+    return peak, peak_flow, tolerance, candidates
+
+
 def normal_depth_assessment(diameter_m, gradient, roughness_m, viscosity_m2_s, discharge_m3_s):
     """Find supported turbulent normal depths for a specified circular-pipe discharge."""
     full = full_pipe_capacity(diameter_m, gradient, roughness_m, viscosity_m2_s)
@@ -82,37 +123,7 @@ def normal_depth_assessment(diameter_m, gradient, roughness_m, viscosity_m2_s, d
         velocity, _ = _turbulent_velocity(dh, gradient, roughness_m, viscosity_m2_s)
         return area * max(0, velocity)
 
-    # Search the circular-section capacity envelope, including the descending
-    # near-crown limb. Regime and relative roughness checks apply at each root.
-    low, high = 0.5, 1.0
-    for _ in range(80):
-        left, right = (2*low + high) / 3, (low + 2*high) / 3
-        if section_flow(left) < section_flow(right):
-            low = left
-        else:
-            high = right
-    peak = (low + high) / 2
-    q_peak = section_flow(peak)
-    tolerance = q_peak * 1e-12
-    candidates = []
-    if abs(q - q_peak) <= tolerance:
-        candidates.append(peak)
-    elif q < q_peak:
-        for low, high in [(0.0, peak), (peak, 1.0)]:
-            left, right = section_flow(low) - q, section_flow(high) - q
-            if abs(right) <= tolerance and high == 1:
-                candidates.append(1.0)
-                continue
-            if left * right >= 0:
-                continue
-            for _ in range(75):
-                mid = (low + high) / 2
-                value = section_flow(mid) - q
-                if (value > 0) == (left > 0):
-                    low = mid
-                else:
-                    high = mid
-            candidates.append((low + high) / 2)
+    _, q_peak, tolerance, candidates = _normal_depth_candidates(section_flow, q)
 
     for fraction in candidates:
         area, dh = _circular_section(diameter_m, fraction)

@@ -16,6 +16,31 @@ assert.deepEqual(steps.map(({chainageStart,chainageEnd,us,ds,height})=>[chainage
   [0,100,10,9.8,.6],[100,220,9.75,9.35,.6],[220,null,9.3,null,.6]]);
 assert.deepEqual(steps[0].sources.map(({table,row})=>[table,row]),[['hw_conduit',12],['hw_node',3],['hw_node',4]]);
 assert.equal(R.longSection(network,[byName('B.3'),byName('D.P'),e3])[1].lengthStatus,'structure');
+assert.equal(steps[0].chamberFrom,network.nodes.find(node=>node.id==='00127').icm.chamberFloorM);
+assert.deepEqual(R.profileAxis(0,100,4,0),{low:0,high:25,span:25});
+assert.deepEqual(R.profileAxis(0,100,4,1),{low:75,high:100,span:25});
+assert.deepEqual(R.profileAxis(9,12,2,.5),{low:9.75,high:11.25,span:1.5});
+assert.throws(()=>R.profileAxis(1,1,4,.5),/source bounds/);
+assert.deepEqual([steps[0].widthMm,steps[0].heightMm,steps[0].shape],[600,600,'CIRC']);
+const legacySteps=steps.map(({chamberFrom,chamberTo,widthMm,heightMm,shape,...step})=>step);
+assert(R.sameProfileSteps(steps,legacySteps));
+assert(!R.sameProfileSteps(steps,[{...steps[0],chamberFrom:0},...steps.slice(1)]));
+assert(!R.sameProfileSteps(steps,[{...legacySteps[0],length:50},...legacySteps.slice(1)]));
+const savedRoute={name:'Synthetic route',start:'00127',end:'E',note:'',steps,trials:[],model:null,
+  profileView:{zoomX:4,zoomY:2,panX:.4,panY:.7,groundShading:true}};
+assert.deepEqual(C.validateNetwork({...network,routeReviews:[savedRoute]}).routeReviews[0].profileView,savedRoute.profileView);
+assert.throws(()=>C.validateNetwork({...network,routeReviews:[{...savedRoute,profileView:{...savedRoute.profileView,zoomY:Infinity}}]}),/routeReviews/);
+
+const nodeResult={series:'node',asset:{kind:'node',id:'00127'}};
+const conduitResult={series:'conduit',asset:{kind:'link',upstream:'b',table:'hw_conduit',suffix:'1'}};
+const wrongTable={series:'weir',asset:{...conduitResult.asset,table:'hw_weir'}};
+const trimmedZero={series:'trimmed',asset:{kind:'node',id:'127'}};
+const resultNetwork={...network,contextFormat:'icm-csv-v1'};
+assert.deepEqual([...R.simulationBindings(resultNetwork,[nodeResult,conduitResult,wrongTable,trimmedZero])],
+  [['node',{kind:'node',id:'00127'}],['conduit',{kind:'edge',id:e2.id}]]);
+assert.equal(R.simulationBindings({...resultNetwork,nodes:[...network.nodes,{...network.nodes[0]}]},[nodeResult]).size,0);
+assert.equal(R.simulationBindings({...resultNetwork,contextFormat:'canonical-v1'},[nodeResult]).size,0);
+assert.deepEqual([null,-2,-1,0,1,2].map(value=>R.simulationBand(value,-1,1)),['missing','0','0','2','4','4']);
 
 const table=C.monitorTable('\ufeffColumn 1,Column 2\r\n00127,"FM, 01"\r\n00127,"FM, 01"\r\nB.1,FM-02\r\n\r\nunknown,FM-03\r\n');
 assert.deepEqual(table.rows[0],['00127','FM, 01']);

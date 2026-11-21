@@ -47,9 +47,15 @@ try{
   const conduit=page.locator('[data-ns-edge]');
   await conduit.focus();
   const previousConnector=await conduit.elementHandle();
+  const connectorId=await previousConnector.getAttribute('data-ns-edge');
   await page.setViewportSize({width:1380,height:900});
   await page.waitForFunction(element=>!element.isConnected,previousConnector);
-  assert.equal(await conduit.evaluate(element=>document.activeElement===element),true,'Keyboard focus survives the schematic resize');
+  // Query the current graph and focus together, without resolving a locator
+  // to a group that a consecutive ResizeObserver render can replace.
+  assert.equal(await page.evaluate(id=>{
+    const active=document.activeElement;
+    return active.isConnected&&active.closest('#nsSvg')!==null&&active.getAttribute('data-ns-edge')===id;
+  },connectorId),true,'Keyboard focus survives the schematic resize');
   await conduit.press('Enter');
   await page.getByRole('button',{name:'Open in Hydraulic Calculations'}).click();
   assert.equal(await page.locator('#pipeCapacityForm').getByLabel(/Diameter/).inputValue(),'450');
