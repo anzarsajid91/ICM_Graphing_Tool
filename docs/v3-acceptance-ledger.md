@@ -28,7 +28,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Open |
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Open |
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Open |
-| 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Open |
+| 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Open |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized real-sample map/profile playback, transport controls, windowing, scenario comparison, extrema and missingness | Open |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Open |
@@ -99,3 +99,24 @@ other state.
   methods, mapped ICM inputs and catchment trace, sensitivity and comparisons,
   printable calculation reports, broader gravity methods, structures and
   independent ICM cross-checks where genuine references are available.
+
+### Network revision review milestone
+
+- Revision import previews added, removed and modified typed assets,
+  original geometry, source fields and nominal connectivity. The dialog
+  offers before/after geometry, a paged register, filtering and field drill-down.
+- Native link identity is the ICM table, upstream node and suffix. A changed
+  downstream node is an endpoint change. A changed native identity is reported
+  as a removal and addition, unless a supported export supplies a stable
+  identity. The feature keeps compatible local layout and review fields.
+  Changes to source geometry, attributes and incident topology invalidate
+  affected cached assessments. Compatible monitor and source associations
+  are shown for engineer review.
+- Native synthetic unit and Chromium/Firefox tests cover audit and cancel,
+  classification, endpoint changes, true source position versus local layout,
+  before/after geometry and scoped invalidation. Both browser runs passed and
+  observed 28 and 29 requests with zero violations.
+- Review of the network-capable schematic source covers modal-local DOM
+  text, numeric SVG geometry, and the existing local application state.
+  The current source approval records the revised hash and scope. A broader
+  assessment-dependency graph across workspaces remains open.

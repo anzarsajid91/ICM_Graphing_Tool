@@ -2183,6 +2183,102 @@ function mountRouteReview(){
   mountMonitorImport();
 }
 
+function revisionGeometry(comparison,rows,layer){
+  const svg=svgElement('svg',{viewBox:'0 0 620 300',role:'img','aria-label':'Changed source geometry in the current page'});
+  const features=[];
+  for(const [name,color] of [['before','#993e55'],['after','#236b77']]){
+    if(layer!=='both'&&layer!==name)continue;
+    const graph=comparison[name];
+    const position=node=>node?.sourcePosition||node;
+    for(const row of rows){
+      const object=(row.kind==='node'?graph.nodes:graph.edges).get(row.id);
+      if(!object)continue;
+      const points=row.kind==='node'?[position(object)]:[position(graph.nodes.get(object.from)),
+        ...(object.sourceBends||object.bends||[]),position(graph.nodes.get(object.to))];
+      if(points.every(p=>Number.isFinite(p?.x)&&Number.isFinite(p?.y)))features.push({name,color,row,points});
+    }
+  }
+  if(!features.length)return svg;
+  const ext=features.flatMap(feature=>feature.points).reduce(([left,right,top,bottom],p)=>
+    [Math.min(left,p.x),Math.max(right,p.x),Math.min(top,p.y),Math.max(bottom,p.y)],
+    [Infinity,-Infinity,Infinity,-Infinity]);
+  const scale=Math.min(550/Math.max(1,ext[1]-ext[0]),240/Math.max(1,ext[3]-ext[2]));
+  const project=p=>[310+(p.x-(ext[0]+ext[1])/2)*scale,150+(p.y-(ext[2]+ext[3])/2)*scale];
+  // The revised line is drawn solid and narrow so a coincident baseline stays visible.
+  for(const {name,color,row,points} of features){
+    const coords=points.map(project),[cx,cy]=coords[0];
+    const shape=row.kind==='node'?svgElement('circle',{cx,cy,r:name==='before'?8:5,fill:'#fff',stroke:color,'stroke-width':2}):
+      svgElement('polyline',{points:coords.map(([x,y])=>x+','+y).join(' '),fill:'none',stroke:color,
+        'stroke-width':name==='before'?6:2,'stroke-dasharray':name==='before'?'6 4':''});
+    shape.append(svgElement('title',{},(name==='before'?'Baseline · ':'Revised · ')+row.name));
+    svg.append(shape);
+  }
+  return svg;
+}
+function renderRevisionComparison(comparison){
+  const root=$('nsRevisionComparison');
+  root.replaceChildren();root.hidden=!comparison;root.open=false;
+  if(!comparison)return;
+  const groups=['Added','Removed','Modified'];
+  const totals=Object.fromEntries(groups.map(group=>[group,comparison.rows.filter(row=>row.status===group).length]));
+  const heading=inspectorElement('summary','Revision comparison · '+comparison.rows.length+' changed assets');
+  root.append(heading,inspectorElement('p',groups.map(group=>group+' '+totals[group]).join(' · ')),
+    inspectorElement('p','Nominal model changes identify evidence to review. Confirm any hydraulic impact using compatible simulation results.'));
+  if(!comparison.rows.length)return;
+  const controls=inspectorElement('div',undefined,'ns-review-actions');
+  const statusLabel=inspectorElement('label','Change type'),statusSelect=inspectorElement('select');
+  for(const group of ['All',...groups])statusSelect.add(new Option(group,group));
+  statusLabel.append(statusSelect);
+  const searchLabel=inspectorElement('label','Find changed asset'),search=inspectorElement('input');
+  search.type='search';search.maxLength=256;searchLabel.append(search);
+  const layerLabel=inspectorElement('label','Geometry layer'),layer=inspectorElement('select');
+  for(const [name,label] of [['both','Baseline and revised'],['before','Baseline · dashed'],['after','Revised · solid']])
+    layer.add(new Option(label,name));
+  layerLabel.append(layer);controls.append(statusLabel,searchLabel,layerLabel);
+  const preview=inspectorElement('div',undefined,'ns-revision-preview'), register=inspectorElement('div',undefined,'ns-review-table'),
+    detail=inspectorElement('div',undefined,'ns-review-table'),nav=inspectorElement('div',undefined,'ns-review-actions'),
+    currentPage=inspectorElement('span');
+  currentPage.setAttribute('role','status');
+  let number=0,limit=30;
+  const previous=inspectorButton('Previous page'),next=inspectorButton('Next page');
+  nav.append(previous,next,currentPage);
+  root.append(controls,inspectorElement('small','Baseline geometry is dashed red. Revised geometry is solid teal. The diagram shows changed assets on this page.'),
+    preview,nav,register,detail);
+  const value=entry=>{
+    if(entry===null)return 'Unavailable';
+    if(typeof entry==='object'&&Object.hasOwn(entry,'value'))return String(entry.value)+(entry.unit?' '+entry.unit:'');
+    return typeof entry==='object'?JSON.stringify(entry):String(entry);
+  };
+  function display(){
+    const needle=search.value.trim().toLowerCase();
+    const filtered=comparison.rows.filter(row=>(statusSelect.value==='All'||row.status===statusSelect.value)&&
+      (!needle||row.id.toLowerCase().includes(needle)||row.name.toLowerCase().includes(needle)));
+    const rows=filtered.slice(number*limit,(number+1)*limit);
+    previous.disabled=number===0;next.disabled=(number+1)*limit>=filtered.length;
+    currentPage.textContent=filtered.length?'Showing '+(number*limit+1)+'–'+(number*limit+rows.length)+' of '+filtered.length:'No matching changes.';
+    preview.replaceChildren(revisionGeometry(comparison,rows,layer.value));
+    const table=tableWithHeaders(['Asset','Kind','Change','Fields','Review']);
+    for(const row of rows){
+      const inspect=inspectorButton(row.name);
+      inspect.onclick=()=>{
+        if(!row.changes.length){
+          detail.replaceChildren(inspectorElement('p',row.name+' · '+row.status));return;
+        }
+        const fields=tableWithHeaders(['Field','Baseline','Revised']);
+        for(const item of row.changes)addCells(fields.tBodies[0].insertRow(),[item.field,value(item.before),value(item.after)]);
+        detail.replaceChildren(inspectorElement('h4',row.name+' · '+row.id),fields);
+      };
+      const impacts=[row.monitorReview?'Monitor location':'',row.evidenceReview?'Linked assessment or source evidence':''].filter(Boolean);
+      addCells(table.tBodies[0].insertRow(),[inspect,row.kind==='edge'?'Link':'Node',row.status,
+        [...new Set(row.changes.map(change=>change.category))].join(', '),impacts.join(', ')||'—']);
+    }
+    detail.replaceChildren();register.replaceChildren(table);
+  }
+  previous.onclick=()=>{number--;display();};next.onclick=()=>{number++;display();};
+  statusSelect.onchange=search.oninput=()=>{number=0;display();};
+  layer.onchange=display;display();
+}
+
 function mount(){
   const container=root();if(!container)return;
   container.innerHTML='<div id="nsWorkbench"><div class="ns-main-toolbar"><label>Year<select id="nsYear"></select></label><label>Evidence<select id="nsScenario"></select></label><label>Metric<select id="nsMetric"><option value="spill_count">Spill count</option><option value="duration_hours">Duration (h)</option></select></label><span id="nsModeLabel">Explore mode</span><button id="nsEdit">Edit network</button><button id="nsCapture">Capture PNG</button><details class="ns-export-menu"><summary>Save / Export / Load</summary><div class="ns-export-actions"><button id="nsSave">Save network</button><button id="nsLoad">Load network or context CSV</button><button id="nsCsv">Export evidence CSV</button></div></details><button id="nsClearMap" type="button">Clear map</button><input id="nsLoadInput" type="file" accept=".csv,.json" multiple hidden><span class="ns-network-legend">Network: <i class="ns-red"></i>Red <i class="ns-amber"></i>Amber <i class="ns-blue"></i>Blue</span></div>'+
@@ -2204,7 +2300,7 @@ function mount(){
   $('nsSave').onclick=()=>downloadBlob('hydra-network-schematic.json',JSON.stringify(snapshot(),null,2),'application/json');$('nsLoad').onclick=()=>$('nsLoadInput').click();
   const importDialog=document.createElement('dialog');
   importDialog.setAttribute('aria-labelledby','nsContextTitle');
-  importDialog.innerHTML='<h3 id="nsContextTitle">Model Context Import Audit</h3><p id="nsContextAudit"></p><ul id="nsContextWarnings"></ul><label id="nsContextUnitsLabel"><input id="nsContextUnits" type="checkbox"> Export uses metres for coordinates, lengths and levels, and millimetres for conduit dimensions and Colebrook–White roughness.</label><label id="nsContextLayoutLabel">Layout <select id="nsContextLayout"><option value="geographic">Geographic coordinates</option><option value="schematic">Engineering schematic</option></select></label><p id="nsContextMessage" role="status"></p><div class="actions"><button id="nsContextApply" type="button">Apply network context</button><button id="nsContextCancel" type="button">Cancel</button></div>';
+  importDialog.innerHTML='<h3 id="nsContextTitle">Model Context Import Audit</h3><p id="nsContextAudit"></p><ul id="nsContextWarnings"></ul><details id="nsRevisionComparison" hidden></details><label id="nsContextUnitsLabel"><input id="nsContextUnits" type="checkbox"> Export uses metres for coordinates, lengths and levels, and millimetres for conduit dimensions and Colebrook–White roughness.</label><label id="nsContextLayoutLabel">Layout <select id="nsContextLayout"><option value="geographic">Geographic coordinates</option><option value="schematic">Engineering schematic</option></select></label><p id="nsContextMessage" role="status"></p><div class="actions"><button id="nsContextApply" type="button">Apply network context</button><button id="nsContextCancel" type="button">Cancel</button></div>';
   container.append(importDialog);
   let stagedContext=null,importGeneration=0;
   const clearDialog=document.createElement('dialog');
@@ -2219,7 +2315,7 @@ function mount(){
     $('nsLoadInput').value='';
     clearDialog.close();clearMap();
   };
-  importDialog.addEventListener('close',()=>{stagedContext=null;});
+  importDialog.addEventListener('close',()=>{stagedContext=null;renderRevisionComparison(null);});
   $('nsContextCancel').onclick=()=>importDialog.close();
   $('nsContextApply').onclick=()=>{
     if(!stagedContext)return;
@@ -2261,6 +2357,7 @@ function mount(){
         const format=native?'icm-csv-v1':'canonical-v1';
         C.applyContextRevision(network,imported.network,format);
         stagedContext={...imported,format};
+        renderRevisionComparison(network.contextFormat?C.revisionChanges(network,imported.network):null);
         $('nsContextAudit').textContent=imported.network.nodes.length+' imported nodes and '+imported.network.edges.length+' imported links. Arrows show nominal topology.';
         const warnings=$('nsContextWarnings');warnings.replaceChildren();
         const topology=R.audit(imported.network.nodes,imported.network.edges);
@@ -2272,7 +2369,7 @@ function mount(){
         if(endpointPairs.size<imported.network.edges.length)messages.push('Parallel conduits share one or more directed endpoint pairs.');
         $('nsContextLayoutLabel').hidden=Boolean(network.nodes.length);
         $('nsContextLayout').value='geographic';
-        if(network.nodes.length)messages.push('Apply only for a revised export of the same network. Compatible saved views, geometry, properties and evidence will be retained. Changed source attributes invalidate linked results.');
+        if(network.nodes.length)messages.push('Apply only for a revised export of the same network. Compatible saved views, geometry, properties and evidence will be retained. Changed source attributes, geometry and connectivity invalidate affected results.');
         for(const warning of messages){const row=document.createElement('li');row.textContent=warning;warnings.append(row);}
         $('nsContextUnitsLabel').hidden=!native;
         $('nsContextUnits').checked=false;
