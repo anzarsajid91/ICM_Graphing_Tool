@@ -21,7 +21,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 3.1 | Home shortcuts, source pool, registry and assessment freshness APIs | Dashboard status reconciles to authoritative data and opens each relevant workspace | Verified locally |
 | 3.2 | Home default, route state, named workspaces | Restore user-selected assessment context safely while preserving the default landing route and legacy saves | Partial |
 | 3.3 | Current help text and workspace routes | Six guided journeys with actual prerequisites, results and next actions | Verified locally |
-| 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Open |
+| 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Partial |
 | 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Open |
 | 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Open |
 | 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Open |
@@ -206,3 +206,26 @@ other state.
 - Remaining integration covers current model revision binding, map and route
   samples, scoped windows and scenarios, file-backed retrieval, the optional
   compact package and testing on genuine ICM exports.
+
+### ICM Export Toolkit
+
+- Home offers six standalone versioned Ruby downloads built from a shared
+  library and one run guide. The scripts use documented desktop model and
+  result reads. The generated packages have no external launch, dependency
+  installation, network request, model write, transaction or Exchange API.
+  They require a user-selected output folder and confirmed source units and
+  include an explicit completion file. See [ICM export guide](icm-export-toolkit.md).
+- Ruby 3.3.13 checked syntax for all six standalone files. A read-only mocked
+  ICM network exercised all six jobs. Real Hydra Bench parsers verified the
+  generated native geometry, preserved conduit bends and typed links,
+  signed and missing samples, and Formula A catchment leading zeros and
+  explicit zero versus blank values. Chromium and Firefox downloaded all
+  seven fixed resources and matched release artifact bytes. Request observers
+  saw 27 and 35 requests with zero violations.
+- Review covered local File writes, exclusive output paths, unsafe text and
+  native result allocation limits. The scoped Gitleaks check on the toolkit
+  downloads returned zero matches. Three findings in an extra whole-artifact
+  scan were verified fixed SHA-256 digests in the integrity manifest.
+- ICM runtime compatibility, native flags and inherited values, dedicated
+  storage volume outputs, and authoritative detriment report round-trips
+  remain open. The guide gives native CSV workflows for those use cases.

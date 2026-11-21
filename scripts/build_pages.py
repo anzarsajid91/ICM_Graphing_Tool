@@ -114,6 +114,8 @@ def build() -> None:
         shutil.rmtree(SITE)
     copy_browser_sources(WEB, SITE)
     shutil.copy2(ROOT / "LICENSE", SITE / "LICENSE.txt")
+    from stage_icm_exports import stage_icm_exports
+    toolkit_version = stage_icm_exports(ROOT, SITE / "downloads" / "icm")
 
     security_root = SITE / 'security'
     security_root.mkdir()
@@ -132,6 +134,7 @@ def build() -> None:
     _inject_v2_assets(build_token)
     index = SITE / "index.html"
     html = index.read_text(encoding="utf-8").replace('id="appVersion">v1.000', f'id="appVersion">{version["app_version"]}')
+    html = html.replace('  <meta name="icm-build-sha"', f'  <meta name="icm-export-toolkit-version" content="{toolkit_version}" />\n  <meta name="icm-build-sha"')
     html = html.replace('  <meta name="icm-build-sha"', f'  <meta name="hydra-bench-version" content="{version["app_version"]}" />\n  <meta name="icm-build-sha"')
     repository = os.environ.get("GITHUB_REPOSITORY", "anzarsajid91/ICM_Graphing_Tool")
     if re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", repository) and re.fullmatch(r"[a-f0-9]{40}", build_token):

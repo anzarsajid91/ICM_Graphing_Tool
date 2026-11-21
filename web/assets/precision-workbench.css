@@ -663,3 +663,7 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #hbGuidedWorkflows dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 16px}
 #hbGuidedWorkflows dt{font-weight:650}
 #hbGuidedWorkflows dd{margin:0}
+#hbIcmExportToolkit dl{display:grid;gap:8px 16px;grid-template-columns:minmax(180px,1fr) minmax(0,2fr)}
+#hbIcmExportToolkit dt{font-weight:650}
+#hbIcmExportToolkit dd{margin:0}
+@media(max-width:620px){#hbIcmExportToolkit dl{grid-template-columns:minmax(0,1fr)}#hbIcmExportToolkit dd{margin-bottom:8px}}

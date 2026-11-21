@@ -3,6 +3,14 @@
 (() => {
 "use strict";
 const storeKey="icm-pw-recent-pages-v1";
+const toolkitJobs=[
+  ["network-geometry","Network geometry","Export nodes, selected links and source geometry for Network Schematic."],
+  ["simulation-series","Simulation series","Export exact recorded samples for Network Schematic and Data / time series."],
+  ["formula-a-catchments","Formula A catchments","Export selected subcatchment fields for reviewed catchment mapping."],
+  ["spill-storage-continuation","Spill, storage and continuation flow","Export storage levels and flows from selected links for engineering review."],
+  ["monitoring-results","Monitoring results","Export modelled levels, flows and velocities for survey and verification comparisons."],
+  ["detriment-results","Detriment results","Export selected water level, flooding and overflow evidence for detriment review."]
+];
 const guides=[
   ["survey","fdv-check","Flow survey","Import monitor flow, depth and velocity plus rainfall and gauge associations.",
    "Review each monitor and gauge week, then check continuity in Volume balance.","Record ratings and decisions in Monthly review."],
@@ -25,6 +33,26 @@ function node(tag,text){
 function button(label,handler){
   const el=node("button",label);
   el.type="button";el.onclick=handler;return el;
+}
+function exportToolkit(){
+  const panel=node("section");panel.className="panel";panel.id="hbIcmExportToolkit";
+  panel.append(node("h2","ICM Export Toolkit"));
+  const version=document.querySelector('meta[name="icm-export-toolkit-version"]')?.content;
+  if(!/^\d+\.\d+\.\d+$/.test(version||"")) {
+    panel.append(node("p","Toolkit downloads are unavailable in this build."));return panel;
+  }
+  function download(name,extension,label){
+    const link=node("a",label),filename=name+"-v"+version+extension;
+    link.href="downloads/icm/"+filename+"?v="+encodeURIComponent(buildToken);link.download=filename;return link;
+  }
+  panel.append(node("p","Scripts v"+version+" for the InfoWorks ICM desktop UI. Syntax and mocked contracts checked. ICM runtime validation pending."));
+  const list=node("dl");
+  for(const [file,title,description] of toolkitJobs) {
+    const name=node("dt");name.append(download(file,".rb","Download "+title+" Ruby script"));
+    list.append(name,node("dd",description));
+  }
+  panel.append(list,download("icm-export-guide",".md","Download the run guide and manual CSV instructions"));
+  return panel;
 }
 function mount(navigate,routes){
   const home=document.getElementById("tab-home");
@@ -55,7 +83,7 @@ function mount(navigate,routes){
   const reports=old.querySelector('a[href="#/reports/report-generation"]');
   const reportActions=node("div");reportActions.className="actions";
   reportActions.append(reports);dashboard.append(reportActions);
-  panels.append(dashboard,recent,workflows);
+  panels.append(dashboard,recent,workflows,exportToolkit());
   old.replaceWith(panels);
 
   function routeValid(value){

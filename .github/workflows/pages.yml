@@ -156,6 +156,13 @@ jobs:
           assert 'type="module" src="assets/runtime.js"' not in html
           print(f'Pages manifest verified: {len(actual)} Python modules; current browser UX staged exactly.')
           PY
+      - name: Verify standalone ICM script syntax and synthetic round-trips
+        run: |
+          for script in _site/downloads/icm/*.rb; do ruby -c "$script"; done
+          fixture_dir=$(mktemp -d)
+          ruby tests/icm_exports/mock_toolkit.rb _site/downloads/icm "$fixture_dir"
+          node web/tests/icm-toolkit-roundtrip.mjs "$fixture_dir"
+          python tests/icm_exports/catchment_roundtrip.py "$fixture_dir"
 
   browser-smoke:
     # Match the Ubuntu versions supported by the locked Playwright build.
@@ -435,6 +442,7 @@ jobs:
           ICM_BROWSER=chromium node web/tests/project-home-smoke.mjs
           ICM_BROWSER=chromium node web/tests/storage-routing-smoke.mjs
           ICM_BROWSER=chromium node web/tests/simulation-results-smoke.mjs
+          ICM_BROWSER=chromium node web/tests/icm-toolkit-smoke.mjs
           node web/tests/verification-overview-smoke.mjs
           ICM_BROWSER=firefox node web/tests/workspace-interactions.mjs
           ICM_BROWSER=firefox node web/tests/network-schematic-smoke.mjs
@@ -444,6 +452,7 @@ jobs:
           ICM_BROWSER=firefox node web/tests/project-home-smoke.mjs
           ICM_BROWSER=firefox node web/tests/storage-routing-smoke.mjs
           ICM_BROWSER=firefox node web/tests/simulation-results-smoke.mjs
+          ICM_BROWSER=firefox node web/tests/icm-toolkit-smoke.mjs
           for browser in chromium firefox; do
             for suite in link-controls-smoke import-controls-acceptance network-controls-acceptance plot-controls-acceptance survey-controls-acceptance queue-controls-acceptance shared-controls-acceptance source-controls-acceptance data-process-controls-acceptance survey-process-controls-acceptance shared-input-controls-acceptance hydraulic-input-controls-acceptance appearance-input-controls-acceptance verification-input-controls-acceptance network-input-controls-acceptance storage-input-controls-acceptance detriment-smoke uiux-review; do
               evidence="/tmp/icm-interaction-evidence/control-assurance/$browser/$suite"
