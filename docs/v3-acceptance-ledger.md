@@ -26,7 +26,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Partial |
 | 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Verified locally |
 | 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Verified locally |
-| 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Open |
+| 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Verified locally |
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial |
@@ -485,3 +485,24 @@ other state.
 - The workspace accepts reviewed SEPA allowances. Empirical Imax and Q80/Q90
   estimation, extra jurisdictions, custom methodology, upstream trace, and
   the full permit and simulated-continuation comparison remain open.
+
+### Common-baseline spill scenarios
+
+- The Spills workspace compares reviewed local baseline and proposed sources
+  for up to eight assets and up to eight proposals per asset. It splits one
+  explicit project-clock window into reporting years and preserves the
+  authoritative preceding 12/24 context. Count, duration and volume each
+  have distinct comparability and withholding reasons. A common date range
+  alone cannot establish comparable support.
+- The calculation reuses the existing common-period and threshold engines,
+  plus the reviewed positive discharge integration. Independent cases cover
+  two versus three counts, 24 versus 48 hours and 8,640 versus 17,280 m³,
+  unequal exclusion masks, unknown support, missing auxiliary flow, multiple
+  years and invalid source associations.
+- Chromium and Firefox checked asset and proposal editing, optional flow
+  confirmations, exact deltas, asset/year filters, an incompatible case,
+  pagination, an explicit CSV export and stale input handling. They observed
+  95 and 93 requests with zero violations. The separate physical discharge
+  register is preserved. Session review and CSV export retain source
+  fingerprints, assignments, assumptions, periods and applied exclusions.
+  The shared registry and saved project integration remain open under §13.

@@ -670,9 +670,9 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #hbMethodResults>details{padding:12px 0;border-top:1px solid var(--hb-border)}
 #hbMethodResults summary{cursor:pointer;font-weight:650}
 #hbMethodResults details p{max-width:88ch}
-:is(#tab-series-quality,#tab-method-library,#hbTransformDialog,#hbMonitorCompare,#hbSpillInquiry){padding:0;width:min(1080px,calc(100% - 32px));max-height:calc(100% - 32px);border:1px solid var(--hb-border);border-radius:var(--hb-radius-card)}
-:is(#tab-series-quality,#tab-method-library,#hbTransformDialog,#hbMonitorCompare,#hbSpillInquiry)::backdrop{background:rgb(18 35 45 / 60%)}
-:is(#tab-series-quality,#tab-method-library,#hbTransformDialog,#hbMonitorCompare,#hbSpillInquiry)>.panel{margin:0;border:0}
+:is(#tab-series-quality,#tab-method-library,#hbTransformDialog,#hbMonitorCompare,#hbSpillInquiry,#hbSpillScenarios){padding:0;width:min(1080px,calc(100% - 32px));max-height:calc(100% - 32px);border:1px solid var(--hb-border);border-radius:var(--hb-radius-card)}
+:is(#tab-series-quality,#tab-method-library,#hbTransformDialog,#hbMonitorCompare,#hbSpillInquiry,#hbSpillScenarios)::backdrop{background:rgb(18 35 45 / 60%)}
+:is(#tab-series-quality,#tab-method-library,#hbTransformDialog,#hbMonitorCompare,#hbSpillInquiry,#hbSpillScenarios)>.panel{margin:0;border:0}
 #tab-series-quality form>details{padding:8px 0}
 .precision-workbench .hb-transform-confirm{display:flex;align-items:flex-start;gap:8px}
 #hbTransformDialog caption{padding:8px 12px;text-align:left;color:var(--hb-muted)}
@@ -684,3 +684,5 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #hbMonitorCompareCoverage{overflow-wrap:anywhere}
 #hbSpillInquiryBasis{overflow-wrap:anywhere}
 #hbSpillInquiry caption{padding:8px 12px;text-align:left;color:var(--hb-muted)}
+#hbSpillScenarios fieldset{padding:8px 12px;margin:12px 0;border:1px solid var(--hb-border);border-radius:var(--hb-radius-control);min-width:0}
+#hbSpillScenarios caption{padding:8px 12px;text-align:left;color:var(--hb-muted)}

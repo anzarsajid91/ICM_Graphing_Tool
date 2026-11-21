@@ -68,6 +68,26 @@ incomplete and reports the corresponding supported time. Treat the gauge total
 during a discharge as contextual evidence. Filtering
 or ranking the register only changes the displayed or explicitly exported rows.
 
+### Common-period scenario comparisons
+
+Assign each baseline and proposed result to its reviewed asset and compare on
+one explicit project-clock period. A record with insufficient source bounds
+remains visible with an explanation. The comparison splits reports into calendar
+years while preserving the preceding 12/24 counting context for each source.
+It applies the existing common-period requirement of three calendar months of
+valid evidence for an eligible count. Physical duration and discharge volume
+are checked independently. The user confirms a common threshold quantity, unit
+and, for levels, vertical datum. Count deltas require definitive counts and
+matching preceding context. Duration deltas require matched support and applied
+exclusions. Volume deltas require both confirmed flow records and complete
+positive discharge integration over the supported physical intervals.
+
+A hand-checkable case compares a 24-hour discharge with a 48-hour discharge
+on a three-month complete record. The respective 12/24 counts are two and
+three. Constant outward flow of 0.1 m³/s over those periods gives 8,640 and
+17,280 m³. Unmatched masks, unknown time and unlinked flow are separate
+evidence conditions. The report exports individual values and reasons.
+
 Each count is timestamped at the first retained discharge within its block. Monthly and yearly spill counts are allocated by these timestamps, rather than assigning every count from a long physical discharge to its start month/year. A short discharge continuing into a later month within one counted block can still have positive duration and zero new counts in that later month. `counting_windows.count_timestamps` retains the allocation evidence. Episode start fields remain episode metadata for whole-episode storage screening.
 
 Monthly physical duration uses actual elapsed time and splits at month boundaries.

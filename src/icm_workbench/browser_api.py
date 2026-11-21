@@ -1114,6 +1114,99 @@ def network_common_spill_result(path, column, threshold, start, end, exclusions_
     return json.dumps(_jsonable(result), ensure_ascii=False)
 
 
+def compare_spill_scenarios(assets, start, end, baseline_name, max_gap_s):
+    """Compare reviewed asset-specific model sources against an explicit common baseline window."""
+    from icm_workbench.analysis.spill_scenarios import evaluate_scenario, reporting_windows, scenario_delta
+
+    def name(value, label):
+        if not isinstance(value, str) or not value.strip() or len(value) > 128:
+            raise ValueError(f"Enter a {label} within 128 characters.")
+        return value.strip()
+
+    if not isinstance(assets, list) or not 1 <= len(assets) <= 8:
+        raise ValueError("Review between one and eight assets in a comparison.")
+    gap = float(max_gap_s)
+    if not np.isfinite(gap) or gap < .001:
+        raise ValueError("Enter a finite positive maximum source gap.")
+    if not start or not end:
+        raise ValueError("Enter both explicit comparison limits on the project clock.")
+    windows = list(reporting_windows(start, end))
+    baseline_name = name(baseline_name, "common baseline name")
+
+    def read_series(spec, expected, datum=None):
+        path, column = spec["path"], spec["column"]
+        parsed = _require_model_clock(_load(path), "Scenario source")
+        if column not in parsed.frame or column == "timestamp":
+            raise ValueError("Choose an available scenario channel.")
+        if parsed.metadata.get("timestamp_convention") != "instantaneous" or any(
+                parsed.audit.get(key, 0) for key in ("invalid_timestamps", "duplicate_timestamps", "malformed_rows")):
+            raise ValueError("Resolve invalid or duplicate rows and use instantaneous model-clock samples.")
+        contract = _series_contract(path, column)
+        value = (contract["quantity"], contract["canonical_unit"])
+        allowed = {("level", "m"), ("depth", "m")} if expected == "threshold" else {("flow", "m³/s")}
+        if value not in allowed:
+            raise ValueError("Use resolved level or depth in metres, or confirmed discharge flow in m³/s.")
+        if value[0] == "level":
+            reviewed = name(datum, "reviewed common vertical datum")
+            detail = parsed.metadata.get("series_metadata", {}).get(column, {})
+            declared = detail.get("datum") or detail.get("vertical_reference") or parsed.metadata.get("datum")
+            if declared and str(declared).strip().casefold() != reviewed.casefold():
+                raise ValueError("The reviewed vertical datum differs from a declared source datum.")
+        frame, _ = _prepared_series(path, column)
+        exclusions = _exclusions(spec.get("exclusions"))
+        return frame, column, value[0], exclusions
+
+    def simulation(spec, datum):
+        frame, column, quantity, exclusions = read_series(spec, "threshold", datum)
+        flow = None
+        if spec.get("flow") is not None:
+            if spec.get("flow_confirmed") is not True:
+                raise ValueError("Confirm that each flow channel measures discharge for that asset and scenario.")
+            flow_frame, flow_column, _, flow_exclusions = read_series(spec["flow"], "flow")
+            flow = {"times": pd.DatetimeIndex(flow_frame.timestamp).as_unit("ns"), "values": flow_frame[flow_column].to_numpy(dtype=float),
+                    "convention": "instantaneous", "exclusions": flow_exclusions}
+        return {"frame": frame, "column": column, "quantity": quantity, "exclusions": exclusions, "flow": flow}
+
+    rows, seen = [], set()
+    for group in assets:
+        asset = name(group.get("id"), "reviewed asset identity")
+        if asset.casefold() in seen:
+            raise ValueError("Use each reviewed asset identity once.")
+        seen.add(asset.casefold())
+        proposed = group.get("proposed")
+        if not isinstance(proposed, list) or not 1 <= len(proposed) <= 8:
+            raise ValueError("Choose one to eight proposed scenarios for each asset.")
+        threshold = float(group["threshold_m"])
+        if not np.isfinite(threshold):
+            raise ValueError("Enter a finite reviewed threshold in metres.")
+        original = group["baseline"]
+        baseline = simulation(original, group.get("datum"))
+        scenario_names = {baseline_name.casefold()}
+        used = {(original["path"], original["column"])}
+        candidates = []
+        for spec in proposed:
+            label = name(spec.get("name"), "proposed scenario name")
+            key = spec["path"], spec["column"]
+            if label.casefold() in scenario_names or key in used:
+                raise ValueError("Use unique scenario names and distinct threshold channels per asset.")
+            scenario_names.add(label.casefold())
+            used.add(key)
+            item = simulation(spec, group.get("datum"))
+            if item["quantity"] != baseline["quantity"]:
+                raise ValueError("Use a common depth or level quantity for the asset and all scenarios.")
+            candidates.append((label, item))
+        if baseline["quantity"] == "depth" and threshold < 0:
+            raise ValueError("The depth threshold must be non-negative.")
+        for left, right in windows:
+            reference = evaluate_scenario(baseline, threshold, left, right, gap)
+            for label, item in candidates:
+                candidate = evaluate_scenario(item, threshold, left, right, gap)
+                rows.append({"asset": asset, "baseline_name": baseline_name, "proposed_name": label,
+                             "threshold_m": threshold, "quantity": baseline["quantity"], "datum": group.get("datum"),
+                             "baseline": reference, "proposed": candidate, "delta": scenario_delta(reference, candidate)})
+    return json.dumps({"method": "reviewed-common-period-spill-scenarios-v1", "rows": rows}, allow_nan=False)
+
+
 def _storage_threshold_m(threshold,contract,threshold_unit=None):
     unit=threshold_unit or contract["original_unit"] or contract["canonical_unit"]
     resolved,factor=canonical_unit(contract["quantity"],unit)

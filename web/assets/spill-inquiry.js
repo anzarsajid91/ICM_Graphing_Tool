@@ -167,5 +167,166 @@ function mount(){
   return ()=>{refresh();if(!dialog.open)dialog.showModal();};
 }
 
-window.HydraSpillInquiry={open(){open??=mount();open();}};
+function mountComparison(){
+  const dialog=make('dialog');dialog.id='hbSpillScenarios';dialog.setAttribute('aria-labelledby','hbSpillScenariosTitle');
+  dialog.innerHTML=`<article class="panel"><div class="panel-head"><div><h2 id="hbSpillScenariosTitle">Compare spill scenarios</h2>
+    <p>Compare reviewed model records by asset and reporting year against the same baseline and explicit period.</p></div>
+    <button type="button" class="btn" id="hbSpillScenariosClose">Close comparison</button></div>
+    <form><div class="mapping-grid"><label>Common baseline name<input name="baseline" maxlength="128" required></label>
+      <label>Start on project clock<input name="start" type="datetime-local" step="1" required></label>
+      <label>End on project clock<input name="end" type="datetime-local" step="1" required></label>
+      <label>Maximum valid gap (s)<input name="gap" type="number" min="0.001" step="any" value="900" required></label></div>
+    <div id="hbSpillScenarioAssets"></div><button type="button" class="btn" id="hbSpillScenarioAdd">Add asset</button>
+    <p><label class="hb-transform-confirm"><input type="checkbox" required name="reviewed"> I reviewed the asset associations, model clocks and vertical references</label></p>
+    <div class="actions"><button type="submit" class="btn primary">Compare against baseline</button></div></form>
+    <p id="hbSpillScenarioStatus" role="status"></p>
+    <section id="hbSpillScenarioReport" hidden><div class="mapping-grid"><label>Filter asset<select id="hbSpillScenarioAssetFilter"></select></label>
+      <label>Filter year<select id="hbSpillScenarioYearFilter"></select></label></div><div class="actions">
+      <button type="button" class="btn" id="hbSpillScenarioPrev">Previous page</button><button type="button" class="btn" id="hbSpillScenarioNext">Next page</button>
+      <button type="button" class="btn" id="hbSpillScenarioExport">Download comparison CSV</button></div><p id="hbSpillScenarioCount"></p>
+      <div class="table-wrap"><table class="data-table"><caption>Baseline → proposed changes by asset and reporting year</caption><thead><tr>
+        <th scope="col">Asset / year</th><th scope="col">Scenarios</th><th scope="col">12/24 count</th><th scope="col">Duration (h)</th>
+        <th scope="col">Volume (m³)</th><th scope="col">Evidence basis</th></tr></thead><tbody></tbody></table></div></section></article>`;
+  document.body.append(dialog);
+  const $=id=>dialog.querySelector('#'+id),form=dialog.querySelector('form'),fields=form.elements;
+  const status=$('hbSpillScenarioStatus'),report=$('hbSpillScenarioReport'),submit=form.querySelector('[type="submit"]');
+  const assetFilter=$('hbSpillScenarioAssetFilter'),yearFilter=$('hbSpillScenarioYearFilter'),body=dialog.querySelector('tbody');
+  const groups=[];
+  let serial=0,request=0,current=null,page=0;
+
+  const available=()=>allSeries().filter(({item,col})=>item.status==='ready'&&item.hash&&seriesUnit(item,col)&&
+    item.parsed?.metadata?.time_basis!=='timezone-aware/unresolved');
+  const quantity=row=>seriesQuantity(row.item,row.col);
+  function reset(message){++request;current=null;report.hidden=true;if(message)status.textContent=message;}
+  function control(panel,label,type,attributes={}){
+    const outer=make('label',label),input=make(type==='select'?'select':'input');
+    if(type!=='select')input.type=type;
+    input.setAttribute('aria-label',label);Object.assign(input,attributes);outer.append(input);panel.append(outer);return input;
+  }
+  function choose(select,options,caption){
+    const old=select.value;
+    select.replaceChildren(new Option(caption,''),...options.map(row=>new Option(row.label,row.key)));
+    if(options.some(row=>row.key===old))select.value=old;
+  }
+  function refresh(){
+    const rows=available(),thresholds=rows.filter(row=>['depth','level'].includes(quantity(row))&&seriesUnit(row.item,row.col)==='m');
+    const flows=rows.filter(row=>quantity(row)==='flow'&&seriesUnit(row.item,row.col)==='m³/s');
+    for(const group of groups){
+      for(const item of [group.base,...group.cases]){
+        choose(item.signal,thresholds,'Choose depth or level');choose(item.flow,flows,'No flow volume evidence');
+        item.confirm.disabled=!item.flow.value;item.confirm.required=Boolean(item.flow.value);
+        if(!item.flow.value)item.confirm.checked=false;
+      }
+      const level=[group.base,...group.cases].some(item=>thresholds.some(row=>row.key===item.signal.value&&quantity(row)==='level'));
+      group.datum.required=level;group.datum.disabled=!level;group.datum.closest('label').hidden=!level;
+      group.remove.disabled=groups.length===1;
+      group.add.disabled=group.cases.length>=8;
+      for(const item of group.cases)item.remove.disabled=group.cases.length===1;
+    }
+    $('hbSpillScenarioAdd').disabled=groups.length>=8;
+  }
+  function fieldsFor(container,prefix,proposed){
+    const area=make('fieldset'),legend=make('legend',prefix),grid=make('div');grid.className='mapping-grid';
+    area.append(legend,grid);container.append(area);
+    const item={area,signal:control(grid,prefix+' threshold channel','select',{required:true}),flow:control(grid,prefix+' discharge flow','select')};
+    if(proposed)item.label=control(grid,prefix+' name','text',{required:true,maxLength:128});
+    item.confirm=control(grid,prefix+' flow belongs to this overflow and scenario','checkbox');
+    for(const input of [item.signal,item.flow])input.onchange=()=>{item.confirm.checked=false;refresh();};
+    return item;
+  }
+  function addAsset(focus){
+    const order=++serial,set=make('fieldset'),label='Asset '+order,grid=make('div');grid.className='mapping-grid';
+    set.append(make('legend',label),grid);$('hbSpillScenarioAssets').append(set);
+    const group={id:control(grid,label+' ID','text',{maxLength:128,required:true}),
+      threshold:control(grid,label+' threshold (m)','number',{step:'any',required:true}),
+      datum:control(grid,label+' vertical datum','text',{maxLength:128}),cases:[]};
+    group.base=fieldsFor(set,label+' baseline',false);
+    const cases=make('div');set.append(cases);
+    const actions=make('div');actions.className='actions';set.append(actions);
+    let sequence=0;
+    function addCase(focusRow){
+      const item=fieldsFor(cases,label+' proposed '+(++sequence),true);
+      item.remove=make('button','Remove proposed scenario');item.remove.type='button';item.remove.className='btn';
+      item.remove.onclick=()=>{group.cases.splice(group.cases.indexOf(item),1);item.area.remove();reset();refresh();group.add.focus();};
+      item.area.append(item.remove);group.cases.push(item);reset();refresh();if(focusRow)item.label.focus();
+    }
+    group.add=make('button','Add proposed scenario');group.add.type='button';group.add.className='btn';group.add.onclick=()=>addCase(true);
+    group.remove=make('button','Remove asset');group.remove.type='button';group.remove.className='btn';
+    group.remove.onclick=()=>{groups.splice(groups.indexOf(group),1);set.remove();reset();refresh();$('hbSpillScenarioAdd').focus();};
+    actions.append(group.add,group.remove);groups.push(group);addCase(false);if(focus)group.id.focus();
+  }
+  function read(){
+    const rows=new Map(available().map(row=>[row.key,row])),references=[];
+    const source=(key,asset,label,role)=>{
+      if(!key)return null;
+      const row=rows.get(key);if(!row)throw new Error('A selected source is unavailable. Review the assignments.');
+      const exclusions=exclusionPayload(true,'model',key);
+      references.push([asset,label,role,row.label,row.item.hash,row.col,quantity(row),seriesUnit(row.item,row.col),JSON.stringify(exclusions)]);
+      return {path:row.item.virtualPath,column:row.col,exclusions};
+    };
+    function scenario(item,asset,label){
+      return {...source(item.signal.value,asset,label,'Threshold channel'),name:label,
+        flow:source(item.flow.value,asset,label,'Discharge flow'),flow_confirmed:item.confirm.checked};
+    }
+    const baseline=fields.baseline.value.trim();
+    return {settings:{baseline_name:baseline,start:fields.start.value,end:fields.end.value,max_gap_s:fields.gap.valueAsNumber,
+      assets:groups.map(group=>{
+        const id=group.id.value.trim();
+        return {id,threshold_m:group.threshold.valueAsNumber,datum:group.datum.disabled?null:group.datum.value.trim(),
+          baseline:scenario(group.base,id,baseline),proposed:group.cases.map(item=>scenario(item,id,item.label.value.trim()))};
+      })},references};
+  }
+  function fresh(){try{return current&&current.signature===JSON.stringify(read());}catch{return false;}}
+  function filtered(){return current?.result.rows.filter(row=>(!assetFilter.value||row.asset===assetFilter.value)&&
+    (!yearFilter.value||String(row.baseline.year)===yearFilter.value))||[];}
+  function display(){
+    const rows=filtered(),offset=page*pageSize,end=Math.min(offset+pageSize,rows.length);body.replaceChildren();
+    $('hbSpillScenarioCount').textContent=rows.length?'Showing '+(offset+1)+'–'+end+' of '+rows.length+' comparisons.':'No comparisons match these filters.';
+    $('hbSpillScenarioPrev').disabled=!page;$('hbSpillScenarioNext').disabled=end===rows.length;
+    const delta=(row,key)=>textNumber(row.baseline[key])+' → '+textNumber(row.proposed[key])+' · Δ '+textNumber(row.delta[key]);
+    for(const row of rows.slice(offset,end)){
+      const tr=body.insertRow(),reason=[row.delta.period_reason,row.delta.count_reason,row.delta.volume_reason,row.baseline.reason,row.proposed.reason].filter(Boolean).join(' ');
+      for(const value of [row.asset+' · '+row.baseline.year,row.baseline_name+' → '+row.proposed_name,
+        delta(row,'count'),delta(row,'duration_hours'),delta(row,'volume_m3'),reason])tr.insertCell().textContent=value;
+    }
+  }
+  fields.reviewed.onchange=()=>reset();
+  form.addEventListener('input',()=>{if(current||submit.disabled)reset('Inputs changed. Run the comparison again.');});
+  form.onsubmit=async event=>{
+    event.preventDefault();reset('Checking the common periods in the local worker…');const sequence=request;
+    submit.disabled=true;
+    try{
+      const input=read(),signature=JSON.stringify(input);
+      await ensureEngineBoot();const result=await engine.call('compare_spill_scenarios',input.settings);
+      if(sequence!==request||signature!==JSON.stringify(read()))return;
+      current={result,input,signature};page=0;
+      assetFilter.replaceChildren(new Option('All assets',''),...[...new Set(result.rows.map(row=>row.asset))].map(id=>new Option(id,id)));
+      yearFilter.replaceChildren(new Option('All years',''),...[...new Set(result.rows.map(row=>row.baseline.year))].map(year=>new Option(year,year)));
+      report.hidden=false;status.textContent='Comparison ready. Each delta uses its own support and applicability checks.';display();
+    }catch(error){if(sequence===request)status.textContent=conciseErrorMessage(error);}
+    finally{submit.disabled=false;}
+  };
+  $('hbSpillScenarioAdd').onclick=()=>addAsset(true);
+  $('hbSpillScenariosClose').onclick=()=>dialog.close();
+  assetFilter.onchange=yearFilter.onchange=()=>{page=0;display();};
+  $('hbSpillScenarioPrev').onclick=()=>{--page;display();};$('hbSpillScenarioNext').onclick=()=>{++page;display();};
+  $('hbSpillScenarioExport').onclick=()=>{
+    if(!fresh()){reset('A source or assessment setting changed. Run the comparison again.');return;}
+    const headers=['Asset','Year','Baseline','Proposed','Start','End','Threshold (m)','Quantity','Datum','Base count','Proposed count','Count change',
+      'Base duration (h)','Proposed duration (h)','Duration change (h)','Base volume (m³)','Proposed volume (m³)','Volume change (m³)','Count basis','Period basis','Volume basis'];
+    const rows=filtered().map(row=>[row.asset,row.baseline.year,row.baseline_name,row.proposed_name,row.baseline.start,row.baseline.end,row.threshold_m,row.quantity,row.datum,
+      row.baseline.count,row.proposed.count,row.delta.count,row.baseline.duration_hours,row.proposed.duration_hours,row.delta.duration_hours,
+      row.baseline.volume_m3,row.proposed.volume_m3,row.delta.volume_m3,row.delta.count_reason,row.delta.period_reason,row.delta.volume_reason]);
+    const csv=[['Build',buildToken],['Method',current.result.method],['Maximum valid gap (s)',current.input.settings.max_gap_s],
+      ['Asset','Scenario','Role','Source','SHA-256','Column','Quantity','Canonical unit','Applied exclusions'],...current.input.references,headers,...rows];
+    downloadBlob('hydra-spill-scenario-comparison.csv',csv.map(row=>row.map(ICMSafeCSV.cell).join(',')).join('\r\n'),'text/csv');
+  };
+  window.addEventListener('icm:source-pool-changed',()=>{if(groups.length){reset('Sources changed. Recheck assignments.');refresh();}});
+  window.addEventListener('icm:route-changed',({detail})=>{if(detail.workspace!=='spills'&&dialog.open)dialog.close();});
+  addAsset(false);
+  return ()=>{refresh();if(current&&!fresh())reset('A source or assessment setting changed. Run the comparison again.');if(!dialog.open)dialog.showModal();};
+}
+
+let compare;
+window.HydraSpillInquiry={open(){open??=mount();open();},compare(){compare??=mountComparison();compare();}};
 })();
