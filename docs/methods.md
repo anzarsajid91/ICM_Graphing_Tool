@@ -118,6 +118,39 @@ rainfall alongside storm response and local catchment characteristics. WMO
 explains that gauge exposure and siting also affect representativeness. These
 comparison measures are descriptive Hydra Bench diagnostics. [WaPUG User Note 6, version 2, sections 2 and 5](https://www.ciwem.org/assets/pdf/Special%20Interest%20Groups/Urban%20Drainage%20Group/WAPUG_User_Note_06.pdf) · [WMO Guide to Hydrological Practices, volume I, chapter 3](https://unstats.un.org/unsd/envaccounting/waterGuidelines/Material/WMO_Guide_168_Vol_I_en_hydrological_practices.pdf) · [NIST Pearson correlation definition](https://www.itl.nist.gov/div898/software/dataplot/refman2/auxillar/correlat.htm)
 
+## Flow survey verification suitability
+
+**Flow Survey → Rainfall check → Review verification suitability** reviews
+one workbook-mapped observed monitor through one current network rainfall
+candidate. The report carries the existing WAPUG decision, mapped gauge
+evidence and available FSAT depth–velocity response. It screens the selected
+period using the project's explicit minimum supported time, gap limit,
+instrument ranges and engineering site review. A screen can include flow
+coverage when required by the intended verification purpose.
+
+Hydraulic time support requires finite bracketing samples and a gap within
+the reviewed maximum. Range support conservatively requires both supporting
+samples within the entered range. Rain uses validated left-labelled interval
+support. Unknown, unsupported, negative rainfall and excluded time do not
+count toward the requested coverage. Its denominator is the entire period.
+Reviewed exclusions apply at exact boundaries to their relevant channels.
+The default 90% criterion is a configurable Hydra Bench screening value.
+Measured flow coverage, instrument evidence and sensor range states are
+reported independently from the rainfall decision and candidate status.
+
+In the independent point check, a 240 s period has 180 s of finite depth
+brackets and a 20 s exclusion. Available coverage is 160 s. Two adjoining
+brackets touch a depth reading above the reviewed instrument maximum, leaving
+40 s of support within range. Signed reverse velocity remains valid where the
+reviewed instrument range supports it. A missing gauge, incomplete ranges or
+site evidence and a network candidate that fails qualification each retain
+their own reason to hold the record for review.
+
+CIWEM guidance treats stable sites, verified depth and velocity measurement,
+independent evidence and the shape of the response through recession as part
+of the engineering decision. Check site calibration, the useful storm period
+and model purpose before relying on the screening result. [CIWEM UDG Code of Practice for the Hydraulic Modelling of Urban Drainage Systems, 2017, sections 3.10 and 5](https://www.ciwem.org/assets/pdf/Special%20Interest%20Groups/Urban%20Drainage%20Group/Code%20of%20Practice%20for%20the%20Hydraulic%20Modelling%20of%20Ur.pdf)
+
 ## Spill intervals and 12/24 counting
 Physical spill intervals are threshold exceedances under linear interpolation between consecutive valid samples. Missing/long-gap intervals are unknown and break physical events. User exclusions remove time and break events. The 12/24 counting-window convention is applied to retained physical events without restarting at calendar month or year boundaries. The initial occupied 12-hour block counts once; each subsequent occupied 24-hour block contributes one additional count. A complete dry 24-hour block resets the sequence. Physical intervals are half-open: an interval ending exactly at a block boundary does not occupy the next block.
 

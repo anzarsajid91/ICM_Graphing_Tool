@@ -8,9 +8,11 @@ import XLSX from '../vendor/sheetjs-0.20.3/xlsx.full.min.js';
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/',engine=process.env.ICM_BROWSER||'chromium';
 const browser=await (engine==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),acceptDownloads:true,viewport:{width:1280,height:960}});
-const guard=installPrivacyGuard(context,base,{canaries:['SYNTHETIC-SPATIAL-GAUGE','SYNTHETIC-INTERVAL-DEPTH']});
+const guard=installPrivacyGuard(context,base,{canaries:['SYNTHETIC-SPATIAL-GAUGE','SYNTHETIC-INTERVAL-DEPTH','SYNTHETIC-SITE-REVIEW']});
 const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
 const dialog=page.getByRole('dialog',{name:'Compare rain gauges'}),status=dialog.getByRole('status');
+const suitability=page.getByRole('dialog',{name:'Review verification suitability'});
+const suitabilityLauncher=page.getByRole('button',{name:'Review verification suitability',exact:true});
 const open=async()=>{await page.locator('button[data-workspace="survey"]').click();
   await page.getByRole('tab',{name:'Rainfall check',exact:true}).click();await page.getByRole('button',{name:'Compare rain gauges',exact:true}).click();};
 const upload=(name,header,values)=>({name,mimeType:'text/csv',buffer:Buffer.from('Timestamp,'+header+'\n'+values.map((value,i)=>
@@ -20,6 +22,9 @@ try{
   await guard.navigate(page,base);await open();
   await status.getByText('Import at least two observed rainfall channels',{exact:false}).waitFor();
   await dialog.getByRole('button',{name:'Close comparison'}).click();
+  await suitabilityLauncher.click();
+  await suitability.getByRole('status').getByText('Run a current complete Flow Survey assessment',{exact:false}).waitFor();
+  await suitability.getByRole('button',{name:'Close review',exact:true}).click();
   await page.locator('button[data-workspace="data"]').click();
   await page.setInputFiles('#fileInput',[
     upload('=SYNTHETIC-SPATIAL-GAUGE.csv','Rainfall (mm/h)',[0,120,240,0,0]),
@@ -103,6 +108,39 @@ try{
   await run.click();await status.getByText('WAPUG selection and qualification are unchanged.',{exact:false}).waitFor();
   assert.equal(await page.evaluate(()=>JSON.stringify(window.__ICM_WORKBENCH__.survey.batch.network.candidate_wapug_events)),initial);
   await dialog.getByRole('button',{name:'Close comparison'}).click();
+  await suitabilityLauncher.click();
+  const reviewStatus=suitability.getByRole('status'),screen=suitability.getByRole('button',{name:'Screen this monitor and period',exact:true});
+  await suitability.getByRole('combobox',{name:'Survey monitor',exact:true}).selectOption('FM01');
+  const suitabilityWindow=suitability.getByRole('combobox',{name:'Current rainfall event',exact:true});
+  await suitabilityWindow.selectOption(await suitabilityWindow.locator('option').filter({hasText:'Network qualified'}).getAttribute('value'));
+  await screen.click();await reviewStatus.getByText('Suitability screen ready.',{exact:true}).waitFor();
+  await suitability.getByRole('heading',{name:'Hold for review',exact:true}).waitFor();
+  assert.match(await suitability.getByRole('row',{name:/Depth instrument range/}).innerText(),/Review missing/);
+  await suitability.getByRole('combobox',{name:'Measurement review',exact:true}).selectOption('reviewed');
+  await screen.click();await reviewStatus.getByText('Record the site or instrument evidence',{exact:false}).waitFor();
+  await suitability.getByRole('textbox',{name:'Site or instrument evidence',exact:true}).fill('=SYNTHETIC-SITE-REVIEW');
+  const geometry=suitability.locator('details>summary');await geometry.press('Enter');assert(!(await suitability.locator('details').evaluate(item=>item.open)));
+  await geometry.press('Space');assert(await suitability.locator('details').evaluate(item=>item.open));
+  for(const [name,value] of Object.entries({depth_min:'.02',depth_max:'.20',velocity_min:'-.2',velocity_max:'1',gap:'450'}))
+    await suitability.locator('[name='+name+']').fill(value);
+  await screen.click();await reviewStatus.getByText('Suitability screen ready.',{exact:true}).waitFor();
+  assert.match(await suitability.getByRole('row',{name:/Depth instrument range/}).innerText(),/Below requirement|Unavailable/);
+  await suitability.locator('[name=depth_max]').fill('.9');
+  await suitability.getByRole('checkbox',{name:'Require measured flow coverage',exact:true}).uncheck();
+  await screen.click();await reviewStatus.getByText('Suitability screen ready.',{exact:true}).waitFor();
+  await suitability.getByRole('heading',{name:'Candidate for verification',exact:true}).waitFor();
+  assert.match(await suitability.getByRole('row',{name:/Measured flow coverage|Flow coverage/}).innerText(),/Optional/);
+  assert.match(await suitability.getByRole('row',{name:/Mapped rainfall coverage/}).innerText(),/RG01.*100\.0%.*Meets/s);
+  const auditRequest=page.waitForEvent('download');await suitability.getByRole('button',{name:'Download suitability audit CSV',exact:true}).click();
+  const audit=await fs.readFile(await (await auditRequest).path(),'utf8');
+  assert.match(audit,/'=SYNTHETIC-SITE-REVIEW/);assert.match(audit,/Candidate for verification/);assert.match(audit,/[a-f0-9]{64}/);
+  if(process.env.ICM_EVIDENCE_DIR)await suitability.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-survey-suitability-'+engine+'.png'});
+  await page.setViewportSize({width:960,height:760});
+  assert(await suitability.evaluate(element=>element.scrollWidth===element.clientWidth),'Review dialog fits the narrow desktop viewport');
+  assert(await suitability.getByRole('button',{name:'Close review',exact:true}).evaluate(element=>{
+    const rect=element.getBoundingClientRect();return rect.top>=0&&rect.bottom<innerHeight;
+  }),'Close action remains visible while reading the narrow results');
+  await page.keyboard.press('Escape');assert(await suitability.isHidden());
   await page.locator('button[data-workspace="spills"]').click();
   await page.locator('#addExclusionBtn').click();
   const exclusion=page.locator('#exclusionRows .ex-row').first();
@@ -117,5 +155,8 @@ try{
   assert.deepEqual((await cells(totals,0)).slice(1,5),['88.889%','16','Unavailable','2']);
   assert.deepEqual((await cells(totals,1)).slice(1,5),['100%','15','15','0']);
   await dialog.getByRole('button',{name:'Close comparison'}).click();
-  assert.deepEqual(errors,[]);guard.assertClean();console.log('RAINFALL_SPATIAL_PASS '+engine);
+  await suitabilityLauncher.click();
+  await reviewStatus.getByText('Run a current complete Flow Survey assessment',{exact:false}).waitFor();
+  assert(await screen.isDisabled());await suitability.getByRole('button',{name:'Close review',exact:true}).click();
+  assert.deepEqual(errors,[]);guard.assertClean();console.log('RAINFALL_AND_SUITABILITY_PASS '+engine);
 }finally{await browser.close();}

@@ -12,7 +12,8 @@ const optionalComponents=Object.freeze({
   spillInquiry:{asset:'spill-inquiry.js',mount:()=>{}},
   localSecurity:{asset:'local-security-diagnostics.js',mount:()=>{}},
   monitorDiagnostics:{asset:'survey-monitor-diagnostics.js',mount:()=>{}},
-  rainfallSpatial:{asset:'rainfall-spatial.js',mount:()=>{}}
+  rainfallSpatial:{asset:'rainfall-spatial.js',mount:()=>{}},
+  surveySuitability:{asset:'survey-suitability.js',mount:()=>{}}
 });
 const componentLoads=new Map(),readyComponents=new Set();
 function loadComponent(key){
@@ -437,23 +438,27 @@ function installSectionHierarchy(){
   }
 }
 window.__ICM_WORKBENCH__.installSectionHierarchy=installSectionHierarchy;
-function installRainfallSpatialLauncher(){
+function installRainfallReviewActions(){
   const section=$('surveyRainfallReview');
-  if(!section||$('hbRainSpatialLauncher'))return;
-  const launcher=document.createElement('button'),status=document.createElement('p');
-  launcher.type='button';launcher.id='hbRainSpatialLauncher';launcher.className='btn';
-  launcher.textContent='Compare rain gauges';launcher.setAttribute('aria-haspopup','dialog');status.setAttribute('role','status');
-  qs(':scope > .subhead',section).append(launcher);$('surveyRainfallSummary').before(status);
-  launcher.onclick=async()=>{
-    if(launcher.getAttribute('aria-busy')==='true')return;
-    launcher.setAttribute('aria-busy','true');status.textContent='';
-    try{await loadComponent('rainfallSpatial');if(current.workspace==='survey'&&current.page==='rainfall-check')window.HydraRainfallSpatial.open();}
-    catch(error){status.textContent=error.message+' Select Compare rain gauges to retry.';}
-    finally{launcher.removeAttribute('aria-busy');}
-  };
+  if(!section||$('hbRainfallReviewActions'))return;
+  const actions=document.createElement('div'),status=document.createElement('p');
+  actions.className='actions';actions.id='hbRainfallReviewActions';status.setAttribute('role','status');
+  qs(':scope > .subhead',section).append(actions);$('surveyRainfallSummary').before(status);
+  for(const [caption,component,open] of [['Compare rain gauges','rainfallSpatial',()=>window.HydraRainfallSpatial.open()],
+    ['Review verification suitability','surveySuitability',()=>window.HydraSurveySuitability.open()]]){
+    const button=document.createElement('button');button.type='button';button.className='btn';button.textContent=caption;
+    button.setAttribute('aria-haspopup','dialog');actions.append(button);
+    button.onclick=async()=>{
+      if(button.getAttribute('aria-busy')==='true')return;
+      button.setAttribute('aria-busy','true');status.textContent='';
+      try{await loadComponent(component);if(current.workspace==='survey'&&current.page==='rainfall-check')open();}
+      catch(error){status.textContent=error.message+' Select '+caption+' to retry.';}
+      finally{button.removeAttribute('aria-busy');}
+    };
+  }
 }
 function preparePageComposition(){
-  ensureDataTimeSeriesSurface();ensureDataHealthSurface();ensureSpillSurfaces();ensureReportSurfaces();installRainfallSpatialLauncher();
+  ensureDataTimeSeriesSurface();ensureDataHealthSurface();ensureSpillSurfaces();ensureReportSurfaces();installRainfallReviewActions();
   const professional=qs('.survey-professional');
   const completeSurvey=$('completeSurveyPanel');
   own($('pwDataSetupSurface'),['data/time-series']);

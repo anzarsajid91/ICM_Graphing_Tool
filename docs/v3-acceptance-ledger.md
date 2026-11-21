@@ -35,7 +35,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 6.5 | Local worker, series parser, source identity and registry | Native and optional portable result package, explicit schema and time support, bounded indexed worker and cancellation, selective retrieval, measured storage/capacity trade-offs | Partial |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
 | 7.2 | Gauge qualification, cumulative/event data | Common-clock spatial comparison, event totals, correlation, peak offset, coverage, suspect bins and WAPUG linkage | Verified locally |
-| 7.3 | Weekly review, coverage and WAPUG/FSAT | Explain suitability of selected periods and clearly attribute published versus project screening criteria | Open |
+| 7.3 | Weekly review, coverage and WAPUG/FSAT | Suitability screen for a selected monitored location and rainfall candidate, using measured support, reviewed range, site evidence and current qualification | Verified locally for candidate screening |
 | 8.1 | DWF, comparison and event diagnostics | Explain evidence and alternate investigation paths for baseflow/infiltration, runoff, peaks/timing/recession and restrictions/backwater | Open |
 | 8.2 | Existing event comparison and alignment | Multiple monitors, events and scenarios with criterion states, support, decisions and plot navigation | Open |
 | 8.3 | Existing comparison evidence stamps and review history | Compare revisions with a controlled observed basis and explicit non-comparability | Open |
@@ -526,7 +526,7 @@ other state.
   Security navigation checks also passed. The complete development Python
   suite at this point passed 414 tests and 111 subtests.
 
-### Paired monitor diagnostics
+### Paired monitor diagnostics (`ee0fa6d`)
 
 - Flow Survey FDV Health reviews concurrent signed velocity and depth,
   optionally with discharge and a confirmed circular section. Explicit
@@ -545,7 +545,7 @@ other state.
   loading regression also passed on both. The full Python suite passed 417
   tests and 111 subtests, and the repository privacy suites passed.
 
-### Spatial rainfall comparison
+### Spatial rainfall comparison (`ab1d5e5`)
 
 - Flow Survey Rainfall check compares up to eight local rainfall channels on
   one explicit period. The engineer can select a current network WAPUG
@@ -570,3 +570,22 @@ other state.
   8,760 hourly bins. It returned exactly 636 mm at the reference gauge with
   a measured 5.60 s and 19.85 MiB of traced new Python allocation. This run
   excluded source parsing, browser costs and production comparison.
+
+### Flow Survey verification suitability
+
+- The Rainfall check reviews one workbook monitor and current WAPUG candidate
+  at a time. Hydraulic and mapped rainfall time support use original valid
+  intervals and exact applied exclusions. Reviewed instrument-range support,
+  existing qualification, optional observed-flow coverage and site evidence
+  remain independent findings. Existing FSAT response accompanies the screen.
+  Candidate status is an engineering investigation aid. [Engineering methods](methods.md#flow-survey-verification-suitability)
+- Independent tests verified 160 s of supported data and 40 s satisfying the
+  reviewed range from a 240 s fixture, allowed signed reverse velocity,
+  withheld results after missing rain or inadequate coverage and rejected
+  invalid criteria. The full Python suite passed 425 tests and 111 subtests.
+- Chromium and Firefox exercised empty and stale evidence, native FDV/R and
+  association matching, a qualifying event, required review notes, failing and
+  passing range criteria, optional flow, keyboard disclosure/close, the
+  persistent Close action at 960 × 760 CSS pixels and a local formula-safe
+  CSV with source fingerprints. The request monitors saw 100 and
+  98 requests with zero violations. Deferred loading passed in both browsers.

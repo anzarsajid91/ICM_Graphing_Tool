@@ -7,7 +7,7 @@ const engine=process.env.ICM_BROWSER||'chromium',base=process.env.ICM_BASE_URL||
 const browser=await (engine==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1000}});
 const guard=installPrivacyGuard(context,base),page=await context.newPage();
-const assets=new Map(['hydraulic-design.js','simulation-results.js','series-quality.js','monitor-comparison.js','spill-inquiry.js','local-security-diagnostics.js','survey-monitor-diagnostics.js','rainfall-spatial.js'].map(name=>[name,0]));
+const assets=new Map(['hydraulic-design.js','simulation-results.js','series-quality.js','monitor-comparison.js','spill-inquiry.js','local-security-diagnostics.js','survey-monitor-diagnostics.js','rainfall-spatial.js','survey-suitability.js'].map(name=>[name,0]));
 const errors=[];page.on('pageerror',error=>errors.push(error.message));
 page.on('request',request=>{
   const name=new URL(request.url()).pathname.split('/').at(-1);
@@ -16,13 +16,13 @@ page.on('request',request=>{
 try {
   await guard.navigate(page,base);
   await page.locator('#hbProjectDashboard').waitFor();
-  assert.deepEqual([...assets.values()],[0,0,0,0,0,0,0,0]);
+  assert.deepEqual([...assets.values()],[0,0,0,0,0,0,0,0,0]);
   await page.locator('button[data-workspace="network"]').click();
   await page.locator('#nsSvg').waitFor();
-  assert.deepEqual([...assets.values()],[0,0,0,0,0,0,0,0],'Schematic entry keeps the optional reviewers unloaded');
+  assert.deepEqual([...assets.values()],[0,0,0,0,0,0,0,0,0],'Schematic entry keeps the optional reviewers unloaded');
   await page.getByRole('tab',{name:'Simulation results'}).click();
   await page.locator('#hbResultsImport').waitFor();
-  assert.deepEqual([...assets.values()],[0,1,0,0,0,0,0,0]);
+  assert.deepEqual([...assets.values()],[0,1,0,0,0,0,0,0,0]);
 
   await page.route('**/assets/hydraulic-design.js*',route=>route.fulfill({status:503,body:'Synthetic temporary failure'}),{times:1});
   await page.locator('button[data-workspace="hydraulics"]').click();
@@ -62,6 +62,11 @@ try {
   await page.getByRole('dialog',{name:'Compare rain gauges',exact:true}).waitFor();
   await page.keyboard.press('Escape');
   assert.equal(assets.get('rainfall-spatial.js'),1);
+  assert.equal(assets.get('survey-suitability.js'),0);
+  await page.getByRole('button',{name:'Review verification suitability',exact:true}).click();
+  await page.getByRole('dialog',{name:'Review verification suitability',exact:true}).waitFor();
+  await page.keyboard.press('Escape');
+  assert.equal(assets.get('survey-suitability.js'),1);
   await page.getByRole('button',{name:'About',exact:true}).click();
   await page.getByRole('tab',{name:'IT Security',exact:true}).click();
   assert.equal(assets.get('local-security-diagnostics.js'),0);

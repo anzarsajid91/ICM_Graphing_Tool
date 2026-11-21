@@ -450,6 +450,7 @@
       };
     });
   }
+  window.__ICM_WORKBENCH__.surveyMonitorSources = monitorSourceSpecs;
 
   function rainSourceSpecs() {
     const records = survey.association?.records || [];
