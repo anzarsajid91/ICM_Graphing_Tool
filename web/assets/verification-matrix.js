@@ -1,0 +1,276 @@
+/* SPDX-FileCopyrightText: 2026 Anzar Sajid and other applicable rights holders
+ * SPDX-License-Identifier: AGPL-3.0-only */
+(() => {
+'use strict';
+
+const node=(tag,text)=>{const item=document.createElement(tag);if(text!==undefined)item.textContent=text;return item;};
+const print=value=>Number.isFinite(value)?Number(value.toPrecision(6)).toString():'Unavailable';
+const titles={coverage:'Common event coverage',peak:'Peak error',volume:'Volume error',timing:'Peak delay'};
+const pairsLimit=16,cellLimit=512,pageSize=20;
+
+function mount(){
+  const root=document.getElementById('tab-verification-matrix');
+  root.innerHTML=`<article class="panel"><div class="panel-head"><div><h2>Multi-event verification</h2>
+    <p>Apply reviewed project tolerances to matched observed and simulated records across qualifying events.</p></div></div>
+    <form id="hbVerificationForm"><div class="mapping-grid">
+    <label>Rainfall evidence<select name="rain"><option value="survey">Flow Survey network WAPUG</option><option value="data">Data rainfall events</option></select></label>
+    <label>Hydraulic quantity<select name="quantity"><option value="flow">Flow</option><option value="depth">Depth</option></select></label>
+    <label>Maximum interpolation gap (s)<input type="number" name="gap" min="0.001" step="any" value="900" required></label>
+    <label>Model clock shift (minutes)<input type="number" name="offset" step="any" value="0" required></label></div>
+    <details open><summary>Qualifying events</summary><div class="actions">
+      <button id="hbVerifyAll" type="button" class="btn">Select all</button><button id="hbVerifyNone" type="button" class="btn">Clear selection</button></div>
+      <div id="hbVerifyEvents" class="mapping-grid"></div></details>
+    <fieldset><legend>Observed and modelled pairings</legend><div id="hbVerifyPairs"></div>
+      <div class="actions"><button type="button" class="btn" id="hbVerifyAdd">Add pairing</button></div></fieldset>
+    <details open><summary>Project tolerances</summary><div class="mapping-grid">
+      <label>Minimum common coverage (%)<input name="minimum_coverage_percent" type="number" min="0.001" max="100" step="any" value="90" required></label>
+      <label>Allowed absolute peak delay (min)<input name="peak_offset_minutes" type="number" min="0" step="any" required></label>
+      <label data-hb-verify-quantity="depth">Allowed absolute peak depth error (m)<input name="depth_peak_error_m" type="number" min="0" step="any"></label>
+      <label data-hb-verify-quantity="flow">Allowed absolute peak flow error (%)<input name="flow_peak_error_percent" type="number" min="0" step="any" required></label>
+      <label data-hb-verify-quantity="flow">Allowed absolute volume error (%)<input name="flow_volume_error_percent" type="number" min="0" step="any" required></label>
+      <label data-hb-verify-quantity="flow">Minimum positive observed peak (m³/s)<input name="flow_peak_floor_m3_s" type="number" min="0.000000000001" step="any" required></label>
+      <label data-hb-verify-quantity="flow">Minimum positive observed volume (m³)<input name="flow_volume_floor_m3" type="number" min="0.000000001" step="any" required></label></div></details>
+    <label class="hb-transform-confirm"><input type="checkbox" name="clock" required> Confirm each pair matches its site and measurement quantity on the reviewed project clock</label>
+    <div class="actions"><button type="button" id="hbVerifyCancel" class="btn" disabled>Cancel calculation</button>
+      <button type="submit" class="btn primary">Calculate verification matrix</button></div></form>
+    <p id="hbVerifyStatus" role="status"></p><section id="hbVerifyView" hidden>
+    <p>Agreement criteria use complete event support. Partial-window values stay visible with their support and withholding reason.</p>
+    <div class="actions"><label>Filter outcomes<select id="hbVerifyFilter"><option value="">All results</option><option value="outside">Outside tolerance</option><option value="withheld">Withheld or incomplete</option><option value="meets">All criteria meet</option></select></label>
+      <button type="button" class="btn" id="hbVerifyPrev">Previous page</button><button type="button" class="btn" id="hbVerifyNext">Next page</button>
+      <button type="button" class="btn" id="hbVerifyExport">Download matrix audit CSV</button></div>
+    <p id="hbVerifyPage" aria-live="polite"></p><div class="table-wrap" tabindex="0" role="region" aria-label="Verification matrix results">
+    <table class="data-table"><caption>Verification matrix</caption><thead><tr><th scope="col">Event</th><th scope="col">Monitor / scenario</th><th scope="col">Coverage</th>
+    <th scope="col">Peak error</th><th scope="col">Volume error</th><th scope="col">Peak delay</th><th scope="col">Evidence</th></tr></thead><tbody></tbody></table></div>
+    <section id="hbVerifyDetail" aria-label="Selected comparison evidence" hidden><h3 tabindex="-1"></h3><p id="hbVerifyDetailText"></p><ul id="hbVerifyCriterionDetails"></ul>
+      <label>Engineer comment<textarea id="hbVerifyNotes" maxlength="3000" rows="3"></textarea></label>
+      <div class="actions"><button type="button" class="btn" id="hbVerifyPlotButton">Plot event records</button></div>
+      <p id="hbVerifyPlotStatus" role="status"></p><div id="hbVerifyPlot" role="group" aria-label="Observed and modelled event plot"></div></section>
+    </section></article>`;
+  const $=id=>root.querySelector('#'+id),form=$('hbVerificationForm'),fields=form.elements;
+  const status=$('hbVerifyStatus'),view=$('hbVerifyView'),details=$('hbVerifyDetail'),body=root.querySelector('tbody');
+  const plot=$('hbVerifyPlot'),plotStatus=$('hbVerifyPlotStatus'),notes=$('hbVerifyNotes');
+  const submit=form.querySelector('[type=submit]'),cancel=$('hbVerifyCancel'),addButton=$('hbVerifyAdd');
+  const pairControls=[],eventSelections=new Set();
+  let sources=[],events=[],eventStamp='',generation=0,plotGeneration=0,activeRun=null,result=null,activeCell=null,page=0;
+  const active=()=>window.__ICM_PRECISION_WORKBENCH__?.route()?.page==='matrix';
+
+  function stateOfEvents(){
+    if(fields.rain.value==='data')return rainEventsFresh()?{basis:state.rainEventSignature,rows:state.rainEvents}:null;
+    const wb=window.__ICM_WORKBENCH__;
+    return wb.surveyFresh?.('complete')?{basis:wb.surveyDependencySignature('complete'),rows:wb.survey.batch.network?.qualified_wapug_events||[]}:null;
+  }
+  function clearPlot(){++plotGeneration;if(plot.data)globalThis.Plotly?.purge(plot);plotStatus.textContent='';}
+  function clear(message){
+    ++generation;result=null;activeCell=null;view.hidden=true;details.hidden=true;clearPlot();if(message)status.textContent=message;
+  }
+  function selectBox(select,options,placeholder){
+    const before=select.value;select.replaceChildren(new Option(placeholder,''),...options.map(row=>new Option(row.label,row.key)));
+    if(options.some(row=>row.key===before))select.value=before;
+  }
+  function addPair(){
+    const row=node('div');row.className='mapping-grid hb-verification-pair';
+    const controls={row,observed:node('select'),model:node('select'),remove:node('button','Remove')};
+    controls.remove.type='button';controls.remove.className='btn';
+    for(const [key,caption] of [['observed','Observed record'],['model','Modelled scenario']]){
+      const label=node('label'),text=node('span',caption);controls[key].required=true;label.append(text,controls[key]);row.append(label);
+    }
+    controls.remove.onclick=()=>{
+      const index=pairControls.indexOf(controls);pairControls.splice(index,1);row.remove();
+      clear('Pairing removed. Recalculate for the remaining pairs.');updatePairs();pairControls[Math.min(index,pairControls.length-1)].observed.focus();
+    };
+    row.append(controls.remove);$('hbVerifyPairs').append(row);pairControls.push(controls);updatePairs();return controls;
+  }
+  function updatePairs(){
+    for(const [index,pair] of pairControls.entries()){
+      const {row,observed,model,remove}=pair;
+      selectBox(observed,sources.filter(item=>item.role!=='model'),'Choose observed record');
+      selectBox(model,sources.filter(item=>item.role!=='observed'),'Choose scenario record');
+      row.querySelectorAll('label span')[0].textContent='Observed record '+(index+1);
+      row.querySelectorAll('label span')[1].textContent='Modelled scenario '+(index+1);
+      remove.setAttribute('aria-label','Remove pairing '+(index+1));remove.hidden=pairControls.length<2;
+    }
+    addButton.disabled=Boolean(activeRun)||pairControls.length>=pairsLimit;
+  }
+  function renderEvents(){
+    $('hbVerifyEvents').replaceChildren(...events.map(event=>{
+      const label=node('label'),input=node('input');input.type='checkbox';input.value=event.key;input.checked=eventSelections.has(event.key);
+      input.onchange=()=>{
+        if(input.checked)eventSelections.add(event.key);else eventSelections.delete(event.key);
+        clear('Event selection changed. Calculate the current matrix.');
+      };
+      label.append(input,node('span',event.label));return label;
+    }));
+    $('hbVerifyAll').disabled=$('hbVerifyNone').disabled=!events.length;
+  }
+  function refresh(){
+    const got=stateOfEvents(),stamp=JSON.stringify([fields.rain.value,got?.basis]);
+    const changed=eventStamp!==stamp;eventStamp=stamp;
+    events=(got?.rows||[]).filter(event=>event.start&&event.end).map((event,index)=>({start:event.start,end:event.end,
+      key:String(index),number:event.event??index+1,label:'Event '+(event.event??index+1)+' · '+event.start.replace('T',' ')+' to '+event.end.replace('T',' ')}));
+    if(changed){eventSelections.clear();for(const event of events)eventSelections.add(event.key);}
+    const canonical=fields.quantity.value==='flow'?'m³/s':'m';
+    sources=allSeries().filter(({item,col})=>item.status==='ready'&&item.hash&&seriesQuantity(item,col)===fields.quantity.value&&
+      seriesUnit(item,col)===canonical&&item.parsed?.metadata?.timestamp_convention==='instantaneous'&&
+      item.parsed?.metadata?.time_basis!=='timezone-aware/unresolved');
+    updatePairs();renderEvents();
+    for(const label of root.querySelectorAll('[data-hb-verify-quantity]')){
+      label.hidden=label.dataset.hbVerifyQuantity!==fields.quantity.value;label.querySelector('input').disabled=label.hidden;
+    }
+    if(result)try{if(result.signature!==JSON.stringify(plan()))clear('Evidence changed. Calculate the matrix with the current inputs.');}
+      catch{clear('Evidence changed. Calculate the matrix with the current inputs.');}
+    submit.disabled=Boolean(activeRun)||!events.length||sources.length<2;
+    if(!events.length)status.textContent='Calculate a current qualifying rainfall event set from the chosen evidence source.';
+    else if(sources.length<2)status.textContent='Import compatible observed and modelled records with resolved units.';
+    else if(!result&&!activeRun)status.textContent='Choose events, pair the local sources and set the applicable project tolerances.';
+  }
+  function plan(){
+    const current=stateOfEvents();
+    if(!current||JSON.stringify([fields.rain.value,current.basis])!==eventStamp)throw new Error('Rainfall qualification changed. Refresh it before using the matrix.');
+    const windows=events.filter(item=>eventSelections.has(item.key));
+    if(!windows.length)throw new Error('Select at least one qualifying event.');
+    if(windows.length*pairControls.length>cellLimit)throw new Error('Choose at most '+cellLimit+' event–pair combinations per calculation.');
+    const series=(key,role)=>{
+      const row=sources.find(item=>item.key===key);
+      if(!row)throw new Error('Select a ready '+role+' record for each pairing.');
+      const exclusions=exclusionPayload(true,role,key);
+      if(role==='observed'&&fields.rain.value==='survey'){
+        const wb=window.__ICM_WORKBENCH__,quantity=fields.quantity.value;
+        const matches=(wb.surveyMonitorSources?.()||[]).filter(item=>item.path===row.item.virtualPath&&item[quantity+'_col']===row.col);
+        const scopes=new Set(matches.flatMap(item=>['all',quantity].map(channel=>'survey:monitor:'+item.monitor+':'+channel)));
+        exclusions.push(...exclusionPayload(true).filter(item=>item.enabled&&scopes.has(item.scope)));
+      }
+      return {source_key:key,path:row.item.virtualPath,column:row.col,name:row.label,sha256:row.item.hash,exclusions};
+    };
+    const pairs=pairControls.map(({observed,model})=>({observed:series(observed.value,'observed'),scenario:series(model.value,'model')}));
+    if(pairs.some(pair=>pair.observed.sha256===pair.scenario.sha256&&pair.observed.column===pair.scenario.column))
+      throw new Error('Use different observed and modelled records in each pair.');
+    const identity=pairs.map(pair=>JSON.stringify([pair.observed.sha256,pair.observed.column,pair.scenario.sha256,pair.scenario.column]));
+    if(new Set(identity).size!==pairs.length)throw new Error('Remove duplicate observed and modelled pairings.');
+    const criteria=Object.fromEntries([...form.querySelectorAll('details input[type=number]:enabled')].map(input=>[input.name,input.valueAsNumber]));
+    return {windows,pairs,criteria,quantity:fields.quantity.value,rain:fields.rain.value,event_stamp:eventStamp,
+      max_gap_seconds:fields.gap.valueAsNumber,offset_minutes:fields.offset.valueAsNumber};
+  }
+  fields.rain.onchange=()=>{clear();refresh();};
+  fields.quantity.onchange=()=>{clear();refresh();};
+  form.oninput=event=>{if(!event.target.closest('#hbVerifyEvents')&&result)clear('Inputs changed. Recalculate the matrix.');};
+  $('hbVerifyAll').onclick=()=>{for(const event of events)eventSelections.add(event.key);renderEvents();clear('All qualifying events selected.');};
+  $('hbVerifyNone').onclick=()=>{eventSelections.clear();renderEvents();clear('Select the qualifying events for review.');};
+  addButton.onclick=()=>{clear('New pairing added. Choose its local records.');addPair().observed.focus();};
+  cancel.onclick=()=>{if(activeRun){activeRun.cancelled=true;cancel.disabled=true;status.textContent='Stopping after the current comparison…';}};
+  form.onsubmit=async event=>{
+    event.preventDefault();clear();const run=generation;
+    try{
+      const input=plan(),signature=JSON.stringify(input),rows=[],total=input.pairs.length*input.windows.length;
+      activeRun={cancelled:false};cancel.disabled=false;submit.disabled=true;addButton.disabled=true;
+      status.textContent='Preparing '+total+' comparisons in the local worker…';await ensureEngineBoot();
+      for(const window of input.windows)for(const pair of input.pairs){
+        if(activeRun.cancelled||run!==generation)break;
+        const unique=[...new Map([...pair.observed.exclusions,...pair.scenario.exclusions].map(item=>[item.id,item])).values()];
+        let values=null,error=null;
+        try{values=await engine.call('verification_matrix_event',{observed:{path:pair.observed.path,column:pair.observed.column},
+          scenario:{path:pair.scenario.path,column:pair.scenario.column},event:window,criteria:input.criteria,
+          max_gap_seconds:input.max_gap_seconds,offset_minutes:input.offset_minutes,exclusions:unique});}
+        catch(failure){error=conciseErrorMessage(failure);}
+        rows.push({window,pair,values,error,comment:''});
+        if(!activeRun.cancelled&&run===generation)status.textContent='Compared '+rows.length+' of '+total+' event–pair combinations…';
+      }
+      if(run!==generation)return;
+      if(activeRun.cancelled){status.textContent='Calculation cancelled. '+rows.length+' of '+total+' comparisons finished before cancellation.';return;}
+      if(signature!==JSON.stringify(plan()))throw new Error('Inputs changed while running. Calculate the matrix again.');
+      result={input,rows,signature};page=0;$('hbVerifyFilter').value='';view.hidden=false;renderRows();
+      status.textContent='Verification matrix ready. '+rows.length+' comparisons · '+rows.filter(row=>row.error).length+' unavailable.';
+    }catch(error){if(run===generation)status.textContent=conciseErrorMessage(error);}
+    finally{activeRun=null;cancel.disabled=true;submit.disabled=!events.length||sources.length<2;addButton.disabled=pairControls.length>=pairsLimit;}
+  };
+
+  function outcome(cell){
+    const checks=Object.values(cell.values?.checks||{});
+    if(!checks.length||checks.some(({status})=>status==='Withheld'||status==='Below requirement'))return 'withheld';
+    return checks.some(({status})=>status==='Outside tolerance')?'outside':'meets';
+  }
+  function summary(item){return item?print(item.value)+(item.unit==='%'?'':' ')+item.unit+' · '+item.status:'—';}
+  function renderRows(){
+    if(!result)return;
+    const filter=$('hbVerifyFilter').value,rows=result.rows.filter(row=>!filter||outcome(row)===filter);
+    body.replaceChildren();
+    for(const cell of rows.slice(page*pageSize,(page+1)*pageSize)){
+      const tr=node('tr'),checks=cell.values?.checks||{},period=node('td');
+      const {start,end,number}=cell.window,startTime=node('time',start.replace('T',' '));startTime.dateTime=start;
+      const endTime=node('time','to '+(end.slice(0,10)===start.slice(0,10)?end.slice(11):end.replace('T',' ')));endTime.dateTime=end;
+      period.append(node('strong','Event '+number),startTime,endTime);tr.append(period);
+      for(const text of [cell.pair.observed.name+' / '+cell.pair.scenario.name,...['coverage','peak','volume','timing'].map(key=>summary(checks[key]))])
+        tr.append(node('td',text));
+      const action=node('td'),button=node('button','Review');button.type='button';button.className='btn';
+      button.setAttribute('aria-label','Review '+cell.pair.scenario.name+' · '+cell.window.label);button.onclick=()=>openCell(cell);
+      action.append(button);tr.append(action);body.append(tr);
+    }
+    $('hbVerifyPage').textContent=rows.length?'Showing '+(page*pageSize+1)+'–'+Math.min(rows.length,(page+1)*pageSize)+' of '+rows.length:'No comparisons match this filter.';
+    $('hbVerifyPrev').disabled=page===0;$('hbVerifyNext').disabled=(page+1)*pageSize>=rows.length;
+  }
+  function openCell(cell){
+    clearPlot();activeCell=cell;details.hidden=false;const title=details.querySelector('h3');
+    title.textContent=cell.pair.observed.name+' / '+cell.pair.scenario.name;
+    const values=cell.values?.values;
+    $('hbVerifyDetailText').textContent=values?cell.window.label+' · '+print(values.common_support_seconds)+' of '+print(values.requested_seconds)+
+      ' s supported · '+print(values.excluded_seconds)+' s excluded · Observed peak '+print(values.observed_peak)+' '+values.unit+
+      ' · Modelled peak '+print(values.modelled_peak)+' '+values.unit:cell.error;
+    $('hbVerifyCriterionDetails').replaceChildren(...Object.entries(cell.values?.checks||{}).map(([key,item])=>
+      node('li',titles[key]+' · '+summary(item)+' · project threshold '+print(item.tolerance)+' '+item.unit+(item.reason?' · '+item.reason:''))));
+    notes.value=cell.comment;notes.oninput=()=>{cell.comment=notes.value;};$('hbVerifyPlotButton').disabled=!values;title.focus();
+  }
+  $('hbVerifyPrev').onclick=()=>{page--;renderRows();};$('hbVerifyNext').onclick=()=>{page++;renderRows();};
+  $('hbVerifyFilter').onchange=()=>{page=0;renderRows();};
+  const shifted=(text,minutes)=>minutes&&text?new Date(new Date(text+'Z').valueOf()+60000*minutes).toISOString().slice(0,-1):text;
+  $('hbVerifyPlotButton').onclick=async()=>{
+    const cell=activeCell,saved=result;if(!cell||!saved)return;
+    clearPlot();const revision=plotGeneration,shift=saved.input.offset_minutes;
+    plotStatus.textContent='Preparing local event plot…';
+    try{
+      if(saved.signature!==JSON.stringify(plan()))throw new Error('Evidence changed. Recalculate before plotting.');
+      const resultSeries=[];
+      for(const [source,offset] of [[cell.pair.observed,0],[cell.pair.scenario,shift]]){
+        const series=await engine.call('series_data',{path:source.path,column:source.column,start:shifted(cell.window.start,-offset),
+          end:shifted(cell.window.end,-offset),max_points:5000,max_gap_seconds:saved.input.max_gap_seconds});
+        resultSeries.push({x:series.timestamp.map(value=>shifted(value,offset)),y:series.value,name:esc(source.name),connectgaps:false,mode:'lines'});
+      }
+      const plotly=await loadVendorScript('Plotly');if(revision!==plotGeneration)return;
+      const reviewed=[...new Map([...cell.pair.observed.exclusions,...cell.pair.scenario.exclusions].map(item=>[item.id,item])).values()];
+      await plotly.react(plot,resultSeries,{...(window.HydraDesign?.chartLayout()||{}),height:360,hovermode:'x unified',
+        xaxis:{title:{text:'Project clock'},type:'date',range:[cell.window.start,cell.window.end]},
+        shapes:reviewed.map(item=>({type:'rect',x0:item.start,x1:item.end,y0:0,y1:1,yref:'paper',fillcolor:'rgba(115,128,145,0.20)',line:{width:0}})),
+        yaxis:{title:{text:'Observed and modelled ('+esc(cell.values.values.unit)+')'}}},plotConfig('hydra-verification-matrix'));
+      if(revision===plotGeneration)plotStatus.textContent='Displayed samples are for context. Shading marks reviewed exclusions. Calculations use exact common support.';
+    }catch(error){if(revision===plotGeneration)plotStatus.textContent=conciseErrorMessage(error);}
+  };
+  $('hbVerifyExport').onclick=()=>{
+    try{
+      if(!result||result.signature!==JSON.stringify(plan()))throw new Error('Evidence changed. Calculate the matrix before export.');
+      const {input,rows}=result,out=[['Build',buildToken],['Method','project-event-screens-v1'],['Rainfall evidence',input.rain],['Quantity',input.quantity],
+        ['Comparison maximum gap (s)',input.max_gap_seconds],['Model clock shift (min)',input.offset_minutes],
+        ['Start','End','Observed','Observed SHA-256','Observed channel','Modelled','Modelled SHA-256','Modelled channel',
+          'Requested seconds','Common valid seconds','Excluded seconds','Observed peak','Modelled peak','Peak unit',
+          'Observed volume (m³)','Modelled volume (m³)','Metric','Value','Unit','Project threshold','State','Reason','Engineer comment','Observed exclusions','Model exclusions']];
+      for(const {window,pair,values,error,comment} of rows){
+        const {observed,scenario}=pair,raw=values?.values;
+        const columns=[window.start,window.end,observed.name,observed.sha256,observed.column,scenario.name,scenario.sha256,scenario.column,
+          raw?.requested_seconds,raw?.common_support_seconds,raw?.excluded_seconds,raw?.observed_peak,raw?.modelled_peak,raw?.unit,
+          raw?.observed_volume_m3,raw?.modelled_volume_m3];
+        const audit=[comment,JSON.stringify(observed.exclusions),JSON.stringify(scenario.exclusions)];
+        if(error){out.push([...columns,'',null,'',null,'Withheld',error,...audit]);continue;}
+        for(const [key,item] of Object.entries(values.checks))out.push([...columns,titles[key],item.value,item.unit,item.tolerance,item.status,item.reason,...audit]);
+      }
+      downloadBlob('hydra-verification-matrix.csv',out.map(row=>row.map(ICMSafeCSV.cell).join(',')).join('\r\n'),'text/csv');
+    }catch(error){clear(error.message);}
+  };
+  addPair();refresh();
+  window.addEventListener('icm:route-changed',({detail})=>{
+    if(detail.workspace==='graphs'&&detail.page==='matrix')refresh();
+    else if(activeRun){activeRun.cancelled=true;++generation;}
+  });
+  for(const type of ['icm:source-pool-changed','icm:rainfall-interpretation-changed'])window.addEventListener(type,()=>{
+    if(active())refresh();
+  });
+}
+
+window.HydraVerificationMatrix={mount};
+})();

@@ -13,6 +13,10 @@ METHODS = {
     "Exclusion periods": ("Evidence", "General", "data", "time-series"),
     "Storage screening": ("Spills", "General", "spills", "storage-routing"),
     "Source diagnostics": ("Evidence", "General", "data", "time-series"),
+    "Paired flow-monitor investigation": ("Flow survey", "General", "survey", "fdv-check"),
+    "Spatial rainfall comparison": ("Flow survey", "UK", "survey", "rainfall-check"),
+    "Flow survey verification suitability": ("Flow survey", "UK", "survey", "rainfall-check"),
+    "Multi-event verification matrix": ("Verification", "UK", "graphs", "matrix"),
     "Circular-pipe capacity and design flow preview": ("Hydraulics", "General", "hydraulics", "capacity"),
     "Fixed-factor pipe system screening and pump duty": ("Hydraulics", "General", "hydraulics", "system-curve"),
     "England continuation-flow screening": ("Design flows", "England", "hydraulics", "formula-a"),
@@ -23,6 +27,12 @@ METHODS = {
 REFERENCES = {
     "www.gov.uk", "www.scottishwater.co.uk", "www.sepa.org.uk", "www1.eere.energy.gov",
     "help.autodesk.com", "www.hec.usace.army.mil", "www.usbr.gov",
+}
+EXACT_REFERENCES = {
+    "https://www.ciwem.org/assets/pdf/Special%20Interest%20Groups/Urban%20Drainage%20Group/Code%20of%20Practice%20for%20the%20Hydraulic%20Modelling%20of%20Ur.pdf",
+    "https://www.ciwem.org/assets/pdf/Special%20Interest%20Groups/Urban%20Drainage%20Group/WAPUG_User_Note_06.pdf",
+    "https://unstats.un.org/unsd/envaccounting/waterGuidelines/Material/WMO_Guide_168_Vol_I_en_hydrological_practices.pdf",
+    "https://www.itl.nist.gov/div898/software/dataplot/refman2/auxillar/correlat.htm",
 }
 MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\((https://[^\s)]+)\)")
 
@@ -39,7 +49,7 @@ def stage_method_library(root: Path, destination: Path) -> None:
         references = []
         for match in MARKDOWN_LINK.finditer(section):
             label, url = match.groups()
-            if urlsplit(url).netloc not in REFERENCES:
+            if urlsplit(url).netloc not in REFERENCES and url not in EXACT_REFERENCES:
                 raise ValueError(f"Method library link requires review: {url}")
             references.append({"label": " ".join(label.split()), "url": url})
         body = MARKDOWN_LINK.sub(lambda match: match[1], section)

@@ -22,6 +22,7 @@ def compare_event_support(observed, modelled, obs_col, model_col, start, end, ga
     support = 0.0
     obs_integral = sim_integral = 0.0
     obs_peak = sim_peak = None
+    obs_peak_tied = sim_peak_tied = False
     i = j = 0
     while i < len(obs) and j < len(mod):
         left, right = obs[i], mod[j]
@@ -40,14 +41,18 @@ def compare_event_support(observed, modelled, obs_col, model_col, start, end, ga
                 support += float(dt.sum())
                 obs_integral += float(np.dot(dt, (y_obs[:-1] + y_obs[1:]) * .5))
                 sim_integral += float(np.dot(dt, (y_sim[:-1] + y_sim[1:]) * .5))
-                for values, peak in [(y_obs, obs_peak), (y_sim, sim_peak)]:
+                for values, peak, tied in [(y_obs, obs_peak, obs_peak_tied), (y_sim, sim_peak, sim_peak_tied)]:
                     index = int(values.argmax())
                     candidate = (float(values[index]), knots[index])
                     if peak is None or candidate[0] > peak[0]:
-                        if values is y_obs:
-                            obs_peak = candidate
-                        else:
-                            sim_peak = candidate
+                        peak = candidate
+                        tied = np.count_nonzero(values == candidate[0]) > 1
+                    elif candidate[0] == peak[0]:
+                        tied = tied or candidate[1] != peak[1] or np.count_nonzero(values == candidate[0]) > 1
+                    if values is y_obs:
+                        obs_peak, obs_peak_tied = peak, tied
+                    else:
+                        sim_peak, sim_peak_tied = peak, tied
         if left.index[-1] <= right.index[-1]:
             i += 1
         if right.index[-1] <= left.index[-1]:
@@ -68,6 +73,7 @@ def compare_event_support(observed, modelled, obs_col, model_col, start, end, ga
         "modelled_peak_time": sim_peak[1] if sim_peak else None,
         "peak_error": sim_peak[0] - obs_peak[0] if obs_peak and sim_peak else None,
         "peak_lag_minutes": (sim_peak[1] - obs_peak[1]).total_seconds() / 60 if obs_peak and sim_peak else None,
+        "peak_time_ambiguous": bool(obs_peak_tied or sim_peak_tied),
         "observed_integral": obs_integral if support else None,
         "modelled_integral": sim_integral if support else None,
     }

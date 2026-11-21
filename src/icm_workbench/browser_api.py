@@ -1294,7 +1294,7 @@ def circular_pipe_design_flow(diameter_m, gradient, roughness_m, viscosity_m2_s,
 
 
 def verification_event_comparison(obs_path, obs_col, model_path, model_col, start, end,
-                                  max_gap_seconds=900.0, offset_minutes=0, exclusions_json="[]"):
+                                  max_gap_seconds=900.0, offset_minutes=0, exclusions_json="[]", *, window_only=False):
     """Compare one selected wet-weather event using supported hydraulic channels."""
     from icm_workbench.analysis.verification_events import compare_event_support
 
@@ -1308,8 +1308,22 @@ def verification_event_comparison(obs_path, obs_col, model_path, model_col, star
     if any(source.metadata.get("timestamp_convention") != "instantaneous" for source in (obs_source, model_source)):
         raise ValueError("Event Review requires instantaneous hydraulic data.")
     obs, mod = obs_source.frame, model_source.frame
+    offset = pd.to_timedelta(offset_minutes, unit="m")
+    if window_only:
+        def bounded(source, first, last):
+            if any(source.audit.get(key, 0) for key in ("invalid_timestamps", "malformed_rows", "duplicate_timestamps")):
+                raise ValueError("Resolve malformed or repeated source timestamps before using the matrix.")
+            times = pd.DatetimeIndex(source.frame["timestamp"])
+            if times.hasnans or times.has_duplicates or not times.is_monotonic_increasing:
+                raise ValueError("The matrix needs unique, ordered source timestamps.")
+            left = max(0, int(times.searchsorted(first, side="right")) - 1)
+            right = min(len(times), int(times.searchsorted(last, side="left")) + 1)
+            return source.frame.iloc[left:right]
+
+        obs = bounded(obs_source, start, end)
+        mod = bounded(model_source, start - offset, end - offset)
     if offset_minutes:
-        mod = mod.assign(timestamp=pd.to_datetime(mod["timestamp"]) + pd.to_timedelta(offset_minutes, unit="m"))
+        mod = mod.assign(timestamp=pd.to_datetime(mod["timestamp"]) + offset)
     result = compare_event_support(obs, mod, obs_col, model_col, start, end,
                                    max_gap_seconds, _exclusions(exclusions_json))
     result["unit"] = unit
@@ -1318,6 +1332,23 @@ def verification_event_comparison(obs_path, obs_col, model_path, model_col, star
     result.pop("observed_integral", None)
     result.pop("modelled_integral", None)
     return json.dumps(_jsonable(result))
+
+
+def verification_matrix_event(observed, scenario, event, criteria, max_gap_seconds, offset_minutes=0, exclusions=None):
+    """Assess one matrix cell using the current native Event Review engine."""
+    from icm_workbench.analysis.verification_matrix import verification_event_criteria
+
+    quan = _comparison_quantity(observed["path"], observed["column"])
+    first, last = _model_clock_timestamp(event["start"]), _model_clock_timestamp(event["end"])
+    if first is None or last is None or pd.isna(first) or pd.isna(last) or first >= last:
+        raise ValueError("Choose a current qualifying event with valid project-clock bounds.")
+    if not np.isfinite(offset_minutes):
+        raise ValueError("The scenario clock shift must be finite.")
+    values = json.loads(verification_event_comparison(observed["path"], observed["column"], scenario["path"],
+                        scenario["column"], first, last, max_gap_seconds, offset_minutes, exclusions, window_only=True))
+    result = verification_event_criteria(values, quan, criteria)
+    result.update(quantity=quan, values=values)
+    return json.dumps(result, allow_nan=False)
 
 
 def england_continuation_flow(catchments):

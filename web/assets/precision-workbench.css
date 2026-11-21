@@ -699,3 +699,15 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #hbSurveySuitability{scroll-padding-top:94px}
 #hbSurveySuitability .panel-head{position:sticky;top:0;z-index:1;background:var(--hb-surface);padding-block:8px}
 #hbSurveySuitability .mapping-grid label:has(textarea){grid-column:1/-1}
+#hbVerificationForm :is(fieldset,details){border:1px solid var(--hb-border);border-radius:var(--hb-radius-control);margin-block:12px;padding:8px 12px}
+#hbVerificationForm details>.mapping-grid{margin-block:8px}
+#hbVerifyEvents label{display:flex;align-items:start;gap:8px;overflow-wrap:anywhere}
+#hbVerifyEvents{max-height:236px;overflow:auto}
+#hbVerifyView :is(td,p,li){overflow-wrap:anywhere}
+#hbVerificationForm .hb-transform-confirm{display:flex;align-items:start;gap:8px}
+#hbVerifyView>.actions{align-items:end}
+#hbVerifyView td:first-child time{display:block;white-space:nowrap}
+#hbVerifyView td:last-child{width:1%;white-space:nowrap}
+#hbVerifyView td:last-child button{white-space:nowrap}
+.hb-verification-pair{align-items:end;margin-block:8px}
+#hbVerifyDetail textarea{width:100%}

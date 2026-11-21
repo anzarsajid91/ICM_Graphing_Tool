@@ -37,7 +37,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 7.2 | Gauge qualification, cumulative/event data | Common-clock spatial comparison, event totals, correlation, peak offset, coverage, suspect bins and WAPUG linkage | Verified locally |
 | 7.3 | Weekly review, coverage and WAPUG/FSAT | Suitability screen for a selected monitored location and rainfall candidate, using measured support, reviewed range, site evidence and current qualification | Verified locally for candidate screening |
 | 8.1 | DWF, comparison and event diagnostics | Explain evidence and alternate investigation paths for baseflow/infiltration, runoff, peaks/timing/recession and restrictions/backwater | Open |
-| 8.2 | Existing event comparison and alignment | Multiple monitors, events and scenarios with criterion states, support, decisions and plot navigation | Open |
+| 8.2 | Existing event comparison and alignment | Qualifying event sets with multiple monitor–scenario pairings, independent criteria, true common time support, comments, plots and audit | Verified locally for the matrix |
 | 8.3 | Existing comparison evidence stamps and review history | Compare revisions with a controlled observed basis and explicit non-comparability | Open |
 | 9.1 | Circular full/part-full Colebrook–White and comparisons | Preserve verified outputs; justify additional methods, geometries, target diameter/gradient and plots | Open |
 | 9.2 | SI circular pipe engine | Head-loss components, static/dynamic head, forward series/parallel, system curve and auditable sheets with independent cases | Partial |
@@ -571,7 +571,7 @@ other state.
   a measured 5.60 s and 19.85 MiB of traced new Python allocation. This run
   excluded source parsing, browser costs and production comparison.
 
-### Flow Survey verification suitability
+### Flow Survey verification suitability (`0cd5715`)
 
 - The Rainfall check reviews one workbook monitor and current WAPUG candidate
   at a time. Hydraulic and mapped rainfall time support use original valid
@@ -589,3 +589,35 @@ other state.
   persistent Close action at 960 × 760 CSS pixels and a local formula-safe
   CSV with source fingerprints. The request monitors saw 100 and
   98 requests with zero violations. Deferred loading passed in both browsers.
+
+### Multi-event verification matrix
+
+- The Verification workspace calculates reviewed monitor–scenario pairings
+  over current Data or Flow Survey network-qualified events. It retains
+  the native common-support values, signed metric errors, distinct criterion
+  states, plot and engineer comments. It withholds full-event criteria with
+  gaps or exclusions and separately withholds timing for tied peaks.
+  [Engineering methods](methods.md#multi-event-verification-matrix)
+- The independent 120 s flow case reports 180 vs 192 m³, +10% peak error,
+  +6.6667% signed volume error and zero peak delay. The clipped 60 s offset
+  case with L/s conversion gives 105 vs 114 m³. Tests also cover reverse
+  relative errors, absolute depth errors, zero reference, tied peaks and
+  incomplete data. The full local Python suite passed 430 tests and 111
+  subtests before starting the revision-comparison milestone.
+- Both desktop browsers checked 12 actual Data rainfall events, two monitor
+  and scenario pairs, 24 comparisons, independent tolerances, event selection,
+  paging, filtering, labels, local plot, comment, formula-safe export and
+  cancellation. The confidentiality observers saw 99 requests in Chromium
+  and 97 in Firefox with zero violations. The integrated native Flow Survey
+  test also verified the WAPUG handoff. It saw 102 and 100 requests with no
+  violations. The separate legacy Verification overview and lazy-loading
+  regressions passed.
+- A same-candidate CPython comparison on two 105,121-row local files
+  (2,312,684 and 2,628,046 bytes) produced identical result JSON for 12
+  event periods. Five alternating repeats gave median 0.489 s with bounded
+  event slices versus 1.521 s reading the whole series from the warm cache.
+  That check excludes browser overhead, parsing and production benchmarking.
+- The engineering library indexes the three Flow Survey methods and matrix
+  references. Both browsers verified its navigation, fixed HTTPS sources,
+  no-referrer behaviour and rejection of a modified CIWEM link from synthetic
+  staged data. There were 30 and 31 observed requests with no violations.

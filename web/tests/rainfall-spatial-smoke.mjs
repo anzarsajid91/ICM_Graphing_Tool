@@ -141,6 +141,12 @@ try{
     const rect=element.getBoundingClientRect();return rect.top>=0&&rect.bottom<innerHeight;
   }),'Close action remains visible while reading the narrow results');
   await page.keyboard.press('Escape');assert(await suitability.isHidden());
+  await page.locator('button[data-workspace="graphs"]').click();
+  await page.getByRole('tab',{name:'Verification matrix',exact:true}).click();
+  const matrix=page.locator('#tab-verification-matrix');
+  await matrix.locator('#hbVerifyEvents input:checked').first().waitFor();
+  assert.equal(await matrix.getByRole('combobox',{name:'Rainfall evidence',exact:true}).inputValue(),'survey');
+  assert.equal(await matrix.locator('#hbVerifyEvents input:checked').count(),JSON.parse(initial).filter(row=>row.qualifies_network_wapug).length);
   await page.locator('button[data-workspace="spills"]').click();
   await page.locator('#addExclusionBtn').click();
   const exclusion=page.locator('#exclusionRows .ex-row').first();

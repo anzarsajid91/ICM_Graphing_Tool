@@ -13,7 +13,8 @@ const optionalComponents=Object.freeze({
   localSecurity:{asset:'local-security-diagnostics.js',mount:()=>{}},
   monitorDiagnostics:{asset:'survey-monitor-diagnostics.js',mount:()=>{}},
   rainfallSpatial:{asset:'rainfall-spatial.js',mount:()=>{}},
-  surveySuitability:{asset:'survey-suitability.js',mount:()=>{}}
+  surveySuitability:{asset:'survey-suitability.js',mount:()=>{}},
+  verificationMatrix:{asset:'verification-matrix.js',mount:()=>window.HydraVerificationMatrix.mount()}
 });
 const componentLoads=new Map(),readyComponents=new Set();
 function loadComponent(key){
@@ -111,6 +112,7 @@ const ROUTES={
       comparison:{label:'Observed vs modelled',title:'Observed versus modelled diagnostics',description:'Compare scenarios using the canonical bounded-alignment engine, scatter views and verification statistics.',tab:'compare',root:()=>$('tab-compare')},
       overview:{label:'Overview',title:'Verification overview',description:'Review source coverage, comparison metrics and engineering decisions.',root:()=>$('tab-verification-overview')},
       events:{label:'Event Review',title:'Verification event review',description:'Compare observed and modelled responses for a qualifying rainfall event.',root:()=>$('tab-verification-events')},
+      matrix:{label:'Verification matrix',title:'Multi-event verification',description:'Review independent agreement criteria across qualifying periods, monitored sites and scenarios.',component:'verificationMatrix',root:()=>optionalPanel('tab-verification-matrix')},
       rating:{label:'Depth / rating',title:'Depth agreement and flow–depth diagnostics',description:'Inspect depth agreement and Q/H rating evidence with sample support and validity limitations.',tab:'compare',root:()=>$('tab-compare')},
       dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
     }

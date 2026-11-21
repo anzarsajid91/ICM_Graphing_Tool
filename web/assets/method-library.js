@@ -5,10 +5,16 @@
 
 const hosts=new Set(["www.gov.uk","www.scottishwater.co.uk","www.sepa.org.uk","www1.eere.energy.gov",
   "help.autodesk.com","www.hec.usace.army.mil","www.usbr.gov"]);
+const exactReferences=new Set([
+  "https://www.ciwem.org/assets/pdf/Special%20Interest%20Groups/Urban%20Drainage%20Group/Code%20of%20Practice%20for%20the%20Hydraulic%20Modelling%20of%20Ur.pdf",
+  "https://www.ciwem.org/assets/pdf/Special%20Interest%20Groups/Urban%20Drainage%20Group/WAPUG_User_Note_06.pdf",
+  "https://unstats.un.org/unsd/envaccounting/waterGuidelines/Material/WMO_Guide_168_Vol_I_en_hydrological_practices.pdf",
+  "https://www.itl.nist.gov/div898/software/dataplot/refman2/auxillar/correlat.htm",
+]);
 const element=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
 function officialLink(source) {
   const url=new URL(source.url);
-  if(url.protocol!=="https:"||url.username||url.password||!hosts.has(url.host))return null;
+  if(url.protocol!=="https:"||url.username||url.password||(!hosts.has(url.host)&&!exactReferences.has(url.href)))return null;
   const link=element("a",source.label);link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";
   link.referrerPolicy="no-referrer";return link;
 }

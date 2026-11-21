@@ -315,6 +315,43 @@ same retained support. Depth has no volume output. The separate Overview shows
 the existing comparison coverage estimate, which uses the smaller of the two
 eligible-support fractions and does not measure interval intersection.
 
+## Multi-event verification matrix
+
+Choose a current Flow Survey network-qualified WAPUG set or current Data
+rainfall events. Confirm each observed and simulated pairing belongs to the
+same site and measured quantity on the reviewed project clock. The matrix
+uses the existing Event Review support, peak and integration engine. It
+reads only the event window and the native samples needed to bracket it.
+The model clock shift applies before computing intersected support. Invalid
+and repeated source timestamps require review before using the matrix.
+
+Coverage is common valid time divided by the full review period. The audit
+also records retained native support and excluded time. Peak, volume and
+timing assessments require full support and no exclusions. A partial record
+may show the numerical metric over the retained intervals with its withheld
+criterion. A timing check is withheld for tied peak times. Depth error is
+in metres. Flow peak and signed common-support volume errors are percentages
+of their positive observed reference. That reference must exceed its
+explicitly reviewed floor. Comparisons report signed differences as model
+minus observed and apply the absolute magnitude to the chosen tolerance.
+Tolerance checks include a numerical allowance of `max(10⁻¹², threshold ×
+10⁻¹²)` in the reported units. This does not change the selected tolerance
+or the reported numerical result.
+
+The independent 120 s synthetic event uses observed flow of `[1, 2, 1]`
+m³/s and modelled flow of `[1, 2.2, 1]` m³/s at minute boundaries. Volumes
+are 180 and 192 m³. Peak error is +10%, volume error is +6.6667%, and peak
+offset is zero. Cutting the model in half leaves 50% valid common support
+and withholds the full-event agreement criteria. An independent offset case
+with a clipped 60 s window and model imported in L/s gives 105 and 114 m³.
+
+The matrix accepts up to 16 pairings and 512 event–pair combinations per run.
+The chart shows local records with the selected clock shift and shades
+reviewed exclusions. The audit is a user-initiated local CSV with channel
+fingerprints, assumptions, outcomes and engineer comments. Set thresholds
+appropriate to the project and verify shape and agreement through recession.
+[CIWEM UDG verification guidance, sections 5.2 and 5.3](https://www.ciwem.org/assets/pdf/Special%20Interest%20Groups/Urban%20Drainage%20Group/Code%20of%20Practice%20for%20the%20Hydraulic%20Modelling%20of%20Ur.pdf)
+
 ## Fixed-factor pipe system screening and pump duty
 
 Use full circular pipes, a steady forward flow and an engineering-specified
