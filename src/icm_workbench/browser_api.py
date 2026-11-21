@@ -1063,6 +1063,48 @@ def network_spill_result(path, column, threshold, years_json="null", exclusions_
     return json.dumps(_jsonable(result), ensure_ascii=False)
 
 
+def review_spill_events(path, column, events, max_gap_s=900.0, exclusions_json="[]", flow=None, rainfall=None):
+    """Review already detected physical intervals with independently supported evidence."""
+    from icm_workbench.analysis.spill_inquiry import register_events
+
+    def source(spec, expected):
+        source_path, channel = spec["path"], spec["column"]
+        parsed = _require_model_clock(_load(source_path), expected)
+        contract = _series_contract(source_path, channel)
+        quantity, unit = contract["quantity"], contract["canonical_unit"]
+        if channel not in parsed.frame or channel == "timestamp":
+            raise ValueError(f"Select an available {expected.lower()} channel.")
+        trailing_support = None
+        convention = parsed.metadata.get("timestamp_convention")
+        if expected == "Threshold source" and quantity not in {"level", "depth"}:
+            raise ValueError("The event basis must be an eligible depth or level channel.")
+        if expected == "Spill flow" and (quantity != "flow" or unit != "m³/s"):
+            raise ValueError("Supply an eligible spill-flow channel with a resolved flow unit.")
+        if expected != "Rainfall" and convention != "instantaneous":
+            raise ValueError(f"{expected} requires instantaneous values on the project clock.")
+        if expected == "Rainfall":
+            meaning = spec.get("semantics") or parsed.metadata.get("rainfall_semantics")
+            if quantity != "rainfall" or (meaning, unit) not in {("intensity", "mm/h"), ("incremental_depth", "mm")}:
+                raise ValueError("Resolve the rainfall quantity, unit and support before linking it.")
+            convention = "interval_average" if meaning == "intensity" else "interval_depth"
+            interval = parsed.metadata.get("interval_min")
+            trailing_support = float(interval) * 60 if interval is not None else None
+        if expected != "Threshold source" and any(parsed.audit.get(key, 0) for key in ("invalid_timestamps", "duplicate_timestamps", "malformed_rows")):
+            raise ValueError(f"Resolve invalid or duplicate rows in the selected {expected.lower()} record.")
+        frame, _ = _prepared_series(source_path, channel)
+        values = frame[channel].to_numpy(dtype=float)
+        if convention == "interval_average":
+            values = values / 3600
+        return {"times": pd.DatetimeIndex(frame.timestamp).as_unit("ns"), "values": values,
+                "convention": convention, "trailing_support": trailing_support,
+                "exclusions": _exclusions(spec.get("exclusions"))}
+
+    basis = source({"path": path, "column": column, "exclusions": exclusions_json}, "Threshold source")
+    result = register_events(events, basis, float(max_gap_s), flow_source=source(flow, "Spill flow") if flow else None,
+                             rain_source=source(rainfall, "Rainfall") if rainfall else None)
+    return json.dumps({"method": "physical-spill-register-v1", "rows": result}, allow_nan=False)
+
+
 def network_common_spill_result(path, column, threshold, start, end, exclusions_json="[]", max_gap_seconds=900.0, comparison="ge"):
     """Explicit common-period review; preserve source warm-up and shared mappings."""
     from icm_workbench.analysis.network_spills import common_period_assessment
@@ -1386,7 +1428,8 @@ def transform_local_series(source, interval_s, max_gap_s, operation="single", re
     origin_s, origin_ns = divmod(origin.value, 10**9)
 
     def relative(nanoseconds):
-        seconds, fraction = np.divmod(nanoseconds, 10**9)
+        divide = np.divmod if isinstance(nanoseconds, np.ndarray) else divmod
+        seconds, fraction = divide(nanoseconds, 10**9)
         return seconds - origin_s + (fraction - origin_ns) / 1e9
 
     totals, coverage = [], []

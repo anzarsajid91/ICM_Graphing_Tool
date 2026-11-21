@@ -25,7 +25,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Partial |
 | 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Partial |
 | 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Verified locally |
-| 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Open |
+| 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Verified locally |
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Open |
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
@@ -429,3 +429,31 @@ other state.
   dismissal. They observed 94 and 92 fixed requests and zero violations.
   Deferred-workspace regressions passed alongside them. Matched dense plot
   performance is part of the open release-wide benchmarks.
+
+### Physical discharge investigation
+
+- The register uses the latest authoritative physical intervals, the exact
+  threshold channel and applied exclusions from the spill snapshot. The
+  separate 12/24 count retains its existing status. Duration, interruption
+  between intervals, optional discharge flow and rainfall, ranking and local
+  CSV export use reviewed source definitions. The graph handoff carries the
+  interval in local function arguments to the fixed Time series route.
+- Two hand-checkable tests distinguish two physical intervals from one 12/24
+  count, recover 90 and 45 m³ of positive discharge and 0.2 mm of complete
+  rainfall, preserve valid zero crossings, and withhold incomplete auxiliary
+  contributions. The raw unit, rejection and prior transformation tests
+  passed alongside these fixtures.
+- A local vector workload reviewed 5,000 synthetic intervals from 105,121
+  five-minute samples, with a matching flow source. It produced every exact
+  300 m³ result in 2.16 s with 16.8 MiB traced peak allocation. This is a
+  focused Python kernel measurement.
+- Chromium and Firefox verified the normal spill calculation, event support,
+  optional evidence, ranking, duration filter, paging, CSV, exact graph
+  bounds, and stale threshold handling. They observed 95 and 93 fixed requests
+  with zero violations. The browser worker exposed a WASM32 scalar-conversion
+  limit for nanosecond epoch values. Python integer splitting now handles
+  scalar boundaries for the register and transformations. Reviewed exclusions
+  shifted together with their source and passed the new browser regression.
+- The Firefox shell caught a five-pixel monitor-control gap at `53c593c`.
+  The layout now uses the existing four-pixel spacing rhythm. The full local
+  Firefox shell and both deferred component suites passed with the fix.

@@ -8,7 +8,8 @@ const optionalComponents=Object.freeze({
   calculations:{asset:'hydraulic-design.js',mount:()=>window.HydraDesignCalculations.mount(navigate)},
   simulation:{asset:'simulation-results.js',mount:()=>window.HydraResultsWorkspace.mount()},
   diagnostics:{asset:'series-quality.js',mount:()=>{}},
-  monitorCompare:{asset:'monitor-comparison.js',mount:()=>{}}
+  monitorCompare:{asset:'monitor-comparison.js',mount:()=>{}},
+  spillInquiry:{asset:'spill-inquiry.js',mount:()=>{}}
 });
 const componentLoads=new Map(),readyComponents=new Set();
 function loadComponent(key){
@@ -344,6 +345,15 @@ function ensureSpillSurfaces(){
   const threshold=ensureSection('pwSpillThresholdSurface','Thresholds and exclusions','Define assessment thresholds and auditable exclusion periods before calculating spills.');
   const result=ensureSection('pwSpillResultsSurface','Spill assessment evidence','Yearly summaries and compact monthly count / duration comparisons.');
   const thresholdHead=qs('.pw-surface-head',threshold),run=$('runSpillsBtn');if(run){run.textContent='Calculate spills';run.classList.add('primary');thresholdHead.appendChild(run);}
+  const inquiry=document.createElement('button');inquiry.className='btn';inquiry.type='button';inquiry.setAttribute('aria-haspopup','dialog');
+  inquiry.textContent='Investigate physical discharges';qs('.pw-surface-head',result).appendChild(inquiry);
+  inquiry.onclick=async()=>{
+    if(inquiry.getAttribute('aria-busy')==='true')return;
+    inquiry.setAttribute('aria-busy','true');
+    try{await loadComponent('spillInquiry');if(current.workspace==='spills')window.HydraSpillInquiry.open();}
+    catch(error){$('spillRunStatus').textContent=error.message+' Select Investigate physical discharges to retry.';}
+    finally{inquiry.removeAttribute('aria-busy');}
+  };
   const map=qs('#tab-spills .mapping-grid.compact'),exclude=$('exclusionRows')?.closest('.subpanel');if(map)threshold.appendChild(map);if(exclude)threshold.appendChild(exclude);
   const basis=document.createElement('div');basis.className='spill-local-basis';
   for(const [id,text] of [['timeBasisConfirmed','Sources share the same model-clock time basis'],['levelDatumConfirmed','Absolute levels share a unit and datum (if undeclared)']]){

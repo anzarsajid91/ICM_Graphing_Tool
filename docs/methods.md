@@ -51,6 +51,23 @@ support to compute a period mean. [HEC-DSSVue time conventions](https://www.hec.
 ## Spill intervals and 12/24 counting
 Physical spill intervals are threshold exceedances under linear interpolation between consecutive valid samples. Missing/long-gap intervals are unknown and break physical events. User exclusions remove time and break events. The 12/24 counting-window convention is applied to retained physical events without restarting at calendar month or year boundaries. The initial occupied 12-hour block counts once; each subsequent occupied 24-hour block contributes one additional count. A complete dry 24-hour block resets the sequence. Physical intervals are half-open: an interval ending exactly at a block boundary does not occupy the next block.
 
+The physical discharge register uses intervals from the applied assessment.
+It reports measured support between adjacent identified intervals. A gap in
+that evidence prevents interpreting them as distinct discharges. The separately
+reported 12/24 count retains its authoritative count status. The Environment
+Agency distinguishes physical discharges from 12/24 counted spills. [Storm
+overflow assessment framework 2025, Appendix A](https://www.gov.uk/government/publications/storm-overflow-assessment-framework-2025/storm-overflow-assessment-framework-2025#appendix-a-spill-counting-method)
+
+Supporting series require engineer confirmation of their common project clock,
+gauge selection and discharge location. Discharge volume integrates the positive
+part of the piecewise-linear discharge flow, including exact zero crossings.
+Rainfall accumulates over the physical interval using its declared support and
+the existing rainfall conventions. Independent support and exclusions apply to
+each source. The register withholds volume or rainfall if its interval is
+incomplete and reports the corresponding supported time. Treat the gauge total
+during a discharge as contextual evidence. Filtering
+or ranking the register only changes the displayed or explicitly exported rows.
+
 Each count is timestamped at the first retained discharge within its block. Monthly and yearly spill counts are allocated by these timestamps, rather than assigning every count from a long physical discharge to its start month/year. A short discharge continuing into a later month within one counted block can still have positive duration and zero new counts in that later month. `counting_windows.count_timestamps` retains the allocation evidence. Episode start fields remain episode metadata for whole-episode storage screening.
 
 Monthly physical duration uses actual elapsed time and splits at month boundaries.

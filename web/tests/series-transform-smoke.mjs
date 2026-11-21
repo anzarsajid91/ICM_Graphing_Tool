@@ -79,6 +79,24 @@ try{
   if(evidence){await fs.mkdir(evidence,{recursive:true});await dialog.screenshot({path:evidence+'/v3-series-transform-'+engine+'.png'});}
   await dialog.getByRole('button',{name:'Close transformation'}).click();
   assert(await dialog.isHidden());
+  await page.getByRole('button',{name:'Source diagnostics',exact:true}).click();
+  const diagnostics=page.getByRole('dialog',{name:'Time-series quality diagnostics'});
+  const examined=diagnostics.getByRole('combobox',{name:'Source series',exact:true});
+  await examined.selectOption(await examined.locator('option').filter({hasText:'ORIGINAL-TRANSFORM'}).getAttribute('value'));
+  await diagnostics.getByRole('spinbutton',{name:'Expected timestep (s)'}).fill('40');
+  await diagnostics.getByRole('button',{name:'Review source quality'}).click();
+  await diagnostics.getByText('Diagnostic review ready.',{exact:false}).waitFor();
+  await diagnostics.getByRole('combobox',{name:'Filter diagnostics'}).selectOption('long-timestep');
+  const firstGap=diagnostics.getByRole('table').locator('tbody tr').first();
+  await firstGap.getByLabel('Long timestep review note').fill('Synthetic reviewed period');
+  await firstGap.getByRole('button',{name:'Add review exclusion'}).click();
+  await firstGap.getByRole('button',{name:'Exclusion recorded'}).waitFor();
+  await diagnostics.getByRole('button',{name:'Close diagnostics'}).click();await open.click();
+  await get('Output interval (s)').fill('40');await derive.click();
+  await summary.getByText('1 complete periods.',{exact:false}).waitFor();
+  assert.deepEqual(await readings(),['Unavailable','Unavailable','24']);
+  assert.deepEqual((await table.locator('tbody tr').first().locator('td').allTextContents()).slice(3),['0','40']);
+  await dialog.getByRole('button',{name:'Close transformation'}).click();
   assert.equal(await page.evaluate(()=>window.__ICM_WORKBENCH__.stateSummary().readyFiles),2);
   assert.deepEqual(errors,[]);guard.assertClean();
   console.log('SERIES_TRANSFORM_PASS '+engine);

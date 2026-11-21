@@ -34,6 +34,7 @@ def integrate_periods(
     maximum_gap: float,
     trailing_support: float | None = None,
     exclusions: tuple[tuple[float, float], ...] = (),
+    positive_only: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return signed integrals and valid seconds for each half-open period.
 
@@ -92,6 +93,16 @@ def integrate_periods(
     if convention == "instantaneous":
         fraction = ((a[keep] - left[safe]) + widths / 2) / duration
         mean = opened * (1 - fraction) + closing[safe] * fraction
+        if positive_only:
+            half_width = widths / 2 / duration
+            left_fraction, right_fraction = fraction - half_width, fraction + half_width
+            end = closing[safe]
+            p = opened * (1 - left_fraction) + end * left_fraction
+            q = opened * (1 - right_fraction) + end * right_fraction
+            upper, lower = np.maximum(p, q), np.minimum(p, q)
+            crossing = (upper > 0) & (lower < 0)
+            mean = np.maximum(mean, 0)
+            mean[crossing] = upper[crossing] * .5 / (1 + np.abs(lower[crossing]) / upper[crossing])
     else:
         mean = opened / duration if convention == "interval_depth" else opened
     count = len(edges) - 1
