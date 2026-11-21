@@ -14,7 +14,8 @@ const ROUTES={
     label:'Data / time series',
     icon:'data',
     pages:{
-      'time-series':{label:'Time series',title:'Data / time series',description:'Upload, interpret and assign local sources, then review hydraulic traces, thresholds, rainfall overlays and auditable statistics in one continuous workspace.',tab:'graph',root:()=>$('tab-graph')}
+      'time-series':{label:'Time series',title:'Data / time series',description:'Upload, interpret and assign local sources, then review hydraulic traces, thresholds, rainfall overlays and auditable statistics in one continuous workspace.',tab:'graph',root:()=>$('tab-graph')},
+      'series-quality':{label:'Source diagnostics',title:'Source diagnostics',description:'Review local sample coverage, timing, abrupt changes and plausible value ranges.',root:()=>$('tab-series-quality')||window.HydraSeriesQuality.mount(navigate)}
     }
   },
   spills:{

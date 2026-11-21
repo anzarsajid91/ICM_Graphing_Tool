@@ -1254,3 +1254,51 @@ def screen_storage_routing(path, column, capacities_m3, initial_m3, release_m3_s
     result.update(window_start=first.isoformat(), window_end=last.isoformat(), sample_count=len(selected),
                   max_gap_s=max_gap_s, original_unit=contract["original_unit"], canonical_unit="m³/s")
     return json.dumps(result, allow_nan=False)
+
+
+def inspect_local_series(path, column, criteria, start=None, end=None,
+                         reference_path=None, reference_column=None, search_steps=None):
+    """Inspect local source rows without deduplicating or transforming them."""
+    from icm_workbench.analysis.series_quality import clock_candidates, inspect_series
+
+    source = _require_model_clock(_load(path), "Diagnostic source")
+    if source.metadata.get("timestamp_convention") != "instantaneous":
+        raise ValueError("This diagnostic requires instantaneous source samples on the project clock.")
+    contract = _series_contract(path, column)
+    if column not in source.frame or column == "timestamp":
+        raise ValueError("Select an available source series.")
+    thresholds = any(criteria.get(key) is not None for key in ("lower", "upper", "change_limit", "flat_amplitude"))
+    if thresholds and not contract["canonical_unit"]:
+        raise ValueError("Confirm source quantity and units in Data / time series before applying value thresholds.")
+    start = _model_clock_timestamp(start)
+    end = _model_clock_timestamp(end)
+    if (start is not None and pd.isna(start)) or (end is not None and pd.isna(end)) or (start is not None and end is not None and start >= end):
+        raise ValueError("Choose an increasing review period on the project clock.")
+
+    def select(parsed):
+        frame=parsed.frame
+        if start is not None:
+            frame=frame[frame.timestamp>=start]
+        if end is not None:
+            frame=frame[frame.timestamp<=end]
+        if len(frame)>250_000:
+            raise ValueError("Choose a smaller review period. Diagnostics support up to 250,000 samples per series per run.")
+        return frame
+
+    frame=select(source)
+    allowed={"expected_step_s","jitter_s","flat_amplitude","flat_seconds","change_limit","lower","upper"}
+    if any(key not in allowed for key in criteria):
+        raise ValueError("Unsupported diagnostic setting.")
+    result=inspect_series(frame,column,**criteria,rejected_time_rows=source.audit.get("invalid_timestamps",0))
+    result["source_contract"]=contract
+    result["clock"]=None
+    if reference_path is not None:
+        ref=_require_model_clock(_load(reference_path), "Reference series")
+        other_contract=_series_contract(reference_path,reference_column)
+        if (reference_column not in ref.frame or ref.metadata.get("timestamp_convention")!="instantaneous" or
+                not contract["canonical_unit"] or other_contract["canonical_unit"]!=contract["canonical_unit"] or
+                not contract["quantity"] or other_contract["quantity"]!=contract["quantity"] or
+                (path==reference_path and column==reference_column)):
+            raise ValueError("Use a different instantaneous record of the same measured quantity with matching resolved units.")
+        result["clock"]=clock_candidates(frame,select(ref),column,reference_column,criteria["expected_step_s"],search_steps)
+    return json.dumps(_jsonable(result), allow_nan=False)

@@ -22,7 +22,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 3.2 | Home default, route state, named workspaces | Restore user-selected assessment context safely while preserving the default landing route and legacy saves | Partial |
 | 3.3 | Current help text and workspace routes | Six guided journeys with actual prerequisites, results and next actions | Verified locally |
 | 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Partial |
-| 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Open |
+| 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Partial |
 | 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Open |
 | 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Open |
 | 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Open |
@@ -229,3 +229,26 @@ other state.
 - ICM runtime compatibility, native flags and inherited values, dedicated
   storage volume outputs, and authoritative detriment report round-trips
   remain open. The guide gives native CSV workflows for those use cases.
+
+### Source diagnostics and reviewed exclusions
+
+- The Data workspace now screens actual timestamp and value samples for
+  duplicates, gaps, short intervals, missing values, flatlines, abrupt changes,
+  isolated spikes and explicit plausibility ranges. Resolved units are
+  required for dimensional thresholds. The reviewer can accept or reject
+  findings, record a reason, export the diagnostic record and add a verified
+  interval to the existing source-specific exclusions. Original values are
+  preserved.
+- Optional same-signal lag screening checks actual matched sampling times
+  across an early and late window. The independent synthetic case shifted the
+  reference by 120 then 180 seconds. The reported candidate corrections were
+  −120 s and −180 s. Ambiguous or constant signals stay inconclusive.
+- Chromium and Firefox verified real file import, diagnostic and clock
+  controls, exclusion review, output invalidation and explicit CSV export.
+  Request observers counted 92 and 90 requests with zero violations. The
+  Python suite passed 386 tests and 111 subtests. Further unit/quantity
+  conflict investigation and persistent decisions remain open.
+- CI recorded a PyPI TLS handshake timeout in the standalone dependency
+  audit at toolkit head `980eab2`. The release's separate security check
+  passed at that head. The standalone failed job was retried; all required
+  security checks still apply at the exact release candidate.

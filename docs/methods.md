@@ -46,6 +46,38 @@ head-dependent control, infiltration loss, backwater or hydraulic feedback.
 Use it to screen spill volume sensitivity. The existing block-based and
 12/24-hour assessments remain authoritative for their existing methods.
 
+## Source diagnostics
+
+The Data / time series register reviews instantaneous samples using explicit
+project-clock and value criteria. An accepted timestep is within the entered
+absolute tolerance of the nominal interval. Duplicate times, values missing
+from actual rows, intervals longer or shorter than expected and source rows
+without a valid timestamp are distinct findings. Flatline groups require a
+continuous run with peak-to-peak amplitude at or below the entered tolerance
+and the entered duration. This prevents slowly drifting readings from
+appearing flat solely because successive changes are small. A spike candidate
+has two opposite adjacent changes over the threshold and a return within the
+threshold of the initial reading. The register also reports the individual
+changes and optional canonical-unit value bounds.
+
+Optional clock screening assumes a different recording of the same signal in
+comparable dimensions. It tests integer multiples of the entered timestep
+by matching actual timestamps in the early and late halves of their overlap.
+A candidate needs at least 20 exact valid pairs per tested lag, a positive
+Pearson correlation of at least 0.70, and a margin of 0.05 above the next
+candidate. The change between supported candidate shifts can motivate a drift
+investigation. It does not establish a faulty clock or move data. These are
+Hydra Bench screening settings and do not change the survey or verification
+criteria. Signed values and phase differences may have physical causes.
+
+Review decisions and reasons are exportable as a local CSV. A reviewer can
+add a source-specific exclusion with a reason for a finding at two distinct
+timestamps. The existing exclusion editor controls subsequent use and
+removal. Original data remain intact. A review handles at most 250,000 rows
+per series, returns total counts by kind and makes up to 1,500 candidates
+available per run. Use a smaller review period when detailed review needs
+more rows.
+
 ## Circular-pipe capacity and design flow preview
 
 The calculator uses SI units, steady uniform gravity flow, and pipe gradient
