@@ -12,6 +12,8 @@ const title=value=>value[0].toUpperCase()+value.slice(1).replaceAll("-"," ");
 const element=(tag,text)=>{const result=document.createElement(tag);if(text!==undefined)result.textContent=text;return result;};
 const option=(label,value)=>new Option(label,value);
 const selectOptions=(select,values)=>select.replaceChildren(...values.map(value=>option(title(value),value)));
+let session=null;
+const announceSources=()=>window.dispatchEvent(new Event("icm:simulation-sources-changed"));
 
 function workerClient(onFailure) {
   let worker, serial=0;
@@ -97,7 +99,11 @@ function mount() {
   const play=$("hbResultPlay"), back=$("hbResultBack"), step=$("hbResultStep"), remove=$("hbRemoveResult");
   const datasets=new Map(), mappings=[];
   let fileGeneration=0, displayGeneration=0, envelopeGeneration=0, currentImport=null, playback=null, playbackGeneration=0, serial=0;
-  const client=workerClient(()=>{datasets.clear();refreshSources();review.textContent="The simulation worker stopped. Reimport the source to resume.";});
+  const client=workerClient(()=>{datasets.clear();refreshSources();announceSources();review.textContent="The simulation worker stopped. Reimport the source to resume.";});
+  session=Object.freeze({
+    sources:()=>Array.from(datasets.values()),
+    frame:(sourceId,index,keys)=>client.request("frame",{sourceId,index,keys}).result
+  });
 
   function newMapping() {
     const row=mappingBody.insertRow(), label="Mapping "+(++serial);
@@ -171,7 +177,8 @@ function mount() {
       const task=client.request("import",{file,config},(loaded,total)=>{progress.value=100*loaded/total;});
       currentImport=task.id;
       const info=await task.result;
-      datasets.set(info.sourceId,info);refreshSources(info.sourceId);
+      if(!datasets.has(info.sourceId)){datasets.set(info.sourceId,info);announceSources();}
+      refreshSources(info.sourceId);
       importer.textContent=info.reused?"This result source and mapping are already indexed.":`${info.count} timestamps indexed for ${info.columns.length} result series.`;
     } catch(error) {importer.textContent=error.message;}
     finally {submit.disabled=false;controls.file.disabled=false;cancel.disabled=false;cancel.hidden=true;progress.hidden=true;currentImport=null;}
@@ -240,7 +247,7 @@ function mount() {
   time.oninput=()=>{stop();void updateFrame();};source.onchange=updateSource;series.onchange=()=>{stop();void updateSeries();};
   remove.onclick=async()=>{
     const id=Number(source.value);stop();
-    try {await client.request("remove",{sourceId:id}).result;datasets.delete(id);refreshSources();}
+    try {await client.request("remove",{sourceId:id}).result;datasets.delete(id);refreshSources();announceSources();}
     catch(error){review.textContent=error.message;}
   };
   window.addEventListener("icm:route-changed",({detail})=>{if(detail.page!=="simulation-results") stop();});
@@ -248,5 +255,5 @@ function mount() {
   return root;
 }
 
-window.HydraResultsWorkspace={mount};
+window.HydraResultsWorkspace={mount,get session(){return session;}};
 })();

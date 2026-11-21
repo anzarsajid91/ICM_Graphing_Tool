@@ -29,7 +29,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Open |
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
-| 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Open |
+| 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized real-sample map/profile playback, transport controls, windowing, scenario comparison, extrema and missingness | Partial |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
 | 6.5 | Local worker, series parser, source identity and registry | Native and optional portable result package, explicit schema and time support, bounded indexed worker and cancellation, selective retrieval, measured storage/capacity trade-offs | Partial |
@@ -343,3 +343,33 @@ other state.
 - Structure geometry beyond the current symbols, hydraulically valid water
   fill, conduit-end integration and synchronized result playback remain
   open. The profile's shaft widths indicate node position symbolically.
+
+### Exact-sample schematic and profile playback
+
+- In the detailed network, an engineer reviews declared revision, typed
+  mappings, reported quantity and end convention before applying a local
+  result source. Native node IDs and composite link identities match
+  independently. Leading zeros are preserved and ambiguous typed matches
+  are excluded. Missing samples have distinct map styling. Adjustable bands
+  stay fixed across all timestamps until the user reapplies a new scale.
+- Step, play, pause, slider and speed controls request exact existing
+  timestamps from the same local index as the standalone result reviewer.
+  Map styling updates on the existing SVG groups. Compatible node levels
+  update an open route at the same exact time after explicit geometry-datum
+  confirmation. Missing data leaves no level marker. No interpolated
+  water surface or internal hydraulic grade is implied.
+- Unit tests verify typed matching, collisions, source revision format,
+  leading zeros and colour ranges. Chromium and Firefox verify unmatched
+  columns, numerical zero, reverse and missing link flow, keyboard timeline,
+  speed and pause, sample parity, datum mismatch, freeboard above and below
+  ground, panel removal, source removal and reimport invalidation. Each
+  browser observed 32 same-origin static requests and zero violations.
+- The result layer is session-only and cleared on revision, edit, overview
+  or source removal. The optional profile coverage currently includes node
+  levels only. Conduit-end water geometry, time-window transport, scenario
+  synchronization, comparative envelopes, calculated thematic layers,
+  measured-direction indicators and large-playback benchmarks remain open.
+- A protected Chromium run on the preceding head reached Storage routing
+  before its deferred script finished. The smoke test now waits for the
+  required empty-state message and retains its original assertion and
+  calculation checks.

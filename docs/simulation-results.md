@@ -65,8 +65,28 @@ review screen reports entire-file extrema for one selected series and their
 timestamps. Indexed reads support exact-time frames and bounded time windows.
 There is no interpolation, extrapolation or numerical decimation.
 
+## Review on the schematic and long section
+
+Open **Simulation playback** in the detailed schematic. Choose an indexed
+source, review the original model revision and typed asset mapping and
+choose the display bounds in the stated unit. Apply the results layer to the
+current native geometry. The legend is fixed during playback. Unmapped
+assets keep their schematic style. A matched asset with no value at the
+exact timestamp has a hollow marker or dashed link. Link arrows still
+show nominal topology. Read the signed value from the asset label.
+
+For node level sources, enter the geometry datum to synchronize an open
+long section. The entered datum must match the source result datum. The
+profile draws discrete samples at the corresponding nodes, shows the exact
+project-clock time, and reports freeboard only where a compatible imported
+ground elevation is available. The temporary playback layer takes display
+precedence over an individually saved level overlay. It leaves saved
+geometry, route settings, and evidence unchanged. Reimporting geometry or
+removing the source clears the layer. Its session index remains local.
+
 The initial desktop smoke tests use a synthetic, explicitly mapped export
 following the documented CSV options. ICM-generated fixtures across versions
 and locales are still needed. The registry retains only local session data.
-The compact package, file-backed retrieval, graphical model revision binding
-and map/profile playback remain outstanding.
+The compact package, file-backed retrieval, automated revision binding,
+conduit-end profiles, windowed transport and scenario comparison remain
+outstanding.

@@ -240,5 +240,32 @@ function sameProfileSteps(current,saved){
     });
   });
 }
-globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,overview,routePlanner,longSection,profileAxis,sameProfileSteps};
+
+function simulationBindings(network,columns){
+  if(network.contextFormat!=='icm-csv-v1')return new Map();
+  const key=(id,table='',suffix='')=>JSON.stringify([table,id.trim().toUpperCase(),suffix.trim().toUpperCase()]);
+  const assets=new Map();
+  const register=(identity,kind,id)=>assets.set(identity,assets.has(identity)?null:{kind,id});
+  for(const node of network.nodes){
+    if(node.sourceAttributes?.table==='hw_node')register(key(node.id),'node',node.id);
+  }
+  for(const edge of network.edges){
+    if(edge.icm?.table&&edge.icm.linkSuffix&&edge.sourceAttributes?.table===edge.icm.table)
+      register(key(edge.from,edge.icm.table,edge.icm.linkSuffix),'edge',edge.id);
+  }
+  const matches=new Map();
+  for(const column of columns){
+    const asset=column.asset;
+    const identity=asset.kind==='node'?key(asset.id):key(asset.upstream,asset.table,asset.suffix);
+    const match=assets.get(identity);
+    if(match)matches.set(column.series,match);
+  }
+  return matches;
+}
+
+function simulationBand(value,low,high){
+  if(!Number.isFinite(value))return 'missing';
+  return String(Math.min(4,Math.max(0,Math.floor(5*(value-low)/(high-low)))));
+}
+globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,overview,routePlanner,longSection,profileAxis,sameProfileSteps,simulationBindings,simulationBand};
 })();

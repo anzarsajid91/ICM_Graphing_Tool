@@ -31,6 +31,17 @@ const savedRoute={name:'Synthetic route',start:'00127',end:'E',note:'',steps,tri
 assert.deepEqual(C.validateNetwork({...network,routeReviews:[savedRoute]}).routeReviews[0].profileView,savedRoute.profileView);
 assert.throws(()=>C.validateNetwork({...network,routeReviews:[{...savedRoute,profileView:{...savedRoute.profileView,zoomY:Infinity}}]}),/routeReviews/);
 
+const nodeResult={series:'node',asset:{kind:'node',id:'00127'}};
+const conduitResult={series:'conduit',asset:{kind:'link',upstream:'b',table:'hw_conduit',suffix:'1'}};
+const wrongTable={series:'weir',asset:{...conduitResult.asset,table:'hw_weir'}};
+const trimmedZero={series:'trimmed',asset:{kind:'node',id:'127'}};
+const resultNetwork={...network,contextFormat:'icm-csv-v1'};
+assert.deepEqual([...R.simulationBindings(resultNetwork,[nodeResult,conduitResult,wrongTable,trimmedZero])],
+  [['node',{kind:'node',id:'00127'}],['conduit',{kind:'edge',id:e2.id}]]);
+assert.equal(R.simulationBindings({...resultNetwork,nodes:[...network.nodes,{...network.nodes[0]}]},[nodeResult]).size,0);
+assert.equal(R.simulationBindings({...resultNetwork,contextFormat:'canonical-v1'},[nodeResult]).size,0);
+assert.deepEqual([null,-2,-1,0,1,2].map(value=>R.simulationBand(value,-1,1)),['missing','0','0','2','4','4']);
+
 const table=C.monitorTable('\ufeffColumn 1,Column 2\r\n00127,"FM, 01"\r\n00127,"FM, 01"\r\nB.1,FM-02\r\n\r\nunknown,FM-03\r\n');
 assert.deepEqual(table.rows[0],['00127','FM, 01']);
 assert.deepEqual(R.monitorMatches(table,1,network).map(row=>row.state),['Matched','Duplicate','Ambiguous','Unmatched']);

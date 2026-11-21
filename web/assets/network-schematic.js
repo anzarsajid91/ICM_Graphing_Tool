@@ -11,7 +11,7 @@ let inspectorTab='evidence',selectionKind='node';
 let redo=[],multi=new Set(),highlight=null,hoverTimer=null,frame=null,analysisGeneration=0,analysisContext=null,analysisTimer=null,analysisReturnFocus=null,pickerReturnFocus=null;
 const freshness=new Map();
 const prefs=()=>R.preferences(network);
-let overviewCache=null,monitorCache=null,detailedCamera=null;
+let overviewCache=null,monitorCache=null,detailedCamera=null,simulationView=null;
 const inOverview=()=>prefs().overview&&!editing;
 const overviewGraph=()=>overviewCache??=R.overview(network);
 const sceneGraph=()=>inOverview()?overviewGraph():network;
@@ -30,9 +30,11 @@ function monitorGroups(){
 function resetReviewCaches(){overviewCache=null;monitorCache=null;}
 function changeOverview(value){
   if(inOverview()===value)return;
+  if(value)simulationView?.reset('Simulation playback uses the detailed network.');
   if(value)detailedCamera={...network.camera};
   network.preferences={...prefs(),overview:value};
   if(!value&&detailedCamera)network.camera=detailedCamera;
+  simulationView?.refreshSources();
   render();
   if(value||!detailedCamera)fit();
   else persist();
@@ -80,7 +82,7 @@ function status(message){if($('nsStatus'))$('nsStatus').textContent=message;}
 function changed(geometry=false){if(!geometry)freshness.clear();persist();renderCanvas();if(!geometry)renderFilters();renderReview();}
 function restore(value){
   resetReviewCaches();resetRouteDraft();detailedCamera=null;network=value?C.validateNetwork(value):C.empty();branchIsolated=false;selected=null;popupVisible=false;history=[];redo=[];multi.clear();highlight=null;freshness.clear();
-  state.networkSchematicWorkspace=snapshot();if(mounted){render();persist();}
+  state.networkSchematicWorkspace=snapshot();if(mounted){simulationView?.refreshSources();render();persist();}
 }
 function point(x,y){return {x:x*network.camera.zoom+Number(network.camera.x),y:y*network.camera.zoom+Number(network.camera.y)};}
 function world(x,y){return {x:(x-network.camera.x)/network.camera.zoom,y:(y-network.camera.y)/network.camera.zoom};}
@@ -515,7 +517,7 @@ function renderCanvas(){
   $('nsZoom').textContent=Number((network.camera.zoom*100).toFixed(1))+'%';$('nsUndo').disabled=!history.length||busy;
   $('nsClearMap').disabled=!canClearMap();
   renderPopup();renderReviewControls();
-  applyDecorations();renderMinimap();
+  applyDecorations();simulationView?.decorate(true);renderMinimap();
   $('nsFocusSelected').disabled=!node()&&!edge();
   $('nsIsolateBranch').disabled=!highlight;
   $('nsIsolateBranch').setAttribute('aria-pressed',String(branchIsolated));
@@ -1026,7 +1028,7 @@ function clearMap(){
   multi.clear();freshness.clear();hideHover();
   $('nsPicker').hidden=true;
   $('nsAuditResult').textContent='';
-  persist();render();
+  simulationView?.refreshSources();persist();render();
   $('nsCanvas').focus({preventScroll:true});
   status('Map cleared. Imported sources are still available. Undo is available in Edit network until you reload.');
 }
@@ -1621,6 +1623,7 @@ function resetRouteDraft(){
     $('nsRoute').hidden=true;$('nsProfile').hidden=true;
     $('nsRouteName').value='';$('nsRouteNote').value='';$('nsRouteSavedMessage').textContent='';
   }
+  simulationView?.reset('The network changed. Review its revision before applying simulation results.');
 }
 let monitorDialog,monitorTable=null,monitorColumn=0,monitorGeneration=0;
 const monitorResolutions=new Map(),monitorChanges=new Set();
@@ -1898,8 +1901,9 @@ function plotProfile(steps){
     section.push({...step,x1:chainage,x2:chainage+step.length});chainage+=step.length;
   }
   if(section.length)segments.push(section);
-  const model=routeDraft.model;
-  const imported=new Map((model?.values||[]).map(record=>[record.node,record.level]));
+  const model=simulationView?.profile()||routeDraft.model;
+  const routeNodes=new Set(steps.flatMap(step=>[step.from,step.to]));
+  const imported=new Map((model?.values||[]).filter(record=>routeNodes.has(record.node)).map(record=>[record.node,record.level]));
   const levels=steps.flatMap(step=>[step.us,step.ds,step.groundFrom,step.groundTo,step.chamberFrom,step.chamberTo,
     step.us!==null&&step.height!==null?step.us+step.height:null,
     step.ds!==null&&step.height!==null?step.ds+step.height:null]).filter(Number.isFinite).concat([...imported.values()]);
@@ -2007,6 +2011,192 @@ function exportProfileSvg(){
   }
   downloadBlob('hydra-long-section.svg',new XMLSerializer().serializeToString(output),'image/svg+xml');
 }
+function renderProfileModel(){
+  const active=simulationView?.profile(),model=active||routeDraft.model;
+  const routeNodes=new Set(routeDraft.steps.flatMap(step=>[step.from,step.to]));
+  $('nsProfileModelLegend').hidden=!model;
+  $('nsProfileModelInfo').textContent=model?model.scenario+' · '+model.time+' model clock · '+model.datum+
+    ' · Exact node level samples: '+model.values.filter(row=>routeNodes.has(row.node)).length+(active?' in simulation playback.':
+      ' from '+new Set(model.values.map(row=>row.source)).size+' sources.') : '';
+}
+
+function mountSimulationView(){
+  $('nsLayout').insertAdjacentHTML('beforebegin','<details id="nsSimulation" class="ns-review-section">'+
+    '<summary>Simulation playback</summary><p id="nsSimulationStatus" role="status"></p>'+
+    '<button type="button" id="nsIndexResults">Open simulation results</button>'+
+    '<form id="nsSimulationSetup" hidden><div class="ns-review-actions">'+
+    '<label>Indexed results<select name="source" required></select></label>'+
+    '<label>Scale minimum<input name="minimum" type="number" step="any" required></label>'+
+    '<label>Scale maximum<input name="maximum" type="number" step="any" required></label>'+
+    '<label id="nsSimulationDatum" hidden>Geometry datum<input name="datum" maxlength="128"></label></div>'+
+    '<p id="nsSimulationSourceInfo"></p><p><label><input name="confirm" type="checkbox" required> I reviewed the model revision, typed asset mappings and result convention against this network</label></p>'+
+    '<div class="ns-review-actions"><button type="submit">Apply results layer</button><button type="button" id="nsClearSimulation" disabled>Remove results layer</button></div></form>'+
+    '<div id="nsSimulationTransport" class="ns-review-actions" hidden><label>Simulation sample<input id="nsSimulationTime" type="range" min="0" max="0" step="1" value="0"></label>'+
+    '<button type="button" id="nsSimulationBack">Previous sample</button><button type="button" id="nsSimulationPlay" aria-pressed="false">Play</button><button type="button" id="nsSimulationNext">Next sample</button>'+
+    '<label>Samples per second<select id="nsSimulationSpeed"><option>1</option><option selected>2</option><option>5</option></select></label></div>'+
+    '<p id="nsSimulationStamp"></p><div id="nsSimulationLegend" class="ns-simulation-legend" hidden></div></details>');
+  const panel=$('nsSimulation'),form=$('nsSimulationSetup'),fields=form.elements;
+  const note=$('nsSimulationStatus'),stamp=$('nsSimulationStamp'),legend=$('nsSimulationLegend');
+  const transport=$('nsSimulationTransport'),time=$('nsSimulationTime'),play=$('nsSimulationPlay');
+  const back=$('nsSimulationBack'),next=$('nsSimulationNext'),clear=$('nsClearSimulation');
+  const titles={level:'Level',flow:'Flow',velocity:'Velocity',depth:'Depth','total-head':'Total head',
+    'flood-depth':'Flood depth','flood-volume':'Flood volume','surcharge-state':'Surcharge state'};
+  let layer=null,profile=null,generation=0,playing=0,timer=null,groups=new Map();
+  const session=()=>window.HydraResultsWorkspace?.session;
+  const sources=()=>session()?.sources()||[];
+  const candidate=()=>sources().find(item=>item.sourceId===Number(fields.source.value));
+  const eligible=()=>network.contextFormat==='icm-csv-v1'&&!editing&&!inOverview();
+  const ranges={flow:[-1,1],velocity:[-3,3],level:[0,10],'total-head':[0,10]};
+  function stop(){
+    ++playing;clearTimeout(timer);timer=null;play.textContent='Play';play.setAttribute('aria-pressed','false');
+  }
+  function redrawProfile(){
+    if($('nsProfile').hidden||!routeDraft.steps.length)return;
+    const active=document.activeElement;
+    const focused=active.closest('#nsProfilePlot [data-ns-profile-link],#nsProfilePlot [data-ns-profile-node]');
+    const kind=focused?.hasAttribute('data-ns-profile-link')?'nsProfileLink':'nsProfileNode';
+    plotProfile(routeDraft.steps);renderProfileModel();
+    if(focused)[...$('nsProfilePlot').querySelectorAll('[tabindex="0"]')].find(item=>item.dataset[kind]===focused.dataset[kind])?.focus({preventScroll:true});
+  }
+  function removeMarks(){
+    for(const group of groups.values()){
+      group.removeAttribute('data-ns-sample');
+      group.querySelector('[data-ns-result-marker]')?.remove();
+      group.querySelector('[data-ns-result-value]')?.remove();
+      if(group.dataset.nsSimulationLabel){group.setAttribute('aria-label',group.dataset.nsSimulationLabel);delete group.dataset.nsSimulationLabel;}
+    }
+    groups.clear();
+  }
+  function decorate(rebuild=false){
+    if(rebuild)groups=new Map();
+    if(!layer||!layer.values)return;
+    if(!groups.size){
+      for(const group of $('nsSvg').children){
+        const {nsNode,nsEdge}=group.dataset;
+        if(nsNode)groups.set(R.refKey({kind:'node',id:nsNode}),group);
+        if(nsEdge)groups.set(R.refKey({kind:'edge',id:nsEdge}),group);
+      }
+    }
+    for(const [index,column] of layer.columns.entries()){
+      const match=layer.matches.get(column.series),group=groups.get(R.refKey(match));
+      if(!group)continue;
+      const value=layer.values[index],quantity=titles[column.quantity];
+      const text=quantity+' · '+(Number.isFinite(value)?f(value,6)+' '+column.unit:'Missing sample')+
+        (column.location!=='node'?' · '+column.location+' end':'');
+      group.dataset.nsSample=R.simulationBand(value,layer.low,layer.high);
+      if(!group.dataset.nsSimulationLabel)group.dataset.nsSimulationLabel=group.getAttribute('aria-label');
+      group.setAttribute('aria-label',group.dataset.nsSimulationLabel+' · '+text);
+      let annotation=group.querySelector('[data-ns-result-value]');
+      if(!annotation){
+        annotation=svgElement('title',{'data-ns-result-value':''});
+        group.prepend(annotation);
+        if(match.kind==='node')group.append(svgElement('circle',{'data-ns-result-marker':'',cx:-23,cy:-18,r:6}));
+      }
+      annotation.textContent=text;
+    }
+  }
+  function reset(message=''){
+    const wasApplied=Boolean(profile);
+    stop();++generation;layer=null;profile=null;removeMarks();
+    transport.hidden=true;legend.hidden=true;stamp.textContent='';clear.disabled=true;fields.confirm.checked=false;
+    if(message&&panel.open)note.textContent=message;
+    if(wasApplied)redrawProfile();
+  }
+  function selectSource(){
+    const source=candidate(),column=source?.columns[0];
+    fields.confirm.checked=false;fields.datum.value='';
+    $('nsSimulationDatum').hidden=column?.quantity!=='level';
+    if(!source){$('nsSimulationSourceInfo').textContent='';return;}
+    const [low,high]=ranges[column.quantity]||[0,1];
+    fields.minimum.value=low;fields.maximum.value=high;
+    $('nsSimulationSourceInfo').textContent=source.simulation+' · Revision '+source.modelRevision+' · '+source.event+
+      ' · '+titles[column.quantity]+' ('+column.unit+')'+(column.location==='node'?'':' · '+column.location+' end')+
+      (column.datum?' · '+column.datum:'');
+  }
+  function refreshSources(){
+    const wanted=fields.source.value,available=sources();
+    const removed=layer&&!available.includes(layer.source);
+    if(removed)reset('The results source was removed. Import it again to resume.');
+    fields.source.replaceChildren(new Option('Choose an indexed source',''),...available.map(item=>new Option(item.scenario+' · '+item.filename,item.sourceId)));
+    fields.source.value=wanted;if(fields.source.selectedIndex<0)fields.source.selectedIndex=0;
+    form.hidden=!eligible()||!available.length;
+    if(wanted!==fields.source.value)selectSource();
+    if(removed)return;
+    if(!eligible())note.textContent='Open a native ICM network in detailed Explore mode to use simulation playback.';
+    else if(!available.length)note.textContent='Index simulation result columns before applying a layer.';
+    else if(!layer)note.textContent='Choose a source and review its model revision before applying a layer.';
+  }
+  async function drawFrame(){
+    if(!layer)return;
+    const current=layer,index=time.valueAsNumber,request=++generation;
+    back.disabled=index===0;next.disabled=index>=current.source.count-1;
+    try{
+      const frame=await session().frame(current.source.sourceId,index,current.columns.map(column=>column.series));
+      if(request!==generation)return;
+      if(!frame.values||!Number.isFinite(frame.time))throw new Error('The selected sample is unavailable.');
+      current.values=frame.values;
+      const timestamp=new Date(frame.time).toISOString().slice(0,-1).replace('T',' ');
+      const valid=frame.values.filter(Number.isFinite).length;
+      stamp.textContent=current.source.scenario+' · '+timestamp+' (project clock) · '+valid+' of '+current.columns.length+' matched assets have a sample.';
+      time.setAttribute('aria-valuetext',timestamp+' project clock');
+      decorate();
+      const datum=current.geometryDatum;
+      profile=datum?{scenario:current.source.scenario,time:timestamp,datum,values:current.columns.flatMap((column,i)=>
+        Number.isFinite(frame.values[i])?[{node:current.matches.get(column.series).id,level:frame.values[i]}]:[])}:null;
+      if(profile)redrawProfile();
+    }catch(error){if(request===generation)reset(error.message);}
+  }
+  fields.source.onchange=()=>{reset();selectSource();};
+  form.onsubmit=event=>{
+    event.preventDefault();
+    const source=candidate();if(!source||!eligible())return;
+    const [low,high]=[fields.minimum.valueAsNumber,fields.maximum.valueAsNumber];
+    if(!(low<high)||!Number.isFinite(high-low)){note.textContent='Enter a finite scale maximum greater than its minimum.';return;}
+    const matches=R.simulationBindings(network,source.columns),columns=source.columns.filter(column=>matches.has(column.series));
+    if(!columns.length){note.textContent='None of the result columns uniquely match the network’s typed asset IDs.';return;}
+    const first=columns[0],datum=fields.datum.value.trim();
+    if(datum&&(first.quantity!=='level'||!columns.every(column=>column.datum===datum))){
+      note.textContent='The entered geometry datum must exactly match the declared results datum. Leave it blank for map-only review.';return;
+    }
+    reset();
+    fields.confirm.checked=true;
+    layer={source,columns,matches,low,high,values:null,geometryDatum:first.asset.kind==='node'&&first.quantity==='level'?datum:''};
+    time.value='0';time.max=String(source.count-1);play.disabled=source.count<2;
+    transport.hidden=false;clear.disabled=false;legend.hidden=false;
+    const unit=first.unit;
+    legend.replaceChildren(inspectorElement('strong',titles[first.quantity]+' ('+unit+')'),
+      ...Array.from({length:5},(_,band)=>{
+        const a=low+(high-low)*(band/5),b=low+(high-low)*((band+1)/5);
+        const item=inspectorElement('span',(band===0?'< '+f(b,4):band===4?'≥ '+f(a,4):f(a,4)+' to < '+f(b,4)));
+        item.dataset.nsSample=String(band);return item;
+      }),inspectorElement('span','Dashed link or hollow marker: missing sample'));
+    note.textContent=columns.length+' of '+source.columns.length+' result columns matched. Other assets retain their schematic styling.'+
+      (first.asset.kind==='link'?' Link arrows show nominal topology. Signs are available in asset labels.':'');
+    void drawFrame();
+  };
+  function step(delta){time.value=String(time.valueAsNumber+delta);return drawFrame();}
+  function schedule(run){
+    timer=setTimeout(async()=>{
+      if(run!==playing)return;
+      await step(1);
+      if(run!==playing)return;
+      if(time.value===time.max)stop();else schedule(run);
+    },1000/Number($('nsSimulationSpeed').value));
+  }
+  play.onclick=()=>{
+    if(timer!==null){stop();return;}
+    if(time.value===time.max){time.value='0';void drawFrame();}
+    play.textContent='Pause';play.setAttribute('aria-pressed','true');schedule(++playing);
+  };
+  time.oninput=()=>{stop();void drawFrame();};back.onclick=()=>{stop();void step(-1);};next.onclick=()=>{stop();void step(1);};
+  clear.onclick=()=>reset('Simulation layer removed.');
+  $('nsIndexResults').onclick=()=>window.__ICM_PRECISION_WORKBENCH__.navigate('network','simulation-results',true);
+  panel.addEventListener('toggle',()=>{if(panel.open)refreshSources();else stop();});
+  window.addEventListener('icm:simulation-sources-changed',refreshSources);
+  window.addEventListener('icm:route-changed',({detail})=>{if(detail.page!=='schematic')stop();else if(panel.open)refreshSources();});
+  simulationView={decorate,reset,refreshSources,profile:()=>profile};
+}
+
 function displayProfile(){
   const steps=routeDraft.steps;
   $('nsProfile').hidden=!steps.length;$('nsCapacityScreen').hidden=true;renderRouteTrace();
@@ -2018,9 +2208,7 @@ function displayProfile(){
   const scenarios=new Set(network.nodes.filter(node=>nodes.has(node.id)).flatMap(node=>
     node.bindings.filter(binding=>binding.role==='model'&&binding.quantity==='level').map(binding=>binding.scenario)));
   $('nsProfileScenarios').replaceChildren(...[...scenarios].sort().map(name=>new Option(name,name)));
-  $('nsProfileModelLegend').hidden=!model;
-  $('nsProfileModelInfo').textContent=model?model.scenario+' · '+model.time+' model clock · '+model.datum+
-    ' · '+model.values.length+' exact level samples from '+new Set(model.values.map(row=>row.source)).size+' sources.':'';
+  renderProfileModel();
   $('nsClearModelLevels').disabled=!model;
   const table=tableWithHeaders(['Link','Chainage (m)','Length (m)','Invert upstream / downstream (m)','Width × height (mm)','Gradient (m/m)','Review','Source']);
   const current=new Set(network.edges.map(edge=>edge.id));
@@ -2372,7 +2560,7 @@ function mount(){
     '<div id="nsEditTools" class="ns-edit-tools" hidden>'+selectHtml('id="nsAddType"',Object.entries(C.types).filter(([key])=>!['manhole','label'].includes(key)),'cso')+'<button id="nsAddAsset">+ Asset</button><button id="nsAddManhole">+ Manhole</button><button id="nsAddLabel">+ Label</button><button id="nsConnect" aria-pressed="false">Connect</button><span id="nsColourChoices"></span><button id="nsUndo" aria-label="Undo last edit">Undo</button><button id="nsDelete">Delete selected</button></div>'+
     '<div id="nsLayout"><div id="nsCanvas" tabindex="0" aria-label="Network schematic. Drag the background or use the middle mouse button to pan. Turn on Zoom to use the mouse wheel."><svg id="nsSvg" xmlns="'+NS+'" aria-label="Site network overview"></svg><section id="nsPicker" role="dialog" aria-label="Assign imported datasets" hidden></section><div class="ns-canvas-note">Connections show topology only</div><svg id="nsMinimap" viewBox="0 0 160 100" tabindex="0" role="img" aria-label="Network minimap. Click or drag to move the view. Arrow keys pan; Enter fits the network." hidden></svg><div id="nsContextActions" aria-label="Asset actions" hidden><button type="button" data-ns-context="focus">Focus selected</button><button type="button" data-ns-context="up">Trace upstream</button><button type="button" data-ns-context="down">Trace downstream</button><button type="button" data-ns-context="isolate">Isolate branch</button></div><div class="ns-camera-tools"><button id="nsPan" aria-pressed="false">Pan</button><button id="nsZoomMode" aria-pressed="false" title="Use the mouse wheel to zoom at the pointer. Drag with the middle mouse button to pan.">Zoom</button><button id="nsZoomOut" aria-label="Zoom out">−</button><span id="nsZoom">100%</span><button id="nsZoomIn" aria-label="Zoom in">+</button><button id="nsFit">Fit</button><button id="nsFocusSelected">Focus selected</button><button id="nsResetView">Reset view</button></div></div><aside id="nsPopup" aria-label="Selected asset evidence" hidden></aside><aside id="nsDrawer" aria-label="Asset properties" hidden></aside></div><p id="nsStatus" role="status" aria-live="polite">Create your site overview, then assign evidence to individual assets.</p></div>';
   mounted=true;container.addEventListener('click',onClick);container.addEventListener('change',event=>updateField(event.target));
-  $('nsEdit').onclick=()=>{if(inOverview())changeOverview(false);editing=!editing;popupVisible=false;tool='select';connectFrom=null;render();};
+  $('nsEdit').onclick=()=>{if(inOverview())changeOverview(false);editing=!editing;simulationView?.reset();simulationView?.refreshSources();popupVisible=false;tool='select';connectFrom=null;render();};
   $('nsAddAsset').onclick=()=>add($('nsAddType').value);$('nsAddManhole').onclick=()=>add('manhole');$('nsAddLabel').onclick=()=>add('label');
   $('nsConnect').onclick=()=>{tool=tool==='connect'?'select':'connect';connectFrom=null;render();status('Click the upstream point, then the downstream point.');};
   $('nsPan').onclick=()=>{tool=tool==='pan'?'select':'pan';connectFrom=null;render();};
@@ -2418,7 +2606,7 @@ function mount(){
         for(const conduit of revised.edges)conduit.bends=[];
       }
       checkpoint();network=revised;resetRouteDraft();branchIsolated=false;selected=null;popupVisible=false;multi.clear();highlight=null;connectFrom=null;freshness.clear();
-      render();if(first)fit();persist();
+      simulationView?.refreshSources();render();if(first)fit();persist();
       status('Model context import: '+network.nodes.length+' nodes and '+network.edges.length+' links. Arrows follow nominal topology.');
       importDialog.close();
     }catch(error){$('nsContextMessage').textContent=error.message;}
@@ -2519,7 +2707,7 @@ function mount(){
   window.addEventListener('pagehide',flushSave);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSave();});
   window.addEventListener('icm:source-pool-changed',()=>{freshness.clear();if(analysisContext){++analysisGeneration;globalThis.Plotly?.purge('nsAnalysisPlot');$('nsAnalysisCounts').replaceChildren(annualTable(network.nodes.find(n=>n.id===analysisContext.id)||{id:'missing',bindings:[]},true));$('nsCommonResult').hidden=true;$('nsAnalysisMessage').textContent='Sources changed. Reopen this analysis to refresh.';}renderCanvas();renderReview();if(editing)renderDrawer();});
-  mountReview();mountRouteReview();render();
+  mountReview();mountRouteReview();mountSimulationView();render();
 }
 async function open(){
   if(!mounted){let value=state.networkSchematicWorkspace;if(!value){try{value=JSON.parse(localStorage.getItem(STORE)||'null');}catch{}}
