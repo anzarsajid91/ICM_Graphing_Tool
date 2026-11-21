@@ -92,4 +92,31 @@ const invalidMeasure=buffer.slice(0);new DataView(invalidMeasure).setFloat64(dat
 await assert.rejects(importPackage(new Blob([invalidMeasure])),/non-finite measurement/);
 const repeatedClock=buffer.slice(0);new DataView(repeatedClock).setFloat64(dataStart+8,start,true);
 await assert.rejects(importPackage(new Blob([repeatedClock])),/timestamps must increase strictly/);
+
+const manyRows=Array.from({length:5001},(_,sample)=>
+  new Date(start+sample*300000).toISOString().slice(0,-1)+','+(sample*1000)+','+(sample===4096?'#N/A':20+sample)+',20');
+const many=await importCsv(new Blob(['Time,Flow,Level,Node\n'+manyRows.join('\n')]),{...config,headerRecord:1,unitsRecord:undefined});
+let bytesRead=0;
+class CountedFile extends Blob {
+  slice(from,to){const part=super.slice(from,to);bytesRead+=part.size;return part;}
+}
+const backedFile=new CountedFile([many.exportPackage()]);
+const backed=await importPackage(backedFile,{fileBacked:true,byteLimit:150000});
+assert.equal(backed.metadata.accessMode,'file');
+assert(backed.metadata.allocationBytes<160032,'The package payload does not need a full retained copy');
+assert.equal(backed.count,5001);
+const boundary=many.timestamp(4096),before=many.timestamp(4095),after=many.timestamp(4097);
+bytesRead=0;
+assert.deepEqual(await backed.frame(before,[keys[1]]),[4115]);
+const initialRead=bytesRead;
+assert(initialRead<=2*4096*8,'Lookup reads the time and selected value column only');
+assert.deepEqual(await backed.frame(many.timestamp(4094),[keys[1]]),[4114]);
+assert.equal(bytesRead,initialRead,'A second position in the cached block needs no file read');
+assert.equal(await backed.timestamp(4096),boundary);
+assert.deepEqual(await backed.frame(boundary,keys),[4096,null,20]);
+assert.equal(await backed.frame(boundary+1,keys),null);
+assert.deepEqual([...(await backed.seriesWindow(keys[1],before,after)).values],[4115,NaN,4117]);
+assert.deepEqual(await backed.envelope(keys[1],before,after),many.envelope(keys[1],before,after));
+assert.equal((await backed.exportPackage()).size,backedFile.size);
+await assert.rejects(importPackage(backedFile,{fileBacked:true,byteLimit:1024}),/typed-data budget/);
 console.log('SIMULATION_RESULTS_UNIT_PASS');

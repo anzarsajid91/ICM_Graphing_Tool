@@ -32,7 +32,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized real-sample map/profile playback, transport controls, windowing, scenario comparison, extrema and missingness | Partial |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
-| 6.5 | Local worker, series parser, source identity and registry | Native and portable result formats, typed provenance, bounded indexed worker, cancellation and exact selective lookup | Partial. File-backed range access and browser capacity evidence remain open |
+| 6.5 | Local worker, series parser, source identity and registry | Native and portable formats, typed provenance, bounded memory and optional file-backed worker, cancellation and exact selective lookup | Partial. Larger package production and full device-capacity review remain open |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
 | 7.2 | Gauge qualification, cumulative/event data | Common-clock spatial comparison, event totals, correlation, peak offset, coverage, suspect bins and WAPUG linkage | Verified locally |
 | 7.3 | Weekly review, coverage and WAPUG/FSAT | Suitability screen for a selected monitored location and rainfall candidate, using measured support, reviewed range, site evidence and current qualification | Verified locally for candidate screening |
@@ -861,7 +861,7 @@ other state.
   suites checked download, preview, truncated-file recovery, reimport,
   duplicate package detection and playback against native geometry. Each
   saw 32 guarded requests with no violations. The build and privacy gates
-  passed. File-backed access above the current memory budget remains open.
+  passed.
 - In one synthetic Node run, 40 result channels at five-minute steps for
   105,121 timestamps made a 54,965,841-byte CSV and a 34,488,880-byte package.
   The matched reader took 1,134 ms for CSV and 94 ms for the portable file.
@@ -870,3 +870,31 @@ other state.
   decompression stage. The test held generation data and both indexes and
   reached 416,528 KiB cumulative process peak RSS. This is engine evidence
   excluding browser and production comparisons.
+
+### Bounded file-backed simulation access
+
+- The portable import can validate a local selected file and retain only
+  block-end clocks and one block's cache. Exact frames read requested
+  columns, and adjacent accesses reuse buffered values. Series and extrema
+  use original samples across block boundaries. The source stays indexed
+  under the same identity when a newly confirmed access mode replaces it.
+  The tab never stores the file in persistent browser storage.
+- A 5,001-sample contract fixture verified operation above its imposed
+  full-copy budget, selective reads, cache hits, exact missing values,
+  inter-sample withholding, windows and extrema across a block boundary.
+  Both browser suites checked mode change, cancellation without replacing
+  previous evidence, exact samples and map playback with 32 guarded
+  requests each and no violations. The build and privacy gates passed.
+- An independently written 81,595,147-byte annual file with 96 channels and
+  105,121 timestamps exceeded the in-memory budget and indexed file-backed
+  in Chromium in 1,459 ms and Firefox in 929 ms. The typed reserve was
+  1,049,000 bytes. The keyboard jump to the exact final sample took 57 ms
+  and 16 ms respectively in one local run. The browser request observer
+  saw 32 requests each with no violations. Figures include command and UI
+  latency, and the reserve is not total browser RAM.
+- The same Node engine test indexed in 205 ms, averaged 0.51 ms at
+  representative cross-block frames and scanned one full-series extrema
+  in 16.2 ms. The native source was smaller for this low-precision fixture.
+  The local browser exporter produces packages from indexed sources. A
+  streaming producer for sources that exceed the in-memory intake budget
+  remains open.

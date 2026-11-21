@@ -126,7 +126,7 @@
     "web/assets/runtime.release.js": "1f5f5312a59678e937aa4acd43e8f04d91228b13eb7eb013e2408bdc556ff766",
     "web/assets/network-schematic.js": "be77622b0aab12750e50ecc2fcae4017ca9271386ae35d9e2c5b95d9e68e4bc3",
     "web/assets/precision-workbench.js": "154a13c64ebcf411ea3e34840eeb01fb2110de5092023f7d06819b2c944e8a50",
-    "web/assets/simulation-results-worker.js": "21ea9ad7dc7e93a6483a80efcb599519571fda6e44afe3106c43d6d7440f82be",
+    "web/assets/simulation-results-worker.js": "3b4cb0abbd60b52f4c7464d4b09cf0257772b8b3bd69b498e9bed434ee7115a1",
     "scripts/verify_data_confidentiality.py": "6aac0bd0fbd78f84f49c39be4f2ecd08b6812dd0974579df9178fd61c27801cb",
     "scripts/verify_vendor.py": "26272a33a524532c21d591a917a45096f79eccd7761690dcf73499804f8824c2",
     "web/tests/privacy-network.mjs": "d9de1960118a7d97938e7bbcb0f577079f7d1b123826f20a4f9e14da46711ef5",

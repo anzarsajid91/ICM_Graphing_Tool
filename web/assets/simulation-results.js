@@ -77,6 +77,8 @@ function mount() {
       <details id="hbResultPortable"><summary>Portable results package</summary>
         <p>Reopen a Hydra Bench package with its reviewed typed mappings, project clock and units. Check the declared model revision before indexing.</p>
         <label>Local results package<input type="file" name="portable" accept=".hbresults,application/octet-stream"></label>
+        <label><input type="checkbox" name="fileBacked"> Read from the local package when needed</label>
+        <p>File-backed access retains fewer samples in memory. Keep the selected file available while this tab is open.</p>
         <p id="hbResultPortableStatus" role="status"></p><button type="button" id="hbIndexPortable" disabled>Index portable results</button>
       </details>
       <progress id="hbResultProgress" max="100" hidden aria-label="Simulation import progress"></progress>
@@ -179,7 +181,9 @@ function mount() {
       packageStatus.textContent=`${info.count} timestamps, ${info.columns.length} mapped series · ${info.simulation} · Revision ${info.modelRevision} · ${info.scenario} · ${info.event}`;
     }catch(error){if(revision===packageGeneration)packageStatus.textContent=error.message;}
   };
-  indexPackage.onclick=()=>{if(reviewedPackage)void indexSource("import-package",{file:reviewedPackage});};
+  indexPackage.onclick=()=>{
+    if(reviewedPackage)void indexSource("import-package",{file:reviewedPackage,fileBacked:controls.fileBacked.checked});
+  };
 
   form.onsubmit=async event=>{
     event.preventDefault();
@@ -196,7 +200,7 @@ function mount() {
   };
   async function indexSource(operation,data){
     if(currentImport)return;
-    submit.disabled=true;controls.file.disabled=true;packageInput.disabled=true;indexPackage.disabled=true;
+    submit.disabled=true;controls.file.disabled=true;packageInput.disabled=true;controls.fileBacked.disabled=true;indexPackage.disabled=true;
     cancel.hidden=false;progress.hidden=false;progress.value=0;
     importer.textContent=operation==="import-package"?"Checking and indexing the portable samples locally…":
       "Indexing the selected result columns in a browser worker…";
@@ -204,12 +208,14 @@ function mount() {
       const task=client.request(operation,data,(loaded,total)=>{progress.value=100*loaded/total;});
       currentImport=task.id;
       const info=await task.result;
-      if(!datasets.has(info.sourceId)){datasets.set(info.sourceId,info);announceSources();}
+      if(!datasets.has(info.sourceId)||info.accessModeChanged){datasets.set(info.sourceId,info);announceSources();}
       refreshSources(info.sourceId);
-      importer.textContent=info.reused?"This result source and mapping are already indexed.":`${info.count} timestamps indexed for ${info.columns.length} result series.`;
+      importer.textContent=info.reused?"This result source and mapping are already indexed.":info.accessModeChanged?
+        "Local access mode updated for this result source.":`${info.count} timestamps indexed for ${info.columns.length} result series.`;
     } catch(error) {importer.textContent=error.message;}
     finally {
-      currentImport=null;submit.disabled=false;controls.file.disabled=false;packageInput.disabled=false;indexPackage.disabled=!reviewedPackage;
+      currentImport=null;submit.disabled=false;controls.file.disabled=false;packageInput.disabled=false;controls.fileBacked.disabled=false;
+      indexPackage.disabled=!reviewedPackage;
       cancel.disabled=false;cancel.hidden=true;progress.hidden=true;
     }
   }
@@ -233,6 +239,7 @@ function mount() {
     if (!dataset){details.textContent="Import a results CSV to review available samples.";return;}
     details.textContent=`${dataset.simulation} · Revision ${dataset.modelRevision} · ${dataset.event} · ${dataset.missingCount} missing mapped samples`;
     if(dataset.storageFormat==="hbresults-v1")details.textContent+=" · Portable package";
+    if(dataset.accessMode==="file")details.textContent+=" · File-backed access";
     for (const [i,column] of dataset.columns.entries()) {
       const a=column.asset,id=a.kind==="node"?a.id:a.upstream+"."+a.suffix;
       series.add(option(`${id} · ${title(column.quantity)} · ${title(column.location)}`,i));

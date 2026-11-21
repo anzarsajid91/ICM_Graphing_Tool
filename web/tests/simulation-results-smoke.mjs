@@ -203,6 +203,18 @@ try {
   await panel.getByRole('button',{name:'Next sample'}).click();
   await panel.locator('#hbResultSample').filter({hasText:'00:15:00.000 (project clock) · -0.4 m³/s'}).waitFor();
   await indexPackage.click();await status.filter({hasText:'already indexed'}).waitFor();
+  const countBefore=await panel.getByLabel('Indexed source').locator('option').count();
+  await panel.getByLabel('Read from the local package when needed',{exact:true}).check({timeout:5000});
+  await panel.locator('form').evaluate(form=>{form.querySelector('#hbIndexPortable').click();form.querySelector('#hbCancelResult').click();});
+  await status.filter({hasText:'Import cancelled.'}).waitFor();
+  assert.equal(await panel.getByLabel('Indexed source').locator('option').count(),countBefore);
+  await indexPackage.click();await status.filter({hasText:'Local access mode updated'}).waitFor();
+  assert.match(await panel.locator('#hbResultDetails').innerText(),/File-backed access/);
+  assert.equal(await panel.getByLabel('Indexed source').locator('option').count(),countBefore);
+  await panel.getByRole('button',{name:'Next sample'}).click();
+  await panel.locator('#hbResultSample').filter({hasText:'00:07:00.000 (project clock) · Missing'}).waitFor();
+  await panel.getByRole('button',{name:'Previous sample'}).click();
+  await panel.locator('#hbResultSample').filter({hasText:'00:00:00.000 (project clock) · 0 m³/s'}).waitFor();
   await page.getByRole('tab',{name:'Schematic',exact:true}).click();
   await indexed.selectOption({label:'Baseline · synthetic-roundtrip.hbresults'});
   await confirmation.check();await layer.click();

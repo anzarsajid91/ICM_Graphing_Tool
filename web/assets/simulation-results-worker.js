@@ -13,15 +13,14 @@ const BYTE_LIMIT = 64 * 1024 ** 2;
 let active = null, revision = 0;
 
 function summary(index, sourceId, filename) {
-  return {sourceId, filename, count:index.count, first:index.timestamp(0),
-    last:index.timestamp(index.count-1), ...index.metadata};
+  return {sourceId, filename, count:index.count, first:index.first,last:index.last, ...index.metadata};
 }
 
 function sourceKey(index) {
   const m=index.metadata;
   return JSON.stringify([m.fingerprint.digest,m.modelRevision,m.simulation,m.scenario,m.event,
     m.clock,m.missingToken,m.columns.map(c=>[c.series,c.column,c.sourceUnit,c.datum,c.sourceAttribute]),
-    index.count,index.timestamp(0),index.timestamp(index.count-1)]);
+    index.count,index.first,index.last]);
 }
 
 function resolveSource(id) {
@@ -47,12 +46,18 @@ async function operation(id, name, data) {
           signal:controller.signal,byteLimit:BYTE_LIMIT-used,
           onProgress:(loaded,total)=>self.postMessage({id,type:"progress",loaded,total})
         };
-        const index = name==="import-package"?await core.importPackage(data.file,options):await core.importCsv(data.file,data.config,options);
+        const index = name==="import-package"?await core.importPackage(data.file,{...options,fileBacked:data.fileBacked===true}):
+          await core.importCsv(data.file,data.config,options);
         controller.signal.throwIfAborted();
         const key=sourceKey(index);
-        for (const record of sources.values()) if (record.key===key) return {...record.summary,reused:true};
-        const sourceId=++revision;
         const filename=typeof data.file.name==="string" ? data.file.name.slice(0,256) : "Local results";
+        for (const [sourceId,record] of sources) if (record.key===key){
+          if(record.summary.accessMode===index.metadata.accessMode)return {...record.summary,reused:true};
+          const metadata=summary(index,sourceId,filename);
+          sources.set(sourceId,{index,key,summary:metadata});
+          return {...metadata,accessModeChanged:true};
+        }
+        const sourceId=++revision;
         const metadata=summary(index,sourceId,filename);
         sources.set(sourceId,{index,key,summary:metadata});
         return metadata;
@@ -62,8 +67,9 @@ async function operation(id, name, data) {
     case "frame": {
       const source=resolveSource(data.sourceId);
       if (!Array.isArray(data.keys) || data.keys.length>20000) throw new Error("Select a valid set of result series.");
-      const time=data.time ?? source.timestamp(data.index);
-      return {time,values:time===null ? null : source.frame(time,data.keys)};
+      if(data.time==null&&source.frameAt)return source.frameAt(data.index,data.keys);
+      const time=data.time ?? await source.timestamp(data.index);
+      return {time,values:time===null ? null : await source.frame(time,data.keys)};
     }
     case "series": return resolveSource(data.sourceId).seriesWindow(data.key,data.start,data.end);
     case "envelope": return resolveSource(data.sourceId).envelope(data.key,data.start,data.end);

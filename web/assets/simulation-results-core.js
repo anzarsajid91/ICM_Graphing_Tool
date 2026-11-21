@@ -187,6 +187,16 @@ function compile(config) {
     contract:{schemaVersion:1,simulation,modelRevision,scenario,event,clock:config.clock,temporalSupport:"instantaneous"}};
 }
 
+function lowerIndex(length,get,target){
+  let low=0,high=length;
+  while(low<high){
+    const pivot=(low+high)>>>1;
+    if(get(pivot)<target)low=pivot+1;
+    else high=pivot;
+  }
+  return low;
+}
+
 function makeIndex(chunks, rowsPerChunk, count, metadata) {
   const positions = new Map(metadata.columns.map((column,index)=>[column.series,index]));
   const at = index => chunks[Math.floor(index/rowsPerChunk)].time[index%rowsPerChunk];
@@ -194,21 +204,13 @@ function makeIndex(chunks, rowsPerChunk, count, metadata) {
     const chunk=chunks[Math.floor(index/rowsPerChunk)];
     return chunk.values[column*chunk.time.length+index%rowsPerChunk];
   };
-  function lowerBound(clock) {
-    let low = 0, high = count;
-    while (low < high) {
-      const pivot = (low + high) >>> 1;
-      if (at(pivot) < clock) low = pivot+1;
-      else high = pivot;
-    }
-    return low;
-  }
+  const lowerBound=clock=>lowerIndex(count,at,clock);
   function bounds(start,end) {
     if (!Number.isFinite(start) || !Number.isFinite(end) || start>end) throw new Error("Choose a valid result window.");
     const upper = lowerBound(end);
     return [lowerBound(start),upper+(upper<count&&at(upper)===end ? 1 : 0)];
   }
-  return {metadata, count,
+  return {metadata,count,first:at(0),last:at(count-1),
     exportPackage(){return encodePackage(chunks,rowsPerChunk,count,metadata);},
     timestamp(index) {
       if (!Number.isInteger(index) || index<0 || index>=count) return null;
@@ -248,6 +250,114 @@ function makeIndex(chunks, rowsPerChunk, count, metadata) {
       }
       return {min,max,minTime,maxTime,valid,samples:right-left};
     }
+  };
+}
+
+function readLE(buffer){
+  if(littleEndian)return new Float64Array(buffer);
+  const view=new DataView(buffer);
+  return Float64Array.from({length:buffer.byteLength/8},(_,index)=>view.getFloat64(index*8,true));
+}
+
+function fileIndex(blob,layout,lastTimes,first,metadata){
+  const {bodyOffset,count,rowsPerChunk,bytesPerRow}=layout;
+  const positions=new Map(metadata.columns.map((column,index)=>[column.series,index+1]));
+  let cached=null;
+  let pending=Promise.resolve();
+  function serial(action){
+    const request=pending.then(action);
+    pending=request.catch(()=>{});
+    return request;
+  }
+  async function readColumns(block,columns){
+    if(cached?.block!==block)cached={block,columns:new Map()};
+    const cache=cached.columns,rows=Math.min(rowsPerChunk,count-block*rowsPerChunk);
+    const missing=[...new Set(columns)].filter(column=>!cache.has(column)).sort((a,b)=>a-b);
+    const start=bodyOffset+block*rowsPerChunk*bytesPerRow;
+    for(let i=0;i<missing.length;){
+      const first=missing[i];let last=first;
+      while(++i<missing.length&&missing[i]===last+1)last++;
+      const request=blob.slice(start+first*rows*8,start+(last+1)*rows*8).arrayBuffer().then(readLE);
+      for(let column=first;column<=last;column++){
+        const offset=(column-first)*rows;
+        cache.set(column,request.then(values=>values.subarray(offset,offset+rows)));
+      }
+    }
+    return Promise.all(columns.map(column=>cache.get(column)));
+  }
+  async function timestamp(index){
+    if(!Number.isInteger(index)||index<0||index>=count)return null;
+    const [times]=await readColumns(Math.floor(index/rowsPerChunk),[0]);
+    return times[index%rowsPerChunk];
+  }
+  async function position(time){
+    const block=lowerIndex(lastTimes.length,index=>lastTimes[index],time);
+    if(block===lastTimes.length)return {block,index:count,exact:false};
+    const [times]=await readColumns(block,[0]);
+    const local=lowerIndex(times.length,index=>times[index],time);
+    return {block,index:block*rowsPerChunk+local,exact:times[local]===time};
+  }
+  async function bounds(start,end){
+    if(!Number.isFinite(start)||!Number.isFinite(end)||start>end)throw new Error("Choose a valid result window.");
+    const left=await position(start),right=await position(end);
+    return [left.index,right.index+(right.exact?1:0)];
+  }
+  async function* pieces(column,left,right){
+    for(let index=left;index<right;){
+      const local=index%rowsPerChunk,block=Math.floor(index/rowsPerChunk);
+      const count=Math.min(rowsPerChunk-local,right-index);
+      const [times,values]=await readColumns(block,[0,column]);
+      yield [times.subarray(local,local+count),values.subarray(local,local+count)];
+      index+=count;
+    }
+  }
+  const seriesPosition=key=>{
+    if(!positions.has(key))throw new Error("This result series is unavailable.");
+    return positions.get(key);
+  };
+  async function readFrame(index,keys,includeTime){
+    const slots=keys.flatMap(key=>positions.has(key)?[positions.get(key)]:[]);
+    if(includeTime)slots.unshift(0);
+    const rows=await readColumns(Math.floor(index/rowsPerChunk),slots),local=index%rowsPerChunk;
+    let source=includeTime?1:0;
+    const values=keys.map(key=>{
+      const value=positions.has(key)?rows[source++][local]:NaN;
+      return Number.isNaN(value)?null:value;
+    });
+    return includeTime?{time:rows[0][local],values}:values;
+  }
+  return {metadata,count,first,last:lastTimes.at(-1),timestamp:index=>serial(()=>timestamp(index)),
+    exportPackage(){return blob;},
+    frameAt(index,keys){return serial(()=>Number.isInteger(index)&&index>=0&&index<count?
+      readFrame(index,keys,true):{time:null,values:null});},
+    frame(time,keys){return serial(async()=>{
+      if(!Number.isFinite(time))throw new Error("Choose an exact simulation timestamp.");
+      const target=await position(time);
+      return target.exact?readFrame(target.index,keys,false):null;
+    });},
+    seriesWindow(key,start,end){return serial(async()=>{
+      const column=seriesPosition(key),[left,right]=await bounds(start,end),size=right-left;
+      if(size>WINDOW_SAMPLES)throw new Error("Select a smaller time window to retrieve up to 250,000 samples.");
+      const times=new Float64Array(size),values=new Float64Array(size);
+      let offset=0;
+      for await(const [time,series] of pieces(column,left,right)){
+        times.set(time,offset);values.set(series,offset);offset+=time.length;
+      }
+      return {times,values};
+    });},
+    envelope(key,start,end){return serial(async()=>{
+      const column=seriesPosition(key),[left,right]=await bounds(start,end);
+      let min=null,max=null,minTime=null,maxTime=null,valid=0;
+      for await(const [times,series] of pieces(column,left,right)){
+        for(const [index,value] of series.entries()){
+          if(Number.isNaN(value))continue;
+          valid++;
+          if(min===null||value<min){min=value;minTime=times[index];}
+          if(max===null||value>max){max=value;maxTime=times[index];}
+        }
+      }
+      return {min,max,minTime,maxTime,valid,samples:right-left};
+    });}
   };
 }
 
@@ -328,44 +438,45 @@ async function inspectPackage(blob){
   return {count,...metadata};
 }
 
-async function importPackage(blob,{signal,onProgress,byteLimit=DATA_BYTES}={}){
+async function importPackage(blob,{signal,onProgress,byteLimit=DATA_BYTES,fileBacked=false}={}){
   signal?.throwIfAborted();
-  const {data,bodyOffset,count,rowsPerChunk,bytesPerRow,metadata}=await packageHeader(blob);
-  const allocationBytes=count*bytesPerRow;
+  const layout=await packageHeader(blob);
+  const {data,bodyOffset,count,rowsPerChunk,bytesPerRow,metadata}=layout;
+  const blockCount=Math.ceil(count/rowsPerChunk),lastTimes=fileBacked?new Float64Array(blockCount):null;
+  const allocationBytes=fileBacked?lastTimes.byteLength+Math.min(count,rowsPerChunk)*bytesPerRow:count*bytesPerRow;
   if(allocationBytes>Math.min(DATA_BYTES,Number.isFinite(byteLimit)?byteLimit:DATA_BYTES))
     throw new Error("Selected results exceed the available typed-data budget. Clear a results source or use a smaller package.");
-  const chunks=[],hashes=new Uint8Array(32*(1+Math.ceil(count/rowsPerChunk)));
+  const chunks=[],hashes=new Uint8Array(32*(1+blockCount));
   const hash=async (bytes,index)=>hashes.set(new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256",bytes)),index*32);
   await hash(data,0);
-  let previous=-Infinity,missingCount=0;
+  let previous=-Infinity,first=null,missingCount=0;
   for(let start=0;start<count;start+=rowsPerChunk){
     signal?.throwIfAborted();
     const rows=Math.min(rowsPerChunk,count-start),offset=bodyOffset+start*bytesPerRow;
     const buffer=await blob.slice(offset,offset+rows*bytesPerRow).arrayBuffer();
-    await hash(buffer,chunks.length+1);
-    const valuesPerBlock=buffer.byteLength/8;
-    let decoded;
-    if(littleEndian)decoded=new Float64Array(buffer);
-    else{
-      const view=new DataView(buffer);
-      decoded=Float64Array.from({length:valuesPerBlock},(_,index)=>view.getFloat64(index*8,true));
-    }
+    const block=start/rowsPerChunk;
+    await hash(buffer,block+1);
+    const decoded=readLE(buffer);
     const time=decoded.subarray(0,rows),values=decoded.subarray(rows);
     for(const sample of time){
       if(!Number.isSafeInteger(sample)||sample< -62167219200000||sample>253402300799999||sample<=previous)
         throw new Error("Portable results timestamps must increase strictly on a valid project clock.");
+      if(first===null)first=sample;
       previous=sample;
     }
     for(const value of values){
       if(Number.isNaN(value))missingCount++;
       else if(!Number.isFinite(value))throw new Error("A portable result contains a non-finite measurement.");
     }
-    chunks.push({time,values});onProgress?.(offset+buffer.byteLength,blob.size);
+    if(fileBacked)lastTimes[block]=previous;
+    else chunks.push({time,values});
+    onProgress?.(offset+buffer.byteLength,blob.size);
   }
   signal?.throwIfAborted();
   const fingerprint=await finishFingerprint(hashes,blob.size,PACKAGE_FINGERPRINT);
   signal?.throwIfAborted();
-  return makeIndex(chunks,rowsPerChunk,count,{...metadata,allocationBytes,missingCount,fingerprint});
+  const details={...metadata,allocationBytes,missingCount,fingerprint,accessMode:fileBacked?"file":"memory"};
+  return fileBacked?fileIndex(blob,layout,lastTimes,first,details):makeIndex(chunks,rowsPerChunk,count,details);
 }
 
 async function importCsv(blob, config, options = {}) {

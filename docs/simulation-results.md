@@ -100,9 +100,22 @@ the combined prefix and JSON bytes and then each binary block. It hashes
 the ordered concatenation of those binary digests. This identifies the
 package read locally. No content is sent to a server. Import cancellation
 preserves other indexed sources. The same 64 MiB typed-data budget applies
-to indexed packages and CSVs together. Preview has an 8 MiB header ceiling
-and rejects impossible block layouts, lengths and metadata. Neither method
-uses hidden persistence, archive expansion or a proprietary binary reader.
+to indexed packages, CSVs and retained file-backed working sets together.
+Preview has an 8 MiB header ceiling and rejects impossible block layouts,
+lengths and metadata. Neither method uses hidden persistence, archive
+expansion or a proprietary binary reader.
+
+Select **Read from the local package when needed** before indexing to use
+file-backed access. The worker verifies every block and retains an index of
+block-end timestamps and a cache bounded by one block. It reads the clock
+and requested series columns from that file rather than copying all selected
+measurements into the tab's memory. Adjacent column reads can share a slice.
+Exact sample, result-window and extrema queries use the same values as the
+in-memory mode. Reindexing the same package with a different access mode
+updates the existing source after successful validation. Cancellation leaves
+the previous index available. The package file must stay accessible while
+this tab is open. Select it again in another session. The portable file
+limit remains 2 GiB, subject to actual browser and device resources.
 
 ## Review on the schematic and long section
 
@@ -126,6 +139,5 @@ removing the source clears the layer. Its session index remains local.
 The initial desktop smoke tests use a synthetic, explicitly mapped export
 following the documented CSV options. ICM-generated fixtures across versions
 and locales are still needed. The registry retains only local session data.
-File-backed retrieval above the in-memory budget, automated revision
-binding, conduit-end profiles, windowed transport and scenario comparison
-remain outstanding.
+Automated revision binding, conduit-end profiles, windowed transport and
+scenario comparison remain outstanding.
