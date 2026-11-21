@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import '../assets/simulation-results-core.js';
 
-const {assetKey,inspectCsv,importCsv}=globalThis.HydraSimulationResults;
+const {assetKey,inspectCsv,importCsv,inspectPackage,importPackage}=globalThis.HydraSimulationResults;
 const asset={kind:'link',table:'hw_conduit',upstream:'00127',suffix:'b'};
 const config={simulation:'SIM-03',modelRevision:'REV-02',scenario:'Baseline',event:'Event A',
   clock:'iso',clockConfirmed:true,temporalSupport:'instantaneous',headerRecord:2,timeColumn:0,unitsRecord:3,
@@ -66,4 +66,30 @@ const utf16=new Blob([Buffer.from('\uFEFFTime,00127.b\r\n31/12/2025 01:00:00,5',
 const dmy=await importCsv(utf16,{...config,headerRecord:1,unitsRecord:undefined,clock:'dmy',columns:[config.columns[0]]});
 assert.equal(new Date(dmy.timestamp(0)).toISOString(),'2025-12-31T01:00:00.000Z');
 assert.deepEqual(dmy.frame(dmy.timestamp(0),keys.slice(0,1)),[.005]);
+
+const packed=await index.exportPackage();
+const packedInfo=await inspectPackage(packed);
+assert.equal(packedInfo.count,3);
+assert.equal(packedInfo.modelRevision,'REV-02');
+const restored=await importPackage(packed);
+assert.deepEqual(restored.metadata.originalFingerprint,index.metadata.fingerprint);
+assert.notEqual(restored.metadata.fingerprint.digest,index.metadata.fingerprint.digest);
+assert.equal(restored.metadata.missingCount,2);
+assert.deepEqual(restored.metadata.columns.map(item=>item.series),keys);
+assert.deepEqual(restored.frame(middle,keys),[-1,null,21]);
+assert.deepEqual(restored.frame(middle+1,keys),null);
+assert.deepEqual([...restored.seriesWindow(keys[1],middle,end).values],[NaN,24]);
+assert.deepEqual(restored.envelope(keys[0],start,end),index.envelope(keys[0],start,end));
+await assert.rejects(importPackage(packed.slice(0,-1)),/size/);
+await assert.rejects(importPackage(packed,{byteLimit:64}),/typed-data budget/);
+await assert.rejects(importPackage(packed,{signal:cancelled.signal}),{name:'AbortError'});
+const buffer=await packed.arrayBuffer(),layout=new DataView(buffer),dataStart=12+layout.getUint32(8,true);
+const originalHeader=JSON.parse(new TextDecoder().decode(buffer.slice(12,dataStart)));
+const smallBlocks=new TextEncoder().encode(JSON.stringify({...originalHeader,rowsPerChunk:1}));
+const rewrittenPrefix=buffer.slice(0,12);new DataView(rewrittenPrefix).setUint32(8,smallBlocks.length,true);
+await assert.rejects(importPackage(new Blob([rewrittenPrefix,smallBlocks,buffer.slice(dataStart)])),/block size/);
+const invalidMeasure=buffer.slice(0);new DataView(invalidMeasure).setFloat64(dataStart+3*8,Infinity,true);
+await assert.rejects(importPackage(new Blob([invalidMeasure])),/non-finite measurement/);
+const repeatedClock=buffer.slice(0);new DataView(repeatedClock).setFloat64(dataStart+8,start,true);
+await assert.rejects(importPackage(new Blob([repeatedClock])),/timestamps must increase strictly/);
 console.log('SIMULATION_RESULTS_UNIT_PASS');

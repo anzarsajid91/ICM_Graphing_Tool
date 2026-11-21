@@ -33,6 +33,9 @@ function resolveSource(id) {
 async function operation(id, name, data) {
   switch (name) {
     case "preview": return core.inspectCsv(data.file);
+    case "package-preview": return core.inspectPackage(data.file);
+    case "export-package": return resolveSource(data.sourceId).exportPackage();
+    case "import-package":
     case "import": {
       if (active) throw new Error("Wait for the current import or cancel it.");
       if (sources.size >= SOURCE_LIMIT) throw new Error("Clear a results source before importing more than 16 files.");
@@ -40,10 +43,11 @@ async function operation(id, name, data) {
       active = {id,controller};
       const used = Array.from(sources.values(),source=>source.index.metadata.allocationBytes).reduce((a,b)=>a+b,0);
       try {
-        const index = await core.importCsv(data.file,data.config,{
+        const options={
           signal:controller.signal,byteLimit:BYTE_LIMIT-used,
           onProgress:(loaded,total)=>self.postMessage({id,type:"progress",loaded,total})
-        });
+        };
+        const index = name==="import-package"?await core.importPackage(data.file,options):await core.importCsv(data.file,data.config,options);
         controller.signal.throwIfAborted();
         const key=sourceKey(index);
         for (const record of sources.values()) if (record.key===key) return {...record.summary,reused:true};

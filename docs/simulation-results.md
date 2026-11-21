@@ -65,6 +65,45 @@ review screen reports entire-file extrema for one selected series and their
 timestamps. Indexed reads support exact-time frames and bounded time windows.
 There is no interpolation, extrapolation or numerical decimation.
 
+## Portable results package v1
+
+Select **Download portable results** for an indexed source. Hydra Bench
+writes a local `.hbresults` file containing the mapped series only. Use
+**Portable results package** to preview and explicitly index that file in
+another session. Review the model revision, scenario and asset mapping
+before applying playback. Keep the native result export for independent
+source verification. A package's declared original fingerprint identifies
+source provenance and can be checked against the original file.
+
+The format is public and uncompressed. It begins with the eight ASCII
+bytes `HBRES001`, a little-endian unsigned 32-bit UTF-8 JSON length, then
+the JSON header. The header declares `schemaVersion`, `count`,
+`rowsPerChunk`, simulation, model revision, scenario, event, project-clock
+format, temporal support, original source fingerprint, missing-source
+token and the ordered columns. Each column retains its typed asset,
+source column index, quantity, location, datum, canonical and original
+units, attribute label, source heading and optional source unit label.
+
+For `C` result columns, a full block contains
+`min(4096, floor(1048576 / (8 × (C + 1))))` samples. The last block contains
+the remaining samples without padding. Each block starts with one shared
+array of project-clock millisecond values. An array for each result column
+follows in header order. Every entry is an IEEE 754 binary64 little-endian
+value. A quiet NaN represents a missing result. Signed values and zero
+remain samples. Infinity is invalid. The reader enforces the schema and
+byte size, reviews declared role and units, validates strictly increasing
+times and counts missing measurements before using the source. It trims
+neither time periods nor values to fit the memory budget.
+
+The package fingerprint `sha256-of-hbresults-header-and-blocks-v1` hashes
+the combined prefix and JSON bytes and then each binary block. It hashes
+the ordered concatenation of those binary digests. This identifies the
+package read locally. No content is sent to a server. Import cancellation
+preserves other indexed sources. The same 64 MiB typed-data budget applies
+to indexed packages and CSVs together. Preview has an 8 MiB header ceiling
+and rejects impossible block layouts, lengths and metadata. Neither method
+uses hidden persistence, archive expansion or a proprietary binary reader.
+
 ## Review on the schematic and long section
 
 Open **Simulation playback** in the detailed schematic. Choose an indexed
@@ -87,6 +126,6 @@ removing the source clears the layer. Its session index remains local.
 The initial desktop smoke tests use a synthetic, explicitly mapped export
 following the documented CSV options. ICM-generated fixtures across versions
 and locales are still needed. The registry retains only local session data.
-The compact package, file-backed retrieval, automated revision binding,
-conduit-end profiles, windowed transport and scenario comparison remain
-outstanding.
+File-backed retrieval above the in-memory budget, automated revision
+binding, conduit-end profiles, windowed transport and scenario comparison
+remain outstanding.

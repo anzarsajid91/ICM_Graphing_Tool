@@ -9,6 +9,13 @@ const MAX_COLUMNS = 20001;
 const MAX_SOURCE = 2 * 1024 ** 3;
 const DATA_BYTES = 64 * BLOCK_BYTES;
 const WINDOW_SAMPLES = 250000;
+const PACKAGE_MAGIC = "HBRES001";
+const PACKAGE_PREFIX_BYTES = 12;
+const PACKAGE_HEADER_BYTES = 8 * BLOCK_BYTES;
+const CSV_FINGERPRINT = "sha256-of-ordered-1MiB-sha256-blocks-v1";
+const PACKAGE_FINGERPRINT = "sha256-of-hbresults-header-and-blocks-v1";
+const littleEndian = new Uint8Array(Uint16Array.of(1).buffer)[0] === 1;
+const blockRows=bytesPerRow=>Math.max(1,Math.min(4096,Math.floor(BLOCK_BYTES/bytesPerRow)));
 const decimal = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
 const tables = new Set(["hw_conduit", "hw_pump", "hw_weir", "hw_sluice", "hw_orifice", "hw_flap_valve", "hw_screen", "hw_user_control", "hw_outlet"]);
 const dimensions = new Map([
@@ -86,9 +93,12 @@ async function readRecords(blob, visit, {signal, onProgress, fingerprint = false
   if (quoted) throw new Error("Result CSV ends inside a quoted record.");
   if (pending.length) feed(pending.replace(/\r$/,""));
   if (!hashes) return null;
-  const bytes = await globalThis.crypto.subtle.digest("SHA-256", hashes);
-  return {algorithm:"sha256-of-ordered-1MiB-sha256-blocks-v1", digest:Array.from(new Uint8Array(bytes), byte =>
-    byte.toString(16).padStart(2,"0")).join(""), size:blob.size};
+  return finishFingerprint(hashes,blob.size,CSV_FINGERPRINT);
+}
+
+async function finishFingerprint(hashes,size,algorithm){
+  const digest=await globalThis.crypto.subtle.digest("SHA-256",hashes);
+  return {algorithm,digest:Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,"0")).join(""),size};
 }
 
 async function inspectCsv(blob, options) {
@@ -180,7 +190,10 @@ function compile(config) {
 function makeIndex(chunks, rowsPerChunk, count, metadata) {
   const positions = new Map(metadata.columns.map((column,index)=>[column.series,index]));
   const at = index => chunks[Math.floor(index/rowsPerChunk)].time[index%rowsPerChunk];
-  const valueAt = (index,column) => chunks[Math.floor(index/rowsPerChunk)].values[column*rowsPerChunk+index%rowsPerChunk];
+  const valueAt = (index,column) => {
+    const chunk=chunks[Math.floor(index/rowsPerChunk)];
+    return chunk.values[column*chunk.time.length+index%rowsPerChunk];
+  };
   function lowerBound(clock) {
     let low = 0, high = count;
     while (low < high) {
@@ -196,6 +209,7 @@ function makeIndex(chunks, rowsPerChunk, count, metadata) {
     return [lowerBound(start),upper+(upper<count&&at(upper)===end ? 1 : 0)];
   }
   return {metadata, count,
+    exportPackage(){return encodePackage(chunks,rowsPerChunk,count,metadata);},
     timestamp(index) {
       if (!Number.isInteger(index) || index<0 || index>=count) return null;
       return at(index);
@@ -237,10 +251,127 @@ function makeIndex(chunks, rowsPerChunk, count, metadata) {
   };
 }
 
+function encodePackage(chunks,rowsPerChunk,count,metadata){
+  const {simulation,modelRevision,scenario,event,clock,temporalSupport,columns,missingToken}=metadata;
+  const fields=columns.map(({asset,column,quantity,location,datum,unit,sourceUnit,sourceAttribute,sourceHeader,sourceUnitLabel})=>
+    ({asset,column,quantity,location,datum,unit,sourceUnit,sourceAttribute,sourceHeader,sourceUnitLabel}));
+  const header=new TextEncoder().encode(JSON.stringify({schemaVersion:1,count,rowsPerChunk,simulation,modelRevision,scenario,event,
+    clock,temporalSupport,columns:fields,missingToken,originalFingerprint:metadata.originalFingerprint||metadata.fingerprint}));
+  if(header.byteLength>PACKAGE_HEADER_BYTES)throw new Error("The portable results metadata exceeds 8 MiB. Use fewer mapped columns.");
+  const prefix=new Uint8Array(PACKAGE_PREFIX_BYTES);
+  prefix.set(new TextEncoder().encode(PACKAGE_MAGIC));
+  new DataView(prefix.buffer).setUint32(8,header.byteLength,true);
+  const parts=[prefix,header];
+  for(const [index,chunk] of chunks.entries()){
+    const rows=Math.min(rowsPerChunk,count-index*rowsPerChunk);
+    const sections=[chunk.time.subarray(0,rows),...fields.map((_,column)=>
+      chunk.values.subarray(column*chunk.time.length,column*chunk.time.length+rows))];
+    if(littleEndian)parts.push(new Blob(sections));
+    else{
+      const block=new DataView(new ArrayBuffer(8*rows*sections.length));
+      let offset=0;
+      for(const section of sections)for(const value of section){block.setFloat64(offset,value,true);offset+=8;}
+      parts.push(new Blob([block.buffer]));
+    }
+  }
+  return new Blob(parts,{type:"application/octet-stream"});
+}
+
+function sourceFingerprint(raw){
+  if(!raw||raw.algorithm!==CSV_FINGERPRINT||typeof raw.digest!=="string"||!/^[0-9a-f]{64}$/.test(raw.digest)||
+      !Number.isSafeInteger(raw.size)||raw.size<1||raw.size>MAX_SOURCE)throw new Error("The original results fingerprint is invalid.");
+  return {algorithm:raw.algorithm,digest:raw.digest,size:raw.size};
+}
+
+async function packageHeader(blob){
+  if(!(blob instanceof Blob)||blob.size<=PACKAGE_PREFIX_BYTES||blob.size>MAX_SOURCE)
+    throw new Error("Choose a non-empty portable results package up to 2 GiB.");
+  const prefix=await blob.slice(0,PACKAGE_PREFIX_BYTES).arrayBuffer();
+  if(new TextDecoder().decode(new Uint8Array(prefix,0,8))!==PACKAGE_MAGIC)
+    throw new Error("This file has no supported Hydra Bench results package header.");
+  const length=new DataView(prefix).getUint32(8,true),bodyOffset=PACKAGE_PREFIX_BYTES+length;
+  if(length<2||length>PACKAGE_HEADER_BYTES||bodyOffset>=blob.size)
+    throw new Error("The results package header size is invalid.");
+  const data=await blob.slice(0,bodyOffset).arrayBuffer();
+  let header;
+  try{header=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(new Uint8Array(data,PACKAGE_PREFIX_BYTES)));}
+  catch{throw new Error("The results package header is malformed.");}
+  if(!header||header.schemaVersion!==1||!Array.isArray(header.columns)||!header.columns.length||header.columns.length>=MAX_COLUMNS)
+    throw new Error("The results package schema or column count is unsupported.");
+  const {count,rowsPerChunk}=header,bytesPerRow=8*(header.columns.length+1);
+  if(rowsPerChunk!==blockRows(bytesPerRow))throw new Error("The results package block size does not match its column count.");
+  if(!Number.isSafeInteger(count)||count<1||!Number.isSafeInteger(count*bytesPerRow)||
+     bodyOffset+count*bytesPerRow!==blob.size)throw new Error("The results package size or sample count does not match its header.");
+  const checked=compile({simulation:header.simulation,modelRevision:header.modelRevision,scenario:header.scenario,event:header.event,
+    clock:header.clock,temporalSupport:header.temporalSupport,clockConfirmed:true,missingToken:header.missingToken,headerRecord:1,timeColumn:0,
+    columns:header.columns.map((item,index)=>{
+      if(!item||typeof item!=="object")throw new Error("A portable result column is invalid.");
+      return {asset:item.asset,column:index+1,quantity:item.quantity,location:item.location,unit:item.sourceUnit,
+        datum:item.datum,sourceAttribute:item.sourceAttribute};
+    })});
+  const nativeColumns=new Set();
+  const columns=checked.columns.map((item,index)=>{
+    const raw=header.columns[index];
+    if(raw.unit!==item.unit||!Number.isInteger(raw.column)||raw.column<0||raw.column>=MAX_COLUMNS||nativeColumns.has(raw.column)||
+       typeof raw.sourceHeader!=="string"||raw.sourceHeader.length>256||
+       (raw.sourceUnitLabel!==null&&(typeof raw.sourceUnitLabel!=="string"||raw.sourceUnitLabel.length>64)))
+      throw new Error("A portable result column has invalid units or source provenance.");
+    nativeColumns.add(raw.column);
+    return {...item,column:raw.column,sourceHeader:raw.sourceHeader,sourceUnitLabel:raw.sourceUnitLabel};
+  });
+  return {data,bodyOffset,count,rowsPerChunk,bytesPerRow,metadata:{...checked.contract,missingToken:checked.missing,columns,
+    originalFingerprint:sourceFingerprint(header.originalFingerprint),storageFormat:"hbresults-v1"}};
+}
+
+async function inspectPackage(blob){
+  const {count,metadata}=await packageHeader(blob);
+  return {count,...metadata};
+}
+
+async function importPackage(blob,{signal,onProgress,byteLimit=DATA_BYTES}={}){
+  signal?.throwIfAborted();
+  const {data,bodyOffset,count,rowsPerChunk,bytesPerRow,metadata}=await packageHeader(blob);
+  const allocationBytes=count*bytesPerRow;
+  if(allocationBytes>Math.min(DATA_BYTES,Number.isFinite(byteLimit)?byteLimit:DATA_BYTES))
+    throw new Error("Selected results exceed the available typed-data budget. Clear a results source or use a smaller package.");
+  const chunks=[],hashes=new Uint8Array(32*(1+Math.ceil(count/rowsPerChunk)));
+  const hash=async (bytes,index)=>hashes.set(new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256",bytes)),index*32);
+  await hash(data,0);
+  let previous=-Infinity,missingCount=0;
+  for(let start=0;start<count;start+=rowsPerChunk){
+    signal?.throwIfAborted();
+    const rows=Math.min(rowsPerChunk,count-start),offset=bodyOffset+start*bytesPerRow;
+    const buffer=await blob.slice(offset,offset+rows*bytesPerRow).arrayBuffer();
+    await hash(buffer,chunks.length+1);
+    const valuesPerBlock=buffer.byteLength/8;
+    let decoded;
+    if(littleEndian)decoded=new Float64Array(buffer);
+    else{
+      const view=new DataView(buffer);
+      decoded=Float64Array.from({length:valuesPerBlock},(_,index)=>view.getFloat64(index*8,true));
+    }
+    const time=decoded.subarray(0,rows),values=decoded.subarray(rows);
+    for(const sample of time){
+      if(!Number.isSafeInteger(sample)||sample< -62167219200000||sample>253402300799999||sample<=previous)
+        throw new Error("Portable results timestamps must increase strictly on a valid project clock.");
+      previous=sample;
+    }
+    for(const value of values){
+      if(Number.isNaN(value))missingCount++;
+      else if(!Number.isFinite(value))throw new Error("A portable result contains a non-finite measurement.");
+    }
+    chunks.push({time,values});onProgress?.(offset+buffer.byteLength,blob.size);
+  }
+  signal?.throwIfAborted();
+  const fingerprint=await finishFingerprint(hashes,blob.size,PACKAGE_FINGERPRINT);
+  signal?.throwIfAborted();
+  return makeIndex(chunks,rowsPerChunk,count,{...metadata,allocationBytes,missingCount,fingerprint});
+}
+
 async function importCsv(blob, config, options = {}) {
   const {headerRecord,timeColumn,unitsRecord,columns,parseTime,missing,contract} = compile(config);
   const bytesPerRow = 8 * (columns.length + 1);
-  const rowsPerChunk = Math.max(1, Math.min(4096, Math.floor(BLOCK_BYTES / bytesPerRow)));
+  const rowsPerChunk = blockRows(bytesPerRow);
   const byteLimit = Number.isFinite(options.byteLimit) ? Math.min(DATA_BYTES,options.byteLimit) : DATA_BYTES;
   const chunks = [];
   let header, unitLabels = null, last = -Infinity, count = 0, missingCount = 0;
@@ -291,5 +422,5 @@ async function importCsv(blob, config, options = {}) {
   return makeIndex(chunks, rowsPerChunk, count, metadata);
 }
 
-globalThis.HydraSimulationResults=Object.freeze({inspectCsv,importCsv,assetKey});
+globalThis.HydraSimulationResults=Object.freeze({inspectCsv,importCsv,inspectPackage,importPackage,assetKey});
 })();

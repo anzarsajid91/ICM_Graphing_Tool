@@ -32,7 +32,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized real-sample map/profile playback, transport controls, windowing, scenario comparison, extrema and missingness | Partial |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
-| 6.5 | Local worker, series parser, source identity and registry | Native and optional portable result package, explicit schema and time support, bounded indexed worker and cancellation, selective retrieval, measured storage/capacity trade-offs | Partial |
+| 6.5 | Local worker, series parser, source identity and registry | Native and portable result formats, typed provenance, bounded indexed worker, cancellation and exact selective lookup | Partial. File-backed range access and browser capacity evidence remain open |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
 | 7.2 | Gauge qualification, cumulative/event data | Common-clock spatial comparison, event totals, correlation, peak offset, coverage, suspect bins and WAPUG linkage | Verified locally |
 | 7.3 | Weekly review, coverage and WAPUG/FSAT | Suitability screen for a selected monitored location and rainfall candidate, using measured support, reviewed range, site evidence and current qualification | Verified locally for candidate screening |
@@ -846,3 +846,27 @@ other state.
   The route and revision suites also passed in both. Unit cases verify typed
   collisions, duplicate aliases and unintended manual-name matches. The
   confidentiality source check, 28 privacy tests and request contracts passed.
+
+### Portable simulation results package
+
+- Indexed CSV results can be downloaded to one local, openly documented
+  `.hbresults` file and reviewed and reloaded without remapping. It uses
+  shared exact project-clock arrays and canonical binary64 values. Typed
+  identities, original mappings, datum, source fingerprint, signed values
+  and missing samples survive the round trip. Package fingerprints are
+  calculated from the exact bytes read. [Format and controls](simulation-results.md#portable-results-package-v1)
+- Unit tests cover exact sample and window equivalence, original hashes,
+  extrema, corrupt length, invalid block geometry, repeated timestamps,
+  non-finite values, budget withholding and cancellation. Both browser
+  suites checked download, preview, truncated-file recovery, reimport,
+  duplicate package detection and playback against native geometry. Each
+  saw 32 guarded requests with no violations. The build and privacy gates
+  passed. File-backed access above the current memory budget remains open.
+- In one synthetic Node run, 40 result channels at five-minute steps for
+  105,121 timestamps made a 54,965,841-byte CSV and a 34,488,880-byte package.
+  The matched reader took 1,134 ms for CSV and 94 ms for the portable file.
+  Encoding took 10.5 ms. Gzip reduced this regular CSV to 7,616,245 bytes
+  in 1,074 ms. The uncompressed layout keeps exact offsets and avoids a
+  decompression stage. The test held generation data and both indexes and
+  reached 416,528 KiB cumulative process peak RSS. This is engine evidence
+  excluding browser and production comparisons.

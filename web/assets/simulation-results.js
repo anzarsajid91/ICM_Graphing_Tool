@@ -74,19 +74,24 @@ function mount() {
       <p><label><input type="checkbox" name="clockConfirmed" required> The file contains instantaneous samples on the confirmed project clock</label></p>
       <div class="table-wrap"><table id="hbResultMappings"><caption>Asset column mappings</caption><thead><tr><th scope="col">CSV column number</th><th scope="col">Node or upstream ID</th><th scope="col">Link suffix</th><th scope="col">Action</th></tr></thead><tbody></tbody></table></div>
       <div class="actions"><button type="button" id="hbAddResultMapping">Add mapped column</button><button type="submit" class="primary">Index simulation results</button><button type="button" id="hbCancelResult" hidden>Cancel import</button></div>
+      <details id="hbResultPortable"><summary>Portable results package</summary>
+        <p>Reopen a Hydra Bench package with its reviewed typed mappings, project clock and units. Check the declared model revision before indexing.</p>
+        <label>Local results package<input type="file" name="portable" accept=".hbresults,application/octet-stream"></label>
+        <p id="hbResultPortableStatus" role="status"></p><button type="button" id="hbIndexPortable" disabled>Index portable results</button>
+      </details>
       <progress id="hbResultProgress" max="100" hidden aria-label="Simulation import progress"></progress>
       <p id="hbResultImportStatus" role="status"></p>
     </form>
   </article>
   <article class="panel">
-    <div class="panel-head"><h2>Review simulation samples</h2><p>Samples are held in this browser tab. Save the original export to reimport later.</p></div>
+    <div class="panel-head"><h2>Review simulation samples</h2><p>Samples are held in this browser tab. To reopen them later, keep the original export or download the indexed samples as a portable package.</p></div>
     <div class="mapping-grid"><label>Indexed source<select id="hbResultSource"></select></label><label>Result series<select id="hbResultSeries"></select></label></div>
     <p id="hbResultDetails"></p>
     <div id="hbResultTransport" hidden>
       <label>Sample position<input type="range" id="hbResultTime" value="0" min="0" max="0" step="1"></label>
       <div class="actions"><button type="button" id="hbResultBack">Previous sample</button><button type="button" id="hbResultPlay" aria-pressed="false">Play</button><button type="button" id="hbResultStep">Next sample</button>
       <label>Samples per second<select id="hbResultSpeed"><option>1</option><option selected>2</option><option>5</option></select></label>
-      <button type="button" id="hbRemoveResult">Remove indexed source</button></div>
+      <button type="button" id="hbExportPortable">Download portable results</button><button type="button" id="hbRemoveResult">Remove indexed source</button></div>
       <p id="hbResultSample"></p><p id="hbResultEnvelope"></p>
     </div>
     <p id="hbResultReviewStatus" role="status"></p>
@@ -97,8 +102,10 @@ function mount() {
   const cancel=$("hbCancelResult"), progress=$("hbResultProgress"), source=$("hbResultSource"), series=$("hbResultSeries");
   const time=$("hbResultTime"), transport=$("hbResultTransport"), sample=$("hbResultSample"), envelope=$("hbResultEnvelope");
   const play=$("hbResultPlay"), back=$("hbResultBack"), step=$("hbResultStep"), remove=$("hbRemoveResult");
+  const packageInput=controls.portable, packageStatus=$("hbResultPortableStatus"), indexPackage=$("hbIndexPortable"), exportPackage=$("hbExportPortable");
   const datasets=new Map(), mappings=[];
-  let fileGeneration=0, displayGeneration=0, envelopeGeneration=0, currentImport=null, playback=null, playbackGeneration=0, serial=0;
+  let fileGeneration=0, packageGeneration=0, reviewedPackage=null, displayGeneration=0, envelopeGeneration=0, currentImport=null,
+    playback=null, playbackGeneration=0, serial=0;
   const client=workerClient(()=>{datasets.clear();refreshSources();announceSources();review.textContent="The simulation worker stopped. Reimport the source to resume.";});
   session=Object.freeze({
     sources:()=>Array.from(datasets.values()),
@@ -160,6 +167,20 @@ function mount() {
     } catch(error) {if (generation===fileGeneration) note.textContent=error.message;}
   };
 
+  packageInput.onchange=async()=>{
+    const revision=++packageGeneration,file=packageInput.files[0];
+    reviewedPackage=null;indexPackage.disabled=true;packageStatus.textContent="";importer.textContent="";
+    if(!file)return;
+    packageStatus.textContent="Validating the portable package header…";
+    try{
+      const info=await client.request("package-preview",{file}).result;
+      if(revision!==packageGeneration)return;
+      reviewedPackage=file;indexPackage.disabled=Boolean(currentImport);
+      packageStatus.textContent=`${info.count} timestamps, ${info.columns.length} mapped series · ${info.simulation} · Revision ${info.modelRevision} · ${info.scenario} · ${info.event}`;
+    }catch(error){if(revision===packageGeneration)packageStatus.textContent=error.message;}
+  };
+  indexPackage.onclick=()=>{if(reviewedPackage)void indexSource("import-package",{file:reviewedPackage});};
+
   form.onsubmit=async event=>{
     event.preventDefault();
     if (currentImport) return;
@@ -171,18 +192,27 @@ function mount() {
         sourceAttribute:f.get("attribute"),location:kind==="node"?"node":f.get("location"),
         asset:kind==="node"?{kind,id:row.id.value}:{kind,upstream:row.id.value,suffix:row.suffix.value,
           table:"hw_"+f.get("assetTable").replaceAll("-","_")}}))};
-    submit.disabled=true;controls.file.disabled=true;cancel.hidden=false;progress.hidden=false;progress.value=0;
-    importer.textContent="Indexing the selected result columns in a browser worker…";
+    await indexSource("import",{file,config});
+  };
+  async function indexSource(operation,data){
+    if(currentImport)return;
+    submit.disabled=true;controls.file.disabled=true;packageInput.disabled=true;indexPackage.disabled=true;
+    cancel.hidden=false;progress.hidden=false;progress.value=0;
+    importer.textContent=operation==="import-package"?"Checking and indexing the portable samples locally…":
+      "Indexing the selected result columns in a browser worker…";
     try {
-      const task=client.request("import",{file,config},(loaded,total)=>{progress.value=100*loaded/total;});
+      const task=client.request(operation,data,(loaded,total)=>{progress.value=100*loaded/total;});
       currentImport=task.id;
       const info=await task.result;
       if(!datasets.has(info.sourceId)){datasets.set(info.sourceId,info);announceSources();}
       refreshSources(info.sourceId);
       importer.textContent=info.reused?"This result source and mapping are already indexed.":`${info.count} timestamps indexed for ${info.columns.length} result series.`;
     } catch(error) {importer.textContent=error.message;}
-    finally {submit.disabled=false;controls.file.disabled=false;cancel.disabled=false;cancel.hidden=true;progress.hidden=true;currentImport=null;}
-  };
+    finally {
+      currentImport=null;submit.disabled=false;controls.file.disabled=false;packageInput.disabled=false;indexPackage.disabled=!reviewedPackage;
+      cancel.disabled=false;cancel.hidden=true;progress.hidden=true;
+    }
+  }
   cancel.onclick=()=>{if (currentImport){client.cancel(currentImport);cancel.disabled=true;importer.textContent="Cancelling import…";}};
 
   function selection() {
@@ -202,6 +232,7 @@ function mount() {
     const details=$("hbResultDetails");
     if (!dataset){details.textContent="Import a results CSV to review available samples.";return;}
     details.textContent=`${dataset.simulation} · Revision ${dataset.modelRevision} · ${dataset.event} · ${dataset.missingCount} missing mapped samples`;
+    if(dataset.storageFormat==="hbresults-v1")details.textContent+=" · Portable package";
     for (const [i,column] of dataset.columns.entries()) {
       const a=column.asset,id=a.kind==="node"?a.id:a.upstream+"."+a.suffix;
       series.add(option(`${id} · ${title(column.quantity)} · ${title(column.location)}`,i));
@@ -249,6 +280,16 @@ function mount() {
     const id=Number(source.value);stop();
     try {await client.request("remove",{sourceId:id}).result;datasets.delete(id);refreshSources();announceSources();}
     catch(error){review.textContent=error.message;}
+  };
+  exportPackage.onclick=async()=>{
+    const {dataset}=selection();if(!dataset)return;
+    exportPackage.disabled=true;review.textContent="Preparing the portable package locally…";
+    try{
+      const blob=await client.request("export-package",{sourceId:dataset.sourceId}).result;
+      downloadBlob("hydra-simulation-results.hbresults",blob);
+      if(selection().dataset===dataset)review.textContent="Portable results package downloaded.";
+    }catch(error){review.textContent=error.message;}
+    finally{exportPackage.disabled=false;}
   };
   window.addEventListener("icm:route-changed",({detail})=>{if(detail.page!=="simulation-results") stop();});
   refreshSources();
