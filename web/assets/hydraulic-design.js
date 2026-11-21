@@ -188,10 +188,10 @@ function results(article,form,calculate) {
   });
   return invalidate;
 }
-function chart(series) {
+function chart(series,xLabel="Flow (m³/s)",yLabel="Head (m)") {
   const width=720,height=250,left=75,right=width-18,top=16,bottom=height-42;
   const bounds=series.flatMap(s=>s.points);
-  const maxFlow=Math.max(...bounds.map(p=>p[0]));
+  const maxFlow=Math.max(1e-12,...bounds.map(p=>p[0]));
   const low=Math.min(0,...bounds.map(p=>p[1])),high=Math.max(low+1,...bounds.map(p=>p[1]));
   const x=q=>left+(right-left)*q/maxFlow,y=h=>bottom-(bottom-top)*(h-low)/(high-low);
   const svg=(tag,attrs,text)=>{
@@ -207,10 +207,13 @@ function chart(series) {
       svg("text",{x:left-7,y:y(v)+4,"text-anchor":"end","font-size":11},format(v)),
       svg("text",{x:x(u),y:bottom+17,"text-anchor":"middle","font-size":11},format(u)));
   }
-  root.append(svg("text",{x:left,y:height-5,"font-size":11},"Flow (m³/s)"),
-    svg("text",{x:8,y:height-5,"font-size":11},"Head (m)"));
-  for (const s of series) root.append(svg("polyline",{points:s.points.map(([q,h])=>x(q)+","+y(h)).join(" "),
-    stroke:s.color,"stroke-width":2.5,fill:"none"}));
+  root.append(svg("text",{x:left,y:height-5,"font-size":11},xLabel),
+    svg("text",{x:8,y:height-20,"font-size":11},yLabel));
+  for (const s of series) {
+    root.append(svg("polyline",{points:s.points.map(([q,h])=>x(q)+","+y(h)).join(" "),
+      stroke:s.color,"stroke-width":2.5,fill:"none"}));
+    if (s.markers) for (const [q,h] of s.points) root.append(svg("circle",{cx:x(q),cy:y(h),r:3.5,fill:s.color}));
+  }
   const summary=element("figure");
   summary.append(root,element("figcaption",series.map(s=>s.label).join(" · ")));
   return summary;
@@ -358,12 +361,102 @@ function mountCatchmentImport(article,form,catchments,worker) {
   };
 }
 
+function mountStorageRouting(navigate,worker) {
+  const article=panel("tab-storage-routing","Storage capacity sensitivity",
+    "Route instantaneous inflow into a tank with a constant pass-forward limit. Review the resulting spill volumes for the assessed period. The calculation assumes ideal controls and excludes tailwater and hydraulic feedback.");
+  article.append(action("Open Storage assessment",()=>navigate("spills","storage",true)),
+    action("Open Time series",()=>navigate("data","time-series",true)));
+  const form=element("form");form.id="storageRoutingForm";
+  const settings=fields([
+    {key:"source",label:"Inflow series",options:[["","Select a resolved flow series"]]},
+    {key:"capacities",label:"Storage capacities (m³, comma-separated)",type:"text",maxLength:300},
+    number("initial_m3","Initial occupied storage (m³)",0,1e9),
+    number("release_m3_s","Pass-forward limit (m³/s)",0,10000),
+    number("max_gap_s","Maximum supported timestep (s)",.001,31557600),
+    {key:"start",label:"Period start (optional, exact sample)",type:"datetime-local",step:1,required:false},
+    {key:"end",label:"Period end (optional, exact sample)",type:"datetime-local",step:1,required:false},
+    {key:"confirmation",label:"I confirm the source represents instantaneous tank inflow on the project clock",type:"checkbox"},
+    {key:"note",label:"Assumption or review note",type:"text",maxLength:2000,required:false}
+  ],{initial_m3:0});
+  const picker=settings.controls.source;
+  const availability=element("p");availability.setAttribute("aria-live","polite");
+  form.append(availability,settings.group,element("p","Use increasing capacities and the same initial occupied volume across options. Blank dates use the full source. Routing ends at the first unsupported or excluded interval."));
+
+  function eligible() {
+    return allSeries().filter(({item,col})=>item.status==="ready"&&item.hash&&
+      item.parsed?.metadata?.timestamp_convention==="instantaneous"&&
+      item.parsed?.metadata?.time_basis!=="timezone-aware/unresolved"&&
+      seriesQuantity(item,col)==="flow"&&seriesUnit(item,col)==="m³/s");
+  }
+  function reviewInputs(key) {
+    const source=eligible().find(series=>series.key===key);
+    if (!source) return null;
+    const {item,col}=source;
+    const exclusions=exclusionPayload(true).filter(row=>row.enabled&&(
+      row.scope==="both"||row.scope===key||
+      (row.scope==="observed"&&state.mapping.observed===key)||
+      (row.scope==="model"&&state.mapping.models.includes(key))));
+    const details=seriesMetadata(item,col);
+    const signature=JSON.stringify([item.id,item.hash,col,details.original_unit,details.conversion_factor,exclusions]);
+    return {item,col,exclusions,signature};
+  }
+  let previous=null;
+  const invalidate=results(article,form,async()=>{
+    const {source,capacities,note,confirmation,start,end,...numeric}=settings.values();
+    const inputs=reviewInputs(source);
+    if (!inputs || !confirmation) throw new Error("Choose and confirm the inflow series.");
+    const parts=capacities.split(",").map(value=>value.trim());
+    if (parts.some(value=>!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value))) throw new Error("Enter comma-separated decimal capacities in m³.");
+    const {item,col,exclusions,signature}=inputs;
+    const r=await worker("screen_storage_routing",{
+      path:item.virtualPath,column:col,capacities_m3:parts.map(Number),...numeric,start:start||null,end:end||null,
+      exclusions_json:JSON.stringify(exclusions)
+    });
+    if (reviewInputs(source)?.signature!==signature) throw new Error("The source or exclusions changed. Calculate again.");
+    previous=signature;
+    const header=["Capacity (m³)","Spill volume (m³)","Spill reduction vs. smallest capacity (m³)","Passed volume (m³)",
+      "End storage (m³)","Peak storage (m³)","Release shortfall (m³)","Mass residual (m³)"];
+    const base=r.rows[0].spill_m3;
+    const rows=r.rows.map(row=>[row.capacity_m3,row.spill_m3,base-row.spill_m3,row.passed_m3,
+      row.final_m3,row.peak_m3,row.release_shortfall_m3,row.mass_residual_m3]);
+    const period=[["Window start",r.window_start],["Window end",r.window_end],["Assessed through",r.assessed_through],
+      ["Supported duration (s)",r.elapsed_s],["Selected duration (s)",r.available_s],
+      ["Window coverage (%)",100*r.elapsed_s/r.available_s],["Total supported inflow (m³)",r.rows[0].inflow_m3],
+      ["First unsupported interval",r.stop_reason||"None in selected window"]];
+    const content=[table(["Period","Value"],period,"Inflow support"),
+      chart([{label:"Routed spill volume",points:rows.map(row=>row.slice(0,2)),color:"#136b7f",markers:true}],"Storage capacity (m³)","Spill (m³)"),
+      table(header,rows,"Storage capacity options"),
+      element("p","Release shortfall is the unused part of the pass-forward limit when insufficient volume is available. Use the 12/24 spill assessment for regulatory counts.")];
+    return {content,summary:r.stop_reason?"Partial period. Routing stopped at the first "+r.stop_reason+".":"Storage routing completed for the selected period.",
+      filename:"hydra-storage-routing.csv",rows:[["Method",r.method],["Equation","Inflow + initial = passed + spilled + final storage"],
+        ["Inflow source",item.displayName],["Column",col],["Source SHA-256",item.hash],["Source unit",r.original_unit],
+        ["Source samples in selected window",r.sample_count],["Initial storage (m³)",r.initial_m3],
+        ["Pass-forward limit (m³/s)",r.release_m3_s],["Maximum timestep (s)",r.max_gap_s],["Review note",note],
+        ...period,header,...rows,["Exclusion start","Exclusion end","Reason"],...exclusions.map(row=>[row.start,row.end,row.reason])]};
+  });
+  function refresh() {
+    const selected=picker.value,sourceOptions=eligible();
+    picker.replaceChildren(new Option("Select a resolved flow series",""),...sourceOptions.map(source=>new Option(source.label,source.key)));
+    picker.value=sourceOptions.some(source=>source.key===selected)?selected:"";
+    if (!sourceOptions.length) availability.textContent="Import an eligible instantaneous flow series with resolved units in Time series.";
+    else availability.textContent="";
+    if (previous) {
+      let current=null;
+      try {current=reviewInputs(picker.value)?.signature;} catch {}
+      if (current!==previous) {previous=null;invalidate();}
+    }
+  }
+  window.addEventListener("icm:route-changed",({detail})=>{if(detail.page==="storage-routing") refresh();});
+  window.addEventListener("icm:source-pool-changed",refresh);
+}
+
 function mount(navigate) {
+  const worker=async (api,args)=>{await ensureEngineBoot();return engine.call(api,args);};
+  mountStorageRouting(navigate,worker);
   const system=panel("tab-pipe-system","Pipe head loss and system curves",
     "Use full circular pipes and a justified fixed Darcy friction factor. Each stage is in series and branches within a stage are in parallel. Static head includes elevation and pressure head differences.");
   const design=systemInputs(),systemForm=element("form");
   systemForm.id="pipeSystemForm";systemForm.append(design.settings.group,design.pipes.wrapper);
-  const worker=async (api,args)=>{await ensureEngineBoot();return engine.call(api,args);};
   const systemHeaders=["Stage","Branch","Diameter (m)","Length (m)","Darcy f","Fittings K","Entrance K","Exit K",
     "Flow (m³/s)","Velocity (m/s)","Friction (m)","Fittings (m)","Entrance (m)","Exit (m)","Branch head loss (m)"];
   const systemRows=r=>r.rows.map(p=>[p.stage,p.branch,p.diameter_m,p.length_m,p.darcy_factor,p.minor_k,p.entrance_k,

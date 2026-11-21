@@ -1212,3 +1212,45 @@ def preview_design_catchments(text):
     from icm_workbench.analysis.design_flows import preview_catchment_csv
 
     return json.dumps(preview_catchment_csv(text), allow_nan=False)
+
+
+def screen_storage_routing(path, column, capacities_m3, initial_m3, release_m3_s,
+                           max_gap_s, start=None, end=None, exclusions_json="[]"):
+    """Route the actual samples of a reviewed, resolved instantaneous inflow."""
+    from icm_workbench.analysis.storage_routing import route_storage
+
+    parsed = _require_model_clock(_load(path), "Inflow")
+    if parsed.metadata.get("timestamp_convention") != "instantaneous":
+        raise ValueError("Routing requires instantaneous inflow samples with a resolved project clock.")
+    contract = _series_contract(path, column)
+    if column not in parsed.frame or contract["quantity"] != "flow" or contract["canonical_unit"] != "m³/s":
+        raise ValueError("Choose an inflow series with a resolved flow unit in Data / time series.")
+    if any(parsed.audit.get(key, 0) for key in ("invalid_timestamps", "malformed_rows", "duplicate_timestamps")):
+        raise ValueError("Resolve malformed rows and repeated or invalid timestamps in the source before routing.")
+    times = pd.to_datetime(parsed.frame["timestamp"], errors="coerce")
+    if times.empty or times.isna().any() or not times.is_monotonic_increasing or times.duplicated().any():
+        raise ValueError("Routing requires valid, unique timestamps in chronological order.")
+    first = _model_clock_timestamp(start) if start else times.iloc[0]
+    last = _model_clock_timestamp(end) if end else times.iloc[-1]
+    if pd.isna(first) or pd.isna(last) or first >= last:
+        raise ValueError("Choose an increasing period on the source's project clock.")
+    left, right = int(times.searchsorted(first)), int(times.searchsorted(last, side="right"))
+    selected = times.iloc[left:right]
+    if len(selected) < 2 or selected.iloc[0] != first or selected.iloc[-1] != last:
+        raise ValueError("Start and end must match actual samples. Leave blank to use source endpoints.")
+    if len(selected) > 250_000:
+        raise ValueError("Select a smaller review period. This screening operation supports up to 250,000 samples per run.")
+    applicable = sorted(
+        (item for item in _exclusions(exclusions_json) if item.start < last and item.end > first),
+        key=lambda item: item.start,
+    )
+    # Use the first intersecting interval. If it includes any excluded time,
+    # the full interval is unsupported even when both endpoint samples exist.
+    blocked = int(selected.searchsorted(max(first, applicable[0].start), side="right")) if applicable else None
+    elapsed = (selected - first).dt.total_seconds().to_numpy()
+    rates = pd.to_numeric(parsed.frame[column].iloc[left:right], errors="coerce").to_numpy(dtype=float)
+    result = route_storage(elapsed, rates, capacities_m3, initial_m3, release_m3_s, max_gap_s, blocked)
+    result["assessed_through"] = selected.iloc[result.pop("last_sample")].isoformat()
+    result.update(window_start=first.isoformat(), window_end=last.isoformat(), sample_count=len(selected),
+                  max_gap_s=max_gap_s, original_unit=contract["original_unit"], canonical_unit="m³/s")
+    return json.dumps(result, allow_nan=False)

@@ -24,6 +24,28 @@ An exclusion is a reviewer decision that a known interval must not contribute to
 ## Storage screening
 The first-release capability is **Idealised spill-volume screening**. All physical discharge volumes are aggregated into their 12/24 counting block and annual block volumes can be screened against a configurable target count. This is not dynamic routing and is not a guaranteed engineered storage size.
 
+**Storage routing** screens physical volumes via a separate continuity model.
+Inputs are reviewed nonnegative instantaneous inflow on the project clock,
+initial occupied volume, capacity, a fixed pass-forward cap and maximum valid
+timestep. The model integrates piecewise-linear inflow with trapezoids and
+splits each interval if inflow crosses the release cap. For each resulting
+piece, outflow is capped by the release rate and by available water. Storage
+fills up to capacity and excess volume spills. Each row checks that inflow
+plus initial storage equals passed volume, spilled volume and final storage
+to within `max(10⁻⁷ m³, 10⁻⁹ × max(1 m³, inflow + initial storage))`.
+The [US Army Corps of Engineers storage continuity reference](https://www.hec.usace.army.mil/confluence/hmsdocs/hmstrm/reservoir-modeling/reservoir-modeling-concepts-and-equations)
+describes reservoir mass conservation. Hydra Bench uses the fixed-cap and
+volume-limited rule above as its own screening method.
+
+Dates must match actual samples. The first missing, excluded or excessive
+interval ends routing, since the storage state after that interval is unknown.
+Comparisons use the same supported prefix and initial occupied volume. The
+limit of 25 capacities and 250,000 samples bounds work in the browser worker.
+The scheme assumes an ideal outlet, constant settings and no tailwater,
+head-dependent control, infiltration loss, backwater or hydraulic feedback.
+Use it to screen spill volume sensitivity. The existing block-based and
+12/24-hour assessments remain authoritative for their existing methods.
+
 ## Circular-pipe capacity and design flow preview
 
 The calculator uses SI units, steady uniform gravity flow, and pipe gradient

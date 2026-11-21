@@ -22,7 +22,8 @@ const ROUTES={
     icon:'spills',
     pages:{
       assessment:{label:'Spill assessment',title:'EDM / model spill assessment',description:'Configure thresholds and exclusions, then review physical spill intervals, 12/24 counts and observed/model evidence.',tab:'spills',root:()=>$('tab-spills')},
-      storage:{label:'Storage assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')}
+      storage:{label:'Storage assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')},
+      'storage-routing':{label:'Storage routing',title:'Storage routing screening',description:'Test spill-volume sensitivity to storage capacity and a constant pass-forward limit.',root:()=>$('tab-storage-routing')}
     }
   },
   network:{

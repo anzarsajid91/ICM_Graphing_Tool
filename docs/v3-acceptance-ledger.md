@@ -27,7 +27,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Open |
 | 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Open |
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Open |
-| 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Open |
+| 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Open |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized real-sample map/profile playback, transport controls, windowing, scenario comparison, extrema and missingness | Open |
@@ -152,3 +152,25 @@ other state.
 - The current table caps input at 100 catchments and 1 MiB. Larger catchment
   files, imported default inheritance and integrated reviewed upstream trace
   remain open.
+
+### Storage routing and spill-volume sensitivity
+
+- Spills has a separate routing view that reuses the ready local flow channel,
+  shared worker, applicable exclusions and safe calculation export. Review the
+  inflow clock, period, pass-forward cap and initial occupied storage. Existing
+  Storage assessment and 12/24 rules keep their established methods.
+- The worker checks continuity for all tested capacities and stops at the
+  first unsupported interval. The view reports assessed duration and coverage,
+  stage volumes, spill sensitivity and mass residual. It signs the source
+  reference with the existing SHA-256 and retains the reviewed assumptions in
+  the local CSV. In-app calculation state is session-only at this milestone.
+- The triangular benchmark integrates 10 m³, passes 7.5 m³ and spills 1.5 m³
+  with 1 m³ of retained storage. Eleven storage tests cover cap crossings,
+  fill and drawdown, zero release, excluded intervals, duplicate timestamps,
+  invalid controls and source unit conversion. The full Python suite passed
+  379 tests and 111 subtests.
+- The Chromium and Firefox workflow verified existing Storage assessment
+  navigation, actual time-series import, partial and complete selected periods,
+  chart and table values, invalid inputs, invalidation and protected CSV export.
+  The observer saw 89 and 87 requests with zero violations. The revised shell
+  source hash covers one additional fixed local route only.
