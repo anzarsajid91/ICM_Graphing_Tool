@@ -39,7 +39,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 8.1 | DWF, comparison and event diagnostics | Explain preceding-flow, storm, peak, timing, recovery and paired-depth differences with exact support and investigation prompts | Verified locally for the phase investigation |
 | 8.2 | Existing event comparison and alignment | Qualifying event sets with multiple monitor–scenario pairings, independent criteria, true common time support, comments, plots and audit | Verified locally for the matrix |
 | 8.3 | Existing comparison evidence stamps and review history | Review current matrix against named baseline snapshots with the same recorded observations, criteria, support and qualification | Verified locally for portable snapshots |
-| 9.1 | Circular full/part-full Colebrook–White and comparisons | Shared circular solver, Manning capacity and depth, full-bore Manning diameter/gradient, section and depth chart, pipe trials | Partial. Additional inverse and geometry criteria remain open |
+| 9.1 | Circular full/part-full Colebrook–White and comparisons | Shared circular solver, Manning capacity and depth, full-bore Manning and Darcy diameter/gradient, section and depth chart, pipe trials | Partial. Additional geometry criteria remain open |
 | 9.2 | SI circular pipe engine | Head-loss components, static/dynamic head, forward series/parallel, system curve and auditable sheets with independent cases | Partial |
 | 9.3 | Candidate system-curve model | Validated curves, intersections, limits, configurations and power; distinguish unsupported conditions | Partial |
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
@@ -681,7 +681,7 @@ other state.
   violations. The separate spatial rainfall and WAPUG regression passed
   with 104 and 102 requests and no violations.
 
-### Circular Manning sizing
+### Circular Manning sizing (`641bde6`)
 
 - Hydraulic Calculations includes a deferred circular Manning sizing surface.
   It handles a known fill depth, both possible normal depths, a continuous
@@ -707,3 +707,21 @@ other state.
   the available width and keeps the workspace tab strip independently
   scrollable. The reproduction isolates the layout change without altering
   any calculation and continues to check keyboard access at that width.
+
+### Darcy full-bore gravity sizing
+
+- The same sizing workspace provides laminar and Colebrook–White
+  full-bore diameter and gradient, with explicit withholding in the
+  transitional regime. Both methods share the circular section display,
+  comparison trials and local calculation sheet.
+  [Engineering methods](methods.md#darcy-full-bore-gravity-sizing)
+- Independent cases recovered 600 mm at 424.115008 L/s and Darcy f of
+  0.020 at Reynolds 900,000. The 10 mm case returned f of 0.064 at
+  Reynolds 1,000. The suite also covers zero and invalid inputs, curve
+  gaps, and required gradients beyond the screened domain. Python passed
+  446 tests and 111 subtests.
+- Chromium and Firefox exercised both sizing methods, transitions, CSV
+  export, keyboard operation and the previous pipe capacity result of
+  202.65 L/s. Request observers recorded 101 and 100 requests with no
+  violations. The method-library and deferred-workspace checks passed in
+  both browsers. The source, privacy and network-contract checks passed.

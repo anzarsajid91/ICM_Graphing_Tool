@@ -25,12 +25,12 @@ try {
   const panel=page.locator('#tab-method-library'),status=panel.getByRole('status');
   await status.filter({hasText:'could not be loaded'}).waitFor();
   await panel.getByRole('button',{name:'Retry loading methods'}).click();
-  await status.filter({hasText:'18 of 18 methods'}).waitFor();
+  await status.filter({hasText:'19 of 19 methods'}).waitFor();
   const search=panel.getByLabel('Search methods');
   await search.fill('SYNTHETIC-USER-METHOD-FILTER');
-  assert.equal(await status.innerText(),'0 of 18 methods');
+  assert.equal(await status.innerText(),'0 of 19 methods');
   await search.fill('Villemonte');
-  assert.equal(await status.innerText(),'1 of 18 methods');
+  assert.equal(await status.innerText(),'1 of 19 methods');
   const structure=panel.locator('summary').filter({hasText:'Hydraulic structures and supplied ratings'});
   await structure.focus();await page.keyboard.press('Space');
   const source=panel.getByRole('link',{name:'USBR reference describing the Villemonte relation'});
@@ -44,13 +44,13 @@ try {
   assert.equal(await search.inputValue(),'Villemonte');
   await search.fill('');
   await panel.getByLabel('Jurisdiction').selectOption('England');
-  assert.equal(await status.innerText(),'1 of 18 methods');
+  assert.equal(await status.innerText(),'1 of 19 methods');
   await panel.getByLabel('Category').selectOption('Hydraulics');
-  assert.equal(await status.innerText(),'0 of 18 methods');
+  assert.equal(await status.innerText(),'0 of 19 methods');
   await panel.getByLabel('Category').selectOption('Design flows');
-  assert.equal(await status.innerText(),'1 of 18 methods');
+  assert.equal(await status.innerText(),'1 of 19 methods');
   await panel.getByLabel('Jurisdiction').selectOption('Scotland');
-  assert.equal(await status.innerText(),'2 of 18 methods');
+  assert.equal(await status.innerText(),'2 of 19 methods');
   await panel.getByText('Scotland municipal treatment design flows',{exact:true}).click();
   const sepa=panel.getByRole('link',{name:'SEPA municipal sewage treatment works guide'});
   assert.match(await sepa.getAttribute('href'),/^https:\/\/www\.sepa\.org\.uk\/media\//);
@@ -73,9 +73,16 @@ try {
   const fhwa=panel.getByRole('link',{name:/FHWA Urban Drainage Design Manual/});
   assert.equal(await fhwa.getAttribute('href'),'https://www.fhwa.dot.gov/engineering/hydraulics/pubs/hif24006.pdf');
   assert.equal(await fhwa.getAttribute('referrerpolicy'),'no-referrer');
-  await panel.getByRole('button',{name:'Open Manning sizing',exact:true}).click();
+  await panel.getByRole('button',{name:'Open Gravity sizing',exact:true}).click();
   await page.locator('#hbManningForm').waitFor();
   await page.getByRole('button',{name:'About',exact:true}).click();await open.click();
+  await search.fill('Darcy full-bore gravity sizing');
+  await panel.getByText('Darcy full-bore gravity sizing',{exact:true}).click();
+  for(const [label,url] of [['Colebrook (1939)','https://www.emerald.com/jince/article/11/4/133/417643'],
+    ['DOE Fundamentals Handbook, Fluid Flow','https://www.energy.gov/documents/doe-hdbk-1012-92vol3']]){
+    const link=panel.getByRole('link',{name:label,exact:true});
+    assert.equal(await link.getAttribute('href'),url);assert.equal(await link.getAttribute('referrerpolicy'),'no-referrer');
+  }
   await page.setViewportSize({width:400,height:850});
   const sizes=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
   assert(sizes[0]<=sizes[1]+2);

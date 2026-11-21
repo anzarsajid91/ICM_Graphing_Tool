@@ -1300,6 +1300,13 @@ def circular_manning_capacity(mode, n, viscosity_m2_s, diameter_m=None, gradient
                       allow_nan=False)
 
 
+def circular_darcy_sizing(mode, roughness_m, viscosity_m2_s, discharge_m3_s, diameter_m=None, gradient=None):
+    from icm_workbench.analysis.darcy_sizing import circular_darcy_requirement
+
+    result = circular_darcy_requirement(mode, roughness_m, viscosity_m2_s, discharge_m3_s, diameter_m, gradient)
+    return json.dumps(result, allow_nan=False)
+
+
 def verification_event_comparison(obs_path, obs_col, model_path, model_col, start, end,
                                   max_gap_seconds=900.0, offset_minutes=0, exclusions_json="[]", *, window_only=False):
     """Compare one selected wet-weather event using supported hydraulic channels."""

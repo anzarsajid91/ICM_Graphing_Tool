@@ -443,6 +443,30 @@ and 569.339451 mm. Those values use the exact circular equation before
 selecting a stock pipe. Keep local trials to compare assumptions and save
 the calculations with their source method and build.
 
+## Darcy full-bore gravity sizing
+
+For a prescribed discharge through one clean circular barrel, use `V = Q/A`,
+`Re = VD/ν` and `S = fV²/(2gD)`. Below Reynolds 2,000 the solver uses
+`f = 64/Re`. At Reynolds 4,000 and above it solves the implicit Colebrook
+equation using the reviewed absolute roughness and Reynolds number. This
+screen withholds the intervening transitional regime. [Colebrook (1939)](https://www.emerald.com/jince/article/11/4/133/417643) · [DOE Fundamentals Handbook, Fluid Flow](https://www.energy.gov/documents/doe-hdbk-1012-92vol3)
+
+For a known gradient, the solver checks the closed-form laminar diameter
+and brackets the turbulent root using the existing uniform circular capacity
+method. The returned diameter must lie between 1 and 20,000 mm with relative
+roughness at most 5%. The required gradient must be at most 1 m/m. The
+optional curve shows the supported turbulent flow at each free-surface
+depth. Full-bore laminar sizing uses the exact circular laminar solution.
+
+In the independent turbulent reference, a 600 mm pipe at 1.5 m/s and
+ν = 10⁻⁶ m²/s has Re 900,000 and Q 424.115008 L/s. Choosing a roughness
+from the Colebrook equation at `f = 0.020` gives the reference gradient
+`0.020 × 1.5² ÷ (2 × 9.80665 × 0.6)` m/m. Both sizing directions recover
+the reference. A laminar 10 mm pipe at 0.1 m/s and the same viscosity
+has Re 1,000 and `f = 0.064`. The sizing result reports continuous internal
+diameter or energy slope. The existing Pipe capacity page provides the
+forward Colebrook–White flow and normal-depth workflows.
+
 ## Fixed-factor pipe system screening and pump duty
 
 Use full circular pipes, a steady forward flow and an engineering-specified

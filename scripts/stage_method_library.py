@@ -19,6 +19,7 @@ METHODS = {
     "Multi-event verification matrix": ("Verification", "UK", "graphs", "matrix"),
     "Circular-pipe capacity and design flow preview": ("Hydraulics", "General", "hydraulics", "capacity"),
     "Manning circular gravity sizing": ("Hydraulics", "General", "hydraulics", "gravity"),
+    "Darcy full-bore gravity sizing": ("Hydraulics", "General", "hydraulics", "gravity"),
     "Fixed-factor pipe system screening and pump duty": ("Hydraulics", "General", "hydraulics", "system-curve"),
     "England continuation-flow screening": ("Design flows", "England", "hydraulics", "formula-a"),
     "Scotland continuation-flow screening": ("Design flows", "Scotland", "hydraulics", "formula-a"),
@@ -35,6 +36,8 @@ EXACT_REFERENCES = {
     "https://unstats.un.org/unsd/envaccounting/waterGuidelines/Material/WMO_Guide_168_Vol_I_en_hydrological_practices.pdf",
     "https://www.itl.nist.gov/div898/software/dataplot/refman2/auxillar/correlat.htm",
     "https://www.fhwa.dot.gov/engineering/hydraulics/pubs/hif24006.pdf",
+    "https://www.emerald.com/jince/article/11/4/133/417643",
+    "https://www.energy.gov/documents/doe-hdbk-1012-92vol3",
 }
 MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\((https://[^\s)]+)\)")
 

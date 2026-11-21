@@ -29,7 +29,7 @@ try {
   await page.locator('#pipeCapacityForm').waitFor();
   assert.equal(assets.get('hydraulic-design.js'),0);
   assert.equal(assets.get('gravity-sizing.js'),0);
-  await page.getByRole('tab',{name:'Manning sizing',exact:true}).click();
+  await page.getByRole('tab',{name:'Gravity sizing',exact:true}).click();
   await page.locator('#hbManningForm').waitFor();
   assert.equal(assets.get('gravity-sizing.js'),1);
   await page.getByRole('tab',{name:'System curve',exact:true}).click();
