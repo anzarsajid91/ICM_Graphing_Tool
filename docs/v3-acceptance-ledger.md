@@ -622,7 +622,7 @@ other state.
   no-referrer behaviour and rejection of a modified CIWEM link from synthetic
   staged data. There were 30 and 31 observed requests with no violations.
 
-### Verification scenario revision tracking
+### Verification scenario revision tracking (`44ea202`)
 
 - A named baseline can be retained in the current session or reopened as a
   validated local JSON snapshot. It records source fingerprints, channels,
@@ -644,3 +644,14 @@ other state.
   requests with no violations. The responsive shell passed in both browsers.
   Shared workspace persistence and other report types remain separately
   tracked under sections 11 and 13.
+
+### Hosted browser-source gate correction
+
+- The [hosted verify job](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44920994590/job/136896832452)
+  failed when its Node sandbox evaluated browser interface registration
+  alongside the extracted standalone rainfall-source helper. Registration for
+  the two shared survey selectors now runs with the existing browser exports.
+- The unchanged survey-source unit tests and the full workflow browser-source
+  step passed locally, including FastPath/Python reference equivalence. The
+  source, Python privacy and network-contract checks passed. Hosted check
+  status remains specific to the exact candidate revision.

@@ -450,7 +450,6 @@
       };
     });
   }
-  window.__ICM_WORKBENCH__.surveyMonitorSources = monitorSourceSpecs;
 
   function rainSourceSpecs() {
     const records = survey.association?.records || [];
@@ -479,7 +478,6 @@
     }
     return specs;
   }
-  window.__ICM_WORKBENCH__.surveyRainSources = rainSourceSpecs;
 
   function associationConflictText(record) {
     const conflicts = (survey.association && survey.association.conflicts || []).filter(x => token(x.monitor) === token(record.monitor));
@@ -595,6 +593,8 @@
   }
   window.__ICM_WORKBENCH__.surveyDependencySignature=surveyDependencySignature;
   window.__ICM_WORKBENCH__.surveyFresh=surveyFresh;
+  window.__ICM_WORKBENCH__.surveyMonitorSources=monitorSourceSpecs;
+  window.__ICM_WORKBENCH__.surveyRainSources=rainSourceSpecs;
 
   function invalidateSurveyResults(reason) {
     // Preserve the previous evidence for review, but invalidate its dependency
