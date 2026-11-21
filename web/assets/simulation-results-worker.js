@@ -74,6 +74,7 @@ async function operation(id, name, data) {
     }
     case "series": return resolveSource(data.sourceId).seriesWindow(data.key,data.start,data.end);
     case "envelope": return resolveSource(data.sourceId).envelope(data.key,data.start,data.end);
+    case "range": return resolveSource(data.sourceId).range(core.parseProjectClock(data.start),core.parseProjectClock(data.end));
     default: throw new Error("Unsupported simulation results operation.");
   }
 }

@@ -30,7 +30,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial |
-| 6.3 | Exact-time selected model-level samples and overview | Synchronized real-sample map/profile playback, transport controls, windowing, scenario comparison, extrema and missingness | Partial |
+| 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls and independent extrema | Partial. Scenario comparison and result-layer selection remain open |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
 | 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for indexed ingestion and lookup. Broader capacity and release checks remain open |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
@@ -917,3 +917,23 @@ other state.
   Parsed header fields and the entire payload SHA-256 matched the
   independent reference writer. The process recorded a peak of
   128,452 KiB RSS with no retained results index during conversion.
+
+### Exact playback windows and event selection
+
+- The results reviewer and detailed schematic share project-clock window
+  controls. Start and end are inclusive. The worker returns actual sample
+  indices and endpoints for both memory and file-backed sources. The slider,
+  transport and selected-series extrema follow that range. An empty range
+  leaves the previous usable selection active. Event filters use the local
+  source declarations. Returning to all events restores the selected source.
+- Unit cases cover exact and non-exact endpoints, disjoint ranges, invalid
+  order and a cross-block file-backed range. Chromium and Firefox verified
+  sparse bounds, windowed extrema, empty windows, original source selection,
+  single-sample playback, route playback, reset and package regressions.
+  Each observed 32 guarded requests with no violations. Source and privacy
+  gates passed on the changed candidate.
+- The [previous hosted layout test](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44949144908/job/136983096899)
+  found the new hotspot section shared the existing Review tools layout
+  class. The hotspot now uses the general review section class. The unchanged
+  400-point layout regression passed in Chromium and Firefox. Hosted
+  confirmation remains tied to the next exact candidate revision.

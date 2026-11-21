@@ -198,6 +198,11 @@ function lowerIndex(length,get,target){
   return low;
 }
 
+function rangeSummary(left,right,first=null,last=null){
+  const count=right-left;
+  return {count,firstIndex:count?left:null,lastIndex:count?right-1:null,first,last};
+}
+
 function makeIndex(chunks, rowsPerChunk, count, metadata) {
   const positions = new Map(metadata.columns.map((column,index)=>[column.series,index]));
   const at = index => chunks[Math.floor(index/rowsPerChunk)].time[index%rowsPerChunk];
@@ -213,6 +218,10 @@ function makeIndex(chunks, rowsPerChunk, count, metadata) {
   }
   return {metadata,count,first:at(0),last:at(count-1),
     exportPackage(){return encodePackage(chunks,rowsPerChunk,count,metadata);},
+    range(start,end){
+      const [left,right]=bounds(start,end);
+      return left<right?rangeSummary(left,right,at(left),at(right-1)):rangeSummary(left,right);
+    },
     timestamp(index) {
       if (!Number.isInteger(index) || index<0 || index>=count) return null;
       return at(index);
@@ -329,6 +338,10 @@ function fileIndex(blob,layout,lastTimes,first,metadata){
   }
   return {metadata,count,first,last:lastTimes.at(-1),timestamp:index=>serial(()=>timestamp(index)),
     exportPackage(){return blob;},
+    range(start,end){return serial(async()=>{
+      const [left,right]=await bounds(start,end);
+      return left<right?rangeSummary(left,right,await timestamp(left),await timestamp(right-1)):rangeSummary(left,right);
+    });},
     frameAt(index,keys){return serial(()=>Number.isInteger(index)&&index>=0&&index<count?
       readFrame(index,keys,true):{time:null,values:null});},
     frame(time,keys){return serial(async()=>{
@@ -564,5 +577,6 @@ async function streamPackageFromCsv(blob,config,writeBlock,options={}){
 
 function validateCsvMapping(config){compile(config);return true;}
 
-globalThis.HydraSimulationResults=Object.freeze({inspectCsv,importCsv,inspectPackage,importPackage,streamPackageFromCsv,validateCsvMapping,assetKey});
+globalThis.HydraSimulationResults=Object.freeze({inspectCsv,importCsv,inspectPackage,importPackage,streamPackageFromCsv,validateCsvMapping,
+  parseProjectClock:value=>clockStamp(value,"iso"),assetKey});
 })();

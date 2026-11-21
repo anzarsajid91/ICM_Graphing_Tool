@@ -61,8 +61,13 @@ fewer assets, attributes or time periods reduces work at the source.
 
 The sample slider and play controls advance through recorded sample positions.
 Unequal result timesteps remain unequal in reported timestamps. The current
-review screen reports entire-file extrema for one selected series and their
-timestamps. Indexed reads support exact-time frames and bounded time windows.
+review screen reports extrema and their timestamps for one selected series
+over the active window. Filter files by their declared event label. Enter
+inclusive bounds on the project clock to restrict either review or map
+playback to recorded timestamps in a smaller interval. The window reports
+the actual first and last samples. An empty or invalid window leaves the
+previous valid selection in place. **Use entire event** restores the source's
+full recorded span. Indexed reads support exact-time frames and bounded windows.
 There is no interpolation, extrapolation or numerical decimation.
 
 ## Portable results package v1
@@ -159,5 +164,5 @@ removing the source clears the layer. Its session index remains local.
 The initial desktop smoke tests use a synthetic, explicitly mapped export
 following the documented CSV options. ICM-generated fixtures across versions
 and locales are still needed. The registry retains only local session data.
-Automated revision binding, conduit-end profiles, windowed transport and
-scenario comparison remain outstanding.
+Automated revision binding, conduit-end profiles and scenario comparison
+remain outstanding.

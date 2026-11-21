@@ -42,6 +42,9 @@ assert.deepEqual(index.frame(middle,['unavailable']),[null]);
 assert.deepEqual([...index.seriesWindow(keys[1],middle,end).values],[NaN,24]);
 assert.deepEqual(index.envelope(keys[0],start,end),{min:-1,max:2,minTime:middle,maxTime:end,valid:3,samples:3});
 assert.deepEqual(index.envelope(keys[1],middle,middle),{min:null,max:null,minTime:null,maxTime:null,valid:0,samples:1});
+assert.deepEqual(index.range(start+1,end-1),{count:1,firstIndex:1,lastIndex:1,first:middle,last:middle});
+assert.deepEqual(index.range(start+1,middle-1),{count:0,firstIndex:null,lastIndex:null,first:null,last:null});
+assert.throws(()=>index.range(end,start),/valid result window/);
 
 await assert.rejects(importCsv(new Blob([csv.replace('00:05:00','00:00:00')]),config),/increase strictly/);
 await assert.rejects(importCsv(new Blob([csv.replace('2025-01-01','2025-02-30')]),config),/Invalid project-clock/);
@@ -109,6 +112,8 @@ assert.equal(backed.metadata.accessMode,'file');
 assert(backed.metadata.allocationBytes<160032,'The package payload does not need a full retained copy');
 assert.equal(backed.count,5001);
 const boundary=many.timestamp(4096),before=many.timestamp(4095),after=many.timestamp(4097);
+assert.deepEqual(await backed.range(before+1,after),{count:2,firstIndex:4096,lastIndex:4097,first:boundary,last:after});
+assert.deepEqual(await backed.range(after+1,after+2),{count:0,firstIndex:null,lastIndex:null,first:null,last:null});
 bytesRead=0;
 assert.deepEqual(await backed.frame(before,[keys[1]]),[4115]);
 const initialRead=bytesRead;

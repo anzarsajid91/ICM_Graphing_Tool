@@ -1354,7 +1354,7 @@ function traceHotspot(direction){
   renderCanvas();
 }
 function mountHotspots(){
-  $('nsStatus').insertAdjacentHTML('beforebegin',`<section id="nsHotspotLayer" class="ns-tool-panel" aria-label="Detriment hotspots" hidden>
+  $('nsStatus').insertAdjacentHTML('beforebegin',`<section id="nsHotspotLayer" class="ns-review-section" aria-label="Detriment hotspots" hidden>
     <h3>Detriment hotspots</h3><p id="nsHotspotTitle"></p><p id="nsHotspotSummary"></p>
     <p>Hotspots mark reported criterion outcomes. Connections identify branches to investigate.</p>
     <div class="ns-tool-row"><label>Hotspot criterion <select id="nsHotspotCriterion" aria-label="Hotspot criterion"></select></label>
@@ -2124,6 +2124,7 @@ function mountSimulationView(){
     '<summary>Simulation playback</summary><p id="nsSimulationStatus" role="status"></p>'+
     '<button type="button" id="nsIndexResults">Open simulation results</button>'+
     '<form id="nsSimulationSetup" hidden><div class="ns-review-actions">'+
+    '<label>Filter playback events<select name="event" aria-label="Filter playback events"></select></label>'+
     '<label>Indexed results<select name="source" required></select></label>'+
     '<label>Scale minimum<input name="minimum" type="number" step="any" required></label>'+
     '<label>Scale maximum<input name="maximum" type="number" step="any" required></label>'+
@@ -2133,14 +2134,14 @@ function mountSimulationView(){
     '<div id="nsSimulationTransport" class="ns-review-actions" hidden><label>Simulation sample<input id="nsSimulationTime" type="range" min="0" max="0" step="1" value="0"></label>'+
     '<button type="button" id="nsSimulationBack">Previous sample</button><button type="button" id="nsSimulationPlay" aria-pressed="false">Play</button><button type="button" id="nsSimulationNext">Next sample</button>'+
     '<label>Samples per second<select id="nsSimulationSpeed"><option>1</option><option selected>2</option><option>5</option></select></label></div>'+
-    '<p id="nsSimulationStamp"></p><div id="nsSimulationLegend" class="ns-simulation-legend" hidden></div></details>');
+    '<div id="nsSimulationWindow" hidden></div><p id="nsSimulationStamp"></p><div id="nsSimulationLegend" class="ns-simulation-legend" hidden></div></details>');
   const panel=$('nsSimulation'),form=$('nsSimulationSetup'),fields=form.elements;
   const note=$('nsSimulationStatus'),stamp=$('nsSimulationStamp'),legend=$('nsSimulationLegend');
   const transport=$('nsSimulationTransport'),time=$('nsSimulationTime'),play=$('nsSimulationPlay');
   const back=$('nsSimulationBack'),next=$('nsSimulationNext'),clear=$('nsClearSimulation');
   const titles={level:'Level',flow:'Flow',velocity:'Velocity',depth:'Depth','total-head':'Total head',
     'flood-depth':'Flood depth','flood-volume':'Flood volume','surcharge-state':'Surcharge state'};
-  let layer=null,profile=null,generation=0,playing=0,timer=null,groups=new Map();
+  let layer=null,profile=null,generation=0,playing=0,timer=null,groups=new Map(),sampleWindow=null;
   const session=()=>window.HydraResultsWorkspace?.session;
   const sources=()=>session()?.sources()||[];
   const candidate=()=>sources().find(item=>item.sourceId===Number(fields.source.value));
@@ -2197,6 +2198,7 @@ function mountSimulationView(){
   function reset(message=''){
     const wasApplied=Boolean(profile);
     stop();++generation;layer=null;profile=null;removeMarks();
+    sampleWindow?.setSource(null);
     transport.hidden=true;legend.hidden=true;stamp.textContent='';clear.disabled=true;fields.confirm.checked=false;
     if(message&&panel.open)note.textContent=message;
     if(wasApplied)redrawProfile();
@@ -2216,7 +2218,8 @@ function mountSimulationView(){
     const wanted=fields.source.value,available=sources();
     const removed=layer&&!available.includes(layer.source);
     if(removed)reset('The results source was removed. Import it again to resume.');
-    fields.source.replaceChildren(new Option('Choose an indexed source',''),...available.map(item=>new Option(item.scenario+' · '+item.filename,item.sourceId)));
+    const filtered=window.HydraResultsWorkspace?.eventSources(fields.event,available)||[];
+    fields.source.replaceChildren(new Option('Choose an indexed source',''),...filtered.map(item=>new Option(item.scenario+' · '+item.filename,item.sourceId)));
     fields.source.value=wanted;if(fields.source.selectedIndex<0)fields.source.selectedIndex=0;
     form.hidden=!eligible()||!available.length;
     if(wanted!==fields.source.value)selectSource();
@@ -2228,7 +2231,7 @@ function mountSimulationView(){
   async function drawFrame(){
     if(!layer)return;
     const current=layer,index=time.valueAsNumber,request=++generation;
-    back.disabled=index===0;next.disabled=index>=current.source.count-1;
+    back.disabled=index<=Number(time.min);next.disabled=index>=Number(time.max);play.disabled=time.min===time.max;
     try{
       const frame=await session().frame(current.source.sourceId,index,current.columns.map(column=>column.series));
       if(request!==generation)return;
@@ -2246,6 +2249,7 @@ function mountSimulationView(){
     }catch(error){if(request===generation)reset(error.message);}
   }
   fields.source.onchange=()=>{reset();selectSource();};
+  fields.event.onchange=()=>{reset();refreshSources();};
   form.onsubmit=event=>{
     event.preventDefault();
     const source=candidate();if(!source||!eligible())return;
@@ -2260,7 +2264,11 @@ function mountSimulationView(){
     reset();
     fields.confirm.checked=true;
     layer={source,columns,matches,low,high,values:null,geometryDatum:first.asset.kind==='node'&&first.quantity==='level'?datum:''};
-    time.value='0';time.max=String(source.count-1);play.disabled=source.count<2;
+    const resultsWorkspace=window.HydraResultsWorkspace;
+    if(!sampleWindow)sampleWindow=resultsWorkspace.mountResultWindow($('nsSimulationWindow'),range=>{
+      stop();resultsWorkspace.setSliderWindow(time,range);void drawFrame();
+    });
+    resultsWorkspace.setSliderWindow(time,sampleWindow.setSource(source));
     transport.hidden=false;clear.disabled=false;legend.hidden=false;
     const unit=first.unit;
     legend.replaceChildren(inspectorElement('strong',titles[first.quantity]+' ('+unit+')'),
@@ -2284,7 +2292,7 @@ function mountSimulationView(){
   }
   play.onclick=()=>{
     if(timer!==null){stop();return;}
-    if(time.value===time.max){time.value='0';void drawFrame();}
+    if(time.value===time.max){time.value=time.min;void drawFrame();}
     play.textContent='Pause';play.setAttribute('aria-pressed','true');schedule(++playing);
   };
   time.oninput=()=>{stop();void drawFrame();};back.onclick=()=>{stop();void step(-1);};next.onclick=()=>{stop();void step(1);};

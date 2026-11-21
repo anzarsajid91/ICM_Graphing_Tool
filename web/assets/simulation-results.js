@@ -15,6 +15,57 @@ const selectOptions=(select,values)=>select.replaceChildren(...values.map(value=
 let session=null;
 const announceSources=()=>window.dispatchEvent(new Event("icm:simulation-sources-changed"));
 
+function eventSources(select,sources){
+  const existing=select.value,events=[...new Set(sources.map(source=>source.event))].sort((a,b)=>a.localeCompare(b));
+  select.replaceChildren(option("All indexed events",""),...events.map(event=>option(event,event)));
+  select.value=events.includes(existing)?existing:"";
+  select.disabled=!events.length;
+  return select.value?sources.filter(source=>source.event===select.value):sources;
+}
+
+function setSliderWindow(slider,range){
+  slider.min=String(range.firstIndex);slider.max=String(range.lastIndex);slider.value=slider.min;
+}
+
+function mountResultWindow(container,onChange){
+  const field=element("details"),grid=element("div"),actions=element("div"),note=element("p");
+  grid.className="mapping-grid";actions.className="actions";note.setAttribute("role","status");
+  function dateField(text){
+    const label=element("label",text),input=element("input");
+    input.type="datetime-local";input.step="0.001";label.append(input);grid.append(label);return input;
+  }
+  const start=dateField("Window start (project clock)"),end=dateField("Window end (project clock)");
+  const apply=element("button","Apply sample window"),reset=element("button","Use entire event");
+  apply.type=reset.type="button";
+  actions.append(apply,reset);field.append(element("summary","Sample window"),grid,actions,note);container.replaceChildren(field);
+  let source=null,active=null,generation=0;
+  const inputValue=millis=>new Date(millis).toISOString().slice(0,-1);
+  function setRange(range){
+    active=range;start.value=inputValue(range.first);end.value=inputValue(range.last);
+    note.textContent=`${range.count} recorded ${range.count===1?"sample":"samples"} · ${formatTime(range.first)} to ${formatTime(range.last)} (project clock).`;
+  }
+  function resetWindow(){
+    ++generation;apply.disabled=!source;container.hidden=!source;
+    if(source)setRange({count:source.count,firstIndex:0,lastIndex:source.count-1,first:source.first,last:source.last});
+    else active=null;
+    return active;
+  }
+  reset.onclick=()=>{const window=resetWindow();if(window)onChange(window);};
+  apply.onclick=async()=>{
+    if(!source||!start.value||!end.value){note.textContent="Choose a start and end on the project clock.";return;}
+    const request=++generation;
+    apply.disabled=true;
+    try{
+      const range=await session.range(source.sourceId,start.value,end.value);
+      if(request!==generation)return;
+      if(!range.count){note.textContent="No recorded samples in this window. The previous window remains active.";return;}
+      setRange(range);onChange(range);
+    }catch(error){if(request===generation)note.textContent=error.message;}
+    finally{if(request===generation)apply.disabled=false;}
+  };
+  return {setSource(candidate){source=candidate;return resetWindow();},current:()=>active};
+}
+
 function workerClient(onFailure) {
   let worker, serial=0;
   const pending=new Map();
@@ -87,9 +138,10 @@ function mount() {
   </article>
   <article class="panel">
     <div class="panel-head"><h2>Review simulation samples</h2><p>Samples are held in this browser tab. To reopen them later, keep the original export or download the indexed samples as a portable package.</p></div>
-    <div class="mapping-grid"><label>Indexed source<select id="hbResultSource"></select></label><label>Result series<select id="hbResultSeries"></select></label></div>
+    <div class="mapping-grid"><label>Filter indexed events<select id="hbResultEventFilter" aria-label="Filter indexed events"></select></label><label>Indexed source<select id="hbResultSource"></select></label><label>Result series<select id="hbResultSeries"></select></label></div>
     <p id="hbResultDetails"></p>
     <div id="hbResultTransport" hidden>
+      <div id="hbResultWindow"></div>
       <label>Sample position<input type="range" id="hbResultTime" value="0" min="0" max="0" step="1"></label>
       <div class="actions"><button type="button" id="hbResultBack">Previous sample</button><button type="button" id="hbResultPlay" aria-pressed="false">Play</button><button type="button" id="hbResultStep">Next sample</button>
       <label>Samples per second<select id="hbResultSpeed"><option>1</option><option selected>2</option><option>5</option></select></label>
@@ -101,19 +153,22 @@ function mount() {
   const $=id=>root.querySelector("#"+id), form=$("hbResultsImport"), controls=form.elements;
   const importer=$("hbResultImportStatus"), review=$("hbResultReviewStatus"), preview=$("hbResultPreview");
   const mappingBody=$("hbResultMappings").tBodies[0], add=$("hbAddResultMapping"), submit=form.querySelector('[type="submit"]');
-  const cancel=$("hbCancelResult"), progress=$("hbResultProgress"), source=$("hbResultSource"), series=$("hbResultSeries");
+  const cancel=$("hbCancelResult"), progress=$("hbResultProgress"), source=$("hbResultSource"), series=$("hbResultSeries"),eventFilter=$("hbResultEventFilter");
   const time=$("hbResultTime"), transport=$("hbResultTransport"), sample=$("hbResultSample"), envelope=$("hbResultEnvelope");
   const play=$("hbResultPlay"), back=$("hbResultBack"), step=$("hbResultStep"), remove=$("hbRemoveResult");
   const packageInput=controls.portable, packageStatus=$("hbResultPortableStatus"), indexPackage=$("hbIndexPortable"), exportPackage=$("hbExportPortable");
   const exportMapping=$("hbExportResultMapping");
   const datasets=new Map(), mappings=[];
   let fileGeneration=0, packageGeneration=0, reviewedPackage=null, displayGeneration=0, envelopeGeneration=0, currentImport=null,
-    playback=null, playbackGeneration=0, serial=0;
+    playback=null, playbackGeneration=0, serial=0,preferredSource="";
   const client=workerClient(()=>{datasets.clear();refreshSources();announceSources();review.textContent="The simulation worker stopped. Reimport the source to resume.";});
   session=Object.freeze({
     sources:()=>Array.from(datasets.values()),
-    frame:(sourceId,index,keys)=>client.request("frame",{sourceId,index,keys}).result
+    frame:(sourceId,index,keys)=>client.request("frame",{sourceId,index,keys}).result,
+    range:(sourceId,start,end)=>client.request("range",{sourceId,start,end}).result,
+    envelope:(sourceId,key,start,end)=>client.request("envelope",{sourceId,key,start,end}).result
   });
+  const sampleWindow=mountResultWindow($("hbResultWindow"),range=>{stop();setSliderWindow(time,range);void updateSeries();});
 
   function newMapping() {
     const row=mappingBody.insertRow(), label="Mapping "+(++serial);
@@ -224,7 +279,8 @@ function mount() {
       currentImport=task.id;
       const info=await task.result;
       if(!datasets.has(info.sourceId)||info.accessModeChanged){datasets.set(info.sourceId,info);announceSources();}
-      refreshSources(info.sourceId);
+      eventFilter.value="";preferredSource=String(info.sourceId);
+      refreshSources();
       importer.textContent=info.reused?"This result source and mapping are already indexed.":info.accessModeChanged?
         "Local access mode updated for this result source.":`${info.count} timestamps indexed for ${info.columns.length} result series.`;
     } catch(error) {importer.textContent=error.message;}
@@ -241,15 +297,17 @@ function mount() {
     return {dataset,column:dataset?.columns[Number(series.value)]};
   }
   function stop() {++playbackGeneration;if (playback!==null) clearTimeout(playback);playback=null;play.textContent="Play";play.setAttribute("aria-pressed","false");}
-  function refreshSources(wanted=source.value) {
-    source.replaceChildren(option("Select a results source",""),...Array.from(datasets.values(),d=>option(d.scenario+" · "+d.filename,d.sourceId)));
-    source.value=String(wanted);if (!source.value) source.selectedIndex=0;
+  function refreshSources() {
+    const filtered=eventSources(eventFilter,Array.from(datasets.values()));
+    source.replaceChildren(option("Select a results source",""),...filtered.map(d=>option(d.scenario+" · "+d.filename,d.sourceId)));
+    source.value=preferredSource;if (!source.value) source.selectedIndex=0;
     updateSource();
   }
   function updateSource() {
     stop();review.textContent="";sample.textContent="";envelope.textContent="";displayGeneration++;envelopeGeneration++;
     const {dataset}=selection();
     transport.hidden=!dataset;series.replaceChildren();
+    const range=sampleWindow.setSource(dataset);
     const details=$("hbResultDetails");
     if (!dataset){details.textContent="Import a results CSV to review available samples.";return;}
     details.textContent=`${dataset.simulation} · Revision ${dataset.modelRevision} · ${dataset.event} · ${dataset.missingCount} missing mapped samples`;
@@ -259,13 +317,13 @@ function mount() {
       const a=column.asset,id=a.kind==="node"?a.id:a.upstream+"."+a.suffix;
       series.add(option(`${id} · ${title(column.quantity)} · ${title(column.location)}`,i));
     }
-    time.max=String(dataset.count-1);time.value="0";
+    setSliderWindow(time,range);
     updateSeries();
   }
   async function updateFrame() {
     const {dataset,column}=selection();if (!dataset||!column) return;
     const generation=++displayGeneration,index=time.valueAsNumber;
-    back.disabled=index===0;step.disabled=index>=dataset.count-1;play.disabled=dataset.count<2;
+    back.disabled=index<=Number(time.min);step.disabled=index>=Number(time.max);play.disabled=time.min===time.max;
     try {
       const result=await client.request("frame",{sourceId:dataset.sourceId,index,keys:[column.series]}).result;
       if (generation!==displayGeneration) return;
@@ -277,7 +335,7 @@ function mount() {
     const generation=++envelopeGeneration;
     envelope.textContent="";void updateFrame();
     try {
-      const r=await client.request("envelope",{sourceId:dataset.sourceId,key:column.series,start:dataset.first,end:dataset.last}).result;
+      const window=sampleWindow.current(),r=await session.envelope(dataset.sourceId,column.series,window.first,window.last);
       if(generation!==envelopeGeneration) return;
       envelope.textContent=r.valid?`Independent series extrema: minimum ${formatValue(r.min)} ${column.unit} at ${formatTime(r.minTime)}. Maximum ${formatValue(r.max)} ${column.unit} at ${formatTime(r.maxTime)}. ${r.valid} of ${r.samples} samples valid.`:"No valid samples for this result series.";
     } catch(error) {if(generation===envelopeGeneration) review.textContent=error.message;}
@@ -293,14 +351,17 @@ function mount() {
   }
   play.onclick=()=>{
     if (playback!==null){stop();return;}
-    if (time.value===time.max){time.value="0";void updateFrame();}
+    if (time.value===time.max){time.value=time.min;void updateFrame();}
     play.textContent="Pause";play.setAttribute("aria-pressed","true");playback=schedule(++playbackGeneration);
   };
   back.onclick=()=>{stop();void stepBy(-1);};step.onclick=()=>{stop();void stepBy(1);};
-  time.oninput=()=>{stop();void updateFrame();};source.onchange=updateSource;series.onchange=()=>{stop();void updateSeries();};
+  time.oninput=()=>{stop();void updateFrame();};
+  source.onchange=()=>{preferredSource=source.value;updateSource();};
+  series.onchange=()=>{stop();void updateSeries();};
+  eventFilter.onchange=()=>refreshSources();
   remove.onclick=async()=>{
     const id=Number(source.value);stop();
-    try {await client.request("remove",{sourceId:id}).result;datasets.delete(id);refreshSources();announceSources();}
+    try {await client.request("remove",{sourceId:id}).result;datasets.delete(id);if(preferredSource===String(id))preferredSource="";refreshSources();announceSources();}
     catch(error){review.textContent=error.message;}
   };
   exportPackage.onclick=async()=>{
@@ -318,5 +379,5 @@ function mount() {
   return root;
 }
 
-window.HydraResultsWorkspace={mount,get session(){return session;}};
+window.HydraResultsWorkspace={mount,mountResultWindow,eventSources,setSliderWindow,get session(){return session;}};
 })();
