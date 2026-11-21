@@ -213,9 +213,32 @@ function longSection(network,edges){
       fields.conduit_height>0?number(fields.conduit_height/1000):null;
     return {id:edge.id,from:edge.from,to:edge.to,name:edge.name||edge.id,type:fields.table||'Connector',
       lengthStatus,length,chainageStart,chainageEnd:chainage,us:number(fields.us_invert),ds:number(fields.ds_invert),
-      groundFrom:number(from?.icm?.groundLevelM),groundTo:number(to?.icm?.groundLevelM),height,
+      groundFrom:number(from?.icm?.groundLevelM),groundTo:number(to?.icm?.groundLevelM),
+      chamberFrom:number(from?.icm?.chamberFloorM),chamberTo:number(to?.icm?.chamberFloorM),height,
+      widthMm:number(fields.conduit_width),heightMm:number(fields.conduit_height),shape:fields.shape||null,
       sources:[source(edge),source(from),source(to)].filter(Boolean)};
   });
 }
-globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,overview,routePlanner,longSection};
+
+function profileAxis(minimum,maximum,zoom,pan){
+  if(!Number.isFinite(minimum)||!Number.isFinite(maximum)||maximum<=minimum)throw new Error('A profile axis needs increasing source bounds.');
+  const boundedZoom=Number.isFinite(zoom)?Math.min(8,Math.max(1,zoom)):1;
+  const fraction=Number.isFinite(pan)?Math.min(1,Math.max(0,pan)):.5;
+  const full=maximum-minimum,span=full/boundedZoom;
+  const low=minimum+fraction*(full-span);
+  return {low,high:low+span,span};
+}
+
+function sameProfileSteps(current,saved){
+  if(current.length!==saved.length)return false;
+  const optionalKeys=new Set(['chamberFrom','chamberTo','widthMm','heightMm','shape']);
+  return current.every((step,index)=>{
+    const baseline=saved[index];
+    return Object.keys(step).every(key=>{
+      if(optionalKeys.has(key)&&!Object.hasOwn(baseline,key))return true;
+      return JSON.stringify(step[key])===JSON.stringify(baseline[key]);
+    });
+  });
+}
+globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,overview,routePlanner,longSection,profileAxis,sameProfileSteps};
 })();

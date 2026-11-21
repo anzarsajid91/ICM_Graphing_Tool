@@ -189,7 +189,7 @@
 #nsWorkbench .ns-profile-legend{display:flex;gap:18px;flex-wrap:wrap;color:var(--hb-muted);font-size:13px}
 #nsWorkbench .ns-profile-legend span::before{content:"";display:inline-block;width:20px;margin-right:6px;vertical-align:middle;border-top:2px solid #14527c}
 #nsWorkbench .ns-profile-legend span:nth-child(2)::before{border-top:2px dashed #477384}
-#nsWorkbench .ns-profile-legend span:nth-child(3)::before{border-top:2px dashed #936329}
+#nsWorkbench .ns-profile-legend span:nth-child(3)::before{border-top:2px solid #936329}
 #nsWorkbench #nsProfilePlot{overflow:auto;margin-block:12px;background:var(--hb-soft);border-radius:var(--hb-radius-control)}
 #nsWorkbench #nsProfilePlot svg{display:block;width:100%;min-width:560px;max-height:390px;font-size:13px;fill:var(--hb-text)}
 #nsWorkbench #nsProfilePlot g[role="button"]{cursor:pointer}
@@ -213,7 +213,11 @@
   #nsWorkbench .ns-review-actions select{max-width:100%}
 }
 #nsWorkbench .ns-profile-legend span:nth-child(4)::before{width:8px;height:8px;border:0;background:#6947a1;transform:rotate(45deg)}
-#nsWorkbench .ns-profile-legend span:nth-child(5)::before{width:9px;height:9px;border:0;border-radius:50%;background:#8a3891}
+#nsWorkbench .ns-profile-legend span:nth-child(5)::before{width:9px;height:9px;border:0;border-radius:50%;background:#1a62a0}
+#nsWorkbench .ns-profile-expanded{width:min(1440px,calc(100vw - 32px));max-height:calc(100vh - 32px)}
+#nsWorkbench .ns-profile-expanded #nsProfilePlot svg{max-height:none}
+#nsWorkbench .ns-profile-tools label:has(input[type="checkbox"]){display:flex;align-items:center;gap:8px}
+#nsWorkbench .ns-profile-tools :is(input[type="range"],input[type="checkbox"]){accent-color:var(--hb-action)}
 #nsWorkbench .ns-model-overlay{margin-block:16px}
 #nsWorkbench .ns-view-controls label{display:inline-flex}
 #nsWorkbench #nsSvg [data-ns-route-member] [data-ns-wire]{stroke:#057783;stroke-width:4}

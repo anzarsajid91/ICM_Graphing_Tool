@@ -31,7 +31,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Open |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized real-sample map/profile playback, transport controls, windowing, scenario comparison, extrema and missingness | Partial |
-| 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Open |
+| 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
 | 6.5 | Local worker, series parser, source identity and registry | Native and optional portable result package, explicit schema and time support, bounded indexed worker and cancellation, selective retrieval, measured storage/capacity trade-offs | Partial |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Explainable review of fouling, drift, flatline, depth–velocity, backwater, suspect dimensions and measurement ranges | Open |
 | 7.2 | Gauge qualification, cumulative/event data | Compare timing, totals, correlation, spatial variability and suspect/missing support without inferring dry periods | Open |
@@ -312,6 +312,34 @@ other state.
   Chromium recorded 33, 27, 29 and 92 requests. Firefox recorded 34, 28, 30
   and 90. All request observations had zero violations. Earlier affected
   simulation, design, structures and diagnostics checks also passed.
+- The repeat benchmark rebuilt exact commit `99477708af7751852a1d8231cb540ddf217b4c73`
+  and used the same v2.2 production revision for five alternating cold
+  Chromium pairs. Median startup was 5,798 ms versus 5,680 ms (+2.1%).
+  Median first schematic entry was 2,003 ms versus 1,947 ms (+2.9%). One
+  candidate schematic run took 2,498 ms. This is a focused startup check,
+  with final release workloads and large-network rendering still open.
 - Repository-wide Code Scanning, Secret Scanning and Dependabot alert lists
   returned HTTP 403 to the current credential. Exact-head workflow checks,
   source inventories and the authenticated release procedure still apply.
+
+### Source-based long-section investigation
+
+- The long section adds independent horizontal and elevation zoom and pan,
+  reset, a full-size modal and local vector export. The view records its
+  scale ratio, preserves configured display options in saved networks and
+  reads earlier profile snapshots. Modal and compact controls share the
+  same selection and rendering state.
+- Profile geometry uses source length, invert, ground, chamber floor and
+  dimensions when present. It retains junction drops, missing length and
+  missing level boundaries. Source invert differences and lengths give a
+  0.002 m/m grade in the reference pipe. Node results remain discrete exact
+  markers. A freeboard tooltip uses compatible declared-datum elevations.
+- Route and revision unit suites passed. Chromium and Firefox exercised
+  import, navigation, independent scales, pan, reset, the expanded dialog,
+  SVG download, a source node level, the unchanged 288.094 L/s pipe check,
+  save/restore and changed-source invalidation. The two request observers
+  saw 123 and 122 requests with zero violations. Synthetic screenshots are
+  retained in the local `hydra-evidence/v3/profile-view` folder.
+- Structure geometry beyond the current symbols, hydraulically valid water
+  fill, conduit-end integration and synchronized result playback remain
+  open. The profile's shaft widths indicate node position symbolically.

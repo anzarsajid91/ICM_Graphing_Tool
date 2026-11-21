@@ -234,11 +234,17 @@ function validateRouteWorkspace(result){
     review.steps.every(step=>step&&text(step.id,256)&&text(step.from,256)&&text(step.to,256)&&text(step.name,256)&&
       text(step.type,128)&&['known','missing','structure'].includes(step.lengthStatus)&&
       ['length','us','ds','groundFrom','groundTo','height','chainageStart','chainageEnd'].every(key=>nullableNumber(step[key]))&&
+      ['chamberFrom','chamberTo','widthMm','heightMm'].every(key=>!Object.hasOwn(step,key)||nullableNumber(step[key]))&&
+      (step.shape==null||text(step.shape,128))&&
       Array.isArray(step.sources)&&step.sources.length<=3&&step.sources.every(source=>source&&text(source.file,512)&&
         text(source.table,128)&&Number.isSafeInteger(source.row)&&source.row>=1))&&
     Array.isArray(review.trials)&&review.trials.length<=100&&review.trials.every(trial=>trial&&text(trial.id,256)&&
       ['diameter','gradient','roughness','viscosity'].every(key=>Number.isFinite(trial[key]))&&
-      Number.isFinite(trial.capacity)&&trial.capacity>=0)&&validModel(review.model));
+      Number.isFinite(trial.capacity)&&trial.capacity>=0)&&validModel(review.model)&&validProfileView(review.profileView));
+  function validProfileView(view){
+    return view==null||typeof view.groundShading==='boolean'&&['zoomX','zoomY'].every(key=>[1,2,4,8].includes(view[key]))&&
+      ['panX','panY'].every(key=>Number.isFinite(view[key])&&view[key]>=0&&view[key]<=1);
+  }
   function validModel(model){
     return model==null||text(model.scenario,100)&&text(model.time,32)&&text(model.datum,128)&&
       Array.isArray(model.values)&&model.values.length<=2000&&model.values.every(row=>row&&text(row.node,256)&&

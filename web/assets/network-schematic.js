@@ -1610,12 +1610,14 @@ function mountReview(){
   $('nsAnalysisCalculate').onclick=async()=>{if(busy)return;await calculate();const n=network.nodes.find(n=>n.id===analysisContext?.id);if(n){$('nsAnalysisCounts').replaceChildren(annualTable(n,true));$('nsAnalysisAudit').replaceChildren(auditDetails(n));if(analysisContext.mode==='series')await plotAnalysis(++analysisGeneration);}};
   renderReview();
 }
-let routeDraft={start:'',end:'',choices:new Map(),steps:[],trials:[],model:null};
+const defaultProfileView={zoomX:1,zoomY:1,panX:.5,panY:.5,groundShading:false};
+let routeDraft={start:'',end:'',choices:new Map(),steps:[],trials:[],model:null,profileView:{...defaultProfileView}};
 let routeRevision=0;
 function resetRouteDraft(){
-  routeDraft={start:'',end:'',choices:new Map(),steps:[],trials:[],model:null};
+  routeDraft={start:'',end:'',choices:new Map(),steps:[],trials:[],model:null,profileView:{...defaultProfileView}};
   ++routeRevision;
   if($('nsRoute')){
+    if($('nsProfileExpanded').open)$('nsProfileExpanded').close();
     $('nsRoute').hidden=true;$('nsProfile').hidden=true;
     $('nsRouteName').value='';$('nsRouteNote').value='';$('nsRouteSavedMessage').textContent='';
   }
@@ -1848,6 +1850,9 @@ function updateProfileSelection(){
   for(const el of panel.querySelectorAll('[data-ns-profile-link]')){
     el.setAttribute('aria-pressed',String(selectionKind==='edge'&&selected===el.dataset.nsProfileLink));
   }
+  for(const el of panel.querySelectorAll('[data-ns-profile-node]')){
+    el.setAttribute('aria-pressed',String(selectionKind==='node'&&selected===el.dataset.nsProfileNode));
+  }
 }
 function renderRoute(){
   const start=$('nsRouteStart'),end=$('nsRouteEnd'),branches=$('nsRouteBranch');
@@ -1881,6 +1886,7 @@ function renderRoute(){
 }
 function plotProfile(steps){
   const view=$('nsProfilePlot');view.replaceChildren();
+  const settings=routeDraft.profileView;
   const segments=[];
   let chainage=0,section=[];
   for(const step of steps){
@@ -1894,7 +1900,7 @@ function plotProfile(steps){
   if(section.length)segments.push(section);
   const model=routeDraft.model;
   const imported=new Map((model?.values||[]).map(record=>[record.node,record.level]));
-  const levels=steps.flatMap(step=>[step.us,step.ds,step.groundFrom,step.groundTo,
+  const levels=steps.flatMap(step=>[step.us,step.ds,step.groundFrom,step.groundTo,step.chamberFrom,step.chamberTo,
     step.us!==null&&step.height!==null?step.us+step.height:null,
     step.ds!==null&&step.height!==null?step.ds+step.height:null]).filter(Number.isFinite).concat([...imported.values()]);
   if(!segments.length||!levels.length){
@@ -1902,20 +1908,29 @@ function plotProfile(steps){
     return;
   }
   const low=Math.floor(Math.min(...levels)),high=Math.max(low+1,Math.ceil(Math.max(...levels)));
+  if(!Number.isFinite(high-low)||high<=low){view.append(inspectorElement('p','The source elevation limits cannot be plotted. Review the source levels.'));return;}
   if(steps.some(step=>step.lengthStatus==='missing'))view.append(inspectorElement('p','A conduit length is missing. Each downstream plot starts at its own local distance; absolute chainage is unavailable after the gap.','ns-note'));
-  for(const items of segments){
+  for(const [index,items] of segments.entries()){
     const absolute=items[0].chainageStart!==null;
     const distance=items.at(-1).x2,origin=items[0].chainageStart||0;
-    const x=value=>76+value/distance*774,y=value=>245-(value-low)/(high-low)*213;
-    const svg=svgElement('svg',{viewBox:'0 0 890 285','aria-label':absolute?'Long section by chainage':'Long section by local distance',role:'group'});
+    if(!Number.isFinite(distance)||distance<=0){view.append(inspectorElement('p','The source conduit lengths cannot be plotted. Review length units and values.'));continue;}
+    const horizontal=R.profileAxis(0,distance,settings.zoomX,settings.panX),vertical=R.profileAxis(low,high,settings.zoomY,settings.panY);
+    const x=value=>76+(value-horizontal.low)/horizontal.span*774,y=value=>245-(value-vertical.low)/vertical.span*213;
+    const label=(absolute?'Chainage ':'Local distance ')+f(origin+horizontal.low,2)+' to '+f(origin+horizontal.high,2)+' m';
+    const svg=svgElement('svg',{viewBox:'0 0 890 285','aria-label':label,role:'group'});
+    const clipId='nsProfileClip'+index,clip=svgElement('clipPath',{id:clipId}),defs=svgElement('defs');
+    clip.append(svgElement('rect',{x:76,y:27,width:774,height:220}));defs.append(clip);svg.append(defs);
+    const plot=svgElement('g',{'clip-path':'url(#'+clipId+')'}),linkLayer=svgElement('g'),pointLayer=svgElement('g');
+    plot.append(linkLayer,pointLayer);
     for(let i=0;i<=5;i++){
-      const level=low+(high-low)*i/5,offset=distance*i/5;
+      const level=vertical.low+vertical.span*i/5,offset=horizontal.low+horizontal.span*i/5;
       svg.append(svgElement('path',{d:'M76 '+y(level)+'H850 M'+x(offset)+' 245V32',stroke:'#dfe6eb',fill:'none'}),
         svgElement('text',{x:68,y:y(level)+4,'text-anchor':'end'},f(level,2)),
         svgElement('text',{x:x(offset),y:265,'text-anchor':'middle'},f(origin+offset,2)));
     }
-    svg.append(svgElement('text',{x:12,y:18},'Level (m)'),svgElement('text',{x:460,y:283,'text-anchor':'middle'},absolute?'Chainage (m)':'Local distance (m)'));
-    const drawnLevels=new Set(),structures=new Map();
+    svg.append(svgElement('text',{x:12,y:18},'Level (m)'),svgElement('text',{x:460,y:283,'text-anchor':'middle'},absolute?'Chainage (m)':'Local distance (m)'),
+      svgElement('text',{x:850,y:18,'text-anchor':'end'},'Vertical exaggeration '+f((213/vertical.span)/(774/horizontal.span),2)+'×'));
+    const drawnLevels=new Set(),drawnNodes=new Set(),structures=new Map();
     for(const step of steps.filter(step=>step.lengthStatus==='structure'&&step.chainageStart!==null)){
       const distance=step.chainageStart-origin;
       if(absolute&&distance>=0&&distance<=items.at(-1).x2){
@@ -1925,38 +1940,79 @@ function plotProfile(steps){
     }
     for(const [station,names] of structures){
       const marker=svgElement('path',{d:'M'+x(station)+' 29l5 5-5 5-5-5z',fill:'#6947a1'});
-      marker.append(svgElement('title',{},names.join(' · ')));svg.append(marker);
+      marker.append(svgElement('title',{},names.join(' · ')));pointLayer.append(marker);
     }
     for(const step of items){
-      const group=svgElement('g',{'data-ns-profile-link':step.id,tabindex:0,role:'button','aria-label':'Inspect '+step.name});
+      const visible=step.x2>=horizontal.low&&step.x1<=horizontal.high;
+      const group=svgElement('g',{'data-ns-profile-link':step.id,tabindex:visible?0:-1,role:'button','aria-label':'Inspect '+step.name});
       const attrs={fill:'none','stroke-width':2};
       const line=(a,b,stroke,dash)=>a===null||b===null?null:
         svgElement('path',{...attrs,d:'M'+x(step.x1)+' '+y(a)+'L'+x(step.x2)+' '+y(b),stroke,'stroke-dasharray':dash||''});
       group.append(svgElement('title',{},step.name),svgElement('rect',{x:x(step.x1),y:28,width:Math.max(3,x(step.x2)-x(step.x1)),height:220,fill:'transparent'}));
-      for(const path of [line(step.groundFrom,step.groundTo,'#936329','5 4'),
+      if(settings.groundShading&&step.groundFrom!==null&&step.groundTo!==null){
+        group.append(svgElement('path',{'data-ns-profile-shading':'',d:'M'+x(step.x1)+' '+y(step.groundFrom)+'L'+x(step.x2)+' '+y(step.groundTo)+
+          'V245H'+x(step.x1)+'Z',fill:'#b9905b',opacity:.18,'pointer-events':'none'}));
+      }
+      for(const path of [line(step.groundFrom,step.groundTo,'#936329'),
         step.height!==null&&step.us!==null&&step.ds!==null?line(step.us+step.height,step.ds+step.height,'#477384','3 3'):null,
         line(step.us,step.ds,'#14527c')])if(path)group.append(path);
       for(const [station,level] of [[step.x1,step.us],[step.x2,step.ds]])if(level!==null)
         group.append(svgElement('circle',{cx:x(station),cy:y(level),r:3,fill:'#14527c'}));
-      for(const [nodeId,station] of [[step.from,step.x1],[step.to,step.x2]]){
+      for(const [nodeId,station,ground,floor] of [[step.from,step.x1,step.groundFrom,step.chamberFrom],[step.to,step.x2,step.groundTo,step.chamberTo]]){
+        if(!drawnNodes.has(nodeId)&&Number.isFinite(ground)&&Number.isFinite(floor)&&floor<=ground&&
+          station>=horizontal.low&&station<=horizontal.high&&floor<=vertical.high&&ground>=vertical.low){
+          drawnNodes.add(nodeId);
+          const shaft=svgElement('g',{'data-ns-profile-node':nodeId,tabindex:0,role:'button',
+            'aria-label':'Inspect '+nodeId+' · ground '+f(ground,3)+' m · chamber floor '+f(floor,3)+' m'});
+          shaft.append(svgElement('title',{},'Source ground and chamber floor · symbolic width'),
+            svgElement('rect',{x:x(station)-5,y:y(ground),width:10,height:Math.max(2,y(floor)-y(ground)),fill:'#fff',stroke:'#637987'}));
+          shaft.onclick=()=>{if(network.nodes.some(node=>node.id===nodeId))selectPoint(nodeId);};
+          shaft.onkeydown=event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();shaft.onclick();}};
+          pointLayer.append(shaft);
+        }
         const level=imported.get(nodeId);
         if(!Number.isFinite(level)||drawnLevels.has(nodeId))continue;
         drawnLevels.add(nodeId);
-        const dot=svgElement('circle',{cx:x(station),cy:y(level),r:5,fill:'#8a3891',stroke:'#fff','stroke-width':1.5});
-        dot.append(svgElement('title',{},nodeId+' · modelled level '+f(level,3)+' m'));group.append(dot);
+        const dot=svgElement('circle',{cx:x(station),cy:y(level),r:5,fill:'#1a62a0',stroke:'#fff','stroke-width':1.5});
+        const freeboard=Number.isFinite(ground)?' · ground freeboard '+f(ground-level,3)+' m':'';
+        dot.append(svgElement('title',{},nodeId+' · modelled node level '+f(level,3)+' m'+freeboard));pointLayer.append(dot);
       }
       group.onclick=()=>{if(network.edges.some(edge=>edge.id===step.id))selectConnector(step.id);};
       group.onkeydown=event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();group.onclick();}};
-      svg.append(group);
+      linkLayer.append(group);
     }
+    svg.append(plot);
     view.append(svg);
   }
+  updateProfileSelection();
+}
+function renderProfileControls(){
+  const view=routeDraft.profileView;
+  $('nsProfileZoomX').value=view.zoomX;$('nsProfileZoomY').value=view.zoomY;
+  $('nsProfilePanX').value=view.panX;$('nsProfilePanY').value=view.panY;
+  $('nsProfilePanX').disabled=view.zoomX===1;$('nsProfilePanY').disabled=view.zoomY===1;
+  $('nsProfileShading').checked=view.groundShading;
+  $('nsProfileSvgDownload').disabled=!$('nsProfilePlot').querySelector('svg');
+}
+function exportProfileSvg(){
+  plotProfile(routeDraft.steps);
+  const graphs=[...$('nsProfilePlot').querySelectorAll('svg')];
+  if(!graphs.length)return;
+  const height=285*graphs.length;
+  const output=svgElement('svg',{width:890,height,viewBox:'0 0 890 '+height,fill:'#182732','font-family':'sans-serif','font-size':13});
+  output.append(svgElement('title',{},'Hydra Bench route long section'),svgElement('rect',{width:890,height,fill:'#fff'}));
+  for(const [index,graph] of graphs.entries()){
+    const copy=graph.cloneNode(true);copy.setAttribute('x',0);copy.setAttribute('y',285*index);copy.setAttribute('width',890);copy.setAttribute('height',285);
+    output.append(copy);
+  }
+  downloadBlob('hydra-long-section.svg',new XMLSerializer().serializeToString(output),'image/svg+xml');
 }
 function displayProfile(){
   const steps=routeDraft.steps;
   $('nsProfile').hidden=!steps.length;$('nsCapacityScreen').hidden=true;renderRouteTrace();
   if(!steps.length)return;
   plotProfile(steps);
+  renderProfileControls();
   const model=routeDraft.model;
   const nodes=new Set(steps.flatMap(step=>[step.from,step.to]));
   const scenarios=new Set(network.nodes.filter(node=>nodes.has(node.id)).flatMap(node=>
@@ -1966,7 +2022,7 @@ function displayProfile(){
   $('nsProfileModelInfo').textContent=model?model.scenario+' · '+model.time+' model clock · '+model.datum+
     ' · '+model.values.length+' exact level samples from '+new Set(model.values.map(row=>row.source)).size+' sources.':'';
   $('nsClearModelLevels').disabled=!model;
-  const table=tableWithHeaders(['Link','Chainage (m)','Length (m)','Invert upstream / downstream (m)','Review','Source']);
+  const table=tableWithHeaders(['Link','Chainage (m)','Length (m)','Invert upstream / downstream (m)','Width × height (mm)','Gradient (m/m)','Review','Source']);
   const current=new Set(network.edges.map(edge=>edge.id));
   for(const step of steps){
     const inspect=inspectorButton(step.name);inspect.dataset.nsProfileLink=step.id;
@@ -1977,8 +2033,10 @@ function displayProfile(){
     if(step.us===null||step.ds===null)messages.push('Missing invert');
     if(step.us!==null&&step.ds!==null&&step.ds>step.us)messages.push('Adverse gradient');
     const provenance=step.sources.map(source=>source.table+' · row '+source.row+(source.file?' · '+source.file:'')).join(' / ');
+    const dimensions=Number.isFinite(step.widthMm)||Number.isFinite(step.heightMm)?f(step.widthMm,3)+' × '+f(step.heightMm,3)+(step.shape?' · '+step.shape:''):'—';
+    const gradient=step.length>0&&Number.isFinite(step.us)&&Number.isFinite(step.ds)?(step.us-step.ds)/step.length:null;
     addCells(table.tBodies[0].insertRow(),[inspect,f(step.chainageStart,3)+' → '+f(step.chainageEnd,3),f(step.length,3),
-      f(step.us,3)+' / '+f(step.ds,3),messages.join(' · '),provenance||'Manual or unavailable']);
+      f(step.us,3)+' / '+f(step.ds,3),dimensions,f(gradient,6),messages.join(' · '),provenance||'Manual or unavailable']);
   }
   $('nsProfileRows').replaceChildren(table);
   const trials=$('nsSavedCapacity');
@@ -2071,9 +2129,20 @@ function mountRouteReview(){
     '<label class="ns-field">Saved route reviews<select id="nsSavedRoutes"></select></label>'+
     '<div id="nsProfile" hidden><div class="ns-review-actions"><button id="nsFitRoute">Fit route</button>'+
     '<button id="nsProfileFocus">Focus selected</button><button id="nsProfileCapacity">Check pipe capacity</button></div>'+
-    '<p class="ns-profile-legend"><span>Invert</span><span>Soffit</span><span>Ground</span><span>Structure</span><span id="nsProfileModelLegend" hidden>Modelled level</span></p>'+
-    '<p class="ns-note">Elevations are source levels in metres. Confirm the vertical datum in the ICM export. Horizontal and vertical scales differ.</p>'+
-    '<p id="nsProfileModelInfo"></p><div id="nsProfilePlot"></div><div id="nsProfileRows" class="ns-review-table"></div>'+
+    '<button type="button" id="nsExpandProfile">Expand profile</button><div id="nsProfilePreview">'+
+    '<div id="nsProfileDisplay"><div class="ns-review-actions ns-profile-tools">'+
+    '<label>Horizontal zoom<select id="nsProfileZoomX"><option value="1">Fit</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></label>'+
+    '<label>Vertical zoom<select id="nsProfileZoomY"><option value="1">Fit</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></label>'+
+    '<label>Horizontal pan<input id="nsProfilePanX" type="range" min="0" max="1" step="0.01"></label>'+
+    '<label>Elevation pan<input id="nsProfilePanY" type="range" min="0" max="1" step="0.01"></label>'+
+    '<label><input id="nsProfileShading" type="checkbox"> Ground shading</label><button type="button" id="nsResetProfile">Reset profile view</button>'+
+    '<button type="button" id="nsProfileSvgDownload">Download profile SVG</button></div>'+
+    '<p class="ns-profile-legend"><span>Invert</span><span>Soffit</span><span>Ground</span><span>Structure</span><span id="nsProfileModelLegend" hidden>Modelled node level</span></p>'+
+    '<p class="ns-note">Levels use the source datum. Shaft widths are symbolic. Modelled node markers show samples at individual nodes.</p>'+
+    '<p id="nsProfileModelInfo"></p><div id="nsProfilePlot"></div></div></div>'+
+    '<dialog class="ns-review-dialog ns-profile-expanded" id="nsProfileExpanded" aria-labelledby="nsExpandedProfileTitle">'+
+    '<header class="ns-review-heading"><h3 id="nsExpandedProfileTitle">Expanded route long section</h3><button type="button" id="nsCloseExpandedProfile">Close expanded profile</button></header>'+
+    '<div id="nsExpandedProfileContent"></div></dialog><div id="nsProfileRows" class="ns-review-table"></div>'+
     '<details class="ns-model-overlay"><summary>Overlay modelled levels</summary>'+
     '<p>Use modelled level evidence linked to route nodes. Enter an exact time in the model clock and confirm the datum shared with the geometry.</p>'+
     '<form id="nsProfileModelForm" class="ns-review-actions"><label>Scenario<input name="scenario" list="nsProfileScenarios" maxlength="100" required></label>'+
@@ -2108,6 +2177,22 @@ function mountRouteReview(){
     $('nsRoute').hidden=false;renderRoute();updateProfileSelection();renderRouteTrace();$('nsRouteStart').focus();
   };
   $('nsCloseRoute').onclick=()=>{$('nsRoute').hidden=true;renderRouteTrace();$('nsLongSection').focus();};
+  const expanded=$('nsProfileExpanded'),profileControls=$('nsProfileDisplay');
+  $('nsExpandProfile').onclick=()=>{$('nsExpandedProfileContent').append(profileControls);expanded.showModal();};
+  $('nsCloseExpandedProfile').onclick=()=>expanded.close();
+  expanded.onclose=()=>{$('nsProfilePreview').append(profileControls);if(!$('nsRoute').hidden)$('nsExpandProfile').focus();};
+  window.addEventListener('icm:route-changed',({detail})=>{if((detail.workspace!=='network'||detail.page!=='schematic')&&expanded.open)expanded.close();});
+  let profileFrame=0;
+  const redrawProfile=()=>{
+    renderProfileControls();
+    if(!profileFrame)profileFrame=requestAnimationFrame(()=>{profileFrame=0;plotProfile(routeDraft.steps);renderProfileControls();});
+  };
+  for(const [id,key] of [['nsProfileZoomX','zoomX'],['nsProfileZoomY','zoomY'],['nsProfilePanX','panX'],['nsProfilePanY','panY']]){
+    $(id).oninput=()=>{routeDraft.profileView[key]=Number($(id).value);redrawProfile();};
+  }
+  $('nsProfileShading').onchange=()=>{routeDraft.profileView.groundShading=$('nsProfileShading').checked;redrawProfile();};
+  $('nsResetProfile').onclick=()=>{routeDraft.profileView={...defaultProfileView,groundShading:routeDraft.profileView.groundShading};redrawProfile();};
+  $('nsProfileSvgDownload').onclick=exportProfileSvg;
   $('nsOpenMonitorImport').onclick=openMonitorImport;
   for(const [id,key] of [['nsRouteStart','start'],['nsRouteEnd','end']])$(id).onchange=()=>{
     setRouteEndpoint(key,$(id).value);
@@ -2120,18 +2205,20 @@ function mountRouteReview(){
   }
   $('nsOpenProfile').onclick=()=>{
     routeDraft.steps=R.longSection(network,reviewRoute().edges);routeDraft.trials=[];routeDraft.model=null;++routeRevision;
+    routeDraft.profileView={...defaultProfileView,groundShading:routeDraft.profileView.groundShading};
     displayProfile();$('nsFitRoute').focus();
   };
   $('nsSavedRoutes').onchange=()=>{
     const saved=(network.routeReviews||[]).find(entry=>entry.name===$('nsSavedRoutes').value);
     if(!saved)return;
     routeDraft={...structuredClone(saved),choices:new Map(saved.steps.map(step=>[step.from,step.id]))};++routeRevision;
+    routeDraft.profileView={...defaultProfileView,...saved.profileView};
     $('nsRouteName').value=saved.name;$('nsRouteNote').value=saved.note;
     const fields=$('nsProfileModelForm').elements;
     for(const key of ['scenario','time','datum'])fields[key].value=saved.model?.[key]||'';
     renderRoute();displayProfile();
     const live=reviewRoute();
-    const same=live.edges.length===saved.steps.length&&JSON.stringify(R.longSection(network,live.edges))===JSON.stringify(saved.steps);
+    const same=R.sameProfileSteps(R.longSection(network,live.edges),saved.steps);
     $('nsRouteSavedMessage').textContent=same?'Saved profile and screening assumptions restored.':
       'Saved profile restored. Source geometry or route has changed. Confirm the current route before recalculating.';
   };
@@ -2141,7 +2228,7 @@ function mountRouteReview(){
     const others=(network.routeReviews||[]).filter(entry=>entry.name!==name);
     if(others.length>=30){message.textContent='The network supports up to 30 saved route reviews.';return;}
     checkpoint();network.routeReviews=[...others,structuredClone({name,note:$('nsRouteNote').value,
-      start:routeDraft.start,end:routeDraft.end,steps:routeDraft.steps,trials:routeDraft.trials,model:routeDraft.model})];
+      start:routeDraft.start,end:routeDraft.end,steps:routeDraft.steps,trials:routeDraft.trials,model:routeDraft.model,profileView:routeDraft.profileView})];
     persist();renderRoute();$('nsSavedRoutes').value=name;message.textContent='Route review saved. Use Save network for a portable copy.';
   };
   $('nsFitRoute').onclick=()=>{
