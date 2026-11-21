@@ -20,6 +20,7 @@ try {
   const capacities=panel.getByLabel('Storage capacities (m³, comma-separated)');
   const calculate=panel.getByRole('button',{name:'Calculate',exact:true});
   const save=panel.getByRole('button',{name:'Download calculation CSV'});
+  await panel.getByText('Import an eligible instantaneous flow series',{exact:false}).waitFor();
   assert.match(await panel.innerText(),/Import an eligible instantaneous flow series/);
   await panel.getByRole('button',{name:'Open Storage assessment'}).click();
   await page.locator('#runStorageBtn').waitFor();
