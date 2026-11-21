@@ -14,7 +14,8 @@ const optionalComponents=Object.freeze({
   monitorDiagnostics:{asset:'survey-monitor-diagnostics.js',mount:()=>{}},
   rainfallSpatial:{asset:'rainfall-spatial.js',mount:()=>{}},
   surveySuitability:{asset:'survey-suitability.js',mount:()=>{}},
-  verificationMatrix:{asset:'verification-matrix.js',mount:()=>window.HydraVerificationMatrix.mount()}
+  verificationMatrix:{asset:'verification-matrix.js',mount:()=>window.HydraVerificationMatrix.mount()},
+  gravitySizing:{asset:'gravity-sizing.js',mount:()=>window.HydraGravitySizing.mount()}
 });
 const componentLoads=new Map(),readyComponents=new Set();
 function loadComponent(key){
@@ -121,6 +122,7 @@ const ROUTES={
     label:'Hydraulic Calculations',icon:'hydraulics',
     pages:{
       capacity:{label:'Pipe capacity',title:'Hydraulic calculations',description:'Estimate full-bore uniform-flow capacity using Darcy–Weisbach.',root:()=>$('tab-hydraulics')},
+      gravity:{label:'Manning sizing',title:'Gravity pipe sizing',description:'Assess circular-pipe discharge, normal depth and a full-bore sizing requirement using Manning’s equation.',component:'gravitySizing',root:()=>optionalPanel('tab-manning-sizing')},
       'system-curve':{label:'System curve',title:'Pipe head loss and system curves',description:'Review the components of head loss in steady full-pipe systems.',component:'calculations',root:()=>optionalPanel('tab-pipe-system')},
       'pump-duty':{label:'Pump duty',title:'Pump duty screening',description:'Compare measured pump curves against the pipe system.',component:'calculations',root:()=>optionalPanel('tab-pump-duty')},
       structures:{label:'Structures',title:'Hydraulic structure screening',description:'Screen weir, orifice, sluice and supplied rating-curve discharge.',component:'calculations',root:()=>optionalPanel('tab-hydraulic-structures')},

@@ -39,7 +39,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 8.1 | DWF, comparison and event diagnostics | Explain preceding-flow, storm, peak, timing, recovery and paired-depth differences with exact support and investigation prompts | Verified locally for the phase investigation |
 | 8.2 | Existing event comparison and alignment | Qualifying event sets with multiple monitor–scenario pairings, independent criteria, true common time support, comments, plots and audit | Verified locally for the matrix |
 | 8.3 | Existing comparison evidence stamps and review history | Review current matrix against named baseline snapshots with the same recorded observations, criteria, support and qualification | Verified locally for portable snapshots |
-| 9.1 | Circular full/part-full Colebrook–White and comparisons | Preserve verified outputs; justify additional methods, geometries, target diameter/gradient and plots | Open |
+| 9.1 | Circular full/part-full Colebrook–White and comparisons | Shared circular solver, Manning capacity and depth, full-bore Manning diameter/gradient, section and depth chart, pipe trials | Partial. Additional inverse and geometry criteria remain open |
 | 9.2 | SI circular pipe engine | Head-loss components, static/dynamic head, forward series/parallel, system curve and auditable sheets with independent cases | Partial |
 | 9.3 | Candidate system-curve model | Validated curves, intersections, limits, configurations and power; distinguish unsupported conditions | Partial |
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
@@ -654,9 +654,11 @@ other state.
 - The unchanged survey-source unit tests and the full workflow browser-source
   step passed locally, including FastPath/Python reference equivalence. The
   source, Python privacy and network-contract checks passed. Hosted check
-  status remains specific to the exact candidate revision.
+  status remains specific to the exact candidate revision. The [hosted verify
+  rerun at `37f5a0e`](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44923318300/job/136903923252)
+  passed following the correction.
 
-### Calibration investigation across hydrograph phases
+### Calibration investigation across hydrograph phases (`37f5a0e`)
 
 - A selected flow comparison opens a local investigation with optional
   preceding, recovery and paired depth records. The preceding reference
@@ -678,3 +680,30 @@ other state.
   supported dry rainfall. Its guards saw 101 and 99 requests with no
   violations. The separate spatial rainfall and WAPUG regression passed
   with 104 and 102 requests and no violations.
+
+### Circular Manning sizing
+
+- Hydraulic Calculations includes a deferred circular Manning sizing surface.
+  It handles a known fill depth, both possible normal depths, a continuous
+  full-bore diameter and required uniform gradient. It shows section geometry,
+  mean velocity, Reynolds number and Darcy-equivalent resistance. The new
+  screen withholds low-Reynolds results. The circular conveyance root search
+  is shared with the previous Colebrook–White normal-depth solver.
+  [Engineering methods](methods.md#manning-circular-gravity-sizing)
+- Independent reference values for a 600 mm pipe are 434.171726 L/s full,
+  217.085863 L/s at half depth and 1.53556836 m/s in both at the tested
+  gradient. The HEC-22 SI example inputs give continuous diameters 514.851153
+  and 569.339451 mm at the two reviewed roughness values. Zero gradient,
+  unsuitable Reynolds numbers, invalid depth and beyond-envelope results were
+  exercised. The full Python suite passed 443 tests and 111 subtests.
+- Chromium and Firefox checked the controls, full- and part-depth results,
+  both branches, inverses, depth–discharge plot, trial retention and removal,
+  local CSVs and fallback states. Their request observers saw 100 and 99
+  requests with no violations. The unchanged original hydraulic workflow
+  passed, including its 202.65 L/s and two normal depths. The method library
+  and deferred loading regressions also passed in both browsers.
+- The sizing viewport test exposed a shared Firefox header overflow of 24 px
+  at a 640 px desktop viewport. The context grid now constrains its track to
+  the available width and keeps the workspace tab strip independently
+  scrollable. The reproduction isolates the layout change without altering
+  any calculation and continues to check keyboard access at that width.

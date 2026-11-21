@@ -96,7 +96,7 @@ body.precision-workbench{
 .precision-workbench .engine-status>span:last-child{min-width:0;overflow-wrap:anywhere}
 .pw-context{
   background:var(--pw-surface);border-bottom:1px solid var(--pw-border);
-  padding:16px var(--pw-gap) 8px;display:grid;gap:8px
+  padding:16px var(--pw-gap) 8px;display:grid;grid-template-columns:minmax(0,1fr);gap:8px
 }
 .pw-context-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
 .pw-breadcrumb{display:flex;gap:8px;align-items:center;color:var(--pw-muted);font-size:12px;margin-bottom:4px}
@@ -719,3 +719,6 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #hbCalibrationPanel form>details{padding:8px 0}
 #hbCalibrationPanel .mapping-grid{margin-block:8px}
 #hbCalibrationPanel .hb-transform-confirm{display:flex;align-items:start;gap:8px}
+#hbManningForm .actions{grid-column:1/-1}
+#hbManningResult caption,#hbManningTrials caption{padding:8px 12px;text-align:left;color:var(--hb-muted)}
+#hbManningTrialRows td:last-child button{white-space:nowrap}

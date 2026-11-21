@@ -439,6 +439,7 @@ jobs:
           node web/tests/network-context-smoke.mjs
           node web/tests/hydraulics-smoke.mjs
           ICM_BROWSER=chromium node web/tests/hydraulic-design-smoke.mjs
+          ICM_BROWSER=chromium node web/tests/manning-sizing-smoke.mjs
           ICM_BROWSER=chromium node web/tests/project-home-smoke.mjs
           ICM_BROWSER=chromium node web/tests/storage-routing-smoke.mjs
           ICM_BROWSER=chromium node web/tests/series-transform-smoke.mjs
@@ -461,6 +462,7 @@ jobs:
           ICM_BROWSER=firefox node web/tests/network-route-smoke.mjs
           ICM_BROWSER=firefox node web/tests/network-revision-smoke.mjs
           ICM_BROWSER=firefox node web/tests/hydraulic-design-smoke.mjs
+          ICM_BROWSER=firefox node web/tests/manning-sizing-smoke.mjs
           ICM_BROWSER=firefox node web/tests/project-home-smoke.mjs
           ICM_BROWSER=firefox node web/tests/storage-routing-smoke.mjs
           ICM_BROWSER=firefox node web/tests/series-transform-smoke.mjs

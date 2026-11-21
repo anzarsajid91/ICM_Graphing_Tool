@@ -10,6 +10,7 @@ const exactReferences=new Set([
   "https://www.ciwem.org/assets/pdf/Special%20Interest%20Groups/Urban%20Drainage%20Group/WAPUG_User_Note_06.pdf",
   "https://unstats.un.org/unsd/envaccounting/waterGuidelines/Material/WMO_Guide_168_Vol_I_en_hydrological_practices.pdf",
   "https://www.itl.nist.gov/div898/software/dataplot/refman2/auxillar/correlat.htm",
+  "https://www.fhwa.dot.gov/engineering/hydraulics/pubs/hif24006.pdf",
 ]);
 const element=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
 function officialLink(source) {

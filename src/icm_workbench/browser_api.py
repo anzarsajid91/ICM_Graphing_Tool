@@ -1293,6 +1293,13 @@ def circular_pipe_design_flow(diameter_m, gradient, roughness_m, viscosity_m2_s,
     return json.dumps(normal_depth_assessment(diameter_m, gradient, roughness_m, viscosity_m2_s, discharge_m3_s))
 
 
+def circular_manning_capacity(mode, n, viscosity_m2_s, diameter_m=None, gradient=None, depth_fraction=None, discharge_m3_s=None):
+    from icm_workbench.analysis.manning_pipe import circular_manning_screen
+
+    return json.dumps(circular_manning_screen(mode, n, viscosity_m2_s, diameter_m, gradient, depth_fraction, discharge_m3_s),
+                      allow_nan=False)
+
+
 def verification_event_comparison(obs_path, obs_col, model_path, model_col, start, end,
                                   max_gap_seconds=900.0, offset_minutes=0, exclusions_json="[]", *, window_only=False):
     """Compare one selected wet-weather event using supported hydraulic channels."""

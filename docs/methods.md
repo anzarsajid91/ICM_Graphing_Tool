@@ -408,6 +408,41 @@ of rainfall input, loading, infiltration, storage response, downstream
 levels or hydraulic restrictions. The local audit retains the selected
 periods, fingerprints, criteria, support and investigation prompts.
 
+## Manning circular gravity sizing
+
+For steady, uniform flow in one clean circular barrel, Manning uses
+`Q = A × R^(2/3) × sqrt(S) / n` in SI units. Use a reviewed Manning `n` in
+s/m^(1/3) and positive uniform energy gradient `S`. At full and half depth,
+`R = D/4`. Half-depth velocity equals the full-depth velocity and flow is
+half the full-bore value. For a partial section, calculate the exact wetted
+segment area and perimeter. The normal-depth search checks both sides of
+the circular conveyance maximum. Its smooth idealised envelope peaks near
+94% of internal diameter. [FHWA Urban Drainage Design Manual HEC-22, fourth edition, section 9.1.3](https://www.fhwa.dot.gov/engineering/hydraulics/pubs/hif24006.pdf) · [USACE HEC-RAS Uniform Flow Computations](https://www.hec.usace.army.mil/confluence/rasdocs/ras1dtechref/6.0/stable-channel-design-functions/uniform-flow-computations)
+
+The full-bore diameter requirement is
+`[4^(5/3) × n × Q / (π × sqrt(S))]^(3/8)`. The required full-bore
+gradient is `[Q × n / (A × R^(2/3))]^2`. These are continuous theoretical
+requirements. Compare available internal sizes and review losses at
+structures, backwater, sediment, pressure and transitions in the network
+model. The reported Darcy-equivalent factor comes from the same uniform
+velocity and slope. It is a derived resistance representation.
+
+The screen checks Reynolds number using the entered kinematic viscosity
+and hydraulic diameter `4R`. Positive-flow results below Reynolds 4,000
+are withheld as outside this turbulent-use screen. Zero water depth and
+zero energy gradient have explicit states. Numerical bounds are internal
+diameter 1–20,000 mm, gradient 0–1 m/m, `n` 0.001–0.20 s/m^(1/3) and
+kinematic viscosity 10⁻⁹–0.01 m²/s. Use an appropriate method for other
+geometries and flow regimes.
+
+At 600 mm, `n = 0.013`, `S = 0.005` and viscosity 10⁻⁶ m²/s, full
+and half flow are 434.171726 and 217.085863 L/s at 1.53556836 m/s.
+For the SI inputs from HEC-22 Example 9.1, 0.50 m³/s and gradient 0.015,
+the continuous requirements at `n = 0.013` and `0.017` are 514.851153
+and 569.339451 mm. Those values use the exact circular equation before
+selecting a stock pipe. Keep local trials to compare assumptions and save
+the calculations with their source method and build.
+
 ## Fixed-factor pipe system screening and pump duty
 
 Use full circular pipes, a steady forward flow and an engineering-specified
