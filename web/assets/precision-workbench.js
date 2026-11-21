@@ -7,7 +7,8 @@ const qsa=(sel,root=document)=>[...root.querySelectorAll(sel)];
 const optionalComponents=Object.freeze({
   calculations:{asset:'hydraulic-design.js',mount:()=>window.HydraDesignCalculations.mount(navigate)},
   simulation:{asset:'simulation-results.js',mount:()=>window.HydraResultsWorkspace.mount()},
-  diagnostics:{asset:'series-quality.js',mount:()=>{}}
+  diagnostics:{asset:'series-quality.js',mount:()=>{}},
+  monitorCompare:{asset:'monitor-comparison.js',mount:()=>{}}
 });
 const componentLoads=new Map(),readyComponents=new Set();
 function loadComponent(key){
@@ -43,13 +44,16 @@ function startOptionalPanel(route,root){
 }
 function installDiagnosticLauncher(){
   let previous=$('clearPoolBtn');
-  for(const [caption,action] of [['Source diagnostics','open'],['Transform time series','transform']]){
+  const actions=[['Source diagnostics','diagnostics',()=>window.HydraSeriesQuality.open()],
+    ['Transform time series','diagnostics',()=>window.HydraSeriesQuality.transform()],
+    ['Compare monitoring locations','monitorCompare',()=>window.HydraMonitorComparison.open()]];
+  for(const [caption,component,open] of actions){
     const launcher=document.createElement('button');launcher.type='button';launcher.className='btn';
     launcher.textContent=caption;launcher.setAttribute('aria-haspopup','dialog');previous.after(launcher);previous=launcher;
     launcher.onclick=async()=>{
       if(launcher.getAttribute('aria-busy')==='true')return;
       launcher.setAttribute('aria-busy','true');
-      try{await loadComponent('diagnostics');if(current.workspace==='data')window.HydraSeriesQuality[action]();}
+      try{await loadComponent(component);if(current.workspace==='data')open();}
       catch(error){$('mappingStatus').textContent=error.message+' Select '+caption+' to retry.';}
       finally{launcher.removeAttribute('aria-busy');}
     };

@@ -24,7 +24,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Partial |
 | 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Partial |
 | 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Partial |
-| 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Open |
+| 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Verified locally |
 | 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Open |
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Open |
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
@@ -409,3 +409,23 @@ other state.
   test now reads the live DOM and exact focused connector ID together after
   the retired group detaches. Six local Chromium runs passed with the control
   evidence recorder enabled.
+
+### Synchronized monitoring plots
+
+- Data can compare two to eight locally resident monitoring channels of one
+  resolved quantity. The plot uses the existing worker's selected window
+  and pinned chart renderer. A rainfall overlay uses its own unit axis and
+  the same project-clock x axis. Gaps and invalid negative rainfall stay
+  unplotted. Absolute level requires reviewed vertical datum. Visibility
+  switches are keyboard-accessible and the plot fit covers both y axes.
+- CSV export is explicitly limited to plotted samples and includes source
+  fingerprints and units. Source datasets retain their actual resolution.
+  The plot defers all components until opened and releases plot state on
+  dismissal. Window loads use the worker's ordinary display budget with a
+  50,000-point ceiling per trace after preserving gap boundaries.
+- Chromium and Firefox verified selection filtering, compatible canonical
+  units, optional rainfall, bounds validation, source zero and gaps, plot
+  zoom and fit, visibility, level datum, local CSV injection protection and
+  dismissal. They observed 94 and 92 fixed requests and zero violations.
+  Deferred-workspace regressions passed alongside them. Matched dense plot
+  performance is part of the open release-wide benchmarks.

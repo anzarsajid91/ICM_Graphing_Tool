@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import {chromium,firefox} from 'playwright';
+import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
+import {installPrivacyGuard} from './privacy-network.mjs';
+
+const engine=process.env.ICM_BROWSER||'chromium',base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
+const browser=await (engine==='firefox'?firefox:chromium).launch(browserLaunchOptions());
+const context=await browser.newContext({...browserContextOptions(),acceptDownloads:true,viewport:{width:1152,height:1000}});
+const guard=installPrivacyGuard(context,base,{canaries:['SYNTHETIC-MONITOR-01','SYNTHETIC-MONITOR-02','SYNTHETIC-GAUGE-A']});
+const page=await context.newPage(),errors=[];
+page.on('pageerror',error=>errors.push(error.message));
+const dialog=page.getByRole('dialog',{name:'Compare monitoring locations'}),status=dialog.getByRole('status');
+const chart=dialog.locator('#hbMonitorComparePlot');
+const file=(name,data)=>({name,mimeType:'text/plain',buffer:Buffer.from(data)});
+const rowsA='timestamp,Flow (L/s),Level (m)\n2025-01-01 00:00:00,0,10\n2025-01-01 00:10:00,1000,10.1\n2025-01-01 00:20:00,,10.2\n2025-01-01 00:30:00,500,10.15\n';
+const rowsB='timestamp,Flow (m3/s),Level (m)\n2025-01-01 00:00:00,.25,11\n2025-01-01 00:10:00,.5,11.1\n2025-01-01 00:20:00,.9,11.3\n2025-01-01 00:30:00,.15,11.15\n';
+const rain='timestamp,Rainfall (mm/h)\n2025-01-01 00:00:00,0\n2025-01-01 00:10:00,6\n2025-01-01 00:20:00,-1\n2025-01-01 00:30:00,0\n';
+const labels=dialog.getByRole('group',{name:'Monitoring series'});
+const uncertainty=dialog.getByRole('checkbox',{name:'The selected sources use the same project clock'});
+const plot=dialog.getByRole('button',{name:'Plot monitoring series'});
+
+try{
+  await guard.navigate(page,base);
+  await page.locator('button[data-workspace="data"]').click();
+  await page.getByRole('button',{name:'Compare monitoring locations',exact:true}).click();
+  await labels.getByText('Import observations',{exact:false}).waitFor();
+  await page.keyboard.press('Escape');
+  await page.setInputFiles('#fileInput',[file('=SYNTHETIC-MONITOR-01.csv',rowsA),file('SYNTHETIC-MONITOR-02.csv',rowsB),file('SYNTHETIC-GAUGE-A.csv',rain)]);
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.stateSummary().readyFiles===3,null,{timeout:90000});
+  await page.getByRole('button',{name:'Compare monitoring locations',exact:true}).click();
+  const search=dialog.getByRole('searchbox',{name:'Filter monitoring sources'});
+  await search.fill('MONITOR-01');
+  assert.equal(await labels.getByRole('checkbox').count(),1);
+  await labels.getByRole('checkbox',{name:/MONITOR-01/}).check();
+  await uncertainty.check();await plot.click();
+  await status.getByText('Select between two and eight',{exact:false}).waitFor();
+  await search.fill('');
+  await labels.getByRole('checkbox',{name:/MONITOR-02/}).check();
+  const rainPicker=dialog.getByRole('combobox',{name:'Rainfall overlay',exact:true});
+  await rainPicker.selectOption(await rainPicker.locator('option').filter({hasText:'SYNTHETIC-GAUGE-A'}).getAttribute('value'));
+  const start=dialog.getByLabel('Start on project clock (optional)',{exact:true}),end=dialog.getByLabel('End on project clock (optional)',{exact:true});
+  await start.fill('2025-01-01T00:00');await end.fill('2024-12-31T23:59');await plot.click();
+  await status.getByText('Choose a later end time.').waitFor();
+  await end.fill('2025-01-01T00:30');
+  await dialog.getByRole('spinbutton',{name:'Maximum valid gap (s)'}).fill('700');
+  await plot.click();await status.getByText('Plot ready.',{exact:false}).waitFor({timeout:60000});
+  const config=await chart.evaluate(el=>({axes:el.data.map(t=>t.yaxis),rain:el.data[2].y,hydraulics:el.data[0].y,y:el.layout.yaxis.title.text,
+    noBridging:el.data.every(t=>t.connectgaps===false),x:el._fullLayout.xaxis.range}));
+  assert.deepEqual(config.axes,['y','y','y2']);
+  assert.match(config.y,/Flow.*m³\/s/);
+  assert.equal(config.rain.filter(v=>v===null).length,1);
+  assert.equal(config.hydraulics[0],0);
+  assert.equal(config.hydraulics.includes(1),true);
+  assert.equal(config.noBridging,true);
+  const visible=dialog.getByRole('group',{name:'Series visibility'}).getByRole('checkbox',{name:/MONITOR-02/});
+  await visible.uncheck();await page.waitForFunction(()=>document.querySelector('#hbMonitorComparePlot').data[1].visible===false);
+  await visible.check();await page.waitForFunction(()=>document.querySelector('#hbMonitorComparePlot').data[1].visible===true);
+  await chart.scrollIntoViewIfNeeded();
+  const hot=await chart.locator('.nsewdrag').first().boundingBox();
+  await page.mouse.move(hot.x+hot.width*.2,hot.y+hot.height*.2);await page.mouse.down();
+  await page.mouse.move(hot.x+hot.width*.77,hot.y+hot.height*.78,{steps:6});await page.mouse.up();
+  await page.waitForFunction(old=>JSON.stringify(document.querySelector('#hbMonitorComparePlot')._fullLayout.xaxis.range)!==JSON.stringify(old),config.x);
+  await dialog.getByRole('button',{name:'Fit view'}).click();
+  await page.waitForFunction(()=>{
+    const {xaxis,yaxis,yaxis2}=document.querySelector('#hbMonitorComparePlot')._fullLayout;
+    return xaxis.autorange===true&&yaxis.range[0]<=0&&yaxis.range[1]>=1&&yaxis2.range[0]>=6&&yaxis2.range[1]<=0;
+  });
+  const dl=page.waitForEvent('download');await dialog.getByRole('button',{name:'Download plotted samples CSV'}).click();
+  const audit=await fs.readFile(await (await dl).path(),'utf8');
+  assert.match(audit,/'=SYNTHETIC-MONITOR-01\.csv/);
+  assert.match(audit,/'?SYNTHETIC-GAUGE-A[\s\S]*mm\/h/);
+  if(process.env.ICM_EVIDENCE_DIR){await fs.mkdir(process.env.ICM_EVIDENCE_DIR,{recursive:true});
+    await chart.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-monitor-compare-'+engine+'.png'});}
+  await dialog.getByRole('combobox',{name:'Quantity',exact:true}).selectOption('level');
+  assert(await chart.isHidden());
+  await labels.getByRole('checkbox',{name:/MONITOR-01/}).check();await labels.getByRole('checkbox',{name:/MONITOR-02/}).check();
+  await dialog.getByLabel('Shared vertical datum',{exact:true}).fill('AOD');await plot.click();
+  await status.getByText('Plot ready.',{exact:false}).waitFor({timeout:60000});
+  assert.match(await chart.evaluate(el=>el.layout.yaxis.title.text),/Level.*AOD/);
+  await dialog.getByRole('button',{name:'Close comparison'}).click();
+  assert(await dialog.isHidden());
+  assert.deepEqual(errors,[]);guard.assertClean();
+  console.log('MONITOR_COMPARISON_PASS '+engine);
+}finally{await browser.close();}
