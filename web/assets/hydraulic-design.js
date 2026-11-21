@@ -140,13 +140,15 @@ function editableRows(title, specs, defaults, configure, minimum = 1) {
     Object.fromEntries(Object.entries(controls).map(([key,control]) => [key,read(control)])))};
 }
 function panel(id,title,description) {
-  const root = element("section");
-  root.id = id;root.className = "tab-panel";root.hidden = true;
+  let root = document.getElementById(id);
+  if(!root){
+    root=element("section");root.id=id;root.className="tab-panel";root.hidden=true;
+    document.querySelector("main.shell").append(root);
+  }
   const article = element("article");article.className = "panel";
   const intro = element("div");intro.className = "panel-head";
   intro.append(element("h2",title),element("p",description));
-  article.append(intro);root.append(article);
-  document.querySelector("main.shell").append(root);
+  article.append(intro);root.replaceChildren(article);
   return article;
 }
 function results(article,form,calculate) {
@@ -448,6 +450,7 @@ function mountStorageRouting(navigate,worker) {
   }
   window.addEventListener("icm:route-changed",({detail})=>{if(detail.page==="storage-routing") refresh();});
   window.addEventListener("icm:source-pool-changed",refresh);
+  refresh();
 }
 
 function mountStructures(worker) {

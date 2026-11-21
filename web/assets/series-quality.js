@@ -177,10 +177,6 @@ function mount() {
   return ()=>{refreshSources();if(!root.open)root.showModal();};
 }
 
-window.HydraSeriesQuality={install(){
-  const button=node("button","Source diagnostics");button.type="button";button.className="btn";button.setAttribute("aria-haspopup","dialog");
-  const tools=document.getElementById("clearPoolBtn");tools.after(button);
-  let open;
-  button.onclick=()=>{open??=mount();open();};
-}};
+let openDialog;
+window.HydraSeriesQuality={open(){openDialog??=mount();openDialog();}};
 })();

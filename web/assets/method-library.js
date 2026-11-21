@@ -14,16 +14,17 @@ function officialLink(source) {
 }
 
 function mount(navigate,routes) {
-  const root=element("section");root.id="tab-method-library";root.className="tab-panel";root.hidden=true;
+  const root=element("dialog");root.id="tab-method-library";root.setAttribute("aria-labelledby","hbMethodTitle");
   root.innerHTML=`<article class="panel">
-    <div class="panel-head"><h2>Engineering method library</h2><p>Search the methods applied by this build. Check assumptions and limitations against your project and the cited guidance.</p></div>
+    <div class="panel-head"><div><h2 id="hbMethodTitle">Engineering method library</h2><p>Search the methods applied by this build. Check assumptions and limitations against your project and the cited guidance.</p></div>
+    <button type="button" id="hbMethodClose">Close method library</button></div>
     <div class="mapping-grid"><label>Search methods<input type="search" id="hbMethodSearch" maxlength="128"></label>
     <label>Category<select id="hbMethodCategory"><option value="">All categories</option></select></label>
     <label>Jurisdiction<select id="hbMethodJurisdiction"><option value="">All jurisdictions</option></select></label></div>
     <p id="hbMethodStatus" role="status"></p>
     <button type="button" id="hbMethodRetry" hidden>Retry loading methods</button><div id="hbMethodResults"></div>
   </article>`;
-  document.querySelector("main.shell").append(root);
+  document.body.append(root);
   const $=id=>root.querySelector("#"+id), search=$("hbMethodSearch"), category=$("hbMethodCategory"), jurisdiction=$("hbMethodJurisdiction");
   const results=$("hbMethodResults"), status=$("hbMethodStatus"), retry=$("hbMethodRetry");
   let entries=null,loading=false;
@@ -43,7 +44,7 @@ function mount(navigate,routes) {
       if(links.childNodes.length)row.append(element("h3","References"),links);
       if(Object.hasOwn(routes,entry.workspace)&&Object.hasOwn(routes[entry.workspace].pages,entry.page)){
         const button=element("button","Open "+routes[entry.workspace].pages[entry.page].label);button.type="button";
-        button.onclick=()=>navigate(entry.workspace,entry.page,true);row.append(button);
+        button.onclick=()=>{root.close();navigate(entry.workspace,entry.page,true);};row.append(button);
       }
       results.append(row);
     }
@@ -67,9 +68,15 @@ function mount(navigate,routes) {
     } finally {loading=false;}
   }
   search.oninput=render;category.onchange=render;jurisdiction.onchange=render;retry.onclick=()=>void load();
-  window.addEventListener("icm:route-changed",({detail})=>{if(detail.page==="methodology")void load();});
-  return root;
+  $("hbMethodClose").onclick=()=>root.close();
+  return ()=>{if(!root.open)root.showModal();void load();};
 }
 
-window.HydraMethodLibrary={mount};
+window.HydraMethodLibrary={install(about,navigate,routes){
+  const action=element("div"),button=element("button","Open engineering method library");
+  action.className="actions";button.type="button";button.setAttribute("aria-haspopup","dialog");action.append(button);
+  about.querySelector(".pw-about-description").after(action);
+  let open;
+  button.onclick=()=>{open??=mount(navigate,routes);open();};
+}};
 })();

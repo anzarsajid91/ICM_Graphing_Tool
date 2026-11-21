@@ -33,7 +33,7 @@ def _inject_v2_assets(build_token: str) -> None:
         "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js",
         "workbench-v3.js", "workbook-reader.js", "workbench-survey.js",
         "workflow-26.js", "detriment-workspace.js", "network-schematic-loader.js",
-        "hydraulic-design.js", "project-home.js", "simulation-results.js", "series-quality.js", "method-library.js", "precision-workbench.js",
+        "project-home.js", "method-library.js", "precision-workbench.js",
     )
     html = html.replace('<body>', '<body class="hb-starting">', 1)
     html = html.replace('id="hbStartup" hidden', 'id="hbStartup"', 1)
@@ -50,9 +50,12 @@ def _inject_v2_assets(build_token: str) -> None:
         '\n  '.join(f'<script defer src="assets/{name}"></script>' for name in scripts),
     )
     required = ["csv-output.js", "design-system.js", "domain-registry.js", "workbench-v2.css", "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "workflow-26.css", "workflow-26.js", "precision-workbench.css", "precision-workbench.js", "detriment-workspace.css", "detriment-workspace.js", "vendor/sheetjs-0.20.3/xlsx.full.min.js"]
-    required.extend(["network-schematic.css", "network-schematic-loader.js", "hydraulic-design.js", "project-home.js", "simulation-results.js", "series-quality.js", "method-library.js"])
+    required.extend(["network-schematic.css", "network-schematic-loader.js", "project-home.js", "method-library.js"])
     if not all(name in html for name in required):
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
+    for name in ("hydraulic-design.js", "simulation-results.js", "series-quality.js"):
+        if not (SITE / "assets" / name).is_file():
+            raise RuntimeError(f"Missing deferred workspace asset {name}")
 
     # GitHub Pages/CDN may retain same-named static assets across deployments.
     # Version fixed assets linked from the index with the exact release SHA so index,
@@ -80,10 +83,7 @@ def _inject_v2_assets(build_token: str) -> None:
         "assets/workbench-survey.js",
         "assets/workflow-26.js",
         "assets/detriment-workspace.js",
-        "assets/hydraulic-design.js",
         "assets/project-home.js",
-        "assets/simulation-results.js",
-        "assets/series-quality.js",
         "assets/method-library.js",
         "assets/precision-workbench.js",
         "assets/network-schematic-loader.js",

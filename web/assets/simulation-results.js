@@ -45,7 +45,7 @@ function workerClient(onFailure) {
 }
 
 function mount() {
-  const root=element("section");root.id="tab-simulation-results";root.className="tab-panel";root.hidden=true;
+  const root=document.getElementById("tab-simulation-results");
   root.innerHTML=`<article class="panel">
     <div class="panel-head"><h2>Import simulation results</h2><p>In InfoWorks ICM, export one object and attribute per CSV. Select the Results timestep, include headers and retain the units. Choose columns for the assets under review.</p></div>
     <form id="hbResultsImport">
@@ -89,7 +89,6 @@ function mount() {
     </div>
     <p id="hbResultReviewStatus" role="status"></p>
   </article>`;
-  document.querySelector("main.shell").append(root);
   const $=id=>root.querySelector("#"+id), form=$("hbResultsImport"), controls=form.elements;
   const importer=$("hbResultImportStatus"), review=$("hbResultReviewStatus"), preview=$("hbResultPreview");
   const mappingBody=$("hbResultMappings").tBodies[0], add=$("hbAddResultMapping"), submit=form.querySelector('[type="submit"]');

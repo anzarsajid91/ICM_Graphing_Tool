@@ -294,3 +294,24 @@ other state.
   2,020 ms for the first schematic visit. Under 75 ms network latency,
   200 KB/s and fourfold CPU throttling, these changes are 8.6% and 4.7%.
   Cold-start optimization and final matched performance remain open.
+
+### Deferred startup components and preserved About navigation
+
+- The hydraulic screens, simulation reviewer and source diagnostics now
+  download only on their relevant entry points. Home and first schematic
+  entry request none of the three scripts. The shell retries a failed fixed
+  component request and mounts the validated content when available.
+- At `46f5063`, the shell job passed its layout stage. Both protected browser
+  jobs subsequently caught a keyboard regression in IT Security when adding
+  a third About tab. The method library now opens from About Overview and
+  preserves the Overview and IT Security tab order. Existing assertions
+  remain in place and passed locally in Chromium and Firefox with the fix.
+- Browser checks passed the lazy-load and retry path, the IT Security keyboard
+  and no-navigation-request contract, the method-library search and dismissal,
+  and the Storage routing empty state and calculation after deferred loading.
+  Chromium recorded 33, 27, 29 and 92 requests. Firefox recorded 34, 28, 30
+  and 90. All request observations had zero violations. Earlier affected
+  simulation, design, structures and diagnostics checks also passed.
+- Repository-wide Code Scanning, Secret Scanning and Dependabot alert lists
+  returned HTTP 403 to the current credential. Exact-head workflow checks,
+  source inventories and the authenticated release procedure still apply.

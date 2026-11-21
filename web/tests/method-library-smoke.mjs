@@ -14,7 +14,8 @@ try {
   await guard.navigate(page,base);
   await page.route('**/assets/method-library.json*',route=>route.fulfill({status:503,body:'Synthetic unavailable'}),{times:1});
   await page.getByRole('button',{name:'About',exact:true}).click();
-  await page.getByRole('tab',{name:'Method library',exact:true}).click();
+  const open=page.getByRole('button',{name:'Open engineering method library',exact:true});
+  await open.click();
   const panel=page.locator('#tab-method-library'),status=panel.getByRole('status');
   await status.filter({hasText:'could not be loaded'}).waitFor();
   await panel.getByRole('button',{name:'Retry loading methods'}).click();
@@ -33,7 +34,7 @@ try {
   await panel.getByRole('button',{name:'Open Structures',exact:true}).click();
   await page.locator('#structureScreenForm').waitFor();
   await page.getByRole('button',{name:'About',exact:true}).click();
-  await page.getByRole('tab',{name:'Method library',exact:true}).click();
+  await open.click();
   assert.equal(await search.inputValue(),'Villemonte');
   await search.fill('');
   await panel.getByLabel('Jurisdiction').selectOption('England');
@@ -45,6 +46,8 @@ try {
   await page.setViewportSize({width:400,height:850});
   const sizes=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
   assert(sizes[0]<=sizes[1]+2);
+  await panel.getByRole('button',{name:'Close method library',exact:true}).click();
+  assert(await panel.isHidden());
   assert.deepEqual(errors,[]);
   guard.assertClean();
   console.log('METHOD_LIBRARY_PASS '+engine);

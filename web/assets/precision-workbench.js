@@ -4,9 +4,53 @@
 const $=id=>document.getElementById(id);
 const qs=(sel,root=document)=>root.querySelector(sel);
 const qsa=(sel,root=document)=>[...root.querySelectorAll(sel)];
-function calculationPanel(id){
-  if(!$('tab-pipe-system'))window.HydraDesignCalculations.mount(navigate);
-  return $(id);
+const optionalComponents=Object.freeze({
+  calculations:{asset:'hydraulic-design.js',mount:()=>window.HydraDesignCalculations.mount(navigate)},
+  simulation:{asset:'simulation-results.js',mount:()=>window.HydraResultsWorkspace.mount()},
+  diagnostics:{asset:'series-quality.js',mount:()=>{}}
+});
+const componentLoads=new Map(),readyComponents=new Set();
+function loadComponent(key){
+  if(!componentLoads.has(key)){
+    const component=optionalComponents[key];
+    const loading=new Promise((resolve,reject)=>{
+      const script=document.createElement('script');
+      script.src='assets/'+component.asset+'?v='+encodeURIComponent(buildToken);
+      script.onload=resolve;
+      script.onerror=()=>{script.remove();reject(new Error('The workspace could not load.'));};
+      document.head.append(script);
+    }).then(()=>{component.mount();readyComponents.add(key);})
+      .catch(error=>{componentLoads.delete(key);throw error;});
+    componentLoads.set(key,loading);
+  }
+  return componentLoads.get(key);
+}
+function optionalPanel(id){
+  const existing=$(id);if(existing)return existing;
+  const panel=document.createElement('section');panel.id=id;panel.className='tab-panel';panel.hidden=true;
+  qs('main.shell').append(panel);return panel;
+}
+function startOptionalPanel(route,root){
+  const key=route.component;
+  if(!key||readyComponents.has(key))return;
+  const status=document.createElement('p');status.className='pw-empty-state';status.setAttribute('role','status');
+  status.textContent='Opening '+route.label.toLowerCase()+'…';root.replaceChildren(status);
+  void loadComponent(key).catch(error=>{
+    status.textContent=error.message;
+    const retry=document.createElement('button');retry.textContent='Retry opening '+route.label.toLowerCase();retry.type='button';
+    retry.onclick=()=>startOptionalPanel(route,root);root.append(retry);
+  });
+}
+function installDiagnosticLauncher(){
+  const launcher=document.createElement('button');launcher.type='button';launcher.className='btn';
+  launcher.textContent='Source diagnostics';launcher.setAttribute('aria-haspopup','dialog');$('clearPoolBtn').after(launcher);
+  launcher.onclick=async()=>{
+    if(launcher.getAttribute('aria-busy')==='true')return;
+    launcher.setAttribute('aria-busy','true');
+    try{await loadComponent('diagnostics');if(current.workspace==='data')window.HydraSeriesQuality.open();}
+    catch(error){$('mappingStatus').textContent=error.message+' Select Source diagnostics to retry.';}
+    finally{launcher.removeAttribute('aria-busy');}
+  };
 }
 const ROUTES={
   home:{
@@ -27,7 +71,7 @@ const ROUTES={
     pages:{
       assessment:{label:'Spill assessment',title:'EDM / model spill assessment',description:'Configure thresholds and exclusions, then review physical spill intervals, 12/24 counts and observed/model evidence.',tab:'spills',root:()=>$('tab-spills')},
       storage:{label:'Storage assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')},
-      'storage-routing':{label:'Storage routing',title:'Storage routing screening',description:'Test spill-volume sensitivity to storage capacity and a constant pass-forward limit.',root:()=>calculationPanel('tab-storage-routing')}
+      'storage-routing':{label:'Storage routing',title:'Storage routing screening',description:'Test spill-volume sensitivity to storage capacity and a constant pass-forward limit.',component:'calculations',root:()=>optionalPanel('tab-storage-routing')}
     }
   },
   network:{
@@ -35,7 +79,7 @@ const ROUTES={
     icon:'network',
     pages:{
       schematic:{label:'Schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')},
-      'simulation-results':{label:'Simulation results',title:'Simulation results',description:'Index mapped ICM results and inspect exact project-clock samples and independent extrema.',root:()=>$('tab-simulation-results')||window.HydraResultsWorkspace.mount()}
+      'simulation-results':{label:'Simulation results',title:'Simulation results',description:'Index mapped ICM results and inspect exact project-clock samples and independent extrema.',component:'simulation',root:()=>optionalPanel('tab-simulation-results')}
     }
   },
   survey:{
@@ -63,17 +107,16 @@ const ROUTES={
     label:'Hydraulic Calculations',icon:'hydraulics',
     pages:{
       capacity:{label:'Pipe capacity',title:'Hydraulic calculations',description:'Estimate full-bore uniform-flow capacity using Darcy–Weisbach.',root:()=>$('tab-hydraulics')},
-      'system-curve':{label:'System curve',title:'Pipe head loss and system curves',description:'Review the components of head loss in steady full-pipe systems.',root:()=>calculationPanel('tab-pipe-system')},
-      'pump-duty':{label:'Pump duty',title:'Pump duty screening',description:'Compare measured pump curves against the pipe system.',root:()=>calculationPanel('tab-pump-duty')},
-      structures:{label:'Structures',title:'Hydraulic structure screening',description:'Screen weir, orifice, sluice and supplied rating-curve discharge.',root:()=>calculationPanel('tab-hydraulic-structures')},
-      'formula-a':{label:'Formula A',title:'Formula A and wastewater design flows',description:'Review Environment Agency retained continuation-flow screening for England.',root:()=>calculationPanel('tab-formula-a')}
+      'system-curve':{label:'System curve',title:'Pipe head loss and system curves',description:'Review the components of head loss in steady full-pipe systems.',component:'calculations',root:()=>optionalPanel('tab-pipe-system')},
+      'pump-duty':{label:'Pump duty',title:'Pump duty screening',description:'Compare measured pump curves against the pipe system.',component:'calculations',root:()=>optionalPanel('tab-pump-duty')},
+      structures:{label:'Structures',title:'Hydraulic structure screening',description:'Screen weir, orifice, sluice and supplied rating-curve discharge.',component:'calculations',root:()=>optionalPanel('tab-hydraulic-structures')},
+      'formula-a':{label:'Formula A',title:'Formula A and wastewater design flows',description:'Review Environment Agency retained continuation-flow screening for England.',component:'calculations',root:()=>optionalPanel('tab-formula-a')}
     }
   },
   detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},
   about:{
     label:'About',icon:'about',
     pages:{overview:{label:'Overview',title:'About Hydra Bench',description:'A practical workbench for hydraulic evidence, model verification and scenario assessment.',root:()=>$('tab-about')},
-      methodology:{label:'Method library',title:'Engineering method library',description:'Find the equations, supported inputs, reference cases and limitations used by this build.',root:()=>$('tab-method-library')||window.HydraMethodLibrary.mount(navigate,ROUTES)},
       security:{label:'IT Security',title:'IT Security',description:'Data handling, implemented controls and verification limits.',root:()=>$('tab-security')}}
   },
   reports:{
@@ -595,6 +638,7 @@ function navigate(workspace,page,push=false){
   qsa('main.shell>.tab-panel').forEach(x=>{x.hidden=true;x.style.setProperty('display','none','important');});
   const root=p.root?.();
   if(root){
+    startOptionalPanel(p,root);
     root.classList.add('pw-route-visible');
     if(root.classList.contains('tab-panel')){root.hidden=false;root.style.removeProperty('display');}
     let ancestor=root.parentElement;
@@ -806,6 +850,7 @@ function buildAboutPage(){
   const source=$('hbBuildSource')?.cloneNode(true);
   if(source){source.removeAttribute('id');panel.querySelector('#hbAboutSource').append(source);}
   qsa('[data-about-workspace]',panel).forEach(button=>button.addEventListener('click',()=>navigate(button.dataset.aboutWorkspace,button.dataset.aboutPage,true)));
+  window.HydraMethodLibrary.install(panel,navigate,ROUTES);
 }
 function buildSecurityPage(){
   const panel=document.createElement('section');panel.id='tab-security';panel.className='tab-panel';panel.hidden=true;
@@ -1243,7 +1288,7 @@ function openPipeTrial(inputs){
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
   window.HydraProjectHome.mount(navigate,ROUTES);
-  window.HydraSeriesQuality.install();
+  installDiagnosticLauncher();
   buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wireVerificationEvents();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,openPipeTrial,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
