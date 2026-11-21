@@ -30,9 +30,9 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Open |
-| 6.3 | Exact-time selected model-level samples and overview | Synchronized real-sample map/profile playback, transport controls, windowing, scenario comparison, extrema and missingness | Open |
+| 6.3 | Exact-time selected model-level samples and overview | Synchronized real-sample map/profile playback, transport controls, windowing, scenario comparison, extrema and missingness | Partial |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Open |
-| 6.5 | Local worker, series parser, source identity and registry | Native and optional portable result package, explicit schema and time support, bounded indexed worker and cancellation, selective retrieval, measured storage/capacity trade-offs | Open |
+| 6.5 | Local worker, series parser, source identity and registry | Native and optional portable result package, explicit schema and time support, bounded indexed worker and cancellation, selective retrieval, measured storage/capacity trade-offs | Partial |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Explainable review of fouling, drift, flatline, depth–velocity, backwater, suspect dimensions and measurement ranges | Open |
 | 7.2 | Gauge qualification, cumulative/event data | Compare timing, totals, correlation, spatial variability and suspect/missing support without inferring dry periods | Open |
 | 7.3 | Weekly review, coverage and WAPUG/FSAT | Explain suitability of selected periods and clearly attribute published versus project screening criteria | Open |
@@ -174,3 +174,35 @@ other state.
   chart and table values, invalid inputs, invalidation and protected CSV export.
   The observer saw 89 and 87 requests with zero violations. The revised shell
   source hash covers one additional fixed local route only.
+
+### Simulation result ingestion and exact-sample review
+
+- The first local import contract links explicit column mappings to typed ICM
+  assets, simulation, model revision, scenario, event, quantity, location,
+  datum, units, project-clock temporal support and a source fingerprint.
+  The worker stages bounded typed arrays and supports cancellation, exact
+  frames, selective time windows and per-series extrema. See
+  [simulation results documentation](simulation-results.md) for the Autodesk
+  field references and browser limits.
+- A standalone result reviewer offers exact timestamp, sample slider,
+  previous/next, playback speed and min/max for the selected series. It keeps
+  gaps and distinguishes zero, missing and signed flow. Previous sources stay
+  available when an import is cancelled or rejected.
+- Chromium and Firefox exercised native file selection, preview, link mapping,
+  pause, step, playback and keyboard transport, extrema, duplicate file reuse,
+  cancellation and source removal. Both request observers saw 32 requests and
+  zero violations with simulation and revision canaries. Index unit tests
+  covered quoted records across block boundaries, a UTF-16 BOM, date and unit
+  conflicts, malformed values, source fingerprint and resource exhaustion.
+  The browser entry and worker received scoped same-origin source reviews.
+- A synthetic Node ingestion benchmark used 400 assets at 289 samples (0.47 MB
+  source, 1.05 MB typed allocation, 54 ms), 1,600 at 289 (1.87 MB, 4.15 MB,
+  115 ms), and 10,000 at 73 (2.99 MB, 6.24 MB, 295 ms). An annual 15-minute
+  file with 96 of 400 columns indexed used 56.91 MB source, 27.26 MB typed
+  allocation and 1,335 ms. Process RSS deltas ranged from 14 to 108 MB and
+  include temporary JavaScript allocations. These are offline parser results.
+  The 10,000-asset schematic renderer, browser peak memory and the matched
+  release workload remain open.
+- Remaining integration covers current model revision binding, map and route
+  samples, scoped windows and scenarios, file-backed retrieval, the optional
+  compact package and testing on genuine ICM exports.

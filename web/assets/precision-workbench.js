@@ -29,7 +29,10 @@ const ROUTES={
   network:{
     label:'Network Schematic',
     icon:'network',
-    pages:{schematic:{label:'Schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')}}
+    pages:{
+      schematic:{label:'Schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')},
+      'simulation-results':{label:'Simulation results',title:'Simulation results',description:'Index mapped ICM results and inspect exact project-clock samples and independent extrema.',root:()=>$('tab-simulation-results')||window.HydraResultsWorkspace.mount()}
+    }
   },
   survey:{
     label:'Flow survey',

@@ -9,6 +9,7 @@
       "evidence": [
         "web/assets/analysis-worker.js",
         "web/assets/fastpath-worker.js",
+        "web/assets/simulation-results-worker.js",
         "SECURITY.md"
       ],
       "scope": "Browser release architecture; policy is a requirement, not proof of all execution paths.",
@@ -38,7 +39,8 @@
         "web/assets/runtime.release.js",
         "web/assets/network-schematic.js",
         "web/assets/precision-workbench.js",
-        "web/assets/analysis-worker.js"
+        "web/assets/analysis-worker.js",
+        "web/assets/simulation-results-worker.js"
       ],
       "scope": "Browser storage calls in the reviewed source.",
       "limitation": "Clearing site data can also clear other applications on the same origin. Closing a tab does not erase downloads, caches or saved layouts.",
@@ -118,11 +120,12 @@
     "web/assets/analysis-worker.js": "adb36e7e3384a0dd171b11964fe4502851c479c777f3c7c5f8dc6a553111a2eb",
     "web/assets/fastpath-worker.js": "3ceb0560eca8035a05c1d45c5687bd094740e13e3d3a3a96cc550c1cbbe516ef",
     "SECURITY.md": "480b6a91a72ec28bb80f0a92d05e77d24d01e7fdf370f1270c41cc30a4f1bcdb",
-    "scripts/build_pages.py": "fe490124c8176a416c9227b5996850428d397d93c9f41afe744a231be995cc11",
+    "scripts/build_pages.py": "d818b0e3d0ef20d8932369a047c62d88b3ffc1836cec7cefdebfa2028c175bfa",
     "web/vendor/manifest.json": "bb70a1f4497a0f6307f836828522015ebb60293e91df66ac3778f986f2d96b82",
     "web/assets/runtime.release.js": "1f5f5312a59678e937aa4acd43e8f04d91228b13eb7eb013e2408bdc556ff766",
     "web/assets/network-schematic.js": "1926cd1af3b84ec64f8291f8dfb60547275869e4850c2a2a316506b56c3e5933",
-    "web/assets/precision-workbench.js": "d8074b563c179c080f61605dc4cc59506ca9d29d701e05b6fd29204c39ae348a",
+    "web/assets/precision-workbench.js": "d03d93ebdc943f8ff5fa8f39c31731e47dcc10ebf9cff7d7158d97adfecefdbf",
+    "web/assets/simulation-results-worker.js": "879d0c3ea81fc3528ee4ff0b95fa0bf0b9e66d15fc6fbd3d08297739a463daba",
     "scripts/verify_data_confidentiality.py": "6aac0bd0fbd78f84f49c39be4f2ecd08b6812dd0974579df9178fd61c27801cb",
     "scripts/verify_vendor.py": "26272a33a524532c21d591a917a45096f79eccd7761690dcf73499804f8824c2",
     "web/tests/privacy-network.mjs": "cee5e4702b48869bbb1824ea2f934e091a56a53a163f941d1868c3d2109dcd43",
