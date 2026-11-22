@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import {chromium,firefox} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
-import {nativeNetwork} from './network-route-fixture.mjs';
+import {nativeNetwork,controlProfileNetwork} from './network-route-fixture.mjs';
 
 const engine=process.env.ICM_BROWSER||'chromium';
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
@@ -165,6 +165,22 @@ try{
     await report.frameLocator('iframe').getByText(combined.nodes.length+' nodes · '+combined.edges.length+' links',{exact:false}).waitFor();
     await report.getByRole('button',{name:'Close',exact:true}).click();
     await report.waitFor({state:'hidden'});
+    await networkPage();
+    await page.setInputFiles('#nsLoadInput',file('profile-controls.csv',controlProfileNetwork));
+    await page.locator('#nsContextUnits').check();await page.click('#nsContextApply');
+    await page.click('#nsLongSection');await page.selectOption('#nsRouteStart','A');await page.selectOption('#nsRouteEnd','G');
+    await page.click('#nsOpenProfile');
+    const controlsView=page.locator('#nsProfilePlot');
+    await controlsView.getByRole('button',{name:/Inspect B\.P · pump/}).waitFor();
+    assert.equal(await controlsView.locator('[data-ns-profile-structure]').count(),4);
+    assert.match(await controlsView.getByRole('button',{name:/Inspect C\.W · weir/}).getAttribute('aria-label'),/Source crest 10\.9 m/);
+    assert.equal(await controlsView.locator('[data-ns-profile-control-level]').count(),5);
+    assert.match(await controlsView.locator('[data-ns-profile-node="B"]').getAttribute('aria-label'),/chamber roof 11 m/);
+    assert.equal(await controlsView.locator('[data-ns-profile-node="B"] [data-ns-profile-chamber]').count(),1);
+    const weir=controlsView.getByRole('button',{name:/Inspect C\.W · weir/});
+    await weir.focus();await page.keyboard.press('Enter');
+    await page.locator('#nsPopup').getByRole('heading',{name:'C.W',exact:true}).waitFor();
+    await controlsView.screenshot({path:evidence+'/'+engine+'-profile-controls.png'});
   }
   assert.deepEqual(errors,[]);
   privacy.assertClean();

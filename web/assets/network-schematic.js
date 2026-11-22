@@ -2043,27 +2043,32 @@ function plotProfile(steps){
   const view=$('nsProfilePlot');view.replaceChildren();
   const settings=routeDraft.profileView;
   const segments=[];
-  let chainage=0,section=[];
+  let chainage=0,section=[],controls=[];
+  function closeSection(){
+    if(section.length)segments.push({pipes:section,controls});
+    section=[];controls=[];chainage=0;
+  }
   for(const step of steps){
     if(step.lengthStatus==='missing'){
-      if(section.length)segments.push(section);
-      section=[];chainage=0;continue;
+      closeSection();continue;
     }
-    if(step.lengthStatus==='structure')continue;
+    if(step.lengthStatus==='structure'){controls.push({step,station:chainage});continue;}
     section.push({...step,x1:chainage,x2:chainage+step.length});chainage+=step.length;
   }
-  if(section.length)segments.push(section);
+  closeSection();
+  const plotted=segments.flatMap(segment=>segment.pipes);
   const model=simulationView?.profile()||routeDraft.model;
   const routeNodes=new Set(steps.flatMap(step=>[step.from,step.to]));
   const imported=new Map((model?.values||[]).filter(record=>routeNodes.has(record.node)).map(record=>[record.node,record.level]));
   const conduitLevels=new Map((model?.ends||[]).map(record=>[record.edge,record]));
-  const profileLinks=new Set(segments.flat().map(step=>step.id));
+  const profileLinks=new Set(plotted.map(step=>step.id));
   const proposalLevels=new Map((model?.proposal?.levels||[])
     .filter(row=>row.location==='node'?routeNodes.has(row.id):profileLinks.has(row.id)).map(row=>[row.id,row]));
-  const shownEndLevels=segments.flat().flatMap(step=>{
+  const shownEndLevels=plotted.flatMap(step=>{
     const ends=conduitLevels.get(step.id);return ends?[ends.upstream,ends.downstream]:[];
   }).filter(Number.isFinite);
-  const levels=steps.flatMap(step=>[step.us,step.ds,step.groundFrom,step.groundTo,step.chamberFrom,step.chamberTo,
+  const levels=steps.flatMap(step=>[step.us,step.ds,step.groundFrom,step.groundTo,step.chamberFrom,step.chamberTo,step.roofFrom,step.roofTo,
+    ...step.controlLevels.map(control=>control.value),
     step.us!==null&&step.height!==null?step.us+step.height:null,
     step.ds!==null&&step.height!==null?step.ds+step.height:null]).filter(Number.isFinite)
     .concat([...imported.values()],shownEndLevels,[...proposalLevels.values()].map(row=>row.level));
@@ -2074,7 +2079,7 @@ function plotProfile(steps){
   const low=Math.floor(Math.min(...levels)),high=Math.max(low+1,Math.ceil(Math.max(...levels)));
   if(!Number.isFinite(high-low)||high<=low){view.append(inspectorElement('p','The source elevation limits cannot be plotted. Review the source levels.'));return;}
   if(steps.some(step=>step.lengthStatus==='missing'))view.append(inspectorElement('p','A conduit length is missing. Each downstream plot starts at its own local distance; absolute chainage is unavailable after the gap.','ns-note'));
-  for(const [index,items] of segments.entries()){
+  for(const [index,{pipes:items,controls}] of segments.entries()){
     const absolute=items[0].chainageStart!==null;
     const distance=items.at(-1).x2,origin=items[0].chainageStart||0;
     if(!Number.isFinite(distance)||distance<=0){view.append(inspectorElement('p','The source conduit lengths cannot be plotted. Review length units and values.'));continue;}
@@ -2101,16 +2106,30 @@ function plotProfile(steps){
       mark.append(svgElement('title',{},id+' · '+model.proposal.scenario+' proposal '+location+' level '+f(level,3)+' m'+freeboard));
       return mark;
     };
-    for(const step of steps.filter(step=>step.lengthStatus==='structure'&&step.chainageStart!==null)){
-      const distance=step.chainageStart-origin;
-      if(absolute&&distance>=0&&distance<=items.at(-1).x2){
-        if(!structures.has(distance))structures.set(distance,[]);
-        structures.get(distance).push(step.name);
-      }
+    for(const {step,station} of controls){
+      if(station<horizontal.low||station>horizontal.high)continue;
+      if(!structures.has(station))structures.set(station,[]);
+      structures.get(station).push(step);
     }
-    for(const [station,names] of structures){
-      const marker=svgElement('path',{d:'M'+x(station)+' 29l5 5-5 5-5-5z',fill:'#6947a1'});
-      marker.append(svgElement('title',{},names.join(' · ')));pointLayer.append(marker);
+    for(const [station,items] of structures){
+      for(const [index,step] of items.entries()){
+        const coordinate=x(station),badgeX=coordinate+(index-(items.length-1)/2)*19;
+        const type=step.type.slice(3).replaceAll('_',' '),levels=step.controlLevels.map(control=>control.label+' '+f(control.value,3)+' m');
+        const caption=[step.name,type,...levels].join(' · '),marker=svgElement('g',{'data-ns-profile-link':step.id,
+          'data-ns-profile-structure':step.type,tabindex:0,role:'button','aria-label':'Inspect '+caption});
+        marker.append(svgElement('title',{},caption),
+          svgElement('path',{d:'M'+badgeX+' 46L'+coordinate+' 55',stroke:'#6947a1',fill:'none'}),
+          svgElement('rect',{x:badgeX-8,y:29,width:16,height:17,rx:4,fill:'#6947a1'}),
+          svgElement('text',{x:badgeX,y:41,'text-anchor':'middle',fill:'#fff','font-size':10},structureCodes[step.type]||'C'));
+        for(const control of step.controlLevels){
+          const level=svgElement('line',{'data-ns-profile-control-level':'',x1:coordinate-8,x2:coordinate+8,
+            y1:y(control.value),y2:y(control.value),stroke:'#6947a1','stroke-width':2});
+          level.append(svgElement('title',{},control.label+' '+f(control.value,3)+' m'));marker.append(level);
+        }
+        marker.onclick=()=>selectConnector(step.id);
+        marker.onkeydown=event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();marker.onclick();}};
+        pointLayer.append(marker);
+      }
     }
     for(const step of items){
       const visible=step.x2>=horizontal.low&&step.x1<=horizontal.high;
@@ -2162,14 +2181,21 @@ function plotProfile(steps){
       }
       for(const [station,level] of [[step.x1,step.us],[step.x2,step.ds]])if(level!==null)
         group.append(svgElement('circle',{cx:x(station),cy:y(level),r:3,fill:'#14527c'}));
-      for(const [nodeId,station,ground,floor] of [[step.from,step.x1,step.groundFrom,step.chamberFrom],[step.to,step.x2,step.groundTo,step.chamberTo]]){
+      const nameWidth=step.name.length*6+12;
+      if(visible&&x(step.x2)-x(step.x1)>=nameWidth)group.append(svgElement('text',{x:(x(step.x1)+x(step.x2))/2,y:235,
+        'text-anchor':'middle',fill:'#334e60','font-size':10,'pointer-events':'none'},step.name));
+      for(const [nodeId,station,ground,floor,roof] of [[step.from,step.x1,step.groundFrom,step.chamberFrom,step.roofFrom],
+        [step.to,step.x2,step.groundTo,step.chamberTo,step.roofTo]]){
         if(!drawnNodes.has(nodeId)&&Number.isFinite(ground)&&Number.isFinite(floor)&&floor<=ground&&
           station>=horizontal.low&&station<=horizontal.high&&floor<=vertical.high&&ground>=vertical.low){
           drawnNodes.add(nodeId);
+          const chamber=Number.isFinite(roof)&&roof>=floor&&roof<=ground;
           const shaft=svgElement('g',{'data-ns-profile-node':nodeId,tabindex:0,role:'button',
-            'aria-label':'Inspect '+nodeId+' · ground '+f(ground,3)+' m · chamber floor '+f(floor,3)+' m'});
-          shaft.append(svgElement('title',{},'Source ground and chamber floor · symbolic width'),
-            svgElement('rect',{x:x(station)-5,y:y(ground),width:10,height:Math.max(2,y(floor)-y(ground)),fill:'#fff',stroke:'#637987'}));
+            'aria-label':'Inspect '+nodeId+' · ground '+f(ground,3)+' m · chamber floor '+f(floor,3)+' m'+(chamber?' · chamber roof '+f(roof,3)+' m':'')});
+          shaft.append(svgElement('title',{},nodeId+' · Source elevations · symbolic width'),
+            svgElement('rect',{x:x(station)-5,y:y(ground),width:10,height:Math.max(2,y(chamber?roof:floor)-y(ground)),fill:'#fff',stroke:'#637987'}));
+          if(chamber)shaft.append(svgElement('rect',{'data-ns-profile-chamber':'',x:x(station)-9,y:y(roof),width:18,
+            height:Math.max(2,y(floor)-y(roof)),fill:'#f4f8fb',stroke:'#637987'}));
           shaft.onclick=()=>{if(network.nodes.some(node=>node.id===nodeId))selectPoint(nodeId);};
           shaft.onkeydown=event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();shaft.onclick();}};
           pointLayer.append(shaft);

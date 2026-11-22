@@ -311,6 +311,16 @@ function contributingCatchments(network,target,records){
   });
 }
 
+const closedProfileShapes=new Set(['ARCH','ARCHSPRUNG','EGG','EGG2','OVAL','RECT']);
+const profileControlFields={hw_weir:[['crest','Source crest']],hw_orifice:[['invert','Source orifice invert']],
+  hw_sluice:[['invert','Source sluice invert']],hw_pump:[['switch_on_level','Source switch-on level'],['switch_off_level','Source switch-off level']]};
+function profileSourceElevation(asset,key){
+  const source=asset?.sourceAttributes?.fields?.find(field=>field.name.toLowerCase()===key);
+  const raw=source?.value.trim()||'',unit=source?.unit.trim().toLowerCase()||'';
+  if(!['','m','m ad','metres','meters','metre','meter'].includes(unit)||!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(raw))return null;
+  const value=Number(raw);
+  return Number.isFinite(value)?value:null;
+}
 function longSection(network,edges){
   const nodes=new Map(network.nodes.map(node=>[node.id,node]));
   let chainage=0;
@@ -327,12 +337,17 @@ function longSection(network,edges){
     const chainageStart=chainage;
     if(lengthStatus==='missing')chainage=null;
     if(chainage!==null&&length!==null)chainage+=length;
-    const height=conduit&&String(fields.shape).toUpperCase()==='CIRC'&&fields.conduit_width===fields.conduit_height&&
-      fields.conduit_height>0?number(fields.conduit_height/1000):null;
+    const shape=String(fields.shape).toUpperCase();
+    const supported=shape==='CIRC'?fields.conduit_width===fields.conduit_height:closedProfileShapes.has(shape);
+    const height=conduit&&supported&&fields.conduit_width>0&&fields.conduit_height>0?number(fields.conduit_height/1000):null;
+    const levels=edge.sourceAttributes?.table===fields.table?(profileControlFields[fields.table]||[]).flatMap(([key,label])=>{
+      const value=profileSourceElevation(edge,key);return value===null?[]:[{label,value}];
+    }):[];
     return {id:edge.id,from:edge.from,to:edge.to,name:edge.name||edge.id,type:fields.table||'Connector',
       lengthStatus,length,chainageStart,chainageEnd:chainage,us:number(fields.us_invert),ds:number(fields.ds_invert),
       groundFrom:number(from?.icm?.groundLevelM),groundTo:number(to?.icm?.groundLevelM),
       chamberFrom:number(from?.icm?.chamberFloorM),chamberTo:number(to?.icm?.chamberFloorM),height,
+      roofFrom:profileSourceElevation(from,'chamber_roof'),roofTo:profileSourceElevation(to,'chamber_roof'),controlLevels:levels,
       widthMm:number(fields.conduit_width),heightMm:number(fields.conduit_height),shape:fields.shape||null,
       sources:[source(edge),source(from),source(to)].filter(Boolean)};
   });
@@ -368,10 +383,12 @@ function profileAxis(minimum,maximum,zoom,pan){
 function sameProfileSteps(current,saved){
   if(current.length!==saved.length)return false;
   const optionalKeys=new Set(['chamberFrom','chamberTo','widthMm','heightMm','shape']);
+  const newGeometryKeys=new Set(['roofFrom','roofTo','controlLevels']);
   return current.every((step,index)=>{
     const baseline=saved[index];
     return Object.keys(step).every(key=>{
       if(optionalKeys.has(key)&&!Object.hasOwn(baseline,key))return true;
+      if(newGeometryKeys.has(key)&&!Object.hasOwn(baseline,key))return step[key]===null||Array.isArray(step[key])&&!step[key].length;
       return JSON.stringify(step[key])===JSON.stringify(baseline[key]);
     });
   });

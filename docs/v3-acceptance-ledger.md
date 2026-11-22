@@ -31,7 +31,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Verified locally for imported result layers, reviewed flow direction, same-datum freeboard, source geometry and positive imported full-capacity utilisation |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Verified locally for exact shared-clock comparison and independent layer extrema. Geometry-sensitive scenario review remains open under 6.1 and 6.4 |
-| 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
+| 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial. Source chamber roofs, closed-section soffits and control levels verified in both desktop browsers. Expanded proposal profile comparison remains open |
 | 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for indexed ingestion and lookup. Broader capacity and release checks remain open |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
 | 7.2 | Gauge qualification, cumulative/event data | Common-clock spatial comparison, event totals, correlation, peak offset, coverage, suspect bins and WAPUG linkage | Verified locally |
@@ -1335,3 +1335,22 @@ other state.
   extrema, cancellation, duplicate rejection, table removal and layer
   withdrawal. Their observers each counted 32 requests with no
   violations. In-memory and file-backed magnitude tests agreed.
+
+### Source-backed chambers, soffits and control structures
+
+- Long sections use documented closed conduit shapes, source height and
+  original invert levels. The chamber roof must be above the floor and at
+  or below ground when ground is known. Unsupported units and unknown shape
+  geometry remain unavailable. Pump, weir, orifice and sluice marks distinguish
+  source levels from schematic symbols. A structure adds no inferred pipe
+  length to chainage.
+- The independent fixture checked a 100 m rectangular pipe (0.5 m high),
+  four coincident structures, a 0.6 m egg section and a source chamber roof
+  of 11 m. It also checked 10.9 m weir crest, four other control levels and
+  the rejection of a feet declaration. Chromium and Firefox verified the
+  five marks and keyboard inspection from the profile into Explore. Their
+  route request observers recorded 136 and 135 requests with no violations.
+  Chromium simulation playback also passed with 32 requests and no
+  violations. The static source gate, 28 Python privacy tests and the
+  153-resource artifact integrity check passed. Synthetic screenshots are
+  recorded under `hydra-evidence/v3/profile-controls/`.

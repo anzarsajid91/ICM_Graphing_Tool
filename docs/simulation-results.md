@@ -178,7 +178,7 @@ route. Opposite-end depth and total head cannot substitute for level.
 The Autodesk reference identifies link level as a time-varying result and
 defines total head separately as level plus velocity head. In the long
 section, both supported water levels are shown as end markers, with a
-straight display line between wet ends. Known circular barrel geometry
+straight display line between wet ends. Known closed barrel geometry
 allows water fill up to the soffit, while a level above soffit stays visible
 as a dashed hydraulic grade depiction and is reported as head above soffit.
 Freeboard is the available ground elevation less the reported level. It
@@ -187,6 +187,20 @@ classification. The straight line is a depiction of endpoint evidence. It
 does not estimate the internal conduit solution. Missing exact samples,
 levels at or below invert, and unsupported barrel geometry withhold the fill.
 [Autodesk link results reference](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm)
+
+The profile uses the retained native conduit height for recognised ICM
+closed shapes. It draws a chamber where source floor, roof and ground levels
+are consistent. Pump, weir, orifice and sluice symbols sit at their recorded
+route stations. Imported switch levels, crests and inverts appear as separate
+source marks when the declared units are supported. Shaft width and structure
+symbols are schematic. Missing lengths and elevations stay visible as gaps.
+[Autodesk conduit shapes](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-57967A12-5043-40C1-B300-2DA720465829.htm) ·
+[Conduit fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1306601E-4A25-4FBE-AE9A-01E06BF4986E.htm) ·
+[Node fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-18DCDEB6-621C-4127-8C04-365D3CDC4C7E.htm) ·
+[Weirs](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-2200B2A4-0C87-42C4-8A8A-4AE5C7C3E4B0.htm) ·
+[Pumps](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1B21FE58-FEE0-49A1-86F4-8B019D2A76A8.htm) ·
+[Orifices](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-19883D0E-582D-4387-AA21-ADE9E3ABB117.htm) ·
+[Sluices](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1E168695-5D06-4BE4-80AD-00D2B9DBE6C9.htm)
 
 ### Compare scenarios at an exact sample
 
