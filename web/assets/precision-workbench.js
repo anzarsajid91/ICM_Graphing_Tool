@@ -128,7 +128,9 @@ const ROUTES={
       'pump-duty':{label:'Pump duty',title:'Pump duty screening',description:'Compare measured pump curves against the pipe system.',component:'calculations',root:()=>optionalPanel('tab-pump-duty')},
       structures:{label:'Structures',title:'Hydraulic structure screening',description:'Screen weir, orifice, sluice and supplied rating-curve discharge.',component:'calculations',root:()=>optionalPanel('tab-hydraulic-structures')},
       'formula-a':{label:'Formula A',title:'Formula A and wastewater design flows',description:'Review continuation flow using the Environment Agency or applicable SEPA framework.',component:'calculations',root:()=>optionalPanel('tab-formula-a')},
-      'treatment-flow':{label:'Treatment flows',title:'Dry weather flow and full treatment',description:'Calculate the reviewed SEPA design flows with distinct infiltration allowances.',component:'calculations',root:()=>optionalPanel('tab-design-treatment')}
+      'treatment-flow':{label:'Treatment flows',title:'Dry weather flow and full treatment',description:'Review EA and SEPA treatment flows with distinct infiltration allowances.',component:'calculations',root:()=>optionalPanel('tab-design-treatment')},
+      'foul-loading':{label:'Peak foul flow',title:'Peak foul flow',description:'Review design foul loading from separate domestic, commercial, infiltration and trade components.',component:'calculations',root:()=>optionalPanel('tab-design-foul')},
+      'section-check':{label:'Velocity and shear',title:'Velocity and boundary shear',description:'Review a circular gravity section against the project velocity criterion and a uniform-flow shear assumption.',component:'calculations',root:()=>optionalPanel('tab-section-check')}
     }
   },
   detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment',pages:{...window.ICMDetriment.routes.pages,

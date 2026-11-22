@@ -64,6 +64,34 @@ def circular_wetted_area(diameter_m, depth_m):
     return _circular_section(diameter_m, depth_m / diameter_m)[0] if depth_m > 0 else 0.0
 
 
+def circular_gravity_section_review(diameter_m, depth_m, flow_m3_s, energy_gradient,
+                                    density_kg_m3, minimum_velocity_m_s, uniform_confirmed):
+    """Screen a supplied circular section using mean velocity and uniform-flow shear."""
+    limits = ((diameter_m, .001, 20, "diameter"), (depth_m, 0, 20, "depth"),
+              (flow_m3_s, 0, 1000, "forward discharge"), (energy_gradient, 0, 1, "energy gradient"),
+              (density_kg_m3, 100, 3000, "fluid density"), (minimum_velocity_m_s, .001, 20, "velocity threshold"))
+    for value, low, high, label in limits:
+        if type(value) not in (int, float) or not low <= value <= high or not isfinite(value):
+            raise ValueError(f"Enter a finite {label} within the supported range.")
+    if depth_m > diameter_m:
+        raise ValueError("Use a depth within the circular pipe section.")
+    if depth_m == 0 and flow_m3_s > 0:
+        raise ValueError("A dry section cannot convey a positive supplied discharge.")
+    fraction = depth_m / diameter_m
+    area, hydraulic_diameter = _circular_section(diameter_m, fraction) if fraction else (0.0, 0.0)
+    if depth_m and (area <= 0 or not isfinite(flow_m3_s / area)):
+        raise ValueError("The depth and discharge cannot resolve a finite hydraulic section.")
+    radius = hydraulic_diameter / 4 if depth_m else None
+    velocity = flow_m3_s / area if depth_m else None
+    status = ("dry section" if velocity is None else
+              "meets threshold" if velocity >= minimum_velocity_m_s else "below threshold")
+    return dict(method="circular-gravity-velocity-and-mean-shear-v1", area_m2=area,
+                hydraulic_radius_m=radius, velocity_m_s=velocity, velocity_status=status,
+                flow_at_minimum_m3_s=minimum_velocity_m_s * area if depth_m else None,
+                mean_shear_pa=density_kg_m3 * GRAVITY * radius * energy_gradient if uniform_confirmed is True and depth_m else None,
+                uniform_confirmed=uniform_confirmed is True)
+
+
 def _normal_depth_candidates(section_flow, discharge):
     """Search the circular conveyance envelope and both sides of its peak."""
     low, high = 0.5, 1.0

@@ -838,10 +838,66 @@ function mountStructures(worker) {
   });
 }
 
+function mountWastewaterChecks(worker) {
+  const loading=panel("tab-design-foul","Peak foul flow for a new wastewater network",
+    "Apply Uisce Éireann CDS-5030-03 Revision 3, Appendix C, section 2.2, Equation 1. Enter the reviewed design population, separate loads and peaking factors.");
+  const loadForm=element("form");loadForm.id="foulLoadingForm";
+  const loads=fields([number("population","Design population",0,1e9),
+    number("domestic_l_head_day","Domestic allowance (L/head/day)",0,1e6),
+    number("commercial_l_day","Commercial domestic load (L/day)",0,1e15),
+    number("infiltration_l_day","Infiltration (L/day)",0,1e15),number("trade_l_day","Trade flow (L/day)",0,1e15),
+    number("domestic_factor","Reviewed domestic peaking factor",1,1000),
+    number("commercial_factor","Reviewed commercial peaking factor",1,1000),
+    number("trade_factor","Reviewed trade peaking factor",1,1000),
+    {key:"evidence",label:"Source, factor basis and design horizon",type:"text",maxLength:2000},
+    {key:"applies",label:"I reviewed the new-network foul loading basis and the distinct inputs",type:"checkbox"}]);
+  loadForm.append(loads.group);
+  results(loading,loadForm,async()=>{
+    const {evidence,applies,...inputs}=loads.values();
+    if(!applies||!evidence)throw new Error("Confirm applicability and record the basis for each load and peaking factor.");
+    const r=await worker("uisce_peak_foul_flow",{inputs});
+    const metrics=[["Base domestic (L/day)",r.base_domestic_l_day],["Peaked domestic (L/day)",r.peak_domestic_l_day],
+      ["Peaked commercial domestic (L/day)",r.peak_commercial_l_day],["Infiltration (L/day)",r.infiltration_l_day],
+      ["Peaked trade (L/day)",r.peak_trade_l_day],["Design foul flow (L/day)",r.peak_l_day],
+      ["Design foul flow (L/s)",r.peak_l_s],["Design foul flow (m³/s)",r.peak_m3_s]];
+    const note="This is the Equation 1 foul-loading case. Review misconnection allowances, surcharge and flooding in the separate design cases.";
+    return {content:[table(["Component","Value"],metrics,"Peak foul loading"),element("p",note)],
+      summary:"Reviewed peak foul flow calculated.",filename:"hydra-uisce-peak-foul-flow.csv",
+      rows:[["Method",r.method],["Reference",r.reference],["Equation","Foul flow = f_dom PG + f_com PₑGₑ + I + f_trade E"],
+        ["Evidence",evidence],...Object.entries(inputs),...metrics,["Applicability",note]]};
+  });
+
+  const section=panel("tab-section-check","Circular gravity section velocity and shear",
+    "Use the measured or calculated discharge and depth for one section. Choose a project-specific cleansing velocity threshold and record its source.");
+  const form=element("form");form.id="gravitySectionReviewForm";
+  const settings=fields([number("diameter_m","Internal diameter (m)",.001,20),number("depth_m","Flow depth (m)",0,20),
+    number("flow_m3_s","Discharge (m³/s)",0,1000),number("minimum_velocity_m_s","Project velocity threshold (m/s)",.001,20),
+    number("energy_gradient","Energy gradient (m/m)",0,1),number("density_kg_m3","Fluid density (kg/m³)",100,3000),
+    {key:"uniform_confirmed",label:"Steady uniform flow and the energy gradient are reviewed for mean shear",type:"checkbox",required:false},
+    {key:"evidence",label:"Discharge, depth, gradient and velocity criterion basis",type:"text",maxLength:2000}],{density_kg_m3:1000});
+  form.append(settings.group);
+  results(section,form,async()=>{
+    const {evidence,...inputs}=settings.values();
+    if(!evidence)throw new Error("Record the source of the section values and the project velocity threshold.");
+    const r=await worker("circular_gravity_section_review",{inputs});
+    const metrics=[["Wetted area (m²)",r.area_m2],["Hydraulic radius (m)",r.hydraulic_radius_m],["Mean velocity (m/s)",r.velocity_m_s],
+      ["Project velocity screen",r.velocity_status],["Flow at threshold and fixed wetted area (m³/s)",r.flow_at_minimum_m3_s],
+      ["Mean boundary shear (Pa)",r.mean_shear_pa]];
+    const note=r.mean_shear_pa===null?"Mean shear needs a wetted section and reviewed uniform-flow conditions.":
+      "Mean shear describes the full wetted perimeter. Assess local sediment and near-bed conditions separately.";
+    return {content:[table(["Quantity","Value"],metrics,"Circular section results"),element("p",note)],
+      summary:"Circular gravity section reviewed.",filename:"hydra-gravity-velocity-and-shear.csv",
+      rows:[["Method",r.method],["Reference","FHWA Hydraulic Design Series No. 4, Introduction to Highway Hydraulics, tractive force"],
+        ["Equation","V = Q/A. R = A/P_w. Mean shear = ρgRS_f for steady uniform flow."],
+        ["Evidence",evidence],...Object.entries(inputs),...metrics,["Applicability",note]]};
+  });
+}
+
 function mount(navigate) {
   const worker=async (api,args)=>{await ensureEngineBoot();return engine.call(api,args);};
   mountStorageRouting(navigate,worker);
   mountStructures(worker);
+  mountWastewaterChecks(worker);
   const system=panel("tab-pipe-system","Pipe head loss and system curves",
     "Use steady flow in full circular pipes. Stages are in series and branches within a stage are in parallel. Static head includes elevation and pressure head differences.");
   const design=systemInputs(),systemForm=element("form");
@@ -989,22 +1045,63 @@ function mount(navigate) {
   });
 
   const treatment=panel("tab-design-treatment","Dry weather flow and full treatment",
-    "SEPA WAT-G-065 design calculations for municipal sewage treatment works. Enter separately reviewed dry-weather and maximum infiltration allowances.");
+    "Choose the treatment framework. Record separately reviewed dry-weather and maximum infiltration allowances.");
   const treatmentForm=element("form");treatmentForm.id="sepaTreatmentForm";
-  const treatmentControls=fields([number("population","Population served",0,1e9),number("domestic_l_head_day","Domestic (L/head/day)",0,1e6),
+  const treatmentFields=[number("population","Population served",0,1e9),number("domestic_l_head_day","Domestic (L/head/day)",0,1e6),
     number("infiltration_dwf_l_day","Dry-weather infiltration (L/day)",0,1e15),number("infiltration_max_l_day","Maximum infiltration Imax (L/day)",0,1e15),
-    number("trade_l_day","Trade effluent (L/day)",0,1e15),{key:"evidence",label:"Source and design horizon",type:"text",maxLength:2000}]);
-  treatmentForm.append(treatmentControls.group);
+    number("trade_l_day","Trade effluent (L/day)",0,1e15),{key:"evidence",label:"Source and design horizon",type:"text",maxLength:2000}];
+  const treatmentControls=fields(treatmentFields);
+  const options=fields([{key:"framework",label:"Treatment framework",options:[["sepa","Scotland · SEPA WAT-G-065"],
+    ["england","England · Environment Agency"]]},
+    {key:"seasonal",label:"Review different winter and summer populations or allowances",type:"checkbox",required:false}]);
+  const baseGroup=element("fieldset"),baseLegend=element("legend","Annual design flow"),summerGroup=element("fieldset");
+  baseGroup.append(baseLegend,treatmentControls.group);
+  const summer=fields(treatmentFields.map(spec=>({...spec,key:"summer_"+spec.key,label:"Summer "+spec.label})));
+  summerGroup.append(element("legend","Summer design flow"),summer.group);
+  const method=element("p");
+  function refreshTreatment(){
+    const england=options.controls.framework.value==="england";
+    const seasonal=england&&options.controls.seasonal.checked;
+    options.controls.seasonal.disabled=!england;options.controls.seasonal.parentElement.hidden=!england;
+    summerGroup.hidden=!seasonal;
+    for(const input of Object.values(summer.controls))input.disabled=!seasonal;
+    baseLegend.textContent=seasonal?"Winter design flow":"Annual design flow";
+    method.textContent=england?"For a significant summer population increase, review both seasonal cases and use the higher FFT.":
+      "Use the design basis under SEPA WAT-G-065 sections 3.2 and 3.3.";
+  }
+  options.controls.framework.onchange=refreshTreatment;options.controls.seasonal.onchange=refreshTreatment;
+  treatmentForm.append(options.group,method,baseGroup,summerGroup);refreshTreatment();
   results(treatment,treatmentForm,async()=>{
     const {evidence,...inputs}=treatmentControls.values();
     if(!evidence)throw new Error("Record the source and design horizon for the treatment allowances.");
+    const equationRows=[["DWF equation","PG + Idwf + E"],["FFT equation","3PG + Imax + 3E"]];
+    if(options.controls.framework.value==="england"){
+      const seasonal=options.controls.seasonal.checked;
+      const {evidence:summerBasis,...summerInputs}=Object.fromEntries(Object.entries(summer.values())
+        .map(([key,value])=>[key.slice("summer_".length),value]));
+      if(seasonal&&!summerBasis)throw new Error("Record a source and design horizon for the summer allowances.");
+      const periods=seasonal?{winter:inputs,summer:summerInputs}:{annual:inputs};
+      const r=await worker("england_treatment_design_flows",{periods});
+      const header=["Period","Domestic (L/day)","DWF (L/day)","DWF (L/s)","DWF (m³/s)","FFT (L/day)","FFT (L/s)","FFT (m³/s)"];
+      const rows=r.periods.map(row=>[row.period,row.domestic_l_day,row.dwf_l_day,row.dwf_l_s,row.dwf_m3_s,
+        row.fft_l_day,row.fft_l_s,row.fft_m3_s]);
+      const governing=r.governing_periods.join(" and ");
+      const metrics=[["Governing EA period",governing],["Governing FFT (L/day)",r.fft_l_day],
+        ["Governing FFT (L/s)",r.fft_l_s],["Governing FFT (m³/s)",r.fft_m3_s]];
+      return {content:[table(["Quantity","Value"],metrics,"Environment Agency design basis"),
+        table(header,rows,"Treatment design periods"),element("p","Use the permit and reviewed future design conditions for final design.")],
+        summary:"Governing EA FFT calculated for "+governing+".",filename:"hydra-england-treatment-design.csv",
+        rows:[["Method",r.method],["Reference",r.reference],...equationRows,[seasonal?"Winter evidence":"Annual evidence",evidence],
+          ...(seasonal?[["Summer evidence",summerBasis]]:[]),...Object.entries(periods).flatMap(([period,values])=>
+          [["Period",period],...Object.entries(values)]),...metrics,header,...rows]};
+    }
     const r=await worker("scotland_treatment_design_flows",{inputs});
     const header=["Quantity","L/day","L/s","m³/s"],rows=[["Dry weather flow",r.dwf_l_day,r.dwf_l_s,r.dwf_m3_s],
       ["Flow to full treatment",r.fft_l_day,r.fft_l_s,r.fft_m3_s]];
     return {content:[table(header,rows,"SEPA treatment design flows"),element("p","DWF uses the reviewed dry-weather allowance. Full treatment uses the reviewed Imax allowance. Read WAT-G-065 sections 3.2 and 3.3 for estimation and permit reporting." )],
       summary:"DWF and full treatment flows calculated.",filename:"hydra-sepa-treatment-design.csv",
-      rows:[["Method",r.method],["Reference",r.reference],["Evidence",evidence],["DWF equation","PG + Idwf + E"],
-        ["FFT equation","3PG + Imax + 3E"],...Object.entries(inputs),header,...rows]};
+      rows:[["Method",r.method],["Reference",r.reference],["Evidence",evidence],...equationRows,
+        ...Object.entries(inputs),header,...rows]};
   });
 }
 window.HydraDesignCalculations={mount};

@@ -45,7 +45,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
 | 9.5 England and framework research | Official permitting guidance | Versioned, cited England and Scotland retained-flow methods. Review remaining jurisdictions before any preset and provide documented custom methodology | Partial |
 | 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial. Reviewed nominal drainage and independent component allocations verified locally |
-| 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Open |
+| 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Partial. England and SEPA treatment flows, Uisce Éireann peak foul flow, and circular velocity and shear verified locally |
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
 | 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
@@ -1098,3 +1098,27 @@ other state.
 - Automatic resolution of inheritance, direct import of structured
   lateral weights, sensitivity and comparisons with permit, pipe capacity
   and supported simulation evidence remain outstanding.
+
+### Treatment flows, peak foul loading and gravity-section checks
+
+- The Environment Agency treatment method preserves distinct dry-weather
+  and maximum infiltration. It accepts an annual case or two reviewed
+  winter and summer cases and shows the governing FFT and any ties.
+  Its calculation reuses the treatment components already verified for
+  SEPA, with separate method and source identity.
+- The Uisce Éireann screen implements the published Appendix C Equation 1
+  for new-network design foul flow, with reviewed domestic, commercial
+  domestic, trade and infiltration inputs. The circular section review
+  uses the existing section geometry for mean velocity and a supplied
+  cleansing threshold. Uniform-flow confirmation is required to calculate
+  mean boundary shear. The method library links the current primary
+  references and the calculation sheets show provenance and equations.
+- Independent outputs are 60,000 L/day for the England winter case,
+  74,500 L/day for the governing summer case, 397,250 L/day for the
+  Irish foul-loading case and 7.3549875 Pa for the half-full 600 mm
+  section. Unit cases cover ties, incomplete periods, nonfinite input,
+  unsupported depth and dry flow. Chromium and Firefox verified the
+  screen results and local audits. The calculation request observers
+  recorded 104 and 103 requests respectively. The method-library
+  observers recorded 31 and 32 requests. All recorded zero violations.
+  The complete Python suite passed 457 tests and 111 subtests.

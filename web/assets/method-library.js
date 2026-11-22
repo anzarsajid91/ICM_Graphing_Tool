@@ -12,6 +12,8 @@ const exactReferences=new Set([
   "https://www.itl.nist.gov/div898/software/dataplot/refman2/auxillar/correlat.htm",
   "https://www.nist.gov/pml/special-publication-811/nist-guide-si-appendix-b-conversion-factors",
   "https://www.fhwa.dot.gov/engineering/hydraulics/pubs/hif24006.pdf",
+  "https://www.fhwa.dot.gov/engineering/hydraulics/pubs/hds4intr.pdf",
+  "https://www.water.ie/sites/default/files/2025-08/Code-of-Practice-for-Wastewater-Infrastructure-CDS-5020-03-Rev-03.pdf",
   "https://www.emerald.com/jince/article/11/4/133/417643",
   "https://www.energy.gov/documents/doe-hdbk-1012-92vol3",
 ]);

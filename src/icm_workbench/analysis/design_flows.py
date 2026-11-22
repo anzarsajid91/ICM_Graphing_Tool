@@ -8,6 +8,11 @@ EA_FORMULA_A = (
     "water-companies-environmental-permits-for-storm-overflows-and-emergency-overflows/"
     "water-companies-environmental-permits-for-storm-overflows-and-emergency-overflows#formula-a"
 )
+EA_TREATMENT = EA_FORMULA_A.split("#")[0] + "#flow-to-full-treatment-settings-at-waste-water-treatment-works"
+UISCE_WASTEWATER = (
+    "https://www.water.ie/sites/default/files/2025-08/"
+    "Code-of-Practice-for-Wastewater-Infrastructure-CDS-5020-03-Rev-03.pdf"
+)
 METHOD = "ea-england-formula-a-2026-11-21-v1"
 SEPA_OVERFLOWS = "https://www.sepa.org.uk/media/rdphwj00/wat-g-058_permit-guide_sewer_overflows.docx"
 SEPA_TREATMENT = "https://www.sepa.org.uk/media/zz4ereqb/wat-g-065_permit_guide_municipal_sewage_treatment-_works.docx"
@@ -122,9 +127,8 @@ def scotland_continuation_flow(catchments, applicability):
     return result
 
 
-def scotland_treatment_design_flows(population, domestic_l_head_day, infiltration_dwf_l_day,
-                                   infiltration_max_l_day, trade_l_day):
-    """Keep ordinary DWF and FFT infiltration bases distinct under WAT-G-065."""
+def _treatment_components(population, domestic_l_head_day, infiltration_dwf_l_day,
+                          infiltration_max_l_day, trade_l_day):
     people = _nonnegative(population, "population", 1e9)
     allowance = _nonnegative(domestic_l_head_day, "domestic allowance", 1e6)
     dry = _nonnegative(infiltration_dwf_l_day, "dry-weather infiltration", 1e15)
@@ -135,9 +139,59 @@ def scotland_treatment_design_flows(population, domestic_l_head_day, infiltratio
     domestic = people * allowance
     dwf = fsum((domestic, dry, trade))
     fft = fsum((3 * domestic, maximum, 3 * trade))
-    return dict(method="sepa-scotland-wat-g-065-v1-2025-08", reference=SEPA_TREATMENT,
-                domestic_l_day=domestic, dwf_l_day=dwf, fft_l_day=fft,
+    return dict(domestic_l_day=domestic, dwf_l_day=dwf, fft_l_day=fft,
                 dwf_l_s=dwf / 86400, fft_l_s=fft / 86400, dwf_m3_s=dwf / 86400000, fft_m3_s=fft / 86400000)
+
+
+def scotland_treatment_design_flows(population, domestic_l_head_day, infiltration_dwf_l_day,
+                                   infiltration_max_l_day, trade_l_day):
+    """Keep ordinary DWF and FFT infiltration bases distinct under WAT-G-065."""
+    return dict(method="sepa-scotland-wat-g-065-v1-2025-08", reference=SEPA_TREATMENT,
+                **_treatment_components(population, domestic_l_head_day, infiltration_dwf_l_day,
+                                        infiltration_max_l_day, trade_l_day))
+
+
+def england_treatment_design_flows(periods):
+    """Use the governing reviewed EA FFT case for an annual or seasonal assessment."""
+    if not isinstance(periods, dict) or set(periods) not in ({"annual"}, {"winter", "summer"}):
+        raise ValueError("Supply one reviewed annual case or separate winter and summer cases.")
+    rows = []
+    for period in ("annual", "winter", "summer"):
+        if period not in periods:
+            continue
+        inputs = periods[period]
+        if not isinstance(inputs, dict) or set(inputs) != {"population", "domestic_l_head_day", "infiltration_dwf_l_day",
+                                                           "infiltration_max_l_day", "trade_l_day"}:
+            raise ValueError("Provide the reviewed population and all daily flow allowances for each period.")
+        rows.append(dict(period=period, **_treatment_components(**inputs)))
+    fft = max(row["fft_l_day"] for row in rows)
+    return dict(method="ea-england-fft-2026-11-22-v1", reference=EA_TREATMENT, periods=rows,
+                governing_periods=[row["period"] for row in rows if row["fft_l_day"] == fft],
+                fft_l_day=fft, fft_l_s=fft / 86400, fft_m3_s=fft / 86400000)
+
+
+def uisce_peak_foul_flow(population, domestic_l_head_day, commercial_l_day, infiltration_l_day,
+                        trade_l_day, domestic_factor, commercial_factor, trade_factor):
+    """Apply Uisce Éireann design foul flow Eq. 1 to reviewed inputs for a new network."""
+    domestic = (_nonnegative(population, "population", 1e9)
+                * _nonnegative(domestic_l_head_day, "domestic allowance", 1e6))
+    commercial = _nonnegative(commercial_l_day, "commercial domestic component", 1e15)
+    infiltration = _nonnegative(infiltration_l_day, "infiltration allowance", 1e15)
+    trade = _nonnegative(trade_l_day, "trade allowance", 1e15)
+
+    def peak(value, factor, label):
+        if _nonnegative(factor, label + " peaking factor", 1000) < 1:
+            raise ValueError(f"Use a {label} peaking factor of at least one.")
+        return value * factor
+
+    peak_domestic = peak(domestic, domestic_factor, "domestic")
+    peak_commercial = peak(commercial, commercial_factor, "commercial")
+    peak_trade = peak(trade, trade_factor, "trade")
+    total = fsum((peak_domestic, peak_commercial, infiltration, peak_trade))
+    return dict(method="uisce-eireann-cds-5030-03-rev3-2025-eq1-v1", reference=UISCE_WASTEWATER,
+                base_domestic_l_day=domestic, peak_domestic_l_day=peak_domestic,
+                peak_commercial_l_day=peak_commercial, infiltration_l_day=infiltration,
+                peak_trade_l_day=peak_trade, peak_l_day=total, peak_l_s=total / 86400, peak_m3_s=total / 86400000)
 
 
 def preview_catchment_csv(text):

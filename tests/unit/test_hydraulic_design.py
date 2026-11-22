@@ -2,7 +2,8 @@ from math import pi, sqrt
 
 import pytest
 
-from icm_workbench.analysis.design_flows import england_continuation_flow
+from icm_workbench.analysis.design_flows import england_continuation_flow, england_treatment_design_flows, uisce_peak_foul_flow
+from icm_workbench.analysis.pipe_capacity import circular_gravity_section_review
 from icm_workbench.analysis.pumping import pump_duty, system_curve
 
 
@@ -49,6 +50,58 @@ def test_england_guards_eligibility_and_duplicate_rows():
         england_continuation_flow([a, {"id":"a", "classification":"excluded", "evidence":"Duplicate"}])
     with pytest.raises(ValueError, match="basis"):
         england_continuation_flow([{"id":"S", "classification":"surface-water"}])
+
+
+def test_england_treatment_uses_governing_season_and_separate_infiltration():
+    winter = dict(population=100, domestic_l_head_day=150, infiltration_dwf_l_day=2500,
+                  infiltration_max_l_day=12000, trade_l_day=1000)
+    summer = dict(winter, population=150, infiltration_max_l_day=4000)
+    result = england_treatment_design_flows({"summer": summer, "winter": winter})
+    assert result["governing_periods"] == ["summer"]
+    assert result["fft_l_day"] == 74500
+    assert result["fft_l_s"] == pytest.approx(74500 / (24 * 60 * 60))
+    assert [(row["period"], row["dwf_l_day"], row["fft_l_day"]) for row in result["periods"]] == [
+        ("winter", 18500, 60000), ("summer", 26000, 74500)]
+    assert england_treatment_design_flows({"annual": winter})["governing_periods"] == ["annual"]
+    assert england_treatment_design_flows({"summer": winter, "winter": winter})["governing_periods"] == ["winter", "summer"]
+    with pytest.raises(ValueError, match="annual.*winter and summer"):
+        england_treatment_design_flows({"summer": summer})
+    with pytest.raises(ValueError, match="Maximum infiltration"):
+        england_treatment_design_flows({"annual": dict(winter, infiltration_max_l_day=0)})
+
+
+def test_uisce_peak_foul_audits_separate_sources_and_factors():
+    data = dict(population=400, domestic_l_head_day=150, commercial_l_day=5500, infiltration_l_day=12000,
+                trade_l_day=2000, domestic_factor=6, commercial_factor=3.5, trade_factor=3)
+    result = uisce_peak_foul_flow(**data)
+    assert result["peak_l_day"] == 360000 + 19250 + 12000 + 6000
+    assert result["base_domestic_l_day"] == 60000
+    assert result["peak_trade_l_day"] == 6000
+    assert result["peak_m3_s"] == pytest.approx(397250 / (24 * 60 * 60 * 1000))
+    with pytest.raises(ValueError, match="commercial peaking"):
+        uisce_peak_foul_flow(**dict(data, commercial_factor=0))
+    with pytest.raises(ValueError, match="population"):
+        uisce_peak_foul_flow(**dict(data, population=float("nan")))
+
+
+def test_circular_gravity_boundary_shear_and_cleansing_screen():
+    area = pi * .6**2 / 8
+    result = circular_gravity_section_review(.6, .3, .15, .005, 1000, .75, True)
+    assert result["area_m2"] == pytest.approx(area)
+    assert result["hydraulic_radius_m"] == pytest.approx(.6 / 4)
+    assert result["velocity_m_s"] == pytest.approx(.15 / area)
+    assert result["flow_at_minimum_m3_s"] == pytest.approx(.75 * area)
+    assert result["mean_shear_pa"] == pytest.approx(1000 * 9.80665 * .15 * .005)
+    assert result["velocity_status"] == "meets threshold"
+    assert circular_gravity_section_review(.6, .6, .15, .005, 1000, .75, False)["mean_shear_pa"] is None
+    dry = circular_gravity_section_review(.6, 0, 0, .005, 1000, .75, True)
+    assert dry["velocity_m_s"] is None and dry["mean_shear_pa"] is None
+    with pytest.raises(ValueError, match="dry"):
+        circular_gravity_section_review(.6, 0, .15, .005, 1000, .75, True)
+    with pytest.raises(ValueError, match="depth"):
+        circular_gravity_section_review(.6, .62, .15, .005, 1000, .75, True)
+    with pytest.raises(ValueError, match="finite hydraulic section"):
+        circular_gravity_section_review(.6, 1e-280, .15, .005, 1000, .75, True)
 
 
 def pipe(**updates):

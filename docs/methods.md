@@ -640,6 +640,70 @@ and 63,000 L/day for design full treatment. Results show L/day, L/s and m³/s
 and include the input basis. Check the applicable permit when reviewing
 performance against a limit.
 
+## England municipal treatment design flows
+
+The Environment Agency storm overflow permitting guidance defines
+normal minimum full-treatment flow as `3PG + Imax + 3E`. Record a
+reviewed DWF basis separately using `PG + Idwf + E`. For significant
+seasonal variation, enter the reviewed winter and summer populations,
+maximum infiltration and trade assumptions separately. Use the greater
+FFT. Tied cases remain visible. The tool takes reviewed infiltration
+allowances. The guidance defines how to establish them from flow and
+rainfall records and how to assess alternative settings.
+[Environment Agency treatment flow guidance](https://www.gov.uk/government/publications/water-companies-environmental-permits-for-storm-overflows-and-emergency-overflows/water-companies-environmental-permits-for-storm-overflows-and-emergency-overflows#flow-to-full-treatment-settings-at-waste-water-treatment-works)
+
+At 150 L/head/day and 1,000 L/day trade, winter with 100 people and
+12,000 L/day maximum infiltration gives 60,000 L/day. Summer with
+150 people and 4,000 L/day maximum infiltration gives 74,500 L/day and
+governs. Both cases retain their reviewed allowances and provenance.
+
+## Uisce Éireann new-network peak foul flow
+
+The calculation implements Equation 1 in CDS-5030-03 Revision 3 (2025),
+Appendix C, section 2.2. Multiply each reviewed base domestic, commercial
+domestic and trade component by its appropriate peaking factor and add
+the reviewed infiltration allowance once. Keep commercial domestic and
+trade sources distinct. Record the chosen factors and their basis,
+including documented population-band, commercial-area and trade evidence
+where applicable. The calculator takes reviewed factors and base loads.
+The code specifies separate wet-weather and hydraulic performance cases.
+[Uisce Éireann wastewater infrastructure code, Revision 3](https://www.water.ie/sites/default/files/2025-08/Code-of-Practice-for-Wastewater-Infrastructure-CDS-5020-03-Rev-03.pdf)
+
+The reference with component flows of 60,000, 5,500, 12,000 and 2,000
+L/day and factors 6, 3.5 and 3 for the three peaked components yields
+397,250 L/day. Results include the contribution of each component.
+
+## Circular gravity-section velocity and mean shear
+
+Use supplied discharge and flow depth for a circular gravity section.
+Mean velocity is `Q/A` using the wetted area. Compare it with the
+documented project cleansing velocity at that flow condition. With
+confirmed steady uniform flow, estimate mean boundary shear as
+`ρgRSf`, where `R = A/Pw` and `Sf` is the reviewed energy gradient.
+Dry or unresolved sections withhold unsupported velocity and shear
+values. The discharge shown at the velocity threshold uses the supplied
+wetted area. Mean shear applies to the wetted perimeter. Evaluating
+sediment transport and local bed shear requires separate evidence.
+[FHWA Hydraulic Design Series 4 tractive force reference](https://www.fhwa.dot.gov/engineering/hydraulics/pubs/hds4intr.pdf)
+
+For a half-full 600 mm pipe, `R = D/4 = 0.15 m`. At 1,000 kg/m³ and
+`Sf = 0.005`, shear is 7.3549875 Pa. A supplied 0.15 m³/s produces
+`0.15/(πD²/8)` m/s.
+
+## Additional jurisdiction references
+
+Natural Resources Wales directs users to GN021 for unpermitted storm
+overflows and GN066 for performance classification. Review the Welsh
+permit and applicable company basis when determining continuation flow.
+[Natural Resources Wales storm overflow guidance](https://www.naturalresources.wales/permits-and-permissions/water-discharges-and-septic-tanks/water-company-discharges/storm-overflow-guidance/?lang=en)
+
+Northern Ireland Water's pre-development guidance sets out a residential
+gravity foul design loading for sewer adoption under its specified
+edition. This loading has a distinct purpose from storm-overflow
+continuation. Retain the permit and project evidence when assessing the
+separate continuation requirement.
+[Northern Ireland Water development design guidance](https://live-publisher.niwater.com/services-for-developers/pre-development-enquiry-multi-unit-developments-and-commercial)
+
 ## Hydraulic structures and supplied ratings
 
 Hydra Bench screens steady flow using SI inputs and levels referenced to a

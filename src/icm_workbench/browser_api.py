@@ -1450,6 +1450,27 @@ def scotland_treatment_design_flows(inputs):
     return json.dumps(calculate(**inputs), allow_nan=False)
 
 
+def england_treatment_design_flows(periods):
+    """Classify the governing reviewed annual or seasonal EA treatment flow."""
+    from icm_workbench.analysis.design_flows import england_treatment_design_flows as calculate
+
+    return json.dumps(calculate(periods), allow_nan=False)
+
+
+def uisce_peak_foul_flow(inputs):
+    """Calculate Uisce Éireann design foul flow from reviewed components."""
+    from icm_workbench.analysis.design_flows import uisce_peak_foul_flow as calculate
+
+    return json.dumps(calculate(**inputs), allow_nan=False)
+
+
+def circular_gravity_section_review(inputs):
+    """Return the supported section velocity and mean boundary shear."""
+    from icm_workbench.analysis.pipe_capacity import circular_gravity_section_review as calculate
+
+    return json.dumps(calculate(**inputs), allow_nan=False)
+
+
 def pipe_system_curve(stages, static_head_m, flow_m3_s, curve_max_m3_s, friction_method="fixed", viscosity_m2_s=None):
     """Evaluate full-pipe resistance with specified or calculated Darcy factors."""
     from icm_workbench.analysis.pumping import system_curve

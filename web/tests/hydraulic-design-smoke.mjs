@@ -297,6 +297,49 @@ try{
   if(process.env.ICM_EVIDENCE_DIR)await treatment.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-sepa-treatment-'+engine+'.png'});
   await set(treatmentForm,{infiltration_max_l_day:1000});
   await submit(treatment);await status(treatment,/Maximum infiltration must be at least/);
+  await treatment.getByLabel('Treatment framework',{exact:true}).selectOption('england');
+  const seasonal=treatment.getByLabel('Review different winter and summer populations or allowances',{exact:true});
+  assert(await seasonal.isVisible());
+  await seasonal.check();
+  await set(treatmentForm,{population:100,domestic_l_head_day:150,infiltration_dwf_l_day:2500,infiltration_max_l_day:12000,
+    trade_l_day:1000,summer_population:150,summer_domestic_l_head_day:150,summer_infiltration_dwf_l_day:2500,
+    summer_infiltration_max_l_day:4000,summer_trade_l_day:1000,summer_evidence:'Reviewed synthetic summer allowances'});
+  await submit(treatment);await status(treatment,/Governing EA FFT calculated for summer/);
+  const seasonalSheet=await downloaded(treatment);
+  assert.match(seasonalSheet,/"Governing FFT \(L\/day\)","74500"/);
+  assert.match(seasonalSheet,/"Winter evidence"/);
+  assert.match(seasonalSheet,/"Summer evidence","Reviewed synthetic summer allowances"/);
+  await seasonal.uncheck();assert(await treatmentForm.locator('[name=summer_population]').isHidden());
+  await submit(treatment);await status(treatment,/Governing EA FFT calculated for annual/);
+  assert.match(await downloaded(treatment),/"Governing FFT \(L\/day\)","60000"/);
+
+  await page.getByRole('tab',{name:'Peak foul flow',exact:true}).click();
+  const loading=page.locator('#tab-design-foul'),loadingForm=loading.locator('form');
+  await set(loadingForm,{population:400,domestic_l_head_day:150,commercial_l_day:5500,infiltration_l_day:12000,
+    trade_l_day:2000,domestic_factor:6,commercial_factor:3.5,trade_factor:3,evidence:'Synthetic reviewed new wastewater network assumptions'});
+  await loading.getByLabel('I reviewed the new-network foul loading basis and the distinct inputs',{exact:true}).check();
+  await submit(loading);await status(loading,/Reviewed peak foul flow calculated/);
+  const loadSheet=await downloaded(loading);
+  assert.match(loadSheet,/"Design foul flow \(L\/day\)","397250"/);
+  assert.match(loadSheet,/"Peaked commercial domestic \(L\/day\)","19250"/);
+  assert.match(loadSheet,/uisce-eireann-cds-5030-03-rev3-2025-eq1-v1/);
+
+  await page.getByRole('tab',{name:'Velocity and shear',exact:true}).click();
+  const section=page.locator('#tab-section-check'),sectionForm=section.locator('form');
+  await set(sectionForm,{diameter_m:.6,depth_m:.3,flow_m3_s:.15,minimum_velocity_m_s:.75,energy_gradient:.005,
+    evidence:'Synthetic uniform open section and reviewed project criterion'});
+  await submit(section);await status(section,/Circular gravity section reviewed/);
+  assert.match(await downloaded(section),/"Mean boundary shear \(Pa\)",""/);
+  await section.getByLabel('Steady uniform flow and the energy gradient are reviewed for mean shear',{exact:true}).check();
+  await submit(section);await status(section,/Circular gravity section reviewed/);
+  const sectionSheet=await downloaded(section);
+  const shear=sectionSheet.match(/"Mean boundary shear \(Pa\)","([^"]+)"/);
+  assert(Math.abs(Number(shear?.[1])-7.3549875)<1e-10);
+  assert.match(sectionSheet,/"Project velocity screen","meets threshold"/);
+  await set(sectionForm,{depth_m:0});
+  await submit(section);await status(section,/dry section cannot convey/);
+  assert(await section.getByRole('button',{name:'Download calculation CSV',exact:true}).isDisabled());
+
   await page.getByRole('tab',{name:'Pipe capacity',exact:true}).click();
   assert.equal(await page.locator('#pipeCapacityForm').isVisible(),true);
   assert.deepEqual(errors,[]);
