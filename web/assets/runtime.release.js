@@ -635,10 +635,12 @@ async function cancelCurrentOperation(){
   const droppedPending=invalidatePendingSourceImports();
   try{
     const readyItems=[...state.files.values()].filter(item=>item.status==='ready');
-    const restartPromise=engine.restart(readyItems);
+    const restartPromise=engine.restart(readyItems).then(async info=>{
+      await restoreSeriesInterpretations();
+      return info;
+    });
     engineBootPromise=restartPromise;
     const info=await restartPromise;
-    await restoreSeriesInterpretations();
     diagnostic.status='ready';
     diagnostic.engineReadyAt=performance.now();
     setEngineStatus('Reference Python worker ready · files remain local','ready');
@@ -1463,15 +1465,14 @@ async function restoreAnalysisWorkerAfterBackgroundInterrupt(reason='Interactive
     time:new Date().toISOString()
   };
   const work=(async()=>{
-    const restartPromise=engine.restart(readyItems);
-    engineBootPromise=restartPromise;
-    await restartPromise;
+    await engine.restart(readyItems);
     // Quantity reinterpretation is held in the authoritative Python cache as
     // well as JS metadata. A worker restart must faithfully restore those
     // engineer-assigned semantics before any graph/statistics request proceeds.
     await restoreSeriesInterpretations();
     return true;
   })();
+  engineBootPromise=work;
   backgroundComparisonInterruptPromise=work.finally(()=>{
     if(backgroundComparisonInterruptPromise)backgroundComparisonInterruptPromise=null;
   });

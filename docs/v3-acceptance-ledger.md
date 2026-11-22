@@ -1255,3 +1255,18 @@ other state.
   Pages integrity checks passed locally.
 - Continue extending current evidence projections for storage, individual
   detriment criteria, network reviews and survey acceptance actions.
+
+### Local rainfall analysis during worker recovery
+
+- An extended Chromium regression exposed an intermittent local rainfall
+  request during analysis-worker recovery. An independent test reproduced
+  the `Reference Python worker is not ready` error by holding worker
+  readiness between cumulative plotting and cross-gauge analysis.
+- Worker readiness now covers restoration of the existing channel
+  interpretations. Rainfall requests wait for the current recovery and
+  discard stale generations. Retrying a computation is bounded to an
+  identified worker replacement. The reproduced timing case, worker
+  recovery and runtime regression checks passed. Chromium and Firefox
+  rainfall audits both passed with 101 guarded requests and zero
+  violations. The existing mixed-file and full live workflows remain
+  required on the final release candidate.

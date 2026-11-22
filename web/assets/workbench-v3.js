@@ -71,13 +71,33 @@
     return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Gauge</th><th>Operational days</th><th>Operational coverage</th><th>Zero-response strikes</th><th>Repeated zero response</th><th>RAG</th></tr></thead><tbody>${result.gauges.map(x=>`<tr><td>${esc(x.gauge)}</td><td>${x.operational_days} / ${x.days_assessed}</td><td>${fmt(x.operational_coverage_percent,1)}%</td><td>${x.zero_response_strikes}</td><td>${x.repeated_zero_response?'Review':'No'}</td><td class="${x.status==='Green'?'audit-good':'audit-warn'}">${esc(x.status)}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
+  async function rainfallAnalysis(name,args,generation){
+    for(const attempt of [0,1]){
+      let readiness=engineBootPromise;
+      while(readiness){
+        await readiness;
+        if(generation!==v3.rainGeneration)return null;
+        if(readiness===engineBootPromise)break;
+        readiness=engineBootPromise;
+      }
+      if(generation!==v3.rainGeneration)return null;
+      const worker=engine.worker;
+      try{return await engine.call(name,args,'advanced_bridge');}
+      catch(error){
+        if(generation!==v3.rainGeneration)return null;
+        if(attempt||!worker||engine.worker===worker)throw error;
+      }
+    }
+    return null;
+  }
+
   async function renderCumulativeRainfall(force=false) {
     const chart = $('cumulativeRainChart');
     const summary = $('cumulativeRainSummary');
     const totals = $('cumulativeRainTotals');
     const qaSummary=$('multiGaugeRainSummary'),qaTable=$('multiGaugeRainTable');
     if (!chart || !summary || !totals) return;
-    if (!engine.ready) {
+    if (!engine.ready && !engineBootPromise) {
       summary.textContent = 'Rainfall engine is still starting…';
       return;
     }
@@ -109,13 +129,13 @@
       let data;
       try {
         if (!['intensity','incremental_depth'].includes(semantics)) throw new Error('Confirm rainfall interpretation before calculating this source.');
-        data = await engine.call('cumulative_rainfall_series', {
+        data = await rainfallAnalysis('cumulative_rainfall_series', {
         path:item.virtualPath,
         column,
         rainfall_semantics:semantics,
         conversion_factor:factor,
         max_points:RAIN_DISPLAY_POINTS,
-      }, 'advanced_bridge');
+      },generation);
       } catch (error) {
         data = {timestamp:[],value:[],final_total_mm:null,complete:false,calculation_status:'unavailable',error:String(error.message || error)};
       }
@@ -154,7 +174,10 @@
       const resolved=results.filter(x=>!x.data.error);
       if(resolved.length<2){qaSummary.textContent='Cross-gauge screening requires at least two sources with confirmed rainfall interpretation.';qaTable.innerHTML='';window.__ICM_WORKBENCH__.lastRainfallQuality=null;}
       else{
-        const quality=await engine.call('multi_gauge_rainfall_result',{sources_json:JSON.stringify(resolved.map(({item,column,semantics})=>({path:item.virtualPath,column,name:item.displayName,rainfall_semantics:semantics}))),conversion_factor:factor},'advanced_bridge');
+        const quality=await rainfallAnalysis('multi_gauge_rainfall_result',{
+          sources_json:JSON.stringify(resolved.map(({item,column,semantics})=>({path:item.virtualPath,column,name:item.displayName,rainfall_semantics:semantics}))),
+          conversion_factor:factor
+        },generation);
         if (generation !== v3.rainGeneration) return;
         qaSummary.textContent=`${quality.gauge_count} gauges assessed · ${quality.non_uniform_day_count} operational day(s) exceed the ${quality.criteria.variability_cv_limit_percent}% spatial CV screen. Repeated zero response is flagged after ${quality.criteria.strikes_required} strike days within ${quality.criteria.rolling_window_days} days; flags require engineering review and do not remove data.`;
         qaTable.innerHTML=rainfallQualityTable(quality);
