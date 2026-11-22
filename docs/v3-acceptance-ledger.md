@@ -49,8 +49,8 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
 | 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
-| 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Partial. Assessment templates, section order, schematic and preview work locally. Exact full regressions and calculation-sheet inclusion remain open |
-| 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Partial. Shared v3 hydraulic design sheets verified locally. Remaining methods and Reports integration remain open |
+| 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Verified locally for assessment templates, section order, schematic, current calculation-sheet selection and local preview/export. Exact final full regressions remain open |
+| 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Partial. Shared v3 hydraulic design sheets and Reports integration verified locally. Coverage of remaining calculation methods remains open |
 | 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Open |
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
 | 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Partial |
@@ -1216,3 +1216,21 @@ other state.
   application imports. A timeout alone remains a failure without that
   evidence. Chromium and Firefox independently passed with 104 and 102
   guarded requests and zero violations. Hosted exact-head CI still applies.
+
+### Engineering calculation sheets in Reports
+
+- The report builder can place selected current calculation sheets in
+  the configured section order. Its dedicated calculation template
+  presents the chosen sheets without unrelated series data. The preview
+  and downloaded report retain the result, reviewed inputs, audit,
+  the method version and calculation-worker identity. The compiler
+  rechecks sheet freshness before returning the finished report.
+- Workspace exports store the report section and calculation form IDs.
+  Restoring the settings safely supports a calculation-only workspace
+  with no graph mapping and requires fresh results from prior sessions.
+  Chromium and Firefox exercised missing selections, a valid report,
+  local download, stale rejection after an input edit, and save/restore
+  with the selected sheet unavailable until recalculation. The request
+  observers recorded 109 and 106 requests, with zero violations. Runtime,
+  graph/report, Python and JavaScript privacy contracts and the 152-file
+  Pages artifact checks passed locally.

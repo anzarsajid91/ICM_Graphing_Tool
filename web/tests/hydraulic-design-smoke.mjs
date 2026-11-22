@@ -77,9 +77,69 @@ try{
   await openSheet.click();
   await worksheet.getByRole('button',{name:'Close',exact:true}).click();
   await worksheet.waitFor({state:'hidden'});
+  async function openReports(){
+    await page.locator('button[data-workspace="reports"]').click();
+    await page.getByRole('tab',{name:'Report generation',exact:true}).click();
+    return page.locator('#pwReportBuilderSurface');
+  }
+  async function openSystem(){
+    await page.locator('button[data-workspace="hydraulics"]').click();
+    await page.getByRole('tab',{name:'System curve',exact:true}).click();
+  }
+  const reports=await openReports();
+  await reports.getByLabel('Report template',{exact:true}).selectOption('calculations');
+  const previewReport=reports.getByRole('button',{name:'Preview assessment report',exact:true});
+  await previewReport.click();
+  await reports.getByText('Select at least one current calculation sheet.',{exact:false}).waitFor();
+  const includedSheets=reports.getByRole('group',{name:'Calculation sheets',exact:true});
+  const systemTitle='Pipe head loss and system curves calculation sheet';
+  await includedSheets.getByRole('checkbox',{name:systemTitle,exact:true}).check();
+  await previewReport.click();
+  const reportDialog=reports.getByRole('dialog',{name:'Assessment report preview'});
+  const reportFrame=reportDialog.frameLocator('iframe');
+  await reportFrame.getByRole('heading',{name:'Hydra Bench — Engineering Calculations',exact:true}).waitFor();
+  await reportFrame.getByRole('heading',{name:'Engineering calculation sheets',exact:true}).waitFor();
+  await reportFrame.getByRole('heading',{name:systemTitle,exact:true}).waitFor();
+  await reportFrame.getByText('Calculation engine revision',{exact:true}).waitFor();
+  assert.match(await reportFrame.locator('.report-calculation-sheet').innerText(),/steady-fixed-darcy-v1/);
+  if(process.env.ICM_EVIDENCE_DIR)await reportDialog.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-embedded-calculation-sheet-'+engine+'.png'});
+  const [embeddedDownload]=await Promise.all([page.waitForEvent('download'),
+    reportDialog.getByRole('button',{name:'Download preview',exact:true}).click()]);
+  const embedded=await fs.readFile(await embeddedDownload.path(),'utf-8');
+  assert.match(embedded,/Engineering calculation sheets/);
+  assert.match(embedded,/Calculation engine revision/);
+  assert.doesNotMatch(embedded,/Mapped series|Project data context/);
+  assert.doesNotMatch(embedded,/<script\b/);
+  await reportDialog.getByRole('button',{name:'Close',exact:true}).click();
+  await page.getByRole('tab',{name:'Workspace save / restore',exact:true}).click();
+  const [settingsDownload]=await Promise.all([page.waitForEvent('download'),
+    page.getByRole('button',{name:'Export workspace JSON',exact:true}).click()]);
+  const savedReport=await fs.readFile(await settingsDownload.path());
+  const savedOptions=JSON.parse(savedReport).report_options;
+  assert.equal(savedOptions.include_calculations,true);
+  assert.deepEqual(savedOptions.calculation_sheets,['pipeSystemForm']);
+  assert(!savedReport.includes('steady-fixed-darcy-v1'));
+  await openSystem();
   await system.getByRole('button',{name:'Add row'}).click();
   assert.equal(await system.getByRole('button',{name:'Download calculation CSV'}).isDisabled(),true);
   assert(await openSheet.isDisabled());
+  await openReports();
+  const staleSheet=includedSheets.getByRole('checkbox',{name:systemTitle+' · calculate again',exact:true});
+  assert(await staleSheet.isChecked());
+  await previewReport.click();
+  await reports.getByText('Refresh or deselect unavailable calculation sheets before generating the report.',{exact:false}).waitFor();
+  await staleSheet.uncheck();
+  await page.getByRole('tab',{name:'Workspace save / restore',exact:true}).click();
+  const [restorePicker]=await Promise.all([page.waitForEvent('filechooser'),
+    page.getByRole('button',{name:'Load workspace JSON',exact:true}).click()]);
+  await restorePicker.setFiles({name:'synthetic-report-settings.json',mimeType:'application/json',buffer:savedReport});
+  await page.waitForFunction(()=>Boolean(window.__ICM_WORKBENCH__.workspaceRestore?.completedAt));
+  await openReports();
+  assert(await staleSheet.isChecked());
+  await staleSheet.uncheck();
+  await includedSheets.getByRole('button',{name:'Open hydraulic calculations',exact:true}).click();
+  await page.locator('#tab-hydraulics').waitFor();
+  await openSystem();
   await system.getByRole('button',{name:'Remove pipe branches row 2',exact:true}).click();
   await page.getByRole('tab',{name:'Pump duty',exact:true}).click();
   const pump=page.locator('#tab-pump-duty'), pumpForm=pump.locator('form');

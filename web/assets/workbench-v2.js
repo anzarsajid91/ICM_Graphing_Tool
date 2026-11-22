@@ -512,7 +512,7 @@
     apply('model',thresholdContext(modelThresholdSelection()),numericThreshold('modelThreshold','Model threshold'),modelEntries);
   }
 
-  async function v2ApplyMapping() {
+  async function v2ApplyMapping({allowEmpty=false}={}) {
     const previousMapping=JSON.stringify(state.mapping);
     const previousObservedContext=thresholdContext(observedThresholdSelection(state.mapping.observed));
     const previousModelContext=thresholdContext(modelThresholdSelection(state.mapping.models));
@@ -542,7 +542,7 @@
     }
     const obs = mappingObject(state.mapping.observed);
     const models = currentModels();
-    if (!obs && !models.length && !state.mapping.rain) throw new Error('Select at least one observed, modelled or rainfall series.');
+    if (!allowEmpty && !obs && !models.length && !state.mapping.rain) throw new Error('Select at least one observed, modelled or rainfall series.');
     const mappingSummary = `Observed: ${obs?seriesLabel(obs.item, obs.col):'not mapped'} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`+(thresholdMessages.length?' '+thresholdMessages.join(' '):'');
     $('mappingStatus').textContent = 'Applying mapping and refreshing graph…';
     renderModelColourControls();

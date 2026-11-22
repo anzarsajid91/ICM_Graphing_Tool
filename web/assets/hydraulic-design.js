@@ -187,19 +187,22 @@ function sheetInputs(form) {
   });
 }
 
-function calculationSheet(snapshot,content) {
-  const paper=element("main"),audit=element("table");
+function calculationSheet(snapshot,content,embedded=false) {
+  const paper=element(embedded?"section":"main"),audit=element("table"),auditContainer=element("div");
+  const heading=embedded?"h4":"h2";
+  if(embedded)paper.className="report-calculation-sheet";
+  auditContainer.className="table-wrap";auditContainer.append(audit);
   const auditBody=audit.createTBody();
   for (const record of snapshot.rows) {
     const row=auditBody.insertRow();
     for (const value of record) row.insertCell().textContent=value==null?"Unavailable":String(value);
   }
-  paper.append(element("h1",snapshot.title),element("p",snapshot.summary),
+  paper.append(element(embedded?"h3":"h1",snapshot.title),element("p",snapshot.summary),
     table(["Calculation identity","Value"],snapshot.identity),
-    element("h2","Reviewed inputs"),table(["Input","Value"],snapshot.inputs),
-    element("h2","Results and applicability"),content.cloneNode(true),
-    element("h2","Equations and audit record"),audit,
-    element("p","Hydra Bench · Anzar Sajid"));
+    element(heading,"Reviewed inputs"),table(["Input","Value"],snapshot.inputs),
+    element(heading,"Results and applicability"),content.cloneNode(true),
+    element(heading,"Equations and audit record"),auditContainer);
+  if(!embedded)paper.append(element("p","Hydra Bench · Anzar Sajid"));
   return paper;
 }
 
@@ -215,12 +218,32 @@ function standaloneSheet(snapshot,paper) {
   return file;
 }
 
+const publishedSheets=new Map();
+let sheetRevision=0;
+const announceSheets=()=>window.dispatchEvent(new Event("icm:calculation-sheets-changed"));
+function currentSheet(entry){
+  try{return Boolean(entry?.snapshot&&entry.isCurrent());}catch{return false;}
+}
+function sheetStatus(){
+  return Array.from(publishedSheets,([id,entry])=>({id,title:entry.title,current:currentSheet(entry)}));
+}
+function reportSheets(ids,includeHtml){
+  if(!ids.length)throw new Error("Select at least one current calculation sheet.");
+  const entries=ids.map(id=>publishedSheets.get(id));
+  if(entries.some(entry=>!currentSheet(entry)))
+    throw new Error("Refresh or deselect unavailable calculation sheets before generating the report.");
+  return {revisions:entries.map(entry=>entry.revision),
+    html:includeHtml?entries.map(entry=>calculationSheet(entry.snapshot,entry.content,true).outerHTML).join(""):""};
+}
+
 function results(article,form,calculate) {
   const actions = element("div");actions.className = "actions";
   const submit = element("button","Calculate");submit.type = "submit";submit.className = "primary";
   const status = element("p");status.setAttribute("role","status");
   const content = element("div");
   const title=(form.querySelector("h3")||article.querySelector("h2")).textContent+" calculation sheet";
+  const entry={title,content,snapshot:null,revision:null,isCurrent:()=>true};
+  publishedSheets.set(form.id,entry);
   const dialog=element("dialog"),paper=element("div"),sheetActions=element("div"),sheetStatus=element("p");
   dialog.setAttribute("aria-label",title);dialog.className="hb-calculation-sheet";
   sheetActions.className="actions";sheetStatus.setAttribute("role","status");
@@ -257,18 +280,25 @@ function results(article,form,calculate) {
   dialog.addEventListener("close",()=>{paper.replaceChildren();if(!review.disabled)review.focus();});
   save.disabled = review.disabled = true;
   actions.append(submit,save,review);form.append(actions);article.append(form,status,content,dialog);
+  function withdraw(){
+    if(!entry.snapshot)return;
+    entry.snapshot=null;entry.revision=null;announceSheets();
+  }
   function invalidate() {
     generation++;downloadable = null;save.disabled = review.disabled = true;
+    withdraw();
     if(dialog.open)dialog.close();
     if (content.childNodes.length || status.textContent) status.textContent = "Inputs changed. Calculate to refresh.";
     content.replaceChildren();
   }
   form.addEventListener("input",invalidate);
   form.addEventListener("change",invalidate);
+  window.addEventListener("icm:assessment-context-restored",invalidate);
   form.addEventListener("submit",async event => {
     event.preventDefault();
     const id = ++generation,inputs=sheetInputs(form);
     submit.disabled = true;save.disabled = review.disabled = true;content.replaceChildren();downloadable = null;
+    withdraw();
     status.textContent = "Calculating in the local worker…";
     try {
       const result = await calculate();
@@ -281,6 +311,8 @@ function results(article,form,calculate) {
           ["Calculation engine revision",window.__ICM_WORKBENCH__.workerBuildToken||"Unavailable"],
           ["Method version",method],["Calculated at (UTC)",new Date().toISOString()]],
         rows:[["Build",buildToken],...result.rows],exportRows:result.exportRows||[]};
+      entry.snapshot=downloadable;entry.revision=++sheetRevision;entry.isCurrent=result.isCurrent||(()=>true);
+      announceSheets();
       save.disabled = review.disabled = false;status.textContent = result.summary;
     } catch(error) {
       if (id === generation) status.textContent = error.message;
@@ -822,7 +854,8 @@ function mountStorageRouting(navigate,worker) {
       chart([{label:"Routed spill volume",points:rows.map(row=>row.slice(0,2)),color:"#136b7f",markers:true}],"Storage capacity (m³)","Spill (m³)"),
       table(header,rows,"Storage capacity options"),
       element("p","Release shortfall is the unused part of the pass-forward limit when insufficient volume is available. Use the 12/24 spill assessment for regulatory counts.")];
-    return {content,summary:r.stop_reason?"Partial period. Routing stopped at the first "+r.stop_reason+".":"Storage routing completed for the selected period.",
+    return {content,isCurrent:()=>reviewInputs(source)?.signature===signature,
+      summary:r.stop_reason?"Partial period. Routing stopped at the first "+r.stop_reason+".":"Storage routing completed for the selected period.",
       filename:"hydra-storage-routing.csv",rows:[["Method",r.method],["Equation","Inflow + initial = passed + spilled + final storage"],
         ["Inflow source",item.displayName],["Column",col],["Source SHA-256",item.hash],["Source unit",r.original_unit],
         ["Source samples in selected window",r.sample_count],["Initial storage (m³)",r.initial_m3],
@@ -1341,7 +1374,13 @@ function mount(navigate) {
     if(sensitivityRows.length)support.push(table(sensitivityHeader,sensitivityRows,"Independent ±"+r.sensitivity_percent+"% input sensitivity"));
     if(comparisonRows.length)support.push(table(comparisonHeader,comparisonRows,"Independent continuation-flow comparisons"),
       element("p","Capacity assumes steady uniform full-pipe flow. Use measured or simulated evidence to investigate continuation during spills."));
-    return {content:[table(["Quantity","Value"],metrics,r.regime),table(heading,details,"Catchment audit"),
+    const isCurrent=()=>{
+      try{
+        catchmentSource.assertCurrent();
+        return !trialSignature||trialSignature===JSON.stringify(comparisons.pipeDetails());
+      }catch{return false;}
+    };
+    return {isCurrent,content:[table(["Quantity","Value"],metrics,r.regime),table(heading,details,"Catchment audit"),
       ...support,...simulation.content,element("p",(documented?r.reference:references[selected])+". Confirm applicability against the project and permit evidence.")],
       summary:"Retained flow calculated from reviewed catchments.",filename:"hydra-"+selected+"-continuation-flow.csv",
       exportRows:simulation.exportRows,
@@ -1419,5 +1458,5 @@ function mount(navigate) {
         ...Object.entries(inputs),header,...rows]};
   });
 }
-window.HydraDesignCalculations={mount};
+window.HydraDesignCalculations={mount,sheetStatus,reportSheets};
 })();

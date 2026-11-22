@@ -417,6 +417,42 @@ function refreshReportScenarioOptions(){
   const shouldSelectAll=select.options.length===0||previous.size===0;
   select.innerHTML=mapped.map(o=>'<option value="'+esc(o.value)+'" '+((shouldSelectAll||previous.has(o.value))?'selected':'')+'>'+esc(o.textContent)+'</option>').join('');
 }
+function mountReportSheetSelection(options,enabled){
+  const group=document.createElement('fieldset'),legend=document.createElement('legend'),list=document.createElement('div');
+  const note=document.createElement('p'),open=document.createElement('button');
+  legend.textContent='Calculation sheets';note.setAttribute('role','status');list.className='mapping-grid';
+  open.textContent='Open hydraulic calculations';open.type='button';
+  open.onclick=()=>navigate('hydraulics','capacity',true);
+  group.append(legend,list,note,open);options.append(group);
+  const wanted=new Set();
+  const catalog=()=>new Map((window.HydraDesignCalculations?.sheetStatus()||[]).map(entry=>[entry.id,entry]));
+  function refresh(){
+    group.hidden=!enabled.checked;
+    if(group.hidden)return;
+    const choices=catalog();
+    for(const id of wanted)if(!choices.has(id))choices.set(id,{id,title:id.replace(/Form$/,'').replace(/([a-z])([A-Z])/g,'$1 $2'),current:false});
+    list.replaceChildren();
+    for(const entry of choices.values()){
+      if(!entry.current&&!wanted.has(entry.id))continue;
+      const label=document.createElement('label'),input=document.createElement('input');
+      input.type='checkbox';input.checked=wanted.has(entry.id);
+      input.onchange=()=>{if(input.checked)wanted.add(entry.id);else wanted.delete(entry.id);};
+      label.append(input,document.createTextNode(entry.title+(entry.current?'':' · calculate again')));list.append(label);
+    }
+    note.textContent=list.childElementCount?'Select the current sheets to include. Unavailable selections require a new calculation or removal.':
+      'Run a supported hydraulic or storage calculation to include its sheet.';
+  }
+  diagnostic.reportSheetChoices=()=>[...wanted];
+  diagnostic.restoreReportSheetChoices=ids=>{
+    wanted.clear();
+    if(Array.isArray(ids))for(const id of ids.slice(0,16))if(typeof id==='string'&&/^[a-zA-Z0-9]{1,64}$/.test(id))wanted.add(id);
+    refresh();
+  };
+  enabled.addEventListener('change',refresh);
+  window.addEventListener('icm:calculation-sheets-changed',refresh);
+  window.addEventListener('icm:route-changed',({detail})=>{if(detail.page==='report-generation')refresh();});
+  refresh();return refresh;
+}
 function mountReportLayout(options){
   const list=options.querySelector('#reportSectionList'),template=options.querySelector('#reportTemplate');
   const sections=[
@@ -425,9 +461,10 @@ function mountReportLayout(options){
     ['comparison','reportIncludeComparison','Comparison diagnostics'],
     ['survey','reportIncludeSurvey','Flow-survey evidence'],
     ['network','reportIncludeNetwork','Network schematic'],
+    ['calculations','reportIncludeCalculations','Engineering calculation sheets'],
   ];
   const presets={general:sections.slice(0,4).map(([key])=>key),
-    verification:['comparison','time-series'],spills:['spill-storage','time-series'],survey:['survey','time-series'],network:['network']};
+    verification:['comparison','time-series'],spills:['spill-storage','time-series'],survey:['survey','time-series'],network:['network'],calculations:['calculations']};
   const rows=new Map();
   const announce=options.querySelector('#reportSectionStatus');
   function updateButtons(){
@@ -444,7 +481,7 @@ function mountReportLayout(options){
   for(const [key,id,caption] of sections){
     const row=document.createElement('li'),label=document.createElement('label'),input=document.createElement('input');
     const actions=makeActionGroup('pw-report-section-moves');
-    input.type='checkbox';input.id=id;input.checked=key!=='network';
+    input.type='checkbox';input.id=id;input.checked=presets.general.includes(key);
     input.onchange=()=>{template.value='';};
     label.append(input,document.createTextNode(caption));row.dataset.reportSection=key;row.append(label,actions);
     for(const [offset,arrow,phrase] of [[-1,'↑',' earlier'],[1,'↓',' later']]){
@@ -462,11 +499,12 @@ function mountReportLayout(options){
     }
     rows.set(key,row);list.append(row);
   }
+  const updateSheetChoices=mountReportSheetSelection(options,rows.get('calculations').querySelector('input'));
   template.onchange=()=>{
     const chosen=presets[template.value];
     if(!chosen)return;
     for(const [key,row] of rows)row.querySelector('input').checked=chosen.includes(key);
-    applyOrder(chosen);announce.textContent=template.selectedOptions[0].textContent+' template applied.';
+    applyOrder(chosen);updateSheetChoices();announce.textContent=template.selectedOptions[0].textContent+' template applied.';
   };
   window.__ICM_WORKBENCH__.restoreReportSectionOrder=order=>{template.value='';applyOrder(order);};
   updateButtons();
@@ -510,7 +548,8 @@ function ensureReportSurfaces(){
       '<div class="pw-report-sections" role="group" aria-labelledby="pwReportSectionsLabel"><span id="pwReportSectionsLabel">Sections</span>'+
         '<label>Report template<select id="reportTemplate" aria-label="Report template"><option value="">Custom selection</option>'+
         '<option value="general">Engineering assessment</option><option value="verification">Model verification</option>'+
-        '<option value="spills">Spills and storage</option><option value="survey">Flow survey</option><option value="network">Network investigation</option></select></label>'+
+        '<option value="spills">Spills and storage</option><option value="survey">Flow survey</option><option value="network">Network investigation</option>'+
+        '<option value="calculations">Engineering calculations</option></select></label>'+
         '<ol id="reportSectionList"></ol><small role="status" id="reportSectionStatus"></small></div>'+
       '<label>Scatter view<select id="reportScatterScale"><option value="current">Current Plots view</option><option value="linear">Linear</option><option value="log">Log₁₀ (positive pairs only)</option></select><small>Report statistics follow the eligible pair population for this selected view.</small></label>'+
       '<label>Comparison scenarios<select id="reportScenarioSelect" multiple size="4"></select><small>Only currently mapped model scenarios are available.</small></label>'+

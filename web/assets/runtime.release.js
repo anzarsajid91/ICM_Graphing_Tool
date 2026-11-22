@@ -1336,7 +1336,7 @@ function renderModelColourControls(){
   document.querySelectorAll('.model-colour').forEach(x=>x.addEventListener('input',()=>{state.modelColours[x.dataset.key]=x.value;guarded('mappingStatus',drawTimeChart);}));
 }
 
-async function applyMapping(){return window.ICMGraph?.applyMapping();}
+async function applyMapping(options){return window.ICMGraph?.applyMapping(options);}
 async function seriesFor(key,maxPoints=25000){const x=mappingObject(key);if(!x)return null;return {...x,data:await engine.call('series_data',{path:x.item.virtualPath,column:x.col,max_points:maxPoints})};}
 function inEvent(ts){const t=modelClock(ts);return state.rainEvents.some(e=>t>=modelClock(e.start)&&t<=modelClock(e.end));}
 function graphShapes(){const shapes=[],a=nullableNumber($('obsThreshold').value),b=nullableNumber($('modelThreshold').value);if(a!==null)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:a,y1:a,line:{color:$('threshold1Color').value,width:2,dash:'dash'}});if(b!==null)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:b,y1:b,line:{color:$('threshold2Color').value,width:2,dash:'dash'}});if($('showEventOverlay').checked)for(const e of state.rainEvents)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:$('rainEventColor').value,opacity:.1,line:{width:0},layer:'below'});return shapes;}
@@ -2087,7 +2087,7 @@ function workspaceSeries(key){
   const domain=window.ICMProjectRegistry?.getSeries(key);
   return {sha256:x.item.hash,display_name:x.item.displayName,file_name:x.item.file.name,column:x.col,asset_id:domain?.assetId||null,role:domain?.role||null,quantity:domain?.quantity||seriesQuantity(x.item,x.col)||null,unit:domain?.unit||seriesUnit(x.item,x.col)||null,reference:seriesReference(x.item,x.col)||null};
 }
-const reportSectionKeys=['time-series','spill-storage','comparison','survey','network'];
+const reportSectionKeys=['time-series','spill-storage','comparison','survey','network','calculations'];
 function reportSectionOrder(order){
   const known=Array.isArray(order)?order.filter(key=>reportSectionKeys.includes(key)):[];
   return [...new Set([...known,...reportSectionKeys])];
@@ -2105,6 +2105,8 @@ function reportOptions(){
     include_comparison:checked('reportIncludeComparison'),
     include_survey:checked('reportIncludeSurvey'),
     include_network:Boolean($('reportIncludeNetwork')?.checked),
+    include_calculations:Boolean($('reportIncludeCalculations')?.checked),
+    calculation_sheets:diagnostic.reportSheetChoices?.()||[],
     section_order:reportSectionOrder($('reportSectionList')?[...$('reportSectionList').children].map(row=>row.dataset.reportSection):null),
     scatter_scale:$('reportScatterScale')?.value||'current',
     scenarios:selectedScenarios,
@@ -2157,6 +2159,7 @@ async function applyWorkspace(w){
   window.ICMNetworkSchematic?.restore?.(state.networkSchematicWorkspace);
   const stamped=[w.analysis?.analysis_start,w.analysis?.analysis_end,...(w.exclusions||[]).flatMap(row=>[row.start,row.end])].filter(Boolean);
   if(stamped.some(value=>/(?:Z|[+-]\d{2}:?\d{2})$/i.test(String(value))))throw new Error('Workspace contains timezone-aware assessment bounds. Convert them explicitly to the common model-clock time basis before importing.');
+  window.dispatchEvent(new Event('icm:assessment-context-restored'));
   ++state.rainEventGeneration;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;
   ++state.dwfGeneration;state.dwfResult=null;state.dwfSignature=null;
   ++state.healthGeneration;state.healthResult=null;state.healthSignature=null;
@@ -2237,6 +2240,8 @@ async function applyWorkspace(w){
   if($('reportIncludeComparison')&&ro.include_comparison!==undefined)$('reportIncludeComparison').checked=Boolean(ro.include_comparison);
   if($('reportIncludeSurvey')&&ro.include_survey!==undefined)$('reportIncludeSurvey').checked=Boolean(ro.include_survey);
   if($('reportIncludeNetwork'))$('reportIncludeNetwork').checked=ro.include_network===true;
+  if($('reportIncludeCalculations'))$('reportIncludeCalculations').checked=ro.include_calculations===true;
+  diagnostic.restoreReportSheetChoices?.(ro.calculation_sheets);
   diagnostic.restoreReportSectionOrder?.(ro.section_order);
   if($('reportScatterScale')&&ro.scatter_scale)$('reportScatterScale').value=ro.scatter_scale;
   if($('reportScenarioSelect')&&Array.isArray(ro.scenarios)){
@@ -2249,7 +2254,7 @@ async function applyWorkspace(w){
   const expected=(w.source_references||[]).length;
   const matched=(w.source_references||[]).filter(r=>[...state.files.values()].some(x=>x.hash===r.sha256)).length;
   $('workspaceStatus').textContent=`Restoring workspace… ${matched}/${expected} source fingerprint(s) matched; rebuilding mappings and graph.`;
-  if(!window.ICMDetriment?.reportOnlyWorkspace(w))await applyMapping();
+  if(!window.ICMDetriment?.reportOnlyWorkspace(w))await applyMapping({allowEmpty:true});
   // Rebuild report scenario choices only after the restored model mapping is
   // authoritative, then re-apply the persisted scenario subset by fingerprint.
   $('modelSelect')?.dispatchEvent(new Event('change',{bubbles:true}));
@@ -2656,14 +2661,22 @@ async function compileAssessmentReport(){
   const mapped=Boolean(state.mapping.observed||state.mapping.models?.length||state.mapping.rain);
   const survey=options.include_survey?diagnostic.reportSurveyContents?.():null;
   const professional=options.include_survey?diagnostic.professionalSurveyReportHtml||'':'';
+  const selectedSheets=()=>{
+    const provider=window.HydraDesignCalculations;
+    if(!provider)throw new Error('Calculate and select at least one current calculation sheet before generating the report.');
+    return provider;
+  };
+  const sheets=options.include_calculations?selectedSheets().reportSheets(options.calculation_sheets,true):null;
+  const calculationOnly=sheets&&![options.include_time_series,options.include_spills_storage,options.include_comparison,
+    options.include_survey,options.include_network].some(Boolean);
   let network=null;
   if(options.include_network){
     await window.ICMNetworkSchematic?.open();
     network=window.ICMNetworkSchematic?.reportGeometry?.();
     if(!network)throw new Error('Import or create a network in Network Schematic to include its diagram.');
   }
-  const surveyOnly=!mapped&&!network&&survey;
-  if(!mapped&&!network&&!survey&&!professional)throw new Error('Apply at least one observed, modelled or rainfall mapping before exporting the report.');
+  const surveyOnly=!mapped&&!network&&!sheets&&survey;
+  if(!mapped&&!network&&!survey&&!professional&&!sheets)throw new Error('Apply at least one observed, modelled or rainfall mapping before exporting the report.');
   if(options.include_time_series&&mapped&&!$('timeChart')?.data?.length)await drawTimeChart();
   const reportSignature=analysisSignature(),period=reportAnalysisPeriod();
   const reportSettings=JSON.stringify(options);
@@ -2679,15 +2692,16 @@ async function compileAssessmentReport(){
     timeFigure=reportPlotFigure('assessment-time-graph',[...reportSeries.traces,...thresholdLegendTraces],fullLayout,reportSeries.statistics,'Declared report analysis period; zoom state is not used as an analytical input.');
   }
 
-  const w=workspaceObject();
+  const w=calculationOnly?null:workspaceObject();
   const selectedComparisons=selectedReportComparisons();
   const log=options.scatter_scale==='current'?$('scatterScale').value==='log':options.scatter_scale==='log';
   const comparisonPopulationNote=log
     ?'Positive observed/modelled pairs only (log₁₀ view; nonpositive values are filtered from this view, not altered).'
     :'All finite authoritative paired values (linear view).';
 
-  let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints. Report section/scenario choices are explicit and stored in the workspace.</div>';
-  body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
+  let body=calculationOnly?'<div class="note">Each selected sheet records its reviewed inputs, calculation method, source evidence and build identity.</div>':
+    '<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints. Report section/scenario choices are explicit and stored in the workspace.</div>'+
+    '<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
 
   if(timeFigure)sections['time-series']='<h2>Full time-period graph</h2>'+timeFigure;
 
@@ -2725,12 +2739,12 @@ async function compileAssessmentReport(){
   if(network)sections.network='<h2>Network schematic</h2><figure class="figure">'+network.figure+'<figcaption>'+
     network.nodes+(network.overview?' points · ':' nodes · ')+network.links+(network.overview?' reaches and links · Simplified overview':' links · Detailed schematic')+
     ' · Nominal connectivity</figcaption></figure>';
+  if(sheets)sections.calculations='<h2>Engineering calculation sheets</h2>'+sheets.html;
   body+=arrangeReportSections(sections,options.section_order);
-  body+='<h2>Exclusions</h2>'+reportExclusions(w);
+  if(!calculationOnly)body+='<h2>Exclusions</h2>'+reportExclusions(w);
   const notes=$('reviewNotes')&&$('reviewNotes').value||'';
   body+='<h2>Reviewer notes</h2><div class="card">'+(notes?'<p>'+esc(notes).replaceAll('\n','<br>')+'</p>':'<p class="muted">No reviewer notes recorded.</p>')+'</div>';
-  body+='<h2>Project data context</h2>'+reportProjectRegistry();
-  body+='<h2>Source provenance</h2>'+reportSources(w);
+  if(!calculationOnly)body+='<h2>Project data context</h2>'+reportProjectRegistry()+'<h2>Source provenance</h2>'+reportSources(w);
   const engineerReviews=options.include_comparison?diagnostic.verificationReviews?.report()||[]:[];
   if(engineerReviews.length){
     body+='<h2>Verification engineer review</h2>'+engineerReviews.map(review=>
@@ -2738,7 +2752,7 @@ async function compileAssessmentReport(){
       '<p>'+esc((review.period.start||'Start of common data')+' to '+(review.period.end||'end of common data'))+'</p>'+
       '<p>'+esc(review.comments)+'</p><p>'+esc(review.references)+'</p></section>').join('');
   }
-  body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({
+  if(!calculationOnly)body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({
     report_options:options,
     ...(options.include_spills_storage?{spills:state.spillSnapshot,storage:state.storage}:{}),
     ...(options.include_comparison?{comparison:state.comparisonSnapshot,rating_diagnostic:state.rating||null}:{}),
@@ -2746,11 +2760,14 @@ async function compileAssessmentReport(){
     project_registry:window.ICMProjectRegistry?.snapshot()||null,execution:diagnostic.execution||'unknown'
   },null,2))+'</pre></details>';
   await window.HydraDesign.prepareReportFont();
-  const shell=surveyOnly?reportShell('Hydra Bench — Flow Survey Assessment','Association-driven survey QA and flow-continuity review',body,true):
+  const shell=calculationOnly?reportShell('Hydra Bench — Engineering Calculations','Reviewed calculation sheets',body,true):
+    surveyOnly?reportShell('Hydra Bench — Flow Survey Assessment','Association-driven survey QA and flow-continuity review',body,true):
     reportShell('Hydra Bench — Engineering Assessment','Professional hydraulic data review and model-verification output',body,false);
   const html=body.includes('class="report-plot"')?await interactiveReportHtml(shell):shell;
   if(reportSignature!==analysisSignature()||reportSettings!==JSON.stringify(reportOptions()))
     throw new Error('Inputs or sections changed during report generation. Generate it again.');
+  if(sheets&&JSON.stringify(sheets.revisions)!==JSON.stringify(selectedSheets().reportSheets(options.calculation_sheets,false).revisions))
+    throw new Error('Calculation sheets changed during report generation. Generate it again.');
   return {html,filename:(surveyOnly?'icm-workbench-survey-report-':'icm-workbench-report-')+new Date().toISOString().slice(0,10)+'.html',
     status:surveyOnly?'Survey assessment HTML downloaded.':'Professional HTML engineering report downloaded.'};
 }
