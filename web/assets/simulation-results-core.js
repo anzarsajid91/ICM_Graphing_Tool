@@ -212,7 +212,7 @@ function addExtrema(result,value,time){
   if(result.max===null||value>result.max){result.max=value;result.maxTime=time;}
 }
 
-async function scanEnvelopes(left,right,rowsPerChunk,columns,read,{signal,onProgress}={}){
+async function scanEnvelopes(left,right,rowsPerChunk,columns,read,{signal,onProgress,magnitude=false}={}){
   signal?.throwIfAborted();
   const totals=columns.map(()=>emptyEnvelope(right-left));
   let lastYield=performance.now();
@@ -223,7 +223,8 @@ async function scanEnvelopes(left,right,rowsPerChunk,columns,read,{signal,onProg
     signal?.throwIfAborted();
     for(const [column,values] of series.entries()){
       const total=totals[column];
-      for(let row=offset;row<offset+size;row++)addExtrema(total,values[row],times[row]);
+      if(magnitude)for(let row=offset;row<offset+size;row++)addExtrema(total,Math.abs(values[row]),times[row]);
+      else for(let row=offset;row<offset+size;row++)addExtrema(total,values[row],times[row]);
     }
     index+=size;
     if(index===right||performance.now()-lastYield>=24){
@@ -596,6 +597,41 @@ async function importCsv(blob,config,options={}){
   return makeIndex(chunks,rowsPerChunk,count,metadata);
 }
 
+async function importCapacityCsv(blob,config,options={}){
+  if(!(blob instanceof Blob)||blob.size>16*BLOCK_BYTES)throw new Error('Choose a Pipe full capacity CSV up to 16 MiB.');
+  const {headerRecord,upstreamColumn,suffixColumn,capacityColumn,unitsRecord,sourceUnit}=config;
+  const selected=[upstreamColumn,suffixColumn,capacityColumn];
+  if(!Number.isInteger(headerRecord)||headerRecord<1||headerRecord>20||new Set(selected).size!==3||
+      selected.some(index=>!Number.isInteger(index)||index<0||index>=MAX_COLUMNS)||
+      unitsRecord!==undefined&&unitsRecord!==headerRecord+1)throw new Error('Map three distinct capacity columns and confirm the header record.');
+  const [unit,factors]=dimensions.get('flow'),factor=factors.get(sourceUnit);
+  if(!factor)throw new Error('Resolve the capacity flow unit explicitly.');
+  let header=null,sourceUnitLabel=null;
+  const rows=[],seen=new Set();
+  const fingerprint=await readRecords(blob,(fields,record)=>{
+    if(record<headerRecord)return;
+    if(record===headerRecord){
+      header=selected.map(index=>requiredText(fields[index],'a mapped header',256));return;
+    }
+    if(!header)throw new Error('The declared capacity header record is missing.');
+    if(record===unitsRecord){
+      sourceUnitLabel=requiredText(fields[capacityColumn],'the capacity unit',32);
+      if(unitToken(sourceUnitLabel)!==unitToken(sourceUnit))throw new Error('The capacity unit does not match the reviewed selection.');
+      return;
+    }
+    const asset={kind:'link',table:'hw_conduit',upstream:requiredText(fields[upstreamColumn],'an upstream node ID'),
+      suffix:requiredText(fields[suffixColumn],'a link suffix',16)};
+    const key=assetKey(asset),raw=fields[capacityColumn]?.trim()??'';
+    if(seen.has(key))throw new Error('Duplicate conduit capacity. Keep one reviewed row for each typed link.');
+    if(rows.length>=20_000)throw new Error('Select up to 20,000 conduit capacity rows.');
+    const capacity=raw&&decimal.test(raw)?Number(raw)*factor:NaN;
+    if(!Number.isFinite(capacity)||capacity<0)throw new Error('Capacity must be a finite positive or zero result.');
+    seen.add(key);rows.push({key,asset,capacity});
+  },{...options,fingerprint:true});
+  if(!rows.length||unitsRecord&&!sourceUnitLabel)throw new Error('No capacity rows or confirmed units were found.');
+  return {header,unit,sourceUnit,sourceUnitLabel,fingerprint,rows};
+}
+
 async function streamPackageFromCsv(blob,config,writeBlock,options={}){
   if(typeof writeBlock!=="function")throw new TypeError("Supply a local portable-results block writer.");
   const {rowsPerChunk,count,metadata}=await scanCsv(blob,config,options,writeBlock);
@@ -604,6 +640,6 @@ async function streamPackageFromCsv(blob,config,writeBlock,options={}){
 
 function validateCsvMapping(config){compile(config);return true;}
 
-globalThis.HydraSimulationResults=Object.freeze({inspectCsv,importCsv,inspectPackage,importPackage,streamPackageFromCsv,validateCsvMapping,
+globalThis.HydraSimulationResults=Object.freeze({inspectCsv,importCsv,importCapacityCsv,inspectPackage,importPackage,streamPackageFromCsv,validateCsvMapping,
   parseProjectClock:value=>clockStamp(value,"iso"),assetKey});
 })();

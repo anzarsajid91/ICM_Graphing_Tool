@@ -442,6 +442,11 @@ function groundFreeboard(groundM,levelM){
   const difference=groundM-levelM;
   return Number.isFinite(difference)?difference:null;
 }
+function capacityUtilisation(flow,capacity){
+  if(!Number.isFinite(flow)||!Number.isFinite(capacity)||capacity<=0)return null;
+  const percent=100*(Math.abs(flow)/capacity);
+  return Number.isFinite(percent)?percent:null;
+}
 function sourceConduitLayer(link,quantity){
   const fields=link?.icm;
   if(fields?.table!=='hw_conduit'||link.sourceAttributes?.table!=='hw_conduit')return null;
@@ -457,5 +462,5 @@ function sourceConduitLayer(link,quantity){
   }
   return null;
 }
-globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand,recordedFlowDirection,groundFreeboard,sourceConduitLayer};
+globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand,recordedFlowDirection,groundFreeboard,sourceConduitLayer,capacityUtilisation};
 })();

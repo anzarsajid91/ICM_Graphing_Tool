@@ -59,3 +59,8 @@ assert.match(R.sourceConduitLayer(conduit,'gradient').basis,/invert/);
 conduit.icm.ds_invert=null;
 assert.equal(R.sourceConduitLayer(conduit,'gradient').value,null);
 assert.equal(R.sourceConduitLayer({icm:{table:'hw_pump'}},'width'),null);
+assert.equal(R.capacityUtilisation(-.4,.5),80);
+assert.equal(R.capacityUtilisation(0,.5),0);
+assert.equal(R.capacityUtilisation(1,0),null);
+assert.equal(R.capacityUtilisation(null,1),null);
+assert.equal(R.capacityUtilisation(1,null),null);

@@ -160,4 +160,21 @@ try{
   await assert.rejects(packSimulationResults(input,mapping,join(folder,'invalid.hbresults')),/Invalid numeric/);
   assert.deepEqual((await fs.readdir(folder)).sort(),['mapping.json','result.hbresults','synthetic.csv']);
 }finally{await fs.rm(folder,{recursive:true,force:true});}
+const capacity=globalThis.HydraSimulationResults.importCapacityCsv;
+const magnitudeFirst=index.first+5*60*1000;
+const magnitudeExpected=[{min:1,max:2,minTime:magnitudeFirst,maxTime:index.last,valid:2,samples:2}];
+assert.deepEqual(await index.envelopes([keys[0]],magnitudeFirst,index.last,{magnitude:true}),magnitudeExpected);
+const magnitudeFile=await importPackage(index.exportPackage(),{fileBacked:true});
+assert.deepEqual(await magnitudeFile.envelopes([keys[0]],magnitudeFirst,index.last,{magnitude:true}),magnitudeExpected);
+const capacityMapping={headerRecord:1,upstreamColumn:1,suffixColumn:0,capacityColumn:2,unitsRecord:2,sourceUnit:'L/s'};
+const capacityFixture='Suffix,Upstream,PFC\n,,L/s\n"b",00127,400\nA,00001,0\n';
+const capacities=await capacity(new Blob([capacityFixture]),capacityMapping);
+assert.equal(capacities.rows.length,2);
+assert.equal(capacities.rows[0].key,assetKey(asset));
+assert.equal(capacities.rows[0].capacity,.4);
+assert.equal(capacities.rows[1].capacity,0);
+assert.match(capacities.fingerprint.digest,/^[a-f0-9]{64}$/);
+await assert.rejects(capacity(new Blob([capacityFixture+'B,00127,520\n']),capacityMapping),/Duplicate conduit/);
+await assert.rejects(capacity(new Blob([capacityFixture.replace('400','-1')]),capacityMapping),/positive or zero/);
+await assert.rejects(capacity(new Blob([capacityFixture.replace(',,L/s',',,gpm')]),capacityMapping),/unit does not match/);
 console.log('SIMULATION_RESULTS_UNIT_PASS');

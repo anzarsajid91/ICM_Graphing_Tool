@@ -254,3 +254,23 @@ source value in m/m, or upstream minus downstream invert divided by source
 length when all three are available. Set the colour scale in the displayed
 units. A dashed conduit has an unavailable source value. Applying a
 simulation layer replaces the geometry shading.
+
+## Reviewed full-capacity utilisation
+
+Autodesk documents **Pipe full capacity** (`PFC`) as the total capacity of
+a conduit including all barrels. In **Simulation results**, select the
+indexed conduit-flow source, then open **Pipe full capacity table**. Prepare
+a local CSV with one row per conduit and its upstream node ID, link suffix
+and PFC value. Confirm the simulation, model revision and scenario. Choose
+the source columns and units. The table stays in the local worker session
+with a block SHA-256 fingerprint. Its 20,000-row and 16 MiB limits keep
+each reviewed file bounded. The session allows up to 40,000 capacity rows.
+
+Choose **Full-capacity utilisation** in **Simulation playback**. The
+screen displays `100 × |recorded flow| / PFC` in percent using consistent
+flow units. A zero or missing PFC leaves the ratio unavailable. The flow
+arrow still shows the signed instantaneous sample under the reviewed
+convention. Independent extrema scan actual magnitudes. Each compared
+scenario needs its own PFC table, and differences are in percentage points.
+The ratio does not by itself establish surcharge or available reverse flow
+capacity. See Autodesk [Links Results Fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm).

@@ -12,6 +12,20 @@ const title=value=>value[0].toUpperCase()+value.slice(1).replaceAll("-"," ");
 const element=(tag,text)=>{const result=document.createElement(tag);if(text!==undefined)result.textContent=text;return result;};
 const option=(label,value)=>new Option(label,value);
 const selectOptions=(select,values)=>select.replaceChildren(...values.map(value=>option(title(value),value)));
+function csvPreview(rows,caption){
+  const table=element("table"),outer=element("div");outer.className="table-wrap";
+  table.createCaption().textContent=caption;
+  const heading=table.createTHead().insertRow();
+  for(const label of ["Record","Columns",...Array.from({length:6},(_,i)=>"Column "+(i+1))]){
+    const th=element("th",label);th.scope="col";heading.append(th);
+  }
+  const body=table.createTBody();
+  for(const item of rows){
+    const row=body.insertRow();
+    for(const value of [item.record,item.columnCount,...Array.from({length:6},(_,i)=>item.fields[i]??"")])row.insertCell().textContent=value;
+  }
+  outer.append(table);return outer;
+}
 let session=null;
 const announceSources=()=>window.dispatchEvent(new Event("icm:simulation-sources-changed"));
 
@@ -140,6 +154,25 @@ function mount() {
     <div class="panel-head"><h2>Review simulation samples</h2><p>Samples are held in this browser tab. To reopen them later, keep the original export or download the indexed samples as a portable package.</p></div>
     <div class="mapping-grid"><label>Filter indexed events<select id="hbResultEventFilter" aria-label="Filter indexed events"></select></label><label>Indexed source<select id="hbResultSource"></select></label><label>Result series<select id="hbResultSeries"></select></label></div>
     <p id="hbResultDetails"></p>
+    <details id="hbCapacityResults" hidden><summary>Pipe full capacity table</summary>
+      <p>Use the ICM maximum-results attribute Pipe full capacity (PFC) for this reviewed run. Provide one row per conduit, with the upstream node ID, link suffix and capacity.
+        Include any native unit row or confirm the reported unit explicitly.</p>
+      <div class="mapping-grid">
+        <label>Local capacity CSV<input type="file" name="capacityFile" accept=".csv,text/csv"></label>
+        <label>Capacity header record<input type="number" name="capacityHeader" min="1" max="20" step="1" value="1" required></label>
+        <label>Upstream node ID column<input type="number" name="capacityUpstream" min="1" max="20001" step="1" value="1" required></label>
+        <label>Conduit suffix column<input type="number" name="capacitySuffix" min="1" max="20001" step="1" value="2" required></label>
+        <label>Full capacity column<input type="number" name="capacityValue" min="1" max="20001" step="1" value="3" required></label>
+        <label>Full-capacity units<select name="capacityUnit" aria-label="Full-capacity units" required><option value="">Choose a unit</option><option>m³/s</option><option>L/s</option></select></label>
+      </div>
+      <label><input type="checkbox" name="capacityUnitsRow"> The next capacity record contains units</label>
+      <label><input type="checkbox" name="capacityConfirmed"> The selected results and capacity use the same simulation, revision and scenario</label>
+      <div id="hbCapacityPreview"></div><p id="hbCapacityStatus" role="status"></p>
+      <progress id="hbCapacityProgress" max="100" hidden aria-label="Capacity import progress"></progress>
+      <div class="actions"><button type="button" id="hbCapacityImport" disabled>Index capacity table</button>
+        <button type="button" id="hbCapacityCancel" hidden>Cancel capacity import</button>
+        <button type="button" id="hbCapacityRemove" disabled>Remove capacity table</button></div>
+    </details>
     <div id="hbResultTransport" hidden>
       <div id="hbResultWindow"></div>
       <label>Sample position<input type="range" id="hbResultTime" value="0" min="0" max="0" step="1"></label>
@@ -158,9 +191,12 @@ function mount() {
   const play=$("hbResultPlay"), back=$("hbResultBack"), step=$("hbResultStep"), remove=$("hbRemoveResult");
   const packageInput=controls.portable, packageStatus=$("hbResultPortableStatus"), indexPackage=$("hbIndexPortable"), exportPackage=$("hbExportPortable");
   const exportMapping=$("hbExportResultMapping");
+  const capacityPanel=$("hbCapacityResults"),capacityFields=Object.fromEntries([...capacityPanel.querySelectorAll('[name]')].map(input=>[input.name,input]));
+  const capacityStatus=$("hbCapacityStatus"),capacityImport=$("hbCapacityImport"),capacityCancel=$("hbCapacityCancel"),
+    capacityRemove=$("hbCapacityRemove"),capacityProgress=$("hbCapacityProgress"),capacityPreview=$("hbCapacityPreview");
   const datasets=new Map(), mappings=[];
   let fileGeneration=0, packageGeneration=0, reviewedPackage=null, displayGeneration=0, envelopeGeneration=0, currentImport=null,
-    playback=null, playbackGeneration=0, serial=0,preferredSource="";
+    playback=null, playbackGeneration=0, serial=0,preferredSource="",capacityGeneration=0,reviewedCapacity=null;
   const client=workerClient(()=>{datasets.clear();refreshSources();announceSources();review.textContent="The simulation worker stopped. Reimport the source to resume.";});
   session=Object.freeze({
     sources:()=>Array.from(datasets.values()),
@@ -168,8 +204,9 @@ function mount() {
     frameAtTime:(sourceId,time,keys)=>client.request("frame",{sourceId,time,keys}).result,
     range:(sourceId,start,end)=>client.request("range",{sourceId,start,end}).result,
     seriesWindow:(sourceId,key,start,end)=>client.request("series",{sourceId,key,start,end}).result,
+    capacities:(sourceId,keys)=>client.request("capacity-get",{sourceId,keys}).result,
     envelope:(sourceId,key,start,end)=>client.request("envelope",{sourceId,key,start,end}).result,
-    envelopes:(sourceId,keys,start,end,progress)=>client.request("envelopes",{sourceId,keys,start,end},progress),
+    envelopes:(sourceId,keys,start,end,progress,magnitude=false)=>client.request("envelopes",{sourceId,keys,start,end,magnitude},progress),
     cancelRequest:id=>client.cancel(id)
   });
   const sampleWindow=mountResultWindow($("hbResultWindow"),range=>{stop();setSliderWindow(time,range);void updateSeries();});
@@ -214,18 +251,8 @@ function mount() {
     try {
       const rows=await client.request("preview",{file}).result;
       if (generation!==fileGeneration) return;
-      const table=element("table"), outer=element("div");outer.className="table-wrap";
-      table.createCaption().textContent="First records (six columns shown)";
-      const heading=table.createTHead().insertRow();
-      for (const text of ["Record","Columns",...Array.from({length:6},(_,i)=>"Column "+(i+1))]){
-        const th=element("th",text);th.scope="col";heading.append(th);
-      }
-      const body=table.createTBody();
-      for (const item of rows){
-        const row=body.insertRow();
-        for (const value of [item.record,item.columnCount,...Array.from({length:6},(_,i)=>item.fields[i]??"")]) row.insertCell().textContent=value;
-      }
-      outer.append(table);preview.append(outer);note.textContent="Preview ready. Enter the record and column numbers from this export.";
+      preview.append(csvPreview(rows,"First records (six columns shown)"));
+      note.textContent="Preview ready. Enter the record and column numbers from this export.";
     } catch(error) {if (generation===fileGeneration) note.textContent=error.message;}
   };
 
@@ -280,7 +307,7 @@ function mount() {
       "Indexing the selected result columns in a browser worker…";
     try {
       const task=client.request(operation,data,(loaded,total)=>{progress.value=100*loaded/total;});
-      currentImport=task.id;
+      currentImport=task.id;refreshCapacityControls();
       const info=await task.result;
       if(!datasets.has(info.sourceId)||info.accessModeChanged){datasets.set(info.sourceId,info);announceSources();}
       eventFilter.value="";preferredSource=String(info.sourceId);
@@ -292,6 +319,7 @@ function mount() {
       currentImport=null;submit.disabled=false;controls.file.disabled=false;packageInput.disabled=false;controls.fileBacked.disabled=false;
       indexPackage.disabled=!reviewedPackage;exportMapping.disabled=false;
       cancel.disabled=false;cancel.hidden=true;progress.hidden=true;
+      refreshCapacityControls();
     }
   }
   cancel.onclick=()=>{if (currentImport){client.cancel(currentImport);cancel.disabled=true;importer.textContent="Cancelling import…";}};
@@ -300,6 +328,59 @@ function mount() {
     const dataset=datasets.get(Number(source.value));
     return {dataset,column:dataset?.columns[Number(series.value)]};
   }
+  function refreshCapacityControls(dataset=selection().dataset){
+    capacityPanel.hidden=!dataset?.columns.some(column=>column.quantity==='flow'&&column.asset.table==='hw_conduit');
+    capacityImport.disabled=Boolean(currentImport)||!reviewedCapacity||capacityPanel.hidden;
+    capacityRemove.disabled=Boolean(currentImport)||!dataset?.capacity;
+  }
+  function updateCapacitySource(dataset){
+    capacityFields.capacityConfirmed.checked=false;
+    const info=dataset?.capacity;
+    capacityStatus.textContent=info?`${info.count} conduits · ${info.filename} · ${info.fingerprint.algorithm} ${info.fingerprint.digest}`:"No capacity table attached to this run.";
+    refreshCapacityControls(dataset);
+  }
+  capacityFields.capacityFile.onchange=async()=>{
+    const requested=++capacityGeneration,file=capacityFields.capacityFile.files[0];
+    reviewedCapacity=null;capacityPreview.replaceChildren();capacityFields.capacityConfirmed.checked=false;
+    refreshCapacityControls();
+    if(!file){updateCapacitySource(selection().dataset);return;}
+    try{
+      if(file.size>16*1024**2)throw new Error("Choose a capacity CSV up to 16 MiB.");
+      const records=await client.request('preview',{file}).result;
+      if(requested!==capacityGeneration)return;
+      capacityPreview.append(csvPreview(records,'Capacity CSV preview'));
+      reviewedCapacity=file;capacityStatus.textContent="Capacity preview ready. Review the typed link columns and units.";
+      refreshCapacityControls();
+    }catch(error){if(requested===capacityGeneration)capacityStatus.textContent=error.message;}
+  };
+  capacityImport.onclick=async()=>{
+    const {dataset}=selection();if(!dataset||!reviewedCapacity||currentImport)return;
+    if(!capacityFields.capacityConfirmed.checked){capacityStatus.textContent="Confirm this capacity table belongs to the selected results.";return;}
+    if(!Object.values(capacityFields).every(field=>field.reportValidity()))return;
+    const {capacityHeader,capacityUpstream,capacitySuffix,capacityValue,capacityUnit,capacityUnitsRow}=capacityFields;
+    const headerRecord=capacityHeader.valueAsNumber,config={headerRecord,upstreamColumn:capacityUpstream.valueAsNumber-1,
+      suffixColumn:capacitySuffix.valueAsNumber-1,capacityColumn:capacityValue.valueAsNumber-1,sourceUnit:capacityUnit.value,
+      unitsRecord:capacityUnitsRow.checked?headerRecord+1:undefined};
+    capacityProgress.hidden=false;capacityProgress.value=0;capacityCancel.hidden=false;
+    capacityStatus.textContent="Indexing local conduit capacities…";
+    const task=client.request('capacity-import',{file:reviewedCapacity,sourceId:dataset.sourceId,confirmed:true,config},
+      (loaded,total)=>{capacityProgress.value=100*loaded/total;});
+    currentImport=task.id;capacityFields.capacityFile.disabled=true;refreshCapacityControls();
+    try{
+      const updated=await task.result;
+      datasets.set(updated.sourceId,updated);announceSources();
+      if(selection().dataset===updated)updateCapacitySource(updated);
+    }catch(error){capacityStatus.textContent=error.message;}
+    finally{currentImport=null;capacityFields.capacityFile.disabled=false;capacityProgress.hidden=true;capacityCancel.hidden=true;refreshCapacityControls();}
+  };
+  capacityCancel.onclick=()=>{if(currentImport)client.cancel(currentImport);};
+  capacityRemove.onclick=async()=>{
+    const {dataset}=selection();if(!dataset?.capacity||currentImport)return;
+    try{
+      const updated=await client.request('capacity-remove',{sourceId:dataset.sourceId}).result;
+      datasets.set(updated.sourceId,updated);announceSources();updateCapacitySource(selection().dataset);
+    }catch(error){capacityStatus.textContent=error.message;}
+  };
   function stop() {++playbackGeneration;if (playback!==null) clearTimeout(playback);playback=null;play.textContent="Play";play.setAttribute("aria-pressed","false");}
   function refreshSources() {
     const filtered=eventSources(eventFilter,Array.from(datasets.values()));
@@ -310,6 +391,7 @@ function mount() {
   function updateSource() {
     stop();review.textContent="";sample.textContent="";envelope.textContent="";displayGeneration++;envelopeGeneration++;
     const {dataset}=selection();
+    updateCapacitySource(dataset);
     transport.hidden=!dataset;series.replaceChildren();
     const range=sampleWindow.setSource(dataset);
     const details=$("hbResultDetails");

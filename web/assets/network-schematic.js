@@ -2293,6 +2293,8 @@ function mountSimulationView(){
     '<label id="nsSimulationDirectionBasis" hidden>Positive link flow points<select name="flowDirection" aria-label="Positive link flow points">'+
     '<option value="">Hide recorded arrows</option><option value="upstream-to-downstream">Upstream to downstream</option>'+
     '<option value="downstream-to-upstream">Downstream to upstream</option></select></label>'+
+    '<label id="nsSimulationFlowQuantity" hidden>Flow display<select name="flowQuantity" aria-label="Flow display">'+
+    '<option value="flow">Recorded flow</option><option value="capacity">Full-capacity utilisation</option></select></label>'+
     '<label id="nsSimulationLevelQuantity" hidden>Level display<select name="levelQuantity" aria-label="Level display">'+
     '<option value="level">Recorded level</option><option value="freeboard">Ground-level freeboard</option></select></label>'+
     '<label id="nsSimulationDatum" hidden>Geometry datum<input name="datum" maxlength="128"></label>'+
@@ -2325,6 +2327,7 @@ function mountSimulationView(){
   const ranges={flow:[-1,1],velocity:[-3,3],level:[0,10],'total-head':[0,10]};
   const selectedColumns=()=>layerChoices.get(fields.metric.value)||[];
   const derivedFreeboard=()=>fields.levelQuantity.value==='freeboard'&&selectedColumns()[0]?.quantity==='level';
+  const derivedCapacity=()=>fields.flowQuantity.value==='capacity'&&selectedColumns()[0]?.quantity==='flow';
   function stop(){
     ++playing;clearTimeout(timer);timer=null;play.textContent='Play';play.setAttribute('aria-pressed','false');
   }
@@ -2366,27 +2369,37 @@ function mountSimulationView(){
     for(const [index,column] of layer.columns.entries()){
       const match=layer.matches.get(column.series),group=groups.get(R.refKey(match));
       if(!group)continue;
-      const ground=layer.grounds?.[index],quantity=layer.grounds?'Ground-level freeboard':titles[column.quantity];
-      const project=level=>layer.grounds?R.groundFreeboard(ground,level):level;
-      const value=project(layer.values?.[index]),proposed=project(layer.proposedValues?.[index]);
-      const measure=sample=>Number.isFinite(sample)?f(sample,6)+' '+column.unit:'Missing sample';
+      const ground=layer.grounds?.[index],capacity=layer.capacities?.values[index],proposalCapacity=layer.proposalCapacities?.values[index];
+      const quantity=layer.grounds?'Ground-level freeboard':layer.capacities?'Full-capacity utilisation':titles[column.quantity];
+      const project=(value,full)=>layer.grounds?R.groundFreeboard(ground,value):layer.capacities?R.capacityUtilisation(value,full):value;
+      const raw=layer.values?.[index],rawProposal=layer.proposedValues?.[index];
+      const value=project(raw,capacity),proposed=project(rawProposal,proposalCapacity);
+      const measure=(sample,difference=false)=>Number.isFinite(sample)?f(sample,6)+' '+(layer.capacities?difference?'percentage points':'%':column.unit):'Missing sample';
       let shaded,text;
       if(extrema){
         const extreme=layer.envelopes[index],mode=display.value;
         const reported=layer.grounds?(mode==='min'?'max':'min'):mode;
-        shaded=project(extreme[reported]);
+        shaded=project(extreme[reported],capacity);
         const at=Number.isFinite(shaded)?extreme[reported+'Time']:null;
         text=display.selectedOptions[0].textContent+' '+measure(shaded)+(at===null?'':' at '+formatClock(at)+' (project clock)')+
-          ' · '+(layer.grounds&&!Number.isFinite(ground)?0:extreme.valid)+' of '+extreme.samples+' valid samples';
+          ' · '+(layer.grounds&&!Number.isFinite(ground)||layer.capacities&&!(capacity>0)?0:extreme.valid)+' of '+extreme.samples+' valid samples';
       }else{
-        const diff=layer.grounds?(Number.isFinite(value)&&Number.isFinite(proposed)?proposed-value:null):layer.difference?.[index];
+        const diff=(layer.grounds||layer.capacities)?(Number.isFinite(value)&&Number.isFinite(proposed)?proposed-value:null):layer.difference?.[index];
         text=layer.proposal?'Baseline '+measure(value)+' · Proposal '+measure(proposed)+
-          ' · Proposal minus baseline '+measure(diff):measure(value);
+          ' · Proposal minus baseline '+measure(diff,true):measure(value);
         shaded={primary:value,proposal:proposed,difference:diff}[shade.value];
       }
       if(layer.grounds)text+=Number.isFinite(ground)?' · source ground '+f(ground,6)+' m · '+layer.geometryDatum:' · source ground unavailable';
+      if(layer.capacities){
+        const compareProposal=!extrema&&shade.value==='proposal';
+        const currentCapacity=compareProposal?proposalCapacity:capacity;
+        const currentFlow=compareProposal?rawProposal:raw;
+        text+=Number.isFinite(currentCapacity)&&currentCapacity>0?' · imported PFC '+f(currentCapacity,6)+' m³/s':
+          ' · positive imported full capacity unavailable';
+        if(!extrema&&Number.isFinite(currentFlow))text+=' · recorded flow '+f(currentFlow,6)+' m³/s';
+      }
       const direction=layer.flowDirection&&!extrema&&shade.value!=='difference'?
-        R.recordedFlowDirection(shaded,layer.flowDirection)||'missing':null;
+        (R.recordedFlowDirection(shade.value==='proposal'?rawProposal:raw,layer.flowDirection)||'missing'):null;
       showRecordedDirection(group,direction||undefined);
       if(direction&&direction!=='missing')text+=' · '+({forward:'recorded upstream to downstream',reverse:'recorded downstream to upstream',still:'zero net flow'}[direction]);
       text=quantity+' · '+text+(column.location!=='node'?' · '+column.location+' end':'');
@@ -2425,6 +2438,7 @@ function mountSimulationView(){
     $('nsSimulationDatum').hidden=column?.quantity!=='level';
     $('nsSimulationLevelQuantity').hidden=column?.quantity!=='level';fields.levelQuantity.value='level';
     $('nsSimulationDirectionBasis').hidden=column?.quantity!=='flow'||column?.asset.kind!=='link';
+    fields.flowQuantity.value='flow';refreshFlowQuantity(source,column);
     fields.flowDirection.value='';
     const canPair=column?.quantity==='level'&&column.asset.kind==='link';
     $('nsSimulationCompanion').hidden=!canPair;
@@ -2436,6 +2450,11 @@ function mountSimulationView(){
     $('nsSimulationSourceInfo').textContent=source.simulation+' · Revision '+source.modelRevision+' · '+source.event+
       ' · '+titles[column.quantity]+' ('+column.unit+')'+(column.location==='node'?'':' · '+column.location+' end')+
       (column.datum?' · '+column.datum:'')+(canPair?' · For paired profiles, review both ends on this simulation clock.':'');
+  }
+  function refreshFlowQuantity(source,column){
+    $('nsSimulationFlowQuantity').hidden=column?.quantity!=='flow'||column?.asset.kind!=='link';
+    fields.flowQuantity.options[1].disabled=!source?.capacity;
+    if(!source?.capacity)fields.flowQuantity.value='flow';
   }
   function refreshCompanions(source,column){
     const wanted=fields.companion.value;
@@ -2458,7 +2477,8 @@ function mountSimulationView(){
     fields.verifyProposal.required=Boolean(proposal);
     $('nsSimulationProposalInfo').textContent=proposal?'Proposal '+proposal.scenario+' · Simulation '+proposal.simulation+
       ' · Revision '+proposal.modelRevision+' · '+proposal.event+'. Only exact shared timestamps are compared.'+
-      (derivedFreeboard()?' Confirm the proposed geometry has the same ground elevations and datum.':''):'';
+      (derivedFreeboard()?' Confirm the proposed geometry has the same ground elevations and datum.':'')+
+      (derivedCapacity()?' The proposal requires its own reviewed full-capacity table.':''):'';
   }
   function refreshProposals(source){
     const wanted=fields.proposal.value;
@@ -2483,6 +2503,7 @@ function mountSimulationView(){
     form.hidden=!eligible()||!available.length;
     if(wanted!==fields.source.value)selectSource();
     else{refreshCompanions(candidate(),selectedColumns()[0]);refreshProposals(candidate());}
+    refreshFlowQuantity(candidate(),selectedColumns()[0]);
     if(removed)return;
     if(!eligible())note.textContent='Open a native ICM network in detailed Explore mode to use simulation playback.';
     else if(!available.length)note.textContent='Index simulation result columns before applying a layer.';
@@ -2530,10 +2551,12 @@ function mountSimulationView(){
       }
       Object.assign(current,{values:frame.values,proposedValues,difference});
       const timestamp=formatClock(frame.time);
-      const valid=frame.values.filter((value,index)=>Number.isFinite(value)&&(!current.grounds||Number.isFinite(current.grounds[index]))).length;
+      const valid=frame.values.filter((value,index)=>Number.isFinite(value)&&(!current.grounds||Number.isFinite(current.grounds[index]))&&
+        (!current.capacities||current.capacities.values[index]>0)).length;
       stamp.textContent=current.source.scenario+' · '+timestamp+' (project clock) · '+valid+' of '+current.columns.length+' matched assets have a sample.';
       if(current.proposal)stamp.textContent+=' '+current.proposal.source.scenario+' · '+difference.filter((value,index)=>
-        Number.isFinite(value)&&(!current.grounds||Number.isFinite(current.grounds[index]))).length+
+        Number.isFinite(value)&&(!current.grounds||Number.isFinite(current.grounds[index]))&&
+        (!current.capacities||(current.capacities.values[index]>0&&current.proposalCapacities.values[index]>0))).length+
         ' of '+current.columns.length+' assets have an exact comparison.';
       time.setAttribute('aria-valuetext',timestamp+' project clock');
       decorate();
@@ -2557,13 +2580,18 @@ function mountSimulationView(){
     reset();const [low,high]=derivedFreeboard()?[-.5,1.5]:ranges.level;
     fields.minimum.value=low;fields.maximum.value=high;showProposal();
   };
+  fields.flowQuantity.onchange=()=>{
+    reset();const [low,high]=derivedCapacity()?[0,150]:ranges.flow;
+    fields.minimum.value=low;fields.maximum.value=high;showProposal();
+  };
   fields.flowDirection.onchange=()=>reset();
   fields.companion.onchange=()=>{reset();};
   fields.proposal.onchange=()=>{reset();showProposal();};
   shade.onchange=()=>{renderLegend();decorate();};
   function showExtrema(){
     const window=sampleWindow.current();
-    const available=layer.envelopes.filter((result,index)=>result.valid>0&&(!layer.grounds||Number.isFinite(layer.grounds[index]))).length;
+    const available=layer.envelopes.filter((result,index)=>result.valid>0&&(!layer.grounds||Number.isFinite(layer.grounds[index]))&&
+      (!layer.capacities||layer.capacities.values[index]>0)).length;
     stamp.textContent=layer.source.scenario+' · '+display.selectedOptions[0].textContent+' · '+formatClock(window.first)+' to '+formatClock(window.last)+
       ' (project clock) · '+available+' of '+layer.columns.length+' assets have valid samples. Each asset may reach its extreme at a different time.';
     decorate();
@@ -2584,7 +2612,7 @@ function mountSimulationView(){
     stamp.textContent='Calculating independent extrema…';cancelExtrema.hidden=false;
     const job=session().envelopes(current.source.sourceId,current.columns.map(column=>column.series),window.first,window.last,(loaded,total)=>{
       if(extremaJob===job)stamp.textContent='Calculating independent extrema… '+loaded+' of '+total+' samples scanned.';
-    });
+    },Boolean(current.capacities));
     extremaJob=job;
     try{
       const result=await job.result;
@@ -2602,18 +2630,25 @@ function mountSimulationView(){
     const first=layer.columns[0],{low,high}=layer;
     const description=display.value!=='sample'?' · '+(layer.proposal?'Baseline ': '')+display.selectedOptions[0].textContent:
       layer.proposal?' · '+shade.selectedOptions[0].textContent:'';
-    renderBandLegend(legend,(layer.grounds?'Ground-level freeboard':titles[first.quantity])+description+' ('+first.unit+')',low,high,
+    const quantity=layer.grounds?'Ground-level freeboard':layer.capacities?'Full-capacity utilisation':titles[first.quantity];
+    const unit=layer.capacities?(display.value==='sample'&&shade.value==='difference'?'percentage points':'%'):first.unit;
+    renderBandLegend(legend,quantity+description+' ('+unit+')',low,high,
       'Dashed link or hollow marker: missing sample');
     if(layer.flowDirection&&display.value==='sample'&&shade.value!=='difference')legend.append(inspectorElement('span',
       'Bold arrows show recorded link flow. Faded arrows show nominal topology.'));
     if(layer.grounds)legend.append(inspectorElement('span','Calculated margin uses source ground minus recorded level. Negative means level above ground.'));
+    if(layer.capacities)legend.append(inspectorElement('span','Screening ratio uses flow magnitude divided by positive imported PFC. Independent extrema use the exact supported magnitudes.'),
+      ...[['Baseline',layer.capacities],['Proposal',layer.proposalCapacities]].filter(([,entry])=>entry).map(([name,{info}])=>
+        inspectorElement('span',name+' capacity source '+info.filename+' · '+info.fingerprint.algorithm+' '+info.fingerprint.digest)));
   }
-  form.onsubmit=event=>{
+  form.onsubmit=async event=>{
     event.preventDefault();
     const source=candidate();if(!source||!eligible())return;
     const [low,high]=[fields.minimum.valueAsNumber,fields.maximum.valueAsNumber];
     if(!(low<high)||!Number.isFinite(high-low)){note.textContent='Enter a finite scale maximum greater than its minimum.';return;}
-    const requested=selectedColumns(),matches=R.simulationBindings(network,requested),columns=requested.filter(column=>matches.has(column.series));
+    const useCapacity=derivedCapacity();
+    const requested=selectedColumns().filter(column=>!useCapacity||column.asset.table==='hw_conduit');
+    const matches=R.simulationBindings(network,requested),columns=requested.filter(column=>matches.has(column.series));
     if(!columns.length){note.textContent='None of the result columns uniquely match the network’s typed asset IDs.';return;}
     const first=columns[0],datum=fields.datum.value.trim();
     if(datum&&(first.quantity!=='level'||!columns.every(column=>column.datum===datum))){
@@ -2646,12 +2681,25 @@ function mountSimulationView(){
       const positions=new Map(proposedColumns.map((column,index)=>[R.refKey(proposedMatches.get(column.series)),index]));
       proposal={...proposal,columns:proposedColumns,alignment:columns.map(column=>positions.get(R.refKey(matches.get(column.series)))??-1)};
     }
+    let capacities=null,proposalCapacities=null;
+    if(useCapacity){
+      if(!source.capacity||proposal&&!proposal.source.capacity){note.textContent='Attach a reviewed capacity table to each indexed conduit-flow source used here.';return;}
+      const request=++generation,apply=form.querySelector('[type="submit"]'),keys=columns.map(column=>column.key);
+      apply.disabled=true;
+      try{
+        [capacities,proposalCapacities]=await Promise.all([session().capacities(source.sourceId,keys),
+          proposal?session().capacities(proposal.source.sourceId,keys):null]);
+        if(request!==generation||candidate()!==source)return;
+        if(!capacities||proposal&&!proposalCapacities){note.textContent='Capacity tables changed. Review the selected indexed sources.';return;}
+      }catch(error){if(request===generation)note.textContent=error.message;return;}
+      finally{apply.disabled=false;}
+    }
     reset();
     if(geometryView?.current())geometryView.reset();
     fields.confirm.checked=true;
     fields.verifyProposal.checked=Boolean(proposal);
     const flowDirection=first.asset.kind==='link'&&first.quantity==='flow'?fields.flowDirection.value:'';
-    layer={source,columns,matches,low,high,values:null,envelopes:null,companion,proposal,flowDirection,grounds,
+    layer={source,columns,matches,low,high,values:null,envelopes:null,companion,proposal,flowDirection,grounds,capacities,proposalCapacities,
       geometryDatum:first.quantity==='level'?datum:''};
     const resultsWorkspace=window.HydraResultsWorkspace;
     if(!sampleWindow)sampleWindow=resultsWorkspace.mountResultWindow($('nsSimulationWindow'),range=>{

@@ -29,7 +29,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Verified locally |
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
-| 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial. Signed link flow, recorded quantities, ground-level freeboard and source conduit geometry are verified locally. Capacity utilisation remains open |
+| 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Verified locally for imported result layers, reviewed flow direction, same-datum freeboard, source geometry and positive imported full-capacity utilisation |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Verified locally for exact shared-clock comparison and independent layer extrema. Geometry-sensitive scenario review remains open under 6.1 and 6.4 |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
 | 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for indexed ingestion and lookup. Broader capacity and release checks remain open |
@@ -1317,3 +1317,21 @@ other state.
   conduit and unaffected pump. Both checked invalid scale rejection,
   layer removal and switching back to simulation playback. The request
   observers each counted 32 requests with zero violations.
+
+### Reviewed full-capacity utilisation
+
+- An optional same-run Pipe full capacity table uses the documented
+  Autodesk PFC result and typed conduit identities. The local worker
+  checks mapped units, file fingerprints, duplicates, scope and resource
+  limits. Failed, cancelled or missing tables preserve existing sources.
+  Only relevant asset keys are retrieved for a map layer.
+- Utilisation is 100 times recorded flow magnitude divided by positive
+  imported PFC. Missing or zero capacity withholds the ratio. Independent
+  extrema come from the exact magnitude samples. A proposal uses its
+  own reviewed table, and the difference is in percentage points.
+- Chromium and Firefox verified zero, missing and reverse flow,
+  a −0.4 m³/s sample and 0.5 m³/s capacity giving 80%, and a separate
+  proposal giving 90% and a +10-point difference. Both verified exact
+  extrema, cancellation, duplicate rejection, table removal and layer
+  withdrawal. Their observers each counted 32 requests with no
+  violations. In-memory and file-backed magnitude tests agreed.
