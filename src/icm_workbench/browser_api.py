@@ -1464,6 +1464,23 @@ def review_continuation_flow(catchments, framework, basis=None, sensitivity_perc
     return json.dumps(calculate(catchments, framework, basis, sensitivity_percent, permitted, pipe), allow_nan=False)
 
 
+def modelled_continuation_result(path, overflow_count, continuation_count, **review):
+    """Read a bounded, temporary transfer of two indexed local result channels."""
+    from icm_workbench.analysis.design_flows import modelled_continuation_during_spills
+
+    if (not isinstance(path, str) or not re.fullmatch(r"/data/hb-continuation-review-[0-9]+\.bin", path)
+            or any(type(count) is not int or not 0 <= count <= 250_000 for count in (overflow_count, continuation_count))):
+        raise ValueError("Invalid local sample transfer.")
+    expected = 16 * (overflow_count + continuation_count)
+    with open(path, "rb") as sample_file:
+        samples = sample_file.read(expected + 1)
+    if len(samples) != expected:
+        raise ValueError("The local sample transfer has the wrong length.")
+    columns = np.split(np.frombuffer(samples, dtype="<f8"),
+                       [overflow_count, overflow_count * 2, overflow_count * 2 + continuation_count])
+    return json.dumps(modelled_continuation_during_spills(*columns, **review), allow_nan=False)
+
+
 def scotland_continuation_flow(catchments, applicability):
     """Apply the documented SEPA low-significance continuation-flow method."""
     from icm_workbench.analysis.design_flows import scotland_continuation_flow as calculate

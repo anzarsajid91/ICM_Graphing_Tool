@@ -180,7 +180,7 @@ const sheetStyle = `
 function sheetInputs(form) {
   return [...form.elements].flatMap(control => {
     const label=control.getAttribute("aria-label");
-    if (!label||control.disabled||!control.matches("input:not([type=file]),select")) return [];
+    if (!label||control.matches(":disabled")||!control.matches("input:not([type=file]),select")) return [];
     const value=control.type==="checkbox"?(control.checked?"Yes":"No"):
       control.selectedOptions?.[0]?.textContent||control.value||"Unavailable";
     return [[label,value]];
@@ -227,7 +227,7 @@ function results(article,form,calculate) {
   let generation = 0, downloadable = null;
   const save = action("Download calculation CSV",() => {
     if (!downloadable) return;
-    const csv = downloadable.rows.map(row=>row.map(value=>ICMSafeCSV.cell(value ?? "")).join(",")).join("\r\n");
+    const csv = [...downloadable.rows,...downloadable.exportRows].map(row=>row.map(value=>ICMSafeCSV.cell(value ?? "")).join(",")).join("\r\n");
     downloadBlob(downloadable.filename,csv,"text/csv");
   });
   const review=action("Review calculation sheet",()=>{
@@ -280,7 +280,7 @@ function results(article,form,calculate) {
         identity:[["Hydra Bench version",version],["Application revision",buildToken],
           ["Calculation engine revision",window.__ICM_WORKBENCH__.workerBuildToken||"Unavailable"],
           ["Method version",method],["Calculated at (UTC)",new Date().toISOString()]],
-        rows:[["Build",buildToken],...result.rows]};
+        rows:[["Build",buildToken],...result.rows],exportRows:result.exportRows||[]};
       save.disabled = review.disabled = false;status.textContent = result.summary;
     } catch(error) {
       if (id === generation) status.textContent = error.message;
@@ -944,6 +944,139 @@ function mountContinuationComparisons(form){
   }};
 }
 
+let continuationTransfer=0;
+function mountContinuationSimulation(form,navigate,worker){
+  const details=element("details"),section=element("fieldset"),message=element("p");
+  message.setAttribute("role","status");
+  const enable=fields([{key:"modelled",label:"Include a modelled continuation review",type:"checkbox",required:false}]);
+  const configuration=fields([
+    {key:"start",label:"Review start (project clock)",type:"datetime-local",step:.001},
+    {key:"end",label:"Review end (project clock)",type:"datetime-local",step:.001},
+    number("gap","Maximum supported sample gap (s)",.001,31536000),
+    number("threshold","Overflow flow threshold (L/s)",0,1e12),
+    {key:"evidence",label:"Reviewed overflow and continuation locations and basis",type:"text",maxLength:2000},
+    {key:"confirmed",label:"Both links belong to this assessment point and use the same reviewed run and project clock",type:"checkbox"}
+  ],{gap:900,threshold:0});
+  const {modelled}=enable.controls;
+  const sameRun=(a,b)=>a&&b&&["simulation","modelRevision","scenario","event","temporalSupport"].every(key=>a[key]===b[key]);
+  const loaded=()=>window.HydraResultsWorkspace?.session?.sources()||[];
+  const label=column=>`${column.asset.table.slice(3).replaceAll("_"," ")} ${column.asset.upstream}.${column.asset.suffix} · ${column.location}`;
+  const isFlow=column=>column.quantity==="flow"&&column.unit==="m³/s"&&column.asset.kind==="link";
+  const invalidateReview=()=>{
+    configuration.controls.confirmed.checked=false;
+    form.dispatchEvent(new Event("input",{bubbles:true}));
+  };
+  function sourcePicker(role){
+    const picker=fields([
+      {key:"source",label:role+" results source",options:[["","Choose a source"]]},
+      {key:"filter",label:"Filter "+role.toLowerCase()+" link IDs",type:"search",maxLength:160,required:false},
+      {key:"series",label:role+" link and end",options:[["","Choose a link result"]]},
+      {key:"direction",label:role+" positive direction",options:[["","Review direction"],
+        ["1","As reported"],["-1","Reverse reported sign"]]}
+    ]);
+    const {source,series,filter,direction}=picker.controls;
+    const summary=element("p");
+    const getSource=()=>loaded().find(item=>String(item.sourceId)===source.value);
+    const selected=()=>{
+      const item=getSource();
+      return {source:item,column:item?.columns.find(col=>col.series===series.value),direction:Number(direction.value)};
+    };
+    function refreshLinks(){
+      const previous=series.value,item=getSource(),query=filter.value.trim().toLowerCase();
+      const choices=item?.columns.filter(column=>isFlow(column)&&label(column).toLowerCase().includes(query))||[];
+      const shown=choices.slice(0,100),current=choices.find(column=>column.series===previous);
+      if(current&&!shown.includes(current))shown.push(current);
+      series.replaceChildren(new Option("Choose a link result",""),...shown.map(column=>new Option(label(column),column.series)));
+      series.value=current?previous:"";
+      filter.disabled=!item;series.disabled=!item;direction.disabled=!item;
+      summary.textContent=item?`${choices.length} matching link results. ${choices.length>100?"Filter by the typed link ID to narrow the list.":""}`:"";
+    }
+    function refreshSources(sources){
+      const prior=source.value;
+      source.replaceChildren(new Option("Choose a source",""),...sources.map(item=>
+        new Option(`${item.scenario} · ${item.event} · ${item.filename}`,item.sourceId)));
+      source.value=sources.some(item=>String(item.sourceId)===prior)?prior:"";
+      refreshLinks();
+    }
+    filter.oninput=()=>{const prior=series.value;refreshLinks();if(prior!==series.value)invalidateReview();};
+    series.onchange=direction.onchange=invalidateReview;
+    return {group:picker.group,summary,controls:picker.controls,selected,refreshSources};
+  }
+  const overflow=sourcePicker("Overflow"),continuation=sourcePicker("Continuation");
+  function refresh(){
+    const sources=loaded().filter(source=>source.columns.some(isFlow));
+    overflow.refreshSources(sources);
+    continuation.refreshSources(sources.filter(source=>sameRun(source,overflow.selected().source)));
+    message.textContent=sources.length?"Choose the two typed link results and confirm their use for this assessment point.":
+      "Index the overflow and continuation link-end flow exports in Simulation results.";
+  }
+  overflow.controls.source.onchange=continuation.controls.source.onchange=()=>{refresh();invalidateReview();};
+  const signature=()=>JSON.stringify([overflow,continuation].map(picker=>{
+    const {source,column}=picker.selected();return [source?.sourceId,source?.fingerprint?.digest,column?.series];
+  }));
+  window.addEventListener("icm:simulation-sources-changed",()=>{
+    const prior=signature();
+    const choices=[overflow,continuation].map(picker=>[picker.controls.source.value,picker.controls.series.value]);
+    refresh();
+    if(modelled.checked&&(prior!==signature()||[overflow,continuation].some((picker,index)=>
+      choices[index][0]!==picker.controls.source.value||choices[index][1]!==picker.controls.series.value)))invalidateReview();
+  });
+  modelled.onchange=()=>{section.hidden=section.disabled=!modelled.checked;if(modelled.checked)refresh();};
+  section.hidden=section.disabled=true;
+  section.append(element("legend","Modelled spill-period evidence"),
+    action("Open simulation results",()=>navigate("network","simulation-results",true)),message,
+    overflow.group,overflow.summary,continuation.group,continuation.summary,configuration.group);
+  details.append(element("summary","Modelled continuation during spills"),enable.group,section);
+  form.append(details);
+  return async required=>{
+    if(!modelled.checked)return {content:[],rows:[],exportRows:[]};
+    const spill=overflow.selected(),pass=continuation.selected(),reviewed=configuration.values();
+    if(!spill.column||!pass.column||!sameRun(spill.source,pass.source)||spill.column.key===pass.column.key)
+      throw new Error("Choose two distinct links from the same simulation, model revision, scenario and event.");
+    if(!reviewed.evidence||!reviewed.confirmed)throw new Error("Confirm and record the linked model evidence.");
+    const clock=value=>Date.parse(value+"Z"),start=clock(reviewed.start),end=clock(reviewed.end);
+    if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)throw new Error("Choose an increasing project-clock review window.");
+    const session=window.HydraResultsWorkspace.session,basis=signature(),pad=Math.ceil(reviewed.gap*1000);
+    const samples=await Promise.all([spill,pass].map(item=>
+      session.seriesWindow(item.source.sourceId,item.column.series,start-pad,end+pad)));
+    const values=samples.flatMap(item=>[item.times,item.values]);
+    const packed=new ArrayBuffer(values.reduce((size,value)=>size+value.byteLength,0));
+    const view=new DataView(packed);
+    let position=0;
+    for(const channel of values)for(const value of channel){view.setFloat64(position,value,true);position+=8;}
+    const path=`/data/hb-continuation-review-${++continuationTransfer}.bin`;
+    await ensureEngineBoot();
+    await engine.addFile({virtualPath:path},new Uint8Array(packed));
+    let result;
+    try{
+      result=await worker("modelled_continuation_result",{path,overflow_count:samples[0].times.length,
+        continuation_count:samples[1].times.length,start_ms:start,end_ms:end,maximum_gap_seconds:reviewed.gap,
+        spill_threshold_m3_s:reviewed.threshold/1000,overflow_direction:spill.direction,continuation_direction:pass.direction,
+        required_m3_s:required});
+    }finally{await engine.removeFile(path);}
+    if(basis!==signature())throw new Error("The selected result sources changed. Recalculate the review.");
+    const metrics=[["Evidence coverage",result.status],["Review period (s)",result.review_seconds],
+      ["Overflow signal supported (s)",result.overflow_valid_seconds],["Overflow signal unknown (s)",result.overflow_unknown_seconds],
+      ["Detected physical spill time (s)",result.physical_spill_seconds],
+      ["Continuation supported during detected spills (s)",result.continuation_valid_seconds],
+      ["Continuation unknown during detected spills (s)",result.continuation_unknown_seconds],
+      ["Supported continuation deficit (m³)",result.deficit_m3],["Supported volume above requirement (m³)",result.above_requirement_m3]];
+    const headings=["Physical spill start","Physical spill end","Spill (s)","Supported (s)","Unknown (s)","Deficit (m³)","Above requirement (m³)"];
+    const rows=result.rows.map(row=>[row.start,row.end,row.spill_seconds,row.valid_seconds,row.unknown_seconds,row.deficit_m3,row.above_requirement_m3]);
+    const content=[table(["Quantity","Value"],metrics,"Modelled continuation during physical spills"),
+      element("p","Volumes apply to supported segments. The calculation uses bounded linear support between recorded samples on each channel. Review evidence gaps and the applicable consent conditions.")];
+    if(rows.length)content.push(table(headings,rows.slice(0,100),"Physical spill interval evidence"));
+    if(rows.length>100)content.push(element("p",`The first 100 intervals are shown. The calculation CSV contains all ${rows.length} intervals.`));
+    const provenance=[...["simulation","modelRevision","scenario","event"].map(key=>[key,spill.source[key]]),
+      ...[["Overflow",spill],["Continuation",pass]].map(([role,item])=>[role,label(item.column),item.column.sourceAttribute,
+        item.column.sourceUnit,item.source.filename,item.source.fingerprint.digest,item.direction,item.column.asset.table])];
+    return {content,rows:[["Modelled continuation method",result.method],
+      ["Review start and end (project clock)",result.start,result.end],["Overflow threshold (L/s)",reviewed.threshold],
+      ["Maximum supported sample gap (s)",reviewed.gap],["Reviewed simulation evidence",reviewed.evidence],...provenance,...metrics],
+      exportRows:rows.length?[headings,...rows]:[]};
+  };
+}
+
 function mount(navigate) {
   const worker=async (api,args)=>{await ensureEngineBoot();return engine.call(api,args);};
   mountStorageRouting(navigate,worker);
@@ -1089,6 +1222,7 @@ function mount(navigate) {
   form.append(framework.group,details,reviewed.group,projectSection,methodNote,catchments.wrapper);showFramework();
   const catchmentSource=mountCatchmentImport(formula,form,catchments,worker);
   const comparisons=mountContinuationComparisons(form);
+  const modelledContinuation=mountContinuationSimulation(form,navigate,worker);
   let lastTrial=null;
   const invalidateFormula=results(formula,form,async()=>{
     catchmentSource.assertCurrent();
@@ -1099,6 +1233,7 @@ function mount(navigate) {
     if(["wales","ireland"].includes(selected))args.basis=reviewed.values().evidence;
     if(documented)args.basis=project.values();
     const r=await worker("review_continuation_flow",args);
+    const simulation=await modelledContinuation(r.retained_m3_s);
     catchmentSource.assertCurrent();
     if(trialSignature&&trialSignature!==JSON.stringify(comparisons.pipeDetails()))throw new Error("The conduit trial inputs changed. Calculate again.");
     lastTrial=trialSignature;
@@ -1134,13 +1269,14 @@ function mount(navigate) {
     if(comparisonRows.length)support.push(table(comparisonHeader,comparisonRows,"Independent continuation-flow comparisons"),
       element("p","Capacity assumes steady uniform full-pipe flow. Use measured or simulated evidence to investigate continuation during spills."));
     return {content:[table(["Quantity","Value"],metrics,r.regime),table(heading,details,"Catchment audit"),
-      ...support,element("p",(documented?r.reference:references[selected])+". Confirm applicability against the project and permit evidence.")],
+      ...support,...simulation.content,element("p",(documented?r.reference:references[selected])+". Confirm applicability against the project and permit evidence.")],
       summary:"Retained flow calculated from reviewed catchments.",filename:"hydra-"+selected+"-continuation-flow.csv",
+      exportRows:simulation.exportRows,
       rows:[["Method",r.method],["Reference",r.reference],["Regime",r.regime],
         ["Equation",equation],...auditBasis,...metrics,heading,...details,...catchmentSource.audit(),
         ...(sensitivityRows.length?[["Sensitivity per input (%)",r.sensitivity_percent],sensitivityHeader,...sensitivityRows]:[]),
         ...(comparisonRows.length?[comparisonHeader,...comparisonRows]:[]),
-        ...(trial?[["Source conduit",trial.label],["Source table, row and file",...trial.source],...Object.entries(trial.inputs)]:[])]};
+        ...(trial?[["Source conduit",trial.label],["Source table, row and file",...trial.source],...Object.entries(trial.inputs)]:[]),...simulation.rows]};
   });
   window.addEventListener("icm:route-changed",({detail})=>{
     if(detail.page!=="formula-a")return;

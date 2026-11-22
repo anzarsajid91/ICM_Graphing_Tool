@@ -722,6 +722,34 @@ with reviewed viscosity and imported geometry and roughness. The resulting
 margin is a hydraulic screening value. Spilling behaviour, surcharge and
 backwater depend on hydraulic conditions in the relevant modelled events.
 
+### Modelled continuation during physical spills
+
+Choose two distinct typed link-end flow channels from the same reviewed
+simulation, model revision, scenario, event and project clock. Identify the
+overflow and continuation locations and confirm the sign convention for each
+link. Imported instantaneous flow is expressed in m³/s after the reviewed
+unit conversion. Choose the assessment window, overflow activation threshold
+and maximum gap between supporting samples.
+
+The existing physical spill detector finds periods when signed overflow flow
+is strictly above the threshold. It estimates crossings linearly between
+supported observations. On each detected period, the screen integrates the
+positive difference between required and modelled continuation as deficit
+volume. It integrates the reverse difference separately as volume above the
+requirement. Opposing continuation flow therefore increases a deficit.
+Integration uses bounded linear segments on each recorded channel. It leaves
+missing, over-gap and unbracketed segments unknown and reports support for
+the overflow record and for the continuation channel separately. The modelled
+review uses physical spill periods and does not use the regulatory 12/24 count.
+Review the result alongside the permit and the actual model conditions.
+
+Each selected window can retrieve up to 250,000 samples per channel and
+assess up to 25,000 intervals. Review a shorter period if a resource limit is
+reached. The worksheet retains the typed locations, simulation identity,
+reported units, flow directions, file fingerprints and explicit limitations.
+See [England's source guidance on continuation during spills](https://www.gov.uk/government/publications/water-companies-environmental-permits-for-storm-overflows-and-emergency-overflows/water-companies-environmental-permits-for-storm-overflows-and-emergency-overflows#formula-a)
+and [Autodesk's link results fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm).
+
 ## Wales GN066 continuation-flow screening
 
 Natural Resources Wales GN066 version 2.0, 29 July 2026, section 2.7

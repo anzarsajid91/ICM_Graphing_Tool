@@ -338,3 +338,48 @@ def test_catchment_preview_rejects_malformed_and_oversized_tables():
                         ("ID,Pop\n"+"A,1\n"*101,"100 rows"),("**\0**", "NUL")]:
         with pytest.raises(ValueError,match=message):
             preview_catchment_csv(raw)
+def test_modelled_continuation_respects_crossings_flow_direction_and_gaps():
+    from icm_workbench.analysis.design_flows import modelled_continuation_during_spills
+
+    start = 1735689600000
+    at = lambda seconds: [start + value * 1000 for value in seconds]
+    # A reversed outlet channel crosses 1 L/s at 30 and 270 s. The
+    # continuation channel is supported on [30,60] and [180,270].
+    result = modelled_continuation_during_spills(
+        at([0, 60, 240, 300]), [0, -.002, -.002, 0],
+        at([0, 60, 120, 180, 240, 300]), [-.001, -.001, None, .001, -.003, -.003],
+        start, start + 300000, 180, .001, -1, -1, .002,
+    )
+    assert result["status"] == "partial"
+    assert result["overflow_valid_seconds"] == 300
+    assert result["physical_spill_seconds"] == 240
+    assert result["continuation_valid_seconds"] == 120
+    assert result["continuation_unknown_seconds"] == 120
+    # Deficit is 30 s × 1 L/s plus a 45 s triangle, peak 3 L/s.
+    assert result["deficit_m3"] == pytest.approx(.0975, abs=1e-12)
+    # Exceedance is a 15 s triangle, peak 1 L/s, plus 30 s × 1 L/s.
+    assert result["above_requirement_m3"] == pytest.approx(.0375, abs=1e-12)
+    assert result["rows"][0]["start"] == "2025-01-01T00:00:30"
+    assert result["rows"][0]["end"] == "2025-01-01T00:04:30"
+
+
+def test_modelled_continuation_distinguishes_dry_and_unsupported_assessments():
+    from icm_workbench.analysis.design_flows import modelled_continuation_during_spills
+
+    start = 1735689600000
+    finish = start + 300000
+    times = [start, finish]
+    basis = (start, finish, 300, 0, 1, 1, .002)
+    dry = modelled_continuation_during_spills(times, [0, 0], [], [], *basis)
+    assert dry["status"] == "complete" and dry["physical_spill_seconds"] == 0
+    assert dry["deficit_m3"] is None and dry["rows"] == []
+    missing = modelled_continuation_during_spills(times, [.01, .01], [start], [.002], *basis)
+    assert missing["status"] == "unavailable" and missing["continuation_unknown_seconds"] == 300
+    assert missing["deficit_m3"] is None
+    complete = modelled_continuation_during_spills(times, [.01, .01], times, [.003, .001], *basis)
+    assert complete["status"] == "complete" and complete["deficit_m3"] == pytest.approx(.075)
+    assert complete["above_requirement_m3"] == pytest.approx(.075)
+    with pytest.raises(ValueError, match="strictly increasing"):
+        modelled_continuation_during_spills(times, [0, 0], [start, start], [.002, .002], *basis)
+    with pytest.raises(ValueError, match="direction"):
+        modelled_continuation_during_spills(times, [0, 0], times, [.002, .002], start, finish, 300, 0, 0, 1, .002)

@@ -45,7 +45,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
 | 9.5 England and framework research | Official permitting guidance | Versioned methods for England, Scotland, Wales and the reviewed Irish combined setting, with a documented project method | Verified locally within the cited applicability. Northern Ireland continuation uses the reviewed project consent basis |
 | 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial. Reviewed nominal drainage and independent component allocations verified locally |
-| 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Partial. Treatment, foul-flow, circular velocity and shear, sensitivity, permit and pipe comparisons verified locally. Compatible modelled continuation during spills remains open |
+| 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Verified locally for the supported frameworks, circular sections and same-run typed link results. Inheritance remains a separate input criterion |
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
 | 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
@@ -1160,3 +1160,25 @@ other state.
   288.09 L/s of steady full-pipe capacity. Reimport withdrew the stale
   result after a topology change. There were 104 guarded Chromium and
   103 Firefox requests with no confidentiality violations.
+
+### Modelled continuation evidence during physical spills
+
+- The worksheet compares two reviewed same-run link-end flows. It applies
+  the existing physical threshold detector and bounded linear integrals
+  to signed continuation. It records overflow coverage, supported and
+  unknown continuation time, signed direction, typed identifiers and source
+  fingerprints. Deficit and volume above the requirement are reviewed
+  independently. Removing a selected source withdraws the sheet.
+- Chromium and Firefox matched the independent reverse-flow and incomplete
+  support case. The 240-second physical spill included 120 supported
+  seconds and 120 unknown. Those supported segments gave 0.0975 m³ deficit
+  and 0.0375 m³ above the requirement. Both exercises covered mismatched
+  event filtering, repeated asset rejection, local worksheet output and
+  removal. The observers recorded 107 and 105 requests with zero violations.
+  The full Python suite passed 462 tests and 111 subtests.
+- A synthetic annual CPython reference used 105,121 five-minute samples per
+  channel. It matched 13,140 disjoint intervals, 7,884,000 seconds of
+  physical spill time and 7,884 m³ deficit. Its median calculation time
+  across five runs was 0.829 s. Process peak RSS was 151,400 KiB; this
+  includes the test environment and reference arrays. Browser import and
+  transfer costs are measured separately from this solver-only result.

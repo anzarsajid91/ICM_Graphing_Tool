@@ -167,6 +167,7 @@ function mount() {
     frame:(sourceId,index,keys)=>client.request("frame",{sourceId,index,keys}).result,
     frameAtTime:(sourceId,time,keys)=>client.request("frame",{sourceId,time,keys}).result,
     range:(sourceId,start,end)=>client.request("range",{sourceId,start,end}).result,
+    seriesWindow:(sourceId,key,start,end)=>client.request("series",{sourceId,key,start,end}).result,
     envelope:(sourceId,key,start,end)=>client.request("envelope",{sourceId,key,start,end}).result,
     envelopes:(sourceId,keys,start,end,progress)=>client.request("envelopes",{sourceId,keys,start,end},progress),
     cancelRequest:id=>client.cancel(id)

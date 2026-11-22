@@ -257,6 +257,88 @@ def review_continuation_flow(catchments, framework, basis=None, sensitivity_perc
     return result
 
 
+def modelled_continuation_during_spills(
+    overflow_times, overflow_values, continuation_times, continuation_values,
+    start_ms, end_ms, maximum_gap_seconds, spill_threshold_m3_s,
+    overflow_direction, continuation_direction, required_m3_s,
+):
+    """Compare signed continuation over canonical physical spill intervals."""
+    import numpy as np
+    import pandas as pd
+    from icm_workbench.analysis.series_transform import integrate_periods
+    from icm_workbench.analysis.spills import detect_spill_intervals
+
+    if (type(start_ms) is not int or type(end_ms) is not int or end_ms <= start_ms
+            or not -9223372036854 <= start_ms < end_ms <= 9223372036854):
+        raise ValueError("Choose an increasing project-clock period within the supported timestamp range.")
+    gap = _nonnegative(maximum_gap_seconds, "sample gap in seconds", 31_536_000)
+    if gap < .001:
+        raise ValueError("The permitted sample gap must be at least one millisecond.")
+    threshold = _nonnegative(spill_threshold_m3_s, "spill threshold in m³/s", 1e9)
+    required = _nonnegative(required_m3_s, "continuation requirement in m³/s", 1e12)
+
+    def channel(times, values, direction):
+        if type(direction) is not int or direction not in (-1, 1):
+            raise ValueError("Review the positive flow direction for both links.")
+        times, values = np.asarray(times, dtype=float), np.asarray(values, dtype=float)
+        if times.ndim != 1 or values.shape != times.shape or times.size > 250_000:
+            raise ValueError("Provide up to 250,000 aligned samples per channel.")
+        if (not np.isfinite(times).all() or (np.abs(times) > 9223372036854).any()
+                or (times != np.floor(times)).any() or (np.diff(times) <= 0).any()):
+            raise ValueError("Result timestamps must be strictly increasing project-clock milliseconds.")
+        if (np.abs(values) > 1e9).any():
+            raise ValueError("A flow sample exceeds the supported calculation range.")
+        return times, values * direction
+
+    overflow_times, overflow = channel(overflow_times, overflow_values, overflow_direction)
+    continuation_times, continuation = channel(continuation_times, continuation_values, continuation_direction)
+    start, end = pd.Timestamp(start_ms, unit="ms"), pd.Timestamp(end_ms, unit="ms")
+    duration = (end_ms - start_ms) / 1000
+    physical = detect_spill_intervals(
+        pd.DataFrame({"timestamp": pd.to_datetime(overflow_times.astype(np.int64), unit="ms"), "flow": overflow}),
+        "flow", threshold, start=start, end=end, max_gap_seconds=gap, comparison="gt",
+    )
+    overflow_support = float(physical.get("valid_seconds", 0.0))
+    result = {"method": "modelled-continuation-linear-support-v1", "status": physical["status"],
+              "start": start.isoformat(), "end": end.isoformat(), "review_seconds": duration,
+              "overflow_valid_seconds": overflow_support, "overflow_unknown_seconds": max(0.0, duration - overflow_support),
+              "physical_spill_seconds": 0.0 if overflow_support else None, "continuation_valid_seconds": 0.0,
+              "continuation_unknown_seconds": 0.0, "deficit_m3": None, "above_requirement_m3": None, "rows": []}
+    events = physical["events"]
+    if not events:
+        return result
+    if len(events) > 25_000:
+        raise ValueError("Choose a shorter review period to assess up to 25,000 physical spill intervals.")
+
+    # Integrate all disjoint windows in one pass over only the selected channel.
+    origin = start.value
+    boundaries = [(event[edge].value - origin) / 1e9 for event in events for edge in ("start", "end")]
+    edges, edge_indexes = np.unique(boundaries, return_inverse=True)
+    windows = edge_indexes[::2]
+    times = (continuation_times - start_ms) / 1000
+    deficit, support = integrate_periods(times, required - continuation, edges,
+                                         convention="instantaneous", maximum_gap=gap, positive_only=True)
+    above, _ = integrate_periods(times, continuation - required, edges,
+                                 convention="instantaneous", maximum_gap=gap, positive_only=True)
+    for event, index in zip(events, windows):
+        assessed = float(edges[index + 1] - edges[index])
+        covered = float(support[index])
+        result["rows"].append({"start": event["start"].isoformat(), "end": event["end"].isoformat(),
+                               "spill_seconds": assessed, "valid_seconds": covered,
+                               "unknown_seconds": max(0.0, assessed - covered),
+                               "deficit_m3": float(deficit[index]) if covered else None,
+                               "above_requirement_m3": float(above[index]) if covered else None})
+    rows = result["rows"]
+    spill_seconds = fsum(row["spill_seconds"] for row in rows)
+    covered = fsum(row["valid_seconds"] for row in rows)
+    unknown = fsum(row["unknown_seconds"] for row in rows)
+    status = "unavailable" if not covered else "partial" if physical["status"] != "complete" or unknown > 1e-6 else "complete"
+    result.update(status=status, physical_spill_seconds=spill_seconds, continuation_valid_seconds=covered,
+                  continuation_unknown_seconds=unknown, deficit_m3=fsum(deficit[windows]) if covered else None,
+                  above_requirement_m3=fsum(above[windows]) if covered else None)
+    return result
+
+
 def _treatment_components(population, domestic_l_head_day, infiltration_dwf_l_day,
                           infiltration_max_l_day, trade_l_day):
     people = _nonnegative(population, "population", 1e9)

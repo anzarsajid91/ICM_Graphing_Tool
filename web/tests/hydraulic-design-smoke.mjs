@@ -9,7 +9,7 @@ const engine=process.env.ICM_BROWSER||'chromium';
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browser=await (engine==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),acceptDownloads:true,viewport:{width:1440,height:1000}});
-const page=await context.newPage(), guard=installPrivacyGuard(context,base);
+const page=await context.newPage(), guard=installPrivacyGuard(context,base,{canaries:['HB-LOCAL-CONTINUATION-TEST','HB-LOCAL-REVISION-1']});
 const errors=[];
 page.on('pageerror',error=>errors.push(error.message));
 const submit=panel=>panel.getByRole('button',{name:'Calculate',exact:true}).click();
@@ -170,6 +170,88 @@ try{
   assert.match(formula,/180500/);
   assert.match(formula,/Synthetic storm response review/);
   assert.match(formula,/mixed Formula A/);
+  await rows.nth(1).locator('[name=classification]').selectOption('excluded');
+  await set(rows.nth(0),{domestic_l_head_day:140,infiltration_l_day:22800,trade_l_day:0});
+  await design.getByText('Modelled continuation during spills',{exact:true}).click();
+  const includeSimulation=design.getByLabel('Include a modelled continuation review',{exact:true});
+  await includeSimulation.check();
+  const openSimulation=design.getByRole('button',{name:'Open simulation results',exact:true});
+  await openSimulation.click();
+  const simulation=page.locator('#tab-simulation-results');
+  const loadResults=(name,header,values)=>simulation.getByLabel('Local results CSV').setInputFiles({name,mimeType:'text/csv',
+    buffer:Buffer.from([header,',L/s,L/s',...values].join('\n'))});
+  await loadResults('synthetic-continuation.csv','Time,00127.1,B.2',[
+    '2025-01-01 00:00:00,0,-1','2025-01-01 00:01:00,-2,-1','2025-01-01 00:02:00,-2,#N/A',
+    '2025-01-01 00:03:00,-2,1','2025-01-01 00:04:00,-2,-3','2025-01-01 00:05:00,0,-3']);
+  await status(simulation,/Preview ready/);
+  for(const [label,value] of Object.entries({'Simulation ID':'HB-LOCAL-CONTINUATION-TEST','Model revision':'HB-LOCAL-REVISION-1',
+    Scenario:'Baseline',Event:'Reviewed event','Optional missing-value token':'#N/A','Source result attribute':'Reported downstream flow'})){
+    await simulation.getByLabel(label,{exact:true}).fill(value);
+  }
+  await simulation.getByLabel('Asset type').selectOption('link');
+  await simulation.getByLabel('Link table').selectOption('conduit');
+  await simulation.getByLabel('Result quantity').selectOption('flow');
+  await simulation.getByLabel('Link end').selectOption('downstream');
+  await simulation.getByLabel('Source unit').selectOption('L/s');
+  await simulation.getByLabel('The next record contains units',{exact:true}).check();
+  await simulation.getByLabel('The file contains instantaneous samples on the confirmed project clock',{exact:true}).check();
+  for(const [mapping,column,id,suffix] of [[1,'2','00127','1'],[2,'3','B','2']]){
+    if(mapping===2)await simulation.getByRole('button',{name:'Add mapped column',exact:true}).click();
+    await simulation.getByLabel(`Mapping ${mapping} CSV column number`,{exact:true}).fill(column);
+    await simulation.getByLabel(`Mapping ${mapping} Node or upstream ID`,{exact:true}).fill(id);
+    await simulation.getByLabel(`Mapping ${mapping} Link suffix`,{exact:true}).fill(suffix);
+  }
+  const indexSimulation=simulation.getByRole('button',{name:'Index simulation results',exact:true});
+  await indexSimulation.click();await status(simulation,/6 timestamps indexed for 2 result series/);
+  await simulation.getByLabel('Event',{exact:true}).fill('Different event');
+  await indexSimulation.click();
+  await simulation.locator('#hbResultDetails').getByText('Different event',{exact:false}).waitFor();
+  async function returnToFormula(){
+    await page.locator('button[data-workspace="hydraulics"]').click();
+    await page.getByRole('tab',{name:'Formula A',exact:true}).click();
+  }
+  await returnToFormula();
+  const modelLabel='Baseline · Reviewed event · synthetic-continuation.csv';
+  await design.getByLabel('Overflow results source',{exact:true}).selectOption({label:modelLabel});
+  const continuationSource=design.getByLabel('Continuation results source',{exact:true});
+  assert.equal(await continuationSource.locator('option').count(),2);
+  await continuationSource.selectOption({label:modelLabel});
+  await design.getByLabel('Filter overflow link IDs',{exact:true}).fill('00127.1');
+  await design.getByLabel('Overflow link and end',{exact:true}).selectOption({label:'conduit 00127.1 · downstream'});
+  const continuationLink=design.getByLabel('Continuation link and end',{exact:true});
+  await continuationLink.selectOption({label:'conduit 00127.1 · downstream'});
+  for(const role of ['Overflow','Continuation'])await design.getByLabel(role+' positive direction',{exact:true}).selectOption('-1');
+  await design.getByLabel('Review start (project clock)',{exact:true}).fill('2025-01-01T00:00');
+  await design.getByLabel('Review end (project clock)',{exact:true}).fill('2025-01-01T00:05');
+  await design.getByLabel('Maximum supported sample gap (s)',{exact:true}).fill('180');
+  await design.getByLabel('Overflow flow threshold (L/s)',{exact:true}).fill('1');
+  await design.getByLabel('Reviewed overflow and continuation locations and basis',{exact:true}).fill('Synthetic receiving branch and signed link-end results');
+  const sameRun=design.getByLabel('Both links belong to this assessment point and use the same reviewed run and project clock',{exact:true});
+  await sameRun.check();await submit(design);await status(design,/Choose two distinct links/);
+  await continuationLink.selectOption({label:'conduit B.2 · downstream'});
+  assert(!(await sameRun.isChecked()));
+  await sameRun.check();await submit(design);await status(design,/Retained flow calculated/);
+  const spillReview=design.getByRole('table',{name:'Modelled continuation during physical spills',exact:true});
+  assert.match(await spillReview.getByRole('row',{name:/Evidence coverage/}).innerText(),/partial/);
+  assert.match(await spillReview.getByRole('row',{name:/Supported continuation deficit/}).innerText(),/0\.0975/);
+  assert.match(await spillReview.getByRole('row',{name:/Supported volume above/}).innerText(),/0\.0375/);
+  const spillAudit=await downloaded(design);
+  assert.match(spillAudit,/"2025-01-01T00:00:30","2025-01-01T00:04:30","240","120","120"/);
+  assert.match(spillAudit,/"Continuation","conduit B\.2 · downstream","Reported downstream flow","L\/s","synthetic-continuation\.csv","[a-f0-9]{64}"/);
+  if(process.env.ICM_EVIDENCE_DIR){
+    await fs.mkdir(process.env.ICM_EVIDENCE_DIR,{recursive:true});
+    await spillReview.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-modelled-continuation-'+engine+'.png'});
+  }
+  await openSimulation.click();
+  await simulation.getByLabel('Filter indexed events',{exact:true}).selectOption('Reviewed event');
+  await simulation.getByLabel('Indexed source').selectOption({label:'Baseline · synthetic-continuation.csv'});
+  await simulation.getByRole('button',{name:'Remove indexed source',exact:true}).click();
+  await returnToFormula();
+  assert(await design.getByRole('button',{name:'Download calculation CSV',exact:true}).isDisabled());
+  await includeSimulation.uncheck();
+  await rows.nth(1).locator('[name=classification]').selectOption('qualifying-separate');
+  await rows.nth(1).locator('[name=eligibility_confirmed]').check();
+  await set(rows.nth(0),{domestic_l_head_day:150,infiltration_l_day:3000,trade_l_day:2000});
   await set(rows.nth(1),{id:'Combined-A'});
   await submit(design);await status(design,/Catchment IDs must be unique/);
   assert.equal(await design.getByRole('button',{name:'Download calculation CSV'}).isDisabled(),true);
