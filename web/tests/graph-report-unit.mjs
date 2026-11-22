@@ -5,6 +5,11 @@ const source=fs.readFileSync('web/assets/runtime.release.js','utf8').replace(/st
 const sandbox={window:{},document:{getElementById:()=>null,querySelector:()=>null},console,setTimeout,clearTimeout};
 vm.createContext(sandbox);vm.runInContext(source,sandbox);
 const run=code=>vm.runInContext(code,sandbox);
+assert.deepEqual(Array.from(run('reportSectionOrder(null)')),['time-series','spill-storage','comparison','survey','network']);
+assert.deepEqual(Array.from(run("reportSectionOrder(['network','comparison','network','obsolete',null])")),
+  ['network','comparison','time-series','spill-storage','survey']);
+assert.equal(run("arrangeReportSections({survey:'Survey',network:'Network',comparison:'Comparison'},['network','comparison'])"),
+  'NetworkComparisonSurvey');
 const storageEvidence=run(`monthlyVolumeHtml([{year:2026,month:1,volume_m3:null,volume_m3_partial:48,valid_seconds:480,gap_seconds:0,uncovered_seconds:0,excluded_seconds:0,assessment_excluded_seconds:120,coverage_fraction:.8,status:'partial'}])`);
 assert(storageEvidence.includes('48 retained'));
 assert(storageEvidence.includes('80%'));

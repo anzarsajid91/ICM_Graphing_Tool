@@ -1449,6 +1449,16 @@ function wholeSceneSvg(){
   );
   return svg;
 }
+function reportGeometry(){
+  if(!network.nodes.length)return null;
+  const overview=inOverview(),graph=sceneGraph();
+  const figure=wholeSceneSvg();
+  figure.setAttribute('role','img');
+  figure.setAttribute('aria-label','Network schematic');
+  figure.setAttribute('width','100%');
+  figure.removeAttribute('height');
+  return {figure:new XMLSerializer().serializeToString(figure),overview,nodes:graph.nodes.length,links:graph.edges.length};
+}
 async function exportReport(){
   const report=window.open('','_blank');
   if(!report){status('Allow this report window to open.');return;}
@@ -3077,5 +3087,5 @@ async function open(){
     if(inOverview())fit();
   }else render();
 }
-window.ICMNetworkSchematic={open,snapshot,restore,capture,calculate,openMonitorImport,showDetrimentHotspots,core:C,debug:()=>({selected,editing,busy,fresh:network.nodes.map(n=>({id:n.id,fresh:isFresh(n)}))})};
+window.ICMNetworkSchematic={open,snapshot,restore,capture,calculate,openMonitorImport,showDetrimentHotspots,reportGeometry,core:C,debug:()=>({selected,editing,busy,fresh:network.nodes.map(n=>({id:n.id,fresh:isFresh(n)}))})};
 })();

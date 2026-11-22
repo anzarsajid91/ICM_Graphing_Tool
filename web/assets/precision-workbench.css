@@ -286,6 +286,17 @@ body.precision-workbench{
 .pw-report-sections{font-size:13px;line-height:20px;font-weight:600;display:grid;gap:4px}
 .pw-check-stack>label{display:flex;flex-direction:row;align-items:center;gap:8px;font-weight:500}
 .pw-report-options select[multiple]{min-height:112px}
+#reportSectionList{display:grid;gap:4px;margin:0;padding:0;list-style:none}
+#reportSectionList>li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 8px;border-block-end:1px solid var(--hb-border)}
+#reportSectionList>li label{display:flex;flex-direction:row;align-items:center;gap:8px;font-weight:500;overflow-wrap:anywhere}
+#reportSectionStatus:empty{display:none}
+.pw-report-section-moves{display:flex;gap:4px;flex-shrink:0}
+.pw-report-section-moves button{min-width:32px;padding:4px 8px}
+.hb-report-preview{inline-size:min(1120px,calc(100vw - 32px));block-size:calc(100vh - 48px);padding:0;border:1px solid var(--hb-border);border-radius:var(--hb-radius-card);background:var(--hb-surface);box-shadow:var(--hb-shadow-popover)}
+.hb-report-preview[open]{display:grid;grid-template-rows:auto minmax(0,1fr)}
+.hb-report-preview::backdrop{background:#0b294370}
+.hb-report-preview>.pw-surface-actions{margin:0;padding:12px 16px;border-bottom:1px solid var(--hb-border)}
+.hb-report-preview iframe{width:100%;height:100%;border:0;background:#fff}
 .pw-domain-provenance{margin-top:0}
 .precision-workbench input[type="checkbox"],.precision-workbench input[type="radio"]{width:18px;height:18px;min-height:18px!important;flex:0 0 18px;padding:0}
 .precision-workbench .ex-row{grid-template-columns:72px minmax(180px,1fr) minmax(180px,1fr) minmax(160px,.8fr) auto;grid-template-areas:"enabled start end scope remove" ". reason reason reason .";gap:8px 12px;align-items:end}
@@ -577,8 +588,8 @@ body.precision-workbench{
 .pw-model-picker-popover,dialog[open]{animation:hb-reveal var(--hb-motion-control) var(--hb-ease)}
 .hb-calculation-sheet{inline-size:min(1060px,calc(100vw - 32px));max-block-size:calc(100vh - 40px);padding:0;border:1px solid var(--hb-border);border-radius:var(--hb-radius-card);color:var(--pw-text);background:var(--hb-surface);box-shadow:var(--hb-shadow-popover)}
 .hb-calculation-sheet::backdrop{background:#0b294370}
-.hb-calculation-sheet>.actions{position:sticky;inset-block-start:0;flex-wrap:wrap;z-index:1;margin:0;padding:10px 18px;background:var(--hb-surface);border-bottom:1px solid var(--hb-border)}
-.hb-calculation-sheet>p{padding-inline:18px}
+.hb-calculation-sheet>.actions{position:sticky;inset-block-start:0;flex-wrap:wrap;z-index:1;margin:0;padding:12px 16px;background:var(--hb-surface);border-bottom:1px solid var(--hb-border)}
+.hb-calculation-sheet>p{padding-inline:16px}
 .hb-calculation-sheet>p:empty{display:none}
 .hb-calculation-sheet main{padding:12px 20px 20px}
 .hb-calculation-sheet :is(p,th,td){overflow-wrap:anywhere}

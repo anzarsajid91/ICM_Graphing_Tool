@@ -1048,33 +1048,7 @@
   }
 
   function wireSurveyReport() {
-    const button = document.getElementById('downloadReportBtn');
-    if (!button) return;
-    const coreDownloadReport = downloadReport;
-    button.addEventListener('click', event => {
-      if (!survey.association && !survey.batch && !survey.balance) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      guarded('workspaceStatus', async () => {
-        if(survey.batch&&!surveyFresh('complete'))throw new Error('Complete flow-survey results are stale. Re-run the assessment before exporting.');
-        if(survey.balance&&!surveyFresh('balance'))throw new Error('Volume-balance results are stale. Recalculate before exporting.');
-        if(window.__ICM_WORKBENCH__.lastProfessionalSurvey&&!window.__ICM_WORKBENCH__.professionalSurveyFresh?.())throw new Error('Professional flow-survey results are stale. Re-run the assessment before exporting.');
-        const extra = surveyReportHtml();
-        if (!state.mapping.observed && !(state.mapping.models||[]).length && !state.mapping.rain) {
-          const body = '<div class="note">Survey-only report. No observed, modelled or rainfall graph mapping was available for the full engineering report.</div>' + extra + reportSources(workspaceObject()) + reportExclusions(workspaceObject());
-          downloadBlob('icm-workbench-survey-report-' + new Date().toISOString().slice(0, 10) + '.html', reportShell('Hydra Bench — Flow Survey Assessment', 'Association-driven survey QA, Event Response and flow-continuity review', body, true), 'text/html');
-          document.getElementById('workspaceStatus').textContent = 'Survey assessment HTML downloaded.';
-          return;
-        }
-        const existing = window.__ICM_WORKBENCH__.professionalSurveyReportHtml || '';
-        window.__ICM_WORKBENCH__.professionalSurveyReportHtml = existing + extra;
-        try {
-          await coreDownloadReport();
-        } finally {
-          window.__ICM_WORKBENCH__.professionalSurveyReportHtml = existing;
-        }
-      });
-    }, true);
+    window.__ICM_WORKBENCH__.reportSurveyContents=()=>survey.association||survey.batch||survey.balance?surveyReportHtml():'';
   }
 
   simplifyNavigation();

@@ -49,7 +49,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
 | 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
-| 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Open |
+| 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Partial. Assessment templates, section order, schematic and preview work locally. Exact full regressions and calculation-sheet inclusion remain open |
 | 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Partial. Shared v3 hydraulic design sheets verified locally. Remaining methods and Reports integration remain open |
 | 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Open |
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
@@ -1038,3 +1038,26 @@ other state.
   after an input change. The observer saw 101 Chromium and 100 Firefox
   requests with no violations. Chromium produced a PDF from the print
   view. The complete Python suite passed 454 tests and 111 subtests.
+
+### Reusable assessment report layouts and preview
+
+- The assessment builder offers editable templates for general reports,
+  verification, spills and storage, flow survey and network
+  investigation. Section order and inclusion survive workspace
+  save/restore. Legacy saves use the established order. The existing
+  settings, source provenance and engineer notes remain in the report.
+- Network review uses the existing schematic renderer and identifies
+  detailed and simplified views. The same report compiler supplies the
+  downloaded HTML and local preview, including survey evidence checked
+  by the existing freshness rules. The preview mounts its isolated
+  document on demand. The original mixed-file import test exposed early
+  mounting during a browser session with service workers blocked. The
+  on-demand mount avoids a hidden frame during unrelated workflows.
+- Unit and desktop browser checks verified report ordering, a manually
+  reordered verification preview with interactive plots, equivalent
+  local download, workspace restoration and a network-only schematic.
+  The local request observer reported no violations in these tests.
+  The [hosted Firefox shell](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44992125915/job/137117040302)
+  detected sheet action padding outside the shared spacing grid. The
+  unmodified Firefox shell passed locally after the spacing correction.
+  Exact hosted and full browser regression evidence remains required.

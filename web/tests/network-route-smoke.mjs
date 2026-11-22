@@ -150,6 +150,21 @@ try{
     assert.equal((await snapshot()).monitorLocations.length,3);
     await page.click('#nsLongSection');await page.selectOption('#nsSavedRoutes','Branch review');
     assert.match(await page.locator('#nsRouteSavedMessage').innerText(),/geometry or route has changed/);
+    if(await page.locator('#nsOverview').getAttribute('aria-pressed')==='true')await page.click('#nsOverview');
+    const combined=await snapshot();
+    await page.locator('.pw-primary-nav [data-workspace="reports"]').click();
+    await page.getByRole('tab',{name:'Report generation',exact:true}).click();
+    await page.getByLabel('Report template',{exact:true}).selectOption('network');
+    assert(await page.getByRole('checkbox',{name:'Network schematic',exact:true}).isChecked());
+    await page.getByRole('button',{name:'Preview assessment report',exact:true}).click();
+    const report=page.getByRole('dialog',{name:'Assessment report preview',exact:true});
+    await report.waitFor({timeout:90000});
+    const diagram=report.frameLocator('iframe').getByRole('img',{name:'Network schematic',exact:true});
+    await diagram.waitFor();
+    assert.equal(await diagram.locator('[data-ns-node]').count(),combined.nodes.length);
+    await report.frameLocator('iframe').getByText(combined.nodes.length+' nodes · '+combined.edges.length+' links',{exact:false}).waitFor();
+    await report.getByRole('button',{name:'Close',exact:true}).click();
+    await report.waitFor({state:'hidden'});
   }
   assert.deepEqual(errors,[]);
   privacy.assertClean();

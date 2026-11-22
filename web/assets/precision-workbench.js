@@ -415,6 +415,85 @@ function refreshReportScenarioOptions(){
   const shouldSelectAll=select.options.length===0||previous.size===0;
   select.innerHTML=mapped.map(o=>'<option value="'+esc(o.value)+'" '+((shouldSelectAll||previous.has(o.value))?'selected':'')+'>'+esc(o.textContent)+'</option>').join('');
 }
+function mountReportLayout(options){
+  const list=options.querySelector('#reportSectionList'),template=options.querySelector('#reportTemplate');
+  const sections=[
+    ['time-series','reportIncludeTimeSeries','Full-period time series'],
+    ['spill-storage','reportIncludeSpillsStorage','Spills & storage'],
+    ['comparison','reportIncludeComparison','Comparison diagnostics'],
+    ['survey','reportIncludeSurvey','Flow-survey evidence'],
+    ['network','reportIncludeNetwork','Network schematic'],
+  ];
+  const presets={general:sections.slice(0,4).map(([key])=>key),
+    verification:['comparison','time-series'],spills:['spill-storage','time-series'],survey:['survey','time-series'],network:['network']};
+  const rows=new Map();
+  const announce=options.querySelector('#reportSectionStatus');
+  function updateButtons(){
+    const items=[...list.children];
+    items.forEach((row,index)=>{
+      const [up,down]=row.querySelectorAll('button');
+      up.disabled=index===0;down.disabled=index===items.length-1;
+    });
+  }
+  function applyOrder(order){
+    for(const key of reportSectionOrder(order))list.append(rows.get(key));
+    updateButtons();
+  }
+  for(const [key,id,caption] of sections){
+    const row=document.createElement('li'),label=document.createElement('label'),input=document.createElement('input');
+    const actions=makeActionGroup('pw-report-section-moves');
+    input.type='checkbox';input.id=id;input.checked=key!=='network';
+    input.onchange=()=>{template.value='';};
+    label.append(input,document.createTextNode(caption));row.dataset.reportSection=key;row.append(label,actions);
+    for(const [offset,arrow,phrase] of [[-1,'↑',' earlier'],[1,'↓',' later']]){
+      const button=document.createElement('button');button.type='button';button.textContent=arrow;
+      button.setAttribute('aria-label','Move '+caption+phrase);
+      button.onclick=()=>{
+        const neighbor=offset<0?row.previousElementSibling:row.nextElementSibling;
+        if(!neighbor)return;
+        list.insertBefore(row,offset<0?neighbor:neighbor.nextElementSibling);
+        template.value='';updateButtons();
+        (button.disabled?row.querySelector('input'):button).focus();
+        announce.textContent=caption+' moved to position '+([...list.children].indexOf(row)+1)+'.';
+      };
+      actions.append(button);
+    }
+    rows.set(key,row);list.append(row);
+  }
+  template.onchange=()=>{
+    const chosen=presets[template.value];
+    if(!chosen)return;
+    for(const [key,row] of rows)row.querySelector('input').checked=chosen.includes(key);
+    applyOrder(chosen);announce.textContent=template.selectedOptions[0].textContent+' template applied.';
+  };
+  window.__ICM_WORKBENCH__.restoreReportSectionOrder=order=>{template.value='';applyOrder(order);};
+  updateButtons();
+}
+function mountAssessmentPreview(actions,builder){
+  const preview=document.createElement('button');preview.type='button';preview.textContent='Preview assessment report';
+  const dialog=document.createElement('dialog');dialog.className='hb-report-preview';dialog.setAttribute('aria-label','Assessment report preview');
+  const controls=makeActionGroup(),close=document.createElement('button'),save=document.createElement('button');
+  close.type=save.type='button';close.textContent='Close';save.textContent='Download preview';
+  const frame=document.createElement('iframe');frame.title='Assessment report document';frame.setAttribute('sandbox','allow-scripts');
+  let packet=null;
+  close.onclick=()=>dialog.close();
+  save.onclick=()=>{if(packet)downloadAssessmentReport(packet);};
+  dialog.addEventListener('close',()=>{
+    packet=null;frame.remove();frame.removeAttribute('srcdoc');preview.focus();
+  });
+  preview.onclick=()=>guarded('workspaceStatus',async()=>{
+    preview.disabled=true;$('workspaceStatus').textContent='Preparing the report preview…';
+    try{
+      packet=await compileAssessmentReport();
+      if(!preview.getClientRects().length){packet=null;return;}
+      frame.srcdoc=packet.html;
+      dialog.append(frame);
+      dialog.showModal();$('workspaceStatus').textContent='Report preview ready.';
+    }finally{preview.disabled=false;}
+  });
+  controls.append(save,close);dialog.append(controls);
+  actions.prepend(preview);builder.append(dialog);
+}
 function ensureReportSurfaces(){
   const panel=qs('#tab-workspace .panel');if(!panel||$('pwWorkspaceSurface'))return;
   const builder=ensureSection('pwReportBuilderSurface','Report generation','Check result readiness, choose the report sections/scenarios and report view, then export the engineering report.');
@@ -426,12 +505,17 @@ function ensureReportSurfaces(){
   const options=document.createElement('section');options.id='pwReportOptions';options.className='subpanel pw-report-options';
   options.innerHTML='<div class="subhead"><div><h3>Report options</h3><p>Select the authoritative sections and model scenarios to include. These settings are saved with the workspace.</p></div></div>'+
     '<div class="mapping-grid compact-wide">'+
-      '<div class="pw-report-sections" role="group" aria-labelledby="pwReportSectionsLabel"><span id="pwReportSectionsLabel">Sections</span><div class="pw-check-stack"><label><input id="reportIncludeTimeSeries" type="checkbox" checked> Full-period time series</label><label><input id="reportIncludeSpillsStorage" type="checkbox" checked> Spills & storage</label><label><input id="reportIncludeComparison" type="checkbox" checked> Comparison diagnostics</label><label><input id="reportIncludeSurvey" type="checkbox" checked> Flow-survey evidence</label></div></div>'+
+      '<div class="pw-report-sections" role="group" aria-labelledby="pwReportSectionsLabel"><span id="pwReportSectionsLabel">Sections</span>'+
+        '<label>Report template<select id="reportTemplate" aria-label="Report template"><option value="">Custom selection</option>'+
+        '<option value="general">Engineering assessment</option><option value="verification">Model verification</option>'+
+        '<option value="spills">Spills and storage</option><option value="survey">Flow survey</option><option value="network">Network investigation</option></select></label>'+
+        '<ol id="reportSectionList"></ol><small role="status" id="reportSectionStatus"></small></div>'+
       '<label>Scatter view<select id="reportScatterScale"><option value="current">Current Plots view</option><option value="linear">Linear</option><option value="log">Log₁₀ (positive pairs only)</option></select><small>Report statistics follow the eligible pair population for this selected view.</small></label>'+
       '<label>Comparison scenarios<select id="reportScenarioSelect" multiple size="4"></select><small>Only currently mapped model scenarios are available.</small></label>'+
     '</div>';
-  builder.appendChild(options);refreshReportScenarioOptions();
+  builder.appendChild(options);mountReportLayout(options);refreshReportScenarioOptions();
   const reportActions=makeActionGroup();for(const id of ['downloadReportBtn','downloadFourPeriodBtn']){const b=$(id);if(b){b.classList.toggle('primary',id==='downloadReportBtn');b.textContent=id==='downloadReportBtn'?'Export assessment report':'Export four-period report';reportActions.appendChild(b);}}builder.appendChild(reportActions);
+  mountAssessmentPreview(reportActions,builder);
   const mirror=document.createElement('div');mirror.id='pwReportStatusMirror';mirror.className='report-status pw-status-mirror';mirror.textContent=wsStatus?.textContent||'Report export ready when required analyses are current.';builder.appendChild(mirror);
   if(wsStatus)new MutationObserver(()=>{mirror.textContent=wsStatus.textContent;}).observe(wsStatus,{childList:true,subtree:true,characterData:true});
   panel.append(builder,workspace);
