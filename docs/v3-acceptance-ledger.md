@@ -1018,6 +1018,11 @@ other state.
   Local tests covered immediate and delayed visibility, wrong and missing
   IDs, and the live read-only artifact lookup. A hosted run remains
   required to confirm the revised artifact handoff.
+- The [following browser job](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44992125915/job/137117040313)
+  passed every application browser step. The metadata wait could not
+  compare IDs because the hosted runner lacks `rg`. It now uses the
+  runner's standard exact-line match with `grep -xF`. The lookup still
+  requires the current run's exact upload ID before archive verification.
 
 ### Reviewed hydraulic calculation sheets
 

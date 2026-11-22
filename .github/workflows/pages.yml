@@ -270,7 +270,7 @@ jobs:
             fi
             if gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
                 -f name="$PREVIEW_ARTIFACT_NAME" --jq '.artifacts[] | select(.expired == false) | .id' \
-                | rg -xF "$PREVIEW_ARTIFACT_ID" >/dev/null; then
+                | grep -xF "$PREVIEW_ARTIFACT_ID" >/dev/null; then
               exit 0
             fi
           done
