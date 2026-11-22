@@ -449,18 +449,36 @@ try{
     ['C02','Node','Z','','','',50,150,3000,2000],
     ['C03','Node','00127','','','Z',40,150,3000,2000],
     ['C04','Node','00127','','','',50,150,3000,2000],
-    ['C04','Node','Z','','','',50,150,3000,2000]];
+    ['C04','Node','Z','','','',50,150,3000,2000],
+    ['C05','Multiple links','','','','',80,150,3000,2000]];
   await mapping.getByLabel('Catchment CSV',{exact:true}).setInputFiles({name:'synthetic-contributing-catchments.csv',mimeType:'text/csv',
     buffer:Buffer.from(upstream.map(row=>row.join(',')).join('\n'))});
-  await status(mapping,/5 catchment row/);
+  await status(mapping,/6 catchment row/);
   await mapping.getByLabel('Reviewed domestic allowance (L/head/day)').selectOption('7');
   await mapping.getByLabel('Reviewed infiltration (L/day)').selectOption('8');
   await mapping.getByLabel('Reviewed trade (L/day)').selectOption('9');
   await mapping.getByLabel('I checked mapped units and reviewed daily allowances').check();
   await mapping.getByRole('button',{name:'Review network contributions',exact:true}).click();
   assert.equal(await mapping.getByLabel('Assessment asset',{exact:true}).locator('option:checked').textContent(),'Node B');
+  await mapping.getByText('Review lateral link report',{exact:true}).click();
+  const lateral=()=>mapping.getByLabel('Lateral link report CSV',{exact:true}).setInputFiles({name:'synthetic-lateral-report.csv',mimeType:'text/csv',
+    buffer:Buffer.from('Share,Host,Reach,Catchment\n25,00127,1,C05\n75,B,3,C05\n')});
+  await lateral();await status(mapping,/2 reported lateral paths/);
   await mapping.getByRole('button',{name:'Trace reviewed drainage',exact:true}).click();
-  await status(mapping,/1 candidate · 1 disconnected · 1 ambiguous · 2 duplicate/);
+  await status(mapping,/Map distinct lateral columns and confirm/);
+  await mapping.getByRole('button',{name:'Remove lateral link report',exact:true}).click();
+  await status(mapping,/Lateral link report removed/);
+  await lateral();await status(mapping,/2 reported lateral paths/);
+  for(const [label,column] of [['Lateral catchment ID','3'],['Lateral receiving upstream node','1'],
+    ['Lateral receiving link suffix','2'],['Reported lateral weight','0'],['Reported weight unit','percent']])
+    await mapping.getByLabel(label,{exact:true}).selectOption(column);
+  await mapping.getByLabel('Lateral report revision and review note',{exact:true}).fill('Synthetic revision with full native grid');
+  await mapping.getByLabel('I checked the report revision and included the complete lateral grids',{exact:true}).check();
+  await mapping.getByRole('button',{name:'Trace reviewed drainage',exact:true}).click();
+  await status(mapping,/1 candidate · 1 disconnected · 2 ambiguous · 2 duplicate/);
+  await mapping.getByText('Reported lateral paths',{exact:true}).click();
+  await mapping.getByText('00127.1 · 0.25 · Candidate',{exact:false}).waitFor();
+  await mapping.getByText('B.3 · 0.75 · Disconnected',{exact:false}).waitFor();
   await mapping.getByRole('button',{name:'Apply mapped rows',exact:true}).click();
   await status(mapping,/Review the decision and evidence/);
   await mapping.getByLabel('Catchment source row 4 Decision',{exact:true}).selectOption('include');
@@ -472,19 +490,30 @@ try{
     await mapping.getByLabel('Catchment source row '+line+' Decision',{exact:true}).selectOption('exclude');
     await mapping.getByLabel('Catchment source row '+line+' Evidence',{exact:true}).fill('Excluded in the synthetic case');
   }
+  await mapping.getByLabel('Catchment source row 9 Decision',{exact:true}).selectOption('include');
+  const dividedPopulation=mapping.getByLabel('Catchment source row 9 Population share (%)',{exact:true});
+  assert.equal(await dividedPopulation.inputValue(),'');
+  await dividedPopulation.fill('25');
+  await mapping.getByLabel('Catchment source row 9 Infiltration share (%)',{exact:true}).fill('0');
+  await mapping.getByLabel('Catchment source row 9 Trade share (%)',{exact:true}).fill('10');
+  await mapping.getByLabel('Catchment source row 9 Evidence',{exact:true}).fill('Three independent allowances reviewed against the source paths');
   await mapping.getByRole('button',{name:'Apply mapped rows',exact:true}).click();
   await mapping.waitFor({state:'hidden'});
   assert.equal(await rows.nth(0).locator('[name=population]').inputValue(),'50');
   assert.equal(await rows.nth(0).locator('[name=infiltration_l_day]').inputValue(),'750');
   assert.equal(await rows.nth(0).locator('[name=trade_l_day]').inputValue(),'1600');
-  assert.equal(await rows.count(),4);
+  assert.equal(await rows.count(),5);
+  assert.equal(await rows.nth(4).locator('[name=population]').inputValue(),'20');
   await rows.nth(0).locator('[name=classification]').selectOption('combined');
+  await rows.nth(4).locator('[name=classification]').selectOption('combined');
   await submit(design);await status(design,/Retained flow calculated/);
   const allocated=await downloaded(design);
-  assert.match(allocated,/"Retained flow \(L\/day\)","81050"/);
+  assert.match(allocated,/"Retained flow \(L\/day\)","111850"/);
   assert.match(allocated,/"Assessment asset","Node B"/);
   assert.match(allocated,/"Candidate","Nominal topology reaches the selected assessment asset.*","include","50","25","80"/);
   assert.match(allocated,/"C03","Ambiguous","Review the separate groundwater destination/);
+  assert.match(allocated,/"Reviewed lateral path","C05","2","00127","1","0.25","Candidate"/);
+  assert.match(allocated,/"Reviewed lateral path","C05","3","B","3","0.75","Disconnected"/);
   await design.getByText('Sensitivity and comparisons',{exact:true}).click();
   await design.getByLabel('Sensitivity per input (%)',{exact:true}).fill('10');
   await design.getByLabel('Permit pass-forward flow (L/s)',{exact:true}).fill('0.9');
@@ -495,10 +524,13 @@ try{
   assert(await design.getByLabel('Pipe trial kinematic viscosity (m²/s)',{exact:true}).isVisible());
   await submit(design);await status(design,/Retained flow calculated/);
   const continuationReview=await downloaded(design);
-  assert.match(continuationReview,/"Population","73500","88600"/);
-  assert.match(continuationReview,/"Permit pass-forward flow","0.9","-0.038[\d]+","below screening flow"/);
+  assert.match(continuationReview,/"Population","101280","122420"/);
+  assert.match(continuationReview,/"Permit pass-forward flow","0.9","-0.394[\d]+","below screening flow"/);
   assert.match(continuationReview,/"Pipe capacity · 00127.1","288.09[\d]+","[\d.]+","at or above screening flow"/);
   assert.match(continuationReview,/"Source conduit","00127.1"/);
+  await loadNetwork(nativeNetwork.replace('00127,B,1,CIRC,100','00127,B,1,CIRC,110'));
+  assert(await design.getByRole('button',{name:'Download calculation CSV',exact:true}).isDisabled());
+  await submit(design);await status(design,/source lengths differ/);
   await loadNetwork(nativeNetwork.replace('00127,B,1,CIRC','00127,C,1,CIRC'));
   assert(await design.getByRole('button',{name:'Download calculation CSV',exact:true}).isDisabled());
   await submit(design);await status(design,/Network topology changed/);

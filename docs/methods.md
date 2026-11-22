@@ -585,6 +585,22 @@ drainage requires both its upstream node and suffix and a unique match.
 Unknown or multiple destinations need an allocation review. Separate
 groundwater destinations retain an explicit review requirement.
 
+For **Multiple links**, use the ICM Open Data Export Centre to export the
+Lateral links structure as a flat CSV. Include the parent Subcatchment ID
+among the top-level fields and the upstream node, link suffix and weight
+from this single structure. In the worksheet, use **Review lateral link
+report** and map those four columns. Use full precision and confirm the
+report revision, weight unit and complete grids. The report accepts up to
+1,000 rows and 1 MiB. Import the calculated grid values for Length weighting.
+The worksheet checks that each reviewed destination is unique and that the
+weights sum to 1 within 0.000001. It shows each nominal path and its reported
+weight as model evidence, including incomplete and disconnected paths.
+Control inlets remain subject to the documented ICM connection rules.
+Review each regulatory allowance share independently. Changing a source
+pipe length or topology withdraws the earlier allocation. [Autodesk array
+export](https://help.autodesk.com/cloudhelp/2024/ENU/ICM-Help/files/GUID-83EBB080-9955-48D1-A312-25B201E7F003.htm)
+· [Autodesk lateral link fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1F3FA957-FE1B-4BD6-A73C-3DF2F6ACD839.htm)
+
 The register distinguishes candidates, disconnected and ambiguous records,
 and duplicate identifiers. It follows the recorded direction to the
 selected asset and identifies upstream forks, loops and control structures.

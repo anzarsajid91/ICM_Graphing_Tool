@@ -227,7 +227,7 @@ function routePlanner(network,start,end){
   return {options,issue};
 }
 
-function contributingCatchments(network,target,records){
+function contributingCatchments(network,target,records,lateralRecords=[]){
   if(network.contextFormat!=='icm-csv-v1')throw new Error('Load native ICM geometry to review contributing catchments.');
   const nodes=network.nodes.filter(node=>node.sourceAttributes?.table==='hw_node');
   const links=network.edges.filter(edge=>edge.icm?.table&&edge.sourceAttributes?.table===edge.icm.table);
@@ -247,6 +247,13 @@ function contributingCatchments(network,target,records){
   const nodeMap=buckets(nodes,node=>normalize(node.id)),sourceRows=buckets(records,row=>normalize(row.id));
   const linkKey=(node,suffix)=>JSON.stringify([normalize(node),normalize(suffix)]);
   const linkMap=buckets(links,link=>linkKey(link.from,link.icm.linkSuffix));
+  if(lateralRecords.length>1000)throw new Error('Review at most 1,000 lateral source rows.');
+  for(const entry of lateralRecords){
+    if(!normalize(entry.id)||normalize(entry.id).length>128||!normalize(entry.nodeId)||normalize(entry.nodeId).length>128||
+       !normalize(entry.linkSuffix)||normalize(entry.linkSuffix).length>16)throw new Error('Every lateral row needs a catchment and a composite receiving link ID.');
+    if(!Number.isFinite(entry.weight)||entry.weight<0||entry.weight>1)throw new Error('Every lateral weight must be a reviewed fraction between 0 and 1.');
+  }
+  const lateralById=buckets(lateralRecords,row=>normalize(row.id));
   const known=links.filter(link=>link!==targetLink&&nominal(link));
   const uncertain=links.filter(link=>link!==targetLink&&!nominal(link));
   const potential=index(nodes,[...known,...uncertain,...uncertain.map(link=>({...link,from:link.to,to:link.from}))]);
@@ -286,19 +293,15 @@ function contributingCatchments(network,target,records){
         const candidates=linkMap.get(linkKey(row.nodeId,row.linkSuffix));
         return candidates?.length===1?{node:candidates[0].to,link:candidates[0]}:{problem:'Receiving link is missing or ambiguous.'};
       }
-      if(type!=='SUBCATCHMENT')return {problem:type==='MULTIPLE LINKS'?'Review lateral link destinations and weights.':'Review the receiving destination.'};
+      if(type==='MULTIPLE LINKS')return {lateral:id};
+      if(type!=='SUBCATCHMENT')return {problem:'Review the receiving destination.'};
       const transfers=sourceRows.get(normalize(row.toCatchment));
       if(transfers?.length!==1)return {problem:'Receiving catchment is missing or duplicated.'};
       row=transfers[0];
     }
   }
-  return records.map(row=>{
-    const result=(status,reason)=>({id:row.id,status,reason});
-    const sourceId=normalize(row.id);
-    if(!sourceId)return result('Ambiguous','The catchment ID is missing.');
-    if(sourceRows.get(sourceId).length>1)return result('Duplicate','Compare repeated catchment records before allocating any contribution.');
-    const {node,link,problem}=resolve(row);
-    if(problem)return result('Ambiguous',problem);
+  const result=(status,reason)=>({status,reason});
+  function classify(node,link){
     const direct=Boolean(link&&link===targetLink);
     if(direct&&!unknownTarget)return result('Candidate','The reviewed source drains directly to the assessment link.');
     const locations=link&&!nominal(link)?[node,link.from]:[node];
@@ -308,6 +311,35 @@ function contributingCatchments(network,target,records){
     if(branches.has(node))return result('Ambiguous','Review the allocation across an upstream branch or parallel link.');
     if(controlled.has(node)||(link&&link.icm.table!=='hw_conduit'))return result('Ambiguous','Review contribution through an upstream pump or flow-control structure.');
     return result('Candidate','Nominal topology reaches the selected assessment asset. Review hydraulic contribution separately.');
+  }
+  function classifyLaterals(id){
+    const rows=lateralById.get(id)||[];
+    if(!rows.length)return result('Ambiguous','Review lateral link destinations and weights.');
+    const grouped=buckets(rows,row=>linkKey(row.nodeId,row.linkSuffix));
+    const laterals=rows.map(row=>{
+      const key=linkKey(row.nodeId,row.linkSuffix),links=linkMap.get(key);
+      let basis;
+      if(grouped.get(key).length!==1)basis=result('Ambiguous','The receiving link occurs more than once in the lateral report.');
+      else if(links?.length!==1)basis=result('Ambiguous','The stated receiving link is missing or ambiguous.');
+      else if(links[0].icm.table!=='hw_conduit')basis=result('Ambiguous','Review the documented control inlet location and outfall rules.');
+      else basis=classify(links[0].to,links[0]);
+      return {...row,...basis};
+    });
+    const total=rows.reduce((sum,row)=>sum+row.weight,0);
+    const reason=Math.abs(total-1)>1e-6?'Lateral weights must sum to 1. Review the complete source grid.':
+      'Review each lateral path and the separate population, infiltration and trade allocations.';
+    return {...result('Ambiguous',reason),laterals};
+  }
+  return records.map(row=>{
+    const sourceId=normalize(row.id);
+    let basis;
+    if(!sourceId)basis=result('Ambiguous','The catchment ID is missing.');
+    else if(sourceRows.get(sourceId).length>1)basis=result('Duplicate','Compare repeated catchment records before allocating any contribution.');
+    else{
+      const {node,link,problem,lateral}=resolve(row);
+      basis=problem?result('Ambiguous',problem):lateral?classifyLaterals(lateral):classify(node,link);
+    }
+    return {id:row.id,...basis};
   });
 }
 

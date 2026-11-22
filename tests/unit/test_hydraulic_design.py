@@ -385,6 +385,20 @@ def test_modelled_continuation_distinguishes_dry_and_unsupported_assessments():
         modelled_continuation_during_spills(times, [0, 0], times, [.002, .002], start, finish, 300, 0, 0, 1, .002)
 
 
+def test_lateral_link_report_uses_flat_rows_and_preserves_composite_keys():
+    from icm_workbench.analysis.design_flows import preview_catchment_csv
+
+    header = "Share,Host,Reach,Catchment\n"
+    result = preview_catchment_csv(header + '25,00127,01,"Site, north"\n', table="lateral-link-report")
+    assert result["rows"] == [{"line": 2, "cells": ["25", "00127", "01", "Site, north"]}]
+    with pytest.raises(ValueError, match="flat lateral link report"):
+        preview_catchment_csv("**** hw_subcatchment\n" + header + "25,00127,01,A\n", table="lateral-link-report")
+    with pytest.raises(ValueError, match="1,000|1000"):
+        preview_catchment_csv(header + "25,00127,01,A\n" * 1001, table="lateral-link-report")
+    with pytest.raises(ValueError, match="Malformed"):
+        preview_catchment_csv(header + "25,00127,01\n", table="lateral-link-report")
+
+
 def test_icm_land_use_defaults_preserve_zero_and_identify_the_native_source():
     from icm_workbench.analysis.design_flows import preview_catchment_csv, resolve_icm_catchment_defaults
 

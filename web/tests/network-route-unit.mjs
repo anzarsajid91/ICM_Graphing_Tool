@@ -55,6 +55,20 @@ assert.match(R.contributingCatchments(cyclicContext,{kind:'node',id:'B'},catchme
 const receivingPump=R.contributingCatchments(nativeContext,{kind:'node',id:'C'},[{id:'P',drainsTo:'Link',nodeId:'D',linkSuffix:'P'}]);
 assert.match(receivingPump[0].reason,/pump or flow-control/);
 assert.throws(()=>R.contributingCatchments(nativeContext,{kind:'node',id:'unknown'},catchments),/native assessment asset/);
+const splitRun=[{id:'006',drainsTo:'Multiple links'},{id:'011',drainsTo:'Subcatchment',toCatchment:'006'}];
+const lateralRows=[{id:'006',nodeId:'00127',linkSuffix:'1',weight:.25,line:2},
+  {id:'006',nodeId:'B',linkSuffix:'3',weight:.75,line:3}];
+const tracedSplit=R.contributingCatchments(nativeContext,{kind:'node',id:'B'},splitRun,lateralRows);
+assert.deepEqual(tracedSplit.map(row=>row.status),['Ambiguous','Ambiguous']);
+assert.deepEqual(tracedSplit[0].laterals.map(row=>[row.line,row.status,row.weight]),[[2,'Candidate',.25],[3,'Disconnected',.75]]);
+assert.deepEqual(tracedSplit[1].laterals,tracedSplit[0].laterals,'Catchment transfers follow the terminal lateral destinations');
+const incompleteSplit=R.contributingCatchments(nativeContext,{kind:'node',id:'B'},splitRun,[lateralRows[0]]);
+assert.match(incompleteSplit[0].reason,/weights.*sum to 1/);
+const repeatedSplit=R.contributingCatchments(nativeContext,{kind:'node',id:'B'},splitRun,[{...lateralRows[0],weight:.5},{...lateralRows[0],weight:.5,line:5}]);
+assert.deepEqual(repeatedSplit[0].laterals.map(row=>row.status),['Ambiguous','Ambiguous']);
+const controlledSplit=R.contributingCatchments(nativeContext,{kind:'node',id:'C'},splitRun,[{id:'006',nodeId:'D',linkSuffix:'P',weight:1,line:4}]);
+assert.match(controlledSplit[0].laterals[0].reason,/control inlet/);
+assert.throws(()=>R.contributingCatchments(nativeContext,{kind:'node',id:'B'},splitRun,[{...lateralRows[0],weight:1.1}]),/fraction between 0 and 1/);
 const steps=R.longSection(network,[e1,e2,e3]);
 assert.deepEqual(steps.map(({chainageStart,chainageEnd,us,ds,height})=>[chainageStart,chainageEnd,us,ds,height]),[
   [0,100,10,9.8,.6],[100,220,9.75,9.35,.6],[220,null,9.3,null,.6]]);

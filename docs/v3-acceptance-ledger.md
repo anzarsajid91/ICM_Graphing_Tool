@@ -44,7 +44,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.3 | Candidate system-curve model | Manual and mapped CSV pump curves, exact specified-factor intersections including multiple and absent duties, identical arrangements, power and operating limits | Verified locally for the specified-factor system model |
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
 | 9.5 England and framework research | Official permitting guidance | Versioned methods for England, Scotland, Wales and the reviewed Irish combined setting, with a documented project method | Verified locally within the cited applicability. Northern Ireland continuation uses the reviewed project consent basis |
-| 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial. Native land-use population, connectivity and profile defaults, nominal drainage and assigned shares verified locally. Structured lateral and event-profile inputs remain open |
+| 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial. Native land-use defaults, nominal drainage, flat ICM lateral grid evidence and confirmed shares verified locally. Native wastewater event-profile review remains open |
 | 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Verified locally for the supported frameworks, circular sections and same-run typed link results. Inheritance remains a separate input criterion |
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
@@ -1411,3 +1411,21 @@ other state.
   a changed route clears the geometry review. The request observer counted
   32 requests with no violations in each browser. Simulation result and
   route unit suites and the 153-resource artifact integrity check passed.
+
+### Distributed drainage evidence for Formula A
+
+- A documented ICM Open Data Export Centre flat report preserves each parent
+  catchment and composite receiving link identity, displayed fraction or
+  percentage, source row, review note and file fingerprint. The worksheet
+  checks distinct columns, complete fractions, unique destinations and
+  typed nominal connectivity. It flags routes through control inlets for
+  review and follows transferred catchments to the terminal lateral grid.
+  An updated source length or endpoint withdraws the previous result.
+- The synthetic grid connects 25% to a candidate path and 75% to a
+  disconnected path. Both desktop browser suites mapped the generic headers,
+  removed and reattached the input, reviewed each path and confirmed separate
+  25% population, 0% infiltration and 10% trade shares. Their audited Formula A
+  calculation matched 111,850 L/day, with a population sensitivity of
+  101,280 to 122,420 L/day. The two observers saw 109 and 106
+  requests with no violations. The 153-resource artifact, route unit checks
+  and 464 Python tests plus 111 subtests passed.

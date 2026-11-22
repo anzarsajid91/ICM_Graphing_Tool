@@ -411,9 +411,13 @@ def preview_catchment_csv(text, table="hw_subcatchment"):
     import csv
     from io import StringIO
 
-    if table not in ("hw_subcatchment", "hw_land_use"):
+    if table not in ("hw_subcatchment", "hw_land_use", "lateral-link-report"):
         raise ValueError("Select a supported ICM catchment source table.")
-    label, maximum = ("catchment", 100) if table == "hw_subcatchment" else ("land-use", 1000)
+    label, maximum = {
+        "hw_subcatchment": ("catchment", 100),
+        "hw_land_use": ("land-use", 1000),
+        "lateral-link-report": ("lateral link", 1000),
+    }[table]
     if not isinstance(text, str) or not 1 <= len(text) <= 1_048_576 or "\x00" in text:
         raise ValueError(f"Choose a {label} CSV up to 1 MiB of decoded text without NUL bytes.")
     rows, header, units, descriptions = [], None, None, None
@@ -428,6 +432,8 @@ def preview_catchment_csv(text, table="hw_subcatchment"):
             # requested table from a native multi-table export.
             marker = values[0].strip().casefold()
             if marker.startswith("****") and not any(value.strip() for value in values[1:]):
+                if table == "lateral-link-report":
+                    raise ValueError("Use a flat lateral link report from the ICM Open Data Export Centre.")
                 if header is not None:
                     if native:
                         break

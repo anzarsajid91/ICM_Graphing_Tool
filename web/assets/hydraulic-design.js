@@ -511,12 +511,65 @@ function readNetworkBasis(){
   const links=network.edges.filter(edge=>edge.icm?.table&&edge.sourceAttributes?.table===edge.icm.table);
   const byId=(left,right)=>left[0].localeCompare(right[0]);
   const stamp=JSON.stringify([nodes.map(node=>[node.id,node.type]).sort(byId),
-    links.map(link=>[link.id,link.from,link.to,link.direction,link.icm.table,link.icm.linkSuffix]).sort(byId)]);
+    links.map(link=>[link.id,link.from,link.to,link.direction,link.icm.table,link.icm.linkSuffix,link.icm.conduit_length]).sort(byId)]);
   return {network,stamp,assets:[
     ...nodes.map(node=>["node",node.id,node.name||node.id]),...links.map(link=>["edge",link.id,link.name||link.id])]};
 }
 
-function stageContributionReview(packet,idInput,output){
+function mountLateralReview(worker,changed){
+  const section=element("details"),upload=element("input"),label=element("label","Lateral link report CSV");
+  upload.type="file";upload.accept=".csv,text/csv";label.append(upload);
+  const message=element("p"),settings=element("div");message.setAttribute("role","status");
+  let packet=null,mappings=null,generation=0;
+  const clear=action("Remove lateral link report",()=>{upload.value="";reset();message.textContent="Lateral link report removed.";});
+  clear.disabled=true;
+  function reset(){
+    generation++;packet=null;mappings=null;settings.replaceChildren();clear.disabled=true;changed();
+  }
+  upload.addEventListener("change",async()=>{
+    reset();const id=generation,file=upload.files[0];if(!file)return;
+    message.textContent="Validating the local report…";
+    try{
+      const next=await readLocalCSV(file,"lateral link report",text=>worker("preview_design_catchments",{text,table:"lateral-link-report"}));
+      if(id!==generation||!section.isConnected)return;
+      packet=next;
+      const columns=[["","Choose a source column"],...packet.data.header.map((name,index)=>[String(index),name||"Column "+(index+1)])];
+      const roles=[["id","Lateral catchment ID","subcatchment_id"],["nodeId","Lateral receiving upstream node","node_id"],
+        ["linkSuffix","Lateral receiving link suffix","link_suffix"],["weight","Reported lateral weight","weight"]];
+      const suggested=Object.fromEntries(roles.map(([key,,name])=>{
+        const found=packet.data.header.findIndex(column=>column.toLowerCase()===name);return [key,found<0?"":String(found)];
+      }));
+      mappings=fields([...roles.map(([key,caption])=>({key,label:caption,options:columns})),
+        {key:"unit",label:"Reported weight unit",options:[["","Choose the weight unit"],["fraction","Fraction from 0 to 1"],["percent","Percent from 0 to 100"]]},
+        {key:"note",label:"Lateral report revision and review note",type:"text",maxLength:2000},
+        {key:"confirm",label:"I checked the report revision and included the complete lateral grids",type:"checkbox"}],suggested);
+      settings.append(mappings.group);clear.disabled=false;
+      message.textContent=packet.data.rows.length+" reported lateral paths. Confirm the mappings, unit and review basis.";
+    }catch(error){if(id===generation&&section.isConnected)message.textContent=error.message;}
+  });
+  settings.addEventListener("input",changed);
+  section.append(element("summary","Review lateral link report"),element("p",
+    "Use one row per destination from the ICM Open Data Export Centre. Include the parent catchment ID, upstream node, link suffix and full-precision weight. For Length weighting, export the calculated grid values."),
+  label,clear,message,settings);
+  return {section,read(){
+    if(!packet)return null;
+    const {id,nodeId,linkSuffix,weight,unit,note,confirm}=mappings.values(),columns=[id,nodeId,linkSuffix,weight];
+    if(columns.includes("")||new Set(columns).size!==columns.length||!unit||!note.trim()||!confirm)
+      throw new Error("Map distinct lateral columns and confirm the report units and revision.");
+    const rows=packet.data.rows.map(({line,cells})=>{
+      const original=cells[Number(weight)].trim();
+      if(!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(original))throw new Error("Review the weight at lateral report row "+line+".");
+      return {id:cells[Number(id)].trim(),nodeId:cells[Number(nodeId)].trim(),linkSuffix:cells[Number(linkSuffix)].trim(),
+        weight:Number(original)/(unit==="percent"?100:1),line,original};
+    });
+    const audit=[["Lateral source report",packet.filename,packet.fingerprint],["Lateral report basis",note.trim(),unit],
+      ["Lateral source columns",...columns.map(index=>packet.data.header[Number(index)])],
+      ...rows.map(row=>["Original lateral row",row.line,row.id,row.nodeId,row.linkSuffix,row.original,row.weight])];
+    return {rows,audit};
+  }};
+}
+
+function stageContributionReview(packet,idInput,output,worker){
   const basis=readNetworkBasis(),{data}=packet;
   const asset=state.formulaAssessmentAsset;
   const preferred=asset&&basis.assets.some(([kind,id])=>kind===asset.kind&&id===asset.id)?
@@ -532,6 +585,7 @@ function stageContributionReview(packet,idInput,output){
   const findings=element("div"),message=element("p");
   message.setAttribute("role","status");
   let active=null;
+  const lateral=mountLateralReview(worker,reset);
   const review=action("Trace reviewed drainage",()=>{
     active=null;findings.replaceChildren();
     if(idInput.value===""){message.textContent="Map the catchment ID column before tracing.";return;}
@@ -543,7 +597,11 @@ function stageContributionReview(packet,idInput,output){
     const target=JSON.parse(inputs.controls.target.value);
     const records=data.rows.map(row=>({id:String(row.cells[Number(idInput.value)]||"").trim(),
       ...Object.fromEntries(Object.entries(mapped).map(([key,choice])=>[key,choice===""?"":row.cells[Number(choice)]]))}));
-    const classifications=ICMNetworkReviewCore.contributingCatchments(basis.network,target,records);
+    let classifications,report;
+    try{
+      report=lateral.read();
+      classifications=ICMNetworkReviewCore.contributingCatchments(basis.network,target,records,report?.rows);
+    }catch(error){message.textContent=error.message;return;}
     const wrap=element("div");wrap.className="table-wrap";
     const grid=element("table"),heading=grid.createTHead().insertRow();
     grid.createCaption().textContent="Contributing catchment review";
@@ -551,9 +609,15 @@ function stageContributionReview(packet,idInput,output){
       const cell=element("th",label);cell.scope="col";heading.append(cell);
     }
     const body=grid.createTBody();
-    const rows=classifications.map(({id,status,reason},i)=>{
+    const rows=classifications.map(({id,status,reason,laterals},i)=>{
       const row=body.insertRow(),label="Catchment source row "+data.rows[i].line;
-      row.insertCell().textContent=id||"Missing ID";row.insertCell().textContent=status+" · "+reason;
+      row.insertCell().textContent=id||"Missing ID";
+      const topology=row.insertCell();topology.textContent=status+" · "+reason;
+      if(laterals?.length){
+        const paths=element("details"),list=element("ul");
+        for(const path of laterals)list.append(element("li",path.nodeId+"."+path.linkSuffix+" · "+path.weight+" · "+path.status+" · "+path.reason));
+        paths.append(element("summary","Reported lateral paths"),list);topology.append(paths);
+      }
       const {control:decision}=labelledControl({key:"decision",label:"Decision",options:[["","Review"],
         ["include","Include reviewed share"],["exclude","Exclude"]]},undefined,label);
       row.insertCell().append(decision);
@@ -565,13 +629,13 @@ function stageContributionReview(packet,idInput,output){
       row.insertCell().append(evidence);
       const update=()=>{for(const control of Object.values(shares))control.disabled=decision.value!=="include";};
       decision.addEventListener("change",update);update();
-      return {id,status,reason,decision,shares,evidence};
+      return {id,status,reason,laterals,decision,shares,evidence};
     });
     const summary=[...new Set(classifications.map(row=>row.status))].map(status=>
       classifications.filter(row=>row.status===status).length+" "+status.toLowerCase()).join(" · ");
     message.textContent=summary+". Confirm or exclude each row before applying.";
     wrap.append(grid);findings.append(wrap);
-    active={idColumn:idInput.value,asset:inputs.controls.target.selectedOptions[0].textContent,target,mapped,rows};
+    active={idColumn:idInput.value,asset:inputs.controls.target.selectedOptions[0].textContent,target,mapped,rows,report};
   });
   function reset(){
     active=null;findings.replaceChildren();message.textContent="Trace the updated source mappings before applying.";
@@ -580,10 +644,10 @@ function stageContributionReview(packet,idInput,output){
   inputs.group.addEventListener("change",reset);drainage.group.addEventListener("change",reset);
   output.replaceChildren(inputs.group,drainage.group,
     element("p","A route identifies possible connections. Review population, infiltration and trade shares independently. Use documented source allocations or exclude unresolved contributions."),
-    review,message,findings);
+    lateral.section,review,message,findings);
   return mappedRows=>{
     if(!active||active.idColumn!==idInput.value)throw new Error("Trace the mapped catchments before applying.");
-    if(readNetworkBasis().stamp!==basis.stamp)throw new Error("Network topology changed. Reopen the import and review the updated network.");
+    if(readNetworkBasis().stamp!==basis.stamp)throw new Error("Network topology changed or source lengths differ. Reopen the import and review the updated network.");
     const included=new Map(),excluded=new Map(),audit=[];
     for(const [index,row] of active.rows.entries()){
       const {id,status,reason,decision,evidence,shares}=row;
@@ -608,7 +672,9 @@ function stageContributionReview(packet,idInput,output){
     const rows=[...new Set(mappedRows.map(row=>row.id.toUpperCase()))].map(key=>included.get(key)||excluded.get(key));
     return {rows,stamp:basis.stamp,audit:[["Assessment asset",active.asset],["Typed assessment identity",JSON.stringify(active.target)],
       ...drainageFields.filter(([key])=>active.mapped[key]!=="").map(([key,label])=>[label,data.header[Number(active.mapped[key])]]),
-      ["Source line","Catchment","Topology","Topology basis","Decision",...allocationFields.map(([,label])=>label),"Allocation evidence"],...audit]};
+      ["Source line","Catchment","Topology","Topology basis","Decision",...allocationFields.map(([,label])=>label),"Allocation evidence"],...audit,
+      ...(active.report?.audit||[]),...active.rows.flatMap(row=>(row.laterals||[]).map(path=>[
+        "Reviewed lateral path",row.id,path.line,path.nodeId,path.linkSuffix,path.weight,path.status,path.reason]))]};
   };
 }
 
@@ -718,7 +784,7 @@ function mountCatchmentImport(article,form,catchments,worker) {
         try{
           await window.ICMNetworkSchematic?.open();
           if(generation!==revision||!dialog.open)return;
-          contribution=stageContributionReview(staged,mappings.id,topology);
+          contribution=stageContributionReview(staged,mappings.id,topology,worker);
         }catch(error){if(generation===revision)message.textContent=error.message;}
         finally{if(!contribution)trace.disabled=false;}
       });
@@ -806,7 +872,7 @@ function mountCatchmentImport(article,form,catchments,worker) {
       ...data.rows.map(row=>[row.line,...mapped.map(([key])=>row.cells[choices[key]])]),...native,...(reviewed?.audit||[])];
   }
   return {audit,assertCurrent(){
-    if(source?.reviewed&&readNetworkBasis().stamp!==source.reviewed.stamp)throw new Error("Network topology changed. Review catchment allocations again.");
+    if(source?.reviewed&&readNetworkBasis().stamp!==source.reviewed.stamp)throw new Error("Network topology changed or source lengths differ. Review catchment allocations again.");
   }};
 }
 
