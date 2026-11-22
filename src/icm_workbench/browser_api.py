@@ -1307,6 +1307,14 @@ def circular_darcy_sizing(mode, roughness_m, viscosity_m2_s, discharge_m3_s, dia
     return json.dumps(result, allow_nan=False)
 
 
+def prismatic_manning_capacity(mode, shape, width_m, max_depth_m, n, gradient, viscosity_m2_s,
+                               depth_fraction=None, discharge_m3_s=None, side_slope=None):
+    from icm_workbench.analysis.manning_pipe import prismatic_manning_screen
+
+    return json.dumps(prismatic_manning_screen(mode, shape, width_m, max_depth_m, n, gradient,
+                                              viscosity_m2_s, depth_fraction, discharge_m3_s, side_slope), allow_nan=False)
+
+
 def verification_event_comparison(obs_path, obs_col, model_path, model_col, start, end,
                                   max_gap_seconds=900.0, offset_minutes=0, exclusions_json="[]", *, window_only=False):
     """Compare one selected wet-weather event using supported hydraulic channels."""

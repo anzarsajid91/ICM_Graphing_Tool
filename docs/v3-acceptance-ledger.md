@@ -39,7 +39,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 8.1 | DWF, comparison and event diagnostics | Explain preceding-flow, storm, peak, timing, recovery and paired-depth differences with exact support and investigation prompts | Verified locally for the phase investigation |
 | 8.2 | Existing event comparison and alignment | Qualifying event sets with multiple monitor–scenario pairings, independent criteria, true common time support, comments, plots and audit | Verified locally for the matrix |
 | 8.3 | Existing comparison evidence stamps and review history | Review current matrix against named baseline snapshots with the same recorded observations, criteria, support and qualification | Verified locally for portable snapshots |
-| 9.1 | Circular full/part-full Colebrook–White and comparisons | Shared circular solver, Manning capacity and depth, full-bore Manning and Darcy diameter/gradient, section and depth chart, pipe trials | Partial. Additional geometry criteria remain open |
+| 9.1 | Circular full/part-full Colebrook–White and comparisons | Shared circular solver, Manning capacity and depth, full-bore Manning and Darcy diameter/gradient, section and depth chart, pipe trials | Verified locally for circular hydraulics and documented rectangular/trapezoidal uniform-flow sections |
 | 9.2 | SI circular pipe engine | Head-loss components, signed static/dynamic head, series/parallel, fixed and calculated Darcy factors, supported curve intervals and calculation sheets | Verified locally for steady forward full-pipe screening |
 | 9.3 | Candidate system-curve model | Manual and mapped CSV pump curves, exact specified-factor intersections including multiple and absent duties, identical arrangements, power and operating limits | Verified locally for the specified-factor system model |
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
@@ -1449,3 +1449,21 @@ other state.
   audit, with 109 and 106 guarded requests and no violations. Python covers
   duplicate or invalid profile IDs, invalid numeric tokens, missing values,
   explicit disabled profiles and source unit conflicts.
+
+### Rectangular and trapezoidal gravity sizing
+
+- The current Gravity sizing worksheet also supports rectangular open
+  channels, closed rectangular conduits and symmetric trapezoidal channels.
+  Both shapes use the existing Manning resistance and Reynolds screen.
+  The closed rectangular case distinguishes its wetted-crown full-bore
+  capacity from its limiting free-surface conveyance. The open cases
+  report Froude number, specific energy and critical depth where supported.
+- Independent checks used FHWA HDS-4 example 4.1 (2.056083666 m³/s without
+  intermediate rounding), a 0.500 m critical depth, and a closed box at
+  3.064784761 m³/s free-surface limit and 2.338868511 m³/s full-bore flow.
+  Both Chromium and Firefox verified shape selection, bounds, normal-depth
+  inversion, separate plot references, retained trials and CSV exports.
+  Both preserved the existing circular Manning and Darcy reference results.
+  The two browsers saw 102 and 101 requests with no violations. The Python
+  suite passed 474 tests and 111 subtests. The 153-resource artifact passed
+  its integrity check, and synthetic screenshots are retained locally.

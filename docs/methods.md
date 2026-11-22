@@ -408,7 +408,7 @@ of rainfall input, loading, infiltration, storage response, downstream
 levels or hydraulic restrictions. The local audit retains the selected
 periods, fingerprints, criteria, support and investigation prompts.
 
-## Manning circular gravity sizing
+## Manning gravity sizing
 
 For steady, uniform flow in one clean circular barrel, Manning uses
 `Q = A × R^(2/3) × sqrt(S) / n` in SI units. Use a reviewed Manning `n` in
@@ -442,6 +442,35 @@ the continuous requirements at `n = 0.013` and `0.017` are 514.851153
 and 569.339451 mm. Those values use the exact circular equation before
 selecting a stock pipe. Keep local trials to compare assumptions and save
 the calculations with their source method and build.
+
+### Rectangular and trapezoidal sections
+
+The same SI Manning resistance screen supports one rectangular open channel,
+symmetric trapezoidal open channel or closed rectangular conduit. For bottom
+width `B`, depth `y` and side slope `z` horizontal to 1 vertical, use
+`A = y(B + zy)`, wetted perimeter `P = B + 2y√(1 + z²)` and water-surface
+width `T = B + 2zy`. A rectangular section has `z = 0`. At full bore a closed
+rectangular section adds its wetted crown to `P`, so its full-bore reference
+is separate from the limiting free-surface flow just below the crown. The
+normal-depth search is bounded by the reviewed maximum depth and uses the
+monotonic free-surface curve. The chart shows the full-bore point separately.
+
+With a free surface, use `Fr = V/√(gA/T)` and specific energy
+`E = y + V²/(2g)` with the velocity-head coefficient set to 1. Critical
+depth satisfies `Q²T/(gA³) = 1` within the reviewed section. These calculations
+assume a uniform prismatic reach and a supported turbulent regime. Review
+backwater, flow controls, pressure transitions and overtopping separately.
+The rectangular sections use one uniform roughness and cover 1–100,000 mm
+width and depth. Symmetric trapezoids support side slopes from 0 to 20H:1V.
+
+FHWA HDS-4 example 4.1 gives a rounded discharge of 2.0 m³/s from the
+2 m bottom width, 2H:1V sides, 0.5 m depth, `n = 0.02` and `S = 0.003`.
+The same inputs without intermediate rounding give 2.056083666 m³/s at
+1.370722444 m/s. For a 2 × 1 m rectangular conduit at `n = 0.013` and
+`S = 0.001`, the free-surface limit is 3.064784761 m³/s and the full-bore
+reference is 2.338868511 m³/s. [FHWA HDS-4, section 4.3.2](https://www.fhwa.dot.gov/engineering/hydraulics/pubs/08090/HDS4_608.pdf)
+· [USACE uniform flow](https://www.hec.usace.army.mil/confluence/rasdocs/ras1dtechref/6.5/stable-channel-design-functions/uniform-flow-computations)
+· [USACE critical depth](https://www.hec.usace.army.mil/confluence/rasdocs/ras1dtechref/6.5/theoretical-basis-for-one-dimensional-and-two-dimensional-hydrodynamic-calculations/1d-steady-flow-water-surface-profiles/critical-depth-determination)
 
 ## Darcy full-bore gravity sizing
 
