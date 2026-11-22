@@ -722,7 +722,7 @@ with reviewed viscosity and imported geometry and roughness. The resulting
 margin is a hydraulic screening value. Spilling behaviour, surcharge and
 backwater depend on hydraulic conditions in the relevant modelled events.
 
-### Modelled continuation during physical spills
+## Modelled continuation during physical spills
 
 Choose two distinct typed link-end flow channels from the same reviewed
 simulation, model revision, scenario, event and project clock. Identify the
@@ -749,6 +749,32 @@ reached. The worksheet retains the typed locations, simulation identity,
 reported units, flow directions, file fingerprints and explicit limitations.
 See [England's source guidance on continuation during spills](https://www.gov.uk/government/publications/water-companies-environmental-permits-for-storm-overflows-and-emergency-overflows/water-companies-environmental-permits-for-storm-overflows-and-emergency-overflows#formula-a)
 and [Autodesk's link results fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm).
+
+## ICM land-use defaults for catchment review
+
+Use `hw_subcatchment` and `hw_land_use` from the same reviewed model
+revision. Where a supplied `population` cell is blank, ICM documents the
+default as `contributing_area × population_density` after conversion to
+hectares and people per hectare. A blank `connectivity` or `wastewater_profile`
+cell inherits the corresponding land-use value. An explicit zero is retained
+and a zero wastewater profile denotes absence of applied foul flow. An
+unmatched land use, absent source field, invalid value or unresolved source
+token remains unavailable. The review checks the declared units and rejects
+duplicate land-use identities. It records both files, matching rows, original
+values and selected units. The engineer can adopt supported inherited
+population proposals and review or edit the resulting design population.
+
+The nominal population multiplied by connectivity describes model inputs.
+Formula A population and separate-system eligibility require the independent
+framework review. Groundwater identifiers, trade and wastewater profiles,
+base flow and additional foul flow remain as original evidence. The review
+does not automatically turn them into daily permit allowances. Check the
+wastewater event paired with the intended simulation and its per-capita and
+time-varying settings for any distinct modelling review.
+
+See Autodesk InfoWorks ICM 2026 [Subcatchment Data Fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1F3FA957-FE1B-4BD6-A73C-3DF2F6ACD839.htm),
+[Land Use Data Fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-16A33809-93A2-4A23-B0AA-B41B0C1A2D12.htm)
+and [Editing Trade and Waste Water Events](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-339EAF66-BC6B-4247-8954-371C89E52401.htm).
 
 ## Wales GN066 continuation-flow screening
 

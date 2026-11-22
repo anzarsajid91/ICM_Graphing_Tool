@@ -383,3 +383,35 @@ def test_modelled_continuation_distinguishes_dry_and_unsupported_assessments():
         modelled_continuation_during_spills(times, [0, 0], [start, start], [.002, .002], *basis)
     with pytest.raises(ValueError, match="direction"):
         modelled_continuation_during_spills(times, [0, 0], times, [.002, .002], start, finish, 300, 0, 0, 1, .002)
+
+
+def test_icm_land_use_defaults_preserve_zero_and_identify_the_native_source():
+    from icm_workbench.analysis.design_flows import preview_catchment_csv, resolve_icm_catchment_defaults
+
+    source = preview_catchment_csv(
+        "**** hw_subcatchment\nsubcatchment_id,land_use_id,contributing_area,population,connectivity,wastewater_profile,base_flow\n"
+        "UserUnits,,m²,,%,,m³/s\nA,LU-01,25000,,,,0.012\nB,LU-01,40000,0,0,0,0.005\n"
+        "C,LU-02,1000,,,,0.013\nD,LU-01,99999,#D,75,3,0.014\n"
+    )
+    # The native document defines density as people per hectare and the
+    # engineer confirms that this export uses those units.
+    land_use = preview_catchment_csv(
+        "**** hw_land_use\nland_use_id,population_density,connectivity,wastewater_profile\n"
+        "UserUnits,people/ha,%,\nLU-01,80,90,2\n", table="hw_land_use"
+    )
+    rows = resolve_icm_catchment_defaults(source, land_use, "m²", "people/ha")["rows"]
+    assert rows[0]["population"] == {"value": 200, "basis": "land use", "source_line": 4}
+    assert rows[0]["connectivity"]["value"] == 90
+    assert rows[0]["wastewater_profile"]["value"] == 2
+    assert rows[0]["population_times_connectivity"] == 180
+    assert rows[0]["source_attributes"]["base_flow"] == "0.012"
+    for name in ("population", "connectivity", "wastewater_profile"):
+        assert rows[1][name]["value"] == 0 and rows[1][name]["basis"] == "subcatchment"
+    assert rows[2]["population"]["basis"] == "unresolved land use"
+    assert rows[3]["population"]["basis"] == "unresolved source token"
+    assert rows[3]["connectivity"]["value"] == 75
+    with pytest.raises(ValueError, match="area unit"):
+        resolve_icm_catchment_defaults(source, land_use, "ha", "people/ha")
+    with pytest.raises(ValueError, match="duplicate land-use"):
+        duplicated = preview_catchment_csv("land_use_id,population_density\nLU-01,80\nlu-01,90", table="hw_land_use")
+        resolve_icm_catchment_defaults(source, duplicated, "m²", "people/ha")

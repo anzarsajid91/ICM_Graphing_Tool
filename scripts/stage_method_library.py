@@ -22,6 +22,8 @@ METHODS = {
     "Darcy full-bore gravity sizing": ("Hydraulics", "General", "hydraulics", "gravity"),
     "Fixed-factor pipe system screening and pump duty": ("Hydraulics", "General", "hydraulics", "system-curve"),
     "England continuation-flow screening": ("Design flows", "England", "hydraulics", "formula-a"),
+    "Modelled continuation during physical spills": ("Design flows", "General", "hydraulics", "formula-a"),
+    "ICM land-use defaults for catchment review": ("Design flows", "General", "hydraulics", "formula-a"),
     "Scotland continuation-flow screening": ("Design flows", "Scotland", "hydraulics", "formula-a"),
     "Scotland municipal treatment design flows": ("Design flows", "Scotland", "hydraulics", "treatment-flow"),
     "England municipal treatment design flows": ("Design flows", "England", "hydraulics", "treatment-flow"),

@@ -406,13 +406,16 @@ def uisce_peak_foul_flow(population, domestic_l_head_day, commercial_l_day, infi
                 peak_trade_l_day=peak_trade, peak_l_day=total, peak_l_s=total / 86400, peak_m3_s=total / 86400000)
 
 
-def preview_catchment_csv(text):
-    """Read one local catchment table and retain blank cells and original units."""
+def preview_catchment_csv(text, table="hw_subcatchment"):
+    """Read a local catchment or land-use table with original units and blanks."""
     import csv
     from io import StringIO
 
+    if table not in ("hw_subcatchment", "hw_land_use"):
+        raise ValueError("Select a supported ICM catchment source table.")
+    label, maximum = ("catchment", 100) if table == "hw_subcatchment" else ("land-use", 1000)
     if not isinstance(text, str) or not 1 <= len(text) <= 1_048_576 or "\x00" in text:
-        raise ValueError("Choose a catchment CSV up to 1 MiB of decoded text without NUL bytes.")
+        raise ValueError(f"Choose a {label} CSV up to 1 MiB of decoded text without NUL bytes.")
     rows, header, units, descriptions = [], None, None, None
     native, in_table = False, True
     reader = csv.reader(StringIO(text.removeprefix("\ufeff"), newline=""), strict=True)
@@ -421,8 +424,8 @@ def preview_catchment_csv(text):
             line = reader.line_num
             if not values or all(not value.strip() for value in values):
                 continue
-            # Native table markers occupy the first column. Read one
-            # hw_subcatchment table out of a native multi-table export.
+            # Native table markers occupy the first column. Read just the
+            # requested table from a native multi-table export.
             marker = values[0].strip().casefold()
             if marker.startswith("****") and not any(value.strip() for value in values[1:]):
                 if header is not None:
@@ -430,7 +433,7 @@ def preview_catchment_csv(text):
                         break
                     raise ValueError("Unexpected native table marker inside a plain catchment CSV.")
                 native = True
-                in_table = marker.removeprefix("****").strip() == "hw_subcatchment"
+                in_table = marker.removeprefix("****").strip() == table
                 continue
             if not in_table:
                 continue
@@ -450,11 +453,104 @@ def preview_catchment_csv(text):
                 else:
                     units = field
                 continue
-            if len(rows) >= 100:
-                raise ValueError("The reviewed catchment table supports up to 100 rows per calculation. Select the contributing catchments before export.")
+            if len(rows) >= maximum:
+                raise ValueError(f"The reviewed {label} table supports up to {maximum} rows per calculation. Select the applicable records before export.")
             rows.append({"line":line,"cells":values})
     except csv.Error as error:
         raise ValueError(f"Malformed catchment CSV near line {reader.line_num}. Check quoting and delimiters.") from error
     if not header or not rows:
-        raise ValueError("The CSV contains no catchment data rows.")
-    return dict(schema="hydra-catchment-mapping-v1",native=native,header=header,units=units,descriptions=descriptions,rows=rows)
+        raise ValueError(f"The CSV contains no {label} data rows.")
+    return dict(schema="hydra-catchment-mapping-v1", table=table, native=native, header=header,
+                units=units, descriptions=descriptions, rows=rows)
+
+
+def resolve_icm_catchment_defaults(catchments, land_use, area_unit, density_unit):
+    """Resolve documented ICM modelling defaults for explicit engineer review."""
+    import re
+
+    def records(source, table, required):
+        if (not isinstance(source, dict) or source.get("table") != table
+                or source.get("schema") != "hydra-catchment-mapping-v1"):
+            raise ValueError("Provide reviewed ICM catchment and land-use tables.")
+        headings = [key.casefold() for key in source["header"]]
+        if not set(required).issubset(headings):
+            raise ValueError(f"Include the native {table} fields {', '.join(required)}.")
+        units = dict(zip(headings, source["units"] or []))
+        return units, [(item["line"], dict(zip(headings, item["cells"]))) for item in source["rows"]]
+
+    units, sub_rows = records(catchments, "hw_subcatchment", ("subcatchment_id", "land_use_id"))
+    land_units, land_rows = records(land_use, "hw_land_use", ("land_use_id", "population_density"))
+
+    def token(unit):
+        return unit.strip().lower().replace(" ", "").replace("²", "2").replace("^", "").replace("hectares", "ha")
+
+    area_scales = {"ha": 1.0, "m2": .0001, "km2": 100.0, "acre": .40468564224}
+    density_scales = {"people/ha": 1.0, "people/m2": 10000.0, "people/km2": .01, "people/acre": 1 / .40468564224}
+
+    def scale(value, declared, choices, name):
+        key, claim = token(value), token(declared)
+        if key not in choices or claim and claim != key:
+            raise ValueError(f"Confirm the supported {name} unit and resolve any conflict with the export.")
+        return choices[key]
+
+    area_factor = scale(area_unit, units.get("contributing_area", ""), area_scales, "area")
+    density_factor = scale(density_unit, land_units.get("population_density", ""), density_scales, "population density")
+    for declared in (units.get("connectivity", ""), land_units.get("connectivity", "")):
+        if token(declared) not in ("", "%", "percent"):
+            raise ValueError("Review the native connectivity unit as a percentage.")
+
+    lookup = {}
+    for line, fields in land_rows:
+        identifier = fields["land_use_id"].strip().casefold()
+        if not identifier or len(identifier) > 64:
+            raise ValueError("Provide a land-use ID within 64 characters on each source row.")
+        if identifier in lookup:
+            raise ValueError("Resolve duplicate land-use IDs before applying inherited values.")
+        lookup[identifier] = line, fields
+
+    numeric = re.compile(r"[+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?", re.I)
+
+    def value(raw, maximum, integer=False):
+        if not numeric.fullmatch(raw.strip()):
+            return None
+        number = float(raw)
+        if not 0 <= number <= maximum or integer and not number.is_integer():
+            return None
+        return number
+
+    rows = []
+    for line, fields in sub_rows:
+        land_id = fields["land_use_id"].strip()
+        land_line, defaults = lookup.get(land_id.casefold(), (None, {}))
+        area = value(fields.get("contributing_area", ""), 1e12)
+        density = value(defaults.get("population_density", ""), 1e9)
+        inherited_population = area * area_factor * density * density_factor if area is not None and density is not None else None
+
+        def resolve(key, maximum, candidate, integer=False):
+            raw = fields.get(key)
+            if raw is None:
+                return dict(value=None, basis="field unavailable in export", source_line=line)
+            if raw.strip():
+                direct = value(raw, maximum, integer)
+                return dict(value=direct, basis="subcatchment" if direct is not None else "unresolved source token", source_line=line)
+            if land_line is None:
+                return dict(value=None, basis="unresolved land use", source_line=None)
+            if candidate is None or candidate > maximum:
+                return dict(value=None, basis="unresolved default", source_line=land_line)
+            return dict(value=candidate, basis="land use", source_line=land_line)
+
+        population = resolve("population", 1e9, inherited_population)
+        connectivity = resolve("connectivity", 100, value(defaults.get("connectivity", ""), 100, True), True)
+        profile = resolve("wastewater_profile", 999, value(defaults.get("wastewater_profile", ""), 999, True), True)
+        p, c = population["value"], connectivity["value"]
+        raw_fields = ("system_type", "drains_to", "node_id", "link_suffix", "to_subcatchment_id", "ground_node",
+                      "ground_id", "contributing_area", "population", "connectivity", "wastewater_profile",
+                      "base_flow", "additional_foul_flow", "trade_flow", "trade_profile", "lateral_weights")
+        rows.append(dict(line=line, id=fields["subcatchment_id"].strip(), land_use_id=land_id, land_line=land_line,
+                         population=population, connectivity=connectivity, wastewater_profile=profile,
+                         population_times_connectivity=p * c / 100 if p is not None and c is not None else None,
+                         source_attributes={key: fields[key] for key in raw_fields if key in fields},
+                         source_units={key: units.get(key, "") for key in raw_fields if key in fields},
+                         land_attributes={key: defaults[key] for key in ("population_density", "connectivity", "wastewater_profile")
+                                          if key in defaults}))
+    return dict(method="icm-2026-land-use-review-v1", area_unit=area_unit, density_unit=density_unit, rows=rows)

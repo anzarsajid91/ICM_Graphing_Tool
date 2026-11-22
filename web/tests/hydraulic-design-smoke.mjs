@@ -328,6 +328,43 @@ try{
   assert.match(custom,/Permit schedule 2, revision A/);
   await method.selectOption('england');
 
+  await design.getByRole('button',{name:'Import catchment CSV',exact:true}).click();
+  await mapping.getByLabel('Catchment CSV',{exact:true}).setInputFiles({name:'synthetic-native-defaults.csv',mimeType:'text/csv',buffer:Buffer.from(
+    '**** hw_subcatchment\nsubcatchment_id,land_use_id,contributing_area,population,connectivity,wastewater_profile,Domestic,I,E,base_flow\n'+
+    'UserUnits,,m²,,%,,L/head/day,L/day,L/day,m³/s\n0012,LU-01,25000,,,,125,1500,200,0.012\n0013,LU-01,30000,0,0,0,150,0,0,0.003')});
+  await status(mapping,/2 catchment rows?/);
+  await mapping.getByText('Review native land-use defaults',{exact:true}).click();
+  const unitsReview=mapping.getByRole('button',{name:'Review ICM defaults',exact:true});
+  await mapping.getByLabel('Land-use CSV',{exact:true}).setInputFiles({name:'synthetic-land-use.csv',mimeType:'text/csv',buffer:Buffer.from(
+    '**** hw_land_use\nland_use_id,population_density,connectivity,wastewater_profile\nUserUnits,people/ha,%,\nLU-01,80,90,2')});
+  await status(mapping,/1 land-use rows available/);
+  await mapping.getByLabel('Contributing-area unit',{exact:true}).selectOption('ha');
+  await mapping.getByLabel('Population-density unit',{exact:true}).selectOption('people/ha');
+  await mapping.getByLabel('Reviewed ICM revision and land-use export basis',{exact:true}).fill('Synthetic matching ICM model revision and native displayed units');
+  await unitsReview.click();await status(mapping,/Confirm the supported area unit/);
+  await mapping.getByLabel('Contributing-area unit',{exact:true}).selectOption('m²');
+  await unitsReview.click();await status(mapping,/Reviewed 2 catchment rows/);
+  const nativeDefaults=mapping.getByRole('table',{name:'Proposed ICM defaults',exact:true});
+  assert.match(await nativeDefaults.getByRole('row',{name:/0012/}).innerText(),/200 · land use row 4\s+90 · land use row 4\s+2 · land use row 4\s+180/);
+  assert.match(await nativeDefaults.getByRole('row',{name:/0013/}).innerText(),/0 · subcatchment row 5\s+0 · subcatchment row 5\s+0 · subcatchment row 5\s+0/);
+  await mapping.getByLabel('Use reviewed inherited population for blank native population cells',{exact:true}).check();
+  for(const [label,column] of [['Reviewed domestic allowance (L/head/day)','6'],['Reviewed infiltration (L/day)','7'],['Reviewed trade (L/day)','8']]){
+    await mapping.getByLabel(label,{exact:true}).selectOption(column);
+  }
+  await mapping.getByLabel('I checked mapped units and reviewed daily allowances',{exact:true}).check();
+  await mapping.getByRole('button',{name:'Apply mapped rows',exact:true}).click();
+  await mapping.waitFor({state:'hidden'});
+  for(const [index,expected] of [[0,'200'],[1,'0']]){
+    assert.equal(await rows.nth(index).locator('[name=population]').inputValue(),expected);
+    await rows.nth(index).locator('[name=classification]').selectOption('combined');
+  }
+  await submit(design);await status(design,/Retained flow calculated/);
+  const inheritedSheet=await downloaded(design);
+  assert.match(inheritedSheet,/"Retained flow \(L\/day\)","299100"/);
+  assert.match(inheritedSheet,/"Population default applied to source lines","4"/);
+  assert.match(inheritedSheet,/"Original subcatchment","base_flow","0.012","m³\/s"/);
+  assert.match(inheritedSheet,/"Land-use export","synthetic-land-use\.csv","[a-f0-9]{64}"/);
+
   async function loadNetwork(text,inspect=false){
     await page.locator('button[data-workspace="network"]').click();
     await page.getByRole('tab',{name:'Schematic',exact:true}).click();

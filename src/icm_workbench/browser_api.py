@@ -1546,11 +1546,18 @@ def map_pump_curve_csv(text, flow_column, head_column, flow_unit, head_unit):
     return json.dumps(convert(text, flow_column, head_column, flow_unit, head_unit), allow_nan=False)
 
 
-def preview_design_catchments(text):
+def preview_design_catchments(text, table="hw_subcatchment"):
     """Validate a local catchment table for explicit Formula A mappings."""
     from icm_workbench.analysis.design_flows import preview_catchment_csv
 
-    return json.dumps(preview_catchment_csv(text), allow_nan=False)
+    return json.dumps(preview_catchment_csv(text, table), allow_nan=False)
+
+
+def review_icm_catchment_defaults(catchments, land_use, area_unit, density_unit):
+    """Review model defaults without treating them as regulatory allowances."""
+    from icm_workbench.analysis.design_flows import resolve_icm_catchment_defaults
+
+    return json.dumps(resolve_icm_catchment_defaults(catchments, land_use, area_unit, density_unit), allow_nan=False)
 
 
 def screen_storage_routing(path, column, capacities_m3, initial_m3, release_m3_s,

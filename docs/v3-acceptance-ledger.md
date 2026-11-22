@@ -44,7 +44,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.3 | Candidate system-curve model | Manual and mapped CSV pump curves, exact specified-factor intersections including multiple and absent duties, identical arrangements, power and operating limits | Verified locally for the specified-factor system model |
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
 | 9.5 England and framework research | Official permitting guidance | Versioned methods for England, Scotland, Wales and the reviewed Irish combined setting, with a documented project method | Verified locally within the cited applicability. Northern Ireland continuation uses the reviewed project consent basis |
-| 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial. Reviewed nominal drainage and independent component allocations verified locally |
+| 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial. Native land-use population, connectivity and profile defaults, nominal drainage and assigned shares verified locally. Structured lateral and event-profile inputs remain open |
 | 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Verified locally for the supported frameworks, circular sections and same-run typed link results. Inheritance remains a separate input criterion |
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
@@ -1182,3 +1182,23 @@ other state.
   across five runs was 0.829 s. Process peak RSS was 151,400 KiB; this
   includes the test environment and reference arrays. Browser import and
   transfer costs are measured separately from this solver-only result.
+
+### Native ICM land-use defaults
+
+- The local catchment import can review a matching `hw_land_use` CSV.
+  The Autodesk 2026 field contract supports area × density population
+  and blank connectivity and wastewater-profile inheritance. Each row
+  retains source values, units and its resolution basis. Explicit zeros
+  remain original values. Missing fields and unresolved source tokens
+  stay unavailable. Only an engineer-confirmed population proposal can
+  fill the blank design population. Model connectivity, ground routing,
+  profiles, base flow and trade metadata remain separate from permit
+  eligibility and daily allowances.
+- In Chromium and Firefox, 25,000 m² and 80 people/ha yielded 200 people,
+  90% model connectivity and profile 2. An explicit-zero row retained
+  all three zeros. The worksheet used a separately mapped allowance and
+  agreed with the independent England result of 299,100 L/day. The flow
+  observers counted 107 and 105 requests with zero violations. The two
+  added method-library entries passed in Chromium and Firefox with 31
+  and 32 requests and zero violations. The Python suite passed 463 tests
+  and 111 subtests. Full ICM run compatibility remains unverified.
