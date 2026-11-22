@@ -64,6 +64,33 @@ try {
   assert.match(csv,/"Source SHA-256","[a-f0-9]{64}"/);
   assert.match(csv,/"accepted","SYNTHETIC-REVIEW-LOCAL","true"/);
 
+  await panel.getByLabel('Lower plausible value').fill('0.01');
+  await run.click();await status.filter({hasText:'Diagnostic review ready'}).waitFor({timeout:60000});
+  await filter.selectOption('long-timestep');
+  assert.equal(await row.getByLabel('Long timestep review decision').inputValue(),'');
+  await panel.getByLabel('Lower plausible value').fill('0');
+  await run.click();await status.filter({hasText:'Diagnostic review ready'}).waitFor({timeout:60000});
+  await filter.selectOption('long-timestep');
+  assert.equal(await row.getByLabel('Long timestep review decision').inputValue(),'accepted');
+  assert.equal(await row.getByLabel('Long timestep review note').inputValue(),'SYNTHETIC-REVIEW-LOCAL');
+  assert(await row.getByRole('button',{name:'Exclusion recorded',exact:true}).isDisabled());
+
+  await panel.getByRole('button',{name:'Close diagnostics',exact:true}).click();
+  await page.locator('button[data-workspace="reports"]').click();
+  await page.getByRole('tab',{name:'Workspace save / restore',exact:true}).click();
+  const save=page.waitForEvent('download');await page.click('#downloadWorkspaceBtn');
+  const workspace=await fs.readFile(await (await save).path());
+  assert.equal(JSON.parse(workspace).project_registry.source_quality_reviews[0].note,'SYNTHETIC-REVIEW-LOCAL');
+  await page.evaluate(()=>window.ICMProjectRegistry.restoreSourceReviews([]));
+  await page.setInputFiles('#workspaceInput',{name:'synthetic-source-review.json',mimeType:'application/json',buffer:workspace});
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__?.workspaceRestore);
+  await page.locator('button[data-workspace="data"]').click();await quality.click();
+  await pick(source,'flag-synthetic.csv');await run.click();
+  await status.filter({hasText:'Diagnostic review ready'}).waitFor({timeout:60000});
+  await filter.selectOption('long-timestep');
+  assert.equal(await row.getByLabel('Long timestep review decision').inputValue(),'accepted');
+  assert.equal(await row.getByLabel('Long timestep review note').inputValue(),'SYNTHETIC-REVIEW-LOCAL');
+
   await pick(source,'clock-synthetic-a.csv');
   assert(await findings.isHidden());
   await panel.getByText('Clock comparison',{exact:true}).click();
@@ -76,6 +103,21 @@ try {
   assert.match(clock,/candidate reference shift -120 s/);
   assert.match(clock,/candidate reference shift -180 s/);
   assert.match(clock,/Change in candidate shift -60 s/);
+  await panel.getByRole('button',{name:'Close diagnostics',exact:true}).click();
+  await page.setInputFiles('#fileInput',{name:'incompatible-unit-synthetic.csv',mimeType:'text/csv',buffer:Buffer.from(
+    'Timestamp,Flow (mm)\n2025-01-01T00:00:00,1\n2025-01-01T00:01:00,2\n')});
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.stateSummary().readyFiles===4,null,{timeout:90000});
+  await quality.click();await pick(source,'incompatible-unit-synthetic.csv');
+  await panel.getByLabel('Reference record of the same signal').selectOption('');
+  for(const label of ['Maximum flatline amplitude','Minimum flatline duration (s)','Abrupt change threshold','Lower plausible value','Upper plausible value']){
+    await panel.getByLabel(label,{exact:true}).fill('');
+  }
+  await run.click();await status.filter({hasText:'Diagnostic review ready'}).waitFor({timeout:60000});
+  await filter.selectOption('unit-review');
+  assert.match(await row.innerText(),/Unit interpretation.*mm.*incompatible.*flow/s);
+  assert.equal(await row.getByRole('button',{name:'Add review exclusion',exact:true}).count(),0);
+  await row.getByLabel('Unit interpretation review decision').selectOption('rejected');
+  await row.getByLabel('Unit interpretation review note').fill('Synthetic label rechecked with site evidence');
   await page.keyboard.press('Escape');
   assert(await panel.isHidden());
   assert(await quality.evaluate(button=>document.activeElement===button));

@@ -255,6 +255,12 @@ has two opposite adjacent changes over the threshold and a return within the
 threshold of the initial reading. The register also reports the individual
 changes and optional canonical-unit value bounds.
 
+Quantity and unit findings compare recognizable source labels and imported
+metadata with the current interpretation and canonical unit. Review these
+documentary discrepancies against the instrument or model export. They carry
+no affected time interval. Timestamp diagnostics remain available while the
+source unit is unresolved.
+
 Optional clock screening assumes a different recording of the same signal in
 comparable dimensions. It tests integer multiples of the entered timestep
 by matching actual timestamps in the early and late halves of their overlap.
@@ -272,6 +278,12 @@ removal. Original data remain intact. A review handles at most 250,000 rows
 per series, returns total counts by kind and makes up to 1,500 candidates
 available per run. Use a smaller review period when detailed review needs
 more rows.
+
+Workspace saves retain up to 1,000 diagnostic decisions and notes. Reattach
+the same sources and rerun with the saved interpretation, datum, review
+period and criteria to see recorded decisions. A different basis starts a
+new review. The register shows an exclusion as recorded while its ID is
+present in the existing exclusion editor.
 
 ## Circular-pipe capacity and design flow preview
 

@@ -11,6 +11,26 @@ METHOD = "series-diagnostics-v1"
 REVIEW_LIMIT = 1500
 
 
+def source_basis_findings(label_quantity, source_unit, contract):
+    """Return documentary discrepancies without changing data or interpretations."""
+    from icm_workbench.parsers.common import canonical_unit
+
+    quantity = contract.get("quantity")
+    items = []
+
+    def finding(kind, observed, basis):
+        items.append(dict(kind=kind, start=None, end=None, observed=observed, basis=basis))
+
+    if label_quantity and quantity and quantity != label_quantity:
+        finding("quantity-review", label_quantity, f"The source label suggests {label_quantity}. The current interpretation uses {quantity}.")
+    if quantity in ("flow", "depth", "level", "velocity", "rainfall"):
+        if source_unit and canonical_unit(quantity, source_unit)[0] is None:
+            finding("unit-review", source_unit, f"The recorded source unit is incompatible with the current {quantity} interpretation.")
+        elif not contract.get("canonical_unit"):
+            finding("unit-review", source_unit, "The source unit remains unresolved for dimensional diagnostics.")
+    return items
+
+
 def _setting(value, label, *, floor=None):
     if type(value) not in (int, float) or not isfinite(value) or (floor is not None and value < floor):
         raise ValueError(f"Specify a valid finite {label}.")

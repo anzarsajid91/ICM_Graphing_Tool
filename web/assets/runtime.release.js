@@ -2161,6 +2161,7 @@ async function applyWorkspace(w){
   const stamped=[w.analysis?.analysis_start,w.analysis?.analysis_end,...(w.exclusions||[]).flatMap(row=>[row.start,row.end])].filter(Boolean);
   if(stamped.some(value=>/(?:Z|[+-]\d{2}:?\d{2})$/i.test(String(value))))throw new Error('Workspace contains timezone-aware assessment bounds. Convert them explicitly to the common model-clock time basis before importing.');
   window.ICMProjectRegistry?.restoreDerived(w.project_registry?.derived);
+  window.ICMProjectRegistry?.restoreSourceReviews(w.project_registry?.source_quality_reviews);
   window.dispatchEvent(new Event('icm:assessment-context-restored'));
   ++state.rainEventGeneration;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;
   ++state.dwfGeneration;state.dwfResult=null;state.dwfSignature=null;

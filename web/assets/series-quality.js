@@ -8,10 +8,15 @@ const labels=new Map([
   ["unlocated-timestamps","Invalid timestamp"],["duplicate-timestamp","Duplicate timestamp"],
   ["missing-values","Missing values"],["long-timestep","Long timestep"],["short-timestep","Short timestep"],
   ["flatline","Potential flatline"],["isolated-spike","Potential spike"],["abrupt-change","Abrupt change"],
-  ["above-screening-bound","Above screening bound"],["below-screening-bound","Below screening bound"]
+  ["above-screening-bound","Above screening bound"],["below-screening-bound","Below screening bound"],
+  ["quantity-review","Quantity interpretation"],["unit-review","Unit interpretation"]
 ]);
 const node=(tag,text)=>{const element=document.createElement(tag);if(text!==undefined)element.textContent=text;return element;};
 const format=value=>value===null||value===undefined?"Unavailable":typeof value==="number"?new Intl.NumberFormat(undefined,{maximumSignificantDigits:8}).format(value):value;
+async function localFingerprint(value){
+  const bytes=new TextEncoder().encode(JSON.stringify(value)),digest=await crypto.subtle.digest('SHA-256',bytes);
+  return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
+}
 
 function mount() {
   const root=node("dialog");root.id="tab-series-quality";root.setAttribute("aria-labelledby","hbQualityTitle");
@@ -65,7 +70,6 @@ function mount() {
   const status=$("hbQualityStatus"),view=$("hbQualityResults"),table=$("hbQualityRows").tBodies[0];
   const submit=form.querySelector('[type="submit"]'),ref=controls.reference,picker=controls.source,filter=$("hbQualityFilter");
   let candidates=null,signature=null,workflow=null,selectedPage=0,generation=0;
-  const decisions=new Map();
 
   const available=()=>allSeries().filter(({item})=>item.status==="ready"&&item.hash&&
     item.parsed?.metadata?.timestamp_convention==="instantaneous"&&item.parsed?.metadata?.time_basis!=="timezone-aware/unresolved");
@@ -73,13 +77,14 @@ function mount() {
   function sourceSignature(row){
     if(!row)return null;
     const {item,col}=row,metadata=seriesMetadata(item,col);
-    return [item.id,item.hash,col,seriesQuantity(item,col),seriesUnit(item,col),metadata.original_unit,metadata.conversion_factor];
+    return [item.id,item.hash,col,seriesQuantity(item,col),seriesUnit(item,col),seriesReference(item,col),
+      metadata.original_unit,metadata.detected_unit,metadata.conversion_factor];
   }
   function currentSignature(){return JSON.stringify([sourceSignature(identify(picker.value)),sourceSignature(identify(ref.value))]);}
   function invalidate(){
     ++generation;
     if(candidates||status.textContent) status.textContent="Inputs changed. Review the current source to refresh the findings.";
-    view.hidden=true;candidates=null;workflow=null;signature=null;decisions.clear();
+    view.hidden=true;candidates=null;workflow=null;signature=null;
   }
   function refreshSources(){
     const rows=available();
@@ -107,13 +112,16 @@ function mount() {
     try {
       const criteria=Object.fromEntries(["expected_step_s","jitter_s","flat_amplitude","flat_seconds","change_limit","lower","upper"]
         .map(name=>[name,controls[name].value===""?null:controls[name].valueAsNumber]));
+      const start=controls.start.value||null,end=controls.end.value||null,lag=reference?controls.lag.valueAsNumber:null;
       await ensureEngineBoot();
       const result=await engine.call("inspect_local_series",{
-        path:source.item.virtualPath,column:source.col,criteria,start:controls.start.value||null,end:controls.end.value||null,
-        reference_path:reference?.item.virtualPath||null,reference_column:reference?.col||null,search_steps:controls.lag.valueAsNumber
+        path:source.item.virtualPath,column:source.col,criteria,start,end,
+        reference_path:reference?.item.virtualPath||null,reference_column:reference?.col||null,search_steps:lag
       });
+      const basis=await localFingerprint([result.method,sourceSignature(source).slice(1),sourceSignature(reference)?.slice(1)||null,
+        result.criteria,start,end,lag]);
       if(current!==generation||inputSignature!==currentSignature())return;
-      candidates=result;workflow={source,reference};signature=inputSignature;selectedPage=0;filter.replaceChildren(new Option("All findings",""));
+      candidates=result;workflow={source,reference,basis};signature=inputSignature;selectedPage=0;filter.replaceChildren(new Option("All findings",""));
       for(const key of Object.keys(result.diagnostics_by_kind))filter.add(new Option(labels.get(key),key));
       view.hidden=false;
       $("hbQualityCoverage").textContent=`${result.valid_values} valid values of ${result.rows} source rows. ${result.candidate_count} candidate findings.`+
@@ -129,29 +137,38 @@ function mount() {
     clock.textContent=[formatHalf("Early window",result.early),formatHalf("Late window",result.late),
       result.change_in_candidate_shift_s!==null?`Change in candidate shift ${format(result.change_in_candidate_shift_s)} s. Investigate a possible drift or signal mismatch.`:"A change in clock offset is unresolved."].join(" ");
   }
-  function allFindings(){return candidates.findings.map((value,index)=>({value,index})).filter(row=>!filter.value||row.value.kind===filter.value);}
+  const reviewKey=value=>workflow.basis+':'+JSON.stringify([value.kind,value.start,value.end,value.observed,value.basis]);
+  const reviewFor=key=>window.ICMProjectRegistry?.readSourceReview(key)||{decision:"",note:"",exclusionId:null};
+  const exclusionRecorded=review=>review.exclusionId&&state.exclusions.some(row=>row.id===review.exclusionId);
+  function allFindings(){return candidates.findings.filter(value=>!filter.value||value.kind===filter.value);}
   function renderFindings(){
     const rows=allFindings(),slice=rows.slice(selectedPage*pageSize,(selectedPage+1)*pageSize);
     table.replaceChildren();
-    for(const {value,index} of slice){
+    for(const value of slice){
       const row=table.insertRow(),label=labels.get(value.kind);
       for(const text of [label,value.start||"Unlocated",value.end||"Unlocated",format(value.observed)+" · "+value.basis])
         row.insertCell().textContent=text;
-      const cell=row.insertCell(),choice=node("select"),note=node("input"),review=decisions.get(index)||{decision:"",note:"",excluded:false};
+      const cell=row.insertCell(),choice=node("select"),note=node("input"),key=reviewKey(value),review=reviewFor(key);
+      const save=()=>{
+        if(!exclusionRecorded(review))review.exclusionId=null;
+        if(!window.ICMProjectRegistry?.saveSourceReview(key,review))status.textContent="The project can retain up to 1,000 diagnostic decisions. Keep a local export before clearing older decisions.";
+      };
       choice.setAttribute("aria-label",label+" review decision");
       note.setAttribute("aria-label",label+" review note");note.maxLength=500;note.placeholder="Review note";
       for(const [key,text] of [["","Unreviewed"],["accepted","Accept finding"],["rejected","Reject finding"]])choice.add(new Option(text,key));
       choice.value=review.decision;note.value=review.note;
-      choice.onchange=()=>{review.decision=choice.value;decisions.set(index,review);};
-      note.oninput=()=>{review.note=note.value.trim();decisions.set(index,review);};
+      choice.onchange=()=>{review.decision=choice.value;save();};
+      note.oninput=()=>{review.note=note.value.trim();save();};
       cell.append(choice,note);
       if(value.start&&value.end&&value.start<value.end){
-        const exclude=node("button",review.excluded?"Exclusion recorded":"Add review exclusion");exclude.type="button";exclude.disabled=review.excluded;
+        const already=Boolean(exclusionRecorded(review));
+        const exclude=node("button",already?"Exclusion recorded":"Add review exclusion");exclude.type="button";exclude.disabled=already;
         exclude.onclick=()=>{
           if(currentSignature()!==signature){invalidate();return;}
           if(!review.note){status.textContent="Enter a reason in the review note before adding the exclusion.";note.focus();return;}
-          addExclusionRow({start:value.start,end:value.end,reason:review.note,scope:workflow.source.key});
-          review.excluded=true;decisions.set(index,review);exclude.disabled=true;exclude.textContent="Exclusion recorded";
+          review.exclusionId=crypto.randomUUID();
+          addExclusionRow({id:review.exclusionId,start:value.start,end:value.end,reason:review.note,scope:workflow.source.key});
+          save();exclude.disabled=true;exclude.textContent="Exclusion recorded";
           status.textContent="Source-specific exclusion added. Manage it in the existing Time series and spill exclusion editor.";
         };
         cell.append(exclude);
@@ -169,7 +186,9 @@ function mount() {
       ["Canonical unit",candidates.source_contract.canonical_unit],["Reference",reference?.label||""],["Reference SHA-256",reference?.item.hash||""],
       ["Candidate count",candidates.candidate_count],...Object.entries(candidates.criteria),["Clock evidence",JSON.stringify(candidates.clock)],
       ["Finding","Start","End","Observed","Basis","Decision","Review note","Exclusion recorded"],
-      ...candidates.findings.map((r,i)=>[labels.get(r.kind),r.start,r.end,r.observed,r.basis,decisions.get(i)?.decision,decisions.get(i)?.note,Boolean(decisions.get(i)?.excluded)])];
+      ...candidates.findings.map(r=>{
+        const review=reviewFor(reviewKey(r));return [labels.get(r.kind),r.start,r.end,r.observed,r.basis,review.decision,review.note,Boolean(exclusionRecorded(review))];
+      })];
     downloadBlob("hydra-source-quality-review.csv",rows.map(row=>row.map(ICMSafeCSV.cell).join(",")).join("\r\n"),"text/csv");
   };
   window.addEventListener("icm:route-changed",({detail})=>{if(detail.workspace!=="data"&&root.open)root.close();});
@@ -354,10 +373,6 @@ function mountTransformation(){
   async function readRecord(text){
     await ensureEngineBoot();return engine.call('read_derived_series_record',{text});
   }
-  async function recordFingerprint(value){
-    const bytes=new TextEncoder().encode(JSON.stringify(value)),digest=await crypto.subtle.digest('SHA-256',bytes);
-    return [...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('');
-  }
   saved.onchange=refreshSaved;
   $('hbDerivedOpen').onclick=()=>revealSaved(saved.value);
   $('hbDerivedRemove').onclick=()=>{registry()?.removeDerived(saved.value);savedStatus.textContent='Derived record removed from the current project.';};
@@ -368,7 +383,7 @@ function mountTransformation(){
       if(file.size>8*1024*1024)throw new Error('Choose a local derived series JSON up to 8 MiB.');
       const expected=saved.value&&!registry()?.derivedSeries(saved.value)?saved.value:null;
       savedStatus.textContent='Validating the local interval record…';
-      const loaded=await readRecord(await file.text()),id=await recordFingerprint(loaded);
+      const loaded=await readRecord(await file.text()),id=await localFingerprint(loaded);
       if(request!==importRequest)return;
       if(expected&&id!==expected)throw new Error('This file does not match the chosen saved reference. Clear the selection to add it separately.');
       registry().retainDerived(id,file.name.replace(/\.json$/i,'').slice(0,256)||'Derived intervals',loaded);
@@ -382,7 +397,7 @@ function mountTransformation(){
     if(!label){feedback.textContent='Enter a name for the derived series.';$('hbDerivedName').focus();return;}
     const button=$('hbDerivedKeep');button.disabled=true;
     try{
-      const validated=await readRecord(JSON.stringify(record)),id=await recordFingerprint(validated);
+      const validated=await readRecord(JSON.stringify(record)),id=await localFingerprint(validated);
       if(started!==token||!ensureCurrent())return;
       registry().retainDerived(id,label,validated);saved.value=id;refreshSaved();
       feedback.textContent='Kept in this session. Save the JSON to reopen the interval values later.';

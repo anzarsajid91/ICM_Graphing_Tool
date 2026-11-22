@@ -58,6 +58,7 @@
       this.assessments=new Map();
       this.derivedRecords=new Map();
       this.derivedReferences=new Map();
+      this.sourceQualityReviews=new Map();
       this.version=1;
     }
     registerSource(item){
@@ -130,6 +131,7 @@
       this.associationSource=null;
       this.derivedRecords.clear();
       this.derivedReferences.clear();
+      this.sourceQualityReviews.clear();
       this.notifyDerived();
     }
     notifyDerived(){
@@ -174,6 +176,23 @@
         this.derivedReferences.set(fingerprint,{fingerprint,name,quantity,unit,periods,start,end});
       }
       this.notifyDerived();
+    }
+    readSourceReview(key){
+      const stored=this.sourceQualityReviews.get(key);
+      return stored?{...stored}:null;
+    }
+    saveSourceReview(key,record){
+      if(typeof key!=='string'||!(/^[a-f0-9]{64}:/.test(key))||key.length>2048||!record||
+         !['','accepted','rejected'].includes(record.decision)||typeof record.note!=='string'||record.note.length>500||
+         record.exclusionId!==null&&(typeof record.exclusionId!=='string'||record.exclusionId.length>128))return false;
+      const {decision,note,exclusionId}=record;
+      if(!decision&&!note&&!exclusionId){this.sourceQualityReviews.delete(key);return true;}
+      if(this.sourceQualityReviews.size>=1000&&!this.sourceQualityReviews.has(key))return false;
+      this.sourceQualityReviews.set(key,{decision,note,exclusionId});return true;
+    }
+    restoreSourceReviews(entries){
+      this.sourceQualityReviews.clear();
+      if(Array.isArray(entries))for(const record of entries.slice(0,1000))this.saveSourceReview(record?.key,record);
     }
     setRelationships(records=[],source='fm_rg_assoc.xlsx',issues=[]){
       this.relationships=[];
@@ -264,6 +283,7 @@
         relationships:this.relationships.map(x=>({...x})),
         associationSource:this.associationSource,
         derived:[...this.derivedReferences.values()].map(ref=>({...ref})),
+        source_quality_reviews:[...this.sourceQualityReviews].map(([key,review])=>({key,...review})),
       };
     }
     mount(){

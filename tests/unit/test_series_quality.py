@@ -65,6 +65,28 @@ def test_browser_contract_rejects_thresholds_when_units_unresolved(tmp_path):
         inspect_local_series(file,"Reading",dict(timing,lower=0,upper=3))
 
 
+def test_source_basis_flags_conflicting_quantity_and_units_without_imputing_values():
+    from icm_workbench.analysis.series_quality import source_basis_findings
+
+    findings = source_basis_findings("flow", "L/s", {"quantity": "depth", "canonical_unit": "m"})
+    assert [row['kind'] for row in findings] == ['quantity-review', 'unit-review']
+    assert all(row['start'] is None and row['end'] is None for row in findings)
+    assert findings[1]['observed'] == 'L/s'
+    assert not source_basis_findings("depth", "mm", {"quantity": "depth", "canonical_unit": "m"})
+    unresolved = source_basis_findings("depth", None, {"quantity": "depth", "canonical_unit": None})
+    assert unresolved[0]['kind'] == 'unit-review'
+
+
+def test_browser_reports_explicit_dimensional_inconsistency_in_source_header(tmp_path):
+    file = tmp_path / 'synthetic-mm-flow.csv'
+    file.write_text('Timestamp,Flow (mm)\n2025-01-01 00:00,1\n2025-01-01 00:01,3\n')
+    result = json.loads(inspect_local_series(file, 'Flow (mm)', dict(expected_step_s=60, jitter_s=0)))
+    assert result['source_contract']['canonical_unit'] is None
+    assert result['diagnostics_by_kind'] == {'unit-review': 1}
+    assert result['findings'][0]['observed'] == 'mm'
+    assert result['valid_values'] == 2
+
+
 @pytest.mark.parametrize("settings",[{"jitter_s":60},{"flat_amplitude":0.1},{"lower":5,"upper":2}])
 def test_invalid_user_criteria_are_rejected(settings):
     frame=make_frame([0,60,120],[1,1,1])

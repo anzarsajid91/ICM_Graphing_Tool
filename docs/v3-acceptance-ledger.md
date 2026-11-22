@@ -22,7 +22,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 3.2 | Home default, route state, named workspaces | Restore user-selected assessment context safely while preserving the default landing route and legacy saves | Partial |
 | 3.3 | Current help text and workspace routes | Six guided journeys with actual prerequisites, results and next actions | Verified locally |
 | 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Partial |
-| 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Partial |
+| 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Verified locally with documentary unit and quantity findings and exact-basis workspace decisions |
 | 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Partial. Numerical transforms, interval plots and exact local record reattachment verified. Categorical states and wider analytical handoffs remain open |
 | 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Verified locally |
 | 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Verified locally |
@@ -1498,3 +1498,20 @@ other state.
   violations. A separate Firefox probe measured 30.85 s for cold deferred
   worker startup plus the first validation. The repeated Firefox workflow
   passed with its original assertions and a 90 s first-worker wait.
+
+### Source interpretation and restorable diagnostic decisions
+
+- Source quality adds documentary unit and quantity findings, including
+  incompatible source units, unresolved dimensions and contradictory current
+  interpretations. It keeps the existing sample-based findings, clock
+  evidence and reviewed source-specific exclusions. Documentary findings
+  have no artificial time window. Workspace decisions are matched to the
+  exact source and reference fingerprints, interpretations, datums, bounds
+  and criteria. A changed basis opens an independent review.
+- Both desktop browsers verified that a Flow (mm) source is flagged, a
+  changed plausibility bound starts a separate review, and the original
+  accepted note and exclusion return with the matching workspace. The
+  diagnostic observers counted 104 and 102 requests with no violations.
+  Both transformation regressions passed too, at 205 and 202 guarded
+  requests. Python passed 477 tests and 111 subtests. Registry, runtime,
+  local source review and artifact integrity checks passed.

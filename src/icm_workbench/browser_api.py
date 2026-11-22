@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from icm_workbench.parsers import parse_file
-from icm_workbench.parsers.common import canonical_unit
+from icm_workbench.parsers.common import canonical_unit, detect_unit
 from icm_workbench.analysis import (
     pair_series, calibration_metrics, spill_assessment, detect_spill_intervals,
     spill_block_volumes, idealised_storage_screening, detect_rainfall_events,
@@ -1630,7 +1630,7 @@ def screen_storage_routing(path, column, capacities_m3, initial_m3, release_m3_s
 def inspect_local_series(path, column, criteria, start=None, end=None,
                          reference_path=None, reference_column=None, search_steps=None):
     """Inspect local source rows without deduplicating or transforming them."""
-    from icm_workbench.analysis.series_quality import clock_candidates, inspect_series
+    from icm_workbench.analysis.series_quality import clock_candidates, inspect_series, source_basis_findings
 
     source = _require_model_clock(_load(path), "Diagnostic source")
     if source.metadata.get("timestamp_convention") != "instantaneous":
@@ -1662,6 +1662,20 @@ def inspect_local_series(path, column, criteria, start=None, end=None,
         raise ValueError("Unsupported diagnostic setting.")
     result=inspect_series(frame,column,**criteria,rejected_time_rows=source.audit.get("invalid_timestamps",0))
     result["source_contract"]=contract
+    labels = {"flow": ("flow", "discharge"), "depth": ("depth",), "level": ("level", "stage"),
+              "velocity": ("velocity",), "rainfall": ("rain", "rainfall", "precipitation")}
+    words = set(re.findall(r"[a-z]+", str(column).lower()))
+    candidates = [quantity for quantity, terms in labels.items() if words.intersection(terms)]
+    column_meta = source.metadata.get("series_metadata", {}).get(column) or source.metadata.get("channels", {}).get(column, {})
+    imported_unit = str(column_meta.get("detected_unit", contract["original_unit"]) or "")
+    if not imported_unit or imported_unit.lower() in ("unknown", "unresolved"):
+        possible_units = {unit for quantity in labels if (unit := detect_unit(column, quantity))}
+        imported_unit = next(iter(possible_units)) if len(possible_units) == 1 else None
+    basis_findings = source_basis_findings(candidates[0] if len(candidates) == 1 else None, imported_unit, contract)
+    for finding in basis_findings:
+        result["diagnostics_by_kind"][finding["kind"]] = 1
+    result["candidate_count"] += len(basis_findings)
+    result["findings"] = (basis_findings + result["findings"])[:result["displayed_limit"]]
     result["clock"]=None
     if reference_path is not None:
         ref=_require_model_clock(_load(reference_path), "Reference series")

@@ -107,3 +107,12 @@ assert.equal(registry.retainDerived(hash,'Portable file',derived).name,'Syntheti
 assert.equal(registry.derivedSeries(hash),derived);
 registry.removeDerived(hash);
 assert.equal(registry.listDerived().length,0);
+
+const qualityKey=hash+':'+JSON.stringify(['long-timestep','2026-01-01T00:00:00']);
+assert(registry.saveSourceReview(qualityKey,{decision:'accepted',note:'Reviewed synthetic gap',exclusionId:'synthetic-exclusion'}));
+const qualityArchive=registry.snapshot().source_quality_reviews;
+registry.clearSources();
+registry.restoreSourceReviews([...qualityArchive,{key:'invalid',decision:'accepted',note:'bogus',exclusionId:null}]);
+assert.equal(registry.snapshot().source_quality_reviews.length,1);
+assert.equal(registry.readSourceReview(qualityKey).note,'Reviewed synthetic gap');
+assert.equal(registry.readSourceReview('f'+qualityKey.slice(1)),null);
