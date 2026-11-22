@@ -1002,3 +1002,19 @@ other state.
   same process. Observed peak process RSS was 116,376 KiB, including the
   reference calculation and Node runtime. The indexed typed reserve
   remained 1,049,000 bytes. This is a local engine measurement.
+
+### Hosted preview artifact availability
+
+- In the [hosted browser smoke job](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44952586905/job/136994776524),
+  all application browser steps passed. Artifact 14726219977 finalized
+  successfully, then the action's immediate by-name lookup reported it
+  unavailable. The same exact ID was later visible in this run's REST
+  artifact list. The archive verification and tested-manifest publication
+  were skipped by GitHub when the download failed.
+- The browser job now waits for the upload's exact ID in the current run
+  before downloading it with the existing pinned action. Permissions
+  add Actions read access to this job only. The existing manifest
+  comparison and complete archive verification still determine success.
+  Local tests covered immediate and delayed visibility, wrong and missing
+  IDs, and the live read-only artifact lookup. A hosted run remains
+  required to confirm the revised artifact handoff.

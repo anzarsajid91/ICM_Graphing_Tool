@@ -169,6 +169,9 @@ jobs:
     runs-on: ubuntu-24.04
     needs: verify
     timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
     env:
       ICM_EVIDENCE_DIR: /tmp/icm-pr-evidence
     steps:
@@ -243,6 +246,7 @@ jobs:
           fi
 
       - name: Package exact review preview
+        id: package-review-preview
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -251,10 +255,36 @@ jobs:
           include-hidden-files: true
           path: _site/
 
+      - name: Wait for the exact preview upload to appear
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIEW_ARTIFACT_ID: ${{ steps.package-review-preview.outputs.artifact-id }}
+          PREVIEW_ARTIFACT_NAME: precision-workbench-preview-${{ github.sha }}
+        run: |
+          [[ "$PREVIEW_ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          for delay in 0 1 2 4 8 15; do
+            if (( delay > 0 )); then
+              echo "Waiting ${delay}s for GitHub Actions artifact metadata."
+              sleep "$delay"
+            fi
+            if gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+                -f name="$PREVIEW_ARTIFACT_NAME" --jq '.artifacts[] | select(.expired == false) | .id' \
+                | rg -xF "$PREVIEW_ARTIFACT_ID" >/dev/null; then
+              exit 0
+            fi
+          done
+          echo "::error::GitHub Actions did not list the exact preview upload."
+          exit 1
+
       - name: Download packaged review preview from this run
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: precision-workbench-preview-${{ github.sha }}
+          artifact-ids: ${{ steps.package-review-preview.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
           path: ${{ runner.temp }}/tested-review-preview
 
       - name: Verify packaged review preview retains every tested file
