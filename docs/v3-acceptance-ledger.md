@@ -1202,3 +1202,17 @@ other state.
   added method-library entries passed in Chromium and Firefox with 31
   and 32 requests and zero violations. The Python suite passed 463 tests
   and 111 subtests. Full ICM run compatibility remains unverified.
+
+### Hosted folder-picker acknowledgment
+
+- Hosted run 44996155758 passed the verification, security, browser-smoke,
+  Firefox shell and performance jobs. Job 137127591090 failed in Playwright
+  while waiting for its Firefox directory-selection acknowledgment. A
+  minimal browser reproduction delayed the driver's listener and observed
+  precisely that timeout while Firefox delivered trusted `input` and
+  `change` events and selected both real fixture files.
+- The existing acceptance now asserts the chooser target, pre-armed
+  trusted events, exact selected files, recursive paths and completed
+  application imports. A timeout alone remains a failure without that
+  evidence. Chromium and Firefox independently passed with 104 and 102
+  guarded requests and zero violations. Hosted exact-head CI still applies.

@@ -262,17 +262,39 @@ try {
     false,
     "Folder fallback fixture requires the API to be absent",
   );
+  const folderInput = page.locator("#folderInput");
+  const selectionEvents = await folderInput.evaluateHandle((input) => {
+    const events = [];
+    for (const type of ["input", "change"])
+      input.addEventListener(type, (event) => {
+        events.push({ type, trusted: event.isTrusted });
+      }, { once: true });
+    return events;
+  });
   chooser = page.waitForEvent("filechooser");
   await page.locator("#chooseFolderBtn").click();
-  await (await chooser).setFiles(fixture);
-  const selectedFolderFiles = await page
-    .locator("#folderInput")
-    .evaluate((el) =>
-      [...el.files].map((file) => ({
-        name: file.name,
-        relativePath: file.webkitRelativePath,
-      })),
-    );
+  const folderChooser = await chooser;
+  assert.equal(await folderChooser.element().getAttribute("id"), "folderInput");
+  let acknowledged = true;
+  try {
+    await folderChooser.setFiles(fixture);
+  } catch (error) {
+    // Playwright can miss its own directory input acknowledgment. The two
+    // pre-armed browser events and the complete FileList still have to agree.
+    if (error.name !== "TimeoutError") throw error;
+    acknowledged = false;
+  }
+  assert.deepEqual(await selectionEvents.jsonValue(), [
+    { type: "input", trusted: true },
+    { type: "change", trusted: true },
+  ]);
+  await selectionEvents.dispose();
+  const selectedFolderFiles = await folderInput.evaluate((input) =>
+    [...input.files].map((file) => ({
+      name: file.name,
+      relativePath: file.webkitRelativePath,
+    })),
+  );
   assert.deepEqual(selectedFolderFiles.map((file) => file.name).sort(), [
     "Folder-A.csv",
     "Folder-B.csv",
@@ -312,7 +334,7 @@ try {
     control: "#chooseFolderBtn",
     status: "PASS",
     expected: "Folder-input fallback imports files recursively",
-    observed: folderRows,
+    observed: { rows: folderRows, trustedEvents: ["input", "change"], driverAcknowledged: acknowledged },
     scope: "File System Access absent; native OS picker interaction unverified",
   });
 
