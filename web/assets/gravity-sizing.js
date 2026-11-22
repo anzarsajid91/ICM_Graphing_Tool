@@ -8,6 +8,7 @@ const value=(number,digits=7)=>Number.isFinite(number)?Number(number.toPrecision
 const labels={capacity:'Capacity at known depth',depth:'Normal depth',diameter:'Required diameter',gradient:'Required gradient'};
 const methods={manning:'Manning',darcy:'Darcy–Weisbach'};
 const shapes={circle:'Circular pipe',box:'Closed rectangular conduit',rectangle:'Open rectangular channel',trapezoid:'Open trapezoidal channel'};
+let publishedSheet=null;
 
 function mount(){
   const root=document.getElementById('tab-manning-sizing');
@@ -52,6 +53,9 @@ function mount(){
   const plotStatus=$('hbManningPlotStatus'),submit=form.querySelector('[type=submit]');
   let generation=0,plotGeneration=0,calculation=null;
   const trials=[];
+  const reportSheet={id:'gravitySizingForm',title:'Gravity sizing calculation sheet',content:node('div'),
+    snapshot:null,revision:null,isCurrent:()=>Boolean(calculation)};
+  publishedSheet=reportSheet;
 
   function showFields(){
     const darcy=fields.method.value==='darcy';
@@ -72,6 +76,10 @@ function mount(){
   }
   function clear(message){
     ++generation;++plotGeneration;calculation=null;result.hidden=true;submit.disabled=false;
+    if(reportSheet.snapshot){
+      reportSheet.snapshot=null;reportSheet.revision=null;reportSheet.content.replaceChildren();
+      window.dispatchEvent(new Event('icm:calculation-sheets-changed'));
+    }
     if(chart.data)globalThis.Plotly?.purge(chart);
     plotStatus.textContent='';if(message)status.textContent=message;
   }
@@ -145,11 +153,13 @@ function mount(){
     $('hbManningKeep').disabled=output.status!=='supported'||trials.length>=20;
     status.textContent=(descriptions[output.status]||output.status)+(output.solutions.length===2?' Two free-surface depths satisfy the target at this gradient.':'');
     result.hidden=false;
+    updateReportSheet();
   }
   fields.mode.onchange=()=>{showFields();clear('Choose inputs for the selected calculation.');};
   fields.method.onchange=()=>{showFields();clear('Choose inputs for the selected method.');};
   fields.shape.onchange=()=>{showFields();clear('Choose inputs for the selected section.');};
   form.oninput=event=>{if(![fields.mode,fields.method,fields.shape].includes(event.target))clear('Inputs changed. Calculate the current trial.');};
+  window.addEventListener('icm:assessment-context-restored',()=>clear('Workspace restored. Calculate the current trial.'));
   $('hbDarcyCapacity').onclick=()=>window.__ICM_PRECISION_WORKBENCH__.navigate('hydraulics','capacity',true);
   form.onsubmit=async event=>{
     event.preventDefault();clear('Calculating uniform flow…');const ticket=generation,input=currentInputs(),method=fields.method.value;submit.disabled=true;
@@ -207,20 +217,41 @@ function mount(){
   const references={manning:['Reference','FHWA HEC-22, 4th edition, chapter 9.1.3 and USACE HEC-RAS Uniform Flow Computations'],
     prismatic:['Section reference','FHWA HDS-4, section 4.3.2 and USACE HEC-RAS Uniform Flow Computations'],
     darcy:['Reference','C. F. Colebrook (1939) and DOE Fundamentals Handbook DOE-HDBK-1012/3-92, Fluid Flow']};
-  $('hbManningAudit').onclick=()=>{
-    if(!calculation)return;
+  function auditRows(){
     const {output,input,method}=calculation;
-    exportRows('hydra-'+(output.shape?'prismatic':'circular')+'-gravity-calculation.csv',[['Build',buildToken],['Method',output.method],references[output.shape?'prismatic':method],
+    return [['Build',buildToken],['Method',output.method],references[output.shape?'prismatic':method],
       ['Equation',method==='manning'?'Q = A × R^(2/3) × sqrt(S) / n':'S = f × V²/(2gD)'],['Inputs (SI)',JSON.stringify(input)],['Status',output.status],trialColumns,
       trialRow(calculation),...(output.shape?[['Critical depth (m)',output.critical_depth_m],['Free-surface basis','Fr = V / sqrt(gA/T). Specific energy = y + V²/(2g).']]:[]),
       ['Depth (m)','Area (m²)','Hydraulic radius (m)','Discharge (m³/s)','Velocity (m/s)','Reynolds','Darcy f',
         ...(output.shape?['Free-surface width (m)','Froude number','Specific energy (m)']:[])],
       ...output.solutions.map(row=>[row.depth_m,row.area_m2,row.hydraulic_radius_m,row.discharge_m3_s,row.velocity_m_s,row.reynolds,row.darcy_equivalent??row.friction_factor,
-        ...(output.shape?[row.top_width_m,row.froude,row.specific_energy_m]:[])])]);
+        ...(output.shape?[row.top_width_m,row.froude,row.specific_energy_m]:[])])];
+  }
+  function updateReportSheet(){
+    const {input,output,method}=calculation;
+    const inputs=[['Hydraulic method',methods[method]],['Calculation',labels[input.mode]],['Section',shapes[input.shape||'circle']]];
+    for(const [key,label] of Object.entries({diameter_m:'Diameter (m)',width_m:'Bottom width (m)',max_depth_m:'Maximum section depth (m)',
+      side_slope:'Side slope (H:1V)',gradient:'Energy gradient (m/m)',roughness_m:'Absolute roughness (m)',n:'Manning n (s/m^(1/3))',
+      viscosity_m2_s:'Kinematic viscosity (m²/s)',depth_fraction:'Water depth fraction',discharge_m3_s:'Target flow (m³/s)'})){
+      if(Number.isFinite(input[key]))inputs.push([label,input[key]]);
+    }
+    reportSheet.content.replaceChildren(...[$('hbManningSummary'),sections,result.querySelector('.table-wrap'),$('hbGravityMethodBasis'),$('hbGravityLimits')].map(item=>item.cloneNode(true)));
+    for(const element of reportSheet.content.querySelectorAll('[id]'))element.removeAttribute('id');
+    reportSheet.snapshot={title:reportSheet.title,summary:status.textContent,inputs,
+      identity:[['Hydra Bench version',document.querySelector('meta[name="hydra-bench-version"]')?.content||'Unavailable'],
+        ['Application revision',buildToken],['Calculation engine revision',window.__ICM_WORKBENCH__?.workerBuildToken||'Unavailable'],
+        ['Method version',output.method],['Calculated at (UTC)',new Date().toISOString()]],
+      rows:[...auditRows(),['Full-bore capacity (m³/s)',output.full_bore?.discharge_m3_s??null],
+        ...output.solutions.flatMap((point,index)=>[['Solution '+(index+1)+' depth (m)',point.depth_m],['Solution '+(index+1)+' discharge (m³/s)',point.discharge_m3_s]])]};
+    reportSheet.revision='gravity:'+generation;
+    window.dispatchEvent(new Event('icm:calculation-sheets-changed'));
+  }
+  $('hbManningAudit').onclick=()=>{
+    if(calculation)exportRows('hydra-'+(calculation.output.shape?'prismatic':'circular')+'-gravity-calculation.csv',auditRows());
   };
   $('hbManningTrialExport').onclick=()=>exportRows('hydra-gravity-trials.csv',[['Build',buildToken],...Object.values(references),trialColumns,...trials.map(item=>trialRow(item))]);
   showFields();
 }
 
-window.HydraGravitySizing={mount};
+window.HydraGravitySizing={mount,sheet:()=>publishedSheet};
 })();

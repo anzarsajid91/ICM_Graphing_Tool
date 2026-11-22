@@ -224,12 +224,19 @@ const announceSheets=()=>window.dispatchEvent(new Event("icm:calculation-sheets-
 function currentSheet(entry){
   try{return Boolean(entry?.snapshot&&entry.isCurrent());}catch{return false;}
 }
+function allCalculationSheets(){
+  const entries=new Map(publishedSheets);
+  for(const sheet of [window.HydraGravitySizing?.sheet?.(),window.__ICM_WORKBENCH__?.pipeCapacityReportSheet?.()]){
+    if(sheet)entries.set(sheet.id,sheet);
+  }
+  return entries;
+}
 function sheetStatus(){
-  return Array.from(publishedSheets,([id,entry])=>({id,title:entry.title,current:currentSheet(entry)}));
+  return Array.from(allCalculationSheets(),([id,entry])=>({id,title:entry.title,current:currentSheet(entry)}));
 }
 function reportSheets(ids,includeHtml){
   if(!ids.length)throw new Error("Select at least one current calculation sheet.");
-  const entries=ids.map(id=>publishedSheets.get(id));
+  const catalog=allCalculationSheets(),entries=ids.map(id=>catalog.get(id));
   if(entries.some(entry=>!currentSheet(entry)))
     throw new Error("Refresh or deselect unavailable calculation sheets before generating the report.");
   return {revisions:entries.map(entry=>entry.revision),
@@ -243,7 +250,7 @@ function assessmentRecords(){
       return {key:`${label} ${index}`,label,value:value??null};
     });
   }
-  return [...publishedSheets].filter(([,entry])=>currentSheet(entry)).map(([id,entry])=>{
+  return [...allCalculationSheets()].filter(([,entry])=>currentSheet(entry)).map(([id,entry])=>{
     const {snapshot}=entry;
     const method=snapshot.identity.find(([label])=>label==="Method version")?.[1]||"";
     const scalarRows=snapshot.rows.filter(([key,value,...rest])=>rest.length===0&&typeof key==="string"&&

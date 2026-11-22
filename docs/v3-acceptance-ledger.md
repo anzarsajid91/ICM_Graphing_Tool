@@ -50,7 +50,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
 | 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
 | 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Verified locally for assessment templates, section order, schematic, current calculation-sheet selection and local preview/export. Exact final full regressions remain open |
-| 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Partial. Shared v3 hydraulic design sheets and Reports integration verified locally. Coverage of remaining calculation methods remains open |
+| 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Partial. Reports includes v3 hydraulic design, legacy circular capacity and normal depth, and gravity sizing sheets. Coverage of remaining workspace calculations remains open |
 | 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Partial. Portable Reports snapshots, reviewed inputs, current calculation-sheet results, mapped comparison/spill support, decisions and action register. Coverage of the remaining workspace evidence is open |
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
 | 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Partial |
@@ -67,6 +67,28 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Circular capacity and gravity sizing report integration
+
+- The existing calculation-only report can include the forward circular
+  capacity and design-flow screening and gravity sizing. Each sheet carries
+  the exact current inputs, method and worker revision, results, assumptions
+  and canonical values. The circular sheet retains the actual inverts and
+  length used to calculate the gradient, or the network conduit label for an
+  unedited handoff. Changing the reviewed inputs or restoring a workspace
+  withdraws the result. The local report never silently substitutes a prior
+  calculation for an unavailable selection.
+- `web/tests/manning-sizing-smoke.mjs` verifies the legacy 202.65 L/s
+  circular result, the different free-surface and full-bore rectangular
+  limits, both embedded calculation sheets, a design-flow normal depth,
+  method and gradient provenance, script-free HTML and stale selection
+  rejection. No numerical engine changed.
+- Chromium and Firefox passed the sizing and report suite (104 and 103
+  guarded requests) and the existing v3 hydraulic-design suite (109 and
+  106 guarded requests), with zero confidentiality violations. The local
+  artifact check verified 153 resources, and 477 Python tests, 111
+  subtests and 28 privacy tests passed. Browser evidence is in
+  `/workspace/hydra-evidence/v3/calculation-reports-final`.
 
 ### Hydraulic calculation milestone source review
 

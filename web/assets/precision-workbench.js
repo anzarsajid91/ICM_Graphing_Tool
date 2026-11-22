@@ -427,10 +427,20 @@ function mountReportSheetSelection(options,enabled){
   open.onclick=()=>navigate('hydraulics','capacity',true);
   group.append(legend,list,note,open);options.append(group);
   const wanted=new Set();
+  let pendingCatalog=false;
   const catalog=()=>new Map((window.HydraDesignCalculations?.sheetStatus()||[]).map(entry=>[entry.id,entry]));
   function refresh(){
     group.hidden=!enabled.checked;
     if(group.hidden)return;
+    if(!readyComponents.has('calculations')){
+      if(!pendingCatalog){
+        pendingCatalog=true;note.textContent='Loading calculation sheets…';
+        void loadComponent('calculations').then(()=>{pendingCatalog=false;refresh();},()=>{
+          pendingCatalog=false;note.textContent='Calculation sheets could not load. Reopen this report section to retry.';
+        });
+      }
+      return;
+    }
     const choices=catalog();
     for(const id of wanted)if(!choices.has(id))choices.set(id,{id,title:id.replace(/Form$/,'').replace(/([a-z])([A-Z])/g,'$1 $2'),current:false});
     list.replaceChildren();
@@ -1351,9 +1361,54 @@ function wirePipeCapacity(){
   const trials=[];
   const precision=value=>value===null?'—':Number(value.toPrecision(5)).toLocaleString(undefined,{maximumSignificantDigits:5});
   const capacity=trial=>trial.design?trial.values.full_capacity_m3_s:trial.values.discharge_m3_s;
-  let generation=0,current=null;
+  const reportSheet={id:'pipeCapacityForm',title:'Circular pipe capacity calculation sheet',content:document.createElement('div'),
+    snapshot:null,revision:null,isCurrent:()=>Boolean(reportSheet.snapshot)};
+  diagnostic.pipeCapacityReportSheet=()=>reportSheet;
+  const announceSheet=()=>window.dispatchEvent(new Event('icm:calculation-sheets-changed'));
+  let generation=0,current=null,sourceTrial=null,invertBasis=null;
   function resetResult(){
     ++generation;current=null;keep.disabled=true;sectionViews.replaceChildren();
+    if(reportSheet.snapshot){
+      reportSheet.snapshot=null;reportSheet.revision=null;reportSheet.content.replaceChildren();announceSheet();
+    }
+  }
+  function publishReport(trial){
+    const {design,inputs,values}=trial;
+    const method=design?'circular-darcy-colebrook-normal-depth-si-v1':'circular-darcy-colebrook-full-bore-si-v1';
+    const results=[['Full-bore capacity (m³/s)',capacity(trial)],['Flow status',design?values.status:values.regime]];
+    const reviewInputs=[['Calculation',design?'Design-flow normal depth':'Full-bore capacity'],
+      ['Internal diameter (m)',inputs.diameter_m],['Energy gradient (m/m)',inputs.gradient],
+      ['Absolute roughness (m)',inputs.roughness_m],['Kinematic viscosity (m²/s)',inputs.viscosity_m2_s]];
+    if(sourceTrial)reviewInputs.push(['Geometry, roughness and gradient copied from source conduit',sourceTrial]);
+    if(invertBasis)reviewInputs.push(...invertBasis);
+    if(design){
+      reviewInputs.push(['Design discharge (m³/s)',inputs.discharge_m3_s]);
+      results.push(['Imposed full-bore velocity (m/s)',values.imposed_full_velocity_m_s]);
+      for(const [index,point] of values.depths.entries()){
+        const label='Solution '+(index+1)+' ';
+        results.push([label+'depth (m)',point.depth_m],[label+'velocity (m/s)',point.velocity_m_s],
+          [label+'area (m²)',point.area_m2],[label+'hydraulic radius (m)',point.hydraulic_radius_m],
+          [label+'Reynolds number',point.reynolds],[label+'Darcy f',point.friction_factor]);
+      }
+    }else{
+      results.push(['Mean velocity (m/s)',values.velocity_m_s],['Reynolds number',values.reynolds],['Darcy f',values.friction_factor]);
+    }
+    const applicability=document.createElement('p');
+    applicability.textContent='Steady, uniform flow in one circular barrel with one effective roughness. Review backwater, surcharge and controls with dynamic hydraulic results.';
+    const rendered=result.cloneNode(true);rendered.removeAttribute('id');rendered.removeAttribute('role');rendered.removeAttribute('aria-live');
+    const geometry=sectionViews.cloneNode(true);geometry.removeAttribute('id');
+    reportSheet.content.replaceChildren(rendered,geometry,applicability);
+    reportSheet.snapshot={title:reportSheet.title,summary:reviewInputs[0][1]+' screening',inputs:reviewInputs,
+      identity:[['Hydra Bench version',document.querySelector('meta[name="hydra-bench-version"]')?.content||'Unavailable'],
+        ['Application revision',buildToken],['Calculation engine revision',diagnostic.workerBuildToken||'Unavailable'],
+        ['Method version',method],['Calculated at (UTC)',new Date().toISOString()]],
+      rows:[['Reference','C. F. Colebrook (1939) and DOE Fundamentals Handbook DOE-HDBK-1012/3-92, Fluid Flow'],
+        ['Equation','S = f V²/(2gDₕ); Q = A V; Re = VDₕ/ν; g = 9.80665 m/s².'],
+        ['Equation','1/√f = −2 log₁₀(kₛ/(3.7Dₕ) + 2.51/(Re√f)) for turbulent flow.'],
+        design?['Section basis','Dₕ = 4A/P with circular-segment area A and wetted perimeter P. The solver checks both limbs and withholds unsupported depths.']:
+          ['Laminar basis','f = 64/Re when laminar. Capacity is withheld in the transitional range.'],
+        ...(invertBasis?[['Gradient derivation','S = (upstream invert − downstream invert) / conduit length.']]:[]),...results]};
+    reportSheet.revision='capacity:'+generation;announceSheet();
   }
   function drawSection(fraction,label){
     const figure=document.createElement('figure'),circle=document.createElement('div');
@@ -1402,7 +1457,9 @@ function wirePipeCapacity(){
     const csv=[headers,...rows].map(row=>row.map(ICMSafeCSV.cell).join(',')).join('\r\n');
     downloadBlob('hydrabench-pipe-comparison.csv',csv,'text/csv');
   });
-  form.addEventListener('input',()=>{
+  form.addEventListener('input',event=>{
+    if(event.target===form||['diameter','roughness','gradient'].includes(event.target.name))sourceTrial=null;
+    if(event.target===form||event.target.name==='gradient')invertBasis=null;
     resetResult();
     const viscosity=form.elements.viscosity.value;
     $('pipeActiveViscosity').textContent=viscosity?'ν = '+viscosity+' m²/s':'ν required';
@@ -1420,6 +1477,8 @@ function wirePipeCapacity(){
       return;
     }
     resetResult();
+    sourceTrial=null;
+    invertBasis=[['Upstream invert used for gradient (m)',us],['Downstream invert used for gradient (m)',ds],['Conduit length used for gradient (m)',length]];
     form.elements.gradient.value=String(gradient);
     result.textContent='Calculated gradient applied. Calculate to refresh capacity.';
   });
@@ -1466,33 +1525,42 @@ function wirePipeCapacity(){
             'No positive turbulent normal depth · '+values.status+'.';
           result.append(note);
         }
+        publishReport(current);
         return;
       }
       if(values.regime==='transitional'){
         result.textContent='Capacity unavailable in the transitional flow range.';
+        publishReport(current);
         return;
       }
       if(values.discharge_m3_s>0)drawSection(1,'Flowing just full');
       result.textContent=precision(values.discharge_m3_s*1000)+' L/s · '+precision(values.velocity_m_s)+
         ' m/s · Re '+precision(values.reynolds)+' · Darcy f '+precision(values.friction_factor)+' · '+values.regime;
+      publishReport(current);
     }catch(error){
       if(request===generation)result.textContent=typeof conciseErrorMessage==='function'?conciseErrorMessage(error):String(error.message);
     }
   });
-}
-function openPipeTrial(inputs){
-  navigate('hydraulics','capacity',true);
-  const form=$('pipeCapacityForm');
-  for(const key of ['diameter','roughness','gradient'])form.elements[key].value=String(inputs[key]);
-  form.elements.discharge.value='';
-  form.dispatchEvent(new Event('input',{bubbles:true}));
-  $('pipeCapacityResult').textContent='Independent trial from '+inputs.label+'. Review fluid properties before calculating.';
+  window.addEventListener('icm:assessment-context-restored',()=>{
+    sourceTrial=null;invertBasis=null;resetResult();
+    result.textContent='Workspace restored. Calculate to refresh capacity.';
+  });
+  return inputs=>{
+    navigate('hydraulics','capacity',true);
+    for(const key of ['diameter','roughness','gradient'])form.elements[key].value=String(inputs[key]);
+    form.elements.discharge.value='';
+    form.dispatchEvent(new Event('input',{bubbles:true}));
+    sourceTrial=inputs.label;
+    result.textContent='Independent trial from '+inputs.label+'. Review fluid properties before calculating.';
+  };
 }
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
   window.HydraProjectHome.mount(navigate,ROUTES);
   installDiagnosticLauncher();
-  buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wireVerificationEvents();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
+  buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wireVerificationEvents();
+  const openPipeTrial=wirePipeCapacity();
+  identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,openPipeTrial,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
   const startup=$('hbStartup');

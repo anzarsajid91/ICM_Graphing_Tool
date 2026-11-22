@@ -96,8 +96,14 @@ try{
   await status.getByText('The target flow is outside the supported Reynolds range',{exact:false}).waitFor();
   assert(await keep.isDisabled());
   await root.getByRole('button',{name:'Open Colebrook–White capacity',exact:true}).click();await page.locator('#pipeCapacityForm').waitFor();
+  const pipe=page.locator('#pipeCapacityForm');
+  await pipe.getByText('Calculate gradient from ICM conduit fields',{exact:true}).click();
+  for(const [name,value] of [['usInvert',11],['dsInvert',10],['conduitLength',200]])
+    await pipe.locator('[name='+name+']').fill(String(value));
+  await pipe.getByRole('button',{name:'Use calculated gradient',exact:true}).click();
   await page.getByRole('button',{name:'Calculate capacity',exact:true}).click();
   await page.locator('#pipeCapacityResult').getByText(/^202\.65 L\/s ·/).waitFor();
+  await page.getByRole('button',{name:'Add current result',exact:true}).click();
 
   await page.getByRole('tab',{name:'Gravity sizing',exact:true}).click();
   const shape=form.getByRole('combobox',{name:'Section shape',exact:true});
@@ -140,5 +146,51 @@ try{
   await mode.selectOption('depth');await fill({target:3064.784761275729});await run.click();
   await status.getByText('The target reaches the free-surface limit just below the crown.',{exact:false}).waitFor();
   assert(await keep.isDisabled());
+  await mode.selectOption('capacity');await run.click();
+  await status.getByText('Calculation ready.',{exact:false}).waitFor();
+
+  async function openReports(){
+    await page.locator('button[data-workspace="reports"]').click();
+    await page.getByRole('tab',{name:'Report generation',exact:true}).click();
+    return page.locator('#pwReportBuilderSurface');
+  }
+  const reports=await openReports();
+  await reports.getByLabel('Report template',{exact:true}).selectOption('calculations');
+  const included=reports.getByRole('group',{name:'Calculation sheets',exact:true});
+  const gravityTitle='Gravity sizing calculation sheet',pipeTitle='Circular pipe capacity calculation sheet';
+  for(const title of [gravityTitle,pipeTitle])await included.getByRole('checkbox',{name:title,exact:true}).check();
+  const preview=reports.getByRole('button',{name:'Preview assessment report',exact:true});
+  const dialog=reports.getByRole('dialog',{name:'Assessment report preview'}),frame=dialog.frameLocator('iframe');
+  const embedded=title=>frame.locator('.report-calculation-sheet').filter({has:frame.getByRole('heading',{name:title,exact:true})});
+  await preview.click();
+  await frame.getByRole('heading',{name:'Engineering calculation sheets',exact:true}).waitFor();
+  const gravity=await embedded(gravityTitle).innerText(),capacity=await embedded(pipeTitle).innerText();
+  assert.match(gravity,/prismatic-manning-uniform-si-v1[\s\S]*3,064\.785 L\/s[\s\S]*2,338\.869 L\/s[\s\S]*FHWA HDS-4/);
+  assert.match(capacity,/Calculation engine revision[\s\S]*circular-darcy-colebrook-full-bore-si-v1/);
+  assert.match(capacity,/Upstream invert used for gradient \(m\)\s+11[\s\S]*Conduit length used for gradient \(m\)\s+200[\s\S]*202\.65 L\/s[\s\S]*Gradient derivation/);
+  if(process.env.ICM_EVIDENCE_DIR)await dialog.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-legacy-sheets-'+engine+'.png'});
+  const htmlRequest=page.waitForEvent('download');
+  await dialog.getByRole('button',{name:'Download preview',exact:true}).click();
+  const html=await fs.readFile(await (await htmlRequest).path(),'utf8');
+  assert(html.includes(gravityTitle)&&html.includes(pipeTitle));assert.doesNotMatch(html,/<script\b|Project data context/);
+  await dialog.getByRole('button',{name:'Close',exact:true}).click();
+  await page.locator('button[data-workspace="hydraulics"]').click();
+  await page.getByRole('tab',{name:'Pipe capacity',exact:true}).click();
+  await pipe.locator('[name=gradient]').fill('.006');
+  await openReports();
+  const stale=included.getByRole('checkbox',{name:pipeTitle+' · calculate again',exact:true});
+  assert(await stale.isChecked());assert(await included.getByRole('checkbox',{name:gravityTitle,exact:true}).isChecked());
+  await preview.click();
+  await reports.getByText('Refresh or deselect unavailable calculation sheets before generating the report.',{exact:false}).waitFor();
+  await page.locator('button[data-workspace="hydraulics"]').click();
+  await page.getByRole('tab',{name:'Pipe capacity',exact:true}).click();
+  await pipe.locator('[name=discharge]').fill('80');
+  await pipe.getByRole('button',{name:'Assess design flow',exact:true}).click();
+  await page.locator('#pipeCapacityResult').getByText('Partially full normal depth',{exact:false}).waitFor();
+  await openReports();await preview.click();
+  const depth=await embedded(pipeTitle).innerText();
+  assert.match(depth,/circular-darcy-colebrook-normal-depth-si-v1[\s\S]*Design discharge \(m³\/s\)\s+0\.08[\s\S]*Solution 1 depth \(m\)/);
+  assert.doesNotMatch(depth,/Upstream invert used|Gradient derivation/);
+  await dialog.getByRole('button',{name:'Close',exact:true}).click();
   assert.deepEqual(errors,[]);guard.assertClean();console.log('MANNING_SIZING_PASS '+engine);
 }finally{await browser.close();}
