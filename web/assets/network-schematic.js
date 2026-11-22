@@ -12,6 +12,7 @@ let redo=[],multi=new Set(),highlight=null,hoverTimer=null,frame=null,analysisGe
 const freshness=new Map();
 const prefs=()=>R.preferences(network);
 let overviewCache=null,monitorCache=null,detailedCamera=null,simulationView=null,geometryView=null,hotspots=null;
+let paintedCamera=null;
 const inOverview=()=>prefs().overview&&!editing;
 const overviewGraph=()=>overviewCache??=R.overview(network);
 const sceneGraph=()=>inOverview()?overviewGraph():network;
@@ -280,6 +281,47 @@ function renderNodeLeader(group,n,scale){
   if(leader)group.append(svgElement('path',{'data-ns-leader':'',d:'M'+leader.start.x+' '+leader.start.y+'L'+leader.end.x+' '+leader.end.y,
     stroke:'#82939f','stroke-width':1,fill:'none'}),svgElement('polygon',{points:polygonPoints(leader.arrow),fill:'#82939f'}));
 }
+function largeScene(graph){return graph.nodes.length+graph.edges.length>3000;}
+function sceneMarkerScale(graph=sceneGraph()){
+  const zoom=network.camera.zoom,ordinary=C.symbolScale(zoom);
+  return largeScene(graph)||inOverview()&&graph.nodes.length>180?Math.min(ordinary,Math.max(.22,zoom*2.5)):ordinary;
+}
+function sceneWindow(shown,links,byId,width,height){
+  const a=world(-100,-100),b=world(width+100,height+100);
+  const nodes=shown.filter(n=>n.id===selected&&selectionKind==='node'||n.x>=a.x&&n.x<=b.x&&n.y>=a.y&&n.y<=b.y);
+  const edges=links.filter(e=>{
+    if(e.id===selected&&selectionKind==='edge')return true;
+    const start=byId.get(e.from),end=byId.get(e.to);
+    let left=Math.min(start.x,end.x),right=Math.max(start.x,end.x);
+    let top=Math.min(start.y,end.y),bottom=Math.max(start.y,end.y);
+    for(const p of e.bends||[]){left=Math.min(left,p.x);right=Math.max(right,p.x);top=Math.min(top,p.y);bottom=Math.max(bottom,p.y);}
+    return left<=b.x&&right>=a.x&&top<=b.y&&bottom>=a.y;
+  });
+  return {nodes,edges};
+}
+function compactGeometry(scene,nodes,edges,byId){
+  const lines=new Map(),points=new Map();
+  function append(byStyle,colour,dimmed,path){
+    const style=colour+'|'+(dimmed?'dim':'full');
+    if(!byStyle.has(style))byStyle.set(style,{colour,dimmed,paths:[]});
+    byStyle.get(style).paths.push(path);
+  }
+  const coordinate=p=>{const {x,y}=point(p.x,p.y);return Math.round(x*10)/10+' '+Math.round(y*10)/10;};
+  for(const n of nodes)append(points,n.colour,highlight&&!highlight.ids.has(n.id),'M'+coordinate(n)+'h.1');
+  for(const e of edges){
+    const changed=highlight&&!(e.sourceEdges||[e.id]).some(id=>highlight.wires.has(id));
+    const style=e.direction==='unknown'?e.colour+'-unknown':e.colour;
+    const path=[byId.get(e.from),...(e.bends||[]),byId.get(e.to)].map(coordinate).join('L');
+    append(lines,style,changed,'M'+path);
+  }
+  for(const [marks,width] of [[lines,1.4],[points,3]]){
+    for(const {colour,dimmed,paths} of marks.values()){
+      const [key,unknown]=colour.split('-');
+      scene.append(svgElement('path',{'data-ns-compact':'','aria-hidden':'true',d:paths.join(''),fill:'none',
+        stroke:C.colours[key],'stroke-width':width,'stroke-linecap':'round','stroke-dasharray':unknown?'5 4':'',opacity:dimmed?.2:.72}));
+    }
+  }
+}
 function renderScene(includeHandles=true){
   const graph=sceneGraph(),includeLabels=includeHandles||prefs().showLabels;
   const {width,height}=dimensions(),scene=document.createDocumentFragment();
@@ -290,11 +332,31 @@ function renderScene(includeHandles=true){
   const surveyView=surveyLayer?surveyLayerView():null;
   const detrimentLayer=prefs().detriment===true,comparison=detrimentLayer?detrimentView():null;
   const shown=visibleNodes(graph.nodes),shownIds=new Set(shown.map(n=>n.id)),byId=new Map(graph.nodes.map(n=>[n.id,n]));
-  const scale=C.symbolScale(network.camera.zoom),markerTransform='scale('+scale+')';
-  const routes=C.connectionRoutes(graph.nodes,graph.edges,n=>point(n.x,n.y),scale);
+  const scale=sceneMarkerScale(graph),markerTransform='scale('+scale+')';
+  const hit=scale<C.symbolScale(network.camera.zoom)?Math.max(.55,scale):1;
   const geometry=geometryView?.current();
-  for(const e of graph.edges){
-    if(!shownIds.has(e.from)||!shownIds.has(e.to)||(branchIsolated&&highlight&&!e.sourceEdges?.some(id=>highlight.wires.has(id))&&!highlight.wires.has(e.id)))continue;
+  const eligibleEdges=graph.edges.filter(e=>shownIds.has(e.from)&&shownIds.has(e.to)&&
+    (!branchIsolated||!highlight||(e.sourceEdges||[e.id]).some(id=>highlight.wires.has(id))));
+  const windowed=includeHandles&&largeScene(graph)?sceneWindow(shown,eligibleEdges,byId,width,height):{nodes:shown,edges:eligibleEdges};
+  const condensed=windowed.nodes.length+windowed.edges.length>1400&&includeHandles&&largeScene(graph)&&
+    !geometry&&!simulationView?.active()&&!verificationLayer&&!surveyLayer&&!detrimentLayer&&!hotspots;
+  let {nodes:displayNodes,edges:displayEdges}=windowed;
+  if(condensed){
+    const locations=monitorGroups(),hasMonitor=(kind,id)=>prefs().showMonitors&&locations.has(R.refKey({kind,id}));
+    const focusedNode=n=>selectionKind==='node'&&(n.id===selected||multi.has(n.id));
+    const focusedEdge=e=>selectionKind==='edge'&&(e.id===selected||e.sourceEdges?.includes(selected));
+    const highlights=items=>items.filter(([,important])=>important).slice(0,240).map(([object])=>object);
+    displayNodes=[...displayNodes.filter(focusedNode),...highlights(displayNodes.filter(n=>!focusedNode(n)).map(n=>[n,
+      hasMonitor('node',n.id)||n.pinned||!['manhole','junction'].includes(n.type)]))];
+    displayEdges=[...displayEdges.filter(focusedEdge),...highlights(displayEdges.filter(e=>!focusedEdge(e)).map(e=>[e,
+      hasMonitor('edge',e.id)||Object.hasOwn(structureCodes,e.icm?.table)]))];
+    const markers=new Set(displayNodes.map(n=>n.id)),details=new Set(displayEdges.map(e=>e.id));
+    compactGeometry(scene,windowed.nodes.filter(n=>!markers.has(n.id)),windowed.edges.filter(e=>!details.has(e.id)),byId);
+  }
+  const connections=largeScene(graph)&&includeHandles?new Set(displayEdges.flatMap(e=>[e.from,e.to])):null;
+  const routeEdges=connections?graph.edges.filter(e=>connections.has(e.from)||connections.has(e.to)):graph.edges;
+  const routes=C.connectionRoutes(graph.nodes,routeEdges,n=>point(n.x,n.y),scale);
+  for(const e of displayEdges){
     const route=routes.get(e.id);if(!route)continue;
     const a=byId.get(e.from),b=byId.get(e.to),colour=C.colours[e.colour];
     const chosen=selectionKind==='edge'&&(e.id===selected||e.sourceEdges?.includes(selected))||
@@ -330,7 +392,7 @@ function renderScene(includeHandles=true){
     }
     scene.append(group);
   }
-  for(const n of shown){
+  for(const n of displayNodes){
     const p=point(n.x,n.y),colour=C.colours[n.colour],box=C.bounds(n.type),offset=C.labelOffset(n);
     const small=['manhole','label'].includes(n.type);
     const title=n.name+' · '+C.types[n.type];
@@ -343,7 +405,7 @@ function renderScene(includeHandles=true){
       group.append(svgElement('rect',{'data-ns-frame':'',transform:markerTransform,x:-box.x,y:-box.y,width:box.x*2,height:box.y*2,
         rx:6,fill:'white',stroke:colour,'stroke-width':1.5}));
     }
-    group.append(svgElement('rect',{x:-37,y:-28,width:74,height:56,fill:'transparent'}));
+    group.append(svgElement('rect',{x:-37*hit,y:-28*hit,width:74*hit,height:56*hit,fill:'transparent'}));
     const symbol=svgElement('g',{'data-ns-symbol':'',transform:markerTransform,stroke:colour,'stroke-width':1.8,fill:'white',
       'stroke-linecap':'round','stroke-linejoin':'round'});
     renderIcon(symbol,n.type);
@@ -478,7 +540,7 @@ function renderMinimap(){
   const dots=graph.nodes.map(n=>{const [x,y]=vertex(n);return 'M'+x+' '+y+'h.1';}).join('');
   map.replaceChildren(svgElement('rect',{width:160,height:100,rx:4,fill:'#fff'}),
     svgElement('path',{d:lines?'M'+lines:'',fill:'none',stroke:'#9ca8b6','stroke-width':.7}),
-    svgElement('path',{d:dots,fill:'none',stroke:'#345788','stroke-width':2.7,'stroke-linecap':'round'}),
+    svgElement('path',{d:dots,fill:'none',stroke:'#345788','stroke-width':largeScene(graph) ? .8 : 2.7,'stroke-linecap':'round'}),
     svgElement('rect',{'data-ns-minimap-viewport':'',fill:'#4f3da51a',stroke:'#4f3da5','stroke-width':1}));
   updateMinimapViewport();
 }
@@ -495,7 +557,7 @@ function panFromMinimap(event){
   const x=((event.clientX-rect.left)*160/rect.width-minimapBounds.x)/minimapBounds.scale;
   const y=((event.clientY-rect.top)*100/rect.height-minimapBounds.y)/minimapBounds.scale;
   network.camera.x=width/2-x*network.camera.zoom;network.camera.y=height/2-y*network.camera.zoom;
-  renderGeometry();persist();
+  renderGeometry();
 }
 function closeContext(focus=false){
   const menu=$('nsContextActions');
@@ -555,10 +617,10 @@ function renderCanvas(){
   const svg=$('nsSvg');if(!svg)return;
   const active=document.activeElement;
   const focused=svg.contains(active)&&active.closest('[data-ns-node],[data-ns-edge]');
-  const d=dimensions();svg.setAttribute('viewBox','0 0 '+d.width+' '+d.height);
+  const d=dimensions();svg.setAttribute('viewBox','0 0 '+d.width+' '+d.height);paintedCamera={...network.camera};
   svg.toggleAttribute('data-ns-labels-hidden',!prefs().showLabels);
   svg.replaceChildren(renderScene());
-  svg.dataset.nsMarkerScale=C.symbolScale(network.camera.zoom);
+  svg.dataset.nsMarkerScale=sceneMarkerScale();
   declutterLabels(svg);
   const selectedGroup=selectionKind==='node'&&[...svg.children].find(group=>group.dataset.nsNode===selected&&selected!==null);
   if(selectedGroup)svg.append(selectedGroup);
@@ -576,8 +638,14 @@ function renderCanvas(){
   $('nsIsolateBranch').setAttribute('aria-pressed',String(branchIsolated));
 }
 function renderGeometry(){
-  const svg=$('nsSvg'),scale=C.symbolScale(network.camera.zoom),scaleChanged=Number(svg.dataset.nsMarkerScale)!==scale;
-  const graph=sceneGraph();
+  const svg=$('nsSvg');
+  if(paintedCamera&&(drag?.kind==='pan'||touchPointers.size||minimapPointer!==null)){
+    const {width,height}=dimensions(),camera=network.camera,ratio=paintedCamera.zoom/camera.zoom;
+    const left=paintedCamera.x-camera.x*ratio,top=paintedCamera.y-camera.y*ratio;
+    svg.setAttribute('viewBox',[left,top,width*ratio,height*ratio].join(' '));
+    updateMinimapViewport();return;
+  }
+  const graph=sceneGraph(),scale=sceneMarkerScale(graph),scaleChanged=Number(svg.dataset.nsMarkerScale)!==scale;
   const edges=new Map(graph.edges.map(e=>[e.id,e])),nodes=new Map(graph.nodes.map(n=>[n.id,n])),routes=C.connectionRoutes(graph.nodes,graph.edges,n=>point(n.x,n.y),scale);
   for(const g of svg.querySelectorAll('[data-ns-node]')){
     const n=nodes.get(g.dataset.nsNode),p=point(n.x,n.y);
@@ -1249,7 +1317,8 @@ function visibleNodes(nodes=network.nodes){
 }
 function applyDecorations(){
   const byId=new Map(network.nodes.map(n=>[n.id,n]));
-  for(const g of $('nsSvg').querySelectorAll('[data-ns-node]')){const n=byId.get(g.dataset.nsNode);g.style.opacity=highlight&&!highlight.ids.has(n.id)?'.2':'1';g.classList.toggle('ns-multi-selected',multi.has(n.id));if(asset(n)){const h=nodeHealth(n);if(h!=='ready'){const dot=document.createElementNS(NS,'circle');dot.setAttribute('cx','-34');dot.setAttribute('cy','-24');dot.setAttribute('r','4');dot.setAttribute('fill',h==='stale'?'#9a6500':h==='missing'?'#b93838':'#82939f');const title=document.createElementNS(NS,'title');title.textContent=healthLabel(h);dot.append(title);g.append(dot);}}}
+  const offset=Math.min(1,Number($('nsSvg').dataset.nsMarkerScale));
+  for(const g of $('nsSvg').querySelectorAll('[data-ns-node]')){const n=byId.get(g.dataset.nsNode);g.style.opacity=highlight&&!highlight.ids.has(n.id)?'.2':'1';g.classList.toggle('ns-multi-selected',multi.has(n.id));if(asset(n)){const h=nodeHealth(n);if(h!=='ready'){const dot=svgElement('circle',{cx:-34*offset,cy:-24*offset,r:Math.max(2,4*offset),fill:h==='stale'?'#9a6500':h==='missing'?'#b93838':'#82939f'});dot.append(svgElement('title',{},healthLabel(h)));g.append(dot);}}}
   for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]')){
     const members=inOverview()?overviewGraph().edgeToReach.get(g.dataset.nsEdge)?.sourceEdges:[g.dataset.nsEdge];
     g.style.opacity=highlight&&!members?.some(id=>highlight.wires.has(id))?'.15':'1';
@@ -1930,7 +1999,8 @@ function renderReviewControls(){
   $('nsLongSection').disabled=!network.edges.length&&!network.routeReviews?.length;
   $('nsWorkbench').querySelector('.ns-canvas-note').textContent=inOverview()?
     'Overview · M: monitor · Purple: structure · Dashed: direction unconfirmed':
-    'Connections show topology only · M: installed monitor';
+    $('nsSvg').querySelector('[data-ns-compact]')?'Connections show topology only · Zoom in or use Find asset for details':
+      'Connections show topology only · M: installed monitor';
   const panel=$('nsReach');
   if(panel&&!panel.hidden&&(!inOverview()||panel.dataset.selection!==selectionKind+':'+selected))panel.hidden=true;
   if($('nsRoute')&&!$('nsRoute').hidden)updateProfileSelection();
@@ -2757,7 +2827,7 @@ function mountSimulationView(){
   panel.addEventListener('toggle',()=>{if(panel.open)refreshSources();else stop();});
   window.addEventListener('icm:simulation-sources-changed',refreshSources);
   window.addEventListener('icm:route-changed',({detail})=>{if(detail.page!=='schematic')stop();else if(panel.open)refreshSources();});
-  simulationView={decorate,reset,refreshSources,profile:()=>profile,refreshProfile:()=>{if(layer?.geometryDatum)void drawFrame();}};
+  simulationView={decorate,reset,refreshSources,active:()=>Boolean(layer),profile:()=>profile,refreshProfile:()=>{if(layer?.geometryDatum)void drawFrame();}};
 }
 
 function displayProfile(){
@@ -3248,7 +3318,7 @@ function mount(){
     minimapPointer=event.pointerId;map.setPointerCapture(event.pointerId);panFromMinimap(event);
   });
   map.addEventListener('pointermove',event=>{if(minimapPointer===event.pointerId)panFromMinimap(event);});
-  const endMinimap=event=>{if(minimapPointer===event.pointerId){minimapPointer=null;renderCanvas();}};
+  const endMinimap=event=>{if(minimapPointer===event.pointerId){minimapPointer=null;renderCanvas();persist();}};
   map.addEventListener('pointerup',endMinimap);map.addEventListener('pointercancel',endMinimap);
   map.addEventListener('lostpointercapture',endMinimap);
   map.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();fit();}});

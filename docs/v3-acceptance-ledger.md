@@ -58,7 +58,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 13 | Shared registry, workspace serialization and storage | Shared typed results and route context; deterministic stale state, bounded imports and prior workspace compatibility | Open |
 | 14 | Precision Workbench / shared design tokens | Desktop usability, keyboard, responsive layout, contrast, reduced motion, progress and understandable empty/error states | Open |
 | 15 | Existing numerical and browser regressions | Independent reference cases for every new method, mandatory invalid/boundary cases, tolerances and genuine ICM comparisons where available | Open |
-| 16 | CI baseline comparison and v2.2 matched startup measures | Matched lifecycle benchmarks at 400, 1,600 and 10,000 assets and varying duration, throughput, memory, cancellation and state integrity | Open |
+| 16 | CI baseline comparison and v2.2 matched startup measures | Matched lifecycle benchmarks at 400, 1,600 and 10,000 assets and varying duration, throughput, memory, cancellation and state integrity | Partial. Matched native network import, pan, inspection, overview and zoom verified locally. Exact final release and annual-results lifecycle evidence remain open |
 | 17 | Local worker, CSP, approvals, SBOM and request observers | Review every affected trust boundary, malformed inputs and resource limits. Repeat source, claim, licence, CodeQL, dependency, secret and browser checks | Open |
 | 18 | Chromium/Firefox release suites | Complete per-control and cross-workspace checks and documented review passes. Distinguish AI review, real ICM and available browser/platform coverage | Open |
 | 19 | Git and this ledger | Preserve implementation commits, exact evidence, outstanding limitations and recovery context | Partial |
@@ -1354,3 +1354,44 @@ other state.
   violations. The static source gate, 28 Python privacy tests and the
   153-resource artifact integrity check passed. Synthetic screenshots are
   recorded under `hydra-evidence/v3/profile-controls/`.
+
+### Native network scale and desktop interaction
+
+- The 32 MiB native CSV input limit remains. The native geometry schema now
+  supports up to 6,000 nodes and 6,000 links, with individual rejection cases.
+  Manual and canonical limits remain covered by the existing suites. Dense
+  detailed maps use clipped source geometry, compact drawing and zoom or asset
+  search for inspection. Panning updates the SVG viewport during the gesture
+  and refreshes its interactive detail after release. The topological overview
+  and original network are retained separately. Local JSON restores all typed
+  assets after clearing the map. Browser recovery storage remains quota-bound.
+- Matched localhost runs used the exact production v2.2.0 artifact
+  (`5882ebf60da8ee89d0ec10a0374b95fc548cc569`) and the candidate with the
+  same desktop browser settings and generated 399, 1,599 and 10,001 assets.
+  Times are individual end-to-end wall-clock observations through two paint
+  frames. A pan includes 12 automated pointer movements and the restored
+  detailed view on release.
+
+| Browser, assets | v2.2 apply and fit | Candidate apply and fit | v2.2 pan | Candidate pan |
+|---|---:|---:|---:|---:|
+| Chromium, 399 | 327 ms | 324 ms | 941 ms | 393 ms |
+| Chromium, 1,599 | 777 ms | 894 ms | 3,758 ms | 1,269 ms |
+| Chromium, 10,001 | Import rejected | 378 ms | Unavailable | 579 ms |
+| Firefox, 399 | 431 ms | 342 ms | 982 ms | 504 ms |
+| Firefox, 1,599 | 1,355 ms | 1,306 ms | 3,999 ms | 1,922 ms |
+| Firefox, 10,001 | Import rejected | 605 ms | Unavailable | 791 ms |
+
+- The largest synthetic CSV is 344,830 bytes. Candidate preview took 343 ms
+  in Chromium and 364 ms in Firefox, and search inspection took 267 ms and
+  376 ms. The native detailed map kept 96 individual graphics at full extent
+  alongside the source coordinates of the ordinary assets. Chromium reported
+  33,988,360 bytes of used JavaScript heap after the overview interaction.
+  That figure excludes native browser and graphics allocations. The same
+  fixture without windowing and compact paths used approximately 74.5 MB of
+  JavaScript heap and a 23.4 s scripted pan. Chromium applied the middle
+  candidate fixture 117 ms slower in the matched single run. Smaller-network
+  repeated performance and dense thematic playback remain separate checks.
+- Both scale suites watched every request, with zero violations. They are
+  wired into the existing protected browser-interaction workflow. Local raw
+  results and synthetic screenshots are under `hydra-evidence/v3/network-scale/`
+  and `hydra-evidence/v3/network-scale-final/`.

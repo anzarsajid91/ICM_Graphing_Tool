@@ -18,3 +18,19 @@ export const controlProfileNetwork='**** hw_node\nnode_id,node_type,x,y,ground_l
   '**** hw_weir\nus_node_id,ds_node_id,link_suffix,crest\nC,D,W,10.9\n'+
   '**** hw_orifice\nus_node_id,ds_node_id,link_suffix,invert\nD,E,O,10.5\n'+
   '**** hw_sluice\nus_node_id,ds_node_id,link_suffix,invert\nE,F,S,10.6\n';
+// Synthetic gravity grid with adjacent branches, periodic overflows and one
+// outlet. The coordinates and engineering values are entirely generated.
+export function largeNativeNetwork(nodeCount){
+  const width=Math.ceil(Math.sqrt(nodeCount));
+  const id=index=>String(index+1).padStart(5,'0');
+  const nodes=['****hw_node','node_id,x,y,node_type,ground_level,chamber_floor'];
+  const links=['****hw_conduit','us_node_id,ds_node_id,link_suffix,conduit_length,shape,conduit_width,conduit_height,us_invert,ds_invert'];
+  for(let index=0;index<nodeCount;index++){
+    const type=index===nodeCount-1?'Outfall':index%53===0?'CSO':'Manhole';
+    nodes.push([id(index),1000+index%width*75,2000+Math.floor(index/width)*80,type,30,28].join(','));
+    if(index===nodeCount-1)continue;
+    const next=index%width!==width-1?index+1:Math.min(index+width,nodeCount-1);
+    links.push([id(index),id(next),1,next===index+1?75:80,'CIRC',450,450,28,27.85].join(','));
+  }
+  return [...nodes,...links].join('\n')+'\n';
+}

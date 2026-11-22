@@ -162,9 +162,14 @@ function validateInspectorProperties(object){
       throw new Error('Invalid or duplicate custom asset properties.');
   }
 }
+const nativeAssetLimit=6000;
 function validateNetwork(value){
   if(!value||![1,2].includes(value.schema)||!Array.isArray(value.nodes)||!Array.isArray(value.edges))throw new Error('Unsupported network schematic file.');
-  if(value.nodes.length>2000||value.edges.length>5000)throw new Error('This overview supports up to 2,000 points and 5,000 connectors.');
+  const native=value.contextFormat==='icm-csv-v1';
+  const pointLimit=native?nativeAssetLimit:2000,linkLimit=native?nativeAssetLimit:5000;
+  if(value.nodes.length>pointLimit||value.edges.length>linkLimit)throw new Error(native?
+    'This ICM context supports up to 6,000 points and 6,000 connectors.':
+    'This overview supports up to 2,000 points and 5,000 connectors.');
   const ids=new Set();
   for(const n of value.nodes){
     if(!n.id||ids.has(n.id)||!Object.hasOwn(types,n.type)||!Object.hasOwn(colours,n.colour)||typeof n.name!=='string'||!Number.isFinite(n.x)||!Number.isFinite(n.y)||Math.abs(n.x)>1e6||Math.abs(n.y)>1e6)throw new Error('Invalid or duplicate schematic point.');
@@ -199,15 +204,15 @@ function validateNetwork(value){
   validateRouteWorkspace(result);
   result.views=result.views||[];result.reviewSnapshots=result.reviewSnapshots||[];
   if(!Array.isArray(result.views)||result.views.length>30||!Array.isArray(result.reviewSnapshots)||result.reviewSnapshots.length>20)throw new Error('Invalid saved review views.');
-  for(const view of result.views)if(typeof view.name!=='string'||view.name.length>100||!Array.isArray(view.positions)||view.positions.length>2000||!view.camera||![view.camera.x,view.camera.y,view.camera.zoom].every(Number.isFinite)||view.camera.zoom<.002||view.camera.zoom>maxCameraZoom||view.positions.some(p=>typeof p.id!=='string'||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)))throw new Error('Invalid saved view.');
+  for(const view of result.views)if(typeof view.name!=='string'||view.name.length>100||!Array.isArray(view.positions)||view.positions.length>pointLimit||!view.camera||![view.camera.x,view.camera.y,view.camera.zoom].every(Number.isFinite)||view.camera.zoom<.002||view.camera.zoom>maxCameraZoom||view.positions.some(p=>typeof p.id!=='string'||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)))throw new Error('Invalid saved view.');
   for(const view of result.views){
-    if(view.edges!==undefined&&(!Array.isArray(view.edges)||view.edges.length>5000)||view.evidenceMode!==undefined&&!['single','combined'].includes(view.evidenceMode)||view.metric!==undefined&&!['spill_count','duration_hours'].includes(view.metric))throw new Error('Invalid saved view display.');
+    if(view.edges!==undefined&&(!Array.isArray(view.edges)||view.edges.length>linkLimit)||view.evidenceMode!==undefined&&!['single','combined'].includes(view.evidenceMode)||view.metric!==undefined&&!['spill_count','duration_hours'].includes(view.metric))throw new Error('Invalid saved view display.');
     const test={...result,views:[],reviewSnapshots:[],camera:view.camera,preferences:view.preferences||result.preferences};
     const positions=new Map(view.positions.map(p=>[p.id,p])),geometry=new Map((view.edges||[]).map(e=>[e.id,e]));
     test.nodes=result.nodes.map(n=>({...n,...positions.get(n.id)}));test.edges=result.edges.map(e=>({...e,...geometry.get(e.id)}));
     validateNetwork(test);
   }
-  for(const saved of result.reviewSnapshots)if(typeof saved.name!=='string'||saved.name.length>100||typeof saved.saved_at!=='string'||!saved.network||!Array.isArray(saved.network.nodes)||!Array.isArray(saved.network.edges)||saved.network.nodes.length>2000||saved.network.edges.length>5000)throw new Error('Invalid review snapshot.');
+  for(const saved of result.reviewSnapshots)if(typeof saved.name!=='string'||saved.name.length>100||typeof saved.saved_at!=='string'||!saved.network||!Array.isArray(saved.network.nodes)||!Array.isArray(saved.network.edges)||saved.network.nodes.length>pointLimit||saved.network.edges.length>linkLimit)throw new Error('Invalid review snapshot.');
   for(const saved of result.reviewSnapshots){if(saved.network.views?.length||saved.network.reviewSnapshots?.length)throw new Error('Nested review snapshots are unsupported.');saved.network=validateNetwork(saved.network);}
   result.camera=result.camera||{x:0,y:0,zoom:1};
   if(![result.camera.x,result.camera.y,result.camera.zoom].every(Number.isFinite)||result.camera.zoom<.002||result.camera.zoom>maxCameraZoom)throw new Error('Invalid schematic camera.');
@@ -321,7 +326,7 @@ function importNativeContext(input){
       line,file:name,sourceRow:row-(name&&!combined?1:0),
     }));
   });
-  const network=empty(),nodes=new Map(),blocks=new Set(),warnings=new Set();
+  const network={...empty(),contextFormat:'icm-csv-v1'},nodes=new Map(),blocks=new Set(),warnings=new Set();
   const nodeTypes=new Map([['manhole','manhole'],['outfall','outfall'],['outfall 2d','outfall'],
     ['storage','tank'],['pond','tank'],['cso','cso'],['pumping station','pump'],['break','junction'],['connect 2d','junction']]);
   const supported=type=>type==='hw_node'||nativeLinks.has(type);
@@ -406,7 +411,7 @@ function importNativeContext(input){
       if(!nodeTypes.has(kind))warnings.add('Missing or unfamiliar node types use a generic junction symbol.');
       nodes.set(id,{id:row.node_id,name:row.node_id,type,x,y:-y,colour:'blue',bindings:[],sourceAttributes,
         icm:{nodeType:row.node_type||null,groundLevelM:number('ground_level'),chamberFloorM:number('chamber_floor')}});
-      if(nodes.size>2000)fail('network exceeds 2,000 points.');
+      if(nodes.size>nativeAssetLimit)fail('network exceeds 6,000 points.');
     }else{
       const from=(row.us_node_id||row.upstream_node_id)?.toUpperCase(),to=(row.ds_node_id||row.downstream_node_id)?.toUpperCase();
       const suffix=row.link_suffix?.toUpperCase();
@@ -428,7 +433,7 @@ function importNativeContext(input){
         for(let i=0;i<coordinates.length;i+=2)edge.vertices.push({x:Number(coordinates[i]),y:-Number(coordinates[i+1])});
       }
       pending.push(edge);
-      if(pending.length>5000)fail('network exceeds 5,000 connectors.');
+      if(pending.length>nativeAssetLimit)fail('network exceeds 6,000 connectors.');
     }
   }
   if(!nodes.size)throw new Error('Expected populated hw_node data in an ICM CSV export.');
