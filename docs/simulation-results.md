@@ -245,3 +245,12 @@ exceeds ground. A missing elevation or sample withholds the margin. A
 proposal comparison requires reviewed shared ground elevations and datum.
 The independent minimum margin uses the maximum recorded level. The
 independent maximum margin uses the minimum recorded level.
+
+## Source conduit geometry
+
+Open **Conduit geometry layer** on the detailed native network in Explore
+mode. Width and height use the imported dimensions in mm. Gradient uses the
+source value in m/m, or upstream minus downstream invert divided by source
+length when all three are available. Set the colour scale in the displayed
+units. A dashed conduit has an unavailable source value. Applying a
+simulation layer replaces the geometry shading.

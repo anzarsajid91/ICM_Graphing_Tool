@@ -442,5 +442,20 @@ function groundFreeboard(groundM,levelM){
   const difference=groundM-levelM;
   return Number.isFinite(difference)?difference:null;
 }
-globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand,recordedFlowDirection,groundFreeboard};
+function sourceConduitLayer(link,quantity){
+  const fields=link?.icm;
+  if(fields?.table!=='hw_conduit'||link.sourceAttributes?.table!=='hw_conduit')return null;
+  if(quantity==='width'||quantity==='height'){
+    const value=fields['conduit_'+quantity];
+    return {value:Number.isFinite(value)&&value>0?value:null,unit:'mm',basis:'Imported conduit '+quantity};
+  }
+  if(quantity==='gradient'){
+    if(Number.isFinite(fields.gradient))return {value:fields.gradient,unit:'m/m',basis:'Imported conduit gradient'};
+    const {conduit_length:length,us_invert:us,ds_invert:ds}=fields;
+    const value=[length,us,ds].every(Number.isFinite)&&length>0?(us-ds)/length:NaN;
+    return {value:Number.isFinite(value)?value:null,unit:'m/m',basis:'Calculated from source invert levels and length'};
+  }
+  return null;
+}
+globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand,recordedFlowDirection,groundFreeboard,sourceConduitLayer};
 })();

@@ -29,7 +29,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Verified locally |
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
-| 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial. Reviewed signed link-flow arrows, recorded quantities and same-datum ground-level freeboard work locally. Full-capacity and source geometry thematic layers remain open |
+| 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial. Signed link flow, recorded quantities, ground-level freeboard and source conduit geometry are verified locally. Capacity utilisation remains open |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Verified locally for exact shared-clock comparison and independent layer extrema. Geometry-sensitive scenario review remains open under 6.1 and 6.4 |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
 | 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for indexed ingestion and lookup. Broader capacity and release checks remain open |
@@ -1303,3 +1303,17 @@ other state.
   difference on the exact clock. Both checked missing datum rejection and
   the timestamps of the independent extrema. The request observers each
   counted 32 requests with zero violations.
+
+### Source conduit geometry thematic layers
+
+- The detailed schematic can shade imported width and height in mm and
+  gradient in m/m on an explicit scale. The gradient uses the reported
+  value where available and the difference between source inverts over
+  source length otherwise. A zero source gradient remains zero. Adverse
+  gradients retain their negative sign. Missing geometry has separate
+  styling and structures retain their existing appearance.
+- Chromium and Firefox both checked the 600 mm dimensions, positive
+  0.002 m/m gradient, adverse −0.001667 m/m gradient, missing-length
+  conduit and unaffected pump. Both checked invalid scale rejection,
+  layer removal and switching back to simulation playback. The request
+  observers each counted 32 requests with zero violations.

@@ -164,6 +164,30 @@ try {
   await playback.getByText('Open a native ICM network',{exact:false}).waitFor();
   await page.setInputFiles('#nsLoadInput',{name:'synthetic-network.csv',mimeType:'text/csv',buffer:Buffer.from(nativeNetwork)});
   await page.check('#nsContextUnits');await page.click('#nsContextApply');
+  const geometry=page.locator('#nsGeometryView');
+  await geometry.locator('summary').click();
+  const quantityControl=geometry.getByLabel('Source geometry quantity',{exact:true});
+  const geometryApply=geometry.getByRole('button',{name:'Apply geometry layer',exact:true});
+  const conduit=page.locator('#nsSvg').getByRole('button',{name:/^Connector 00127\.1/});
+  for(const [value,label] of [['width','width'],['height','height']]){
+    await quantityControl.selectOption(value);await geometryApply.click();
+    assert.match(await conduit.getAttribute('aria-label'),new RegExp('Conduit '+label+' · 600 mm · Imported conduit '+label));
+  }
+  await geometry.getByRole('button',{name:'Remove geometry layer',exact:true}).click();
+  assert.equal(await conduit.getAttribute('data-ns-sample'),null);
+  await quantityControl.selectOption('gradient');
+  await geometry.getByLabel('Geometry scale minimum',{exact:true}).fill('4');
+  await geometry.getByLabel('Geometry scale maximum',{exact:true}).fill('4');
+  await geometryApply.click();await geometry.getByText('Enter a finite geometry scale maximum',{exact:false}).waitFor();
+  await geometry.getByLabel('Geometry scale minimum',{exact:true}).fill('-0.005');
+  await geometry.getByLabel('Geometry scale maximum',{exact:true}).fill('0.02');
+  await geometryApply.click();
+  assert.match(await conduit.getAttribute('aria-label'),/Conduit gradient · 0\.002 m\/m · Calculated from source invert levels and length/);
+  const adverse=page.locator('#nsSvg').getByRole('button',{name:/^Connector B\.3/});
+  assert.match(await adverse.getAttribute('aria-label'),/Conduit gradient · -0\.001667 m\/m/);
+  assert.equal(await page.locator('#nsSvg').getByRole('button',{name:/^Connector C\.1/}).getAttribute('data-ns-sample'),'missing');
+  assert.equal(await page.locator('#nsSvg').getByRole('button',{name:/^Connector D\.P/}).getAttribute('data-ns-sample'),null);
+  if(process.env.ICM_EVIDENCE_DIR)await geometry.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-conduit-geometry-'+engine+'.png'});
   const indexed=playback.getByLabel('Indexed results'),confirmation=playback.getByLabel('I reviewed the model revision',{exact:false});
   const layer=playback.getByRole('button',{name:'Apply results layer'}),clock=playback.locator('#nsSimulationStamp');
   await indexed.selectOption({label:'Baseline · synthetic-icm-results.csv'});
@@ -172,6 +196,7 @@ try {
   await indexed.selectOption({label:'Baseline · synthetic-link-flow.csv'});
   await confirmation.check();await layer.click();
   await clock.getByText('1 of 1 matched assets have a sample.',{exact:false}).waitFor();
+  assert(await geometry.getByRole('button',{name:'Remove geometry layer',exact:true}).isDisabled());
   const wire=page.locator('#nsSvg [data-ns-edge][data-ns-sample]');
   assert.match(await wire.getAttribute('aria-label'),/Flow · 0 m³\/s · downstream end/);
   const mapResults=playback.getByLabel('Map results',{exact:true});

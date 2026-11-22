@@ -11,7 +11,7 @@ let inspectorTab='evidence',selectionKind='node';
 let redo=[],multi=new Set(),highlight=null,hoverTimer=null,frame=null,analysisGeneration=0,analysisContext=null,analysisTimer=null,analysisReturnFocus=null,pickerReturnFocus=null;
 const freshness=new Map();
 const prefs=()=>R.preferences(network);
-let overviewCache=null,monitorCache=null,detailedCamera=null,simulationView=null,hotspots=null;
+let overviewCache=null,monitorCache=null,detailedCamera=null,simulationView=null,geometryView=null,hotspots=null;
 const inOverview=()=>prefs().overview&&!editing;
 const overviewGraph=()=>overviewCache??=R.overview(network);
 const sceneGraph=()=>inOverview()?overviewGraph():network;
@@ -114,6 +114,13 @@ function showRecordedDirection(group,direction){
   if((direction!=='forward'&&direction!=='reverse')||!group.querySelector('[data-ns-direction]')){mark?.remove();return;}
   if(!mark){mark=svgElement('polygon',{'data-ns-recorded-direction':'','aria-hidden':'true'});group.append(mark);}
   positionRecordedDirection(group);
+}
+function renderBandLegend(legend,title,low,high,missing){
+  legend.replaceChildren(inspectorElement('strong',title),...Array.from({length:5},(_,band)=>{
+    const a=low+(high-low)*(band/5),b=low+(high-low)*((band+1)/5);
+    const item=inspectorElement('span',band===0?'< '+f(b,4):band===4?'≥ '+f(a,4):f(a,4)+' to < '+f(b,4));
+    item.dataset.nsSample=String(band);return item;
+  }),inspectorElement('span',missing));
 }
 const iconPaths={
   cso:'M-25 2c8-7 14 5 22 0h5v-18h7v31h17',
@@ -285,6 +292,7 @@ function renderScene(includeHandles=true){
   const shown=visibleNodes(graph.nodes),shownIds=new Set(shown.map(n=>n.id)),byId=new Map(graph.nodes.map(n=>[n.id,n]));
   const scale=C.symbolScale(network.camera.zoom),markerTransform='scale('+scale+')';
   const routes=C.connectionRoutes(graph.nodes,graph.edges,n=>point(n.x,n.y),scale);
+  const geometry=geometryView?.current();
   for(const e of graph.edges){
     if(!shownIds.has(e.from)||!shownIds.has(e.to)||(branchIsolated&&highlight&&!e.sourceEdges?.some(id=>highlight.wires.has(id))&&!highlight.wires.has(e.id)))continue;
     const route=routes.get(e.id);if(!route)continue;
@@ -312,6 +320,14 @@ function renderScene(includeHandles=true){
     const monitor=monitorMarker('edge',e.id,route.label.x+14,route.label.y-13);
     if(monitor)group.append(monitor);
     if(includeHandles&&editing&&selectionKind==='edge'&&e.id===selected)renderEdgeHandles(group,route,(e.bends||[]).length);
+    if(geometry){
+      const reading=R.sourceConduitLayer(e,geometry.quantity);
+      if(reading){
+        const caption=geometry.name+' · '+(reading.value===null?'Unavailable':f(reading.value,6)+' '+reading.unit)+' · '+reading.basis;
+        group.setAttribute('aria-label',group.getAttribute('aria-label')+' · '+caption);
+        group.prepend(svgElement('title',{},caption));group.dataset.nsSample=R.simulationBand(reading.value,geometry.low,geometry.high);
+      }
+    }
     scene.append(group);
   }
   for(const n of shown){
@@ -927,6 +943,7 @@ function render(){
   $('nsPan').setAttribute('aria-pressed',String(tool==='pan'));$('nsConnect').setAttribute('aria-pressed',String(tool==='connect'));
   $('nsZoomMode').setAttribute('aria-pressed',String(tool==='zoom'));
   $('nsCanvas').dataset.tool=tool;
+  geometryView?.refresh();
   $('nsColourChoices').innerHTML=colours(colour,'data-ns-colour');renderFilters();renderDrawer();renderCanvas();renderReview();
 }
 function add(type){
@@ -2225,6 +2242,44 @@ function renderProfileModel(){
       ' from '+new Set(model.values.map(row=>row.source)).size+' sources.')+comparison : '';
 }
 
+function mountGeometryView(){
+  $('nsLayout').insertAdjacentHTML('beforebegin','<details id="nsGeometryView" class="ns-review-section"><summary>Conduit geometry layer</summary>'+
+    '<form class="ns-review-actions"><label>Source geometry quantity<select name="quantity" aria-label="Source geometry quantity">'+
+    '<option value="gradient">Conduit gradient</option><option value="width">Conduit width</option><option value="height">Conduit height</option></select></label>'+
+    '<label>Geometry scale minimum<input name="low" type="number" step="any" required></label>'+
+    '<label>Geometry scale maximum<input name="high" type="number" step="any" required></label>'+
+    '<button type="submit">Apply geometry layer</button><button type="button" id="nsGeometryClear" disabled>Remove geometry layer</button></form>'+
+    '<p id="nsGeometryStatus" role="status"></p><div id="nsGeometryLegend" class="ns-simulation-legend" hidden></div></details>');
+  const view=$('nsGeometryView'),form=view.querySelector('form'),{quantity,low,high}=form.elements;
+  const clear=$('nsGeometryClear'),note=$('nsGeometryStatus'),legend=$('nsGeometryLegend');
+  const scales={gradient:[-.005,.02,'m/m'],width:[0,1500,'mm'],height:[0,1500,'mm']};
+  let applied=null;
+  const eligible=()=>network.contextFormat==='icm-csv-v1'&&!editing&&!inOverview();
+  function defaults(){[low.value,high.value]=scales[quantity.value];}
+  function refresh(){
+    form.hidden=!eligible();legend.hidden=!eligible()||!applied;clear.disabled=!applied;
+    if(!eligible())note.textContent='Open a native ICM network in detailed Explore mode to review conduit geometry.';
+    else if(!applied)note.textContent='Select an imported conduit dimension or gradient. Choose a scale in the displayed units.';
+    else note.textContent='Negative gradient means the downstream invert is above the upstream invert when derived from source levels.';
+  }
+  function reset(show=true){applied=null;refresh();if(show)renderCanvas();}
+  quantity.onchange=()=>{defaults();reset();};
+  clear.onclick=()=>reset();
+  form.onsubmit=event=>{
+    event.preventDefault();if(!eligible())return;
+    const limits=[low.valueAsNumber,high.valueAsNumber];
+    if(!(limits[0]<limits[1])||!Number.isFinite(limits[1]-limits[0])){
+      note.textContent='Enter a finite geometry scale maximum greater than its minimum.';return;
+    }
+    const name=quantity.selectedOptions[0].textContent;
+    simulationView?.reset('Conduit geometry layer is active. Apply simulation results to switch views.');
+    applied={quantity:quantity.value,name,low:limits[0],high:limits[1]};
+    renderBandLegend(legend,name+' ('+scales[quantity.value][2]+')',...limits,'Dashed conduit: source value unavailable');
+    refresh();renderCanvas();
+  };
+  defaults();refresh();geometryView={current:()=>eligible()?applied:null,refresh,reset};
+}
+
 function mountSimulationView(){
   $('nsLayout').insertAdjacentHTML('beforebegin','<details id="nsSimulation" class="ns-review-section">'+
     '<summary>Simulation playback</summary><p id="nsSimulationStatus" role="status"></p>'+
@@ -2547,12 +2602,8 @@ function mountSimulationView(){
     const first=layer.columns[0],{low,high}=layer;
     const description=display.value!=='sample'?' · '+(layer.proposal?'Baseline ': '')+display.selectedOptions[0].textContent:
       layer.proposal?' · '+shade.selectedOptions[0].textContent:'';
-    legend.replaceChildren(inspectorElement('strong',(layer.grounds?'Ground-level freeboard':titles[first.quantity])+description+' ('+first.unit+')'),
-      ...Array.from({length:5},(_,band)=>{
-        const a=low+(high-low)*(band/5),b=low+(high-low)*((band+1)/5);
-        const item=inspectorElement('span',(band===0?'< '+f(b,4):band===4?'≥ '+f(a,4):f(a,4)+' to < '+f(b,4)));
-        item.dataset.nsSample=String(band);return item;
-      }),inspectorElement('span','Dashed link or hollow marker: missing sample'));
+    renderBandLegend(legend,(layer.grounds?'Ground-level freeboard':titles[first.quantity])+description+' ('+first.unit+')',low,high,
+      'Dashed link or hollow marker: missing sample');
     if(layer.flowDirection&&display.value==='sample'&&shade.value!=='difference')legend.append(inspectorElement('span',
       'Bold arrows show recorded link flow. Faded arrows show nominal topology.'));
     if(layer.grounds)legend.append(inspectorElement('span','Calculated margin uses source ground minus recorded level. Negative means level above ground.'));
@@ -2596,6 +2647,7 @@ function mountSimulationView(){
       proposal={...proposal,columns:proposedColumns,alignment:columns.map(column=>positions.get(R.refKey(matches.get(column.series)))??-1)};
     }
     reset();
+    if(geometryView?.current())geometryView.reset();
     fields.confirm.checked=true;
     fields.verifyProposal.checked=Boolean(proposal);
     const flowDirection=first.asset.kind==='link'&&first.quantity==='flow'?fields.flowDirection.value:'';
@@ -3145,7 +3197,7 @@ function mount(){
   window.addEventListener('pagehide',flushSave);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSave();});
   window.addEventListener('icm:source-pool-changed',()=>{freshness.clear();if(analysisContext){++analysisGeneration;globalThis.Plotly?.purge('nsAnalysisPlot');$('nsAnalysisCounts').replaceChildren(annualTable(network.nodes.find(n=>n.id===analysisContext.id)||{id:'missing',bindings:[]},true));$('nsCommonResult').hidden=true;$('nsAnalysisMessage').textContent='Sources changed. Reopen this analysis to refresh.';}renderCanvas();renderReview();if(editing)renderDrawer();});
-  mountReview();mountRouteReview();mountSimulationView();mountHotspots();render();
+  mountReview();mountRouteReview();mountGeometryView();mountSimulationView();mountHotspots();render();
 }
 async function open(){
   if(!mounted){let value=state.networkSchematicWorkspace;if(!value){try{value=JSON.parse(localStorage.getItem(STORE)||'null');}catch{}}

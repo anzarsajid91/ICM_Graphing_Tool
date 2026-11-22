@@ -47,3 +47,15 @@ assert.equal(R.groundFreeboard(10.5,10.75),-.25);
 assert.equal(R.groundFreeboard(0,0),0);
 assert.equal(R.groundFreeboard(null,10),null);
 assert.equal(R.groundFreeboard(10,null),null);
+const conduit={sourceAttributes:{table:'hw_conduit'},icm:{table:'hw_conduit',gradient:0,conduit_width:600,conduit_height:450,
+  conduit_length:50,us_invert:8.2,ds_invert:8.7}};
+assert.equal(R.sourceConduitLayer(conduit,'gradient').value,0);
+assert.equal(R.sourceConduitLayer(conduit,'width').value,600);
+assert.equal(R.sourceConduitLayer(conduit,'height').value,450);
+assert.equal(R.sourceConduitLayer(conduit,'height').unit,'mm');
+conduit.icm.gradient=null;
+assert.equal(R.sourceConduitLayer(conduit,'gradient').value,-.01);
+assert.match(R.sourceConduitLayer(conduit,'gradient').basis,/invert/);
+conduit.icm.ds_invert=null;
+assert.equal(R.sourceConduitLayer(conduit,'gradient').value,null);
+assert.equal(R.sourceConduitLayer({icm:{table:'hw_pump'}},'width'),null);
