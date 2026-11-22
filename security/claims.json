@@ -126,7 +126,7 @@
     "scripts/build_pages.py": "d79d847a9d11550c942ce60e3e0663b743d19e4c07dfef2429578043dc867ca6",
     "web/vendor/manifest.json": "bb70a1f4497a0f6307f836828522015ebb60293e91df66ac3778f986f2d96b82",
     "web/assets/runtime.release.js": "1f1d3284762f613d64d0f853560424fca2b0932bff856ca5db19bdbdb0abe722",
-    "web/assets/network-schematic.js": "4e0df4bebc067bbee45c8ad5da50e8424f6be0fdd71f5acdd09e8bdb512f321f",
+    "web/assets/network-schematic.js": "6fc69aa53827090f7fb6af7c02733b81a45ebcb2c76ca9844596e89e37c6b271",
     "web/assets/precision-workbench.js": "522983e87299bb7a122eb854f6b69450c5c1c3e784d05ec374e4ce54e3b5889e",
     "web/assets/simulation-results-worker.js": "444591df29c0ad362f95b60c10631a8ce7258ab46fe65cb0dabeb47f5e8925db",
     "scripts/verify_data_confidentiality.py": "6aac0bd0fbd78f84f49c39be4f2ecd08b6812dd0974579df9178fd61c27801cb",
@@ -138,6 +138,6 @@
     "AGENTS.md": "4f54bc69115e55eacf5650a0375b5a175eb73d7e408a151af5fcff3086ab2e5c",
     "docs/security-governance.md": "e6e73035833f2f63ec2ab891456e65cbb2da054570b1d888c45c633b946de27b",
     "web/assets/local-security-diagnostics.js": "caa3d49528be5aaee2dc72b7056092a0231baced75d33b6df6660f510d9f8b25",
-    "web/assets/hydraulic-design.js": "ba6d4b7066f936d40391aaba8d162047670a35d3c94e1ceda8cdf1c99b7b247a"
+    "web/assets/hydraulic-design.js": "7b1a661ef16069c6870f01b6a3bd51a8ff202292f2ad52fda716f1e4e3732666"
   }
 }

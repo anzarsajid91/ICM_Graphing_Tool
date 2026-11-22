@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import {chromium,firefox} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
+import {nativeNetwork} from './network-route-fixture.mjs';
 
 const engine=process.env.ICM_BROWSER||'chromium';
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
@@ -221,6 +222,70 @@ try{
   await method.selectOption('england');assert(await basis.isHidden());
   await submit(design);await status(design,/Retained flow calculated/);
   assert.match(await downloaded(design),/180500/);
+
+  async function loadNetwork(text,inspect=false){
+    await page.locator('button[data-workspace="network"]').click();
+    await page.getByRole('tab',{name:'Schematic',exact:true}).click();
+    await page.locator('#nsLoadInput').setInputFiles({name:'synthetic-upstream-network.csv',mimeType:'text/csv',buffer:Buffer.from(text)});
+    await page.check('#nsContextUnits');await page.click('#nsContextApply');
+    if(inspect){
+      await page.locator('#nsSvg [data-ns-node="B"]').focus();
+      await page.keyboard.press('Enter');
+      await page.getByRole('button',{name:'Review Formula A catchments',exact:true}).click();
+      await design.waitFor();
+      return;
+    }
+    await page.locator('button[data-workspace="hydraulics"]').click();
+    await page.getByRole('tab',{name:'Formula A',exact:true}).click();
+  }
+  await loadNetwork(nativeNetwork,true);
+  await design.getByRole('button',{name:'Import catchment CSV',exact:true}).click();
+  const upstream=[['**** hw_subcatchment'],
+    ['subcatchment_id','drains_to','node_id','link_suffix','to_subcatchment_id','ground_node','population','Domestic','I','E'],
+    ['UserUnits','','','','','','','L/head/day','L/day','L/day'],
+    ['C01','Node','00127','','','',100,150,3000,2000],
+    ['C02','Node','Z','','','',50,150,3000,2000],
+    ['C03','Node','00127','','','Z',40,150,3000,2000],
+    ['C04','Node','00127','','','',50,150,3000,2000],
+    ['C04','Node','Z','','','',50,150,3000,2000]];
+  await mapping.getByLabel('Catchment CSV',{exact:true}).setInputFiles({name:'synthetic-contributing-catchments.csv',mimeType:'text/csv',
+    buffer:Buffer.from(upstream.map(row=>row.join(',')).join('\n'))});
+  await status(mapping,/5 catchment row/);
+  await mapping.getByLabel('Reviewed domestic allowance (L/head/day)').selectOption('7');
+  await mapping.getByLabel('Reviewed infiltration (L/day)').selectOption('8');
+  await mapping.getByLabel('Reviewed trade (L/day)').selectOption('9');
+  await mapping.getByLabel('I checked mapped units and reviewed daily allowances').check();
+  await mapping.getByRole('button',{name:'Review network contributions',exact:true}).click();
+  assert.equal(await mapping.getByLabel('Assessment asset',{exact:true}).locator('option:checked').textContent(),'Node B');
+  await mapping.getByRole('button',{name:'Trace reviewed drainage',exact:true}).click();
+  await status(mapping,/1 candidate · 1 disconnected · 1 ambiguous · 2 duplicate/);
+  await mapping.getByRole('button',{name:'Apply mapped rows',exact:true}).click();
+  await status(mapping,/Review the decision and evidence/);
+  await mapping.getByLabel('Catchment source row 4 Decision',{exact:true}).selectOption('include');
+  for(const [label,value] of [['Population',50],['Infiltration',25],['Trade',80]]){
+    await mapping.getByLabel('Catchment source row 4 '+label+' share (%)',{exact:true}).fill(String(value));
+  }
+  await mapping.getByLabel('Catchment source row 4 Evidence',{exact:true}).fill('Synthetic reviewed separate contribution shares');
+  for(const line of [5,6,7,8]){
+    await mapping.getByLabel('Catchment source row '+line+' Decision',{exact:true}).selectOption('exclude');
+    await mapping.getByLabel('Catchment source row '+line+' Evidence',{exact:true}).fill('Excluded in the synthetic case');
+  }
+  await mapping.getByRole('button',{name:'Apply mapped rows',exact:true}).click();
+  await mapping.waitFor({state:'hidden'});
+  assert.equal(await rows.nth(0).locator('[name=population]').inputValue(),'50');
+  assert.equal(await rows.nth(0).locator('[name=infiltration_l_day]').inputValue(),'750');
+  assert.equal(await rows.nth(0).locator('[name=trade_l_day]').inputValue(),'1600');
+  assert.equal(await rows.count(),4);
+  await rows.nth(0).locator('[name=classification]').selectOption('combined');
+  await submit(design);await status(design,/Retained flow calculated/);
+  const allocated=await downloaded(design);
+  assert.match(allocated,/"Retained flow \(L\/day\)","81050"/);
+  assert.match(allocated,/"Assessment asset","Node B"/);
+  assert.match(allocated,/"Candidate","Nominal topology reaches the selected assessment asset.*","include","50","25","80"/);
+  assert.match(allocated,/"C03","Ambiguous","Review the separate groundwater destination/);
+  await loadNetwork(nativeNetwork.replace('00127,B,1,CIRC','00127,C,1,CIRC'));
+  assert(await design.getByRole('button',{name:'Download calculation CSV',exact:true}).isDisabled());
+  await submit(design);await status(design,/Network topology changed/);
 
   await page.getByRole('tab',{name:'Treatment flows',exact:true}).click();
   const treatment=page.locator('#tab-design-treatment'),treatmentForm=treatment.locator('form');

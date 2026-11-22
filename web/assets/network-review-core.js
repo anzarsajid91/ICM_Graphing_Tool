@@ -25,12 +25,16 @@ function audit(nodes,edges){
   // Remaining nodes may be downstream of a cycle; call them cycle-affected.
   return {isolated,components:components(nodes,edges),cycleAffected:nodes.filter(n=>!removed.has(n.id)).map(n=>n.id)};
 }
-function autoLayout(nodes,edges){
-  // Strongly connected components become one level; deterministic ordering.
-  const graph=index(nodes,edges),visited=new Set(),finish=[];
+function strongComponents(graph,nodes){
+  const visited=new Set(),finish=[];
   for(const n of nodes){if(visited.has(n.id))continue;const stack=[[n.id,false]];while(stack.length){const [id,done]=stack.pop();if(done){finish.push(id);continue;}if(visited.has(id))continue;visited.add(id);stack.push([id,true]);for(const x of graph.down.get(id))if(!visited.has(x.id))stack.push([x.id,false]);}}
   const groupOf=new Map(),groups=[];
   for(const root of finish.reverse()){if(groupOf.has(root))continue;const i=groups.length,members=[],queue=[root];while(queue.length){const id=queue.pop();if(groupOf.has(id))continue;groupOf.set(id,i);members.push(id);for(const x of graph.up.get(id))if(!groupOf.has(x.id))queue.push(x.id);}groups.push(members.sort());}
+  return {groupOf,groups};
+}
+function autoLayout(nodes,edges){
+  // Strongly connected components become one level; deterministic ordering.
+  const graph=index(nodes,edges),{groupOf,groups}=strongComponents(graph,nodes);
   const next=groups.map(()=>new Set()),degree=groups.map(()=>0),level=groups.map(()=>0);
   for(const e of edges){const a=groupOf.get(e.from),b=groupOf.get(e.to);if(a!==undefined&&b!==undefined&&a!==b&&!next[a].has(b)){next[a].add(b);degree[b]++;}}
   const queue=degree.map((d,i)=>d===0?i:-1).filter(i=>i>=0);while(queue.length){const i=queue.shift();for(const j of next[i]){level[j]=Math.max(level[j],level[i]+1);if(--degree[j]===0)queue.push(j);}}
@@ -223,6 +227,90 @@ function routePlanner(network,start,end){
   return {options,issue};
 }
 
+function contributingCatchments(network,target,records){
+  if(network.contextFormat!=='icm-csv-v1')throw new Error('Load native ICM geometry to review contributing catchments.');
+  const nodes=network.nodes.filter(node=>node.sourceAttributes?.table==='hw_node');
+  const links=network.edges.filter(edge=>edge.icm?.table&&edge.sourceAttributes?.table===edge.icm.table);
+  const targetLink=target.kind==='edge'?links.find(link=>link.id===target.id):null;
+  const stop=targetLink?.from??target.id;
+  if(!(target.kind==='node'&&nodes.some(node=>node.id===stop))&&!targetLink)throw new Error('Select a native assessment asset.');
+  const normalize=value=>String(value??'').trim().toUpperCase();
+  const buckets=(items,key)=>{
+    const grouped=new Map();
+    for(const item of items){
+      const identity=key(item);
+      if(!grouped.has(identity))grouped.set(identity,[]);
+      grouped.get(identity).push(item);
+    }
+    return grouped;
+  };
+  const nodeMap=buckets(nodes,node=>normalize(node.id)),sourceRows=buckets(records,row=>normalize(row.id));
+  const linkKey=(node,suffix)=>JSON.stringify([normalize(node),normalize(suffix)]);
+  const linkMap=buckets(links,link=>linkKey(link.from,link.icm.linkSuffix));
+  const known=links.filter(link=>link!==targetLink&&nominal(link));
+  const uncertain=links.filter(link=>link!==targetLink&&!nominal(link));
+  const potential=index(nodes,[...known,...uncertain,...uncertain.map(link=>({...link,from:link.to,to:link.from}))]);
+  const directed=index(nodes,known),departures=index(nodes,links).down;
+  const reverse=(graph,seeds)=>{
+    const seen=new Set(),queue=[...seeds];
+    while(queue.length){
+      const id=queue.pop();
+      if(seen.has(id))continue;
+      seen.add(id);
+      for(const predecessor of graph.up.get(id)||[])queue.push(predecessor.id);
+    }
+    return seen;
+  };
+  const unknownTarget=Boolean(targetLink&&!nominal(targetLink));
+  const upstream=reverse(directed,[stop]);
+  const possible=reverse(potential,unknownTarget?[stop,targetLink.to]:[stop]);
+  const branches=reverse(directed,[...upstream].filter(id=>(targetLink||id!==stop)&&departures.get(id)?.length>1));
+  const unknownBranches=reverse(directed,uncertain.flatMap(link=>[link.from,link.to])
+    .filter(id=>upstream.has(id)&&(targetLink||id!==stop)));
+  const controlled=reverse(directed,known.filter(link=>link.icm.table!=='hw_conduit'&&upstream.has(link.to)).map(link=>link.from));
+  const cycles=strongComponents(directed,nodes).groups.filter(group=>group.length>1||directed.down.get(group[0]).some(link=>link.id===group[0]));
+  const cycleAffected=reverse(directed,cycles.flat().filter(id=>upstream.has(id)));
+  function resolve(row){
+    const visited=new Set();
+    for(;;){
+      const id=normalize(row.id);
+      if(visited.has(id))return {problem:'Catchment transfer cycle.'};
+      visited.add(id);
+      const type=normalize(row.drainsTo),ground=normalize(row.groundNode);
+      if(ground&&(type!=='NODE'||ground!==normalize(row.nodeId)))return {problem:'Review the separate groundwater destination and allocation.'};
+      if(type==='NODE'){
+        const candidates=nodeMap.get(normalize(row.nodeId));
+        return candidates?.length===1?{node:candidates[0].id}:{problem:'Receiving node is missing or ambiguous.'};
+      }
+      if(type==='LINK'){
+        const candidates=linkMap.get(linkKey(row.nodeId,row.linkSuffix));
+        return candidates?.length===1?{node:candidates[0].to,link:candidates[0]}:{problem:'Receiving link is missing or ambiguous.'};
+      }
+      if(type!=='SUBCATCHMENT')return {problem:type==='MULTIPLE LINKS'?'Review lateral link destinations and weights.':'Review the receiving destination.'};
+      const transfers=sourceRows.get(normalize(row.toCatchment));
+      if(transfers?.length!==1)return {problem:'Receiving catchment is missing or duplicated.'};
+      row=transfers[0];
+    }
+  }
+  return records.map(row=>{
+    const result=(status,reason)=>({id:row.id,status,reason});
+    const sourceId=normalize(row.id);
+    if(!sourceId)return result('Ambiguous','The catchment ID is missing.');
+    if(sourceRows.get(sourceId).length>1)return result('Duplicate','Compare repeated catchment records before allocating any contribution.');
+    const {node,link,problem}=resolve(row);
+    if(problem)return result('Ambiguous',problem);
+    const direct=Boolean(link&&link===targetLink);
+    if(direct&&!unknownTarget)return result('Candidate','The reviewed source drains directly to the assessment link.');
+    const locations=link&&!nominal(link)?[node,link.from]:[node];
+    if(!direct&&!locations.some(id=>possible.has(id)))return result('Disconnected','No route to the selected asset in the imported topology.');
+    if(unknownTarget||(link&&!nominal(link))||!upstream.has(node)||unknownBranches.has(node))return result('Ambiguous','Review a route with unknown recorded direction.');
+    if(cycleAffected.has(node))return result('Ambiguous','Review the nominal route in the cycle-affected upstream network.');
+    if(branches.has(node))return result('Ambiguous','Review the allocation across an upstream branch or parallel link.');
+    if(controlled.has(node)||(link&&link.icm.table!=='hw_conduit'))return result('Ambiguous','Review contribution through an upstream pump or flow-control structure.');
+    return result('Candidate','Nominal topology reaches the selected assessment asset. Review hydraulic contribution separately.');
+  });
+}
+
 function longSection(network,edges){
   const nodes=new Map(network.nodes.map(node=>[node.id,node]));
   let chainage=0;
@@ -343,5 +431,5 @@ function simulationBand(value,low,high){
   if(!Number.isFinite(value))return 'missing';
   return String(Math.min(4,Math.max(0,Math.floor(5*(value-low)/(high-low)))));
 }
-globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand};
+globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand};
 })();

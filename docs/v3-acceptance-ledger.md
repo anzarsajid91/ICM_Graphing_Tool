@@ -44,7 +44,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.3 | Candidate system-curve model | Manual and mapped CSV pump curves, exact specified-factor intersections including multiple and absent duties, identical arrangements, power and operating limits | Verified locally for the specified-factor system model |
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
 | 9.5 England and framework research | Official permitting guidance | Versioned, cited England and Scotland retained-flow methods. Review remaining jurisdictions before any preset and provide documented custom methodology | Partial |
-| 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial |
+| 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial. Reviewed nominal drainage and independent component allocations verified locally |
 | 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Open |
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
@@ -1060,4 +1060,36 @@ other state.
   The [hosted Firefox shell](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/44992125915/job/137117040302)
   detected sheet action padding outside the shared spacing grid. The
   unmodified Firefox shell passed locally after the spacing correction.
-  Exact hosted and full browser regression evidence remains required.
+  The complete local Chromium acceptance passed with 1,707 guarded
+  requests and no violations, including both mixed-file probes and the
+  existing survey and report exports. Offline Firefox report controls
+  passed with 27 guarded requests and no violations. Hosted evidence
+  remains specific to each candidate revision.
+
+### Reviewed contributing catchments for Formula A
+
+- Native schematic assets open the existing Formula A workflow with a
+  typed assessment point. The catchment CSV preview uses documented ICM
+  drainage column names when available. The topology register traces
+  node, composite link and catchment-transfer destinations and flags
+  duplicate, disconnected and ambiguous records. Multiple lateral
+  drainage and separate groundwater destinations require engineer review.
+- Inclusion requires evidence and explicit shares for reviewed population,
+  daily infiltration and daily trade. The same source ID can contribute
+  once. Excluded and duplicate rows remain in the audit. The existing
+  continuation-flow calculation applies the reviewed allowances. A
+  changed network endpoint invalidates an earlier allocation review.
+- Independent unit cases cover leading zeros, links, transfers, cycles,
+  branches, pumps, unknown direction, missing IDs and duplicated inputs.
+  In Chromium and Firefox the leading-zero manhole reached the chosen
+  CSO, a disconnected record and separate groundwater record were
+  excluded, and the duplicate rows stayed in the audit. Using 50%, 25%
+  and 80% of the reviewed population, infiltration and trade yielded
+  81,050 L/day. An imported endpoint change withdrew the result. The
+  request observer recorded 104 Chromium and 103 Firefox requests with
+  no violations. A pure JavaScript topology benchmark over 10,000 nodes,
+  9,999 links and 100 records matched the reference 53 candidates and
+  47 disconnected records in a median 148 ms across five runs.
+- Automatic resolution of inheritance, direct import of structured
+  lateral weights, sensitivity and comparisons with permit, pipe capacity
+  and supported simulation evidence remain outstanding.

@@ -576,6 +576,25 @@ review accepts up to 100 rows per table and 1 MiB per input. Source-only
 classification and network contribution remain separate review decisions.
 See Autodesk's [ICM Subcatchment data fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1F3FA957-FE1B-4BD6-A73C-3DF2F6ACD839.htm).
 
+For a network-based review, choose a native assessment node or link, or
+open **Review Formula A catchments** in the schematic inspector. After
+mapping the catchment CSV, use **Review network contributions** to review
+the native `drains_to`, `node_id`, `link_suffix`, `to_subcatchment_id` and
+`ground_node` destinations. Leading zeros are preserved. Single-link
+drainage requires both its upstream node and suffix and a unique match.
+Unknown or multiple destinations need an allocation review. Separate
+groundwater destinations retain an explicit review requirement.
+
+The register distinguishes candidates, disconnected and ambiguous records,
+and duplicate identifiers. It follows the recorded direction to the
+selected asset and identifies upstream forks, loops and control structures.
+An engineer records an inclusion or exclusion basis for each row and may
+allocate independent shares of reviewed population, infiltration and trade.
+Applied shares scale those three reviewed values. The domestic allowance
+remains per capita. Repeated catchment IDs can contribute once, while the
+audit retains all original rows and decisions. A changed typed network
+topology requires a fresh allocation review.
+
 ## Scotland continuation-flow screening
 
 The Scottish overflow screen uses SEPA WAT-G-058 version 1.0, August 2025,

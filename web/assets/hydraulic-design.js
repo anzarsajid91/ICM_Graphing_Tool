@@ -445,6 +445,119 @@ function mountPumpImport(article,form,points,worker){
   };
 }
 
+const drainageFields=[["drainsTo","Drains to","drains_to"],["nodeId","Receiving node or link upstream ID","node_id"],
+  ["linkSuffix","Receiving link suffix","link_suffix"],["toCatchment","Receiving catchment ID","to_subcatchment_id"],
+  ["groundNode","Groundwater receiving node","ground_node"]];
+const allocationFields=[["population","Population share (%)"],["infiltration_l_day","Infiltration share (%)"],["trade_l_day","Trade share (%)"]];
+
+function readNetworkBasis(){
+  const network=window.ICMNetworkSchematic?.snapshot?.();
+  if(network?.contextFormat!=="icm-csv-v1")throw new Error("Import native ICM geometry in Network Schematic first.");
+  const nodes=network.nodes.filter(node=>node.sourceAttributes?.table==="hw_node");
+  const links=network.edges.filter(edge=>edge.icm?.table&&edge.sourceAttributes?.table===edge.icm.table);
+  const byId=(left,right)=>left[0].localeCompare(right[0]);
+  const stamp=JSON.stringify([nodes.map(node=>[node.id,node.type]).sort(byId),
+    links.map(link=>[link.id,link.from,link.to,link.direction,link.icm.table,link.icm.linkSuffix]).sort(byId)]);
+  return {network,stamp,assets:[
+    ...nodes.map(node=>["node",node.id,node.name||node.id]),...links.map(link=>["edge",link.id,link.name||link.id])]};
+}
+
+function stageContributionReview(packet,idInput,output){
+  const basis=readNetworkBasis(),{data}=packet;
+  const asset=state.formulaAssessmentAsset;
+  const preferred=asset&&basis.assets.some(([kind,id])=>kind===asset.kind&&id===asset.id)?
+    JSON.stringify({kind:asset.kind,id:asset.id}):"";
+  const inputs=fields([{key:"target",label:"Assessment asset",options:[["","Choose a typed assessment asset"],
+    ...basis.assets.map(([kind,id,name])=>[JSON.stringify({kind,id}),(kind==="node"?"Node ":"Link ")+name])]}],{target:preferred});
+  const columns=[["","Unmapped"],...data.header.map((name,i)=>[String(i),name||"Column "+(i+1)])];
+  const drainage=fields(drainageFields.map(([key,label])=>({key,label,options:columns,required:false})),
+    Object.fromEntries(drainageFields.map(([key,,native])=>{
+      const column=data.header.findIndex(name=>name.toLowerCase()===native);
+      return [key,column<0?"":String(column)];
+    })));
+  const findings=element("div"),message=element("p");
+  message.setAttribute("role","status");
+  let active=null;
+  const review=action("Trace reviewed drainage",()=>{
+    active=null;findings.replaceChildren();
+    if(idInput.value===""){message.textContent="Map the catchment ID column before tracing.";return;}
+    if(!inputs.controls.target.value){message.textContent="Choose an assessment asset.";return;}
+    const mapped=drainage.values();
+    if(mapped.drainsTo===""){message.textContent="Map the Drains to source column before tracing.";return;}
+    const selected=[idInput.value,...Object.values(mapped).filter(value=>value!=="")];
+    if(selected.length!==new Set(selected).size){message.textContent="Use distinct drainage source columns.";return;}
+    const target=JSON.parse(inputs.controls.target.value);
+    const records=data.rows.map(row=>({id:String(row.cells[Number(idInput.value)]||"").trim(),
+      ...Object.fromEntries(Object.entries(mapped).map(([key,choice])=>[key,choice===""?"":row.cells[Number(choice)]]))}));
+    const classifications=ICMNetworkReviewCore.contributingCatchments(basis.network,target,records);
+    const wrap=element("div");wrap.className="table-wrap";
+    const grid=element("table"),heading=grid.createTHead().insertRow();
+    grid.createCaption().textContent="Contributing catchment review";
+    for(const label of ["Catchment","Topology evidence","Review decision",...allocationFields.map(([,label])=>label),"Allocation evidence"]){
+      const cell=element("th",label);cell.scope="col";heading.append(cell);
+    }
+    const body=grid.createTBody();
+    const rows=classifications.map(({id,status,reason},i)=>{
+      const row=body.insertRow(),label="Catchment source row "+data.rows[i].line;
+      row.insertCell().textContent=id||"Missing ID";row.insertCell().textContent=status+" · "+reason;
+      const {control:decision}=labelledControl({key:"decision",label:"Decision",options:[["","Review"],
+        ["include","Include reviewed share"],["exclude","Exclude"]]},undefined,label);
+      row.insertCell().append(decision);
+      const shares=Object.fromEntries(allocationFields.map(([key,caption])=>{
+        const {control}=labelledControl(number(key,caption,0,100),status==="Candidate"?100:undefined,label);
+        row.insertCell().append(control);return [key,control];
+      }));
+      const {control:evidence}=labelledControl({key:"evidence",label:"Evidence",type:"text",maxLength:1850},undefined,label);
+      row.insertCell().append(evidence);
+      const update=()=>{for(const control of Object.values(shares))control.disabled=decision.value!=="include";};
+      decision.addEventListener("change",update);update();
+      return {id,status,reason,decision,shares,evidence};
+    });
+    const summary=[...new Set(classifications.map(row=>row.status))].map(status=>
+      classifications.filter(row=>row.status===status).length+" "+status.toLowerCase()).join(" · ");
+    message.textContent=summary+". Confirm or exclude each row before applying.";
+    wrap.append(grid);findings.append(wrap);
+    active={idColumn:idInput.value,asset:inputs.controls.target.selectedOptions[0].textContent,target,mapped,rows};
+  });
+  function reset(){
+    active=null;findings.replaceChildren();message.textContent="Trace the updated source mappings before applying.";
+  }
+  idInput.addEventListener("change",reset);
+  inputs.group.addEventListener("change",reset);drainage.group.addEventListener("change",reset);
+  output.replaceChildren(inputs.group,drainage.group,
+    element("p","A route identifies possible connections. Review population, infiltration and trade shares independently. Use documented source allocations or exclude unresolved contributions."),
+    review,message,findings);
+  return mappedRows=>{
+    if(!active||active.idColumn!==idInput.value)throw new Error("Trace the mapped catchments before applying.");
+    if(readNetworkBasis().stamp!==basis.stamp)throw new Error("Network topology changed. Reopen the import and review the updated network.");
+    const included=new Map(),excluded=new Map(),audit=[];
+    for(const [index,row] of active.rows.entries()){
+      const {id,status,reason,decision,evidence,shares}=row;
+      const note=evidence.value.trim(),key=id.toUpperCase();
+      if(!decision.value||!note)throw new Error("Review the decision and evidence for catchment source row "+data.rows[index].line+".");
+      const original=mappedRows[index];
+      let applied=[null,null,null];
+      if(decision.value==="include"){
+        if(included.has(key))throw new Error("Allocate repeated catchment "+id+" once.");
+        if(Object.values(shares).some(control=>!control.checkValidity()))throw new Error("Enter all three reviewed contribution shares for "+id+".");
+        const adjusted={...original,evidence:note};
+        applied=Object.entries(shares).map(([name,control])=>{
+          const fraction=control.valueAsNumber;
+          if(Number.isFinite(adjusted[name]))adjusted[name]*=fraction/100;
+          return fraction;
+        });
+        included.set(key,adjusted);
+      }else if(!excluded.has(key))excluded.set(key,{id,classification:"excluded",evidence:note});
+      audit.push([data.rows[index].line,id,status,reason,decision.value,...applied,note]);
+    }
+    if(!included.size)throw new Error("Include at least one reviewed contribution.");
+    const rows=[...new Set(mappedRows.map(row=>row.id.toUpperCase()))].map(key=>included.get(key)||excluded.get(key));
+    return {rows,stamp:basis.stamp,audit:[["Assessment asset",active.asset],["Typed assessment identity",JSON.stringify(active.target)],
+      ...drainageFields.filter(([key])=>active.mapped[key]!=="").map(([key,label])=>[label,data.header[Number(active.mapped[key])]]),
+      ["Source line","Catchment","Topology","Topology basis","Decision",...allocationFields.map(([,label])=>label),"Allocation evidence"],...audit]};
+  };
+}
+
 function mountCatchmentImport(article,form,catchments,worker) {
   const definitions=[["id","Catchment ID","subcatchment_id"],["population","Reviewed population","population"],
     ["domestic_l_head_day","Reviewed domestic allowance (L/head/day)",null],
@@ -452,6 +565,7 @@ function mountCatchmentImport(article,form,catchments,worker) {
   const actionbar=element("div");actionbar.className="actions";
   const notice=element("p");
   const dialog=element("dialog"),heading=element("h3","Review catchment CSV");
+  dialog.className="assessment-popup";
   heading.id="hbCatchmentImportTitle";dialog.setAttribute("aria-labelledby",heading.id);
   const upload=element("input");upload.type="file";upload.accept=".csv,text/csv";
   const label=element("label","Catchment CSV");label.append(upload);
@@ -462,12 +576,12 @@ function mountCatchmentImport(article,form,catchments,worker) {
   const cancel=action("Cancel",()=>dialog.close());
   controls.append(cancel,apply);dialog.append(heading,description,label,message,content,controls);
   article.append(dialog);
-  let source=null,staged=null,revision=0,mappings={},confirmed=null;
+  let source=null,staged=null,revision=0,mappings={},confirmed=null,contribution=null;
   const open=action("Import catchment CSV",()=>dialog.showModal());
   actionbar.append(open);form.append(actionbar,notice);
   apply.disabled=true;
   function reset(){
-    staged=null;content.replaceChildren();mappings={};confirmed=null;apply.disabled=true;
+    staged=null;content.replaceChildren();mappings={};confirmed=null;contribution=null;apply.disabled=true;
   }
   dialog.addEventListener("close",()=>{
     revision++;reset();upload.value="";message.textContent="";
@@ -490,8 +604,18 @@ function mountCatchmentImport(article,form,catchments,worker) {
       }
       const check=labelledControl({key:"reviewBasis",label:"I checked mapped units and reviewed daily allowances",type:"checkbox"});
       confirmed=check.control;
+      const topology=element("section");
+      const trace=action("Review network contributions",async()=>{
+        trace.disabled=true;
+        try{
+          await window.ICMNetworkSchematic?.open();
+          if(generation!==revision||!dialog.open)return;
+          contribution=stageContributionReview(staged,mappings.id,topology);
+        }catch(error){if(generation===revision)message.textContent=error.message;}
+        finally{if(!contribution)trace.disabled=false;}
+      });
       content.append(fields,element("p","Blank and inherited values require explicit input. Model base flow and nominal trade flow need a separate review before they can be used as daily allowances."),
-        check.label);
+        check.label,trace,topology);
       message.textContent=data.rows.length+" catchment row(s) available.";
       apply.disabled=false;
     }catch(error){if(generation===revision)message.textContent=error.message;}
@@ -533,24 +657,30 @@ function mountCatchmentImport(article,form,catchments,worker) {
       message.textContent="Each imported row needs a catchment ID within 128 characters.";
       return;
     }
-    if(new Set(rows.map(row=>row.id.toLowerCase())).size!==rows.length){
+    if(!contribution&&new Set(rows.map(row=>row.id.toLowerCase())).size!==rows.length){
       message.textContent="The mapped catchment IDs contain duplicates. Review the source rows.";
       return;
     }
-    source={filename,fingerprint,choices,scales,data};
-    catchments.replace(rows);
-    notice.textContent=rows.length+" rows loaded from "+filename+". Review every classification and resolve "+missing+" missing or unmapped allowance fields.";
+    let reviewed=null;
+    try{if(contribution)reviewed=contribution(rows);}catch(error){message.textContent=error.message;return;}
+    source={filename,fingerprint,choices,scales,data,reviewed};
+    const loaded=reviewed?.rows||rows;
+    catchments.replace(loaded);
+    notice.textContent=loaded.length+" rows loaded from "+filename+". Review every classification and resolve "+missing+" missing or unmapped allowance fields.";
     dialog.close();open.focus();
   }
-  return ()=>{
+  function audit(){
     if(!source)return [];
-    const {filename,fingerprint,choices,scales,data}=source;
+    const {filename,fingerprint,choices,scales,data,reviewed}=source;
     const mapped=definitions.filter(([key])=>choices[key]!==null);
     return [["Imported file",filename],["Source SHA-256",fingerprint],["Source schema",data.schema],
       ...mapped.map(([key,title])=>[title,data.header[choices[key]],data.units?.[choices[key]]??"Reviewed units","Conversion factor",scales[key]]),
       ["Original source line",...mapped.map(([key])=>data.header[choices[key]])],
-      ...data.rows.map(row=>[row.line,...mapped.map(([key])=>row.cells[choices[key]])])];
-  };
+      ...data.rows.map(row=>[row.line,...mapped.map(([key])=>row.cells[choices[key]])]),...(reviewed?.audit||[])];
+  }
+  return {audit,assertCurrent(){
+    if(source?.reviewed&&readNetworkBasis().stamp!==source.reviewed.stamp)throw new Error("Network topology changed. Review catchment allocations again.");
+  }};
 }
 
 function mountStorageRouting(navigate,worker) {
@@ -825,10 +955,12 @@ function mount(navigate) {
   scotland.controls.simpler_combined.onchange=showFramework;
   form.append(framework.group,details,methodNote,catchments.wrapper);showFramework();
   const catchmentSource=mountCatchmentImport(formula,form,catchments,worker);
-  results(formula,form,async()=>{
+  const invalidateFormula=results(formula,form,async()=>{
+    catchmentSource.assertCurrent();
     const sepa=isScotland(),args={catchments:catchments.values()};
     if(sepa)args.applicability={...scotland.values(),...simpler.values()};
     const r=await worker(sepa?"scotland_continuation_flow":"england_continuation_flow",args);
+    catchmentSource.assertCurrent();
     const auditBasis=r.applicability?Object.entries(r.applicability):[];
     const metrics=[["Population",r.totals.population],["Combined / partially separate population",r.totals.combined_population],
       [sepa?"Reviewed separate population":"Qualifying separate population",r.totals.separate_population],["Domestic flow (L/day)",r.totals.domestic_l_day],
@@ -849,7 +981,11 @@ function mount(navigate) {
       element("p",(sepa?sepaReference:eaReference)+". Confirm permit applicability with the project reviewer.")],
       summary:"Retained flow calculated from reviewed catchments.",filename:sepa?"hydra-scotland-continuation-flow.csv":"hydra-england-continuation-flow.csv",
       rows:[["Method",r.method],["Reference",r.reference],["Regime",r.regime],
-        ["Equation",equation],...auditBasis,...metrics,heading,...details,...catchmentSource()]};
+        ["Equation",equation],...auditBasis,...metrics,heading,...details,...catchmentSource.audit()]};
+  });
+  window.addEventListener("icm:route-changed",({detail})=>{
+    if(detail.page!=="formula-a")return;
+    try{catchmentSource.assertCurrent();}catch{invalidateFormula();}
   });
 
   const treatment=panel("tab-design-treatment","Dry weather flow and full treatment",

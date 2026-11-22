@@ -11,6 +11,37 @@ assert.deepEqual(plan.options('00127',new Set()).map(edge=>edge.id),[e1.id]);
 assert.deepEqual(plan.options('B',new Set(['00127'])).map(edge=>edge.name),['B.1','B.2','B.3']);
 assert.match(R.routePlanner(network,'E','B').issue(),/No forward/);
 assert.match(R.routePlanner(network,'Z','B').issue(),/disconnected/);
+const catchments=[
+  {id:'001',drainsTo:'Node',nodeId:'00127'},
+  {id:'002',drainsTo:'Node',nodeId:'Z'},
+  {id:'003',drainsTo:'Link',nodeId:'00127',linkSuffix:'1'},
+  {id:'004',drainsTo:'Subcatchment',toCatchment:'001'},
+  {id:'005',drainsTo:'Node',nodeId:'00127',groundNode:'Z'},
+  {id:'006',drainsTo:'Multiple links',nodeId:'00127'},
+  {id:'007',drainsTo:'Subcatchment',toCatchment:'008'},
+  {id:'008',drainsTo:'Subcatchment',toCatchment:'007'},
+  {id:'009',drainsTo:'Node',nodeId:'00127'},
+  {id:'009',drainsTo:'Node',nodeId:'Z'},
+  {id:'010',drainsTo:'Node',nodeId:'127'},
+];
+const nativeContext={...network,contextFormat:'icm-csv-v1'};
+const contributions=R.contributingCatchments(nativeContext,{kind:'node',id:'B'},catchments);
+assert.deepEqual(contributions.map(row=>row.status),[
+  'Candidate','Disconnected','Candidate','Candidate','Ambiguous','Ambiguous',
+  'Ambiguous','Ambiguous','Duplicate','Duplicate','Ambiguous']);
+assert.match(contributions[4].reason,/ground/i);
+assert.match(contributions[5].reason,/lateral/i);
+assert.match(contributions[6].reason,/cycle/i);
+assert.match(R.contributingCatchments(nativeContext,{kind:'edge',id:e2.id},catchments)[0].reason,/branch/i);
+assert.equal(R.contributingCatchments(nativeContext,{kind:'edge',id:e1.id},catchments)[2].status,'Candidate');
+const alteredDirection={...nativeContext,edges:network.edges.map(edge=>edge.id===e1.id?{...edge,direction:'unknown'}:edge)};
+assert.match(R.contributingCatchments(alteredDirection,{kind:'node',id:'B'},catchments)[0].reason,/direction/i);
+const borrowedLink=(id,from,to)=>({...e1,id,from,to});
+const cyclicContext={...nativeContext,edges:[...nativeContext.edges,borrowedLink('cycle','C','00127')]};
+assert.match(R.contributingCatchments(cyclicContext,{kind:'node',id:'B'},catchments)[0].reason,/cycle/i);
+const receivingPump=R.contributingCatchments(nativeContext,{kind:'node',id:'C'},[{id:'P',drainsTo:'Link',nodeId:'D',linkSuffix:'P'}]);
+assert.match(receivingPump[0].reason,/pump or flow-control/);
+assert.throws(()=>R.contributingCatchments(nativeContext,{kind:'node',id:'unknown'},catchments),/native assessment asset/);
 const steps=R.longSection(network,[e1,e2,e3]);
 assert.deepEqual(steps.map(({chainageStart,chainageEnd,us,ds,height})=>[chainageStart,chainageEnd,us,ds,height]),[
   [0,100,10,9.8,.6],[100,220,9.75,9.35,.6],[220,null,9.3,null,.6]]);

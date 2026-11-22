@@ -887,6 +887,14 @@ function renderPopup(previous){
     $('nsPopup').querySelector('[aria-pressed]')?.focus({preventScroll:true});
   };
   if(object.type!=='label')footer.append(pin);
+  if(network.contextFormat==='icm-csv-v1'&&(n?object.sourceAttributes?.table==='hw_node':object.icm?.table&&object.sourceAttributes?.table===object.icm.table)){
+    const formula=inspectorButton('Review Formula A catchments');
+    formula.onclick=()=>{
+      state.formulaAssessmentAsset={...reference};
+      window.__ICM_PRECISION_WORKBENCH__.navigate('hydraulics','formula-a',true);
+    };
+    footer.append(formula);
+  }
   const edit=inspectorButton('Edit asset');edit.dataset.nsEditSelected='';footer.append(edit);
   pop.replaceChildren(header,tabs,panel,footer);
   window.HydraDesign?.moveSelection(tabs,tabs.querySelector('[aria-selected="true"]'),'ns-tab-indicator',previous);
