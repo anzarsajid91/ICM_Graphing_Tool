@@ -1560,6 +1560,23 @@ def review_icm_catchment_defaults(catchments, land_use, area_unit, density_unit)
     return json.dumps(resolve_icm_catchment_defaults(catchments, land_use, area_unit, density_unit), allow_nan=False)
 
 
+def preview_icm_design_event(text, kind):
+    """Read locally exported fixed ICM event profiles for worksheet review."""
+    from icm_workbench.analysis.design_flows import parse_icm_design_event
+
+    return json.dumps(parse_icm_design_event(text, kind), allow_nan=False)
+
+
+def review_icm_event_loading(catchments, domestic, trade, domestic_unit, model_unit,
+                             land_use=None, area_unit="", density_unit="", trade_model_unit=None):
+    """Return the audited nominal model inputs separately from permit values."""
+    from icm_workbench.analysis.design_flows import review_icm_nominal_loading
+
+    return json.dumps(review_icm_nominal_loading(
+        catchments, domestic, trade, domestic_unit, model_unit, land_use=land_use,
+        area_unit=area_unit, density_unit=density_unit, trade_model_unit=trade_model_unit), allow_nan=False)
+
+
 def screen_storage_routing(path, column, capacities_m3, initial_m3, release_m3_s,
                            max_gap_s, start=None, end=None, exclusions_json="[]"):
     """Route the actual samples of a reviewed, resolved instantaneous inflow."""

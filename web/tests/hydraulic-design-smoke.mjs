@@ -390,8 +390,8 @@ try{
 
   await design.getByRole('button',{name:'Import catchment CSV',exact:true}).click();
   await mapping.getByLabel('Catchment CSV',{exact:true}).setInputFiles({name:'synthetic-native-defaults.csv',mimeType:'text/csv',buffer:Buffer.from(
-    '**** hw_subcatchment\nsubcatchment_id,land_use_id,contributing_area,population,connectivity,wastewater_profile,Domestic,I,E,base_flow\n'+
-    'UserUnits,,m²,,%,,L/head/day,L/day,L/day,m³/s\n0012,LU-01,25000,,,,125,1500,200,0.012\n0013,LU-01,30000,0,0,0,150,0,0,0.003')});
+    '**** hw_subcatchment\nsubcatchment_id,land_use_id,contributing_area,population,connectivity,wastewater_profile,Domestic,I,E,base_flow,additional_foul_flow,trade_profile,trade_flow\n'+
+    'UserUnits,,m²,,%,,L/head/day,L/day,L/day,m³/s,L/s,,L/s\n0012,LU-01,25000,,,,125,1500,200,0.012,0.01,1,0.02\n0013,LU-01,30000,0,0,0,150,0,0,0.003,0,1,0')});
   await status(mapping,/2 catchment rows?/);
   await mapping.getByText('Review native land-use defaults',{exact:true}).click();
   const unitsReview=mapping.getByRole('button',{name:'Review ICM defaults',exact:true});
@@ -411,19 +411,55 @@ try{
   for(const [label,column] of [['Reviewed domestic allowance (L/head/day)','6'],['Reviewed infiltration (L/day)','7'],['Reviewed trade (L/day)','8']]){
     await mapping.getByLabel(label,{exact:true}).selectOption(column);
   }
+  await mapping.getByText('Review native Waste Water and Trade Waste events',{exact:true}).click();
+  const water='TITLE\nSynthetic wastewater event\nUnits_Concentration,Units_Average_Flow\nmg/l,L/day\nPROFILE_NUMBER,FLOW\n2,160\nDESIGN_PROFILES\nTIME,FLOW\n00:00,2\n';
+  const factory='PROFILE_NUMBER,PROFILE_DESCRIPTION,FLOW\n1,Synthetic trade factor,1.25\n';
+  const eventUpload=(label,name,text)=>mapping.getByLabel(label,{exact:true}).setInputFiles({name,mimeType:'text/csv',buffer:Buffer.from(text)});
+  await eventUpload('Trade Waste event CSV','synthetic-wrong-event.csv',water);
+  await status(mapping,/Average-flow units mark a Waste Water event/);
+  await mapping.getByRole('button',{name:'Clear event sources',exact:true}).click();
+  await status(mapping,/ICM event sources cleared/);
+  await eventUpload('Waste Water event CSV','synthetic-wastewater-event.csv',water);
+  await status(mapping,/1 fixed Waste Water event profile/);
+  await eventUpload('Trade Waste event CSV','synthetic-trade-event.csv',factory);
+  await status(mapping,/1 fixed Trade Waste event profile/);
+  const reviewLoading=mapping.getByRole('button',{name:'Review nominal ICM loading',exact:true});
+  await reviewLoading.click();await status(mapping,/Record the reviewed simulation/);
+  await mapping.getByLabel('Reviewed ICM simulation, revision and event basis',{exact:true}).fill('Synthetic shared run and source event basis');
+  await mapping.getByLabel('Source additional foul flow unit',{exact:true}).selectOption('L/s');
+  await mapping.getByLabel('Source nominal trade flow unit',{exact:true}).selectOption('L/s');
+  await mapping.getByLabel('Waste Water per-capita flow unit',{exact:true}).selectOption('m³/day');
+  await reviewLoading.click();await status(mapping,/Confirm the per-capita flow unit/);
+  await mapping.getByLabel('Waste Water per-capita flow unit',{exact:true}).selectOption('L/day');
+  await reviewLoading.click();await status(mapping,/Reviewed nominal ICM loading for 2 catchment/);
+  const nominal=mapping.getByRole('table',{name:'Model loading review',exact:true});
+  assert.match(await nominal.getByRole('row',{name:/0012/}).innerText(),/180\s+2\s+160\s+864\s+29,?664\s+2,?160/);
+  assert.match(await nominal.getByRole('row',{name:/0012/}).innerText(),/recorded legacy scaling factor/);
+  await mapping.getByLabel('Use reviewed event per-capita flow as the project domestic allowance',{exact:true}).check();
   await mapping.getByLabel('I checked mapped units and reviewed daily allowances',{exact:true}).check();
+  await mapping.getByRole('button',{name:'Apply mapped rows',exact:true}).click();
+  await status(mapping,/leave the domestic allowance column unmapped/);
+  await mapping.getByLabel('Reviewed domestic allowance (L/head/day)',{exact:true}).selectOption('');
   await mapping.getByRole('button',{name:'Apply mapped rows',exact:true}).click();
   await mapping.waitFor({state:'hidden'});
   for(const [index,expected] of [[0,'200'],[1,'0']]){
     assert.equal(await rows.nth(index).locator('[name=population]').inputValue(),expected);
     await rows.nth(index).locator('[name=classification]').selectOption('combined');
   }
+  assert.equal(await rows.nth(0).locator('[name=domestic_l_head_day]').inputValue(),'160');
+  assert.equal(await rows.nth(0).locator('[name=infiltration_l_day]').inputValue(),'1500');
+  assert.equal(await rows.nth(0).locator('[name=trade_l_day]').inputValue(),'200');
+  assert.equal(await rows.nth(1).locator('[name=domestic_l_head_day]').inputValue(),'');
+  await rows.nth(1).locator('[name=domestic_l_head_day]').fill('150');
   await submit(design);await status(design,/Retained flow calculated/);
   const inheritedSheet=await downloaded(design);
-  assert.match(inheritedSheet,/"Retained flow \(L\/day\)","299100"/);
+  assert.match(inheritedSheet,/"Retained flow \(L\/day\)","306100"/);
   assert.match(inheritedSheet,/"Population default applied to source lines","4"/);
   assert.match(inheritedSheet,/"Original subcatchment","base_flow","0.012","m³\/s"/);
   assert.match(inheritedSheet,/"Land-use export","synthetic-land-use\.csv","[a-f0-9]{64}"/);
+  assert.match(inheritedSheet,/"ICM event source","domestic","synthetic-wastewater-event\.csv","[a-f0-9]{64}"/);
+  assert.match(inheritedSheet,/"Reviewed fixed per-capita unit","L\/day"/);
+  assert.match(inheritedSheet,/"Model loading review","4","0012","180","2","160","864","29664","1","1.25","2160"/);
 
   async function loadNetwork(text,inspect=false){
     await page.locator('button[data-workspace="network"]').click();

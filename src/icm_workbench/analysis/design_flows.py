@@ -484,8 +484,9 @@ def resolve_icm_catchment_defaults(catchments, land_use, area_unit, density_unit
         units = dict(zip(headings, source["units"] or []))
         return units, [(item["line"], dict(zip(headings, item["cells"]))) for item in source["rows"]]
 
-    units, sub_rows = records(catchments, "hw_subcatchment", ("subcatchment_id", "land_use_id"))
-    land_units, land_rows = records(land_use, "hw_land_use", ("land_use_id", "population_density"))
+    required_subcatchment = ("subcatchment_id", "land_use_id") if land_use is not None else ("subcatchment_id",)
+    units, sub_rows = records(catchments, "hw_subcatchment", required_subcatchment)
+    land_units, land_rows = records(land_use, "hw_land_use", ("land_use_id", "population_density")) if land_use is not None else ({}, [])
 
     def token(unit):
         return unit.strip().lower().replace(" ", "").replace("²", "2").replace("^", "").replace("hectares", "ha")
@@ -499,8 +500,8 @@ def resolve_icm_catchment_defaults(catchments, land_use, area_unit, density_unit
             raise ValueError(f"Confirm the supported {name} unit and resolve any conflict with the export.")
         return choices[key]
 
-    area_factor = scale(area_unit, units.get("contributing_area", ""), area_scales, "area")
-    density_factor = scale(density_unit, land_units.get("population_density", ""), density_scales, "population density")
+    area_factor = scale(area_unit, units.get("contributing_area", ""), area_scales, "area") if land_use is not None else None
+    density_factor = scale(density_unit, land_units.get("population_density", ""), density_scales, "population density") if land_use is not None else None
     for declared in (units.get("connectivity", ""), land_units.get("connectivity", "")):
         if token(declared) not in ("", "%", "percent"):
             raise ValueError("Review the native connectivity unit as a percentage.")
@@ -526,7 +527,7 @@ def resolve_icm_catchment_defaults(catchments, land_use, area_unit, density_unit
 
     rows = []
     for line, fields in sub_rows:
-        land_id = fields["land_use_id"].strip()
+        land_id = fields.get("land_use_id", "").strip()
         land_line, defaults = lookup.get(land_id.casefold(), (None, {}))
         area = value(fields.get("contributing_area", ""), 1e12)
         density = value(defaults.get("population_density", ""), 1e9)
@@ -560,3 +561,157 @@ def resolve_icm_catchment_defaults(catchments, land_use, area_unit, density_unit
                          land_attributes={key: defaults[key] for key in ("population_density", "connectivity", "wastewater_profile")
                                           if key in defaults}))
     return dict(method="icm-2026-land-use-review-v1", area_unit=area_unit, density_unit=density_unit, rows=rows)
+
+
+def _icm_nonnegative(raw):
+    import re
+
+    if not re.fullmatch(r"[+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?", raw.strip(), re.I):
+        return None
+    number = float(raw)
+    return number if isfinite(number) else None
+
+
+def parse_icm_design_event(text, kind):
+    """Read only fixed profile numbers and flows from the documented event CSV."""
+    import csv
+    from io import StringIO
+
+    if kind not in ("domestic", "trade"):
+        raise ValueError("Choose the Waste Water or Trade Waste event context.")
+    if not isinstance(text, str) or not 1 <= len(text) <= 8 * 1024 * 1024 or "\x00" in text:
+        raise ValueError("Choose a local ICM event CSV up to 8 MiB without NUL bytes.")
+    reader = csv.reader(StringIO(text.removeprefix("\ufeff"), newline=""), strict=True)
+
+    def nonempty():
+        for values in reader:
+            if len(values) > 512 or any(len(value) > 32768 for value in values):
+                raise ValueError(f"Oversized ICM event record at line {reader.line_num}.")
+            cells = [value.strip() for value in values]
+            if any(cells):
+                yield reader.line_num, cells
+
+    rows = nonempty()
+    profiles, title, declared_unit, units_seen = {}, "", "", False
+    try:
+        for line, cells in rows:
+            headings = [value.upper() for value in cells]
+            marker = headings[0]
+            if marker == "TITLE" and not profiles:
+                _, values = next(rows, (None, []))
+                if not values or len(values[0]) > 256:
+                    raise ValueError("Review the ICM event title.")
+                title = values[0]
+            elif marker in ("UNITS_CONCENTRATION", "UNITS_AVERAGE_FLOW") and not profiles:
+                _, values = next(rows, (None, []))
+                if len(values) != len(headings) or len(set(headings)) != len(headings):
+                    raise ValueError("Review the ICM event units record.")
+                if "UNITS_AVERAGE_FLOW" in headings:
+                    if units_seen:
+                        raise ValueError("Duplicate ICM event average-flow units.")
+                    units_seen = True
+                    declared_unit = values[headings.index("UNITS_AVERAGE_FLOW")]
+                    if declared_unit and kind != "domestic":
+                        raise ValueError("Average-flow units mark a Waste Water event rather than a Trade Waste event.")
+            elif marker == "PROFILE_NUMBER":
+                if headings.count("FLOW") != 1 or len(set(headings)) != len(headings):
+                    raise ValueError(f"The fixed ICM profile at line {line} needs one FLOW column.")
+                source_line, values = next(rows, (None, []))
+                if len(values) != len(headings):
+                    raise ValueError(f"Fixed ICM profile data is missing or malformed after line {line}.")
+                key = values[0]
+                if not key.isascii() or not key.isdecimal() or len(key) > 3 or not 1 <= int(key) <= 999:
+                    raise ValueError("ICM profile numbers must be integers from 1 to 999.")
+                number = int(key)
+                if number in profiles:
+                    raise ValueError(f"Duplicate ICM profile number {number}.")
+                raw = values[headings.index("FLOW")]
+                value = _icm_nonnegative(raw)
+                if value is None or value > 1e9:
+                    raise ValueError(f"Review the finite non-negative fixed flow at line {source_line}.")
+                description = values[headings.index("PROFILE_DESCRIPTION")] if "PROFILE_DESCRIPTION" in headings else ""
+                if len(description) > 256:
+                    raise ValueError(f"The ICM profile description is too long at line {source_line}.")
+                profiles[number] = dict(profile=number, description=description, value=value, raw=raw, line=source_line)
+    except csv.Error as error:
+        raise ValueError(f"Malformed ICM event CSV near line {reader.line_num}.") from error
+    if not profiles:
+        raise ValueError("The CSV has no documented ICM fixed profile records.")
+    return dict(schema="icm-2026-fixed-profile-csv-v1", kind=kind, title=title,
+                declared_unit=declared_unit, profiles=list(profiles.values()))
+
+
+def review_icm_nominal_loading(catchments, domestic, trade, domestic_unit, model_unit, *,
+                               land_use=None, area_unit="", density_unit="", trade_model_unit=None):
+    """Audit nominal ICM source loading separately from Formula A allowances."""
+    def normalize(unit):
+        return (str(unit).strip().lower().replace(" ", "").replace("³", "3").replace("^", "")
+                .replace("litres", "l").replace("liters", "l").replace("day", "d"))
+
+    scale = {"l/d": 1, "l/s": 86400, "m3/d": 1000, "m3/s": 86400000}
+
+    def reviewed_scale(choice, declared, label):
+        key, claim = normalize(choice), normalize(declared)
+        if key not in scale or claim and claim != key:
+            raise ValueError(f"Confirm the {label} unit and resolve any conflict with the export.")
+        return scale[key]
+
+    def event_profiles(event, kind):
+        if event is None:
+            return {}
+        if event.get("schema") != "icm-2026-fixed-profile-csv-v1" or event.get("kind") != kind:
+            raise ValueError(f"Use the reviewed {kind} ICM event.")
+        profiles = {}
+        for profile in event["profiles"]:
+            identifier = profile["profile"]
+            if type(identifier) is not int or not 1 <= identifier <= 999 or identifier in profiles:
+                raise ValueError("Review unique ICM profile identities from 1 to 999.")
+            _nonnegative(profile["value"], "fixed ICM profile value", 1e9)
+            profiles[identifier] = profile
+        return profiles
+
+    def finite_quantity(value):
+        return value if isfinite(value) else None
+
+    if domestic is None and trade is None:
+        raise ValueError("Choose at least one ICM event for nominal loading review.")
+    domestic_profiles, trade_profiles = event_profiles(domestic, "domestic"), event_profiles(trade, "trade")
+    domestic_factor = reviewed_scale(domestic_unit, domestic["declared_unit"], "per-capita flow") if domestic else None
+    defaults = resolve_icm_catchment_defaults(catchments, land_use, area_unit, density_unit)
+    rows = []
+    for row in defaults["rows"]:
+        attrs, units = row["source_attributes"], row["source_units"]
+        population, profile_number = row["population_times_connectivity"], row["wastewater_profile"]["value"]
+        water = domestic_profiles.get(profile_number)
+        per_capita = water["value"] * domestic_factor if water else None
+        added = _icm_nonnegative(attrs.get("additional_foul_flow", ""))
+        if added is not None:
+            added = finite_quantity(added * reviewed_scale(model_unit, units.get("additional_foul_flow", ""), "additional foul flow"))
+        nominal_domestic, domestic_note = None, "The fixed profile, connected population or additional foul flow is unresolved."
+        if domestic and profile_number == 0:
+            if added == 0:
+                nominal_domestic, domestic_note = 0, "Source profile 0 disables domestic profile flow."
+            else:
+                domestic_note = "Review profile 0 together with the separate additional foul input."
+        elif per_capita is not None and population is not None and added is not None:
+            nominal_domestic = finite_quantity(population * per_capita + added)
+            if nominal_domestic is not None:
+                domestic_note = "Population × connectivity × per-capita flow + additional foul flow."
+        trade_number = _icm_nonnegative(attrs.get("trade_profile", ""))
+        industry = trade_profiles.get(trade_number)
+        trade_flow = _icm_nonnegative(attrs.get("trade_flow", ""))
+        if trade_flow is not None and trade:
+            trade_flow = finite_quantity(trade_flow * reviewed_scale(trade_model_unit or model_unit, units.get("trade_flow", ""), "trade flow"))
+        nominal_trade = finite_quantity(trade_flow * industry["value"]) if industry and trade_flow is not None else None
+        trade_note = "The fixed trade profile or nominal trade flow is unresolved."
+        if nominal_trade is not None:
+            trade_note = "Source trade flow × fixed factor."
+            if industry["value"] != 1:
+                trade_note += " Review the recorded legacy scaling factor against the simulation basis."
+        rows.append(dict(line=row["line"], id=row["id"], population=row["population"], connectivity=row["connectivity"],
+                         profile_number=profile_number, profile_source=water, connected_population=population,
+                         domestic_l_head_day=per_capita, additional_foul_l_day=added, nominal_domestic_l_day=nominal_domestic,
+                         domestic_note=domestic_note, trade_profile=trade_number, trade_profile_source=industry,
+                         nominal_trade_l_day=nominal_trade, trade_note=trade_note, base_flow_raw=attrs.get("base_flow"),
+                         source_attributes=attrs, source_units=units))
+    return dict(method="icm-2026-nominal-loading-review-v1", rows=rows)

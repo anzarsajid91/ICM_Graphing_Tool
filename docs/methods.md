@@ -611,6 +611,31 @@ remains per capita. Repeated catchment IDs can contribute once, while the
 audit retains all original rows and decisions. A changed typed network
 topology requires a fresh allocation review.
 
+### ICM model loading from Waste Water and Trade Waste events
+
+From the current ICM run, export the associated events with **Export Image
+to CSV**. Use **Review native Waste Water and Trade Waste events** in the
+catchment import. The worksheet reads the fixed `PROFILE_NUMBER` and `FLOW`
+records, including `Units_Average_Flow` when present, and joins them to the
+reviewed native catchment and land-use fields. The event exports can be up
+to 8 MiB each. Confirm the model revision, event identity and displayed
+flow units. An absent unit requires an explicit choice.
+
+For domestic loading, connected population is source population multiplied
+by connectivity divided by 100. Nominal domestic flow is connected population
+times per-capita flow plus separately imported additional foul flow. For
+trade loading, multiply the source trade flow by the fixed trade event factor.
+Review legacy factors that differ from 1. The worksheet preserves unresolved
+inputs and explicit zeros. It reads neither event modifiers nor simulated
+inflows into these nominal values. The worksheet records the source fields,
+profile numbers, units, file fingerprints and engineer's review basis.
+
+Use the event per-capita rate as the project's regulatory domestic allowance
+only after explicit review, with the domestic allowance column unmapped.
+Retain a separate basis for regulatory infiltration and trade allowances.
+[Autodesk native event CSV](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-3477644E-D576-47EE-8805-395CCC74C5DC.htm)
+· [Autodesk nominal loading method](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-687E5B36-1C6D-4701-8DFF-AA4EB981FA6D.htm)
+
 ## Scotland continuation-flow screening
 
 The Scottish overflow screen uses SEPA WAT-G-058 version 1.0, August 2025,

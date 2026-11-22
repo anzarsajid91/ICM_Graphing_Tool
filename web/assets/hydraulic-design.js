@@ -426,8 +426,8 @@ function configureCatchment(controls) {
   controls.classification.addEventListener("change",update);
   update();
 }
-async function readLocalCSV(file,kind,preview){
-  if(file.size>1024*1024)throw new Error("Choose a "+kind+" CSV up to 1 MiB.");
+async function readLocalCSV(file,kind,preview,maxMiB=1){
+  if(file.size>maxMiB*1024*1024)throw new Error("Choose a "+kind+" CSV up to "+maxMiB+" MiB.");
   const bytes=await file.arrayBuffer();
   let text;
   try{text=new TextDecoder("utf-8",{fatal:true}).decode(bytes);}
@@ -699,7 +699,7 @@ function mountLandUseReview(packet,worker){
       const {source_basis:note,...units}=values;
       const result=await worker("review_icm_catchment_defaults",{catchments:packet.data,land_use:companion.data,...units});
       if(requested!==generation||!section.isConnected)return;
-      review={result,note,filename:companion.filename,fingerprint:companion.fingerprint};
+      review={result,note,data:companion.data,filename:companion.filename,fingerprint:companion.fingerprint};
       const proposal=cell=>cell.value===null?cell.basis:
         `${format(cell.value)} · ${cell.basis}${cell.source_line?" row "+cell.source_line:""}`;
       output.append(table(["Source catchment","ICM system type","Land use","Population (people)","Connectivity (%)",
@@ -732,6 +732,80 @@ function mountLandUseReview(packet,worker){
   return {section,current:()=>review&&{...review,applyPopulation:acceptance.controls.accepted.checked}};
 }
 
+function mountDesignEventReview(packet,worker,readDefaults){
+  const section=element("details"),message=element("p"),output=element("div");
+  message.setAttribute("role","status");
+  const flowUnits=label=>[["",label],...["L/day","L/s","m³/day","m³/s"].map(unit=>[unit,unit])];
+  const reviewed=fields([
+    {key:"domestic_unit",label:"Waste Water per-capita flow unit",options:flowUnits("Confirm the stated flow per person")},
+    {key:"model_unit",label:"Source additional foul flow unit",options:flowUnits("Confirm the additional foul unit")},
+    {key:"trade_model_unit",label:"Source nominal trade flow unit",options:flowUnits("Confirm the trade flow unit")},
+    {key:"note",label:"Reviewed ICM simulation, revision and event basis",type:"text",maxLength:2000},
+  ]);
+  const acceptance=fields([{key:"adopt",label:"Use reviewed event per-capita flow as the project domestic allowance",type:"checkbox"}]);
+  const files={domestic:null,trade:null},fileGeneration={domestic:0,trade:0},selectedFiles={};
+  const hasUnresolvedSelection=()=>Object.keys(files).some(kind=>selectedFiles[kind]&&!files[kind]);
+  const inputs=element("div");inputs.className="mapping-grid";
+  let generation=0,active=null;
+  function reset(){
+    generation++;active=null;output.replaceChildren();acceptance.group.hidden=true;acceptance.controls.adopt.checked=false;
+  }
+  for(const [kind,caption] of [["domestic","Waste Water event CSV"],["trade","Trade Waste event CSV"]]){
+    const label=element("label",caption),input=element("input");
+    input.type="file";input.accept=".csv,text/csv";
+    input.onchange=async()=>{
+      const request=++fileGeneration[kind],file=input.files[0];
+      selectedFiles[kind]=Boolean(file);files[kind]=null;reset();calculate.disabled=!files.domestic&&!files.trade;clear.disabled=false;
+      if(!file)return;
+      message.textContent="Reading fixed ICM profile values…";
+      try{
+        const {data,filename,fingerprint}=await readLocalCSV(file,"ICM event",text=>worker("preview_icm_design_event",{text,kind}),8);
+        if(!section.isConnected||request!==fileGeneration[kind])return;
+        files[kind]={data,filename,fingerprint};reset();calculate.disabled=false;
+        message.textContent=`${data.profiles.length} fixed ${caption.replace(" CSV","")} profile(s) read. Source unit ${data.declared_unit||"not declared"}.`;
+      }catch(error){if(section.isConnected&&request===fileGeneration[kind])message.textContent=error.message;}
+    };
+    label.append(input);inputs.append(label);
+  }
+  reviewed.group.addEventListener("input",reset);
+  const calculate=action("Review nominal ICM loading",async()=>{
+    reset();const requested=generation,baseline=readDefaults();
+    const {note,...units}=reviewed.values();
+    if(hasUnresolvedSelection()){message.textContent="Replace or clear the unresolved ICM event source before reviewing.";return;}
+    if(!note){message.textContent="Record the reviewed simulation, revision and events before calculating.";return;}
+    const argumentsForReview={catchments:packet.data,domestic:files.domestic?.data??null,trade:files.trade?.data??null,...units};
+    if(baseline)Object.assign(argumentsForReview,{land_use:baseline.data,area_unit:baseline.result.area_unit,density_unit:baseline.result.density_unit});
+    calculate.disabled=true;
+    try{
+      const result=await worker("review_icm_event_loading",argumentsForReview);
+      if(!section.isConnected||requested!==generation)return;
+      active={result,note,units,files:{...files},defaults:baseline?.result};
+      output.append(table(["Catchment","Connected population","Wastewater profile","Per-capita flow (L/head/day)",
+        "Additional foul (L/day)","Nominal domestic (L/day)","Nominal trade (L/day)","Review basis"],
+        result.rows.map(row=>[row.id,row.connected_population,row.profile_number,row.domestic_l_head_day,row.additional_foul_l_day,
+          row.nominal_domestic_l_day,row.nominal_trade_l_day,row.domestic_note+" "+row.trade_note]),"Model loading review"));
+      acceptance.group.hidden=!result.rows.some(row=>row.domestic_l_head_day!==null);
+      message.textContent=`Reviewed nominal ICM loading for ${result.rows.length} catchment row(s).`;
+    }catch(error){if(section.isConnected&&requested===generation)message.textContent=error.message;}
+    finally{calculate.disabled=!files.domestic&&!files.trade;}
+  });
+  const clear=action("Clear event sources",()=>{
+    for(const kind of Object.keys(files)){fileGeneration[kind]++;files[kind]=null;selectedFiles[kind]=false;}
+    for(const input of inputs.querySelectorAll("input"))input.value="";
+    reset();calculate.disabled=clear.disabled=true;message.textContent="ICM event sources cleared.";
+  });
+  clear.disabled=calculate.disabled=acceptance.group.hidden=true;
+  section.append(element("summary","Review native Waste Water and Trade Waste events"),element("p",
+    "Use the exports for the model run you are reviewing. The worksheet reads fixed profiles and keeps model loading separate from permitted allowances."),
+  inputs,reviewed.group,calculate,clear,message,output,acceptance.group);
+  return {section,read(){
+    if(hasUnresolvedSelection())throw new Error("Replace or clear the unresolved ICM event source before applying.");
+    if(!files.domestic&&!files.trade)return null;
+    if(!active||readDefaults()?.result!==active.defaults)throw new Error("Review the current ICM event and land-use sources before applying.");
+    return {...active,adopt:acceptance.controls.adopt.checked};
+  }};
+}
+
 function mountCatchmentImport(article,form,catchments,worker) {
   const definitions=[["id","Catchment ID","subcatchment_id"],["population","Reviewed population","population"],
     ["domestic_l_head_day","Reviewed domestic allowance (L/head/day)",null],
@@ -750,12 +824,12 @@ function mountCatchmentImport(article,form,catchments,worker) {
   const cancel=action("Cancel",()=>dialog.close());
   controls.append(cancel,apply);dialog.append(heading,description,label,message,content,controls);
   article.append(dialog);
-  let source=null,staged=null,revision=0,mappings={},confirmed=null,contribution=null,defaults=null;
+  let source=null,staged=null,revision=0,mappings={},confirmed=null,contribution=null,defaults=null,eventReview=null;
   const open=action("Import catchment CSV",()=>dialog.showModal());
   actionbar.append(open);form.append(actionbar,notice);
   apply.disabled=true;
   function reset(){
-    staged=null;content.replaceChildren();mappings={};confirmed=null;contribution=null;defaults=null;apply.disabled=true;
+    staged=null;content.replaceChildren();mappings={};confirmed=null;contribution=null;defaults=null;eventReview=null;apply.disabled=true;
   }
   dialog.addEventListener("close",()=>{
     revision++;reset();upload.value="";message.textContent="";
@@ -789,8 +863,9 @@ function mountCatchmentImport(article,form,catchments,worker) {
         finally{if(!contribution)trace.disabled=false;}
       });
       defaults=mountLandUseReview(staged,worker);
+      eventReview=mountDesignEventReview(staged,worker,defaults.current);
       content.append(fields,element("p","Blank and inherited values require explicit input. Model base flow and nominal trade flow need a separate review before they can be used as daily allowances."),
-        check.label,defaults.section,trace,topology);
+        check.label,defaults.section,eventReview.section,trace,topology);
       message.textContent=data.rows.length+" catchment row(s) available.";
       apply.disabled=false;
     }catch(error){if(generation===revision)message.textContent=error.message;}
@@ -822,7 +897,13 @@ function mountCatchmentImport(article,form,catchments,worker) {
       }
       for(const row of inheritance.result.rows)if(row.population.basis==="land use")populations.set(row.line,row.population.value);
     }
-    const appliedPopulation=[];
+    let modelLoading=null;
+    try{modelLoading=eventReview?.read();}catch(error){message.textContent=error.message;return;}
+    if(modelLoading?.adopt&&(choices.domestic_l_head_day!==null||data.header[choices.id]?.toLowerCase()!=="subcatchment_id")){
+      message.textContent="Use the native catchment ID and leave the domestic allowance column unmapped to adopt the reviewed event rate.";return;
+    }
+    const rates=new Map(modelLoading?.result.rows.map(row=>[row.line,row.domestic_l_head_day]));
+    const appliedPopulation=[],appliedRates=[];
     let missing=0;
     const rows=data.rows.map(({line,cells})=>{
       const result={classification:""};
@@ -835,6 +916,8 @@ function mountCatchmentImport(article,form,catchments,worker) {
         if(i!==null&&/^[+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(raw)&&Number.isFinite(Number(raw)*scales[key]))result[key]=Number(raw)*scales[key];
         else if(key==="population"&&populations.has(line)){
           result[key]=populations.get(line);appliedPopulation.push(line);
+        }else if(key==="domestic_l_head_day"&&modelLoading?.adopt&&Number.isFinite(rates.get(line))){
+          result[key]=rates.get(line);appliedRates.push(line);
         }else missing++;
       }
       return result;
@@ -849,7 +932,7 @@ function mountCatchmentImport(article,form,catchments,worker) {
     }
     let reviewed=null;
     try{if(contribution)reviewed=contribution(rows);}catch(error){message.textContent=error.message;return;}
-    source={filename,fingerprint,choices,scales,data,reviewed,inheritance,appliedPopulation};
+    source={filename,fingerprint,choices,scales,data,reviewed,inheritance,appliedPopulation,modelLoading,appliedRates};
     const loaded=reviewed?.rows||rows;
     catchments.replace(loaded);
     notice.textContent=loaded.length+" rows loaded from "+filename+". Review every classification and resolve "+missing+" missing or unmapped allowance fields.";
@@ -857,7 +940,7 @@ function mountCatchmentImport(article,form,catchments,worker) {
   }
   function audit(){
     if(!source)return [];
-    const {filename,fingerprint,choices,scales,data,reviewed,inheritance,appliedPopulation}=source;
+    const {filename,fingerprint,choices,scales,data,reviewed,inheritance,appliedPopulation,modelLoading,appliedRates}=source;
     const mapped=definitions.filter(([key])=>choices[key]!==null);
     const native=inheritance?[["Model-default review method",inheritance.result.method],["Land-use export",inheritance.filename,inheritance.fingerprint],
       ["ICM revision and basis",inheritance.note],["Area and population-density units",inheritance.result.area_unit,inheritance.result.density_unit],
@@ -866,10 +949,20 @@ function mountCatchmentImport(article,form,catchments,worker) {
         ...["population","connectivity","wastewater_profile"].map(key=>[key,row[key].value,row[key].basis,row[key].source_line]),
         ...Object.entries(row.source_attributes).map(([key,value])=>["Original subcatchment",key,value,row.source_units[key]]),
         ...Object.entries(row.land_attributes).map(([key,value])=>["Original land-use default",key,value])])]:[];
+    const eventAudit=modelLoading?[["Model loading method",modelLoading.result.method],["Model run and event basis",modelLoading.note],
+      ["Reviewed fixed per-capita unit",modelLoading.units.domestic_unit],
+      ["Reviewed additional foul unit",modelLoading.units.model_unit],
+      ["Reviewed nominal trade unit",modelLoading.units.trade_model_unit||modelLoading.units.model_unit],
+      ["Reviewed per-capita allowance applied to source lines",...appliedRates],
+      ...Object.entries(modelLoading.files).flatMap(([kind,file])=>file?[["ICM event source",kind,file.filename,file.fingerprint,file.data.title,file.data.declared_unit],
+        ...file.data.profiles.map(profile=>["ICM event profile",kind,profile.line,profile.profile,profile.description,profile.raw])]:[]),
+      ...modelLoading.result.rows.flatMap(row=>[["Model loading review",row.line,row.id,row.connected_population,row.profile_number,row.domestic_l_head_day,
+        row.additional_foul_l_day,row.nominal_domestic_l_day,row.trade_profile,row.trade_profile_source?.value,row.nominal_trade_l_day,row.domestic_note,row.trade_note],
+        ...Object.entries(row.source_attributes).map(([key,value])=>["Model loading source field",row.id,key,value,row.source_units[key]])])]:[];
     return [["Imported file",filename],["Source SHA-256",fingerprint],["Source schema",data.schema],
       ...mapped.map(([key,title])=>[title,data.header[choices[key]],data.units?.[choices[key]]??"Reviewed units","Conversion factor",scales[key]]),
       ["Original source line",...mapped.map(([key])=>data.header[choices[key]])],
-      ...data.rows.map(row=>[row.line,...mapped.map(([key])=>row.cells[choices[key]])]),...native,...(reviewed?.audit||[])];
+      ...data.rows.map(row=>[row.line,...mapped.map(([key])=>row.cells[choices[key]])]),...native,...eventAudit,...(reviewed?.audit||[])];
   }
   return {audit,assertCurrent(){
     if(source?.reviewed&&readNetworkBasis().stamp!==source.reviewed.stamp)throw new Error("Network topology changed or source lengths differ. Review catchment allocations again.");

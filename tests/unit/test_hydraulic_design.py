@@ -399,6 +399,52 @@ def test_lateral_link_report_uses_flat_rows_and_preserves_composite_keys():
         preview_catchment_csv(header + "25,00127,01\n", table="lateral-link-report")
 
 
+def test_native_icm_event_fixed_profiles_and_nominal_loading_have_independent_units():
+    from icm_workbench.analysis.design_flows import (parse_icm_design_event, preview_catchment_csv,
+                                                     review_icm_nominal_loading)
+
+    water = parse_icm_design_event(
+        'TITLE\nSynthetic event\nUnits_Concentration,Units_Average_Flow\nmg/l,L/day\n'
+        'PROFILE_NUMBER,FLOW,PROFILE_DESCRIPTION\n2,160,"Model, house"\n'
+        'DESIGN_PROFILES\nTIME,FLOW\n00:00,2\nPROFILE_NUMBER,FLOW\n3,0\n', "domestic")
+    trade = parse_icm_design_event('PROFILE_NUMBER,PROFILE_DESCRIPTION,FLOW\n1,legacy,1.25\n', "trade")
+    table = preview_catchment_csv(
+        '**** hw_subcatchment\nsubcatchment_id,land_use_id,population,connectivity,wastewater_profile,additional_foul_flow,trade_profile,trade_flow,base_flow\n'
+        'UserUnits,,,,,L/s,,L/s,L/s\n00127,,200,90,2,0.01,1,0.02,0.5\n'
+        '00128,,50,100,3,,1,0,0\n00129,,50,100,0,0,1,0,0\n')
+    result = review_icm_nominal_loading(table, water, trade, 'L/day', 'L/s')
+    first, blank, disabled = result['rows']
+    assert water['profiles'][0] == {'profile': 2, 'description': 'Model, house', 'value': 160, 'raw': '160', 'line': 6}
+    assert first['domestic_l_head_day'] == 160
+    assert first['connected_population'] == 180
+    assert first['additional_foul_l_day'] == 864
+    assert first['nominal_domestic_l_day'] == 29664
+    assert first['nominal_trade_l_day'] == 2160
+    assert 'legacy scaling factor' in first['trade_note']
+    assert first['base_flow_raw'] == '0.5'
+    assert blank['nominal_domestic_l_day'] is None and blank['domestic_l_head_day'] == 0
+    assert disabled['nominal_domestic_l_day'] == 0 and disabled['domestic_l_head_day'] is None
+    with pytest.raises(ValueError, match='conflict'):
+        review_icm_nominal_loading(table, water, trade, 'm³/day', 'L/s')
+    with pytest.raises(ValueError, match='conflict'):
+        review_icm_nominal_loading(table, water, trade, 'L/day', 'L/day')
+
+
+@pytest.mark.parametrize('source,kind,pattern', [
+    ('PROFILE_NUMBER,FLOW\n2,160\nPROFILE_NUMBER,FLOW\n2,180\n', 'domestic', 'Duplicate'),
+    ('PROFILE_NUMBER,FLOW\n1000,160\n', 'domestic', '1 to 999'),
+    ('PROFILE_NUMBER,FLOW\n1,-10\n', 'domestic', 'non-negative'),
+    ('Units_Average_Flow\nL/d\nPROFILE_NUMBER,FLOW\n1,1\n', 'trade', 'Waste Water'),
+    ('PROFILE_NUMBER,FLOW\n', 'domestic', 'missing'),
+    ('PROFILE_NUMBER,FLOW\n2,nan\n', 'domestic', 'non-negative'),
+])
+def test_native_icm_event_rejects_invalid_or_incompatible_fixed_profiles(source, kind, pattern):
+    from icm_workbench.analysis.design_flows import parse_icm_design_event
+
+    with pytest.raises(ValueError, match=pattern):
+        parse_icm_design_event(source, kind)
+
+
 def test_icm_land_use_defaults_preserve_zero_and_identify_the_native_source():
     from icm_workbench.analysis.design_flows import preview_catchment_csv, resolve_icm_catchment_defaults
 

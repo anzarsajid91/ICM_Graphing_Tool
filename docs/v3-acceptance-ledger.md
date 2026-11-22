@@ -44,7 +44,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.3 | Candidate system-curve model | Manual and mapped CSV pump curves, exact specified-factor intersections including multiple and absent duties, identical arrangements, power and operating limits | Verified locally for the specified-factor system model |
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
 | 9.5 England and framework research | Official permitting guidance | Versioned methods for England, Scotland, Wales and the reviewed Irish combined setting, with a documented project method | Verified locally within the cited applicability. Northern Ireland continuation uses the reviewed project consent basis |
-| 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial. Native land-use defaults, nominal drainage, flat ICM lateral grid evidence and confirmed shares verified locally. Native wastewater event-profile review remains open |
+| 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Verified locally for reviewed source fields, native fixed event profiles and explicit contributing allocations. Real ICM runtime and project-specific regulatory applicability remain separate |
 | 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Verified locally for the supported frameworks, circular sections and same-run typed link results. Inheritance remains a separate input criterion |
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
@@ -1429,3 +1429,23 @@ other state.
   101,280 to 122,420 L/day. The two observers saw 109 and 106
   requests with no violations. The 153-resource artifact, route unit checks
   and 464 Python tests plus 111 subtests passed.
+
+### Native fixed domestic and trade event profiles
+
+- The event CSV reader follows Autodesk's published fixed profile, identity
+  and unit records. It distinguishes domestic per-capita units from fixed
+  trade factors. The model audit uses reviewed inherited or explicit source
+  population, connectivity and profile, with additional foul flow and raw
+  base flow kept separate. Event interpolation, timestamps and calibration
+  multipliers are outside this nominal source-loading assessment. A selected
+  per-capita rate enters Formula A only after a separate project-basis review.
+- Chromium and Firefox independently confirmed the 200-person, 90%-connected
+  case, a 160 L/head/day fixed rate, 864 L/day of additional foul flow and
+  29,664 L/day of nominal domestic loading. A separately imported 1.25 legacy
+  factor produced 2,160 L/day model trade flow, with the reviewed regulatory
+  trade and infiltration untouched. The worksheet rejected incompatible event
+  type, conflicting unit, competing domestic mapping and missing run note.
+  Both browsers verified the 306,100 L/day Formula A result and its exact
+  audit, with 109 and 106 guarded requests and no violations. Python covers
+  duplicate or invalid profile IDs, invalid numeric tokens, missing values,
+  explicit disabled profiles and source unit conflicts.
