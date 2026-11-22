@@ -218,8 +218,15 @@ Switch map shading among the three values and set the scale in the quantity's
 displayed unit. A valid difference requires both samples at the exact
 timestamp. A proposal sample at a different timestamp is unavailable for
 that frame. In a long section with a confirmed datum, purple rings mark the
-proposal's recorded node or selected conduit-end levels. The baseline may
-also show its reviewed opposite conduit end. Each source remains separate
+proposal's recorded node or conduit-end levels. For conduits, open the route,
+select an optional **Proposal other conduit end**, and confirm both model
+revisions use the displayed geometry and datum. The opposite end must match
+the proposal's own simulation, scenario and revision. A dashed purple line
+joins two wet exact end levels where the displayed geometry supports it.
+The baseline retains its own water fill and its independently reviewed end
+levels. Dry, missing and incompatible endpoints stay separate. Review and
+apply the shared proposal geometry again when the opened route changes.
+Each source remains separate
 in the local index. Removing either source or changing network geometry
 clears the comparison.
 

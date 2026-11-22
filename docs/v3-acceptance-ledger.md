@@ -31,7 +31,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Verified locally for imported result layers, reviewed flow direction, same-datum freeboard, source geometry and positive imported full-capacity utilisation |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Verified locally for exact shared-clock comparison and independent layer extrema. Geometry-sensitive scenario review remains open under 6.1 and 6.4 |
-| 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial. Source chamber roofs, closed-section soffits and control levels verified in both desktop browsers. Expanded proposal profile comparison remains open |
+| 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial. Source geometry, structure levels and paired exact proposal endpoints on reviewed shared route geometry verified in both desktop browsers. Revision-specific geometry and expanded profile interaction remain open |
 | 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for indexed ingestion and lookup. Broader capacity and release checks remain open |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
 | 7.2 | Gauge qualification, cumulative/event data | Common-clock spatial comparison, event totals, correlation, peak offset, coverage, suspect bins and WAPUG linkage | Verified locally |
@@ -1395,3 +1395,19 @@ other state.
   wired into the existing protected browser-interaction workflow. Local raw
   results and synthetic screenshots are under `hydra-evidence/v3/network-scale/`
   and `hydra-evidence/v3/network-scale-final/`.
+
+### Paired proposed conduit-end profiles
+
+- The proposed scenario can use its own reviewed opposite-end level source.
+  The current route and datum require explicit review for both revisions.
+  Companion lookup stays local and selects the typed route links at the exact
+  timestamp. Missing ends and dry transitions withhold a connecting line.
+  An out-of-date route review withholds proposed levels from the profile
+  while keeping the independent map comparison. A different geometry needs
+  a separate route review against its own model export.
+- Both desktop browsers verified the two exact proposal levels, a one-minute
+  companion clock mismatch, a dry end at invert, and 0.3 m of reported head
+  above the shared soffit (10.9 m level and 10.6 m soffit). Both checked that
+  a changed route clears the geometry review. The request observer counted
+  32 requests with no violations in each browser. Simulation result and
+  route unit suites and the 153-resource artifact integrity check passed.

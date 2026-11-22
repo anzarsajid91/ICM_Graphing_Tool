@@ -2131,12 +2131,12 @@ function plotProfile(steps){
   const routeNodes=new Set(steps.flatMap(step=>[step.from,step.to]));
   const imported=new Map((model?.values||[]).filter(record=>routeNodes.has(record.node)).map(record=>[record.node,record.level]));
   const conduitLevels=new Map((model?.ends||[]).map(record=>[record.edge,record]));
+  const proposedConduitLevels=new Map((model?.proposal?.ends||[]).map(record=>[record.edge,record]));
   const profileLinks=new Set(plotted.map(step=>step.id));
   const proposalLevels=new Map((model?.proposal?.levels||[])
     .filter(row=>row.location==='node'?routeNodes.has(row.id):profileLinks.has(row.id)).map(row=>[row.id,row]));
-  const shownEndLevels=plotted.flatMap(step=>{
-    const ends=conduitLevels.get(step.id);return ends?[ends.upstream,ends.downstream]:[];
-  }).filter(Number.isFinite);
+  const shownEndLevels=plotted.flatMap(step=>[conduitLevels.get(step.id),proposedConduitLevels.get(step.id)]
+    .flatMap(ends=>ends?[ends.upstream,ends.downstream]:[])).filter(Number.isFinite);
   const levels=steps.flatMap(step=>[step.us,step.ds,step.groundFrom,step.groundTo,step.chamberFrom,step.chamberTo,step.roofFrom,step.roofTo,
     ...step.controlLevels.map(control=>control.value),
     step.us!==null&&step.height!==null?step.us+step.height:null,
@@ -2170,10 +2170,11 @@ function plotProfile(steps){
     svg.append(svgElement('text',{x:12,y:18},'Level (m'+(model?.datum?' '+model.datum:'')+')'),svgElement('text',{x:460,y:283,'text-anchor':'middle'},absolute?'Chainage (m)':'Local distance (m)'),
       svgElement('text',{x:850,y:18,'text-anchor':'end'},'Vertical exaggeration '+f((213/vertical.span)/(774/horizontal.span),2)+'×'));
     const drawnLevels=new Set(),drawnProposals=new Set(),drawnNodes=new Set(),structures=new Map();
-    const proposalMark=(station,level,id,location,ground)=>{
+    const proposalMark=(station,level,id,location,ground,aboveSoffit)=>{
       const mark=svgElement('circle',{'data-ns-profile-proposal':location,cx:x(station),cy:y(level),r:7,fill:'none',stroke:'#8f397c','stroke-width':2});
       const freeboard=Number.isFinite(ground)?' · ground freeboard '+f(ground-level,3)+' m':'';
-      mark.append(svgElement('title',{},id+' · '+model.proposal.scenario+' proposal '+location+' level '+f(level,3)+' m'+freeboard));
+      const head=aboveSoffit>0?' · head above soffit '+f(aboveSoffit,3)+' m':'';
+      mark.append(svgElement('title',{},id+' · '+model.proposal.scenario+' proposal '+location+' level '+f(level,3)+' m'+freeboard+head));
       return mark;
     };
     for(const {step,station} of controls){
@@ -2244,10 +2245,23 @@ function plotProfile(steps){
           group.append(marker);
         }
       }
-      const proposal=proposalLevels.get(step.id);
-      if(proposal&&proposal.location!=='node'){
-        const upstream=proposal.location==='upstream';
-        group.append(proposalMark(upstream?step.x1:step.x2,proposal.level,step.name,proposal.location,upstream?step.groundFrom:step.groundTo));
+      const proposal=proposedConduitLevels.get(step.id);
+      if(proposal){
+        const evidence=R.conduitEndProfile(step,proposal.upstream,proposal.downstream);
+        if(evidence.waterTop){
+          const grade=line(proposal.upstream,proposal.downstream,'#8f397c','6 3');
+          const head=Math.max(...evidence.ends.map(end=>end.aboveSoffit||0));
+          grade.dataset.nsProfileProposalGrade='';
+          grade.append(svgElement('title',{},step.name+' · '+model.proposal.scenario+' · Straight line between reported wet ends'+
+            (head>0?' · maximum reported end head above soffit '+f(head,3)+' m':'')));
+          group.append(grade);
+        }
+        for(const [index,end] of evidence.ends.entries()){
+          if(end.level===null)continue;
+          const upstream=index===0;
+          group.append(proposalMark(upstream?step.x1:step.x2,end.level,step.name,upstream?'upstream':'downstream',
+            upstream?step.groundFrom:step.groundTo,end.aboveSoffit));
+        }
       }
       for(const [station,level] of [[step.x1,step.us],[step.x2,step.ds]])if(level!==null)
         group.append(svgElement('circle',{cx:x(station),cy:y(level),r:3,fill:'#14527c'}));
@@ -2315,8 +2329,15 @@ function renderProfileModel(){
   const active=simulationView?.profile(),model=active||routeDraft.model;
   const routeNodes=new Set(routeDraft.steps.flatMap(step=>[step.from,step.to]));
   const routeLinks=new Set(routeDraft.steps.map(step=>step.id));
-  const comparison=model?.proposal?' '+model.proposal.scenario+' exact proposal level samples: '+model.proposal.levels
-    .filter(row=>row.location==='node'?routeNodes.has(row.id):routeLinks.has(row.id)).length+'. Purple rings mark available proposal levels.':'';
+  let comparison='';
+  if(model?.proposal){
+    const proposal=model.proposal;
+    const count=proposal.ends?proposal.ends.filter(row=>routeLinks.has(row.edge)).flatMap(end=>[end.upstream,end.downstream]).filter(Number.isFinite).length:
+      proposal.levels.filter(row=>routeNodes.has(row.id)).length;
+    comparison=' '+proposal.scenario+' exact proposal level samples: '+count+'. Purple rings mark available proposal levels.'+
+      (proposal.ends?' The dashed purple line joins wet proposal ends on the reviewed shared geometry.':'');
+  }
+  if(model?.proposalReviewPending)comparison=' Review the shared geometry and apply the proposal again for this route.';
   $('nsProfileModelLegend').hidden=!model;
   $('nsProfileModelLegend').textContent=model?.ends?'Conduit-end level and supported water fill':'Modelled node level';
   if(model?.ends){
@@ -2398,6 +2419,8 @@ function mountSimulationView(){
     '<label id="nsSimulationProposal" hidden>Proposal results<select name="proposal" aria-label="Proposal results"></select></label></div>'+
     '<p id="nsSimulationSourceInfo"></p><p><label><input name="confirm" type="checkbox" required> I reviewed the model revision, typed asset mappings and result convention against this network</label></p>'+
     '<p id="nsSimulationComparison" hidden><span id="nsSimulationProposalInfo"></span><br><label><input name="verifyProposal" type="checkbox"> The proposal uses these same assets, event, result convention and project clock</label></p>'+
+    '<div id="nsSimulationProposalProfile" class="ns-review-actions" hidden><label id="nsSimulationProposalEnd">Proposal other conduit end'+
+    '<select name="proposalEnd" aria-label="Proposal other conduit end"></select></label><label><input name="verifyProfileGeometry" type="checkbox"> Both revisions use the displayed route geometry and datum</label></div>'+
     '<div class="ns-review-actions"><button type="submit">Apply results layer</button><button type="button" id="nsClearSimulation" disabled>Remove results layer</button></div></form>'+
     '<div id="nsSimulationTransport" class="ns-review-actions" hidden><label>Simulation sample<input id="nsSimulationTime" type="range" min="0" max="0" step="1" value="0"></label>'+
     '<button type="button" id="nsSimulationBack">Previous sample</button><button type="button" id="nsSimulationPlay" aria-pressed="false">Play</button><button type="button" id="nsSimulationNext">Next sample</button>'+
@@ -2415,7 +2438,7 @@ function mountSimulationView(){
   const titles={level:'Level',flow:'Flow',velocity:'Velocity',depth:'Depth','total-head':'Total head',
     'flood-depth':'Flood depth','flood-volume':'Flood volume','surcharge-state':'Surcharge state'};
   const shade=$('nsSimulationShade'),display=$('nsSimulationDisplay'),cancelExtrema=$('nsSimulationCancelExtrema');
-  let layer=null,profile=null,generation=0,playing=0,timer=null,groups=new Map(),sampleWindow=null,layerChoices=new Map(),companions=new Map(),proposals=new Map(),extremaJob=null;
+  let layer=null,profile=null,generation=0,playing=0,timer=null,groups=new Map(),sampleWindow=null,layerChoices=new Map(),companions=new Map(),proposals=new Map(),proposalEnds=new Map(),extremaJob=null;
   const session=()=>window.HydraResultsWorkspace?.session;
   const sources=()=>session()?.sources()||[];
   const candidate=()=>sources().find(item=>item.sourceId===Number(fields.source.value));
@@ -2516,7 +2539,7 @@ function mountSimulationView(){
     stop();cancelScan();++generation;layer=null;profile=null;removeMarks();
     sampleWindow?.setSource(null);
     transport.hidden=true;legend.hidden=true;stamp.textContent='';clear.disabled=true;shade.value='primary';display.value='sample';
-    fields.confirm.checked=false;fields.verifyProposal.checked=false;
+    fields.confirm.checked=false;fields.verifyProposal.checked=false;fields.verifyProfileGeometry.checked=false;
     if(message&&panel.open)note.textContent=message;
     if(wasApplied)redrawProfile();
   }
@@ -2552,24 +2575,35 @@ function mountSimulationView(){
     fields.flowQuantity.options[1].disabled=!source?.capacity;
     if(!source?.capacity)fields.flowQuantity.value='flow';
   }
-  function refreshCompanions(source,column){
-    const wanted=fields.companion.value;
-    companions=new Map();
+  function matchingEnds(source,column){
+    const candidates=new Map();
     if(source&&column?.quantity==='level'&&column.asset.kind==='link'){
       for(const entry of sources()){
         if(!['simulation','modelRevision','scenario','event','temporalSupport'].every(key=>entry[key]===source[key]))continue;
         const other=entry.columns.filter(item=>item.asset.kind==='link'&&item.quantity==='level'&&item.location!==column.location&&
           item.unit===column.unit&&item.datum===column.datum);
-        if(other.length)companions.set(entry.sourceId,{source:entry,columns:other});
+        if(other.length)candidates.set(entry.sourceId,{source:entry,columns:other});
       }
     }
-    fields.companion.replaceChildren(new Option('Only the selected end',''),...[...companions.values()].map(item=>
+    return candidates;
+  }
+  function chooseCompanion(control,candidates){
+    const wanted=Number(control.value);
+    control.replaceChildren(new Option('Only the selected end',''),...[...candidates.values()].map(item=>
       new Option(item.source.filename+' · '+item.columns[0].location+' end',item.source.sourceId)));
-    if(companions.has(Number(wanted)))fields.companion.value=wanted;
+    if(candidates.has(wanted))control.value=String(wanted);
+  }
+  function refreshCompanions(source,column){
+    companions=matchingEnds(source,column);
+    chooseCompanion(fields.companion,companions);
   }
   function showProposal(){
-    const proposal=proposals.get(Number(fields.proposal.value))?.source;
+    const source=proposals.get(Number(fields.proposal.value)),proposal=source?.source,column=source?.columns[0];
     $('nsSimulationComparison').hidden=!proposal;
+    $('nsSimulationProposalProfile').hidden=!(column?.quantity==='level'&&column.asset.kind==='link');
+    proposalEnds=matchingEnds(proposal,column);
+    chooseCompanion(fields.proposalEnd,proposalEnds);
+    $('nsSimulationProposalEnd').hidden=!proposalEnds.size;
     fields.verifyProposal.required=Boolean(proposal);
     $('nsSimulationProposalInfo').textContent=proposal?'Proposal '+proposal.scenario+' · Simulation '+proposal.simulation+
       ' · Revision '+proposal.modelRevision+' · '+proposal.event+'. Only exact shared timestamps are compared.'+
@@ -2591,7 +2625,7 @@ function mountSimulationView(){
   }
   function refreshSources(){
     const wanted=fields.source.value,available=sources();
-    const removed=layer&&[layer.source,layer.companion?.source,layer.proposal?.source].some(source=>source&&!available.includes(source));
+    const removed=layer&&[layer.source,layer.companion?.source,layer.proposal?.source,layer.proposal?.companion?.source].some(source=>source&&!available.includes(source));
     if(removed)reset('The results source was removed. Import it again to resume.');
     const filtered=window.HydraResultsWorkspace?.eventSources(fields.event,available)||[];
     fields.source.replaceChildren(new Option('Choose an indexed source',''),...filtered.map(item=>new Option(item.scenario+' · '+item.filename,item.sourceId)));
@@ -2614,36 +2648,43 @@ function mountSimulationView(){
       if(request!==generation)return;
       if(!frame.values||!Number.isFinite(frame.time))throw new Error('The selected sample is unavailable.');
       const datum=current.geometryDatum;
-      let proposedValues=null,difference=null;
+      let proposedValues=null,difference=null,proposalFrame=null;
       if(current.proposal){
         const {source,columns,alignment}=current.proposal;
-        const peer=await session().frameAtTime(source.sourceId,frame.time,columns.map(column=>column.series));
+        proposalFrame=await session().frameAtTime(source.sourceId,frame.time,columns.map(column=>column.series));
         if(request!==generation)return;
-        proposedValues=alignment.map(index=>peer.values?.[index]??null);
+        proposedValues=alignment.map(index=>proposalFrame.values?.[index]??null);
         difference=R.compareSimulationSamples(frame.values,proposedValues);
       }
-      let conduits=null;
+      let conduits=null,proposedConduits=null;
+      const showProposalEnds=Boolean(current.proposal&&current.profileRouteRevision===routeRevision);
       if(datum&&current.columns[0].asset.kind==='link'){
-        const steps=new Set(routeDraft.steps.map(step=>step.id)),byEdge=new Map();
-        const collect=(columns,matches,values)=>{
-          for(const [i,column] of columns.entries()){
-            const edge=matches.get(column.series).id;
-            if(!steps.has(edge))continue;
-            if(!byEdge.has(edge))byEdge.set(edge,{edge,upstream:null,downstream:null});
-            byEdge.get(edge)[column.location]=Number.isFinite(values?.[i])?values[i]:null;
+        const steps=new Set(routeDraft.steps.map(step=>step.id));
+        if(!showProposalEnds)fields.verifyProfileGeometry.checked=false;
+        const ends=async (run,samples)=>{
+          const byEdge=new Map();
+          const collect=(columns,matches,values)=>{
+            for(const [i,column] of columns.entries()){
+              const edge=matches.get(column.series).id;
+              if(!steps.has(edge))continue;
+              if(!byEdge.has(edge))byEdge.set(edge,{edge,upstream:null,downstream:null});
+              byEdge.get(edge)[column.location]=Number.isFinite(values?.[i])?values[i]:null;
+            }
+          };
+          collect(run.columns,run.matches,samples);
+          if(run.companion&&steps.size){
+            const {source,matches,columns}=run.companion;
+            const needed=columns.filter(column=>steps.has(matches.get(column.series).id));
+            if(needed.length){
+              const peer=await session().frameAtTime(source.sourceId,frame.time,needed.map(column=>column.series));
+              collect(needed,matches,peer.values);
+            }
           }
+          return [...byEdge.values()];
         };
-        collect(current.columns,current.matches,frame.values);
-        if(current.companion&&steps.size){
-          const {source,matches,columns}=current.companion;
-          const needed=columns.filter(column=>steps.has(matches.get(column.series).id));
-          if(needed.length){
-            const peer=await session().frameAtTime(source.sourceId,frame.time,needed.map(column=>column.series));
-            if(request!==generation)return;
-            collect(needed,matches,peer.values);
-          }
-        }
-        conduits=[...byEdge.values()];
+        [conduits,proposedConduits]=await Promise.all([ends(current,frame.values),
+          showProposalEnds?ends(current.proposal,proposalFrame.values):null]);
+        if(request!==generation)return;
       }
       Object.assign(current,{values:frame.values,proposedValues,difference});
       const timestamp=formatClock(frame.time);
@@ -2664,7 +2705,9 @@ function mountSimulationView(){
         });
         profile={scenario:current.source.scenario,time:timestamp,datum,ends:conduits,
           values:conduits?[]:levels(frame.values).map(({id,level})=>({node:id,level})),
-          proposal:current.proposal?{scenario:current.proposal.source.scenario,levels:levels(proposedValues)}:null};
+          proposalReviewPending:Boolean(conduits&&current.proposal&&!showProposalEnds),
+          proposal:current.proposal&&(!conduits||showProposalEnds)?{scenario:current.proposal.source.scenario,ends:proposedConduits,
+            levels:proposedConduits?[]:levels(proposedValues)}:null};
       }
       if(profile)redrawProfile();
     }catch(error){if(request===generation)reset(error.message);}
@@ -2682,7 +2725,8 @@ function mountSimulationView(){
   };
   fields.flowDirection.onchange=()=>reset();
   fields.companion.onchange=()=>{reset();};
-  fields.proposal.onchange=()=>{reset();showProposal();};
+  fields.proposal.onchange=()=>{reset();fields.proposalEnd.value='';showProposal();};
+  fields.proposalEnd.onchange=()=>reset();
   shade.onchange=()=>{renderLegend();decorate();};
   function showExtrema(){
     const window=sampleWindow.current();
@@ -2768,14 +2812,26 @@ function mountSimulationView(){
       companion={...companion,columns:peerColumns,matches:peerMatches};
     }
     let proposal=proposals.get(Number(fields.proposal.value));
+    const geometryReviewed=Boolean(proposal&&datum&&first.asset.kind==='link'&&first.quantity==='level'&&routeDraft.steps.length);
     if(proposal){
       if(!fields.verifyProposal.checked)return;
+      if(geometryReviewed&&!fields.verifyProfileGeometry.checked||!geometryReviewed&&fields.proposalEnd.value){
+        note.textContent='Review the shared route geometry and datum before showing proposal conduit-end levels.';return;
+      }
       const baseAssets=new Set(columns.map(column=>R.refKey(matches.get(column.series))));
       const proposedMatches=R.simulationBindings(network,proposal.columns);
       const proposedColumns=proposal.columns.filter(column=>proposedMatches.has(column.series)&&baseAssets.has(R.refKey(proposedMatches.get(column.series))));
       if(!proposedColumns.length){note.textContent='The proposal has no typed assets in common with the baseline layer.';return;}
       const positions=new Map(proposedColumns.map((column,index)=>[R.refKey(proposedMatches.get(column.series)),index]));
-      proposal={...proposal,columns:proposedColumns,alignment:columns.map(column=>positions.get(R.refKey(matches.get(column.series)))??-1)};
+      let otherEnd=proposalEnds.get(Number(fields.proposalEnd.value));
+      if(otherEnd){
+        const peerMatches=R.simulationBindings(network,otherEnd.columns);
+        const peerColumns=otherEnd.columns.filter(column=>peerMatches.has(column.series)&&positions.has(R.refKey(peerMatches.get(column.series))));
+        if(!peerColumns.length){note.textContent='The proposal’s other end has no matching typed links in the selected comparison.';return;}
+        otherEnd={...otherEnd,columns:peerColumns,matches:peerMatches};
+      }
+      proposal={...proposal,columns:proposedColumns,matches:proposedMatches,companion:otherEnd,
+        alignment:columns.map(column=>positions.get(R.refKey(matches.get(column.series)))??-1)};
     }
     let capacities=null,proposalCapacities=null;
     if(useCapacity){
@@ -2794,9 +2850,10 @@ function mountSimulationView(){
     if(geometryView?.current())geometryView.reset();
     fields.confirm.checked=true;
     fields.verifyProposal.checked=Boolean(proposal);
+    fields.verifyProfileGeometry.checked=geometryReviewed;
     const flowDirection=first.asset.kind==='link'&&first.quantity==='flow'?fields.flowDirection.value:'';
     layer={source,columns,matches,low,high,values:null,envelopes:null,companion,proposal,flowDirection,grounds,capacities,proposalCapacities,
-      geometryDatum:first.quantity==='level'?datum:''};
+      geometryDatum:first.quantity==='level'?datum:'',profileRouteRevision:geometryReviewed?routeRevision:null};
     const resultsWorkspace=window.HydraResultsWorkspace;
     if(!sampleWindow)sampleWindow=resultsWorkspace.mountResultWindow($('nsSimulationWindow'),range=>{
       cancelScan();layer.envelopes=null;resultsWorkspace.setSliderWindow(time,range);void reviewMap();
