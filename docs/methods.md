@@ -692,10 +692,11 @@ For a half-full 600 mm pipe, `R = D/4 = 0.15 m`. At 1,000 kg/m³ and
 
 ## Additional jurisdiction references
 
-Natural Resources Wales directs users to GN021 for unpermitted storm
-overflows and GN066 for performance classification. Review the Welsh
-permit and applicable company basis when determining continuation flow.
-[Natural Resources Wales storm overflow guidance](https://www.naturalresources.wales/permits-and-permissions/water-discharges-and-septic-tanks/water-company-discharges/storm-overflow-guidance/?lang=en)
+The Welsh Government's gravity foul standards and Dŵr Cymru's adoption
+guidance address new infrastructure design and connection. Apply the
+overflow permit and the regulator's performance guidance to a
+continuation-flow assessment.
+[Dŵr Cymru sewer adoption guidance](https://developers.dwrcymru.com/en/help-advice/regulation-to-be-aware-of/sewer-adoption)
 
 Northern Ireland Water's pre-development guidance sets out a residential
 gravity foul design loading for sewer adoption under its specified
@@ -703,6 +704,52 @@ edition. This loading has a distinct purpose from storm-overflow
 continuation. Retain the permit and project evidence when assessing the
 separate continuation requirement.
 [Northern Ireland Water development design guidance](https://live-publisher.niwater.com/services-for-developers/pre-development-enquiry-multi-unit-developments-and-commercial)
+[Northern Ireland discharge consent framework](https://www.daera-ni.gov.uk/articles/regulating-sewage-discharges)
+
+## Wales GN066 continuation-flow screening
+
+Natural Resources Wales GN066 version 2.0, 29 July 2026, section 2.7
+specifies the combined `DWF + 1360P + 2E` calculation and the qualifying
+separate and mixed allowances. For a qualifying area, review both the
+drainage design and current separation and record evidence of minimal
+storm response at or below 3DWF. The audit keeps the GN066 minimum-design
+screen and the project's permit basis separately identifiable. Stage 1
+Test 6 and Stage 2 Test 1 in the guidance distinguish those checks.
+[NRW GN066 performance classification guidance](https://cdnfd.cyfoethnaturiol.cymru/2tihrspr/gn066-how-to-classify-storm-overflow-performance.pdf)
+[NRW GN021 unpermitted storm overflow guidance](https://cdnfd.cyfoethnaturiol.cymru/gjjh10cu/gn021-unpermitted-storm-overflows.pdf)
+
+The combined, qualifying separate and mixed reference cases give
+160,000, 20,500 and 180,500 L/day respectively.
+
+## Ireland combined overflow design screening
+
+Department of the Environment guidance published by the Irish EPA,
+section 6.2, gives a minimum design setting of `DWF + 1.36P + 2E` with
+daily flow components in cubic metres. The calculator uses the identical
+coefficient in litres and reviewed daily domestic, infiltration and
+trade allowances to establish DWF. Record the applicable combined design
+and licence basis. An approved separate-system approach needs its own
+documented evidence. The setting is one hydraulic design consideration
+alongside receiving-water impacts and any agreed alternative.
+[EPA-published storm overflow design guidance](https://www.epa.ie/publications/licensing--permitting/waste-water/UrbanWasteWater2.pdf)
+
+The combined reference with 100 people at 150 L/head/day, 3,000 L/day
+infiltration and 2,000 L/day trade gives 160,000 L/day. The screen retains
+the permit evidence and does not establish satisfactory overflow performance.
+
+## Documented project continuation-flow method
+
+Use this option when the reviewed project equation can be expressed as
+independent factors on total domestic flow, daily infiltration and trade,
+plus a stated daily population allowance. Record the name, document
+revision and why the method applies. The calculation shows the unweighted
+DWF and each reviewed weighted contribution in litres per day. The
+same factors apply across the included catchments. Methods requiring other
+terms or different factors by class need a separate engineering calculation.
+
+For reviewed domestic, infiltration and trade flows of 15,000, 3,000 and
+2,000 L/day, factors of 2, 1.2 and 2.5, and 50 L/head/day for 100 people,
+the tested continuation flow is 43,600 L/day.
 
 ## Hydraulic structures and supplied ratings
 

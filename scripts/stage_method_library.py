@@ -27,6 +27,9 @@ METHODS = {
     "England municipal treatment design flows": ("Design flows", "England", "hydraulics", "treatment-flow"),
     "Uisce Éireann new-network peak foul flow": ("Design flows", "Ireland", "hydraulics", "foul-loading"),
     "Circular gravity-section velocity and mean shear": ("Hydraulics", "General", "hydraulics", "section-check"),
+    "Wales GN066 continuation-flow screening": ("Design flows", "Wales", "hydraulics", "formula-a"),
+    "Ireland combined overflow design screening": ("Design flows", "Ireland", "hydraulics", "formula-a"),
+    "Documented project continuation-flow method": ("Design flows", "General", "hydraulics", "formula-a"),
     "Hydraulic structures and supplied ratings": ("Hydraulics", "General", "hydraulics", "structures"),
 }
 REFERENCES = {
@@ -44,6 +47,9 @@ EXACT_REFERENCES = {
     "https://www.water.ie/sites/default/files/2025-08/Code-of-Practice-for-Wastewater-Infrastructure-CDS-5020-03-Rev-03.pdf",
     "https://www.emerald.com/jince/article/11/4/133/417643",
     "https://www.energy.gov/documents/doe-hdbk-1012-92vol3",
+    "https://cdnfd.cyfoethnaturiol.cymru/2tihrspr/gn066-how-to-classify-storm-overflow-performance.pdf",
+    "https://cdnfd.cyfoethnaturiol.cymru/gjjh10cu/gn021-unpermitted-storm-overflows.pdf",
+    "https://www.epa.ie/publications/licensing--permitting/waste-water/UrbanWasteWater2.pdf",
 }
 MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\((https://[^\s)]+)\)")
 

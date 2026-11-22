@@ -16,6 +16,8 @@ UISCE_WASTEWATER = (
 METHOD = "ea-england-formula-a-2026-11-21-v1"
 SEPA_OVERFLOWS = "https://www.sepa.org.uk/media/rdphwj00/wat-g-058_permit-guide_sewer_overflows.docx"
 SEPA_TREATMENT = "https://www.sepa.org.uk/media/zz4ereqb/wat-g-065_permit_guide_municipal_sewage_treatment-_works.docx"
+NRW_OVERFLOWS = "https://cdnfd.cyfoethnaturiol.cymru/2tihrspr/gn066-how-to-classify-storm-overflow-performance.pdf"
+IRELAND_OVERFLOWS = "https://www.epa.ie/publications/licensing--permitting/waste-water/UrbanWasteWater2.pdf"
 SEPA_METHOD = "sepa-scotland-wat-g-058-v1-2025-08"
 CLASSIFICATIONS = {"combined", "partially-separate", "qualifying-separate", "surface-water", "excluded"}
 
@@ -26,7 +28,7 @@ def _nonnegative(value, label, maximum):
     return value
 
 
-def _reviewed_continuation_flow(catchments, *, method, reference, separate_evidence, combined_basis=False):
+def _reviewed_catchments(catchments, separate_evidence):
     if not isinstance(catchments, list) or not 1 <= len(catchments) <= 10000:
         raise ValueError("Provide 1–10,000 reviewed catchment rows.")
     seen, rows = set(), []
@@ -60,31 +62,100 @@ def _reviewed_continuation_flow(catchments, *, method, reference, separate_evide
         infiltration = _nonnegative(item.get("infiltration_l_day"), "infiltration allowance", 1e15)
         trade = _nonnegative(item.get("trade_l_day"), "trade allowance", 1e15)
         domestic = population * allowance
-        supplement = 2 * domestic if eligible and not combined_basis else 1360 * population
         rows.append(dict(audit, population=population, domestic_l_head_day=allowance, domestic_l_day=domestic,
-                         infiltration_l_day=infiltration, trade_l_day=trade, supplement_l_day=supplement,
-                         trade_supplement_l_day=2 * trade, eligibility_confirmed=eligible))
-    included = [row for row in rows if row["included"]]
-    if not included:
+                         infiltration_l_day=infiltration, trade_l_day=trade, eligibility_confirmed=eligible))
+    if not any(row["included"] for row in rows):
         raise ValueError("Include at least one contributing catchment.")
-    keys = ("population", "domestic_l_day", "infiltration_l_day", "trade_l_day", "supplement_l_day",
-            "trade_supplement_l_day")
+    return rows
+
+
+def _composition(rows, extra_keys):
+    included = [row for row in rows if row["included"]]
+    keys = ("population", "domestic_l_day", "infiltration_l_day", "trade_l_day") + extra_keys
     totals = {key: fsum(row[key] for row in included) for key in keys}
     separate = [row for row in included if row["eligibility_confirmed"]]
     totals["separate_population"] = fsum(row["population"] for row in separate)
     totals["combined_population"] = fsum(row["population"] for row in included if not row["eligibility_confirmed"])
     dwf = fsum(totals[key] for key in ("domestic_l_day", "infiltration_l_day", "trade_l_day"))
+    return totals, dwf
+
+
+def _reviewed_continuation_flow(catchments, *, method, reference, separate_evidence, combined_basis=False):
+    rows = _reviewed_catchments(catchments, separate_evidence)
+    included = [row for row in rows if row["included"]]
+    for row in included:
+        row["supplement_l_day"] = (2 * row["domestic_l_day"] if row["eligibility_confirmed"] and not combined_basis
+                                   else 1360 * row["population"])
+        row["trade_supplement_l_day"] = 2 * row["trade_l_day"]
+    totals, dwf = _composition(rows, ("supplement_l_day", "trade_supplement_l_day"))
+    separate_count = sum(row["eligibility_confirmed"] for row in included)
     retained = fsum((dwf, totals["supplement_l_day"], totals["trade_supplement_l_day"]))
     return dict(method=method, reference=reference, rows=rows, totals=totals, dwf_l_day=dwf,
                 retained_l_day=retained, retained_l_s=retained / 86400, retained_m3_s=retained / 86400000,
-                regime="qualifying separate PFF" if len(separate) == len(included) else
-                "mixed Formula A" if separate else "combined / partially separate Formula A")
+                regime="qualifying separate PFF" if separate_count == len(included) else
+                "mixed Formula A" if separate_count else "combined / partially separate Formula A")
 
 
 def england_continuation_flow(catchments):
     """Calculate England retained flow from explicitly reviewed daily allowances."""
     return _reviewed_continuation_flow(catchments, method=METHOD, reference=EA_FORMULA_A,
         separate_evidence="Qualifying separate foul areas require engineer confirmation and evidence of minimal storm response.")
+
+
+def _review_note(value, label, maximum=2000):
+    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
+        raise ValueError(f"Record the reviewed {label}.")
+    return value.strip()
+
+
+def wales_continuation_flow(catchments, evidence):
+    """Screen the design flow under NRW GN066 section 2.7."""
+    basis = _review_note(evidence, "GN066 applicability")
+    return dict(_reviewed_continuation_flow(catchments, method="nrw-wales-gn066-v2-2026-07",
+        reference=NRW_OVERFLOWS,
+        separate_evidence="Record the GN066 evidence for drainage design, current separation and minimal storm response."),
+        applicability={"evidence":basis})
+
+
+def ireland_combined_continuation_flow(catchments, evidence):
+    """Screen the combined minimum setting from the EPA-published DOE guidance."""
+    basis = _review_note(evidence, "Irish combined design and licence applicability")
+    if isinstance(catchments, list) and any(isinstance(row, dict) and row.get("classification") == "qualifying-separate"
+                                            for row in catchments):
+        raise ValueError("The Irish combined method requires the reviewed combined basis. Use a documented project method for a separate allowance.")
+    return dict(_reviewed_continuation_flow(catchments, method="ie-doe-epa-swo-section-6-2-combined-v1",
+        reference=IRELAND_OVERFLOWS, separate_evidence="Choose the reviewed combined basis."),
+        applicability={"evidence":basis})
+
+
+def documented_continuation_flow(catchments, methodology):
+    """Apply a documented additive design rule without evaluating user expressions."""
+    if not isinstance(methodology, dict):
+        raise ValueError("Choose a documented continuation method.")
+    name = _review_note(methodology.get("name"), "method name", 128)
+    reference = _review_note(methodology.get("reference"), "method reference", 512)
+    evidence = _review_note(methodology.get("evidence"), "method applicability")
+    weights = {
+        "domestic_factor": _nonnegative(methodology.get("domestic_factor"), "domestic factor", 1000),
+        "infiltration_factor": _nonnegative(methodology.get("infiltration_factor"), "infiltration factor", 1000),
+        "trade_factor": _nonnegative(methodology.get("trade_factor"), "trade factor", 1000),
+        "population_allowance_l_head_day": _nonnegative(methodology.get("population_allowance_l_head_day"), "population allowance", 1e6),
+    }
+    rows = _reviewed_catchments(catchments, "Record the documented evidence for a separate classification.")
+    components = {
+        "custom_domestic_l_day": ("domestic_l_day", "domestic_factor"),
+        "custom_infiltration_l_day": ("infiltration_l_day", "infiltration_factor"),
+        "custom_trade_l_day": ("trade_l_day", "trade_factor"),
+        "custom_population_l_day": ("population", "population_allowance_l_head_day"),
+    }
+    for row in rows:
+        if row["included"]:
+            row.update({component: row[field] * weights[weight] for component, (field, weight) in components.items()})
+    totals, dwf = _composition(rows, tuple(components))
+    retained = fsum(totals[key] for key in components)
+    return dict(method="documented-project-continuation-v1", reference=reference, rows=rows, totals=totals,
+                regime=name, applicability=dict(name=name, evidence=evidence, **weights), dwf_l_day=dwf,
+                retained_l_day=retained, retained_l_s=retained / 86400, retained_m3_s=retained / 86400000)
 
 
 def scotland_continuation_flow(catchments, applicability):

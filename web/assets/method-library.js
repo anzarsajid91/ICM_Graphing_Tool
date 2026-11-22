@@ -16,6 +16,9 @@ const exactReferences=new Set([
   "https://www.water.ie/sites/default/files/2025-08/Code-of-Practice-for-Wastewater-Infrastructure-CDS-5020-03-Rev-03.pdf",
   "https://www.emerald.com/jince/article/11/4/133/417643",
   "https://www.energy.gov/documents/doe-hdbk-1012-92vol3",
+  "https://cdnfd.cyfoethnaturiol.cymru/2tihrspr/gn066-how-to-classify-storm-overflow-performance.pdf",
+  "https://cdnfd.cyfoethnaturiol.cymru/gjjh10cu/gn021-unpermitted-storm-overflows.pdf",
+  "https://www.epa.ie/publications/licensing--permitting/waste-water/UrbanWasteWater2.pdf",
 ]);
 const element=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
 function officialLink(source) {

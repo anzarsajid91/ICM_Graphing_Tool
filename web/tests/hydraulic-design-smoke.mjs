@@ -222,6 +222,29 @@ try{
   await method.selectOption('england');assert(await basis.isHidden());
   await submit(design);await status(design,/Retained flow calculated/);
   assert.match(await downloaded(design),/180500/);
+  const permitBasis=design.getByLabel('Permit and framework applicability evidence',{exact:true});
+  await method.selectOption('wales');
+  await permitBasis.fill('Reviewed synthetic GN066 applicability');
+  await submit(design);await status(design,/Retained flow calculated/);
+  const welsh=await downloaded(design);
+  assert.match(welsh,/nrw-wales-gn066-v2-2026-07/);assert.match(welsh,/180500/);
+  await method.selectOption('ireland');
+  assert.equal(await permitBasis.inputValue(),'');
+  await permitBasis.fill('Reviewed synthetic combined licence design basis');
+  await rows.nth(1).locator('[name=classification]').selectOption('excluded');
+  await submit(design);await status(design,/Retained flow calculated/);
+  const irish=await downloaded(design);
+  assert.match(irish,/ie-doe-epa-swo-section-6-2/);assert.match(irish,/160000/);
+  await method.selectOption('documented');
+  const project=form.getByRole('group',{name:'Documented additive method'});
+  await set(project,{name:'Reviewed synthetic project method',reference:'Permit schedule 2, revision A',
+    evidence:'Reviewed applicability for the synthetic case',domestic_factor:2,infiltration_factor:1.2,
+    trade_factor:2.5,population_allowance_l_head_day:50});
+  await submit(design);await status(design,/Retained flow calculated/);
+  const custom=await downloaded(design);
+  assert.match(custom,/documented-project-continuation-v1/);assert.match(custom,/43600/);
+  assert.match(custom,/Permit schedule 2, revision A/);
+  await method.selectOption('england');
 
   async function loadNetwork(text,inspect=false){
     await page.locator('button[data-workspace="network"]').click();

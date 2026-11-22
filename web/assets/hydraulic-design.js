@@ -978,7 +978,9 @@ function mount(navigate) {
     "Choose the applicable permitting framework and enter reviewed daily allowances for the retained continuation flow.");
   const form=element("form");form.id="designFlowForm";
   const framework=fields([{key:"framework",label:"Permitting framework",options:[
-    ["england","England · Environment Agency"],["scotland","Scotland · SEPA low-significance inland discharges"]]}],{framework:"england"});
+    ["england","England · Environment Agency"],["scotland","Scotland · SEPA low-significance inland discharges"],
+    ["wales","Wales · Natural Resources Wales GN066"],["ireland","Ireland · EPA-published combined method"],
+    ["documented","Documented project method"]]}],{framework:"england"});
   const scotland=fields([number("dilution","River-to-DWF dilution at low river flow (ratio)",0,1e12),
     number("population_equivalent","Discharge population equivalent (PE)",0,1e9),
     {key:"evidence",label:"Permit and low-significance evidence",type:"text",maxLength:2000},
@@ -992,37 +994,68 @@ function mount(navigate) {
   details.append(element("legend","SEPA applicability"),
     element("p","Review low-significance inland classification with the project team. Dilution must exceed 8:1 on the guidance basis, PE must be below 10,000 and interactions must be absent."),
     scotland.group,simpler.group);
-  const isScotland=()=>framework.controls.framework.value==="scotland";
-  const separateLabel=()=>isScotland()?"Reviewed separate foul":"Qualifying separate foul";
+  const project=fields([
+    {key:"name",label:"Documented method name",type:"text",maxLength:128},
+    {key:"reference",label:"Reference and revision",type:"text",maxLength:512},
+    {key:"evidence",label:"Project methodology and applicability evidence",type:"text",maxLength:2000},
+    number("domestic_factor","Factor on domestic load",0,1000),
+    number("infiltration_factor","Factor on infiltration",0,1000),
+    number("trade_factor","Factor on trade effluent",0,1000),
+    number("population_allowance_l_head_day","Additional population allowance (L/head/day)",0,1e6)]);
+  const projectSection=element("fieldset");
+  projectSection.append(element("legend","Documented additive method"),project.group);
+  const reviewed=fields([{key:"evidence",label:"Permit and framework applicability evidence",type:"text",maxLength:2000}]);
+  const frameworkKey=()=>framework.controls.framework.value;
+  const separateLabel=()=>["scotland","documented"].includes(frameworkKey())?"Reviewed separate foul":"Qualifying separate foul";
+  const references={england:eaReference,scotland:sepaReference,wales:"NRW GN066, version 2.0, July 2026, section 2.7",
+    ireland:"Department of the Environment, Procedures and Criteria in relation to Storm Water Overflows, section 6.2, published by the EPA"};
+  const api={england:"england_continuation_flow",scotland:"scotland_continuation_flow",wales:"wales_continuation_flow",
+    ireland:"ireland_combined_continuation_flow",documented:"documented_continuation_flow"};
   const catchments=editableRows("Catchment",catchmentFields,[{classification:"combined"}],controls=>{
-    configureCatchment(controls);controls.classification.querySelector('[value="qualifying-separate"]').textContent=separateLabel();
+    configureCatchment(controls);
+    const option=controls.classification.querySelector('[value="qualifying-separate"]');
+    option.textContent=separateLabel();option.disabled=frameworkKey()==="ireland";
   });
   function showFramework(){
-    const sepa=isScotland(),optional=sepa&&scotland.controls.simpler_combined.checked;
-    details.hidden=!sepa;simpler.group.hidden=!optional;
+    const selected=frameworkKey(),sepa=selected==="scotland",optional=sepa&&scotland.controls.simpler_combined.checked;
+    const documented=selected==="documented",permit=["wales","ireland"].includes(selected);
+    details.hidden=!sepa;simpler.group.hidden=!optional;projectSection.hidden=!documented;reviewed.group.hidden=!permit;
     for(const input of Object.values(scotland.controls))input.disabled=!sepa;
     for(const input of Object.values(simpler.controls))input.disabled=!optional;
-    for(const option of catchments.wrapper.querySelectorAll('option[value="qualifying-separate"]'))option.textContent=separateLabel();
-    methodNote.textContent=sepa?
-      "Use reviewed maximum infiltration Imax for each contribution. Allocate mixed drainage to separate combined and foul rows. Record the source basis for each separate foul classification." :
-      "A qualifying separate foul area requires evidence of minimal storm response at or below 3DWF. Record the evidence and confirm eligibility for each qualifying row.";
+    for(const input of Object.values(project.controls))input.disabled=!documented;
+    reviewed.controls.evidence.disabled=!permit;
+    for(const option of catchments.wrapper.querySelectorAll('option[value="qualifying-separate"]')){
+      option.textContent=separateLabel();option.disabled=selected==="ireland";
+    }
+    methodNote.textContent={
+      scotland:"Use reviewed Imax allowances and explicit allocations to combined and separate foul rows.",
+      ireland:"Use the reviewed combined design basis for the EPA-published minimum setting. Add a documented project method for a separate allowance.",
+      documented:"Use these factors only when they reproduce the documented project equation. Enter zero for terms absent from the method."
+    }[selected]||"Record the design and current separation evidence and confirm minimal storm response at or below 3DWF for each qualifying row.";
   }
-  framework.controls.framework.onchange=()=>{scotland.controls.imax_confirmed.checked=false;showFramework();};
+  framework.controls.framework.onchange=()=>{
+    scotland.controls.imax_confirmed.checked=false;reviewed.controls.evidence.value="";showFramework();
+  };
   scotland.controls.simpler_combined.onchange=showFramework;
-  form.append(framework.group,details,methodNote,catchments.wrapper);showFramework();
+  form.append(framework.group,details,reviewed.group,projectSection,methodNote,catchments.wrapper);showFramework();
   const catchmentSource=mountCatchmentImport(formula,form,catchments,worker);
   const invalidateFormula=results(formula,form,async()=>{
     catchmentSource.assertCurrent();
-    const sepa=isScotland(),args={catchments:catchments.values()};
+    const selected=frameworkKey(),sepa=selected==="scotland",documented=selected==="documented",args={catchments:catchments.values()};
     if(sepa)args.applicability={...scotland.values(),...simpler.values()};
-    const r=await worker(sepa?"scotland_continuation_flow":"england_continuation_flow",args);
+    if(["wales","ireland"].includes(selected))args.evidence=reviewed.values().evidence;
+    if(documented)args.methodology=project.values();
+    const r=await worker(api[selected],args);
     catchmentSource.assertCurrent();
     const auditBasis=r.applicability?Object.entries(r.applicability):[];
+    const components=documented?[
+      ["Weighted domestic (L/day)",r.totals.custom_domestic_l_day],["Weighted infiltration (L/day)",r.totals.custom_infiltration_l_day],
+      ["Weighted trade (L/day)",r.totals.custom_trade_l_day],["Population supplement (L/day)",r.totals.custom_population_l_day]]:
+      [["Population or domestic supplement (L/day)",r.totals.supplement_l_day],["Trade supplement (L/day)",r.totals.trade_supplement_l_day]];
     const metrics=[["Population",r.totals.population],["Combined / partially separate population",r.totals.combined_population],
       [sepa?"Reviewed separate population":"Qualifying separate population",r.totals.separate_population],["Domestic flow (L/day)",r.totals.domestic_l_day],
       [sepa?"Maximum infiltration Imax (L/day)":"Infiltration (L/day)",r.totals.infiltration_l_day],["Trade (L/day)",r.totals.trade_l_day],
-      [sepa?"Formula A base flow with Imax (L/day)":"Dry weather flow (L/day)",r.dwf_l_day],["Population or domestic supplement (L/day)",r.totals.supplement_l_day],
-      ["Trade supplement (L/day)",r.totals.trade_supplement_l_day],["Retained flow (L/day)",r.retained_l_day],
+      [sepa?"Formula A base flow with Imax (L/day)":"Dry weather flow (L/day)",r.dwf_l_day],...components,["Retained flow (L/day)",r.retained_l_day],
       ["Retained flow (L/s)",r.retained_l_s],["Retained flow (m³/s)",r.retained_m3_s]];
     const heading=["Catchment","Class","Included","Population","Domestic allowance (L/head/day)","Domestic (L/day)",
       "Infiltration (L/day)","Trade (L/day)","Eligibility confirmed","Evidence"];
@@ -1030,12 +1063,14 @@ function mount(navigate) {
       row.domestic_l_head_day??null,row.domestic_l_day??null,row.infiltration_l_day??null,row.trade_l_day??null,
       row.eligibility_confirmed?"Yes":"",row.evidence]);
     const simplerBasis=Boolean(sepa&&r.applicability.separate_fraction_percent!==null);
-    const equation=simplerBasis?"Base = sum(PᵢGᵢ) + Imax + E. Retained flow = Base + 1360P + 2E.":
+    const equation=documented?"DWF = sum(PᵢGᵢ) + I + E. Retained flow = kG × domestic + kI × I + kE × E + kP × P.":
+      selected==="ireland"?"DWF = sum(PᵢGᵢ) + I + E. Retained flow = DWF + 1360P + 2E.":
+      simplerBasis?"Base = sum(PᵢGᵢ) + Imax + E. Retained flow = Base + 1360P + 2E.":
       sepa?"Base = sum(PᵢGᵢ) + Imax + E. Retained flow = Base + 1360Pc + 2 × separate domestic flow + 2E.":
         "DWF = sum(PᵢGᵢ) + I + E. Retained flow = DWF + 1360Pc + 2 × separate domestic flow + 2E.";
     return {content:[table(["Quantity","Value"],metrics,r.regime),table(heading,details,"Catchment audit"),
-      element("p",(sepa?sepaReference:eaReference)+". Confirm permit applicability with the project reviewer.")],
-      summary:"Retained flow calculated from reviewed catchments.",filename:sepa?"hydra-scotland-continuation-flow.csv":"hydra-england-continuation-flow.csv",
+      element("p",(documented?r.reference:references[selected])+". Confirm applicability against the project and permit evidence.")],
+      summary:"Retained flow calculated from reviewed catchments.",filename:"hydra-"+selected+"-continuation-flow.csv",
       rows:[["Method",r.method],["Reference",r.reference],["Regime",r.regime],
         ["Equation",equation],...auditBasis,...metrics,heading,...details,...catchmentSource.audit()]};
   });

@@ -43,7 +43,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.2 | SI circular pipe engine | Head-loss components, signed static/dynamic head, series/parallel, fixed and calculated Darcy factors, supported curve intervals and calculation sheets | Verified locally for steady forward full-pipe screening |
 | 9.3 | Candidate system-curve model | Manual and mapped CSV pump curves, exact specified-factor intersections including multiple and absent duties, identical arrangements, power and operating limits | Verified locally for the specified-factor system model |
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
-| 9.5 England and framework research | Official permitting guidance | Versioned, cited England and Scotland retained-flow methods. Review remaining jurisdictions before any preset and provide documented custom methodology | Partial |
+| 9.5 England and framework research | Official permitting guidance | Versioned methods for England, Scotland, Wales and the reviewed Irish combined setting, with a documented project method | Verified locally within the cited applicability. Northern Ireland continuation uses the reviewed project consent basis |
 | 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial. Reviewed nominal drainage and independent component allocations verified locally |
 | 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Partial. England and SEPA treatment flows, Uisce Éireann peak foul flow, and circular velocity and shear verified locally |
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
@@ -1122,3 +1122,26 @@ other state.
   recorded 104 and 103 requests respectively. The method-library
   observers recorded 31 and 32 requests. All recorded zero violations.
   The complete Python suite passed 457 tests and 111 subtests.
+
+### Wales, Ireland and documented continuation-flow methods
+
+- Wales uses NRW GN066 version 2.0 of 29 July 2026, section 2.7. The
+  screen records the project applicability and retains qualification
+  evidence for each separate-system allowance. GN066 distinguishes the
+  minimum design screen from the permit-specific flow check. GN021
+  covers the separate unpermitted application process.
+- The Irish combined option uses the EPA-published Department of the
+  Environment overflow guidance, section 6.2, with the stated daily
+  volume units converted to litres. It requires a reviewed combined
+  design and licence basis. A reviewed separate method can use the
+  documented project option when its equation is expressible by the four
+  supported additive terms. The same documented option applies to a
+  separately evidenced Northern Ireland consent. The method library
+  and repository methods retain the regulator and water-company sources.
+- Both browsers agreed with 180,500 L/day for the mixed Welsh case,
+  160,000 L/day for the combined Irish case and 43,600 L/day for a named
+  project equation. Both checked the refreshed permit evidence, method
+  library and local worksheets. Their respective calculation and method
+  library observers saw 104 and 31 Chromium requests, and 103 and 32
+  Firefox requests, with no violations. The complete Python suite
+  passed 459 tests and 111 subtests.

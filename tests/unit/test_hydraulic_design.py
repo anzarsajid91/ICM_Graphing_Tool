@@ -2,7 +2,10 @@ from math import pi, sqrt
 
 import pytest
 
-from icm_workbench.analysis.design_flows import england_continuation_flow, england_treatment_design_flows, uisce_peak_foul_flow
+from icm_workbench.analysis.design_flows import (
+    documented_continuation_flow, england_continuation_flow, england_treatment_design_flows,
+    ireland_combined_continuation_flow, uisce_peak_foul_flow, wales_continuation_flow,
+)
 from icm_workbench.analysis.pipe_capacity import circular_gravity_section_review
 from icm_workbench.analysis.pumping import pump_duty, system_curve
 
@@ -50,6 +53,39 @@ def test_england_guards_eligibility_and_duplicate_rows():
         england_continuation_flow([a, {"id":"a", "classification":"excluded", "evidence":"Duplicate"}])
     with pytest.raises(ValueError, match="basis"):
         england_continuation_flow([{"id":"S", "classification":"surface-water"}])
+
+
+def test_wales_gn066_and_ireland_combined_keep_distinct_evidence():
+    combined = catchment("A", "combined", 100, 150, 3000, 2000)
+    separate = catchment("B", "qualifying-separate", 50, 120, 1000, 500, eligibility_confirmed=True, evidence="Reviewed")
+    welsh = wales_continuation_flow([combined, separate], "GN066 applies to this reviewed synthetic overflow")
+    assert welsh["retained_l_day"] == 180500
+    assert welsh["method"].startswith("nrw-wales-gn066")
+    assert welsh["applicability"]["evidence"].startswith("GN066")
+    assert wales_continuation_flow([separate], "Reviewed").get("retained_l_day") == 20500
+    with pytest.raises(ValueError, match="applicability"):
+        wales_continuation_flow([combined], "")
+    ireland = ireland_combined_continuation_flow([combined], "Reviewed EPA and site design basis")
+    assert ireland["retained_l_day"] == 160000
+    assert ireland["method"].startswith("ie-doe")
+    with pytest.raises(ValueError, match="combined"):
+        ireland_combined_continuation_flow([combined, separate], "Reviewed")
+
+
+def test_documented_continuation_separately_audits_reviewed_factors():
+    methodology = dict(name="Synthetic project method", reference="Permit schedule 2, revision A",
+                       evidence="Reviewed applicability", domestic_factor=2, infiltration_factor=1.2,
+                       trade_factor=2.5, population_allowance_l_head_day=50)
+    result = documented_continuation_flow([catchment("A", "combined", 100, 150, 3000, 2000)], methodology)
+    assert result["dwf_l_day"] == 20000
+    assert result["retained_l_day"] == 43600
+    assert result["totals"]["custom_trade_l_day"] == 5000
+    assert result["totals"]["custom_infiltration_l_day"] == 3600
+    assert result["applicability"]["name"] == methodology["name"]
+    with pytest.raises(ValueError, match="reference"):
+        documented_continuation_flow([catchment("A", "combined", 100, 150, 3000, 2000)], dict(methodology, reference=" "))
+    with pytest.raises(ValueError, match="trade factor"):
+        documented_continuation_flow([catchment("A", "combined", 100, 150, 3000, 2000)], dict(methodology, trade_factor=-1))
 
 
 def test_england_treatment_uses_governing_season_and_separate_infiltration():
