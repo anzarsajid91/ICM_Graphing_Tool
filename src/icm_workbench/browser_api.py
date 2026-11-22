@@ -1870,6 +1870,12 @@ def transform_local_series(source, interval_s, max_gap_s, operation="single", re
                        "inputs": metadata, "rows": rows}, allow_nan=False)
 
 
+def read_derived_series_record(text):
+    from icm_workbench.analysis.series_transform import parse_derived_series_record
+
+    return json.dumps(parse_derived_series_record(text), allow_nan=False)
+
+
 def hydraulic_structure(inputs):
     """Evaluate the documented steady structure screen in the local worker."""
     from icm_workbench.analysis.structures import screen_structure

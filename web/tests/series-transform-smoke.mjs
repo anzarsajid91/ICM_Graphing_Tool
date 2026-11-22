@@ -7,7 +7,7 @@ import {installPrivacyGuard} from './privacy-network.mjs';
 const engine=process.env.ICM_BROWSER||'chromium',base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browser=await (engine==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),acceptDownloads:true,viewport:{width:1024,height:900}});
-const guard=installPrivacyGuard(context,base,{canaries:['SYNTHETIC-REFERENCE-TRANSFORM','SYNTHETIC-ORIGINAL-TRANSFORM']});
+const guard=installPrivacyGuard(context,base,{canaries:['SYNTHETIC-REFERENCE-TRANSFORM','SYNTHETIC-ORIGINAL-TRANSFORM','SYNTHETIC-DERIVED-REVIEW']});
 const page=await context.newPage(),errors=[];
 page.on('pageerror',error=>errors.push(error.message));
 const dialog=page.getByRole('dialog',{name:'Transform time series'});
@@ -36,6 +36,12 @@ try{
   await derive.click();await summary.getByText('3 complete periods.',{exact:false}).waitFor();
   const readings=async()=>table.locator('tbody tr > td:nth-child(3)').allTextContents();
   assert.deepEqual((await readings()).map(value=>Number(value.replaceAll(',',''))),[400,1000,400]);
+  await dialog.getByRole('button',{name:'Show interval plot',exact:true}).click();
+  await dialog.getByText('Plot ready for the displayed interval page',{exact:false}).waitFor();
+  const plotted=await dialog.locator('#hbTransformPlot').evaluate(plot=>plot.data[0].y);
+  assert.equal(plotted.length,9);assert(Math.abs(plotted[3]-1000)<1e-9);
+  assert.deepEqual(plotted.filter(x=>x===null),[null,null,null]);
+  await dialog.getByRole('button',{name:'Hide interval plot',exact:true}).click();
 
   await select('Operation').selectOption('subtract');
   assert(await table.isHidden());
@@ -57,6 +63,14 @@ try{
   assert.match(packageData.source.sha256,/^[a-f0-9]{64}$/);
   assert.equal(packageData.result.inputs[1].shift_s,-30);
   assert.deepEqual(packageData.result.rows[1].slice(2),[32000,40,40]);
+  const keep=dialog.getByRole('button',{name:'Keep in project',exact:true});
+  await keep.click();await dialog.getByText('Enter a name for the derived series.',{exact:true}).waitFor();
+  await get('Derived series name').fill('SYNTHETIC-DERIVED-REVIEW');
+  await keep.click();await dialog.getByText('Kept in this session.',{exact:false}).waitFor();
+  await dialog.getByText('Saved derived series',{exact:true}).click();
+  await dialog.getByRole('button',{name:'Open selected record',exact:true}).click();
+  await dialog.getByText('Saved interval record.',{exact:false}).waitFor();
+  assert.deepEqual((await readings()).map(value=>Number(value.replaceAll(',',''))),[8000,32000,8000]);
 
   await select('Operation').selectOption('add');
   await get('Source time shift (s)').fill('30');await get('Reference time shift (s)').fill('0');
@@ -69,6 +83,8 @@ try{
   await get('Maximum valid source gap (s)').fill('30');await derive.click();
   await summary.getByText('0 complete periods.',{exact:false}).waitFor();
   assert.deepEqual(await readings(),['Unavailable','Unavailable','Unavailable']);
+  await dialog.getByRole('button',{name:'Show interval plot',exact:true}).click();
+  await dialog.getByText('No supported intervals on this page.',{exact:true}).waitFor();
   await get('Maximum valid source gap (s)').fill('90');await get('Output interval (s)').fill('2');await derive.click();
   await summary.getByText('Rows 1–30 of 60',{exact:false}).waitFor();
   await dialog.getByRole('button',{name:'Next page'}).click();
@@ -98,6 +114,39 @@ try{
   assert.deepEqual((await table.locator('tbody tr').first().locator('td').allTextContents()).slice(3),['0','40']);
   await dialog.getByRole('button',{name:'Close transformation'}).click();
   assert.equal(await page.evaluate(()=>window.__ICM_WORKBENCH__.stateSummary().readyFiles),2);
+
+  await page.locator('button[data-workspace="reports"]').click();
+  await page.getByRole('tab',{name:'Workspace save / restore',exact:true}).click();
+  const downloadWorkspace=page.waitForEvent('download');await page.click('#downloadWorkspaceBtn');
+  const workspace=await fs.readFile(await (await downloadWorkspace).path());
+  const savedWorkspace=JSON.parse(workspace);
+  const reference=savedWorkspace.project_registry.derived[0];
+  assert.equal(reference.name,'SYNTHETIC-DERIVED-REVIEW');assert.equal(reference.periods,3);assert.equal(reference.rows,undefined);
+  const colleague=await context.newPage();colleague.on('pageerror',error=>errors.push(error.message));
+  await guard.navigate(colleague,base);
+  await colleague.locator('button[data-workspace="reports"]').click();
+  await colleague.getByRole('tab',{name:'Workspace save / restore',exact:true}).click();
+  await colleague.setInputFiles('#workspaceInput',{name:'synthetic-derived-workspace.json',mimeType:'application/json',buffer:workspace});
+  await colleague.waitForFunction(()=>window.__ICM_WORKBENCH__?.workspaceRestore&&window.ICMProjectRegistry?.listDerived().some(ref=>!ref.available));
+  await colleague.locator('button[data-workspace="data"]').click();
+  await colleague.getByRole('button',{name:'Transform time series',exact:true}).click();
+  const review=colleague.getByRole('dialog',{name:'Transform time series'});
+  await review.getByText('Saved derived series',{exact:true}).click();
+  const restored=review.getByLabel('Project derived series',{exact:true});
+  await restored.selectOption(reference.fingerprint);
+  assert(await review.getByRole('button',{name:'Open selected record',exact:true}).isDisabled());
+  const attach=object=>review.getByLabel('Open derived series JSON',{exact:true}).setInputFiles({name:'synthetic-derived.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(object))});
+  await attach({schema:'other'});
+  // A colleague's fresh Firefox page starts its own deferred Python worker.
+  await review.getByText('Choose a supported Hydra Bench derived series record.',{exact:false}).waitFor({timeout:90000});
+  const mismatched=structuredClone(packageData);mismatched.result.rows[1][2]=1;
+  await attach(mismatched);await review.getByText('This file does not match the chosen saved reference.',{exact:false}).waitFor();
+  await attach(packageData);await review.getByText('Derived interval record opened locally.',{exact:true}).waitFor();
+  assert.deepEqual((await review.locator('tbody tr td:nth-child(3)').allTextContents()).map(value=>Number(value.replaceAll(',',''))),[8000,32000,8000]);
+  await review.getByRole('button',{name:'Remove selected record',exact:true}).click();
+  assert(await review.getByRole('table').isHidden());
+  assert.equal(await colleague.evaluate(()=>window.__ICM_WORKBENCH__.stateSummary().readyFiles),0);
+  await colleague.close();
   assert.deepEqual(errors,[]);guard.assertClean();
   console.log('SERIES_TRANSFORM_PASS '+engine);
 }finally{await browser.close();}

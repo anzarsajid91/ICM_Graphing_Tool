@@ -41,6 +41,22 @@ compared against constant 0.2 m³/s. For three consecutive 40-second periods,
 the signed flow-volume differences are 8, 32 and 8 m³. A 2 mm incremental
 depth over 120 seconds contributes 1 mm to each fully supported half-period.
 The engine allows up to 500,000 samples per input and 25,000 output intervals.
+
+Use **Show interval plot** to inspect the current table page. The chart draws
+each supported half-open interval at its reported mean or accumulated value.
+It leaves unsupported periods blank and does not interpolate across gaps.
+Plots use the reported interval values and remain separate from simulations
+or raw logger samples.
+
+**Keep in project** retains the named interval record in browser memory.
+Use **Download derived series JSON** for a portable record with its source,
+unit, exclusions, method, period values and coverage. A workspace file keeps
+the exact content reference without embedding the sample values. After
+restoring a workspace, open the matching derived JSON to review its archived
+values. Validation checks chronology, dimensions and temporal support. A
+fresh calculation requires the original sources. The local reader
+accepts up to 8 MiB per portable file. A session holds up to 20 records and
+100,000 retained intervals, with up to 40 saved references.
 CSV and JSON output contain source hashes, assumptions and explicit interval
 bounds. The generic CSV importer continues to use its own temporal semantics.
 

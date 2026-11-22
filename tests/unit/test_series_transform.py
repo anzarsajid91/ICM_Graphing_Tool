@@ -59,6 +59,28 @@ def test_browser_transform_keeps_source_bytes_and_derives_on_common_supported_pe
     assert [row[2] for row in rates["rows"]] == pytest.approx([400, 1000, 400])
 
 
+def test_portable_derived_series_round_trip_preserves_exact_support(tmp_path):
+    from icm_workbench.analysis.series_transform import parse_derived_series_record
+
+    data = local_csv(tmp_path, "a.csv", "Flow (L/s)", [("00:00", 0), ("01:00", 1200), ("02:30", 0)])
+    native = json.loads(transform_local_series(data, 40, 60, unit="L/s"))
+    portable = dict(schema="hydra-derived-series-v1", build="local",
+                    source=dict(name="=Example", sha256="a"*64, column="Flow (L/s)", source_unit="L/s", exclusions=[]),
+                    reference=None, result=native)
+    assert parse_derived_series_record(json.dumps(portable)) == portable
+    assert native['rows'][0][2] == pytest.approx(400)
+    assert [row[2] for row in native['rows'][1:]] == [None, None, None]
+    with pytest.raises(ValueError, match="complete temporal support"):
+        native['rows'][1][2] = 124
+        parse_derived_series_record(json.dumps(portable))
+    native['rows'][1][2] = None
+    with pytest.raises(ValueError, match="contiguous project-clock intervals"):
+        native['rows'][1][0] = "2025-01-01T00:00:41"
+        parse_derived_series_record(json.dumps(portable))
+    with pytest.raises(ValueError, match="duplicate keys"):
+        parse_derived_series_record('{"schema":"hydra-derived-series-v1","schema":"unknown"}')
+
+
 def test_browser_transform_reports_missing_operand_and_rejects_bad_units_datum_and_duplicate(tmp_path):
     level = local_csv(tmp_path, "level.csv", "Level (m)", [("00:00", 1), ("01:00", 2), ("03:00", 3)])
     other = local_csv(tmp_path, "other.csv", "Level (mm)", [("00:00", 10), ("01:00", 10), ("03:00", 10)])

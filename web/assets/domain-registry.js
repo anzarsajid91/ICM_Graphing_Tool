@@ -56,6 +56,8 @@
       this.relationships=[];
       this.associationSource=null;
       this.assessments=new Map();
+      this.derivedRecords=new Map();
+      this.derivedReferences=new Map();
       this.version=1;
     }
     registerSource(item){
@@ -126,7 +128,52 @@
       this.assets.clear();
       this.relationships=[];
       this.associationSource=null;
+      this.derivedRecords.clear();
+      this.derivedReferences.clear();
+      this.notifyDerived();
+    }
+    notifyDerived(){
       this.render();
+      global.dispatchEvent?.(new global.CustomEvent('icm:derived-series-changed'));
+    }
+    retainDerived(fingerprint,name,record){
+      if(!/^[a-f0-9]{64}$/.test(fingerprint)||typeof name!=='string'||!name||name.length>256||record?.schema!=='hydra-derived-series-v1'){
+        throw new Error('Provide a validated derived series and a name within 256 characters.');
+      }
+      const existing=this.derivedRecords.get(fingerprint);
+      if(existing)return existing.ref;
+      if(this.derivedReferences.size>=40&&!this.derivedReferences.has(fingerprint)){
+        throw new Error('Remove a derived series reference before adding another to the project.');
+      }
+      const result=record.result,rows=result.rows;
+      const retained=[...this.derivedRecords.values()].reduce((total,entry)=>total+entry.ref.periods,0);
+      if(this.derivedRecords.size>=20||retained+rows.length>100000){
+        throw new Error('Keep at most 20 derived series and 100,000 total intervals in a session. Export or remove a series first.');
+      }
+      const ref={fingerprint,name:this.derivedReferences.get(fingerprint)?.name||name,quantity:result.quantity,unit:result.unit,
+        periods:rows.length,start:rows[0][0],end:rows.at(-1)[1]};
+      this.derivedRecords.set(fingerprint,{ref,record});
+      this.derivedReferences.set(fingerprint,ref);this.notifyDerived();return ref;
+    }
+    derivedSeries(fingerprint){return this.derivedRecords.get(fingerprint)?.record||null;}
+    removeDerived(fingerprint){
+      this.derivedRecords.delete(fingerprint);this.derivedReferences.delete(fingerprint);this.notifyDerived();
+    }
+    listDerived(){
+      return [...this.derivedReferences.values()].map(ref=>({...ref,available:this.derivedRecords.has(ref.fingerprint)}));
+    }
+    restoreDerived(references){
+      this.derivedReferences=new Map([...this.derivedRecords].map(([key,value])=>[key,value.ref]));
+      if(Array.isArray(references))for(const ref of references.slice(0,40)){
+        if(this.derivedReferences.size>=40)break;
+        if(!ref||typeof ref.fingerprint!=='string'||!/^[a-f0-9]{64}$/.test(ref.fingerprint)||this.derivedReferences.has(ref.fingerprint)||
+           typeof ref.name!=='string'||!ref.name||ref.name.length>256||!['flow','rainfall','depth','level','velocity'].includes(ref.quantity)||
+           typeof ref.unit!=='string'||ref.unit.length>128||!Number.isInteger(ref.periods)||ref.periods<1||ref.periods>25000||
+           ![ref.start,ref.end].every(value=>typeof value==='string'&&value.length<=40))continue;
+        const {fingerprint,name,quantity,unit,periods,start,end}=ref;
+        this.derivedReferences.set(fingerprint,{fingerprint,name,quantity,unit,periods,start,end});
+      }
+      this.notifyDerived();
     }
     setRelationships(records=[],source='fm_rg_assoc.xlsx',issues=[]){
       this.relationships=[];
@@ -216,6 +263,7 @@
         assets:[...this.assets.values()].map(x=>({...x,sourceIds:[...x.sourceIds],seriesKeys:[...x.seriesKeys]})),
         relationships:this.relationships.map(x=>({...x})),
         associationSource:this.associationSource,
+        derived:[...this.derivedReferences.values()].map(ref=>({...ref})),
       };
     }
     mount(){
@@ -242,6 +290,7 @@
         ['Observed sources',roles.observed||0],
         ['Model sources',roles.model||0],
         ['Rainfall sources',roles.rainfall||0],
+        ['Derived interval records',this.derivedRecords.size],
         ['Relationships',this.relationships.length],
       ].map(([label,value])=>`<div><strong>${value}</strong><span>${label}</span></div>`).join('');
       const escape=s=>String(s??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));

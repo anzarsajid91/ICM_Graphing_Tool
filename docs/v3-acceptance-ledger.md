@@ -23,7 +23,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 3.3 | Current help text and workspace routes | Six guided journeys with actual prerequisites, results and next actions | Verified locally |
 | 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Partial |
 | 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Partial |
-| 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Partial |
+| 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Partial. Numerical transforms, interval plots and exact local record reattachment verified. Categorical states and wider analytical handoffs remain open |
 | 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Verified locally |
 | 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Verified locally |
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Verified locally |
@@ -1479,3 +1479,22 @@ other state.
   integrity. Chromium and Firefox verified the index counts, all original
   filters and references, and the three new method entries. Their request
   observers saw 31 and 32 requests respectively, with no violations.
+
+### Portable derived interval records and project restore
+
+- The Data workspace plots the displayed page using its actual half-open
+  intervals and reported values. Unsupported periods stay blank. A local
+  interval record can be retained in the shared project registry and reviewed
+  as archived evidence. Its workspace descriptor stores a deterministic
+  content fingerprint and bounds. A colleague reattaches the separately
+  exported JSON to restore the interval values. Original source ingestion,
+  observation categories and engineering calculation paths remain separate.
+- Worker validation checks dimensional compatibility, supported operand
+  pairs, chronological intervals, coverage accounting, source fingerprints
+  and file/record limits. Invalid schema and a same-shape record with a
+  different value fail to attach. Chromium and Firefox verified plots,
+  undisplayed gaps, local save and selection, fresh-page workspace restore,
+  exact reattachment and removal. They observed 205 and 202 requests with no
+  violations. A separate Firefox probe measured 30.85 s for cold deferred
+  worker startup plus the first validation. The repeated Firefox workflow
+  passed with its original assertions and a 90 s first-worker wait.
