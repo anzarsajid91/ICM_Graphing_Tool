@@ -25,12 +25,12 @@ try {
   const panel=page.locator('#tab-method-library'),status=panel.getByRole('status');
   await status.filter({hasText:'could not be loaded'}).waitFor();
   await panel.getByRole('button',{name:'Retry loading methods'}).click();
-  await status.filter({hasText:'27 of 27 methods'}).waitFor();
+  await status.filter({hasText:'30 of 30 methods'}).waitFor();
   const search=panel.getByLabel('Search methods');
   await search.fill('SYNTHETIC-USER-METHOD-FILTER');
-  assert.equal(await status.innerText(),'0 of 27 methods');
+  assert.equal(await status.innerText(),'0 of 30 methods');
   await search.fill('Villemonte');
-  assert.equal(await status.innerText(),'1 of 27 methods');
+  assert.equal(await status.innerText(),'1 of 30 methods');
   const structure=panel.locator('summary').filter({hasText:'Hydraulic structures and supplied ratings'});
   await structure.focus();await page.keyboard.press('Space');
   const source=panel.getByRole('link',{name:'USBR reference describing the Villemonte relation'});
@@ -44,13 +44,13 @@ try {
   assert.equal(await search.inputValue(),'Villemonte');
   await search.fill('');
   await panel.getByLabel('Jurisdiction').selectOption('England');
-  assert.equal(await status.innerText(),'2 of 27 methods');
+  assert.equal(await status.innerText(),'2 of 30 methods');
   await panel.getByLabel('Category').selectOption('Hydraulics');
-  assert.equal(await status.innerText(),'0 of 27 methods');
+  assert.equal(await status.innerText(),'0 of 30 methods');
   await panel.getByLabel('Category').selectOption('Design flows');
-  assert.equal(await status.innerText(),'2 of 27 methods');
+  assert.equal(await status.innerText(),'2 of 30 methods');
   await panel.getByLabel('Jurisdiction').selectOption('Scotland');
-  assert.equal(await status.innerText(),'2 of 27 methods');
+  assert.equal(await status.innerText(),'2 of 30 methods');
   await panel.getByText('Scotland municipal treatment design flows',{exact:true}).click();
   const sepa=panel.getByRole('link',{name:'SEPA municipal sewage treatment works guide'});
   assert.match(await sepa.getAttribute('href'),/^https:\/\/www\.sepa\.org\.uk\/media\//);
@@ -70,7 +70,7 @@ try {
   const irish=panel.getByRole('link',{name:'EPA-published storm overflow design guidance'});
   assert.match(await irish.getAttribute('href'),/^https:\/\/www\.epa\.ie\/.*UrbanWasteWater2\.pdf$/);
   await panel.getByLabel('Jurisdiction').selectOption('Wales');
-  assert.equal(await status.innerText(),'1 of 27 methods');
+  assert.equal(await status.innerText(),'1 of 30 methods');
   await panel.getByText('Wales GN066 continuation-flow screening',{exact:true}).click();
   const wales=panel.getByRole('link',{name:'NRW GN066 performance classification guidance'});
   assert.match(await wales.getAttribute('href'),/^https:\/\/cdnfd\.cyfoethnaturiol\.cymru\/.*gn066/);
@@ -117,6 +117,17 @@ try {
   const nist=panel.getByRole('link',{name:'NIST Guide to the SI, Appendix B',exact:true});
   assert.equal(await nist.getAttribute('href'),'https://www.nist.gov/pml/special-publication-811/nist-guide-si-appendix-b-conversion-factors');
   assert.equal(await nist.getAttribute('referrerpolicy'),'no-referrer');
+  for(const [title,label,url] of [
+    ['Rectangular and trapezoidal gravity sizing','FHWA HDS-4, section 4.3.2','https://www.fhwa.dot.gov/engineering/hydraulics/pubs/08090/HDS4_608.pdf'],
+    ['ICM model loading from Waste Water and Trade Waste events','Autodesk native event CSV','https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-3477644E-D576-47EE-8805-395CCC74C5DC.htm'],
+  ]){
+    await search.fill(title);await panel.getByText(title,{exact:true}).click();
+    const link=panel.getByRole('link',{name:label,exact:true});
+    assert.equal(await link.getAttribute('href'),url);assert.equal(await link.getAttribute('referrerpolicy'),'no-referrer');
+  }
+  await search.fill('Derived time-series intervals');
+  await panel.getByText('Derived time-series intervals',{exact:true}).click();
+  await panel.getByText(/half-open/).first().waitFor();
   await page.setViewportSize({width:400,height:850});
   const sizes=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
   assert(sizes[0]<=sizes[1]+2);

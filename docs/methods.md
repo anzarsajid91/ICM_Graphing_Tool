@@ -9,7 +9,7 @@ Timezone-naive data remains `model clock/unspecified` until confirmed. Compariso
 ## Integration
 Instantaneous values use piecewise-linear integration; interval-average values use declared rectangular support. Gaps larger than the configured maximum are unknown and excluded. Exclusions split support at exact boundaries. Positive-flow screening integrates the positive part only. Constant instantaneous 1 m³/s from 00:00 to 00:02 integrates to 120 m³.
 
-### Derived time-series intervals
+## Derived time-series intervals
 
 **Data / time series → Transform time series** produces a separate series on
 a reviewed project-clock grid. An output interval is half-open, with a shorter
@@ -408,7 +408,7 @@ of rainfall input, loading, infiltration, storage response, downstream
 levels or hydraulic restrictions. The local audit retains the selected
 periods, fingerprints, criteria, support and investigation prompts.
 
-## Manning gravity sizing
+## Manning circular gravity sizing
 
 For steady, uniform flow in one clean circular barrel, Manning uses
 `Q = A × R^(2/3) × sqrt(S) / n` in SI units. Use a reviewed Manning `n` in
@@ -443,7 +443,7 @@ and 569.339451 mm. Those values use the exact circular equation before
 selecting a stock pipe. Keep local trials to compare assumptions and save
 the calculations with their source method and build.
 
-### Rectangular and trapezoidal sections
+## Rectangular and trapezoidal gravity sizing
 
 The same SI Manning resistance screen supports one rectangular open channel,
 symmetric trapezoidal open channel or closed rectangular conduit. For bottom
@@ -640,7 +640,7 @@ remains per capita. Repeated catchment IDs can contribute once, while the
 audit retains all original rows and decisions. A changed typed network
 topology requires a fresh allocation review.
 
-### ICM model loading from Waste Water and Trade Waste events
+## ICM model loading from Waste Water and Trade Waste events
 
 From the current ICM run, export the associated events with **Export Image
 to CSV**. Use **Review native Waste Water and Trade Waste events** in the

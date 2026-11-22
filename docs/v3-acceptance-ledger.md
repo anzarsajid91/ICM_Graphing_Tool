@@ -1467,3 +1467,15 @@ other state.
   The two browsers saw 102 and 101 requests with no violations. The Python
   suite passed 474 tests and 111 subtests. The 153-resource artifact passed
   its integrity check, and synthetic screenshots are retained locally.
+
+### Method library index recovery and expansion
+
+- The staged build exposed a renamed circular Manning heading used by the
+  method index. The existing key is restored. Separate entries now document
+  rectangular and trapezoidal gravity sizing, fixed ICM event loading and
+  derived interval support. The additional federal reference is restricted
+  to one approved static FHWA PDF with the existing no-referrer link policy.
+- A fresh full Pages build staged 30 method entries and passed artifact
+  integrity. Chromium and Firefox verified the index counts, all original
+  filters and references, and the three new method entries. Their request
+  observers saw 31 and 32 requests respectively, with no violations.
