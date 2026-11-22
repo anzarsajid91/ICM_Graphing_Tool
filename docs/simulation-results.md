@@ -224,3 +224,13 @@ A scan processes one indexed block at a time with cancellation and progress.
 Return to **Instantaneous sample** to play the selected event again. The
 long section uses recorded instantaneous levels and does not connect
 independent extrema into a hydraulic state.
+
+## Recorded link-flow direction
+
+For indexed link-flow results, set **Positive link flow points** using the
+reviewed export sign convention and apply the layer. Bold arrows show the
+recorded direction at the selected instantaneous sample. Faded arrows show
+the nominal path between imported link endpoints. Zero and missing samples
+do not establish a recorded direction. Independent extrema and proposal
+differences have no instantaneous direction. Verify the source result and
+link ends before using the overlay in an engineering review.

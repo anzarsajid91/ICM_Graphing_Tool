@@ -29,7 +29,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Verified locally |
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
-| 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial |
+| 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial. Reviewed signed link-flow arrows and recorded quantity layers work locally. Full-capacity, ground freeboard and source geometry thematic layers remain open |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Verified locally for exact shared-clock comparison and independent layer extrema. Geometry-sensitive scenario review remains open under 6.1 and 6.4 |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
 | 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for indexed ingestion and lookup. Broader capacity and release checks remain open |
@@ -1270,3 +1270,22 @@ other state.
   rainfall audits both passed with 101 guarded requests and zero
   violations. The existing mixed-file and full live workflows remain
   required on the final release candidate.
+
+- The follow-up Chromium regression against the complete local preview
+  passed 604 guarded requests with zero violations. It ran the same
+  browser script in its live-target mode against localhost, including
+  both mixed-sibling import probes, and excluded the additional CI-only
+  full-suite probes. Final hosted and production checks remain required.
+
+### Reviewed direction on the simulation map
+
+- Recorded link-flow arrows use the engineer-confirmed positive direction
+  relative to the imported endpoints. Nominal topology stays visible.
+  Zero and missing samples have no recorded direction mark. Independent
+  extrema and scenario differences have no instantaneous flow arrow.
+- The same synthetic −0.4 m³/s link sample drew opposing arrows under
+  the two explicit conventions. Chromium and Firefox verified the SVG
+  direction geometry, keyboard navigation, zero and missing samples,
+  camera changes, independent extrema and layer removal. Both browser
+  observers counted 32 requests with zero violations. Network and
+  simulation unit regressions passed locally.

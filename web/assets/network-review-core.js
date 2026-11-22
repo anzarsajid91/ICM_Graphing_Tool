@@ -431,5 +431,11 @@ function simulationBand(value,low,high){
   if(!Number.isFinite(value))return 'missing';
   return String(Math.min(4,Math.max(0,Math.floor(5*(value-low)/(high-low)))));
 }
-globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand};
+
+function recordedFlowDirection(value,convention){
+  if(!Number.isFinite(value)||!['upstream-to-downstream','downstream-to-upstream'].includes(convention))return null;
+  if(value===0)return 'still';
+  return (value>0)===(convention==='upstream-to-downstream')?'forward':'reverse';
+}
+globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand,recordedFlowDirection};
 })();

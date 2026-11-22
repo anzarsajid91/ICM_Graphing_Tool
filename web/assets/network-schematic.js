@@ -97,6 +97,24 @@ function svgElement(tag,attributes={},content){
 }
 function translate(x,y){return `translate(${x} ${y})`;}
 function polygonPoints(points){return points.map(({x,y})=>`${x},${y}`).join(' ');}
+function positionRecordedDirection(group){
+  const mark=group.querySelector('[data-ns-recorded-direction]'),nominal=group.querySelector('[data-ns-direction]');
+  if(!mark||nominal?.points.numberOfItems!==3){if(mark)mark.removeAttribute('points');return;}
+  const points=Array.from({length:3},(_,index)=>nominal.points.getItem(index));
+  if(group.dataset.nsFlowDirection==='reverse'){
+    const [tip,left,right]=points;
+    const x=tip.x+(left.x+right.x)/2,y=tip.y+(left.y+right.y)/2;
+    mark.setAttribute('points',polygonPoints(points.map(point=>({x:x-point.x,y:y-point.y}))));
+  }else mark.setAttribute('points',nominal.getAttribute('points'));
+}
+function showRecordedDirection(group,direction){
+  if(group.dataset.nsFlowDirection===direction)return;
+  if(direction)group.dataset.nsFlowDirection=direction;else delete group.dataset.nsFlowDirection;
+  let mark=group.querySelector('[data-ns-recorded-direction]');
+  if((direction!=='forward'&&direction!=='reverse')||!group.querySelector('[data-ns-direction]')){mark?.remove();return;}
+  if(!mark){mark=svgElement('polygon',{'data-ns-recorded-direction':'','aria-hidden':'true'});group.append(mark);}
+  positionRecordedDirection(group);
+}
 const iconPaths={
   cso:'M-25 2c8-7 14 5 22 0h5v-18h7v31h17',
   storm:'M-25 2h21v-16h7v28h23',
@@ -554,7 +572,7 @@ function renderGeometry(){
     }
   }
   svg.dataset.nsMarkerScale=scale;
-  for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]')){const route=routes.get(g.dataset.nsEdge);if(!route){g.style.visibility='hidden';continue;}g.style.visibility='';for(const path of g.querySelectorAll(':scope > path'))path.setAttribute('d',route.path);g.querySelector('[data-ns-direction]')?.setAttribute('points',route.arrow.map(p=>p.x+','+p.y).join(' '));g.querySelector('[data-ns-monitor]')?.setAttribute('transform',translate(route.label.x+14,route.label.y-13));g.querySelector('[data-ns-structure]')?.setAttribute('transform',translate(route.label.x,route.label.y+12));const e=edges.get(g.dataset.nsEdge),offset=e.labelOffset||{x:0,y:0},label=g.querySelector('[data-ns-edge-label]');g.querySelector('[data-ns-detriment]')?.setAttribute('transform','translate('+(route.label.x-10)+' '+(route.label.y-5)+')');if(label){label.setAttribute('x',route.label.x+offset.x);label.setAttribute('y',route.label.y+offset.y);}for(const handle of g.querySelectorAll('[data-ns-bend]')){const p=route.points[Number(handle.dataset.nsBend)+1];handle.setAttribute('cx',p.x);handle.setAttribute('cy',p.y);}for(const handle of g.querySelectorAll('[data-ns-add-bend]')){const i=Number(handle.dataset.nsAddBend),a=route.points[i],b=route.points[i+1],x=(a.x+b.x)/2,y=(a.y+b.y)/2;handle.querySelector('circle').setAttribute('cx',x);handle.querySelector('circle').setAttribute('cy',y);handle.querySelector('path').setAttribute('d','M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6');}}
+  for(const g of $('nsSvg').querySelectorAll('[data-ns-edge]')){const route=routes.get(g.dataset.nsEdge);if(!route){g.style.visibility='hidden';continue;}g.style.visibility='';for(const path of g.querySelectorAll(':scope > path'))path.setAttribute('d',route.path);g.querySelector('[data-ns-direction]')?.setAttribute('points',polygonPoints(route.arrow));if(g.dataset.nsFlowDirection)positionRecordedDirection(g);g.querySelector('[data-ns-monitor]')?.setAttribute('transform',translate(route.label.x+14,route.label.y-13));g.querySelector('[data-ns-structure]')?.setAttribute('transform',translate(route.label.x,route.label.y+12));const e=edges.get(g.dataset.nsEdge),offset=e.labelOffset||{x:0,y:0},label=g.querySelector('[data-ns-edge-label]');g.querySelector('[data-ns-detriment]')?.setAttribute('transform','translate('+(route.label.x-10)+' '+(route.label.y-5)+')');if(label){label.setAttribute('x',route.label.x+offset.x);label.setAttribute('y',route.label.y+offset.y);}for(const handle of g.querySelectorAll('[data-ns-bend]')){const p=route.points[Number(handle.dataset.nsBend)+1];handle.setAttribute('cx',p.x);handle.setAttribute('cy',p.y);}for(const handle of g.querySelectorAll('[data-ns-add-bend]')){const i=Number(handle.dataset.nsAddBend),a=route.points[i],b=route.points[i+1],x=(a.x+b.x)/2,y=(a.y+b.y)/2;handle.querySelector('circle').setAttribute('cx',x);handle.querySelector('circle').setAttribute('cy',y);handle.querySelector('path').setAttribute('d','M'+(x-3)+' '+y+'h6M'+x+' '+(y-3)+'v6');}}
   if(drag?.kind==='node'||drag?.kind==='bend')renderMinimap();else updateMinimapViewport();
 }
 function fit(){
@@ -2217,6 +2235,9 @@ function mountSimulationView(){
     '<label id="nsSimulationLayerChoice" hidden>Result layer<select name="metric" aria-label="Result layer"></select></label>'+
     '<label>Scale minimum<input name="minimum" type="number" step="any" required></label>'+
     '<label>Scale maximum<input name="maximum" type="number" step="any" required></label>'+
+    '<label id="nsSimulationDirectionBasis" hidden>Positive link flow points<select name="flowDirection" aria-label="Positive link flow points">'+
+    '<option value="">Hide recorded arrows</option><option value="upstream-to-downstream">Upstream to downstream</option>'+
+    '<option value="downstream-to-upstream">Downstream to upstream</option></select></label>'+
     '<label id="nsSimulationDatum" hidden>Geometry datum<input name="datum" maxlength="128"></label>'+
     '<label id="nsSimulationCompanion" hidden>Other conduit end<select name="companion" aria-label="Other conduit end"></select></label>'+
     '<label id="nsSimulationProposal" hidden>Proposal results<select name="proposal" aria-label="Proposal results"></select></label></div>'+
@@ -2265,6 +2286,7 @@ function mountSimulationView(){
   function removeMarks(){
     for(const group of groups.values()){
       group.removeAttribute('data-ns-sample');
+      showRecordedDirection(group,undefined);
       group.querySelector('[data-ns-result-marker]')?.remove();
       group.querySelector('[data-ns-result-value]')?.remove();
       if(group.dataset.nsSimulationLabel){group.setAttribute('aria-label',group.dataset.nsSimulationLabel);delete group.dataset.nsSimulationLabel;}
@@ -2300,6 +2322,10 @@ function mountSimulationView(){
           ' · Proposal minus baseline '+measure(layer.difference[index]):measure(value);
         shaded={primary:value,proposal:layer.proposedValues?.[index],difference:layer.difference?.[index]}[shade.value];
       }
+      const direction=layer.flowDirection&&!extrema&&shade.value!=='difference'?
+        R.recordedFlowDirection(shaded,layer.flowDirection)||'missing':null;
+      showRecordedDirection(group,direction||undefined);
+      if(direction&&direction!=='missing')text+=' · '+({forward:'recorded upstream to downstream',reverse:'recorded downstream to upstream',still:'zero net flow'}[direction]);
       text=quantity+' · '+text+(column.location!=='node'?' · '+column.location+' end':'');
       group.dataset.nsSample=R.simulationBand(shaded,layer.low,layer.high);
       if(!group.dataset.nsSimulationLabel)group.dataset.nsSimulationLabel=group.getAttribute('aria-label');
@@ -2334,6 +2360,8 @@ function mountSimulationView(){
     const source=candidate(),column=selectedColumns()[0];
     fields.confirm.checked=false;fields.datum.value='';
     $('nsSimulationDatum').hidden=column?.quantity!=='level';
+    $('nsSimulationDirectionBasis').hidden=column?.quantity!=='flow'||column?.asset.kind!=='link';
+    fields.flowDirection.value='';
     const canPair=column?.quantity==='level'&&column.asset.kind==='link';
     $('nsSimulationCompanion').hidden=!canPair;
     fields.companion.value='';refreshCompanions(source,column);
@@ -2459,6 +2487,7 @@ function mountSimulationView(){
   fields.source.onchange=()=>{reset();selectSource();};
   fields.event.onchange=()=>{reset();refreshSources();};
   fields.metric.onchange=()=>{reset();refreshLayer();};
+  fields.flowDirection.onchange=()=>reset();
   fields.companion.onchange=()=>{reset();};
   fields.proposal.onchange=()=>{reset();showProposal();};
   shade.onchange=()=>{renderLegend();decorate();};
@@ -2509,6 +2538,8 @@ function mountSimulationView(){
         const item=inspectorElement('span',(band===0?'< '+f(b,4):band===4?'≥ '+f(a,4):f(a,4)+' to < '+f(b,4)));
         item.dataset.nsSample=String(band);return item;
       }),inspectorElement('span','Dashed link or hollow marker: missing sample'));
+    if(layer.flowDirection&&display.value==='sample'&&shade.value!=='difference')legend.append(inspectorElement('span',
+      'Bold arrows show recorded link flow. Faded arrows show nominal topology.'));
   }
   form.onsubmit=event=>{
     event.preventDefault();
@@ -2541,7 +2572,8 @@ function mountSimulationView(){
     reset();
     fields.confirm.checked=true;
     fields.verifyProposal.checked=Boolean(proposal);
-    layer={source,columns,matches,low,high,values:null,envelopes:null,companion,proposal,geometryDatum:first.quantity==='level'?datum:''};
+    const flowDirection=first.asset.kind==='link'&&first.quantity==='flow'?fields.flowDirection.value:'';
+    layer={source,columns,matches,low,high,values:null,envelopes:null,companion,proposal,flowDirection,geometryDatum:first.quantity==='level'?datum:''};
     const resultsWorkspace=window.HydraResultsWorkspace;
     if(!sampleWindow)sampleWindow=resultsWorkspace.mountResultWindow($('nsSimulationWindow'),range=>{
       cancelScan();layer.envelopes=null;resultsWorkspace.setSliderWindow(time,range);void reviewMap();
@@ -2549,7 +2581,7 @@ function mountSimulationView(){
     resultsWorkspace.setSliderWindow(time,sampleWindow.setSource(source));
     transport.hidden=false;clear.disabled=false;legend.hidden=false;
     note.textContent=columns.length+' of '+requested.length+' result columns matched. Other assets retain their schematic styling.'+
-      (first.asset.kind==='link'?' Link arrows show nominal topology. Signs are available in asset labels.':'');
+      (first.asset.kind==='link'?(flowDirection?' The reviewed sign convention applies to instantaneous link flow.':' Link arrows show nominal topology. Signs are available in asset labels.'):'');
     void reviewMap();
   };
   function step(delta){time.value=String(time.valueAsNumber+delta);return drawFrame();}

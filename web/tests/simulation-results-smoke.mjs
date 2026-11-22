@@ -212,6 +212,44 @@ try {
   await wire.and(page.locator('[data-ns-sample="missing"]')).waitFor();
   await playback.getByRole('button',{name:'Remove results layer'}).click();
   assert.equal(await wire.count(),0);
+  const signed=playback.getByLabel('Positive link flow points',{exact:true});
+  await signed.selectOption('upstream-to-downstream');
+  await confirmation.check();await layer.click();
+  await wire.and(page.locator('[data-ns-flow-direction="still"]')).waitFor();
+  const arrow=wire.locator('[data-ns-recorded-direction]');
+  assert.equal(await arrow.count(),0);
+  await playback.getByRole('button',{name:'Next sample'}).click();
+  await wire.and(page.locator('[data-ns-flow-direction="missing"]')).waitFor();
+  assert.equal(await arrow.count(),0);
+  const takeLast=async()=>{
+    const playbackSlider=playback.getByRole('slider',{name:'Simulation sample'});
+    await playbackSlider.focus();await page.keyboard.press('End');
+    await clock.getByText('00:15:00.000',{exact:false}).waitFor();
+  };
+  await takeLast();
+  await wire.and(page.locator('[data-ns-flow-direction="reverse"]')).waitFor();
+  assert.match(await wire.getAttribute('aria-label'),/recorded downstream to upstream/);
+  const dotProduct=()=>wire.evaluate(group=>{
+    const vector=selector=>{
+      const {points}=group.querySelector(selector),[p,a,b]=[0,1,2].map(i=>points.getItem(i));
+      return [p.x-(a.x+b.x)/2,p.y-(a.y+b.y)/2];
+    };
+    const nominal=vector('[data-ns-direction]'),recorded=vector('[data-ns-recorded-direction]');
+    return nominal[0]*recorded[0]+nominal[1]*recorded[1];
+  });
+  assert((await dotProduct())<0);
+  await page.getByRole('button',{name:'Zoom in',exact:true}).click();
+  await arrow.waitFor();assert((await dotProduct())<0);
+  if(process.env.ICM_EVIDENCE_DIR)await page.locator('#nsCanvas').screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-signed-flow-'+engine+'.png'});
+  await signed.selectOption('downstream-to-upstream');
+  assert(!(await confirmation.isChecked()));
+  await confirmation.check();await layer.click();await takeLast();
+  await wire.and(page.locator('[data-ns-flow-direction="forward"]')).waitFor();
+  assert((await dotProduct())>0);
+  await mapResults.selectOption('min');
+  await clock.getByText('Each asset may reach its extreme at a different time.',{exact:false}).waitFor();
+  assert.equal(await arrow.count(),0);
+  await playback.getByRole('button',{name:'Remove results layer'}).click();
 
   await page.click('#nsLongSection');
   await page.selectOption('#nsRouteStart','00127');await page.selectOption('#nsRouteEnd','B');

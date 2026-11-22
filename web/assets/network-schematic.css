@@ -233,6 +233,8 @@
 #nsWorkbench #nsSvg [data-ns-edge][data-ns-sample="missing"] [data-ns-wire]{stroke-dasharray:3 4}
 #nsWorkbench #nsSvg [data-ns-result-marker]{fill:var(--ns-sample-ink);stroke:#fff;stroke-width:1.6;pointer-events:none}
 #nsWorkbench #nsSvg [data-ns-sample="missing"] [data-ns-result-marker]{fill:#fff;stroke:var(--ns-sample-ink)}
+#nsWorkbench #nsSvg [data-ns-flow-direction] [data-ns-direction]{opacity:.34}
+#nsWorkbench #nsSvg [data-ns-recorded-direction]{fill:var(--ns-sample-ink);stroke:#fff;stroke-width:1.6;paint-order:stroke;pointer-events:none}
 #nsWorkbench #nsRoute,#nsWorkbench #nsProfilePlot{scroll-margin-top:92px}
 #nsWorkbench .ns-popup-body .ns-property-list{row-gap:8px}
 #nsWorkbench #nsSvg[data-ns-labels-hidden] :is([data-ns-label],[data-ns-node-leader],[data-ns-edge-label]){display:none}

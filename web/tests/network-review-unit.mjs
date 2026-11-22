@@ -36,3 +36,9 @@ assert.equal(hotspots.ambiguous.length,3,'Duplicate source IDs and duplicate rep
 assert.deepEqual(Array.from(hotspots.unmatched,row=>row.assetId),['manual','Edited node']);
 assert.equal(hotspots.unclassified.length,1,'Unclassified report evidence stays in the register');
 console.log('Detriment hotspot matching preserves original typed identity and withholds ambiguous or unsupported matches.');
+assert.equal(R.recordedFlowDirection(0.25, 'upstream-to-downstream'), 'forward');
+assert.equal(R.recordedFlowDirection(-0.25, 'upstream-to-downstream'), 'reverse');
+assert.equal(R.recordedFlowDirection(-0.25, 'downstream-to-upstream'), 'forward');
+assert.equal(R.recordedFlowDirection(0, 'upstream-to-downstream'), 'still');
+assert.equal(R.recordedFlowDirection(null, 'upstream-to-downstream'), null);
+assert.equal(R.recordedFlowDirection(-0.25, ''), null);
