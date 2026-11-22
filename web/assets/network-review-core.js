@@ -437,5 +437,10 @@ function recordedFlowDirection(value,convention){
   if(value===0)return 'still';
   return (value>0)===(convention==='upstream-to-downstream')?'forward':'reverse';
 }
-globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand,recordedFlowDirection};
+function groundFreeboard(groundM,levelM){
+  if(!Number.isFinite(groundM)||!Number.isFinite(levelM))return null;
+  const difference=groundM-levelM;
+  return Number.isFinite(difference)?difference:null;
+}
+globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand,recordedFlowDirection,groundFreeboard};
 })();

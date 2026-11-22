@@ -29,7 +29,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Verified locally |
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
-| 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial. Reviewed signed link-flow arrows and recorded quantity layers work locally. Full-capacity, ground freeboard and source geometry thematic layers remain open |
+| 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Partial. Reviewed signed link-flow arrows, recorded quantities and same-datum ground-level freeboard work locally. Full-capacity and source geometry thematic layers remain open |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Verified locally for exact shared-clock comparison and independent layer extrema. Geometry-sensitive scenario review remains open under 6.1 and 6.4 |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial |
 | 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for indexed ingestion and lookup. Broader capacity and release checks remain open |
@@ -1289,3 +1289,17 @@ other state.
   camera changes, independent extrema and layer removal. Both browser
   observers counted 32 requests with zero violations. Network and
   simulation unit regressions passed locally.
+
+### Ground-level freeboard thematic results
+
+- An indexed node or link-end level can be displayed as the ground
+  elevation minus its exact recorded sample. The geometry and results must
+  declare the same datum. Link ends use the source ground at the matching
+  endpoint. Missing geometry remains unavailable. Comparing proposals
+  requires confirmation of the shared ground elevations and datum.
+- The independent minimum freeboard uses the maximum recorded level,
+  and vice versa. Chromium and Firefox checked the 10.5 m ground reference,
+  a 0.25 m margin, an above-ground result of −0.2 m and the +0.3 m proposal
+  difference on the exact clock. Both checked missing datum rejection and
+  the timestamps of the independent extrema. The request observers each
+  counted 32 requests with zero violations.

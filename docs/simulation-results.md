@@ -234,3 +234,14 @@ the nominal path between imported link endpoints. Zero and missing samples
 do not establish a recorded direction. Independent extrema and proposal
 differences have no instantaneous direction. Verify the source result and
 link ends before using the overlay in an engineering review.
+
+## Ground-level freeboard
+
+Choose **Ground-level freeboard** for an indexed node or link-end level.
+Confirm the geometry datum matches the recorded result. The map subtracts
+the exact recorded level from the source ground elevation at the node or
+corresponding link endpoint. A negative margin means the recorded level
+exceeds ground. A missing elevation or sample withholds the margin. A
+proposal comparison requires reviewed shared ground elevations and datum.
+The independent minimum margin uses the maximum recorded level. The
+independent maximum margin uses the minimum recorded level.

@@ -42,3 +42,8 @@ assert.equal(R.recordedFlowDirection(-0.25, 'downstream-to-upstream'), 'forward'
 assert.equal(R.recordedFlowDirection(0, 'upstream-to-downstream'), 'still');
 assert.equal(R.recordedFlowDirection(null, 'upstream-to-downstream'), null);
 assert.equal(R.recordedFlowDirection(-0.25, ''), null);
+assert.equal(R.groundFreeboard(10.5,10.25),.25);
+assert.equal(R.groundFreeboard(10.5,10.75),-.25);
+assert.equal(R.groundFreeboard(0,0),0);
+assert.equal(R.groundFreeboard(null,10),null);
+assert.equal(R.groundFreeboard(10,null),null);
