@@ -339,7 +339,7 @@ function renderScene(includeHandles=true){
     (!branchIsolated||!highlight||(e.sourceEdges||[e.id]).some(id=>highlight.wires.has(id))));
   const windowed=includeHandles&&largeScene(graph)?sceneWindow(shown,eligibleEdges,byId,width,height):{nodes:shown,edges:eligibleEdges};
   const condensed=windowed.nodes.length+windowed.edges.length>1400&&includeHandles&&largeScene(graph)&&
-    !geometry&&!simulationView?.active()&&!verificationLayer&&!surveyLayer&&!detrimentLayer&&!hotspots;
+    !geometry&&!verificationLayer&&!surveyLayer&&!detrimentLayer&&!hotspots;
   let {nodes:displayNodes,edges:displayEdges}=windowed;
   if(condensed){
     const locations=monitorGroups(),hasMonitor=(kind,id)=>prefs().showMonitors&&locations.has(R.refKey({kind,id}));
@@ -2439,6 +2439,7 @@ function mountSimulationView(){
     'flood-depth':'Flood depth','flood-volume':'Flood volume','surcharge-state':'Surcharge state'};
   const shade=$('nsSimulationShade'),display=$('nsSimulationDisplay'),cancelExtrema=$('nsSimulationCancelExtrema');
   let layer=null,profile=null,generation=0,playing=0,timer=null,groups=new Map(),sampleWindow=null,layerChoices=new Map(),companions=new Map(),proposals=new Map(),proposalEnds=new Map(),extremaJob=null;
+  let viewportPaint=null;
   const session=()=>window.HydraResultsWorkspace?.session;
   const sources=()=>session()?.sources()||[];
   const candidate=()=>sources().find(item=>item.sourceId===Number(fields.source.value));
@@ -2473,21 +2474,44 @@ function mountSimulationView(){
     }
     groups.clear();
   }
-  function decorate(rebuild=false){
-    if(rebuild)groups=new Map();
-    if(!layer)return;
-    const extrema=display.value!=='sample';
-    if(extrema?!layer.envelopes:!layer.values)return;
-    if(!groups.size){
-      for(const group of $('nsSvg').children){
-        const {nsNode,nsEdge}=group.dataset;
-        if(nsNode)groups.set(R.refKey({kind:'node',id:nsNode}),group);
-        if(nsEdge)groups.set(R.refKey({kind:'edge',id:nsEdge}),group);
+  function readGroups(){
+    groups.clear();
+    for(const group of $('nsSvg').children){
+      const {nsNode,nsEdge}=group.dataset;
+      if(nsNode)groups.set(R.refKey({kind:'node',id:nsNode}),group);
+      if(nsEdge)groups.set(R.refKey({kind:'edge',id:nsEdge}),group);
+    }
+  }
+  function selectedFrameColumns(current){
+    const keys=new Set(groups.keys());
+    if(current.geometryDatum){
+      for(const {id,from,to} of routeDraft.steps){
+        keys.add(R.refKey({kind:'edge',id}));
+        keys.add(R.refKey({kind:'node',id:from}));
+        keys.add(R.refKey({kind:'node',id:to}));
       }
     }
-    for(const [index,column] of layer.columns.entries()){
-      const match=layer.matches.get(column.series),group=groups.get(R.refKey(match));
-      if(!group)continue;
+    return [...keys].flatMap(key=>current.columnsByAsset.get(key)??[]).sort((a,b)=>a-b);
+  }
+  function refreshViewportFrame(){
+    if(viewportPaint!==null||display.value!=='sample')return;
+    viewportPaint=requestAnimationFrame(()=>{
+      viewportPaint=null;
+      if(!layer||display.value!=='sample')return;
+      const indexes=selectedFrameColumns(layer),previous=layer.requested;
+      if(!previous||indexes.length!==previous.length||indexes.some((index,i)=>index!==previous[i]))void drawFrame(indexes);
+    });
+  }
+  function decorate(rebuild=false){
+    if(!layer){if(rebuild)groups.clear();return;}
+    const extrema=display.value!=='sample';
+    if(rebuild||!groups.size)readGroups();
+    if(rebuild)refreshViewportFrame();
+    if(extrema?!layer.envelopes:!layer.values)return;
+    for(const [key,group] of groups){
+      const index=layer.columnsByAsset.get(key);
+      if(index===undefined||!extrema&&!Object.hasOwn(layer.values,index))continue;
+      const column=layer.columns[index],match=layer.matches.get(column.series);
       const ground=layer.grounds?.[index],capacity=layer.capacities?.values[index],proposalCapacity=layer.proposalCapacities?.values[index];
       const quantity=layer.grounds?'Ground-level freeboard':layer.capacities?'Full-capacity utilisation':titles[column.quantity];
       const project=(value,full)=>layer.grounds?R.groundFreeboard(ground,value):layer.capacities?R.capacityUtilisation(value,full):value;
@@ -2536,6 +2560,7 @@ function mountSimulationView(){
   }
   function reset(message=''){
     const wasApplied=Boolean(profile);
+    if(viewportPaint!==null){cancelAnimationFrame(viewportPaint);viewportPaint=null;}
     stop();cancelScan();++generation;layer=null;profile=null;removeMarks();
     sampleWindow?.setSource(null);
     transport.hidden=true;legend.hidden=true;stamp.textContent='';clear.disabled=true;shade.value='primary';display.value='sample';
@@ -2639,22 +2664,30 @@ function mountSimulationView(){
     else if(!available.length)note.textContent='Index simulation result columns before applying a layer.';
     else if(!layer)note.textContent='Choose a source and review its model revision before applying a layer.';
   }
-  async function drawFrame(){
+  async function drawFrame(needed){
     if(!layer||display.value!=='sample')return;
+    if(!groups.size)readGroups();
     const current=layer,index=time.valueAsNumber,request=++generation;
+    needed??=selectedFrameColumns(current);
+    current.requested=needed;
     back.disabled=index<=Number(time.min);next.disabled=index>=Number(time.max);play.disabled=time.min===time.max;
     try{
-      const frame=await session().frame(current.source.sourceId,index,current.columns.map(column=>column.series));
+      const frame=await session().frame(current.source.sourceId,index,needed.map(position=>current.columns[position].series));
       if(request!==generation)return;
       if(!frame.values||!Number.isFinite(frame.time))throw new Error('The selected sample is unavailable.');
+      const values=new Array(current.columns.length);
+      for(const [i,position] of needed.entries())values[position]=frame.values[i];
       const datum=current.geometryDatum;
       let proposedValues=null,difference=null,proposalFrame=null;
       if(current.proposal){
         const {source,columns,alignment}=current.proposal;
-        proposalFrame=await session().frameAtTime(source.sourceId,frame.time,columns.map(column=>column.series));
+        const positions=needed.map(position=>alignment[position]).filter(position=>position!==-1);
+        const counterpart=await session().frameAtTime(source.sourceId,frame.time,positions.map(position=>columns[position].series));
         if(request!==generation)return;
-        proposedValues=alignment.map(index=>proposalFrame.values?.[index]??null);
-        difference=R.compareSimulationSamples(frame.values,proposedValues);
+        proposalFrame=new Array(columns.length);
+        for(const [i,position] of positions.entries())proposalFrame[position]=counterpart.values?.[i]??null;
+        proposedValues=values.map((value,position)=>proposalFrame[alignment[position]]??null);
+        difference=R.compareSimulationSamples(values,proposedValues);
       }
       let conduits=null,proposedConduits=null;
       const showProposalEnds=Boolean(current.proposal&&current.profileRouteRevision===routeRevision);
@@ -2682,19 +2715,21 @@ function mountSimulationView(){
           }
           return [...byEdge.values()];
         };
-        [conduits,proposedConduits]=await Promise.all([ends(current,frame.values),
-          showProposalEnds?ends(current.proposal,proposalFrame.values):null]);
+        [conduits,proposedConduits]=await Promise.all([ends(current,values),
+          showProposalEnds?ends(current.proposal,proposalFrame):null]);
         if(request!==generation)return;
       }
-      Object.assign(current,{values:frame.values,proposedValues,difference});
+      Object.assign(current,{values,proposedValues,difference});
       const timestamp=formatClock(frame.time);
-      const valid=frame.values.filter((value,index)=>Number.isFinite(value)&&(!current.grounds||Number.isFinite(current.grounds[index]))&&
+      const valid=values.filter((value,index)=>Number.isFinite(value)&&(!current.grounds||Number.isFinite(current.grounds[index]))&&
         (!current.capacities||current.capacities.values[index]>0)).length;
-      stamp.textContent=current.source.scenario+' · '+timestamp+' (project clock) · '+valid+' of '+current.columns.length+' matched assets have a sample.';
+      const subset=needed.length<current.columns.length;
+      stamp.textContent=current.source.scenario+' · '+timestamp+' (project clock) · '+valid+' of '+needed.length+' matched assets have a sample.'+
+        (subset?' Sample coverage is for displayed and route assets. Zoom in or select an asset to load its reading.':'');
       if(current.proposal)stamp.textContent+=' '+current.proposal.source.scenario+' · '+difference.filter((value,index)=>
         Number.isFinite(value)&&(!current.grounds||Number.isFinite(current.grounds[index]))&&
         (!current.capacities||(current.capacities.values[index]>0&&current.proposalCapacities.values[index]>0))).length+
-        ' of '+current.columns.length+' assets have an exact comparison.';
+        ' of '+needed.length+' assets have an exact comparison.';
       time.setAttribute('aria-valuetext',timestamp+' project clock');
       decorate();
       profile=null;
@@ -2704,7 +2739,7 @@ function mountSimulationView(){
           return Number.isFinite(level)?[{id,level,location:column.location}]:[];
         });
         profile={scenario:current.source.scenario,time:timestamp,datum,ends:conduits,
-          values:conduits?[]:levels(frame.values).map(({id,level})=>({node:id,level})),
+          values:conduits?[]:levels(values).map(({id,level})=>({node:id,level})),
           proposalReviewPending:Boolean(conduits&&current.proposal&&!showProposalEnds),
           proposal:current.proposal&&(!conduits||showProposalEnds)?{scenario:current.proposal.source.scenario,ends:proposedConduits,
             levels:proposedConduits?[]:levels(proposedValues)}:null};
@@ -2852,7 +2887,8 @@ function mountSimulationView(){
     fields.verifyProposal.checked=Boolean(proposal);
     fields.verifyProfileGeometry.checked=geometryReviewed;
     const flowDirection=first.asset.kind==='link'&&first.quantity==='flow'?fields.flowDirection.value:'';
-    layer={source,columns,matches,low,high,values:null,envelopes:null,companion,proposal,flowDirection,grounds,capacities,proposalCapacities,
+    const columnsByAsset=new Map(columns.map((column,index)=>[R.refKey(matches.get(column.series)),index]));
+    layer={source,columns,matches,columnsByAsset,low,high,values:null,envelopes:null,companion,proposal,flowDirection,grounds,capacities,proposalCapacities,
       geometryDatum:first.quantity==='level'?datum:'',profileRouteRevision:geometryReviewed?routeRevision:null};
     const resultsWorkspace=window.HydraResultsWorkspace;
     if(!sampleWindow)sampleWindow=resultsWorkspace.mountResultWindow($('nsSimulationWindow'),range=>{
@@ -2884,7 +2920,7 @@ function mountSimulationView(){
   panel.addEventListener('toggle',()=>{if(panel.open)refreshSources();else stop();});
   window.addEventListener('icm:simulation-sources-changed',refreshSources);
   window.addEventListener('icm:route-changed',({detail})=>{if(detail.page!=='schematic')stop();else if(panel.open)refreshSources();});
-  simulationView={decorate,reset,refreshSources,active:()=>Boolean(layer),profile:()=>profile,refreshProfile:()=>{if(layer?.geometryDatum)void drawFrame();}};
+  simulationView={decorate,reset,refreshSources,profile:()=>profile,refreshProfile:()=>{if(layer?.geometryDatum)void drawFrame();}};
 }
 
 function displayProfile(){

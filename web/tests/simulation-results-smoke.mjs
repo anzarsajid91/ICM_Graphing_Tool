@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import {chromium,firefox} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
-import {nativeNetwork} from './network-route-fixture.mjs';
+import {largeNativeNetwork,nativeNetwork} from './network-route-fixture.mjs';
 import '../assets/simulation-results-core.js';
 
 const engine=process.env.ICM_BROWSER||'chromium',base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
@@ -550,6 +550,48 @@ try {
   await confirmation.check();await layer.click();
   await wire.waitFor();assert.match(await wire.getAttribute('aria-label'),/Flow · -0\.2 m³\/s/);
   assert.equal(await page.locator('#nsSvg [data-ns-node][data-ns-sample]').count(),0);
+
+  const denseIds=['00001','00125','02010','04000'];
+  const denseIndex=await globalThis.HydraSimulationResults.importCsv(new Blob([
+    'Time,'+denseIds.join(',')+'\n2025-01-01 00:00:00,0.5,1.5,2.5,3.5\n2025-01-01 00:05:00,0.7,1.7,2.7,3.7\n'
+  ]),{simulation:'Dense synthetic playback',modelRevision:'SYNTHETIC-REV-ID',scenario:'Baseline',event:'Dense result test',
+    clock:'iso',clockConfirmed:true,temporalSupport:'instantaneous',headerRecord:1,timeColumn:0,
+    columns:denseIds.map((id,index)=>({column:index+1,asset:{kind:'node',id},quantity:'flow',location:'node',unit:'m³/s',sourceAttribute:'Node flow'}))});
+  await page.getByRole('tab',{name:'Simulation results'}).click();
+  await packaged.setInputFiles({name:'synthetic-dense-playback.hbresults',mimeType:'application/octet-stream',
+    buffer:Buffer.from(await denseIndex.exportPackage().arrayBuffer())});
+  await panel.getByRole('status').filter({hasText:'2 timestamps, 4 mapped series'}).waitFor();
+  await indexPackage.click();await status.filter({hasText:'2 timestamps indexed for 4 result series'}).waitFor();
+  await page.getByRole('tab',{name:'Schematic',exact:true}).click();
+  await page.click('#nsClearMap');await page.click('#nsConfirmClearMap');
+  await page.setInputFiles('#nsLoadInput',{name:'synthetic-dense-network.csv',mimeType:'text/csv',buffer:Buffer.from(largeNativeNetwork(5001))});
+  await page.check('#nsContextUnits');await page.click('#nsContextApply');
+  await page.locator('#nsSvg [data-ns-compact]').first().waitFor({state:'attached'});
+  if(!(await playback.evaluate(element=>element.open)))await playback.locator('summary').click();
+  await page.evaluate(()=>{
+    const post=Worker.prototype.postMessage;
+    window.syntheticPlaybackWidths=[];
+    Worker.prototype.postMessage=function(message,...rest){
+      if(message?.name==='frame')window.syntheticPlaybackWidths.push(message.data.keys.length);
+      return post.call(this,message,...rest);
+    };
+  });
+  await indexed.selectOption({label:'Baseline · synthetic-dense-playback.hbresults'});
+  await confirmation.check();await layer.click();
+  await clock.getByText('1 of 1 matched assets have a sample.',{exact:false}).waitFor();
+  await clock.getByText('Sample coverage is for displayed and route assets.',{exact:false}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.syntheticPlaybackWidths),[1]);
+  const denseAsset=page.locator('#nsSvg [data-ns-node="00125"]');
+  assert.equal(await denseAsset.count(),0);
+  const search=page.getByLabel('Find asset',{exact:true});
+  await search.fill('00125');await search.press('Enter');
+  await denseAsset.locator('title').filter({hasText:'Flow · 1.5 m³/s'}).waitFor({state:'attached'});
+  await playback.getByRole('button',{name:'Next sample'}).click();
+  await denseAsset.locator('title').filter({hasText:'Flow · 1.7 m³/s'}).waitFor({state:'attached'});
+  await clock.getByText('2025-01-01 00:05:00.000 (project clock)',{exact:false}).waitFor();
+  assert((await page.evaluate(()=>window.syntheticPlaybackWidths)).every(size=>size>0&&size<4));
+  await playback.getByRole('button',{name:'Remove results layer'}).click();
+  assert.equal(await page.locator('#nsSvg [data-ns-sample]').count(),0);
   assert.deepEqual(errors,[]);
   guard.assertClean();
   console.log('SIMULATION_RESULTS_PASS '+engine);

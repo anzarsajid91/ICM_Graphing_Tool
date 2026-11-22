@@ -58,7 +58,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 13 | Shared registry, workspace serialization and storage | Shared typed results and route context; deterministic stale state, bounded imports and prior workspace compatibility | Open |
 | 14 | Precision Workbench / shared design tokens | Desktop usability, keyboard, responsive layout, contrast, reduced motion, progress and understandable empty/error states | Open |
 | 15 | Existing numerical and browser regressions | Independent reference cases for every new method, mandatory invalid/boundary cases, tolerances and genuine ICM comparisons where available | Open |
-| 16 | CI baseline comparison and v2.2 matched startup measures | Matched lifecycle benchmarks at 400, 1,600 and 10,000 assets and varying duration, throughput, memory, cancellation and state integrity | Partial. Matched native network import, pan, inspection, overview and zoom verified locally. Exact final release and annual-results lifecycle evidence remain open |
+| 16 | CI baseline comparison and v2.2 matched startup measures | Matched lifecycle benchmarks at 400, 1,600 and 10,000 assets and varying duration, throughput, memory, cancellation and state integrity | Partial. Native network interaction and dense annual file-backed playback measured in both desktop browsers. A complete matched performance matrix on the final release candidate remains open |
 | 17 | Local worker, CSP, approvals, SBOM and request observers | Review every affected trust boundary, malformed inputs and resource limits. Repeat source, claim, licence, CodeQL, dependency, secret and browser checks | Open |
 | 18 | Chromium/Firefox release suites | Complete per-control and cross-workspace checks and documented review passes. Distinguish AI review, real ICM and available browser/platform coverage | Open |
 | 19 | Git and this ledger | Preserve implementation commits, exact evidence, outstanding limitations and recovery context | Partial |
@@ -89,6 +89,40 @@ Development is in draft PR #119. Version assignment is deferred until the comple
   artifact check verified 153 resources, and 477 Python tests, 111
   subtests and 28 privacy tests passed. Browser evidence is in
   `/workspace/hydra-evidence/v3/calculation-reports-final`.
+
+### Dense annual playback
+
+- Instantaneous playback reads the individually rendered assets and the
+  open profile route. A viewport change reloads newly needed channels at
+  the same recorded timestamp. Independent extrema still cover the full
+  selected layer and time window. `web/tests/simulation-results-smoke.mjs`
+  verified exact newly selected asset readings, missing samples, route
+  ends, scenario comparisons and removal. Chromium and Firefox each
+  observed 32 requests with zero confidentiality violations.
+- A matched desktop run used a synthetic 10,001-asset network and a
+  file-backed 81,595,147-byte package with 105,121 five-minute clock samples
+  and 96 channels. The typed-data reservation reported 1,049,000 bytes.
+  Initial map reads fell from 96 channels to 2. After selecting a manhole,
+  the final exact annual sample read fell from 96 channels to 3 and took
+  240 to 23 ms in Chromium and 923 to 52 ms in Firefox. Finding the manhole
+  took 4,440 to 339 ms and 5,083 to 366 ms respectively. These are single
+  matching runs against the pre-change v3 workbench. Public v2.2.0 has no
+  indexed results playback and rejects the full-size fixture at its importer
+  limit. A direct playback timing for v2.2.0 is unavailable.
+- A separate matched Chromium rerun showed 8,662 to 83 individual SVG
+  asset groups at the same focused view. Renderer JS heap measured after
+  explicit garbage collection was 18.6 to 25.7 MB, and reported renderer
+  backing storage was 2.34 to 2.22 MB. These counters exclude whole-browser
+  and worker memory. The timing improvement does not establish a lower
+  retained memory footprint. Evidence is in
+  `/workspace/hydra-evidence/v3/dense-annual-memory`.
+- Both browsers rejected the package in in-memory mode, cancelled an
+  indexing attempt without publishing a source, opened it file-backed,
+  cancelled an extrema scan, then scanned the annual window to find the
+  expected 10 m³/s maximum. Source removal also cleared the schematic
+  layer. Each matched run observed 32 application requests and zero
+  confidentiality violations. Raw logs and screenshots are in
+  `/workspace/hydra-evidence/v3/dense-annual-playback`.
 
 ### Hydraulic calculation milestone source review
 

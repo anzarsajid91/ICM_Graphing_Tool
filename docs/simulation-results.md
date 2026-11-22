@@ -154,6 +154,14 @@ assets keep their schematic style. A matched asset with no value at the
 exact timestamp has a hollow marker or dashed link. Link arrows still
 show nominal topology. Read the signed value from the asset label.
 
+Instantaneous playback reads the channels for the individually rendered
+assets and the open route. Dense areas shown as compact topology retain
+their connectivity. Zoom in or use **Find asset** to load an individual
+reading. The sample counter describes the assets requested for that view.
+Changing the viewport refreshes the newly visible channels at the same
+recorded timestamp. Independent extrema continue to scan every matched
+asset in the confirmed layer and time window.
+
 For node level sources, enter the geometry datum to synchronize an open
 long section. The entered datum must match the source result datum. The
 profile draws discrete samples at the corresponding nodes, shows the exact
