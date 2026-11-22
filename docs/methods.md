@@ -706,6 +706,22 @@ separate continuation requirement.
 [Northern Ireland Water development design guidance](https://live-publisher.niwater.com/services-for-developers/pre-development-enquiry-multi-unit-developments-and-commercial)
 [Northern Ireland discharge consent framework](https://www.daera-ni.gov.uk/articles/regulating-sewage-discharges)
 
+## Continuation-flow sensitivity and capacity comparisons
+
+Vary the reviewed population, per-capita allowance, infiltration and
+trade allowance separately. Each result uses the selected framework and
+the same evidence, including the split of combined and separately drained
+populations and any distinct unit allowances. The screen withholds a trial
+when its inputs exceed the supported domain.
+
+The signed margin is the available flow less the calculated continuation
+requirement. Enter the permitted pass-forward flow with its assessment
+conditions and source. For a native eligible circular conduit the separate
+full-flow comparison uses the existing uniform-flow Colebrook–White solver
+with reviewed viscosity and imported geometry and roughness. The resulting
+margin is a hydraulic screening value. Spilling behaviour, surcharge and
+backwater depend on hydraulic conditions in the relevant modelled events.
+
 ## Wales GN066 continuation-flow screening
 
 Natural Resources Wales GN066 version 2.0, 29 July 2026, section 2.7

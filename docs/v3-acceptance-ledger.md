@@ -45,7 +45,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
 | 9.5 England and framework research | Official permitting guidance | Versioned methods for England, Scotland, Wales and the reviewed Irish combined setting, with a documented project method | Verified locally within the cited applicability. Northern Ireland continuation uses the reviewed project consent basis |
 | 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Partial. Reviewed nominal drainage and independent component allocations verified locally |
-| 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Partial. England and SEPA treatment flows, Uisce Éireann peak foul flow, and circular velocity and shear verified locally |
+| 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Partial. Treatment, foul-flow, circular velocity and shear, sensitivity, permit and pipe comparisons verified locally. Compatible modelled continuation during spills remains open |
 | 10.1 | Per-scenario detriment comparisons | Common baseline with multiple candidates and independent criteria | Verified locally within each assessment category |
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
 | 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
@@ -1145,3 +1145,18 @@ other state.
   library observers saw 104 and 31 Chromium requests, and 103 and 32
   Firefox requests, with no violations. The complete Python suite
   passed 459 tests and 111 subtests.
+
+### Continuation-flow sensitivity, permit and capacity checks
+
+- Each sensitivity run changes one of population, per-capita allowance,
+  infiltration or trade effluent by the entered percentage and reruns the
+  same reviewed framework. Invalid variants are identified individually.
+  A reviewed permit setting and eligible circular conduit are compared
+  independently in L/s. The sheet preserves the permit evidence, capacity
+  assumptions, native conduit identity and source fingerprint.
+- An independent 160,000 L/day case gave the 144,900–175,100 L/day
+  population range. Both browsers verified 73,500–88,600 L/day for the
+  integrated network case, a deficit against a 0.9 L/s permit value and
+  288.09 L/s of steady full-pipe capacity. Reimport withdrew the stale
+  result after a topology change. There were 104 guarded Chromium and
+  103 Firefox requests with no confidentiality violations.

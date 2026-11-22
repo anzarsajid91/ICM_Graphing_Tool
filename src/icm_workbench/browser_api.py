@@ -1457,6 +1457,13 @@ def documented_continuation_flow(catchments, methodology):
     return json.dumps(calculate(catchments, methodology), allow_nan=False)
 
 
+def review_continuation_flow(catchments, framework, basis=None, sensitivity_percent=None, permitted=None, pipe=None):
+    """Review attributed sensitivity and independent permit and capacity comparisons."""
+    from icm_workbench.analysis.design_flows import review_continuation_flow as calculate
+
+    return json.dumps(calculate(catchments, framework, basis, sensitivity_percent, permitted, pipe), allow_nan=False)
+
+
 def scotland_continuation_flow(catchments, applicability):
     """Apply the documented SEPA low-significance continuation-flow method."""
     from icm_workbench.analysis.design_flows import scotland_continuation_flow as calculate

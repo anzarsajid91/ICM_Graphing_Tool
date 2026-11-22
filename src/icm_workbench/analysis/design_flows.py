@@ -198,6 +198,65 @@ def scotland_continuation_flow(catchments, applicability):
     return result
 
 
+def review_continuation_flow(catchments, framework, basis=None, sensitivity_percent=None, permitted=None, pipe=None):
+    """Replay a verified method for reviewed sensitivity and independent flow comparisons."""
+    calculators = {
+        "england": england_continuation_flow,
+        "scotland": scotland_continuation_flow,
+        "wales": wales_continuation_flow,
+        "ireland": ireland_combined_continuation_flow,
+        "documented": documented_continuation_flow,
+    }
+    if not isinstance(framework, str) or framework not in calculators:
+        raise ValueError("Choose a supported continuation-flow framework.")
+
+    def calculate(rows):
+        calculator = calculators[framework]
+        return calculator(rows) if framework == "england" else calculator(rows, basis)
+
+    result = calculate(catchments)
+    result["sensitivity"], result["comparisons"] = [], []
+    if sensitivity_percent is not None:
+        percent = _nonnegative(sensitivity_percent, "sensitivity percentage", 100)
+        result["sensitivity_percent"] = percent
+        original = [row for row in result["rows"] if row["included"]]
+        canonical = {row["id"].casefold(): row for row in original}
+        for key in ("population", "domestic_l_head_day", "infiltration_l_day", "trade_l_day"):
+            outcomes = {}
+            for direction, factor_percent in (("low", 100 - percent), ("high", 100 + percent)):
+                changed = [dict(row, **{key: canonical[row["id"].strip().casefold()][key] * factor_percent / 100})
+                           if row["id"].strip().casefold() in canonical else row for row in catchments]
+                try:
+                    outcomes[direction + "_l_day"] = calculate(changed)["retained_l_day"]
+                    outcomes[direction + "_note"] = None
+                except ValueError as error:
+                    outcomes[direction + "_l_day"] = None
+                    outcomes[direction + "_note"] = str(error)
+            result["sensitivity"].append(dict(key=key, **outcomes))
+
+    def compare(key, available, **details):
+        difference = available - result["retained_l_s"] if available is not None else None
+        status = ("unavailable" if difference is None else
+                  "below screening flow" if difference < 0 else "at or above screening flow")
+        result["comparisons"].append(dict(key=key, available_l_s=available, difference_l_s=difference, status=status, **details))
+
+    if permitted is not None:
+        if not isinstance(permitted, dict):
+            raise ValueError("Provide a reviewed permit flow.")
+        evidence = _review_note(permitted.get("evidence"), "permit flow evidence")
+        available = _nonnegative(permitted.get("flow_l_s"), "permit pass-forward flow", 1e9)
+        compare("permit", available, evidence=evidence)
+    if pipe is not None:
+        from icm_workbench.analysis.pipe_capacity import full_pipe_capacity
+
+        if not isinstance(pipe, dict) or set(pipe) != {"diameter_m", "gradient", "roughness_m", "viscosity_m2_s"}:
+            raise ValueError("Provide the reviewed circular pipe capacity inputs.")
+        capacity = full_pipe_capacity(**pipe)
+        discharge = capacity["discharge_m3_s"]
+        compare("pipe", discharge * 1000 if discharge is not None else None, regime=capacity["regime"])
+    return result
+
+
 def _treatment_components(population, domestic_l_head_day, infiltration_dwf_l_day,
                           infiltration_max_l_day, trade_l_day):
     people = _nonnegative(population, "population", 1e9)

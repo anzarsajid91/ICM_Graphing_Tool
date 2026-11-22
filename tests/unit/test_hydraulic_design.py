@@ -4,7 +4,7 @@ import pytest
 
 from icm_workbench.analysis.design_flows import (
     documented_continuation_flow, england_continuation_flow, england_treatment_design_flows,
-    ireland_combined_continuation_flow, uisce_peak_foul_flow, wales_continuation_flow,
+    ireland_combined_continuation_flow, review_continuation_flow, uisce_peak_foul_flow, wales_continuation_flow,
 )
 from icm_workbench.analysis.pipe_capacity import circular_gravity_section_review
 from icm_workbench.analysis.pumping import pump_duty, system_curve
@@ -86,6 +86,31 @@ def test_documented_continuation_separately_audits_reviewed_factors():
         documented_continuation_flow([catchment("A", "combined", 100, 150, 3000, 2000)], dict(methodology, reference=" "))
     with pytest.raises(ValueError, match="trade factor"):
         documented_continuation_flow([catchment("A", "combined", 100, 150, 3000, 2000)], dict(methodology, trade_factor=-1))
+
+
+def test_continuation_sensitivity_and_pass_forward_comparisons():
+    source = catchment("A", "combined", 100, 150, 3000, 2000)
+    result = review_continuation_flow([source],"england", sensitivity_percent=10,
+        permitted={"flow_l_s":1.5,"evidence":"Synthetic permit schedule"},
+        pipe={"diameter_m":.6,"gradient":.002,"roughness_m":.001,"viscosity_m2_s":.000001})
+    assert result["retained_l_day"] == 160000
+    assert [(row["key"],row["low_l_day"],row["high_l_day"]) for row in result["sensitivity"]] == [
+        ("population",144900,175100),("domestic_l_head_day",158500,161500),
+        ("infiltration_l_day",159700,160300),("trade_l_day",159400,160600)]
+    permit,pipe = result["comparisons"]
+    assert permit["difference_l_s"] == pytest.approx(1.5-160000/86400)
+    assert permit["status"] == "below screening flow"
+    assert pipe["available_l_s"] == pytest.approx(288.094, abs=.001)
+    assert pipe["status"] == "at or above screening flow"
+    assert source["population"] == 100
+    with pytest.raises(ValueError, match="permit.*evidence"):
+        review_continuation_flow([source],"england",permitted={"flow_l_s":0,"evidence":""})
+    with pytest.raises(ValueError, match="sensitivity"):
+        review_continuation_flow([source],"england",sensitivity_percent=101)
+    boundary = review_continuation_flow([dict(source, population=1e9)],"england",sensitivity_percent=5)
+    assert boundary["sensitivity"][0]["high_l_day"] is None
+    assert "population" in boundary["sensitivity"][0]["high_note"]
+    assert boundary["sensitivity"][0]["low_l_day"] < boundary["retained_l_day"]
 
 
 def test_england_treatment_uses_governing_season_and_separate_infiltration():

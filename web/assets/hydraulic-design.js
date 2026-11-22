@@ -893,6 +893,57 @@ function mountWastewaterChecks(worker) {
   });
 }
 
+function mountContinuationComparisons(form){
+  const panel=element("details");
+  const inputs=fields([
+    {...number("sensitivity","Sensitivity per input (%)",0,100),required:false},
+    {...number("permitted","Permit pass-forward flow (L/s)",0,1e9),required:false},
+    {key:"permit_note",label:"Permit source and assessed conditions",type:"text",maxLength:2000,required:false},
+    {key:"pipe",label:"Compare an eligible native conduit",options:[["","No conduit comparison"]],required:false},
+    number("viscosity","Pipe trial kinematic viscosity (m²/s)",1e-9,.01)
+  ],{viscosity:.000001});
+  const message=element("p");message.setAttribute("role","status");
+  const {pipe,viscosity,permitted,permit_note:permitNote}=inputs.controls;
+  const find=action("Load conduit choices",async()=>{
+    find.disabled=true;
+    try{
+      await window.ICMNetworkSchematic?.open();
+      const previous=pipe.value,{network}=readNetworkBasis();
+      const eligible=network.edges.filter(edge=>ICMNetworkCore.conduitTrial(edge));
+      pipe.replaceChildren(new Option("No conduit comparison",""),...eligible.map(edge=>new Option(edge.name||edge.id,edge.id)));
+      pipe.value=eligible.some(edge=>edge.id===previous)?previous:"";
+      message.textContent=eligible.length?eligible.length+" eligible circular conduits. Choose the matching continuation conduit.":
+        "No supported conduit has resolved circular geometry, gradient and roughness.";
+      update();form.dispatchEvent(new Event("input",{bubbles:true}));
+    }catch(error){message.textContent=error.message;}
+    finally{find.disabled=false;}
+  });
+  function update(){
+    viscosity.disabled=!pipe.value;viscosity.parentElement.hidden=!pipe.value;
+    permitNote.required=permitted.value!=="";
+  }
+  function pipeDetails(){
+    if(!pipe.value)return null;
+    const {network}=readNetworkBasis(),edge=network.edges.find(item=>item.id===pipe.value);
+    const inputs=ICMNetworkCore.conduitTrial(edge);
+    if(!inputs)throw new Error("The selected conduit changed or is no longer eligible. Reload the conduit choices.");
+    const source=edge.sourceAttributes;
+    return {label:inputs.label,source:[source?.table,source?.row,source?.file],
+      inputs:{diameter_m:inputs.diameter/1000,gradient:inputs.gradient,roughness_m:inputs.roughness/1000,
+        viscosity_m2_s:viscosity.valueAsNumber}};
+  }
+  pipe.onchange=update;permitted.oninput=update;update();
+  panel.append(element("summary","Sensitivity and comparisons"),
+    element("p","Vary each input independently. Review the permit setting and steady uniform full-pipe capacity as separate comparisons."),
+    find,message,inputs.group);
+  form.append(panel);
+  return {pipeDetails,values(){
+    const {sensitivity,permitted,permit_note}=inputs.values();
+    return {sensitivity_percent:Number.isFinite(sensitivity)?sensitivity:null,
+      permitted:Number.isFinite(permitted)?{flow_l_s:permitted,evidence:permit_note}:null};
+  }};
+}
+
 function mount(navigate) {
   const worker=async (api,args)=>{await ensureEngineBoot();return engine.call(api,args);};
   mountStorageRouting(navigate,worker);
@@ -1009,8 +1060,6 @@ function mount(navigate) {
   const separateLabel=()=>["scotland","documented"].includes(frameworkKey())?"Reviewed separate foul":"Qualifying separate foul";
   const references={england:eaReference,scotland:sepaReference,wales:"NRW GN066, version 2.0, July 2026, section 2.7",
     ireland:"Department of the Environment, Procedures and Criteria in relation to Storm Water Overflows, section 6.2, published by the EPA"};
-  const api={england:"england_continuation_flow",scotland:"scotland_continuation_flow",wales:"wales_continuation_flow",
-    ireland:"ireland_combined_continuation_flow",documented:"documented_continuation_flow"};
   const catchments=editableRows("Catchment",catchmentFields,[{classification:"combined"}],controls=>{
     configureCatchment(controls);
     const option=controls.classification.querySelector('[value="qualifying-separate"]');
@@ -1039,14 +1088,20 @@ function mount(navigate) {
   scotland.controls.simpler_combined.onchange=showFramework;
   form.append(framework.group,details,reviewed.group,projectSection,methodNote,catchments.wrapper);showFramework();
   const catchmentSource=mountCatchmentImport(formula,form,catchments,worker);
+  const comparisons=mountContinuationComparisons(form);
+  let lastTrial=null;
   const invalidateFormula=results(formula,form,async()=>{
     catchmentSource.assertCurrent();
-    const selected=frameworkKey(),sepa=selected==="scotland",documented=selected==="documented",args={catchments:catchments.values()};
-    if(sepa)args.applicability={...scotland.values(),...simpler.values()};
-    if(["wales","ireland"].includes(selected))args.evidence=reviewed.values().evidence;
-    if(documented)args.methodology=project.values();
-    const r=await worker(api[selected],args);
+    const selected=frameworkKey(),sepa=selected==="scotland",documented=selected==="documented";
+    const trial=comparisons.pipeDetails(),trialSignature=trial?JSON.stringify(trial):null;
+    const args={catchments:catchments.values(),framework:selected,pipe:trial?.inputs??null,...comparisons.values()};
+    if(sepa)args.basis={...scotland.values(),...simpler.values()};
+    if(["wales","ireland"].includes(selected))args.basis=reviewed.values().evidence;
+    if(documented)args.basis=project.values();
+    const r=await worker("review_continuation_flow",args);
     catchmentSource.assertCurrent();
+    if(trialSignature&&trialSignature!==JSON.stringify(comparisons.pipeDetails()))throw new Error("The conduit trial inputs changed. Calculate again.");
+    lastTrial=trialSignature;
     const auditBasis=r.applicability?Object.entries(r.applicability):[];
     const components=documented?[
       ["Weighted domestic (L/day)",r.totals.custom_domestic_l_day],["Weighted infiltration (L/day)",r.totals.custom_infiltration_l_day],
@@ -1068,15 +1123,31 @@ function mount(navigate) {
       simplerBasis?"Base = sum(PᵢGᵢ) + Imax + E. Retained flow = Base + 1360P + 2E.":
       sepa?"Base = sum(PᵢGᵢ) + Imax + E. Retained flow = Base + 1360Pc + 2 × separate domestic flow + 2E.":
         "DWF = sum(PᵢGᵢ) + I + E. Retained flow = DWF + 1360Pc + 2 × separate domestic flow + 2E.";
+    const labels={population:"Population",domestic_l_head_day:"Domestic allowance",infiltration_l_day:"Infiltration",trade_l_day:"Trade"};
+    const sensitivityHeader=["Input varied","Lower case (L/day)","Upper case (L/day)","Boundary review"];
+    const sensitivityRows=r.sensitivity.map(row=>[labels[row.key],row.low_l_day,row.high_l_day,[row.low_note,row.high_note].filter(Boolean).join(" · ")]);
+    const comparisonHeader=["Basis","Available setting (L/s)","Setting minus reviewed flow (L/s)","Screen","Evidence or regime"];
+    const comparisonRows=r.comparisons.map(row=>[row.key==="permit"?"Permit pass-forward flow":"Pipe capacity · "+trial.label,
+      row.available_l_s,row.difference_l_s,row.status,row.evidence||row.regime]);
+    const support=[];
+    if(sensitivityRows.length)support.push(table(sensitivityHeader,sensitivityRows,"Independent ±"+r.sensitivity_percent+"% input sensitivity"));
+    if(comparisonRows.length)support.push(table(comparisonHeader,comparisonRows,"Independent continuation-flow comparisons"),
+      element("p","Capacity assumes steady uniform full-pipe flow. Use measured or simulated evidence to investigate continuation during spills."));
     return {content:[table(["Quantity","Value"],metrics,r.regime),table(heading,details,"Catchment audit"),
-      element("p",(documented?r.reference:references[selected])+". Confirm applicability against the project and permit evidence.")],
+      ...support,element("p",(documented?r.reference:references[selected])+". Confirm applicability against the project and permit evidence.")],
       summary:"Retained flow calculated from reviewed catchments.",filename:"hydra-"+selected+"-continuation-flow.csv",
       rows:[["Method",r.method],["Reference",r.reference],["Regime",r.regime],
-        ["Equation",equation],...auditBasis,...metrics,heading,...details,...catchmentSource.audit()]};
+        ["Equation",equation],...auditBasis,...metrics,heading,...details,...catchmentSource.audit(),
+        ...(sensitivityRows.length?[["Sensitivity per input (%)",r.sensitivity_percent],sensitivityHeader,...sensitivityRows]:[]),
+        ...(comparisonRows.length?[comparisonHeader,...comparisonRows]:[]),
+        ...(trial?[["Source conduit",trial.label],["Source table, row and file",...trial.source],...Object.entries(trial.inputs)]:[])]};
   });
   window.addEventListener("icm:route-changed",({detail})=>{
     if(detail.page!=="formula-a")return;
-    try{catchmentSource.assertCurrent();}catch{invalidateFormula();}
+    try{
+      catchmentSource.assertCurrent();
+      if(lastTrial&&lastTrial!==JSON.stringify(comparisons.pipeDetails()))invalidateFormula();
+    }catch{invalidateFormula();}
   });
 
   const treatment=panel("tab-design-treatment","Dry weather flow and full treatment",
