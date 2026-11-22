@@ -235,6 +235,28 @@ function reportSheets(ids,includeHtml){
   return {revisions:entries.map(entry=>entry.revision),
     html:includeHtml?entries.map(entry=>calculationSheet(entry.snapshot,entry.content,true).outerHTML).join(""):""};
 }
+function assessmentRecords(){
+  function fields(rows){
+    const occurrences=new Map();
+    return rows.map(([label,value])=>{
+      const index=(occurrences.get(label)||0)+1;occurrences.set(label,index);
+      return {key:`${label} ${index}`,label,value:value??null};
+    });
+  }
+  return [...publishedSheets].filter(([,entry])=>currentSheet(entry)).map(([id,entry])=>{
+    const {snapshot}=entry;
+    const method=snapshot.identity.find(([label])=>label==="Method version")?.[1]||"";
+    const scalarRows=snapshot.rows.filter(([key,value,...rest])=>rest.length===0&&typeof key==="string"&&
+      (typeof value==="string"||Number.isFinite(value)||value===null));
+    const basisLabels=new Set(["Reference","Equation","Assessment asset","Modelled continuation method","simulation","modelRevision",
+      "scenario","event","Source conduit","Source SHA-256","Source unit","Window start","Window end","Evidence coverage"]);
+    const basics=scalarRows.filter(([key])=>basisLabels.has(key));
+    const results=scalarRows.filter(([key])=>!basisLabels.has(key)&&key!=="Build"&&key!=="Method");
+    return {id:`calculation:${id}`,workspace:"Hydraulic calculations",title:entry.title,
+      method:method==="Unavailable"?"":method,basis:fields(basics),inputs:fields(snapshot.inputs),results:fields(results),
+      review:fields([["Calculation summary",snapshot.summary]]),actions:[]};
+  });
+}
 
 function results(article,form,calculate) {
   const actions = element("div");actions.className = "actions";
@@ -1458,5 +1480,5 @@ function mount(navigate) {
         ...Object.entries(inputs),header,...rows]};
   });
 }
-window.HydraDesignCalculations={mount,sheetStatus,reportSheets};
+window.HydraDesignCalculations={mount,sheetStatus,reportSheets,assessmentRecords};
 })();

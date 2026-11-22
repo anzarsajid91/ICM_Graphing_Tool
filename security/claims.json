@@ -123,11 +123,11 @@
     "web/assets/analysis-worker.js": "adb36e7e3384a0dd171b11964fe4502851c479c777f3c7c5f8dc6a553111a2eb",
     "web/assets/fastpath-worker.js": "3ceb0560eca8035a05c1d45c5687bd094740e13e3d3a3a96cc550c1cbbe516ef",
     "SECURITY.md": "480b6a91a72ec28bb80f0a92d05e77d24d01e7fdf370f1270c41cc30a4f1bcdb",
-    "scripts/build_pages.py": "d79d847a9d11550c942ce60e3e0663b743d19e4c07dfef2429578043dc867ca6",
+    "scripts/build_pages.py": "f84f8d2e1bf4193008e6d16253a90a84b6716805f61d26d410efe21e3a48f64f",
     "web/vendor/manifest.json": "bb70a1f4497a0f6307f836828522015ebb60293e91df66ac3778f986f2d96b82",
     "web/assets/runtime.release.js": "cdc8a1e8083cc31a2fc466e0abbefdf7204f4a9e50b15422528ca4f63c1453e6",
     "web/assets/network-schematic.js": "6fc69aa53827090f7fb6af7c02733b81a45ebcb2c76ca9844596e89e37c6b271",
-    "web/assets/precision-workbench.js": "5e8e0fe29b1d2fef1abd707c14df1586221b4d41508495d214f2abd926fa4a98",
+    "web/assets/precision-workbench.js": "e913383a980ed74778c5afc458df532f55898bf2af066fecdf047ec89f6d6348",
     "web/assets/simulation-results-worker.js": "444591df29c0ad362f95b60c10631a8ce7258ab46fe65cb0dabeb47f5e8925db",
     "scripts/verify_data_confidentiality.py": "6aac0bd0fbd78f84f49c39be4f2ecd08b6812dd0974579df9178fd61c27801cb",
     "scripts/verify_vendor.py": "26272a33a524532c21d591a917a45096f79eccd7761690dcf73499804f8824c2",
@@ -138,6 +138,6 @@
     "AGENTS.md": "4f54bc69115e55eacf5650a0375b5a175eb73d7e408a151af5fcff3086ab2e5c",
     "docs/security-governance.md": "e6e73035833f2f63ec2ab891456e65cbb2da054570b1d888c45c633b946de27b",
     "web/assets/local-security-diagnostics.js": "caa3d49528be5aaee2dc72b7056092a0231baced75d33b6df6660f510d9f8b25",
-    "web/assets/hydraulic-design.js": "7e7ad19516b43894840d864bf4de904ee48c4c1ddf61c5de22e1cd99d3d3c9b1"
+    "web/assets/hydraulic-design.js": "860c3ce41d696046444e572c5c2a07e234560f853adc6a7ffd4ec2ce1ea6b632"
   }
 }

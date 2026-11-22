@@ -53,7 +53,7 @@ def _inject_v2_assets(build_token: str) -> None:
     required.extend(["network-schematic.css", "network-schematic-loader.js", "project-home.js", "method-library.js"])
     if not all(name in html for name in required):
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
-    for name in ("hydraulic-design.js", "simulation-results.js", "series-quality.js"):
+    for name in ("hydraulic-design.js", "simulation-results.js", "series-quality.js", "assessment-revision-core.js"):
         if not (SITE / "assets" / name).is_file():
             raise RuntimeError(f"Missing deferred workspace asset {name}")
 

@@ -15,6 +15,7 @@ const optionalComponents=Object.freeze({
   rainfallSpatial:{asset:'rainfall-spatial.js',mount:()=>{}},
   surveySuitability:{asset:'survey-suitability.js',mount:()=>{}},
   verificationMatrix:{asset:'verification-matrix.js',mount:()=>window.HydraVerificationMatrix.mount()},
+  assessmentRevision:{asset:'assessment-revision-core.js',mount:()=>window.HydraAssessmentRevision.mount()},
   gravitySizing:{asset:'gravity-sizing.js',mount:()=>window.HydraGravitySizing.mount()},
   detrimentScenarios:{asset:'detriment-scenarios.js',mount:()=>window.HydraDetrimentScenarios.mount(navigate)}
 });
@@ -146,6 +147,7 @@ const ROUTES={
     icon:'report',
     pages:{
       'report-generation':{label:'Report generation',title:'Report generation',description:'Review result readiness and export a coherent snapshot of current authoritative analyses.',tab:'workspace',root:()=>$('tab-workspace')},
+      revisions:{label:'Revision comparison',title:'Assessment revision comparison',description:'Compare saved assessment evidence, methods and engineering review decisions.',component:'assessmentRevision',root:()=>optionalPanel('tab-assessment-revision')},
       workspace:{label:'Workspace save / restore',title:'Workspace save and restore',description:'Persist configuration and source fingerprints without embedding raw engineering files.',tab:'workspace',root:()=>$('tab-workspace')}
     }
   }

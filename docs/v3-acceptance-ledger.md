@@ -51,7 +51,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
 | 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Verified locally for assessment templates, section order, schematic, current calculation-sheet selection and local preview/export. Exact final full regressions remain open |
 | 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Partial. Shared v3 hydraulic design sheets and Reports integration verified locally. Coverage of remaining calculation methods remains open |
-| 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Open |
+| 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Partial. Portable Reports snapshots, reviewed inputs, current calculation-sheet results, mapped comparison/spill support, decisions and action register. Coverage of the remaining workspace evidence is open |
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
 | 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Partial |
 | 12.3 | Build metadata, security claims and release evidence | Versioned assurance covering actual feature, numerical, confidentiality and compatibility outcomes | Open |
@@ -1234,3 +1234,24 @@ other state.
   observers recorded 109 and 106 requests, with zero violations. Runtime,
   graph/report, Python and JavaScript privacy contracts and the 152-file
   Pages artifact checks passed locally.
+
+### Portable assessment revision comparison
+
+- Reports captures a named baseline or proposal, or opens a bounded
+  version-one local snapshot. It records the application identity,
+  current worksheet scalar results, settings, source basis, mapped
+  verification and spill results, reviewer evidence and outstanding
+  actions. It withholds stale results and keeps the recalculation action.
+  The table and its local HTML/CSV export distinguish recorded changes
+  from results with different methods, source support, units or missing
+  values. An unchanged value by itself gives no improvement conclusion.
+- Chromium and Firefox verified capture, independent fixed-factor pipe
+  trials, valid and invalid snapshot files, status filters, reopening,
+  and escaped offline HTML and spreadsheet-safe CSV. The audited setting
+  changed from −1 m to −2 m of static head. The duty head changed on the
+  same method, while a revision of the method marked the result as
+  non-comparable. Request observers recorded 102 and 101 requests with
+  zero violations. The independent JavaScript comparison and 153-file
+  Pages integrity checks passed locally.
+- Continue extending current evidence projections for storage, individual
+  detriment criteria, network reviews and survey acceptance actions.
