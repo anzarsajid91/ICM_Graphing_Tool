@@ -50,7 +50,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
 | 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
 | 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Open |
-| 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Open |
+| 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Partial. Shared v3 hydraulic design sheets verified locally. Remaining methods and Reports integration remain open |
 | 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Open |
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
 | 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Partial |
@@ -1018,3 +1018,23 @@ other state.
   Local tests covered immediate and delayed visibility, wrong and missing
   IDs, and the live read-only artifact lookup. A hosted run remains
   required to confirm the revised artifact handoff.
+
+### Reviewed hydraulic calculation sheets
+
+- The shared v3 calculation form retains a current result snapshot with
+  the reviewed inputs, source and method audit, equations, exact values,
+  rendered results, application and worker revisions and calculation
+  time. Review the sheet beside the calculation, print through a local
+  window or download a standalone HTML and the existing CSV. Editing
+  inputs or invalidating the linked source withdraws the sheet.
+- The shared path covers system head loss, pump duty, structure screening,
+  rated flow controls, Formula A, treatment design flows and storage
+  routing. Pump duty sheets record the system branches as well as the
+  measured pump curve and power equations. The rated-control sheet
+  records its within-range interpolation equation.
+- Chromium and Firefox checked the existing calculation values, the
+  keyboard-accessible head-loss sheet, the same record in the opened local
+  print view and HTML download, focus restoration and disabled export
+  after an input change. The observer saw 101 Chromium and 100 Firefox
+  requests with no violations. Chromium produced a PDF from the print
+  view. The complete Python suite passed 454 tests and 111 subtests.

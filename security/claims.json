@@ -10,7 +10,8 @@
         "web/assets/analysis-worker.js",
         "web/assets/fastpath-worker.js",
         "web/assets/simulation-results-worker.js",
-        "SECURITY.md"
+        "SECURITY.md",
+        "web/assets/hydraulic-design.js"
       ],
       "scope": "Browser release architecture; policy is a requirement, not proof of all execution paths.",
       "limitation": "Runtime observations cover exercised flows; compromised code or endpoints remain outside this statement.",
@@ -41,7 +42,8 @@
         "web/assets/precision-workbench.js",
         "web/assets/analysis-worker.js",
         "web/assets/simulation-results-worker.js",
-        "web/assets/local-security-diagnostics.js"
+        "web/assets/local-security-diagnostics.js",
+        "web/assets/hydraulic-design.js"
       ],
       "scope": "Browser storage calls in the reviewed source.",
       "limitation": "Clearing site data can also clear other applications on the same origin. Closing a tab does not erase downloads, caches or saved layouts.",
@@ -135,6 +137,7 @@
     "docs/security-audit.md": "252e1499ae41235e4f0ad0059c3ffbc6b00d446b81986f34324e15c6cf4a99a3",
     "AGENTS.md": "4f54bc69115e55eacf5650a0375b5a175eb73d7e408a151af5fcff3086ab2e5c",
     "docs/security-governance.md": "e6e73035833f2f63ec2ab891456e65cbb2da054570b1d888c45c633b946de27b",
-    "web/assets/local-security-diagnostics.js": "caa3d49528be5aaee2dc72b7056092a0231baced75d33b6df6660f510d9f8b25"
+    "web/assets/local-security-diagnostics.js": "caa3d49528be5aaee2dc72b7056092a0231baced75d33b6df6660f510d9f8b25",
+    "web/assets/hydraulic-design.js": "ba6d4b7066f936d40391aaba8d162047670a35d3c94e1ceda8cdf1c99b7b247a"
   }
 }

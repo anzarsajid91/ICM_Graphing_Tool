@@ -34,8 +34,51 @@ try{
   await submit(system);await status(system,/System curve calculated/);
   const sheet=await downloaded(system);
   assert.match(sheet,/Total required head/);assert.match(sheet,/steady-fixed-darcy-v1/);
+  const openSheet=system.getByRole('button',{name:'Review calculation sheet',exact:true});
+  await openSheet.click();
+  const worksheet=system.getByRole('dialog',{name:'Pipe head loss and system curves calculation sheet',exact:true});
+  await worksheet.getByText('Calculation engine revision',{exact:true}).waitFor();
+  await worksheet.getByText('Pipe loss contributions',{exact:true}).waitFor();
+  assert.match(await worksheet.innerText(),/Hstatic.*V²\/\(2g\)/);
+  const [sheetDownload]=await Promise.all([page.waitForEvent('download'),
+    worksheet.getByRole('button',{name:'Download calculation HTML',exact:true}).click()]);
+  assert.equal(sheetDownload.suggestedFilename(),'hydra-pipe-system.html');
+  const printSheet=await fs.readFile(await sheetDownload.path(),'utf-8');
+  assert.match(printSheet,/Content-Security-Policy/);
+  assert.match(printSheet,/Pipe head loss and system curves/);
+  assert.match(printSheet,/Total required head \(m\)/);
+  assert.match(printSheet,/steady-fixed-darcy-v1/);
+  assert.doesNotMatch(printSheet,/<script\b/);
+  if(process.env.ICM_EVIDENCE_DIR){
+    await fs.mkdir(process.env.ICM_EVIDENCE_DIR,{recursive:true});
+    await worksheet.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-calculation-sheet-'+engine+'.png'});
+  }
+  await page.evaluate(()=>{
+    const open=window.open;
+    window.open=(...args)=>{
+      const popup=open.apply(window,args);
+      if(popup)popup.print=()=>{popup.document.body.dataset.printed='yes';};
+      return popup;
+    };
+  });
+  const [printTab]=await Promise.all([context.waitForEvent('page'),
+    worksheet.getByRole('button',{name:'Print calculation sheet',exact:true}).click()]);
+  await printTab.locator('body[data-printed="yes"]').waitFor({state:'attached'});
+  assert.equal(printTab.url(),'about:blank');
+  assert.match(await printTab.locator('main').innerText(),/Total required head \(m\)/);
+  if(engine==='chromium'&&process.env.ICM_EVIDENCE_DIR){
+    const pdf=await printTab.pdf({preferCSSPageSize:true,path:process.env.ICM_EVIDENCE_DIR+'/v3-calculation-sheet.pdf'});
+    assert.equal(pdf.subarray(0,5).toString(),'%PDF-');
+  }
+  await printTab.close();
+  await page.keyboard.press('Escape');await worksheet.waitFor({state:'hidden'});
+  assert(await openSheet.evaluate(button=>document.activeElement===button));
+  await openSheet.click();
+  await worksheet.getByRole('button',{name:'Close',exact:true}).click();
+  await worksheet.waitFor({state:'hidden'});
   await system.getByRole('button',{name:'Add row'}).click();
   assert.equal(await system.getByRole('button',{name:'Download calculation CSV'}).isDisabled(),true);
+  assert(await openSheet.isDisabled());
   await system.getByRole('button',{name:'Remove pipe branches row 2',exact:true}).click();
   await page.getByRole('tab',{name:'Pump duty',exact:true}).click();
   const pump=page.locator('#tab-pump-duty'), pumpForm=pump.locator('form');
@@ -78,6 +121,8 @@ try{
   await submit(pump);await status(pump,/No intersection within/);
   const pumpAudit=await downloaded(pump);
   assert.match(pumpAudit,/synthetic-pump-curve\.csv/);assert.match(pumpAudit,/Source SHA-256/);
+  assert.match(pumpAudit,/System stage/);
+  assert.match(pumpAudit,/Pwater = ρgQH/);
   assert.match(pumpAudit,/"Flow source column","Rate","m³\/h"/);
   assert.match(pumpAudit,/"Head source column","Head","ft"/);
   await pumpForm.locator('[name=head]').nth(1).fill('2');

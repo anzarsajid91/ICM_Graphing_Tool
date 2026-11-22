@@ -63,6 +63,10 @@
     "web/assets/design-system.js": {
       "sha256": "96774028ef1c06236b7f4106cb316a1480f9c1af5d974d21f875f8573f0c08c6",
       "review": "Reviewed fixed Inter 4.1 WOFF2 download only, resolved against this static script URL, same-origin mode, credentials omitted, no referrer, no input-derived URL, headers or body. Download occurs only for explicit local exports; font bytes become an in-memory data URL embedded in local HTML/SVG. No data transmission or external font service. Binary from pinned official rsms/inter tag commit, SIL OFL licence and exact sizes/hashes reviewed in vendor manifest. Selection motion review: the new helper measures DOM geometry and animates an aria-hidden indicator. The existing fixed font URL, same-origin credentials policy, and explicit report export entry points are unchanged. The helper adds no network call or storage operation."
+    },
+    "web/assets/hydraulic-design.js": {
+      "sha256": "ba6d4b7066f936d40391aaba8d162047670a35d3c94e1ceda8cdf1c99b7b247a",
+      "review": "The calculation sheet preview uses DOM text and audited local result elements. The print action opens a fixed blank local window from a user gesture, removes its opener and populates it with inert nodes. The downloaded HTML has a restrictive local document policy, fixed embedded CSS and no scripts, links or resource references. Local input and result data are never part of the window address or a network request. CSV and HTML use fixed names and the existing explicit Blob download. The preview and its result snapshots are kept only in memory."
     }
   }
 }

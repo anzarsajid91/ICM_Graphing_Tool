@@ -163,21 +163,103 @@ function panel(id,title,description) {
   article.append(intro);root.replaceChildren(article);
   return article;
 }
+
+const sheetStyle = `
+  @page{size:A4 landscape;margin:14mm}
+  body{font:14px/1.45 system-ui,sans-serif;color:#172935;margin:24px}
+  main{margin:auto;max-width:1120px}
+  h1{font-size:24px}h2{font-size:17px;margin-top:1.5em;break-after:avoid}
+  p{overflow-wrap:anywhere}svg{max-width:100%;height:auto;break-inside:avoid}
+  table{width:100%;border-collapse:collapse;margin:1em 0;font-variant-numeric:tabular-nums}
+  caption,th{text-align:left;font-weight:600}
+  th,td{vertical-align:top;border-bottom:1px solid #ced7df;padding:5px;overflow-wrap:anywhere}
+  thead{display:table-header-group}tr{break-inside:avoid}
+  @media print{body{margin:0;font-size:9pt}th,td{padding:3px}}
+`;
+
+function sheetInputs(form) {
+  return [...form.elements].flatMap(control => {
+    const label=control.getAttribute("aria-label");
+    if (!label||control.disabled||!control.matches("input:not([type=file]),select")) return [];
+    const value=control.type==="checkbox"?(control.checked?"Yes":"No"):
+      control.selectedOptions?.[0]?.textContent||control.value||"Unavailable";
+    return [[label,value]];
+  });
+}
+
+function calculationSheet(snapshot,content) {
+  const paper=element("main"),audit=element("table");
+  const auditBody=audit.createTBody();
+  for (const record of snapshot.rows) {
+    const row=auditBody.insertRow();
+    for (const value of record) row.insertCell().textContent=value==null?"Unavailable":String(value);
+  }
+  paper.append(element("h1",snapshot.title),element("p",snapshot.summary),
+    table(["Calculation identity","Value"],snapshot.identity),
+    element("h2","Reviewed inputs"),table(["Input","Value"],snapshot.inputs),
+    element("h2","Results and applicability"),content.cloneNode(true),
+    element("h2","Equations and audit record"),audit,
+    element("p","Hydra Bench · Anzar Sajid"));
+  return paper;
+}
+
+function standaloneSheet(snapshot,paper) {
+  const file=document.implementation.createHTMLDocument(snapshot.title);
+  file.documentElement.lang="en";
+  const encoding=element("meta");encoding.setAttribute("charset","utf-8");
+  const policy=element("meta");policy.httpEquiv="Content-Security-Policy";
+  policy.content="default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'";
+  file.head.prepend(encoding,policy);
+  file.head.append(element("style",sheetStyle));
+  file.body.append(paper.cloneNode(true));
+  return file;
+}
+
 function results(article,form,calculate) {
   const actions = element("div");actions.className = "actions";
   const submit = element("button","Calculate");submit.type = "submit";submit.className = "primary";
   const status = element("p");status.setAttribute("role","status");
   const content = element("div");
+  const title=(form.querySelector("h3")||article.querySelector("h2")).textContent+" calculation sheet";
+  const dialog=element("dialog"),paper=element("div"),sheetActions=element("div"),sheetStatus=element("p");
+  dialog.setAttribute("aria-label",title);dialog.className="hb-calculation-sheet";
+  sheetActions.className="actions";sheetStatus.setAttribute("role","status");
   let generation = 0, downloadable = null;
   const save = action("Download calculation CSV",() => {
     if (!downloadable) return;
     const csv = downloadable.rows.map(row=>row.map(value=>ICMSafeCSV.cell(value ?? "")).join(",")).join("\r\n");
     downloadBlob(downloadable.filename,csv,"text/csv");
   });
-  save.disabled = true;
-  actions.append(submit,save);form.append(actions);article.append(form,status,content);
+  const review=action("Review calculation sheet",()=>{
+    if(!downloadable)return;
+    sheetStatus.textContent="";
+    paper.replaceChildren(calculationSheet(downloadable,content));
+    dialog.showModal();
+  });
+  const downloadSheet=action("Download calculation HTML",()=>{
+    if(!downloadable||!paper.firstElementChild)return;
+    const file=standaloneSheet(downloadable,paper.firstElementChild);
+    downloadBlob(downloadable.filename.replace(/\.csv$/,".html"),"<!doctype html>"+file.documentElement.outerHTML,"text/html");
+  });
+  const print=action("Print calculation sheet",()=>{
+    if(!downloadable||!paper.firstElementChild)return;
+    const tab=window.open("","_blank");
+    if(!tab){sheetStatus.textContent="Allow the local print window or download the HTML sheet.";return;}
+    tab.opener=null;
+    const file=standaloneSheet(downloadable,paper.firstElementChild);
+    tab.document.head.replaceChildren(...file.head.childNodes);
+    tab.document.body.replaceChildren(...file.body.childNodes);
+    tab.document.documentElement.lang="en";
+    tab.focus();tab.print();
+  });
+  const close=action("Close",()=>dialog.close());
+  sheetActions.append(downloadSheet,print,close);dialog.append(sheetActions,sheetStatus,paper);
+  dialog.addEventListener("close",()=>{paper.replaceChildren();if(!review.disabled)review.focus();});
+  save.disabled = review.disabled = true;
+  actions.append(submit,save,review);form.append(actions);article.append(form,status,content,dialog);
   function invalidate() {
-    generation++;downloadable = null;save.disabled = true;
+    generation++;downloadable = null;save.disabled = review.disabled = true;
+    if(dialog.open)dialog.close();
     if (content.childNodes.length || status.textContent) status.textContent = "Inputs changed. Calculate to refresh.";
     content.replaceChildren();
   }
@@ -185,15 +267,21 @@ function results(article,form,calculate) {
   form.addEventListener("change",invalidate);
   form.addEventListener("submit",async event => {
     event.preventDefault();
-    const id = ++generation;
-    submit.disabled = true;save.disabled = true;content.replaceChildren();downloadable = null;
+    const id = ++generation,inputs=sheetInputs(form);
+    submit.disabled = true;save.disabled = review.disabled = true;content.replaceChildren();downloadable = null;
     status.textContent = "Calculating in the local worker…";
     try {
       const result = await calculate();
       if (id !== generation) return;
       content.replaceChildren(...result.content);
-      downloadable = {filename:result.filename, rows:[["Build",buildToken],...result.rows]};
-      save.disabled = false;status.textContent = result.summary;
+      const version=document.querySelector('meta[name="hydra-bench-version"]')?.content||"Unavailable";
+      const method=result.rows.find(([key])=>key==="Method")?.[1]??"Unavailable";
+      downloadable = {filename:result.filename,title,inputs,summary:result.summary,
+        identity:[["Hydra Bench version",version],["Application revision",buildToken],
+          ["Calculation engine revision",window.__ICM_WORKBENCH__.workerBuildToken||"Unavailable"],
+          ["Method version",method],["Calculated at (UTC)",new Date().toISOString()]],
+        rows:[["Build",buildToken],...result.rows]};
+      save.disabled = review.disabled = false;status.textContent = result.summary;
     } catch(error) {
       if (id === generation) status.textContent = error.message;
     } finally {
@@ -615,6 +703,7 @@ function mountStructures(worker) {
     return {content:[table(["Quantity","Value"],metrics,"Rated discharge"),
       chart([{label:"Supplied rating",points,color:"#136b7f",markers:true}],"Head difference (m)","Discharge (m³/s)")],
       summary:message,filename:"hydra-control-rating.csv",rows:[["Method",r.method],["Rating source",provenance],
+        ["Equation","Q = Q₁ + (Q₂ − Q₁)(|ΔH| − H₁)/(H₂ − H₁) within a rated segment. Apply the reviewed flow direction."],
         ["Interpolation",r.interpolation],["Reversibility confirmed",r.reversible],...metrics,["Head difference (m)","Discharge (m³/s)"],...points]};
   });
 }
@@ -675,8 +764,9 @@ function mount(navigate) {
       throw new Error("Enter valid pipe branches and static head under System curve first.");
     }
     const {efficiency,...args}=pumpControls.values();
-    const supplied=points.values().map(p=>[p.flow,p.head]);
-    const r=await worker("pump_system_duty",{...args,static_head_m:read(staticHead),stages:design.stages(),
+    const supplied=points.values().map(p=>[p.flow,p.head]),stages=design.stages();
+    const staticHeadM=read(staticHead);
+    const r=await worker("pump_system_duty",{...args,static_head_m:staticHeadM,stages,
       points:supplied,efficiency:Number.isNaN(efficiency)?null:efficiency/100});
     const header=["Flow (m³/s)","Head (m)","Hydraulic power (kW)","Input power (kW)","Local slope indication"];
     const duties=r.duties.map(d=>[d.flow_m3_s,d.head_m,d.hydraulic_kw,d.input_kw,d.local_slope]);
@@ -685,9 +775,13 @@ function mount(navigate) {
       element("p","Slope indicates the local residual trend. Review manufacturer operating limits and system dynamics before selecting a duty point.")],
       summary:duties.length?duties.length+" supported intersection(s) in the supplied range.":"No intersection within the supplied pump range.",
       filename:"hydra-pump-duty.csv",rows:[["Method",r.method],["Reference",pumpReference],["Interpolation","Linear pump segments within measured range"],
+        ["Equations","Hpump(Q) = Hstatic + RQ² at an intersection. Pwater = ρgQH/1000 kW. Pinput = Pwater/η."],
         ...curveProvenance(supplied),
-        ["Static head (m)",read(staticHead)],["Arrangement",args.arrangement],["Identical pumps",args.pump_count],["Density (kg/m³)",args.density_kg_m3],
+        ["Static head (m)",staticHeadM],["Arrangement",args.arrangement],["Identical pumps",args.pump_count],["Density (kg/m³)",args.density_kg_m3],
         ["Overall efficiency (%)",Number.isNaN(efficiency)?null:efficiency],header,...duties,
+        ["System stage","Branch","Diameter (m)","Length (m)","Darcy f","Fittings K","Entrance K","Exit K"],
+        ...stages.flatMap((branches,stage)=>branches.map((pipe,branch)=>[stage+1,branch+1,pipe.diameter_m,pipe.length_m,
+          pipe.darcy_factor,pipe.minor_k,pipe.entrance_k,pipe.exit_k])),
         ["Supplied single-pump flow (m³/s)","Supplied head (m)"],...supplied,
         ["System curve flow (m³/s)","Head (m)"],...r.system_curve,["Composite pump curve flow (m³/s)","Head (m)"],...r.pump_curve]};
   });
