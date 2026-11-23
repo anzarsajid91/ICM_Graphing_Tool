@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "records": [
+    {
+      "version": "v3.0.0 target",
+      "revision": "e8c3efdaae5bd369970a74383d21dd2fd07afc54",
+      "status": "candidate",
+      "scope": "Hydraulic design sheets, ICM export toolkit, verification and scenario evidence, revision comparison, expanded profiles and indexed annual playback. The v3 acceptance matrix still contains open requirements.",
+      "engineering": "477 local Python tests and 111 subtests passed in the calculation report milestone. The hosted Workbench run for this revision passed numerical, workflow and baseline checks. Method applicability is recorded in the engineering library.",
+      "security": "The revision passed security assurance, CodeQL, dependency and licence review, secret detection and data confidentiality. Private repository-wide alert inventories were inaccessible to the integration.",
+      "compatibility": "Hosted Chromium and Firefox browser jobs passed. The synthetic 81.6 MB annual result package and 10,001-asset schematic passed desktop playback locally.",
+      "limitations": "Ruby syntax, mocked API contracts and supported parser round-trips were checked. Licensed InfoWorks ICM runtime, Safari and mobile releases require separate evidence.",
+      "checks": [
+        {"label": "Hosted Workbench candidate evidence", "run": "45060706817"}
+      ]
+    },
+    {
+      "version": "v2.2.0",
+      "revision": "5882ebf60da8ee89d0ec10a0374b95fc548cc569",
+      "status": "production",
+      "scope": "Detailed and simplified network views, flow monitor location import, reviewed route long sections, pipe capacity handoffs and local saved reviews.",
+      "engineering": "The baseline rerun passed 353 Python tests and 111 subtests. The overview comparison verified retained nominal connectivity and the route checks used synthetic source lengths and levels.",
+      "security": "The live verifier recorded the expected build identity and integrity of the published HTTP resources. Repository-wide alert inventories are outside this evidence.",
+      "compatibility": "The v2.2 release evidence records Chromium and Firefox network review workflows and a synthetic 1,600-node desktop schematic fixture.",
+      "limitations": "Network overview expresses nominal topology. Capacity screening depends on the reviewed uniform-flow inputs and source coverage.",
+      "checks": [
+        {"label": "Independent production verification", "run": "44828848399"}
+      ]
+    }
+  ]
+}

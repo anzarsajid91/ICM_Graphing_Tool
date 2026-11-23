@@ -1,6 +1,7 @@
 from __future__ import annotations
 import csv
 import io
+import re
 from pathlib import Path
 import pandas as pd
 from .common import ParsedData,clean_numeric,detect_time_column,infer_quantity,canonical_unit,detect_unit
@@ -140,7 +141,7 @@ def parse_icm_hyd_csv(path):
         metadata["vertical_reference"]=reference
         metadata["source_unit_label"]=f"{unit} {reference}"
     return ParsedData(frame,"icm_hyd_p_datetime_csv",metadata,{**audit,"malformed_rows":malformed,"duplicate_timestamps":int(frame.timestamp.duplicated().sum()),"rows":len(frame)})
-def parse_tabular_csv(path):
+def _read_tabular_csv(path, **options):
     try:
         path=Path(path)
         if path.stat().st_size>2_000_000:
@@ -158,19 +159,26 @@ def parse_tabular_csv(path):
                              'utf-16le' if prefix[1::2].count(0)>len(prefix)//8 else 'utf-8')
             if dialect:
                 try:
-                    df=pd.read_csv(path,sep=dialect.delimiter,engine='c',encoding=source_encoding)
+                    df=pd.read_csv(path,sep=dialect.delimiter,engine='c',encoding=source_encoding,**options)
                 except UnicodeDecodeError:
-                    source_encoding='cp1252';df=pd.read_csv(path,sep=dialect.delimiter,engine='c',encoding=source_encoding)
+                    source_encoding='cp1252';df=pd.read_csv(path,sep=dialect.delimiter,engine='c',encoding=source_encoding,**options)
                 except pd.errors.ParserError:
                     dialect=None
             if not dialect:
                 text,source_encoding=_read_text(path)
-                df=pd.read_csv(io.StringIO(text),sep=None,engine="python")
+                df=pd.read_csv(io.StringIO(text),sep=None,engine="python",**options)
         else:
             text,source_encoding=_read_text(path)
-            df=pd.read_csv(io.StringIO(text),sep=None,engine="python")
+            df=pd.read_csv(io.StringIO(text),sep=None,engine="python",**options)
     except Exception as exc:raise ValueError(f"Could not parse tabular CSV: {exc}") from exc
-    df.columns=[str(c).strip() for c in df.columns]; tc=detect_time_column(df)
+    df.columns=[str(c).strip() for c in df.columns]
+    return df, source_encoding
+
+
+def parse_tabular_csv(path):
+    path=Path(path)
+    df,source_encoding=_read_tabular_csv(path)
+    tc=detect_time_column(df)
     if not tc:raise ValueError(f"Could not detect a timestamp column. Columns={list(df.columns)}")
     time_basis=_detect_time_basis(df[tc])
     if time_basis=="timezone-aware/unresolved":
@@ -179,8 +187,14 @@ def parse_tabular_csv(path):
         timestamps=pd.to_datetime(df[tc],errors="coerce",format="mixed",utc=True).dt.tz_localize(None)
     else:
         timestamps=_parse_timestamps(df[tc])
-    value_cols=[c for c in df.columns if c!=tc and pd.to_numeric(df[c],errors="coerce").notna().any()]
-    if not value_cols:raise ValueError("No numeric value columns found")
+    status_cols=[c for c in df.columns if c!=tc and re.search(r"\b(?:state|status|alarm|mode)\b",c.replace("_"," "),re.IGNORECASE)]
+    value_cols=[]
+    for column in df.columns:
+        if column==tc:continue
+        numeric=pd.to_numeric(df[column],errors="coerce")
+        if numeric.notna().any() and (column not in status_cols or not (df[column].notna() & numeric.isna()).any()):
+            value_cols.append(column)
+    if not value_cols and not status_cols:raise ValueError("No numeric value columns found")
     out=pd.DataFrame({"timestamp":timestamps}); audits={}; quantities={}; series_meta={}
     for c in value_cols:
         quantity=infer_quantity(c) or infer_quantity(path.stem)
@@ -211,6 +225,26 @@ def parse_tabular_csv(path):
             "unit_status":unit_status,
         }
     invalid=int(out.timestamp.isna().sum());out=out.dropna(subset=["timestamp"]).sort_values("timestamp")
-    return ParsedData(out,"tabular_csv",{"columns":value_cols,"quantity_by_column":quantities,"series_metadata":series_meta,"source_encoding":source_encoding,"time_basis":time_basis,"time_resolution_required":time_basis=="timezone-aware/unresolved","timestamp_convention":"instantaneous"},{ "invalid_timestamps":invalid,"duplicate_timestamps":int(out.timestamp.duplicated().sum()),"column_audit":audits,"rows":len(out)})
+    metadata={"columns":value_cols,"quantity_by_column":quantities,"series_metadata":series_meta,"source_encoding":source_encoding,"time_basis":time_basis,"time_resolution_required":time_basis=="timezone-aware/unresolved","timestamp_convention":"instantaneous"}
+    if status_cols:
+        metadata.update(status_columns=status_cols,status_timestamp_column=tc)
+    return ParsedData(out,"tabular_csv",metadata,{"invalid_timestamps":invalid,"duplicate_timestamps":int(out.timestamp.duplicated().sum()),"column_audit":audits,"rows":len(out)})
+
+
+def read_tabular_status(path, timestamp, column, missing_token=None):
+    """Read only the selected raw state column using the normal CSV delimiters and encodings."""
+    if Path(path).stat().st_size > 32 * 1024 * 1024:
+        raise ValueError("Select a state CSV up to 32 MiB for this transformation.")
+    names={timestamp,column}
+    frame,_=_read_tabular_csv(path,usecols=lambda name:str(name).strip() in names,dtype=str,keep_default_na=False)
+    if len(frame.columns)!=2 or set(frame.columns)!=names:
+        raise ValueError("Choose distinct, available state and timestamp columns.")
+    if _detect_time_basis(frame[timestamp])=="timezone-aware/unresolved":
+        raise ValueError("Resolve the state source to the confirmed project clock.")
+    times=pd.DatetimeIndex(_parse_timestamps(frame[timestamp])).as_unit("ns")
+    labels=[value if isinstance(value,str) and value.strip() and value!=missing_token else None for value in frame[column]]
+    return times,labels
+
+
 def parse_csv(path):
     p=Path(path);return parse_icm_hyd_csv(p) if is_icm_hyd_csv(p) else parse_tabular_csv(p)

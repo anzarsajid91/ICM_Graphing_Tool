@@ -22,3 +22,45 @@ const legacy=C.validateNetwork({schema:1,nodes,edges});assert.equal(legacy.schem
 assert.throws(()=>C.validateNetwork({...legacy,preferences:{...legacy.preferences,scenarios:'all'}}),/preferences/);
 assert.throws(()=>C.validateNetwork({...legacy,nodes:[{...nodes[0],review:{comment:'x',status:'made-up'}},...nodes.slice(1)]}),/review/i);
 console.log('Annual review: cycle-safe tracing/layout, pinned geometry, independent years/zero/missing, evidence health and legacy migration passed.');
+
+const mappedNetwork={nodes:[{id:'001',sourceName:'001',name:'Edited node',contextSource:true,type:'manhole'},
+  {id:'manual',name:'Manual node',type:'manhole'}],edges:[
+  {id:'K1',sourceName:'001',name:'Edited link',contextSource:true},
+  {id:'K2',sourceName:'001.B',contextSource:true},{id:'K3',sourceName:'001.B',contextSource:true},
+  {id:'K4',sourceName:'001.C',contextSource:true}]};
+const reviewItems=[['node','001'],['link','001'],['link','001.B'],['unclassified','001'],
+  ['node','manual'],['node','Edited node'],['link','001.C'],['link','K4']].map(([assetKind,assetId])=>({assetKind,assetId}));
+const hotspots=R.mapDetrimentHotspots(mappedNetwork,reviewItems);
+assert.deepEqual([...hotspots.mapped.keys()],['["node","001"]','["edge","K1"]']);
+assert.equal(hotspots.ambiguous.length,3,'Duplicate source IDs and duplicate report aliases stay unresolved');
+assert.deepEqual(Array.from(hotspots.unmatched,row=>row.assetId),['manual','Edited node']);
+assert.equal(hotspots.unclassified.length,1,'Unclassified report evidence stays in the register');
+console.log('Detriment hotspot matching preserves original typed identity and withholds ambiguous or unsupported matches.');
+assert.equal(R.recordedFlowDirection(0.25, 'upstream-to-downstream'), 'forward');
+assert.equal(R.recordedFlowDirection(-0.25, 'upstream-to-downstream'), 'reverse');
+assert.equal(R.recordedFlowDirection(-0.25, 'downstream-to-upstream'), 'forward');
+assert.equal(R.recordedFlowDirection(0, 'upstream-to-downstream'), 'still');
+assert.equal(R.recordedFlowDirection(null, 'upstream-to-downstream'), null);
+assert.equal(R.recordedFlowDirection(-0.25, ''), null);
+assert.equal(R.groundFreeboard(10.5,10.25),.25);
+assert.equal(R.groundFreeboard(10.5,10.75),-.25);
+assert.equal(R.groundFreeboard(0,0),0);
+assert.equal(R.groundFreeboard(null,10),null);
+assert.equal(R.groundFreeboard(10,null),null);
+const conduit={sourceAttributes:{table:'hw_conduit'},icm:{table:'hw_conduit',gradient:0,conduit_width:600,conduit_height:450,
+  conduit_length:50,us_invert:8.2,ds_invert:8.7}};
+assert.equal(R.sourceConduitLayer(conduit,'gradient').value,0);
+assert.equal(R.sourceConduitLayer(conduit,'width').value,600);
+assert.equal(R.sourceConduitLayer(conduit,'height').value,450);
+assert.equal(R.sourceConduitLayer(conduit,'height').unit,'mm');
+conduit.icm.gradient=null;
+assert.equal(R.sourceConduitLayer(conduit,'gradient').value,-.01);
+assert.match(R.sourceConduitLayer(conduit,'gradient').basis,/invert/);
+conduit.icm.ds_invert=null;
+assert.equal(R.sourceConduitLayer(conduit,'gradient').value,null);
+assert.equal(R.sourceConduitLayer({icm:{table:'hw_pump'}},'width'),null);
+assert.equal(R.capacityUtilisation(-.4,.5),80);
+assert.equal(R.capacityUtilisation(0,.5),0);
+assert.equal(R.capacityUtilisation(1,0),null);
+assert.equal(R.capacityUtilisation(null,1),null);
+assert.equal(R.capacityUtilisation(1,null),null);

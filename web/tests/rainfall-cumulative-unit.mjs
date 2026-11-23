@@ -42,6 +42,24 @@ vm.runInContext(`state.files.set('i',{id:'i',status:'ready',virtualPath:'/i.R',d
 await refresh('icm:source-pool-changed');
 const quality=calls.findLast(x=>x.name==='multi_gauge_rainfall_result');
 assert.deepEqual(JSON.parse(quality.args.sources_json).map(x=>x.rainfall_semantics),['incremental_depth','intensity']);
+const routinePlot=sandbox.Plotly.react;
+let releaseEngine;
+sandbox.Plotly.react=async(...args)=>{
+  await routinePlot(...args);
+  vm.runInContext('engine.ready=false; engineBootPromise=globalThis.pendingRainfallWorker;',sandbox);
+};
+sandbox.pendingRainfallWorker=new Promise(resolve=>{releaseEngine=resolve;});
+vm.runInContext(`const realRainCall=engine.call;
+engine.call=async(...args)=>{if(!engine.ready)throw new Error('Reference Python worker is not ready.');return realRainCall(...args);};`,sandbox);
+const qualityCallsBeforeRestart=calls.filter(x=>x.name==='multi_gauge_rainfall_result').length;
+for(const callback of listeners.get('icm:source-pool-changed'))callback();
+scheduled();await new Promise(setImmediate);
+assert.equal(calls.filter(x=>x.name==='multi_gauge_rainfall_result').length,qualityCallsBeforeRestart);
+assert.equal(sandbox.window.__ICM_WORKBENCH__.errors.length,0,'Worker restart must wait instead of publishing a rainfall error');
+sandbox.Plotly.react=routinePlot;
+vm.runInContext('engine.ready=true;',sandbox);releaseEngine();await new Promise(setImmediate);
+assert.equal(calls.filter(x=>x.name==='multi_gauge_rainfall_result').length,qualityCallsBeforeRestart+1);
+assert.ok(sandbox.window.__ICM_WORKBENCH__.lastCumulativeRainfall);
 vm.runInContext(`state.rainfallSemanticsOverrides.set(sourceKey('r','rainfall'),'intensity')`,sandbox);
 await refresh('icm:rainfall-interpretation-changed');
 assert.equal(calls.filter(x=>x.name==='cumulative_rainfall_series').at(-2).args.rainfall_semantics,'intensity');

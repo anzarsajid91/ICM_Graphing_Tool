@@ -635,10 +635,12 @@ async function cancelCurrentOperation(){
   const droppedPending=invalidatePendingSourceImports();
   try{
     const readyItems=[...state.files.values()].filter(item=>item.status==='ready');
-    const restartPromise=engine.restart(readyItems);
+    const restartPromise=engine.restart(readyItems).then(async info=>{
+      await restoreSeriesInterpretations();
+      return info;
+    });
     engineBootPromise=restartPromise;
     const info=await restartPromise;
-    await restoreSeriesInterpretations();
     diagnostic.status='ready';
     diagnostic.engineReadyAt=performance.now();
     setEngineStatus('Reference Python worker ready · files remain local','ready');
@@ -1271,12 +1273,13 @@ function renderPool(){
     const statusLabel={reading:'Reading…','waiting-engine':'Waiting for advanced engine…','preview-ready':'Preview ready · validating…',validating:'Preview ready · validating…',restoring:'Restoring Python source…',ready:'Ready',error:'Error','preview-only':'Preview only · advanced unavailable'}[item.status]||item.status;
     const reportWarning=p.metadata?.source_kind==='detriment_report'&&Boolean(audit.numeric_date_cells||audit.date_only_boundaries);
     const reportAudit=p.metadata?.source_kind==='detriment_report'?String(audit.report_rows||p.rows)+' report rows'+(audit.numeric_date_cells?' · '+audit.numeric_date_cells+' date-formatted numeric cells':'')+(audit.date_only_boundaries?' · '+audit.date_only_boundaries+' date-only boundary (00:00)':''):null;
-    const auditText=item.status==='error'?(item.error||'Failed'):(reportAudit||(item.preview&&item.preview.eligible&&item.status!=='ready'?'FastPath structural preview':sent+' sentinel; '+malformed+' malformed/invalid'));
+    const auditText=item.status==='error'?conciseErrorMessage(item.error||'Import failed.'):(reportAudit||(item.preview&&item.preview.eligible&&item.status!=='ready'?'FastPath structural preview':sent+' sentinel; '+malformed+' malformed/invalid'));
+    const auditClass=item.status==='error'?'audit-bad':(sent||malformed||reportWarning||item.fastpathReconciliation?.status==='mismatch')?'audit-warn':'audit-good';
     const reconcile=item.fastpathReconciliation&&item.fastpathReconciliation.status==='mismatch'?' · preview mismatch ⚠':item.fastpathReconciliation&&item.fastpathReconciliation.status==='matched'?' · preview validated':'';
     const status=item.status==='error'?'<span class="audit-bad">Error</span>':esc(statusLabel+reconcile)+(item.status==='ready'&&Number.isFinite(item.loadSeconds)?' · '+fmt(item.loadSeconds,1)+' s':'');
     const removeDisabled=TRANSIENT_SOURCE_STATUSES.has(item.status);
     const removeTitle=removeDisabled?'Finish importing before removing':'Remove '+item.displayName;
-    return '<tr data-source-id="'+esc(item.id)+'"><td><div class="file-name">'+esc(item.displayName)+'</div><small>'+mb(item.file.size)+' · SHA '+(item.hash?item.hash.slice(0,10):'…')+'</small></td><td>'+esc(p.format||'—')+'</td><td>'+(p.rows??'—')+'</td><td>'+period+'</td><td class="'+((sent||malformed||reportWarning||(item.fastpathReconciliation&&item.fastpathReconciliation.status==='mismatch'))?'audit-warn':'audit-good')+'">'+esc(auditText)+'</td><td>'+status+'</td><td class="source-remove-cell"><button type="button" class="source-remove-btn" data-source-remove="'+esc(item.id)+'" aria-label="'+esc(removeTitle)+'" title="'+esc(removeTitle)+'" '+(removeDisabled?'disabled':'')+'>×</button></td></tr>';
+    return '<tr data-source-id="'+esc(item.id)+'"><td><div class="file-name">'+esc(item.displayName)+'</div><small>'+mb(item.file.size)+' · SHA '+(item.hash?item.hash.slice(0,10):'…')+'</small></td><td>'+esc(p.format||'—')+'</td><td>'+(p.rows??'—')+'</td><td>'+period+'</td><td class="'+auditClass+'">'+esc(auditText)+'</td><td>'+status+'</td><td class="source-remove-cell"><button type="button" class="source-remove-btn" data-source-remove="'+esc(item.id)+'" aria-label="'+esc(removeTitle)+'" title="'+esc(removeTitle)+'" '+(removeDisabled?'disabled':'')+'>×</button></td></tr>';
   }).join('');
   document.querySelectorAll('[data-source-remove]').forEach(button=>button.addEventListener('click',()=>void guarded('poolSummary',()=>removeSourceById(button.dataset.sourceRemove))));
 }
@@ -1336,7 +1339,7 @@ function renderModelColourControls(){
   document.querySelectorAll('.model-colour').forEach(x=>x.addEventListener('input',()=>{state.modelColours[x.dataset.key]=x.value;guarded('mappingStatus',drawTimeChart);}));
 }
 
-async function applyMapping(){return window.ICMGraph?.applyMapping();}
+async function applyMapping(options){return window.ICMGraph?.applyMapping(options);}
 async function seriesFor(key,maxPoints=25000){const x=mappingObject(key);if(!x)return null;return {...x,data:await engine.call('series_data',{path:x.item.virtualPath,column:x.col,max_points:maxPoints})};}
 function inEvent(ts){const t=modelClock(ts);return state.rainEvents.some(e=>t>=modelClock(e.start)&&t<=modelClock(e.end));}
 function graphShapes(){const shapes=[],a=nullableNumber($('obsThreshold').value),b=nullableNumber($('modelThreshold').value);if(a!==null)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:a,y1:a,line:{color:$('threshold1Color').value,width:2,dash:'dash'}});if(b!==null)shapes.push({type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:b,y1:b,line:{color:$('threshold2Color').value,width:2,dash:'dash'}});if($('showEventOverlay').checked)for(const e of state.rainEvents)shapes.push({type:'rect',xref:'x',x0:e.start,x1:e.end,yref:'paper',y0:0,y1:1,fillcolor:$('rainEventColor').value,opacity:.1,line:{width:0},layer:'below'});return shapes;}
@@ -1463,15 +1466,14 @@ async function restoreAnalysisWorkerAfterBackgroundInterrupt(reason='Interactive
     time:new Date().toISOString()
   };
   const work=(async()=>{
-    const restartPromise=engine.restart(readyItems);
-    engineBootPromise=restartPromise;
-    await restartPromise;
+    await engine.restart(readyItems);
     // Quantity reinterpretation is held in the authoritative Python cache as
     // well as JS metadata. A worker restart must faithfully restore those
     // engineer-assigned semantics before any graph/statistics request proceeds.
     await restoreSeriesInterpretations();
     return true;
   })();
+  engineBootPromise=work;
   backgroundComparisonInterruptPromise=work.finally(()=>{
     if(backgroundComparisonInterruptPromise)backgroundComparisonInterruptPromise=null;
   });
@@ -2087,6 +2089,14 @@ function workspaceSeries(key){
   const domain=window.ICMProjectRegistry?.getSeries(key);
   return {sha256:x.item.hash,display_name:x.item.displayName,file_name:x.item.file.name,column:x.col,asset_id:domain?.assetId||null,role:domain?.role||null,quantity:domain?.quantity||seriesQuantity(x.item,x.col)||null,unit:domain?.unit||seriesUnit(x.item,x.col)||null,reference:seriesReference(x.item,x.col)||null};
 }
+const reportSectionKeys=['time-series','spill-storage','comparison','survey','network','calculations'];
+function reportSectionOrder(order){
+  const known=Array.isArray(order)?order.filter(key=>reportSectionKeys.includes(key)):[];
+  return [...new Set([...known,...reportSectionKeys])];
+}
+function arrangeReportSections(sections,order){
+  return reportSectionOrder(order).map(key=>sections[key]||'').join('');
+}
 function reportOptions(){
   const checked=id=>$(id)?Boolean($(id).checked):true;
   const selectedScenarioKeys=$('reportScenarioSelect')?[...$('reportScenarioSelect').selectedOptions].map(o=>o.value):[];
@@ -2096,6 +2106,10 @@ function reportOptions(){
     include_spills_storage:checked('reportIncludeSpillsStorage'),
     include_comparison:checked('reportIncludeComparison'),
     include_survey:checked('reportIncludeSurvey'),
+    include_network:Boolean($('reportIncludeNetwork')?.checked),
+    include_calculations:Boolean($('reportIncludeCalculations')?.checked),
+    calculation_sheets:diagnostic.reportSheetChoices?.()||[],
+    section_order:reportSectionOrder($('reportSectionList')?[...$('reportSectionList').children].map(row=>row.dataset.reportSection):null),
     scatter_scale:$('reportScatterScale')?.value||'current',
     scenarios:selectedScenarios,
   };
@@ -2147,6 +2161,9 @@ async function applyWorkspace(w){
   window.ICMNetworkSchematic?.restore?.(state.networkSchematicWorkspace);
   const stamped=[w.analysis?.analysis_start,w.analysis?.analysis_end,...(w.exclusions||[]).flatMap(row=>[row.start,row.end])].filter(Boolean);
   if(stamped.some(value=>/(?:Z|[+-]\d{2}:?\d{2})$/i.test(String(value))))throw new Error('Workspace contains timezone-aware assessment bounds. Convert them explicitly to the common model-clock time basis before importing.');
+  window.ICMProjectRegistry?.restoreDerived(w.project_registry?.derived);
+  window.ICMProjectRegistry?.restoreSourceReviews(w.project_registry?.source_quality_reviews);
+  window.dispatchEvent(new Event('icm:assessment-context-restored'));
   ++state.rainEventGeneration;state.rainEvents=[];state.rainEventResult=null;state.rainEventSignature=null;
   ++state.dwfGeneration;state.dwfResult=null;state.dwfSignature=null;
   ++state.healthGeneration;state.healthResult=null;state.healthSignature=null;
@@ -2226,6 +2243,10 @@ async function applyWorkspace(w){
   if($('reportIncludeSpillsStorage')&&ro.include_spills_storage!==undefined)$('reportIncludeSpillsStorage').checked=Boolean(ro.include_spills_storage);
   if($('reportIncludeComparison')&&ro.include_comparison!==undefined)$('reportIncludeComparison').checked=Boolean(ro.include_comparison);
   if($('reportIncludeSurvey')&&ro.include_survey!==undefined)$('reportIncludeSurvey').checked=Boolean(ro.include_survey);
+  if($('reportIncludeNetwork'))$('reportIncludeNetwork').checked=ro.include_network===true;
+  if($('reportIncludeCalculations'))$('reportIncludeCalculations').checked=ro.include_calculations===true;
+  diagnostic.restoreReportSheetChoices?.(ro.calculation_sheets);
+  diagnostic.restoreReportSectionOrder?.(ro.section_order);
   if($('reportScatterScale')&&ro.scatter_scale)$('reportScatterScale').value=ro.scatter_scale;
   if($('reportScenarioSelect')&&Array.isArray(ro.scenarios)){
     const restoredScenarioKeys=ro.scenarios.map(findSeriesFromWorkspace).filter(Boolean);
@@ -2237,7 +2258,7 @@ async function applyWorkspace(w){
   const expected=(w.source_references||[]).length;
   const matched=(w.source_references||[]).filter(r=>[...state.files.values()].some(x=>x.hash===r.sha256)).length;
   $('workspaceStatus').textContent=`Restoring workspace… ${matched}/${expected} source fingerprint(s) matched; rebuilding mappings and graph.`;
-  if(!window.ICMDetriment?.reportOnlyWorkspace(w))await applyMapping();
+  if(!window.ICMDetriment?.reportOnlyWorkspace(w))await applyMapping({allowEmpty:true});
   // Rebuild report scenario choices only after the restored model mapping is
   // authoritative, then re-apply the persisted scenario subset by fingerprint.
   $('modelSelect')?.dispatchEvent(new Event('change',{bubbles:true}));
@@ -2299,7 +2320,8 @@ function reportCss(landscape=false){
   return (window.HydraDesign?.reportFontCss()||'')+'h1,h2,h3,h4,strong,b,button{font-weight:600}th{font-weight:500}body{font-weight:400;font-variant-numeric:tabular-nums}:root{--ink:#202221;--muted:#626660;--line:#e4e5e3;--soft:#f5f5f3;--accent:#202221}*{box-sizing:border-box}html{background:#f0f0ee}body{margin:0;color:var(--ink);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:13px;line-height:1.45;background:#fff}.report{max-width:1180px;margin:0 auto;padding:30px 34px 42px}.report-header{border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:22px;display:flex;justify-content:space-between;gap:24px;align-items:flex-end}.report-header h1{font-size:24px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em}.report-header p{margin:0;color:var(--muted)}.report-meta{text-align:right;color:var(--muted);font-size:12px;white-space:nowrap}h2{font-size:18px;margin:26px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:14px;margin:18px 0 8px}.note{background:var(--soft);border-left:4px solid var(--accent);padding:10px 12px;margin:12px 0 18px}.report-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.card{min-width:0;border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#fff;break-inside:avoid}.card h3{margin:0 0 8px}.table-wrap{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin:8px 0 14px}table{border-collapse:collapse;width:100%;min-width:620px}th,td{padding:7px 9px;border-bottom:1px solid #e8edf1;text-align:left;vertical-align:top;font-size:11.5px}th{background:var(--soft);color:#626660;text-transform:none;letter-spacing:0;font-size:10.5px}tr:last-child td{border-bottom:0}.figure{margin:12px 0 20px;break-inside:avoid}.report-plot{width:100%;min-width:0}.report-figure-metrics{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}.report-figure-metrics-title{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:none;color:var(--muted);margin:0 0 6px}.report-figure-metrics .graph-statistics-note{margin:0 0 7px}.report-figure-metrics .table-wrap{margin:0}.report-figure-metrics .graph-stats-compact{font-size:10.5px}.graph-stats-compact small{display:block;max-width:240px;overflow-wrap:anywhere}.graph-statistics-note{font-size:12px}.figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#fff}.figure figcaption{font-size:11.5px;color:var(--muted);margin-top:6px}.summary-box{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0}.summary-box>div{border:1px solid var(--line);border-radius:10px;padding:9px;background:var(--soft)}.summary-box strong{display:block;font-size:16px}.summary-box span{font-size:10.5px;color:var(--muted)}.swatch{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.14)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f9fb;border:1px solid var(--line);border-radius:6px;padding:10px;font:11px/1.45 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}.hash{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:10.5px;overflow-wrap:anywhere}.muted{color:var(--muted)}.report-page{break-after:page;page-break-after:always}.report-page:last-child{break-after:auto;page-break-after:auto}.report-footer{border-top:1px solid var(--line);margin-top:30px;padding-top:10px;color:var(--muted);font-size:11px;display:flex;justify-content:space-between;gap:12px}@media(max-width:760px){.report{padding:20px 16px}.report-header{display:block}.report-meta{text-align:left;margin-top:10px}.report-grid,.summary-box{grid-template-columns:1fr}table{min-width:560px}}@media print{html{background:#fff}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.report{max-width:none;padding:0}.card,.figure,.table-wrap{break-inside:avoid}.period-figure{break-inside:auto}.period-figure .report-plot{break-inside:avoid}.period-figure .report-figure-metrics{break-before:page;page-break-before:always;break-inside:avoid}.period-figure figcaption{break-inside:avoid}}@page{size:'+(landscape?'A4 landscape':'A4 portrait')+';margin:12mm}';
 }
 function reportShell(title,subtitle,body,landscape=false){
-  return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+reportCss(landscape)+'</style></head><body><main class="report"><header class="report-header"><div><h1>'+esc(title)+'</h1><p>'+esc(subtitle)+'</p></div><div class="report-meta">Generated '+esc(new Date().toLocaleString())+'<br>Hydra Bench</div></header>'+body+'<footer class="report-footer"><span>Engineering review output · source data processed locally in the browser</span><span>HydraBench · Originally created by Anzar Sajid · © 2026 Anzar Sajid and other applicable rights holders</span></footer></main></body></html>';
+  const policy=`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; font-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">`;
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8">'+policy+'<meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+reportCss(landscape)+'</style></head><body><main class="report"><header class="report-header"><div><h1>'+esc(title)+'</h1><p>'+esc(subtitle)+'</p></div><div class="report-meta">Generated '+esc(new Date().toLocaleString())+'<br>Hydra Bench</div></header>'+body+'<footer class="report-footer"><span>Engineering review output · source data processed locally in the browser</span><span>HydraBench · Originally created by Anzar Sajid · © 2026 Anzar Sajid and other applicable rights holders</span></footer></main></body></html>';
 }
 function reportMappingTable(w){
   const rows=[];
@@ -2463,7 +2485,30 @@ function reportComparisonScatterFigure(entries,log=false){
 function reportStorageHtml(){
   const r=state.storage;
   if(!r)return '<p class="muted">Storage Assessment not calculated.</p>';
-  return '<div class="note">Whole-episode capture assumes storage reset between episodes. Partial capture, drawdown and tank routing are outside this screening. Episode totals follow counting-year attribution; calendar totals split discharge at 1 January.</div>'+storageSummaryHtml(r)+'<h3>Calendar-year discharge volume</h3>'+storageCalendarHtml(r.calendar_volumes||[])+'<h3>Monthly discharge volume and support</h3>'+monthlyVolumeHtml(r.monthly_volumes||[]);
+  const settings=state.storageSignature?JSON.parse(state.storageSignature):{},physical=r.physical||{};
+  const units=(source,contract)=>[source?.original_unit||source?.unit||contract?.original_unit,contract?.canonical_unit].filter(Boolean).join(' → ');
+  const sources=[['Modelled level',settings.level,r.level_contract],['Overflow flow',settings.flow,r.flow_contract]];
+  const sourceRows=sources.map(([role,source,contract])=>'<tr>'+[role,source?.display_name||source?.name,source?.column,
+    units(source,contract)].map(value=>'<td>'+esc(value||'Unavailable')+'</td>').join('')+
+    '<td class="hash">'+esc(source?.sha256||'Unavailable')+'</td></tr>').join('');
+  const assumptions=[['Assessment clock',settings.analysis?JSON.parse(settings.analysis).time_basis:null],
+    ['Supported assessment window',[physical.analysis_start,physical.analysis_end].filter(Boolean).join(' to ')],
+    ['Threshold',fmt(r.threshold_canonical_m,6)+' m'],['Target compatibility count',settings.target_count],
+    ['Valid level support',fmt(physical.valid_seconds,3)+' s'],['Unknown level support',fmt(physical.unknown_seconds,3)+' s'],
+    ['Excluded level time',fmt(physical.excluded_seconds,3)+' s'],['Method',r.method],['Build revision',buildToken]];
+  const assumptionRows=assumptions.map(([name,value])=>'<tr><th scope="row">'+esc(name)+'</th><td>'+esc(value===''?'Unavailable':value??'Unavailable')+'</td></tr>').join('');
+  const blocks=r.screening||[];
+  const quantities=blocks.map(row=>'<tr>'+[row.year,fmt(row.max_block_volume_m3,3),fmt(row.annual_block_volume_m3,3),
+    fmt(row.coverage_fraction==null?null:100*row.coverage_fraction,3)].map(value=>'<td>'+esc(value)+'</td>').join('')+'</tr>').join('');
+  return '<div class="note">Whole-episode capture assumes storage reset between episodes. Partial capture, drawdown and tank routing are outside this screening. Episode totals follow counting-year attribution. Calendar totals split discharge at 1 January.</div>'+
+    '<h3>Storage calculation sheet</h3><p>Integrate positive overflow on its supported discharge intervals to obtain each episode volume V<sub>i</sub> in m³. '+
+    'Choose the smallest capacity C for which the sum of retained 12/24 counts from episodes with V<sub>i</sub> &gt; C meets the target. '+
+    'This screening uses the Hydra Bench Storage screening and 12/24 methods.</p>'+
+    '<div class="table-wrap"><table><caption>Storage calculation inputs</caption><tbody>'+assumptionRows+'</tbody></table></div>'+
+    '<div class="table-wrap"><table><caption>Mapped storage sources</caption><thead><tr><th scope="col">Input</th><th scope="col">Source</th><th scope="col">Channel</th><th scope="col">Recorded → working unit</th><th scope="col">SHA-256</th></tr></thead><tbody>'+sourceRows+'</tbody></table></div>'+
+    (quantities?'<div class="table-wrap"><table><caption>Storage intermediate volumes</caption><thead><tr><th scope="col">Episode year</th><th scope="col">Largest episode (m³)</th><th scope="col">Total episode volume (m³)</th><th scope="col">Discharge coverage (%)</th></tr></thead><tbody>'+quantities+'</tbody></table></div>':'')+
+    storageSummaryHtml(r)+'<h3>Calendar-year discharge volume</h3>'+storageCalendarHtml(r.calendar_volumes||[])+
+    '<h3>Monthly discharge volume and support</h3>'+monthlyVolumeHtml(r.monthly_volumes||[]);
 }
 async function staticReportFallbackHtml(html,reason='Interactive Plotly runtime could not be embedded.'){
   const doc=new DOMParser().parseFromString(html,'text/html');
@@ -2637,14 +2682,37 @@ function reportAnalysisPeriod(){
   const end=explicit.end||(ends.length?ends[ends.length-1]:null);
   return [start,end];
 }
-async function downloadReport(){
+async function compileAssessmentReport(){
   const options=reportOptions();
   assertFreshResults(options);
-  if(!state.mapping.observed&&!(state.mapping.models||[]).length&&!state.mapping.rain)throw new Error('Apply at least one observed, modelled or rainfall mapping before exporting the report.');
-  if(!$('timeChart')?.data?.length)await drawTimeChart();
-  const reportSignature=analysisSignature(),period=reportAnalysisPeriod();
+  const mapped=Boolean(state.mapping.observed||state.mapping.models?.length||state.mapping.rain);
+  const storageEvidence=options.include_spills_storage&&Boolean(state.storage&&state.storageSignature===storageInputSignature());
+  const survey=options.include_survey?diagnostic.reportSurveyContents?.():null;
+  const professional=options.include_survey?diagnostic.professionalSurveyReportHtml||'':'';
+  const selectedSheets=()=>{
+    const provider=window.HydraDesignCalculations;
+    if(!provider)throw new Error('Calculate and select at least one current calculation sheet before generating the report.');
+    return provider;
+  };
+  const sheets=options.include_calculations?selectedSheets().reportSheets(options.calculation_sheets,true):null;
+  const calculationOnly=sheets&&![options.include_time_series,options.include_spills_storage,options.include_comparison,
+    options.include_survey,options.include_network].some(Boolean);
+  let network=null;
+  if(options.include_network){
+    await window.ICMNetworkSchematic?.open();
+    network=window.ICMNetworkSchematic?.reportGeometry?.();
+    if(!network)throw new Error('Import or create a network in Network Schematic to include its diagram.');
+  }
+  const surveyOnly=!mapped&&!network&&!sheets&&survey;
+  if(!mapped&&!network&&!survey&&!professional&&!sheets&&!storageEvidence)
+    throw new Error('Apply a series mapping or add current assessment evidence before exporting the report.');
+  if(options.include_time_series&&mapped&&!$('timeChart')?.data?.length)await drawTimeChart();
+  const reportSignature=analysisSignature(),period=!mapped&&storageEvidence?
+    [state.storage.physical?.analysis_start,state.storage.physical?.analysis_end]:reportAnalysisPeriod();
+  const reportSettings=JSON.stringify(options);
+  const sections={};
   let timeFigure='';
-  if(options.include_time_series){
+  if(options.include_time_series&&mapped){
     const reportSeries=await reportTraces(period);
     const currentLayout=$('timeChart').layout||{};
     const shapes=JSON.parse(JSON.stringify(currentLayout.shapes||[]));
@@ -2654,29 +2722,30 @@ async function downloadReport(){
     timeFigure=reportPlotFigure('assessment-time-graph',[...reportSeries.traces,...thresholdLegendTraces],fullLayout,reportSeries.statistics,'Declared report analysis period; zoom state is not used as an analytical input.');
   }
 
-  const w=workspaceObject();
+  const w=calculationOnly?null:workspaceObject();
   const selectedComparisons=selectedReportComparisons();
   const log=options.scatter_scale==='current'?$('scatterScale').value==='log':options.scatter_scale==='log';
   const comparisonPopulationNote=log
     ?'Positive observed/modelled pairs only (log₁₀ view; nonpositive values are filtered from this view, not altered).'
     :'All finite authoritative paired values (linear view).';
 
-  let body='<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints. Report section/scenario choices are explicit and stored in the workspace.</div>';
-  body+='<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
+  let body=calculationOnly?'<div class="note">Each selected sheet records its reviewed inputs, calculation method, source evidence and build identity.</div>':
+    '<div class="note"><strong>Method note.</strong> Source files were processed locally in the browser. Results retain the current workspace time basis, exclusions, support/coverage status and source fingerprints. Report section/scenario choices are explicit and stored in the workspace.</div>'+
+    '<h2>Assessment configuration</h2><div class="report-grid"><div class="card"><h3>Mapped series</h3>'+reportMappingTable(w)+'</div><div class="card"><h3>Analysis settings</h3>'+reportSettingsTable(w)+'</div></div>';
 
-  if(options.include_time_series)body+='<h2>Full time-period graph</h2>'+timeFigure;
+  if(timeFigure)sections['time-series']='<h2>Full time-period graph</h2>'+timeFigure;
 
   if(options.include_spills_storage){
-    body+='<h2>Spill / EDM assessment</h2><div class="report-grid"><div class="card"><h3>Observed / EDM</h3>'+spillSummaryHtml(state.spills.observed)+reportYearlySpills(state.spills.observed)+'</div><div class="card"><h3>Modelled</h3>'+spillSummaryHtml(state.spills.model)+reportYearlySpills(state.spills.model)+'</div></div>';
-    body+='<h3>Observed spills by month</h3>'+reportSpillCountMatrix(state.spills.observed);
-    body+='<h3>Model spills by month</h3>'+reportSpillCountMatrix(state.spills.model);
-    body+='<h3>Observed vs modelled monthly spill comparison</h3>'+reportMonthlySpillComparison(state.spills.observed,state.spills.modelled||state.spills.model);
-    body+='<h2>Storage assessment</h2>'+reportStorageHtml();
+    sections['spill-storage']='<h2>Spill / EDM assessment</h2><div class="report-grid"><div class="card"><h3>Observed / EDM</h3>'+spillSummaryHtml(state.spills.observed)+reportYearlySpills(state.spills.observed)+'</div><div class="card"><h3>Modelled</h3>'+spillSummaryHtml(state.spills.model)+reportYearlySpills(state.spills.model)+'</div></div>'+
+      '<h3>Observed spills by month</h3>'+reportSpillCountMatrix(state.spills.observed)+
+      '<h3>Model spills by month</h3>'+reportSpillCountMatrix(state.spills.model)+
+      '<h3>Observed vs modelled monthly spill comparison</h3>'+reportMonthlySpillComparison(state.spills.observed,state.spills.modelled||state.spills.model)+
+      '<h2>Storage assessment</h2>'+reportStorageHtml();
   }
 
   if(options.include_comparison){
-    body+='<h2>Observed vs modelled comparison</h2><p class="muted">'+esc(comparisonPopulationNote)+'</p>';
-    body+=reportComparisonScatterFigure(selectedComparisons,log);
+    let comparison='<h2>Observed vs modelled comparison</h2><p class="muted">'+esc(comparisonPopulationNote)+'</p>';
+    comparison+=reportComparisonScatterFigure(selectedComparisons,log);
     const allCurrent=state.comparisons.filter(x=>x.result);
     const allSelected=selectedComparisons.length===allCurrent.length;
     const images=allSelected?await Promise.all([reportChart('residualChart',680,440),reportChart('cumulativeChart',680,440),reportChart('exceedanceChart',680,440),reportChart('ratingChart',760,500)]):['','','',await reportChart('ratingChart',760,500)];
@@ -2691,16 +2760,21 @@ async function downloadReport(){
         :'Observed versus modelled depth / level fitted relationship using authoritative Python regression coefficients.';
       diag.push('<figure class="figure"><img src="'+ratingImg+'" alt="Rating or fitted relationship plot"><figcaption>'+esc(ratingCaption)+'</figcaption></figure>');
     }
-    if(!allSelected)body+='<p class="muted">Residual/cumulative/exceedance screenshots are omitted because the report contains a selected scenario subset; this avoids mixing a different on-screen scenario population into the exported snapshot.</p>';
-    if(diag.length)body+='<div class="report-grid">'+diag.join('')+'</div>';
+    if(!allSelected)comparison+='<p class="muted">Residual, cumulative and exceedance plots use the full mapped scenario set. Select all mapped scenarios to include them.</p>';
+    if(diag.length)comparison+='<div class="report-grid">'+diag.join('')+'</div>';
+    sections.comparison=comparison;
   }
 
-  if(options.include_survey&&window.__ICM_WORKBENCH__.professionalSurveyReportHtml)body+=window.__ICM_WORKBENCH__.professionalSurveyReportHtml;
-  body+='<h2>Exclusions</h2>'+reportExclusions(w);
+  if(professional||survey)sections.survey=professional+(survey||'');
+  if(network)sections.network='<h2>Network schematic</h2><figure class="figure">'+network.figure+'<figcaption>'+
+    network.nodes+(network.overview?' points · ':' nodes · ')+network.links+(network.overview?' reaches and links · Simplified overview':' links · Detailed schematic')+
+    ' · Nominal connectivity</figcaption></figure>';
+  if(sheets)sections.calculations='<h2>Engineering calculation sheets</h2>'+sheets.html;
+  body+=arrangeReportSections(sections,options.section_order);
+  if(!calculationOnly)body+='<h2>Exclusions</h2>'+reportExclusions(w);
   const notes=$('reviewNotes')&&$('reviewNotes').value||'';
   body+='<h2>Reviewer notes</h2><div class="card">'+(notes?'<p>'+esc(notes).replaceAll('\n','<br>')+'</p>':'<p class="muted">No reviewer notes recorded.</p>')+'</div>';
-  body+='<h2>Project data context</h2>'+reportProjectRegistry();
-  body+='<h2>Source provenance</h2>'+reportSources(w);
+  if(!calculationOnly)body+='<h2>Project data context</h2>'+reportProjectRegistry()+'<h2>Source provenance</h2>'+reportSources(w);
   const engineerReviews=options.include_comparison?diagnostic.verificationReviews?.report()||[]:[];
   if(engineerReviews.length){
     body+='<h2>Verification engineer review</h2>'+engineerReviews.map(review=>
@@ -2708,12 +2782,31 @@ async function downloadReport(){
       '<p>'+esc((review.period.start||'Start of common data')+' to '+(review.period.end||'end of common data'))+'</p>'+
       '<p>'+esc(review.comments)+'</p><p>'+esc(review.references)+'</p></section>').join('');
   }
-  body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({report_options:options,spills:state.spillSnapshot,storage:state.storage,comparison:state.comparisonSnapshot,professional_flow_survey:window.__ICM_WORKBENCH__.lastProfessionalSurvey||null,rating_diagnostic:state.rating||null,project_registry:window.ICMProjectRegistry?.snapshot()||null,execution:diagnostic.execution||'unknown'},null,2))+'</pre></details>';
+  if(!calculationOnly)body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({
+    report_options:options,
+    ...(options.include_spills_storage?{spills:state.spillSnapshot,storage:state.storage}:{}),
+    ...(options.include_comparison?{comparison:state.comparisonSnapshot,rating_diagnostic:state.rating||null}:{}),
+    ...(options.include_survey?{professional_flow_survey:diagnostic.lastProfessionalSurvey||null}:{}),
+    project_registry:window.ICMProjectRegistry?.snapshot()||null,execution:diagnostic.execution||'unknown'
+  },null,2))+'</pre></details>';
   await window.HydraDesign.prepareReportFont();
-  const html=await interactiveReportHtml(reportShell('Hydra Bench — Engineering Assessment','Professional hydraulic data review and model-verification output',body,false));
-  if(reportSignature!==analysisSignature())throw new Error('Inputs changed during report generation. Retry export.');
-  downloadBlob('icm-workbench-report-'+new Date().toISOString().slice(0,10)+'.html',html,'text/html');
-  $('workspaceStatus').textContent='Professional HTML engineering report downloaded.';
+  const shell=calculationOnly?reportShell('Hydra Bench — Engineering Calculations','Reviewed calculation sheets',body,true):
+    surveyOnly?reportShell('Hydra Bench — Flow Survey Assessment','Association-driven survey QA and flow-continuity review',body,true):
+    reportShell('Hydra Bench — Engineering Assessment','Professional hydraulic data review and model-verification output',body,false);
+  const html=body.includes('class="report-plot"')?await interactiveReportHtml(shell):shell;
+  if(reportSignature!==analysisSignature()||reportSettings!==JSON.stringify(reportOptions()))
+    throw new Error('Inputs or sections changed during report generation. Generate it again.');
+  if(sheets&&JSON.stringify(sheets.revisions)!==JSON.stringify(selectedSheets().reportSheets(options.calculation_sheets,false).revisions))
+    throw new Error('Calculation sheets changed during report generation. Generate it again.');
+  return {html,filename:(surveyOnly?'icm-workbench-survey-report-':'icm-workbench-report-')+new Date().toISOString().slice(0,10)+'.html',
+    status:surveyOnly?'Survey assessment HTML downloaded.':'Professional HTML engineering report downloaded.'};
+}
+function downloadAssessmentReport(packet){
+  downloadBlob(packet.filename,packet.html,'text/html');
+  $('workspaceStatus').textContent=packet.status;
+}
+async function downloadReport(){
+  downloadAssessmentReport(await compileAssessmentReport());
 }
 
 async function reportTraces(period){

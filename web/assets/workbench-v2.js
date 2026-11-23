@@ -512,7 +512,7 @@
     apply('model',thresholdContext(modelThresholdSelection()),numericThreshold('modelThreshold','Model threshold'),modelEntries);
   }
 
-  async function v2ApplyMapping() {
+  async function v2ApplyMapping({allowEmpty=false}={}) {
     const previousMapping=JSON.stringify(state.mapping);
     const previousObservedContext=thresholdContext(observedThresholdSelection(state.mapping.observed));
     const previousModelContext=thresholdContext(modelThresholdSelection(state.mapping.models));
@@ -542,7 +542,7 @@
     }
     const obs = mappingObject(state.mapping.observed);
     const models = currentModels();
-    if (!obs && !models.length && !state.mapping.rain) throw new Error('Select at least one observed, modelled or rainfall series.');
+    if (!allowEmpty && !obs && !models.length && !state.mapping.rain) throw new Error('Select at least one observed, modelled or rainfall series.');
     const mappingSummary = `Observed: ${obs?seriesLabel(obs.item, obs.col):'not mapped'} · ${models.length} comparison scenario(s) · rainfall ${state.mapping.rain ? 'mapped' : 'not mapped'}.`+(thresholdMessages.length?' '+thresholdMessages.join(' '):'');
     $('mappingStatus').textContent = 'Applying mapping and refreshing graph…';
     renderModelColourControls();
@@ -1406,7 +1406,8 @@
       state.spills.model = await engine.call('spill_result',{path:model.item.virtualPath,column:model.col,threshold:modelThreshold,exclusions_json:JSON.stringify(modelExclusions),max_gap_seconds:gap,...bounds});
     }
     if(signature!==analysisSignature()){state.spills={};throw new Error('Spill inputs changed while calculation was running. The late result was discarded.');}
-    state.spillSnapshot={config,signature,results:JSON.parse(JSON.stringify(state.spills))};
+    const evidenceSources={observed:observed&&sourceKey(observed.item.id,observed.col),model:model&&sourceKey(model.item.id,model.col)};
+    state.spillSnapshot={config,signature,evidenceSources,results:JSON.parse(JSON.stringify(state.spills))};
     renderSpillsV2();
     const elapsed = (performance.now()-started)/1000;
     const excludedHours=result=>Number(result?.excluded_seconds||0)/3600;

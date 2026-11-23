@@ -222,8 +222,9 @@ loop-affected nodes and parallel links before changing the canvas. On first
 import, choose geographic coordinates or engineering schematic layout.
 Re-importing a revised export requires the same format and shared imported
 node IDs. Compatible manual positions, labels, bends and manual additions are
-retained. The import clears calculated spill results on imported assets and
-clears saved views. Undo restores the previous local schematic.
+retained. The import withdraws affected calculated spill results and preserves
+compatible saved views and unaffected evidence. Undo restores the previous
+local schematic.
 
 ### Native InfoWorks CSV preview
 
@@ -327,15 +328,47 @@ must be re-established. Original units remain visible without conversion, and
 unsupported declared units for engineering fields are rejected. The importer
 creates or updates only the Hydra Bench project and never writes to ICM.
 
+In the import audit, open **Revision comparison** before applying a revised
+export. **Preview scope** starts with the changes on the current register
+page. Choose **Full network context** for a fixed source-coordinate view
+around all filtered changes. **Geometry layer** shows baseline, revised
+or both. Gray supplies context. Red and teal identify the selected old
+and new changes.
+
+Select a changed asset to inspect its source fields and affected monitor
+deployments, series references and assessments. Filter to changes affecting
+assignments or evidence, or download the filtered revision audit locally.
+A changed typed host requires confirmation before its previous monitor
+deployment can appear on the revised map. Apply the import to update the
+network. Check hydraulic impact separately using compatible simulation
+results.
+
+With a confirmed long section open, **Compare the open long section**
+reviews the corresponding typed route in the proposed export. **Use
+revised route geometry** adds a separately scaled profile while the map
+continues to show the baseline. The route requires the same ordered links,
+recorded endpoints and reviewed direction. See the [simulation results
+guide](simulation-results.md#compare-reviewed-revision-geometry) for exact
+sample playback and the local saved review.
+
 ## Network review
 
 Use **Overview** for topology, discharges, controls, pumping stations and branches. Ordinary intermediate points can be represented by a single selectable reach. Use its source-asset selector to open the original node or link in the detailed network. Pin an asset from its inspector to include it in the overview. If the source lacks a recognised asset type, inspect the attributes and set the classification explicitly in Edit mode. The overview uses schematic positions. Its arrows follow nominal from/to connectivity.
 
+Native ICM context imports support up to 6,000 nodes and 6,000 links within
+the existing 32 MiB CSV selection limit. On a dense detailed map, individual
+ordinary assets are drawn together at wide extents. Their source lines and
+bends still follow their original locations. Zoom in or use **Find asset**
+to open the individual node or link. This visual optimisation is separate
+from **Overview**, which groups runs into selectable schematic reaches.
+The full detail and source attributes remain in **Save network**. Use that
+local JSON file to reopen a large network if browser recovery storage is full.
+
 Use **Import monitor locations** in Data setup or Network Schematic. Choose the monitor and installed asset columns, then inspect the preview. Ambiguous node/link IDs require a choice. A changed location requires confirmation. Unresolved rows stay in the import review. The **Flow monitors** switch displays confirmed installations and counts shared host assets. A symbol on a pipe identifies the host pipe. A measured position along the pipe requires its own survey. Monitor locations, review comments and results can be shared through the explicit **Save network** local export.
 
-Open **Long section**, select endpoints and confirm each branch. The table preserves link order and lists source lengths, invert levels and provenance. Structures occupy their nominal route station. Missing lengths interrupt absolute chainage, with any subsequent measurable reach plotted against local distance. Missing levels break the line. Ground lines connect supplied node levels. The elevation and distance scales differ. The chart and table select the same map asset.
+Open **Long section**, select endpoints and confirm each branch. The table preserves link order and lists source lengths, invert levels, section dimensions and provenance. Gradient uses the signed difference between the source inverts divided by the source length. Structures occupy their nominal route station. Missing lengths interrupt absolute chainage, with any subsequent measurable reach plotted against local distance. Missing levels break the line. Ground lines connect supplied node levels. The shaft marker uses recorded ground and chamber floor elevations, with a symbolic width. Use horizontal and vertical zoom and pan independently. Each plot gives its vertical exaggeration. **Expand profile** provides a wider view, and **Download profile SVG** saves the current plotted axes and source geometry as a vector file. The profile view settings are included in saved route reviews. The chart and table select the same map asset.
 
-Use **Overlay modelled levels** with a linked model scenario, exact model clock time and engineer-confirmed vertical datum. The display uses sampled route node levels with applicable units and includes source references in the saved review. Use **Check pipe capacity** on a supported circular conduit, review the inputs and viscosity, then calculate and keep a trial. The capacity screen uses the same full-bore solver as Hydraulic Calculations. Backwater and surcharge assessment requires applicable model results and boundary conditions.
+Use **Overlay modelled levels** with a linked model scenario, exact model clock time and engineer-confirmed vertical datum. The display uses sampled route node levels with applicable units and includes source references in the saved review. The marker tooltip gives ground freeboard where the source ground level is available. Link-end hydraulic results and pressure head need applicable result channels. Use **Check pipe capacity** on a supported circular conduit, review the inputs and viscosity, then calculate and keep a trial. The capacity screen uses the same full-bore solver as Hydraulic Calculations. Backwater and surcharge assessment requires applicable model results and boundary conditions.
 
 ## Follow-on engineering requirements
 

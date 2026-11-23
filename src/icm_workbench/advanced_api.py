@@ -1,5 +1,5 @@
 from __future__ import annotations
-from .detriment_api import parse_detriment_report, detriment_result
+from .detriment_api import parse_detriment_report, detriment_result, detriment_scenario_batch
 
 import json
 import re
@@ -924,6 +924,99 @@ def _survey_rain_source(path, column="rainfall", factor=1.0, rainfall_semantics=
         values = values * 60.0 / float(interval)
     frame[column] = values
     return frame, float(interval) if interval else None, source_semantics
+
+
+def survey_verification_suitability(monitor, gauge, event, settings, exclusions=None):
+    """Screen one observed monitor and period using an already reviewed rainfall candidate."""
+    from icm_workbench.analysis.series_transform import MAX_SOURCE_SAMPLES, integrate_periods
+    from icm_workbench.analysis.survey_suitability import assess_verification_period, supported_monitor_range
+
+    first = python_bridge._model_clock_timestamp(event["start"])
+    last = python_bridge._model_clock_timestamp(event["end"])
+    if first is None or last is None or pd.isna(first) or pd.isna(last) or first >= last:
+        raise ValueError("Choose a monitoring period with increasing project-clock bounds.")
+    duration = (last - first).value / 1e9
+    maximum_gap = float(settings["gap_seconds"])
+    if not np.isfinite(maximum_gap) or maximum_gap <= 0:
+        raise ValueError("Choose a positive maximum observation gap.")
+
+    def prepare_source(path, column, *, trailing=None):
+        parsed = python_bridge._require_model_clock(python_bridge._load(path), "Survey source")
+        if column not in parsed.frame or any(parsed.audit.get(key, 0) for key in (
+                "invalid_timestamps", "duplicate_timestamps", "malformed_rows")):
+            raise ValueError("The mapped channel requires valid, unique source rows.")
+        times = pd.DatetimeIndex(parsed.frame["timestamp"]).as_unit("ns")
+        if not len(times) or times.hasnans or times.has_duplicates or not times.is_monotonic_increasing:
+            raise ValueError("The mapped channel requires valid project-clock timestamps in order.")
+        left = max(0, int(times.searchsorted(first, side="right")) - 1)
+        right = min(len(times), int(times.searchsorted(last, side="left")) + 1)
+        if right - left > MAX_SOURCE_SAMPLES:
+            raise ValueError("Choose a shorter period with up to 500,000 source samples per channel.")
+        samples = pd.to_numeric(parsed.frame[column].iloc[left:right], errors="coerce").to_numpy(dtype=float)
+        return python_bridge._relative_clock_seconds(first, times[left:right].asi8), samples, trailing if right == len(times) else None
+
+    def blocked(items):
+        return tuple((python_bridge._relative_clock_seconds(first, pd.Timestamp(item.start).value),
+                      python_bridge._relative_clock_seconds(first, pd.Timestamp(item.end).value)) for item in items)
+
+    exclusions = _survey_exclusion_records(exclusions)
+    observed_exclusions = [item for item in exclusions if str(item.get("scope", "both")) in {"observed", "both"}
+                           or str(item.get("scope", "")).startswith("survey:monitor:")]
+    rainfall_exclusions = [item for item in exclusions if item.get("scope") == "rainfall"
+                           or str(item.get("scope", "")).startswith("survey:gauge:")]
+    channels, issues = {}, {}
+    bounds = settings.get("ranges", {})
+    for quantity, unit in [("depth", "m"), ("velocity", "m/s"), ("flow", "m³/s")]:
+        path = monitor.get(f"{quantity}_path") or monitor.get("path")
+        column = monitor.get(f"{quantity}_col")
+        if not path or not column:
+            issues[quantity] = "No mapped observed channel."
+            continue
+        try:
+            parsed = python_bridge._load(path)
+            contract = python_bridge._series_contract(path, column)
+            if (contract["quantity"], contract["canonical_unit"]) != (quantity, unit) or parsed.metadata.get("timestamp_convention") != "instantaneous":
+                raise ValueError("Resolve this channel's quantity, instantaneous support and canonical unit.")
+            time, data, _ = prepare_source(path, column)
+            limits = bounds.get(quantity, {})
+            target = monitor.get(f"{quantity}_source_key")
+            targeted = [item for item in exclusions if target and item.get("scope") == target]
+            channel_exclusions = _survey_exclusions_for(observed_exclusions + targeted, "monitor", monitor["monitor"], quantity)
+            channels[quantity] = supported_monitor_range(time, data, duration=duration, gap=maximum_gap,
+                                                         exclusions=blocked(channel_exclusions),
+                                                         minimum=limits.get("minimum"), maximum=limits.get("maximum"))
+        except ValueError as error:
+            issues[quantity] = str(error)
+
+    rain_seconds = None
+    if gauge and gauge.get("path") and gauge.get("column"):
+        path, column = gauge["path"], gauge["column"]
+        try:
+            parsed = python_bridge._load(path)
+            contract = python_bridge._series_contract(path, column)
+            convention = {("intensity", "mm/h"): "interval_average", ("incremental_depth", "mm"): "interval_depth"}.get(
+                (gauge.get("rainfall_semantics"), contract["canonical_unit"]))
+            if contract["quantity"] != "rainfall" or convention is None:
+                raise ValueError("Resolve the mapped rainfall unit and interval semantics.")
+            interval = parsed.metadata.get("interval_min")
+            time, data, trailing = prepare_source(path, column, trailing=float(interval) * 60 if interval is not None else None)
+            targeted = [item for item in exclusions if gauge.get("source_key") and item.get("scope") == gauge["source_key"]]
+            gauge_exclusions = _survey_exclusions_for(rainfall_exclusions + targeted, "gauge", gauge["gauge"], "rainfall")
+            _, support = integrate_periods(time, np.where(np.isfinite(data) & (data >= 0), 0., np.nan),
+                                           np.array([0.0, duration]), convention=convention, maximum_gap=maximum_gap,
+                                           trailing_support=trailing, exclusions=blocked(gauge_exclusions))
+            rain_seconds = float(support[0])
+        except ValueError as error:
+            issues["rainfall"] = str(error)
+    else:
+        issues["rainfall"] = "No reviewed gauge mapping for this monitor."
+
+    result = assess_verification_period(channels, duration=duration, rain_seconds=rain_seconds,
+                                        rain_qualified=event.get("qualified"), minimum_percent=float(settings["minimum_percent"]),
+                                        measurement_review=settings["measurement_review"], flow_required=settings.get("flow_required", True))
+    result.update(method="survey-verification-suitability-v1", duration_seconds=duration, rainfall_seconds=rain_seconds,
+                  channels=channels, issues=issues)
+    return json.dumps(result, allow_nan=False)
 
 
 def survey_volume_balance_result(

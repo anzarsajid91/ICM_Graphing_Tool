@@ -162,9 +162,14 @@ function validateInspectorProperties(object){
       throw new Error('Invalid or duplicate custom asset properties.');
   }
 }
+const nativeAssetLimit=6000;
 function validateNetwork(value){
   if(!value||![1,2].includes(value.schema)||!Array.isArray(value.nodes)||!Array.isArray(value.edges))throw new Error('Unsupported network schematic file.');
-  if(value.nodes.length>2000||value.edges.length>5000)throw new Error('This overview supports up to 2,000 points and 5,000 connectors.');
+  const native=value.contextFormat==='icm-csv-v1';
+  const pointLimit=native?nativeAssetLimit:2000,linkLimit=native?nativeAssetLimit:5000;
+  if(value.nodes.length>pointLimit||value.edges.length>linkLimit)throw new Error(native?
+    'This ICM context supports up to 6,000 points and 6,000 connectors.':
+    'This overview supports up to 2,000 points and 5,000 connectors.');
   const ids=new Set();
   for(const n of value.nodes){
     if(!n.id||ids.has(n.id)||!Object.hasOwn(types,n.type)||!Object.hasOwn(colours,n.colour)||typeof n.name!=='string'||!Number.isFinite(n.x)||!Number.isFinite(n.y)||Math.abs(n.x)>1e6||Math.abs(n.y)>1e6)throw new Error('Invalid or duplicate schematic point.');
@@ -199,15 +204,15 @@ function validateNetwork(value){
   validateRouteWorkspace(result);
   result.views=result.views||[];result.reviewSnapshots=result.reviewSnapshots||[];
   if(!Array.isArray(result.views)||result.views.length>30||!Array.isArray(result.reviewSnapshots)||result.reviewSnapshots.length>20)throw new Error('Invalid saved review views.');
-  for(const view of result.views)if(typeof view.name!=='string'||view.name.length>100||!Array.isArray(view.positions)||view.positions.length>2000||!view.camera||![view.camera.x,view.camera.y,view.camera.zoom].every(Number.isFinite)||view.camera.zoom<.002||view.camera.zoom>maxCameraZoom||view.positions.some(p=>typeof p.id!=='string'||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)))throw new Error('Invalid saved view.');
+  for(const view of result.views)if(typeof view.name!=='string'||view.name.length>100||!Array.isArray(view.positions)||view.positions.length>pointLimit||!view.camera||![view.camera.x,view.camera.y,view.camera.zoom].every(Number.isFinite)||view.camera.zoom<.002||view.camera.zoom>maxCameraZoom||view.positions.some(p=>typeof p.id!=='string'||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)))throw new Error('Invalid saved view.');
   for(const view of result.views){
-    if(view.edges!==undefined&&(!Array.isArray(view.edges)||view.edges.length>5000)||view.evidenceMode!==undefined&&!['single','combined'].includes(view.evidenceMode)||view.metric!==undefined&&!['spill_count','duration_hours'].includes(view.metric))throw new Error('Invalid saved view display.');
+    if(view.edges!==undefined&&(!Array.isArray(view.edges)||view.edges.length>linkLimit)||view.evidenceMode!==undefined&&!['single','combined'].includes(view.evidenceMode)||view.metric!==undefined&&!['spill_count','duration_hours'].includes(view.metric))throw new Error('Invalid saved view display.');
     const test={...result,views:[],reviewSnapshots:[],camera:view.camera,preferences:view.preferences||result.preferences};
     const positions=new Map(view.positions.map(p=>[p.id,p])),geometry=new Map((view.edges||[]).map(e=>[e.id,e]));
     test.nodes=result.nodes.map(n=>({...n,...positions.get(n.id)}));test.edges=result.edges.map(e=>({...e,...geometry.get(e.id)}));
     validateNetwork(test);
   }
-  for(const saved of result.reviewSnapshots)if(typeof saved.name!=='string'||saved.name.length>100||typeof saved.saved_at!=='string'||!saved.network||!Array.isArray(saved.network.nodes)||!Array.isArray(saved.network.edges)||saved.network.nodes.length>2000||saved.network.edges.length>5000)throw new Error('Invalid review snapshot.');
+  for(const saved of result.reviewSnapshots)if(typeof saved.name!=='string'||saved.name.length>100||typeof saved.saved_at!=='string'||!saved.network||!Array.isArray(saved.network.nodes)||!Array.isArray(saved.network.edges)||saved.network.nodes.length>pointLimit||saved.network.edges.length>linkLimit)throw new Error('Invalid review snapshot.');
   for(const saved of result.reviewSnapshots){if(saved.network.views?.length||saved.network.reviewSnapshots?.length)throw new Error('Nested review snapshots are unsupported.');saved.network=validateNetwork(saved.network);}
   result.camera=result.camera||{x:0,y:0,zoom:1};
   if(![result.camera.x,result.camera.y,result.camera.zoom].every(Number.isFinite)||result.camera.zoom<.002||result.camera.zoom>maxCameraZoom)throw new Error('Invalid schematic camera.');
@@ -229,16 +234,33 @@ function validateRouteWorkspace(result){
     throw new Error('Duplicate saved monitor names.');
   records('monitorReview',10000,row=>row&&text(row.monitor,256)&&text(row.assetId,256)&&text(row.status,128));
   records('overviewPins',7000,reference);
-  records('routeReviews',30,review=>review&&text(review.name,100)&&review.name.trim()&&text(review.note,10000)&&
-    text(review.start,256)&&text(review.end,256)&&Array.isArray(review.steps)&&review.steps.length>0&&review.steps.length<=5000&&
-    review.steps.every(step=>step&&text(step.id,256)&&text(step.from,256)&&text(step.to,256)&&text(step.name,256)&&
+  function validStep(step){
+    return step&&text(step.id,256)&&text(step.from,256)&&text(step.to,256)&&text(step.name,256)&&
       text(step.type,128)&&['known','missing','structure'].includes(step.lengthStatus)&&
       ['length','us','ds','groundFrom','groundTo','height','chainageStart','chainageEnd'].every(key=>nullableNumber(step[key]))&&
+      ['chamberFrom','chamberTo','widthMm','heightMm','roofFrom','roofTo'].every(key=>!Object.hasOwn(step,key)||nullableNumber(step[key]))&&
+      (step.shape==null||text(step.shape,128))&&
+      (step.controlLevels===undefined||Array.isArray(step.controlLevels)&&step.controlLevels.length<=16&&
+        step.controlLevels.every(control=>control&&text(control.label,128)&&Number.isFinite(control.value)))&&
       Array.isArray(step.sources)&&step.sources.length<=3&&step.sources.every(source=>source&&text(source.file,512)&&
-        text(source.table,128)&&Number.isSafeInteger(source.row)&&source.row>=1))&&
+        text(source.table,128)&&Number.isSafeInteger(source.row)&&source.row>=1);
+  }
+  function validRevisedGeometry(geometry,baseline){
+    return geometry===undefined||geometry&&text(geometry.revision,128)&&geometry.revision.trim()&&
+      text(geometry.datum,128)&&geometry.datum.trim()&&text(geometry.sha256,64)&&/^[a-f0-9]{64}$/.test(geometry.sha256)&&
+      Array.isArray(geometry.steps)&&geometry.steps.length===baseline.length&&geometry.steps.every((step,index)=>
+        validStep(step)&&['id','type','from','to'].every(key=>step[key]===baseline[index][key]));
+  }
+  records('routeReviews',30,review=>review&&text(review.name,100)&&review.name.trim()&&text(review.note,10000)&&
+    text(review.start,256)&&text(review.end,256)&&Array.isArray(review.steps)&&review.steps.length>0&&review.steps.length<=5000&&
+    review.steps.every(validStep)&&validRevisedGeometry(review.revisedGeometry,review.steps)&&
     Array.isArray(review.trials)&&review.trials.length<=100&&review.trials.every(trial=>trial&&text(trial.id,256)&&
       ['diameter','gradient','roughness','viscosity'].every(key=>Number.isFinite(trial[key]))&&
-      Number.isFinite(trial.capacity)&&trial.capacity>=0)&&validModel(review.model));
+      Number.isFinite(trial.capacity)&&trial.capacity>=0)&&validModel(review.model)&&validProfileView(review.profileView));
+  function validProfileView(view){
+    return view==null||typeof view.groundShading==='boolean'&&['zoomX','zoomY'].every(key=>[1,2,4,8].includes(view[key]))&&
+      ['panX','panY'].every(key=>Number.isFinite(view[key])&&view[key]>=0&&view[key]<=1);
+  }
   function validModel(model){
     return model==null||text(model.scenario,100)&&text(model.time,32)&&text(model.datum,128)&&
       Array.isArray(model.values)&&model.values.length<=2000&&model.values.every(row=>row&&text(row.node,256)&&
@@ -315,7 +337,7 @@ function importNativeContext(input){
       line,file:name,sourceRow:row-(name&&!combined?1:0),
     }));
   });
-  const network=empty(),nodes=new Map(),blocks=new Set(),warnings=new Set();
+  const network={...empty(),contextFormat:'icm-csv-v1'},nodes=new Map(),blocks=new Set(),warnings=new Set();
   const nodeTypes=new Map([['manhole','manhole'],['outfall','outfall'],['outfall 2d','outfall'],
     ['storage','tank'],['pond','tank'],['cso','cso'],['pumping station','pump'],['break','junction'],['connect 2d','junction']]);
   const supported=type=>type==='hw_node'||nativeLinks.has(type);
@@ -400,7 +422,7 @@ function importNativeContext(input){
       if(!nodeTypes.has(kind))warnings.add('Missing or unfamiliar node types use a generic junction symbol.');
       nodes.set(id,{id:row.node_id,name:row.node_id,type,x,y:-y,colour:'blue',bindings:[],sourceAttributes,
         icm:{nodeType:row.node_type||null,groundLevelM:number('ground_level'),chamberFloorM:number('chamber_floor')}});
-      if(nodes.size>2000)fail('network exceeds 2,000 points.');
+      if(nodes.size>nativeAssetLimit)fail('network exceeds 6,000 points.');
     }else{
       const from=(row.us_node_id||row.upstream_node_id)?.toUpperCase(),to=(row.ds_node_id||row.downstream_node_id)?.toUpperCase();
       const suffix=row.link_suffix?.toUpperCase();
@@ -422,7 +444,7 @@ function importNativeContext(input){
         for(let i=0;i<coordinates.length;i+=2)edge.vertices.push({x:Number(coordinates[i]),y:-Number(coordinates[i+1])});
       }
       pending.push(edge);
-      if(pending.length>5000)fail('network exceeds 5,000 connectors.');
+      if(pending.length>nativeAssetLimit)fail('network exceeds 6,000 connectors.');
     }
   }
   if(!nodes.size)throw new Error('Expected populated hw_node data in an ICM CSV export.');
@@ -480,9 +502,79 @@ function sameContextFields(previous,next){
   return JSON.stringify(previous.icm)===JSON.stringify(next.icm)&&
     JSON.stringify(attributes(previous))===JSON.stringify(attributes(next));
 }
+function revisionChanges(current,imported){
+  const model = network=>({
+    nodes:new Map(network.nodes.map(node=>[node.id,node])),
+    edges:new Map(network.edges.map(edge=>[edge.id,edge])),
+  });
+  const before=model({nodes:current.nodes.filter(node=>node.contextSource),edges:current.edges.filter(edge=>edge.contextSource)});
+  const after=model(imported);
+  const incident=source=>{
+    const byNode=new Map();
+    for(const edge of source.edges.values()){
+      for(const [id,direction,other] of [[edge.from,'outgoing',edge.to],[edge.to,'incoming',edge.from]]){
+        if(!byNode.has(id))byNode.set(id,[]);
+        byNode.get(id).push([direction,edge.id,other]);
+      }
+    }
+    for(const links of byNode.values())links.sort((a,b)=>a[1].localeCompare(b[1]));
+    return byNode;
+  };
+  const beforeIncident=incident(before),afterIncident=incident(after);
+  const changedNodes=new Set(),changedEdges=new Set(),rows=[];
+  function attributes(object){
+    return new Map((object.sourceAttributes?.fields||[])
+      .filter(field=>!['x','y','point_array'].includes(field.name.toLowerCase()))
+      .map(field=>[field.name.toLowerCase(),{value:field.value,unit:field.unit}]));
+  }
+  const position=node=>node&&(node.sourcePosition||{x:node.x,y:node.y});
+  const bends=edge=>edge.sourceBends||edge.bends||[];
+  const assignments=new Map();
+  for(const {asset,monitor} of current.monitorLocations||[]){
+    const key=JSON.stringify([asset.kind,asset.id]);
+    if(!assignments.has(key))assignments.set(key,[]);
+    assignments.get(key).push(monitor);
+  }
+  for(const kind of ['node','edge']){
+    const oldObjects=kind==='node'?before.nodes:before.edges,newObjects=kind==='node'?after.nodes:after.edges;
+    const changed=kind==='node'?changedNodes:changedEdges;
+    for(const id of new Set([...oldObjects.keys(),...newObjects.keys()])){
+      const old=oldObjects.get(id),next=newObjects.get(id),changes=[];
+      const change=(category,field,a,b)=>{
+        if(JSON.stringify(a)!==JSON.stringify(b))changes.push({category,field,before:a??null,after:b??null});
+      };
+      if(old&&next){
+        change('Attributes','Source name',old.sourceName??old.name,next.name);
+        if(kind==='node'){
+          change('Classification','Node type',old.type,next.type);
+          change('Geometry','Source position',position(old),position(next));
+          change('Connectivity','Incident links',beforeIncident.get(id)||[],afterIncident.get(id)||[]);
+        }else{
+          change('Classification','ICM table',old.icm?.table,next.icm?.table);
+          change('Connectivity','Upstream node',old.from,next.from);
+          change('Connectivity','Downstream node',old.to,next.to);
+          change('Geometry','Source vertices',bends(old),bends(next));
+          change('Geometry','Source endpoints',
+            [position(before.nodes.get(old.from)),position(before.nodes.get(old.to))],
+            [position(after.nodes.get(next.from)),position(after.nodes.get(next.to))]);
+        }
+        const a=attributes(old),b=attributes(next);
+        for(const field of new Set([...a.keys(),...b.keys()]))change('Attributes',field,a.get(field),b.get(field));
+        if(!changes.length&&!sameContextFields(old,next))change('Attributes','Engineering fields',old.icm,next.icm);
+        if(!changes.length)continue;
+      }
+      changed.add(id);
+      rows.push({kind,id,name:next?.name||old?.sourceName||old?.name||id,status:!old?'Added':!next?'Removed':'Modified',
+        changes,monitorReview:Boolean(old&&(old.monitorId||assignments.has(JSON.stringify([kind,id])))),
+        evidenceReview:Boolean(old&&(old.applied||Object.keys(old.detrimentLinks||{}).length||old.bindings?.length||old.seriesLinks?.length))});
+    }
+  }
+  return {rows,changedNodes,changedEdges,before,after,assignments};
+}
 function applyContextRevision(current,imported,format){
   if(current.nodes.length&&current.contextFormat!==format)
     throw new Error('Use an empty schematic or revise a previously imported context of the same format.');
+  const {changedNodes,changedEdges}=revisionChanges(current,imported);
   const previousNodes=new Map(current.nodes.map(node=>[node.id,node]));
   const previousEdges=new Map(current.edges.map(edge=>[edge.id,edge]));
   if(current.nodes.some(node=>node.contextSource)&&!imported.nodes.some(node=>previousNodes.get(node.id)?.contextSource))
@@ -495,7 +587,7 @@ function applyContextRevision(current,imported,format){
       for(const key of ['pinned','nameOffset','labelOffset','review','bindings','defaults','gap','exclusions','confirmed','monitorId','customProperties','seriesLinks','colour'])
         if(old[key]!==undefined)next[key]=old[key];
       if(old.name!==(old.sourceName??node.name))next.name=old.name;
-      if(sameContextFields(old,node))for(const key of ['applied','detrimentLinks'])if(old[key]!==undefined)next[key]=old[key];
+      if(!changedNodes.has(node.id))for(const key of ['applied','detrimentLinks'])if(old[key]!==undefined)next[key]=old[key];
       if(old.pinned||old.x!==old.sourcePosition?.x||old.y!==old.sourcePosition?.y){
         next.x=old.x;next.y=old.y;
       }
@@ -510,7 +602,7 @@ function applyContextRevision(current,imported,format){
     if(old?.from===edge.from&&old?.to===edge.to){
       if(JSON.stringify(old.bends||[])!==JSON.stringify(old.sourceBends||[]))next.bends=old.bends||[];
       if(old.name!==(old.sourceName??edge.name))next.name=old.name;
-      if(sameContextFields(old,edge)&&old.detrimentLinks!==undefined)next.detrimentLinks=old.detrimentLinks;
+      if(!changedEdges.has(edge.id)&&old.detrimentLinks!==undefined)next.detrimentLinks=old.detrimentLinks;
       for(const key of ['labelOffset','review','arrow','direction','customProperties','seriesLinks','colour','monitorId'])
         if(old[key]!==undefined)next[key]=old[key];
     }
@@ -542,5 +634,5 @@ function conduitTrial(edge){
 function reportingConflicts(rows){
   const seen=new Set();for(const row of rows){for(const y of row.years){const key=row.role+'|'+(row.role==='model'?row.scenario:'Observed')+'|'+y;if(seen.has(key))throw new Error('Overlapping assignments for '+(row.role==='model'?row.scenario:'Observed')+' in '+y+'. Keep one authoritative source per reporting year.');seen.add(key);}}
 }
-globalThis.ICMNetworkCore={colours,types,cameraZoom,symbolScale,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,nativeContextText,applyContextRevision,conduitTrial,monitorTable,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
+globalThis.ICMNetworkCore={colours,types,cameraZoom,symbolScale,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,nativeContextText,applyContextRevision,revisionChanges,conduitTrial,monitorTable,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
 })();

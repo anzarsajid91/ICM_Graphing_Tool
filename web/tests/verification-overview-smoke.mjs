@@ -1,12 +1,12 @@
 import {trackControls} from './control-evidence.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import {chromium} from 'playwright';
+import {chromium,firefox} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
-const browser=await chromium.launch(browserLaunchOptions());
+const browser=await (process.env.ICM_BROWSER==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 let writeControlEvidence;
 try{
   const context=await browser.newContext({...browserContextOptions(),viewport:{width:1440,height:1050},acceptDownloads:true});
@@ -69,6 +69,34 @@ try{
   assert.equal(saved.verification_reviews[0].comments,'Synthetic check');
   assert.equal(await page.evaluate(()=>window.__ICM_WORKBENCH__.verificationReviews.report().length),1);
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','report-generation'));
+  const template=page.getByLabel('Report template',{exact:true});
+  await template.selectOption('verification');
+  assert.equal(await page.locator('#reportIncludeTimeSeries').isChecked(),true);
+  assert.equal(await page.locator('#reportIncludeSpillsStorage').isChecked(),false);
+  assert.equal(await page.locator('#reportIncludeSurvey').isChecked(),false);
+  assert.equal(await page.locator('#reportSectionList li').first().getAttribute('data-report-section'),'comparison');
+  await page.getByRole('button',{name:'Move Comparison diagnostics later',exact:true}).click();
+  assert.equal(await page.locator('#reportSectionList li').first().getAttribute('data-report-section'),'time-series');
+  await page.getByRole('button',{name:'Move Comparison diagnostics earlier',exact:true}).click();
+  assert.equal(await page.locator('#reportSectionList li').first().getAttribute('data-report-section'),'comparison');
+  const reportSettings=await page.evaluate(()=>workspaceObject());
+  assert.equal(reportSettings.report_options.section_order[0],'comparison');
+  await page.getByRole('button',{name:'Preview assessment report',exact:true}).click();
+  const preview=page.getByRole('dialog',{name:'Assessment report preview'});
+  await preview.waitFor({timeout:90000});
+  const document=preview.frameLocator('iframe');
+  await document.locator('#assessment-time-graph .main-svg').first().waitFor({timeout:30000});
+  assert.match(await document.locator('main').innerText(),/Synthetic check/);
+  const [previewDownload]=await Promise.all([page.waitForEvent('download'),preview.getByRole('button',{name:'Download preview',exact:true}).click()]);
+  const previewHtml=await fs.readFile(await previewDownload.path(),'utf8');
+  assert(previewHtml.indexOf('Observed vs modelled comparison')<previewHtml.indexOf('Full time-period graph'));
+  assert(!previewHtml.includes('<h2>Spill / EDM assessment</h2>'));
+  await preview.getByRole('button',{name:'Close',exact:true}).click();
+  await preview.waitFor({state:'hidden'});
+  await template.selectOption('general');
+  await page.evaluate(async workspace=>{await applyWorkspace(workspace);},reportSettings);
+  assert.equal(await page.locator('#reportSectionList li').first().getAttribute('data-report-section'),'comparison');
+  assert.equal(await page.locator('#reportIncludeSpillsStorage').isChecked(),false);
   const downloaded=page.waitForEvent('download');
   await page.locator('#downloadReportBtn').click();
   const report=await fs.readFile(await (await downloaded).path(),'utf8');
@@ -108,9 +136,19 @@ try{
   assert.match(event,/38\.7 m³.*Observed volume/);
   assert.match(event,/40\.5 m³.*Modelled volume/);
   assert.match(event,/0\.01 m³\/s.*Peak error/);
+  await page.locator('button[data-workspace="home"]').click();
+  const resumeEvent=page.locator('#hbRecentWork').getByRole('button',{name:'Verification · Event Review',exact:true});
+  await resumeEvent.click();
+  await page.waitForFunction(()=>document.querySelector('#verificationEventResult').textContent.includes('Observed volume'));
+  assert.equal(await page.locator('#verificationEventResult').textContent(),event);
   await page.getByRole('button',{name:'Open event in Time Series'}).click();
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='data'&&
     JSON.stringify(window.__ICM_WORKBENCH__.uiV2.graphRange)===JSON.stringify(['2026-01-01T00:00:00','2026-01-01T00:03:00']));
+  await page.locator('#clearPoolBtn').click();
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.stateSummary().files===0);
+  await page.locator('button[data-workspace="home"]').click();await resumeEvent.click();
+  assert(await page.getByRole('button',{name:'Compare selected event'}).isDisabled());
+  assert(!/Observed volume/.test(await page.locator('#verificationEventResult').textContent()));
   privacy.assertClean();
   console.log('Verification overview rendered authoritative metrics and blocked review of stale evidence.');
 }finally{try{await writeControlEvidence?.();}finally{await browser.close();}}

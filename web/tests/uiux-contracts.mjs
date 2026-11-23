@@ -36,6 +36,16 @@ try{
  for(const [id,name] of [['reportIncludeTimeSeries','Full-period time series'],['reportIncludeSpillsStorage','Spills & storage'],['reportIncludeComparison','Comparison diagnostics'],['reportIncludeSurvey','Flow-survey evidence']]){
   const control=page.getByRole('checkbox',{name,exact:true});assert.equal(await control.count(),1);assert.equal(await control.getAttribute('id'),id);
  }
+ const template=page.getByLabel('Report template',{exact:true});
+ for(const [preset,sections] of [['spills',['spill-storage','time-series']],['survey',['survey','time-series']],
+  ['network',['network']],['general',['time-series','spill-storage','comparison','survey']]]){
+  await template.selectOption(preset);
+  assert.deepEqual(await page.locator('#reportSectionList li:has(input:checked)').evaluateAll(rows=>rows.map(row=>row.dataset.reportSection)),sections);
+ }
+ const later=page.getByRole('button',{name:'Move Full-period time series later',exact:true});
+ await later.press('Enter');
+ assert.equal(await template.inputValue(),'');
+ assert.equal(await page.locator('#reportSectionList li').first().getAttribute('data-report-section'),'spill-storage');
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('reports','workspace',false));
  assert.equal(await page.getByRole('combobox',{name:'Saved workspace',exact:true}).getAttribute('id'),'namedWorkspaceSelect');
  await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('data','time-series',false));

@@ -90,3 +90,29 @@ assert.equal(read(evidence.signature).freshness,'stale');
 registry.clearSources();
 assert.equal(read(evidence.signature),null);
 console.log('Shared assessment evidence regressions passed.');
+
+const hash='d'.repeat(64),derived={schema:'hydra-derived-series-v1',result:{quantity:'flow',unit:'L/s',
+  rows:[['2026-01-01T00:00:00','2026-01-01T00:00:30',20,30]]}};
+const archive=registry.retainDerived(hash,'Synthetic derived intervals',derived);
+assert.equal(registry.retainDerived(hash,'Redundant second import',derived).name,'Synthetic derived intervals');
+assert.equal(registry.listDerived()[0].available,true);
+assert.equal(registry.snapshot().derived[0].rows,undefined);
+assert.equal(registry.listSeries().length,0);
+registry.clearSources();
+registry.restoreDerived([archive,{...archive,fingerprint:'invalid'}]);
+assert.equal(registry.listDerived().length,1);
+assert.equal(registry.listDerived()[0].available,false);
+assert.equal(registry.derivedSeries(hash),null);
+assert.equal(registry.retainDerived(hash,'Portable file',derived).name,'Synthetic derived intervals');
+assert.equal(registry.derivedSeries(hash),derived);
+registry.removeDerived(hash);
+assert.equal(registry.listDerived().length,0);
+
+const qualityKey=hash+':'+JSON.stringify(['long-timestep','2026-01-01T00:00:00']);
+assert(registry.saveSourceReview(qualityKey,{decision:'accepted',note:'Reviewed synthetic gap',exclusionId:'synthetic-exclusion'}));
+const qualityArchive=registry.snapshot().source_quality_reviews;
+registry.clearSources();
+registry.restoreSourceReviews([...qualityArchive,{key:'invalid',decision:'accepted',note:'bogus',exclusionId:null}]);
+assert.equal(registry.snapshot().source_quality_reviews.length,1);
+assert.equal(registry.readSourceReview(qualityKey).note,'Reviewed synthetic gap');
+assert.equal(registry.readSourceReview('f'+qualityKey.slice(1)),null);

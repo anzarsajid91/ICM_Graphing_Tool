@@ -66,3 +66,21 @@ def test_v2_milestone_and_following_releases(monkeypatch):
     assert module.release_version()['app_version'] == 'v2.2.0'
     commits.append('Subsequent patch (#118)')
     assert module.release_version()['app_version'] == 'v2.2.1'
+
+
+def test_v3_milestone_and_following_releases(monkeypatch):
+    import scripts.app_version as module
+
+    commits = ['Hydra Bench 2.2 (#117)']
+    monkeypatch.setattr(module, 'git', lambda *args: '\n'.join(commits) if args[0] == 'log' else '')
+    monkeypatch.setenv('GITHUB_EVENT_NAME', 'pull_request')
+    monkeypatch.setenv('GITHUB_REF', 'refs/pull/119/merge')
+    assert module.release_version()['app_version'] == 'v3.0.0-rc.1'
+
+    monkeypatch.setenv('GITHUB_EVENT_NAME', 'push')
+    monkeypatch.setenv('GITHUB_REF', 'refs/heads/main')
+    assert module.release_version()['app_version'] == 'v2.2.0'
+    commits.append('Hydra Bench 3.0 (#119)')
+    assert module.release_version()['app_version'] == 'v3.0.0'
+    commits.extend(['Next release (#120)', 'Duplicate marker (#120)'])
+    assert module.release_version()['app_version'] == 'v3.0.1'

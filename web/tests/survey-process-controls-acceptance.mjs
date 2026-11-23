@@ -1,5 +1,6 @@
 // Normal synthetic FDV/R/workbook imports and actual complete/balance engines.
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
 import { chromium, firefox } from "playwright";
 import {
   browserLaunchOptions,
@@ -29,6 +30,7 @@ const record = (route, control, expected, observed) => {
 try {
   const context = await browser.newContext({
     ...browserContextOptions(),
+    acceptDownloads: true,
     viewport: { width: 1440, height: 1000 },
   });
   const guard = installPrivacyGuard(context, base),
@@ -363,6 +365,31 @@ try {
     "Toggle populated monthly synthesis",
     "Synthesis body visibility changed and restored",
   );
+
+  await page.locator('button[data-workspace="reports"]').click();
+  await page.getByRole('tab',{name:'Revision comparison',exact:true}).click();
+  const report=page.locator('#tab-assessment-revision'),monitor=report.getByLabel('Flow survey monitor ID (optional)',{exact:true});
+  const capture=report.getByRole('button',{name:'Capture baseline',exact:true}),reportStatus=report.locator('#hbAssessmentStatus');
+  await report.getByLabel('Revision name',{exact:true}).fill('Synthetic branch continuity check');
+  await monitor.fill('FM3');await capture.click();
+  await reportStatus.filter({hasText:'No current survey evidence matched that exact monitor ID'}).waitFor();
+  await monitor.fill('FM03');await capture.click();
+  await reportStatus.filter({hasText:'Baseline assessment captured'}).waitFor();
+  const request=page.waitForEvent('download');
+  await report.getByRole('button',{name:'Download baseline snapshot',exact:true}).click();
+  const packet=JSON.parse(await fs.readFile(await (await request).path(),'utf8'));
+  const result=packet.records.find(item=>item.id.startsWith('survey:balance:')&&item.id.includes('2026-01-11'));
+  const value=(entry,section,key)=>entry[section].find(field=>field.key===key).value;
+  assert.ok(result&&Math.abs(value(result,'results','Downstream volume')-2*expectedUp)<1e-6);
+  assert.ok(Math.abs(value(result,'results','Upstream volume')-2*expectedUp)<1e-6);
+  assert.equal(value(result,'review','Reported rating'),'Green');
+  assert.equal(value(result,'review','Review evidence'),'Current');
+  assert.equal(value(result,'review','Reviewer'),'Synthetic release reviewer');
+  assert.match(value(result,'basis','Monitored branch'),/FM03.*[a-f0-9]{64}.*FM01.*[a-f0-9]{64}.*FM02/s);
+  assert(!packet.records.some(item=>item.id==='survey:monitor:FM01'||item.id==='survey:monitor:FM02'));
+  assert(packet.records.some(item=>item.id.startsWith('survey:week:["FM03"')));
+  record('monthly-review','Reports revision snapshot','Retain the exact monitor, reviewed basis, signed volumes and reported RAG locally',
+    {monitor:'FM03',downstreamM3:value(result,'results','Downstream volume'),reported:value(result,'review','Reported rating')});
   guard.assertClean();
   assert.deepEqual(errors, []);
 } finally {

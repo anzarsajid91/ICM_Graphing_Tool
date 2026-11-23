@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export function resourcePaths(root=process.cwd()){
-  const paths=new Set(['','index.html','build.json','python/package-manifest.json','release-integrity.json','security/claims.json','security/dependencies.json','security/security-audit.md','security/SECURITY.md']);
+  const paths=new Set(['','index.html','build.json','assets/method-library.json','python/package-manifest.json','release-integrity.json','security/claims.json','security/dependencies.json','security/security-audit.md','security/SECURITY.md']);
   function walk(dir,prefix){
     for(const entry of fs.readdirSync(dir,{withFileTypes:true})){
       if(entry.name==='tests'||entry.name==='__pycache__')continue;

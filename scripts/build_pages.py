@@ -33,7 +33,7 @@ def _inject_v2_assets(build_token: str) -> None:
         "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js",
         "workbench-v3.js", "workbook-reader.js", "workbench-survey.js",
         "workflow-26.js", "detriment-workspace.js", "network-schematic-loader.js",
-        "precision-workbench.js",
+        "project-home.js", "method-library.js", "precision-workbench.js",
     )
     html = html.replace('<body>', '<body class="hb-starting">', 1)
     html = html.replace('id="hbStartup" hidden', 'id="hbStartup"', 1)
@@ -50,9 +50,12 @@ def _inject_v2_assets(build_token: str) -> None:
         '\n  '.join(f'<script defer src="assets/{name}"></script>' for name in scripts),
     )
     required = ["csv-output.js", "design-system.js", "domain-registry.js", "workbench-v2.css", "workbench-v2.js", "fastpath-preview.js", "workbench-v2-domfix.js", "workbench-v3.js", "workbench-survey.css", "workbench-survey.js", "workflow-26.css", "workflow-26.js", "precision-workbench.css", "precision-workbench.js", "detriment-workspace.css", "detriment-workspace.js", "vendor/sheetjs-0.20.3/xlsx.full.min.js"]
-    required.extend(["network-schematic.css", "network-schematic-loader.js"])
+    required.extend(["network-schematic.css", "network-schematic-loader.js", "project-home.js", "method-library.js"])
     if not all(name in html for name in required):
         raise RuntimeError("Could not inject all browser UX assets into Pages index")
+    for name in ("hydraulic-design.js", "simulation-results.js", "series-quality.js", "assessment-revision-core.js"):
+        if not (SITE / "assets" / name).is_file():
+            raise RuntimeError(f"Missing deferred workspace asset {name}")
 
     # GitHub Pages/CDN may retain same-named static assets across deployments.
     # Version fixed assets linked from the index with the exact release SHA so index,
@@ -80,6 +83,8 @@ def _inject_v2_assets(build_token: str) -> None:
         "assets/workbench-survey.js",
         "assets/workflow-26.js",
         "assets/detriment-workspace.js",
+        "assets/project-home.js",
+        "assets/method-library.js",
         "assets/precision-workbench.js",
         "assets/network-schematic-loader.js",
     ]
@@ -111,14 +116,26 @@ def build() -> None:
         shutil.rmtree(SITE)
     copy_browser_sources(WEB, SITE)
     shutil.copy2(ROOT / "LICENSE", SITE / "LICENSE.txt")
+    from stage_icm_exports import stage_icm_exports
+    toolkit_version = stage_icm_exports(ROOT, SITE / "downloads" / "icm")
+    from stage_method_library import stage_method_library
+    stage_method_library(ROOT, SITE / "assets" / "method-library.json")
 
     security_root = SITE / 'security'
     security_root.mkdir()
     for source, target in [('security/claims.json','claims.json'),('web/vendor/manifest.json','dependencies.json'),('docs/security-audit.md','security-audit.md'),('SECURITY.md','SECURITY.md')]:
         shutil.copy2(ROOT / source, security_root / target)
     claim_data = (ROOT / 'security/claims.json').read_text().replace('<', '\\u003c')
+    assurance = json.loads((ROOT / "security" / "release-assurance.json").read_text(encoding="utf-8"))
+    if assurance.get("schema_version") != 1 or not isinstance(assurance.get("records"), list):
+        raise ValueError("Invalid release assurance schema.")
+    assurance_data = json.dumps(assurance, separators=(",", ":")).replace("<", "\\u003c")
     index = SITE / 'index.html'
-    index.write_text(index.read_text().replace('</head>', '<script id="securityClaims" type="application/json">'+claim_data+'</script>\n</head>'))
+    security_metadata = (
+        f'<script id="securityClaims" type="application/json">{claim_data}</script>\n'
+        f'<script id="releaseAssurance" type="application/json">{assurance_data}</script>\n'
+    )
+    index.write_text(index.read_text().replace("</head>", security_metadata + "</head>"), encoding="utf-8")
 
     python_root = SITE / "python"
     python_root.mkdir(parents=True, exist_ok=True)
@@ -129,6 +146,7 @@ def build() -> None:
     _inject_v2_assets(build_token)
     index = SITE / "index.html"
     html = index.read_text(encoding="utf-8").replace('id="appVersion">v1.000', f'id="appVersion">{version["app_version"]}')
+    html = html.replace('  <meta name="icm-build-sha"', f'  <meta name="icm-export-toolkit-version" content="{toolkit_version}" />\n  <meta name="icm-build-sha"')
     html = html.replace('  <meta name="icm-build-sha"', f'  <meta name="hydra-bench-version" content="{version["app_version"]}" />\n  <meta name="icm-build-sha"')
     repository = os.environ.get("GITHUB_REPOSITORY", "anzarsajid91/ICM_Graphing_Tool")
     if re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", repository) and re.fullmatch(r"[a-f0-9]{40}", build_token):

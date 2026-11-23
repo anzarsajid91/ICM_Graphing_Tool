@@ -1,0 +1,333 @@
+# Simulation results intake and review
+
+## Export from InfoWorks ICM
+
+In the InfoWorks ICM Results menu, choose **CSV export**. Add the required
+simulation and a Selection List for the assets under review. Choose the object
+class and individual result attribute. Use the **Results** timestep, enable
+the header and unit rows and use native metric units where possible. Download
+one CSV per simulation, object class and attribute. Keep the run identifier,
+scenario, event, model revision and vertical datum with the file.
+
+The [Autodesk 2026 CSV Export dialog](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-30AFF9A8-86D6-418C-A17F-127D09EC8B4D.htm)
+defines the header, units and timestep choices. The Autodesk result field
+references distinguish time-varying [node results](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-18FD4962-1E97-491A-AD6E-6DF35191301D.htm)
+and [link results](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm)
+from independent simulation extrema. Link-end depth, absolute level and total
+head have different definitions. Flood depth is referenced to a node's flood
+level. Some 2D flood volumes are notional values. Preserve those distinctions
+when interpreting results.
+
+Map the documented `VOLUME` node field as **Storage volume**, in m³ or with
+an explicit conversion from L. It is an instantaneous total node volume,
+distinct from flood volume, available capacity and cumulative discharge.
+Autodesk treats the above-surface part as notional for applicable 2D nodes.
+
+## Import contract v1
+
+Open **Network Schematic → Simulation results** and choose the local CSV. Set
+the header record and date column and indicate whether the following record
+contains units. Preview shows the first 12 nonempty records and six columns.
+Record numbers count blank records and quoted multiline fields count once.
+The published reader accepts comma-delimited UTF-8, optionally with a BOM,
+or UTF-16 with a byte-order marker. Select the ISO or DMY project-clock
+interpretation and explicitly confirm that the source contains instantaneous
+samples. Dates with explicit offsets, invalid calendar dates, repeated times
+and out-of-order timestamps require resolution before indexing.
+
+Provide a simulation ID, model revision, scenario, event, source attribute,
+quantity, supported unit and result location. Node and link identities are
+typed. A link uses the ICM table, upstream node ID and suffix. Keep leading
+zeros. For absolute level and total head, supply the vertical datum. Mapped
+columns must be unique. A declared unit row must be compatible with the
+selected units. Signed values, including reverse flow, retain their sign.
+Blank cells and the optional explicitly configured nonnumeric sentinel are
+missing. Numeric zero is a sample. Malformed numbers block the import.
+
+The local index retains the selected labels, mappings and canonical units,
+along with an ordered source fingerprint. The fingerprint takes SHA-256 of
+each consecutive 1 MiB byte block, concatenates the binary hashes and hashes
+that sequence with SHA-256. The source size accompanies the digest. This
+algorithm is named `sha256-of-ordered-1MiB-sha256-blocks-v1` in the result
+metadata. Match exported run metadata with the current model before drawing
+any conclusions from a result.
+
+## Resource and verification limits
+
+The browser worker reads the original File in 1 MiB chunks, builds a shared
+time axis and retains selected results in column-major, chunked Float64 arrays.
+Sources are session memory. Removing a source releases its worker reference.
+Cancellation and validation failures leave previously indexed sources in
+place. The worker allows up to 16 sources, up to 64 MiB of combined typed
+sample allocations and up to 2 GiB per source file. The explicit mapping
+form accepts up to 100 mapped columns per import. JavaScript objects, text
+and temporary parsing buffers add to the typed-data allocation. Exporting
+fewer assets, attributes or time periods reduces work at the source.
+
+The sample slider and play controls advance through recorded sample positions.
+Unequal result timesteps remain unequal in reported timestamps. The current
+review screen reports extrema and their timestamps for one selected series
+over the active window. Filter files by their declared event label. Enter
+inclusive bounds on the project clock to restrict either review or map
+playback to recorded timestamps in a smaller interval. The window reports
+the actual first and last samples. An empty or invalid window leaves the
+previous valid selection in place. **Use entire event** restores the source's
+full recorded span. Indexed reads support exact-time frames and bounded windows.
+There is no interpolation, extrapolation or numerical decimation.
+
+## Portable results package v1
+
+Select **Download portable results** for an indexed source. Hydra Bench
+writes a local `.hbresults` file containing the mapped series only. Use
+**Portable results package** to preview and explicitly index that file in
+another session. Review the model revision, scenario and asset mapping
+before applying playback. Keep the native result export for independent
+source verification. A package's declared original fingerprint identifies
+source provenance and can be checked against the original file.
+
+The format is public and uncompressed. It begins with the eight ASCII
+bytes `HBRES001`, a little-endian unsigned 32-bit UTF-8 JSON length, then
+the JSON header. The header declares `schemaVersion`, `count`,
+`rowsPerChunk`, simulation, model revision, scenario, event, project-clock
+format, temporal support, original source fingerprint, missing-source
+token and the ordered columns. Each column retains its typed asset,
+source column index, quantity, location, datum, canonical and original
+units, attribute label, source heading and optional source unit label.
+
+For `C` result columns, a full block contains
+`min(4096, floor(1048576 / (8 × (C + 1))))` samples. The last block contains
+the remaining samples without padding. Each block starts with one shared
+array of project-clock millisecond values. An array for each result column
+follows in header order. Every entry is an IEEE 754 binary64 little-endian
+value. A quiet NaN represents a missing result. Signed values and zero
+remain samples. Infinity is invalid. The reader enforces the schema and
+byte size, reviews declared role and units, validates strictly increasing
+times and counts missing measurements before using the source. It trims
+neither time periods nor values to fit the memory budget.
+
+The package fingerprint `sha256-of-hbresults-header-and-blocks-v1` hashes
+the combined prefix and JSON bytes and then each binary block. It hashes
+the ordered concatenation of those binary digests. This identifies the
+package read locally. No content is sent to a server. Import cancellation
+preserves other indexed sources. The same 64 MiB typed-data budget applies
+to indexed packages, CSVs and retained file-backed working sets together.
+Preview has an 8 MiB header ceiling and rejects impossible block layouts,
+lengths and metadata. Neither method uses hidden persistence, archive
+expansion or a proprietary binary reader.
+
+Select **Read from the local package when needed** before indexing to use
+file-backed access. The worker verifies every block and retains an index of
+block-end timestamps and a cache bounded by one block. It reads the clock
+and requested series columns from that file rather than copying all selected
+measurements into the tab's memory. Adjacent column reads can share a slice.
+Exact sample, result-window and extrema queries use the same values as the
+in-memory mode. Reindexing the same package with a different access mode
+updates the existing source after successful validation. Cancellation leaves
+the previous index available. The package file must stay accessible while
+this tab is open. Select it again in another session. The portable file
+limit remains 2 GiB, subject to actual browser and device resources.
+
+### Produce a larger package locally
+
+Preview a native CSV and complete the same mapping you would use to index
+it. Select **Download CSV mapping**. This saves the reviewed inputs and
+canonical field selections without indexing the dataset. From the Hydra
+Bench source checkout, run the offline converter with Node.js 22 or later.
+
+```text
+node scripts/pack_simulation_results.mjs SOURCE.csv hydra-results-mapping.json OUTPUT.hbresults
+```
+
+The converter uses the same streaming CSV reader, clock checks and unit
+rules as Hydra Bench. It writes bounded blocks to a temporary local file
+and publishes the output after validation. It requires no extra package,
+network connection or ICM model access. Provide space for up to twice the
+result package size. The converter refuses to overwrite an existing output
+and clears its temporary files on validation failure or cancellation. Open
+the resulting package with file-backed access when a full copy would exceed
+the browser's typed-data budget.
+
+## Review on the schematic and long section
+
+Open **Simulation playback** in the detailed schematic. Choose an indexed
+source, review the original model revision and typed asset mapping and
+choose the display bounds in the stated unit. Apply the results layer to the
+current native geometry. If a package contains several result quantities,
+end positions or vertical datums, select the required **Result layer**. The legend is
+fixed during playback. Unmapped
+assets keep their schematic style. A matched asset with no value at the
+exact timestamp has a hollow marker or dashed link. Link arrows still
+show nominal topology. Read the signed value from the asset label.
+
+Instantaneous playback reads the channels for the individually rendered
+assets and the open route. Dense areas shown as compact topology retain
+their connectivity. Zoom in or use **Find asset** to load an individual
+reading. The sample counter describes the assets requested for that view.
+Changing the viewport refreshes the newly visible channels at the same
+recorded timestamp. Independent extrema continue to scan every matched
+asset in the confirmed layer and time window.
+
+For node level sources, enter the geometry datum to synchronize an open
+long section. The entered datum must match the source result datum. The
+profile draws discrete samples at the corresponding nodes, shows the exact
+project-clock time, and reports freeboard only where a compatible imported
+ground elevation is available. The temporary playback layer takes display
+precedence over an individually saved level overlay. It leaves saved
+geometry, route settings, and evidence unchanged. Reimporting geometry or
+removing the source clears the layer. Its session index remains local.
+
+The initial desktop smoke tests use a synthetic, explicitly mapped export
+following the documented CSV options. ICM-generated fixtures across versions
+and locales are still needed. The registry retains only local session data.
+### Inspect reported conduit-end levels
+
+Select a link level result layer, confirm the source run and enter the
+geometry datum. Optionally select **Other conduit end** to pair a second
+indexed source from the same simulation, model revision, scenario and
+event, using the same units and datum. The paired source contributes only
+its exact samples at the selected project-clock time, for links on the open
+route. Opposite-end depth and total head cannot substitute for level.
+
+The Autodesk reference identifies link level as a time-varying result and
+defines total head separately as level plus velocity head. In the long
+section, both supported water levels are shown as end markers, with a
+straight display line between wet ends. Known closed barrel geometry
+allows water fill up to the soffit, while a level above soffit stays visible
+as a dashed hydraulic grade depiction and is reported as head above soffit.
+Freeboard is the available ground elevation less the reported level. It
+does not validate flood risk or reproduce Autodesk's separate surcharge-state
+classification. The straight line is a depiction of endpoint evidence. It
+does not estimate the internal conduit solution. Missing exact samples,
+levels at or below invert, and unsupported barrel geometry withhold the fill.
+[Autodesk link results reference](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm)
+
+The profile uses the retained native conduit height for recognised ICM
+closed shapes. It draws a chamber where source floor, roof and ground levels
+are consistent. Pump, weir, orifice and sluice symbols sit at their recorded
+route stations. Imported switch levels, crests and inverts appear as separate
+source marks when the declared units are supported. Shaft width and structure
+symbols are schematic. Missing lengths and elevations stay visible as gaps.
+[Autodesk conduit shapes](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-57967A12-5043-40C1-B300-2DA720465829.htm) ·
+[Conduit fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1306601E-4A25-4FBE-AE9A-01E06BF4986E.htm) ·
+[Node fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-18DCDEB6-621C-4127-8C04-365D3CDC4C7E.htm) ·
+[Weirs](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-2200B2A4-0C87-42C4-8A8A-4AE5C7C3E4B0.htm) ·
+[Pumps](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1B21FE58-FEE0-49A1-86F4-8B019D2A76A8.htm) ·
+[Orifices](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-19883D0E-582D-4387-AA21-ADE9E3ABB117.htm) ·
+[Sluices](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1E168695-5D06-4BE4-80AD-00D2B9DBE6C9.htm)
+
+### Compare scenarios at an exact sample
+
+Select the baseline result layer and choose **Proposal results**. Candidates
+must declare different scenarios, the same event and instantaneous project
+clock support. The asset kind, result quantity, unit, result location and
+datum must match. Review both model revisions, their shared project clock and
+the typed asset mappings. The current geometry is used as the shared review
+surface. The comparison requires common typed assets and does not establish
+that the two source models have equivalent geometry or hydraulic behaviour.
+
+Playback steps through recorded baseline samples. For each asset, inspect
+the baseline, proposal and proposal minus baseline values in its map label.
+Switch map shading among the three values and set the scale in the quantity's
+displayed unit. A valid difference requires both samples at the exact
+timestamp. A proposal sample at a different timestamp is unavailable for
+that frame. In a long section with a confirmed datum, purple rings mark the
+proposal's recorded node or conduit-end levels. For conduits, open the route,
+select an optional **Proposal other conduit end**, and confirm both model
+revisions use the displayed geometry and datum. The opposite end must match
+the proposal's own simulation, scenario and revision. A dashed purple line
+joins two wet exact end levels where the displayed geometry supports it.
+The baseline retains its own water fill and its independently reviewed end
+levels. Dry, missing and incompatible endpoints stay separate. Review and
+apply the shared proposal geometry again when the opened route changes.
+Each source remains separate
+in the local index. Removing either source or changing network geometry
+clears the comparison.
+
+### Compare reviewed revision geometry
+
+Open the baseline long section, then load the proposed native geometry
+CSV. In the import audit open **Revision comparison** and **Compare the
+open long section**. The audit matches the reviewed ordered typed links
+and their recorded endpoints. Changed endpoints, an unconfirmed direction
+or a missing link require a new route review.
+
+Check the source units and enter the proposed result run's exact model
+revision and vertical datum. Choose **Use revised route geometry** to
+add its long section alongside the baseline. For playback, select the
+matching proposal results and confirm the separately reviewed geometry
+and datum. Each plot uses its own conduit lengths, inverts, elevations and
+soffits at the same recorded project-clock sample. The map uses the baseline
+source plan. The map freeboard comparison requires a reviewed common
+ground basis, so use **Recorded level** for this separate profile review.
+
+**Save route review** retains the reviewed source route, chart settings,
+geometry digest and note in the local network file. Reopening verifies
+the saved geometry digest against the recorded values. Open the matching
+result sources again to play model samples. The SVG export includes both
+profiles, their independent axes and the active sample's time and datum.
+
+### Review independent window extrema
+
+Choose **Independent minimum** or **Independent maximum** in **Map results**.
+The worker scans the selected source and layer within the current sample
+window and returns each mapped asset's extreme, its exact first occurrence
+and the valid sample count. Equal values retain the first timestamp.
+The colours describe independent extrema. Assets can reach their extremes
+at different times. If a proposal comparison is active, the scan uses the
+selected baseline source. Choose the proposal as the primary layer to scan
+its own results.
+
+A scan processes one indexed block at a time with cancellation and progress.
+Return to **Instantaneous sample** to play the selected event again. The
+long section uses recorded instantaneous levels and does not connect
+independent extrema into a hydraulic state.
+
+## Recorded link-flow direction
+
+For indexed link-flow results, set **Positive link flow points** using the
+reviewed export sign convention and apply the layer. Bold arrows show the
+recorded direction at the selected instantaneous sample. Faded arrows show
+the nominal path between imported link endpoints. Zero and missing samples
+do not establish a recorded direction. Independent extrema and proposal
+differences have no instantaneous direction. Verify the source result and
+link ends before using the overlay in an engineering review.
+
+## Ground-level freeboard
+
+Choose **Ground-level freeboard** for an indexed node or link-end level.
+Confirm the geometry datum matches the recorded result. The map subtracts
+the exact recorded level from the source ground elevation at the node or
+corresponding link endpoint. A negative margin means the recorded level
+exceeds ground. A missing elevation or sample withholds the margin. A
+proposal comparison requires reviewed shared ground elevations and datum.
+The independent minimum margin uses the maximum recorded level. The
+independent maximum margin uses the minimum recorded level.
+
+## Source conduit geometry
+
+Open **Conduit geometry layer** on the detailed native network in Explore
+mode. Width and height use the imported dimensions in mm. Gradient uses the
+source value in m/m, or upstream minus downstream invert divided by source
+length when all three are available. Set the colour scale in the displayed
+units. A dashed conduit has an unavailable source value. Applying a
+simulation layer replaces the geometry shading.
+
+## Reviewed full-capacity utilisation
+
+Autodesk documents **Pipe full capacity** (`PFC`) as the total capacity of
+a conduit including all barrels. In **Simulation results**, select the
+indexed conduit-flow source, then open **Pipe full capacity table**. Prepare
+a local CSV with one row per conduit and its upstream node ID, link suffix
+and PFC value. Confirm the simulation, model revision and scenario. Choose
+the source columns and units. The table stays in the local worker session
+with a block SHA-256 fingerprint. Its 20,000-row and 16 MiB limits keep
+each reviewed file bounded. The session allows up to 40,000 capacity rows.
+
+Choose **Full-capacity utilisation** in **Simulation playback**. The
+screen displays `100 × |recorded flow| / PFC` in percent using consistent
+flow units. A zero or missing PFC leaves the ratio unavailable. The flow
+arrow still shows the signed instantaneous sample under the reviewed
+convention. Independent extrema scan actual magnitudes. Each compared
+scenario needs its own PFC table, and differences are in percentage points.
+The ratio does not by itself establish surcharge or available reverse flow
+capacity. See Autodesk [Links Results Fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm).

@@ -4,6 +4,70 @@
 const $=id=>document.getElementById(id);
 const qs=(sel,root=document)=>root.querySelector(sel);
 const qsa=(sel,root=document)=>[...root.querySelectorAll(sel)];
+const optionalComponents=Object.freeze({
+  calculations:{asset:'hydraulic-design.js',mount:()=>window.HydraDesignCalculations.mount(navigate)},
+  simulation:{asset:'simulation-results.js',mount:()=>window.HydraResultsWorkspace.mount()},
+  diagnostics:{asset:'series-quality.js',mount:()=>{}},
+  monitorCompare:{asset:'monitor-comparison.js',mount:()=>{}},
+  spillInquiry:{asset:'spill-inquiry.js',mount:()=>{}},
+  localSecurity:{asset:'local-security-diagnostics.js',mount:()=>{}},
+  monitorDiagnostics:{asset:'survey-monitor-diagnostics.js',mount:()=>{}},
+  rainfallSpatial:{asset:'rainfall-spatial.js',mount:()=>{}},
+  surveySuitability:{asset:'survey-suitability.js',mount:()=>{}},
+  verificationMatrix:{asset:'verification-matrix.js',mount:()=>window.HydraVerificationMatrix.mount()},
+  assessmentRevision:{asset:'assessment-revision-core.js',mount:()=>window.HydraAssessmentRevision.mount()},
+  gravitySizing:{asset:'gravity-sizing.js',mount:()=>window.HydraGravitySizing.mount()},
+  detrimentScenarios:{asset:'detriment-scenarios.js',mount:()=>window.HydraDetrimentScenarios.mount(navigate)}
+});
+const componentLoads=new Map(),readyComponents=new Set();
+function loadComponent(key){
+  if(!componentLoads.has(key)){
+    const component=optionalComponents[key];
+    const loading=new Promise((resolve,reject)=>{
+      const script=document.createElement('script');
+      script.src='assets/'+component.asset+'?v='+encodeURIComponent(buildToken);
+      script.onload=resolve;
+      script.onerror=()=>{script.remove();reject(new Error('The workspace could not load.'));};
+      document.head.append(script);
+    }).then(()=>{component.mount();readyComponents.add(key);})
+      .catch(error=>{componentLoads.delete(key);throw error;});
+    componentLoads.set(key,loading);
+  }
+  return componentLoads.get(key);
+}
+function optionalPanel(id){
+  const existing=$(id);if(existing)return existing;
+  const panel=document.createElement('section');panel.id=id;panel.className='tab-panel';panel.hidden=true;
+  qs('main.shell').append(panel);return panel;
+}
+function startOptionalPanel(route,root){
+  const key=route.component;
+  if(!key||readyComponents.has(key))return;
+  const status=document.createElement('p');status.className='pw-empty-state';status.setAttribute('role','status');
+  status.textContent='Opening '+route.label.toLowerCase()+'…';root.replaceChildren(status);
+  void loadComponent(key).catch(error=>{
+    status.textContent=error.message;
+    const retry=document.createElement('button');retry.textContent='Retry opening '+route.label.toLowerCase();retry.type='button';
+    retry.onclick=()=>startOptionalPanel(route,root);root.append(retry);
+  });
+}
+function installDiagnosticLauncher(){
+  let previous=$('clearPoolBtn');
+  const actions=[['Source diagnostics','diagnostics',()=>window.HydraSeriesQuality.open()],
+    ['Transform time series','diagnostics',()=>window.HydraSeriesQuality.transform()],
+    ['Compare monitoring locations','monitorCompare',()=>window.HydraMonitorComparison.open()]];
+  for(const [caption,component,open] of actions){
+    const launcher=document.createElement('button');launcher.type='button';launcher.className='btn';
+    launcher.textContent=caption;launcher.setAttribute('aria-haspopup','dialog');previous.after(launcher);previous=launcher;
+    launcher.onclick=async()=>{
+      if(launcher.getAttribute('aria-busy')==='true')return;
+      launcher.setAttribute('aria-busy','true');
+      try{await loadComponent(component);if(current.workspace==='data')open();}
+      catch(error){$('mappingStatus').textContent=error.message+' Select '+caption+' to retry.';}
+      finally{launcher.removeAttribute('aria-busy');}
+    };
+  }
+}
 const ROUTES={
   home:{
     label:'Home',
@@ -22,13 +86,17 @@ const ROUTES={
     icon:'spills',
     pages:{
       assessment:{label:'Spill assessment',title:'EDM / model spill assessment',description:'Configure thresholds and exclusions, then review physical spill intervals, 12/24 counts and observed/model evidence.',tab:'spills',root:()=>$('tab-spills')},
-      storage:{label:'Storage assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')}
+      storage:{label:'Storage assessment',title:'Storage assessment',description:'Review support-aware idealised storage screening and modelled spill-volume evidence.',tab:'storage',root:()=>$('tab-storage')},
+      'storage-routing':{label:'Storage routing',title:'Storage routing screening',description:'Test spill-volume sensitivity to storage capacity and a constant pass-forward limit.',component:'calculations',root:()=>optionalPanel('tab-storage-routing')}
     }
   },
   network:{
     label:'Network Schematic',
     icon:'network',
-    pages:{schematic:{label:'Schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')}}
+    pages:{
+      schematic:{label:'Schematic',title:'Network schematic',description:'Arrange a site overview and review individual asset spill evidence across years and scenarios.',root:()=>$('tab-spill-network')},
+      'simulation-results':{label:'Simulation results',title:'Simulation results',description:'Index mapped ICM results and inspect exact project-clock samples and independent extrema.',component:'simulation',root:()=>optionalPanel('tab-simulation-results')}
+    }
   },
   survey:{
     label:'Flow survey',
@@ -47,24 +115,39 @@ const ROUTES={
       comparison:{label:'Observed vs modelled',title:'Observed versus modelled diagnostics',description:'Compare scenarios using the canonical bounded-alignment engine, scatter views and verification statistics.',tab:'compare',root:()=>$('tab-compare')},
       overview:{label:'Overview',title:'Verification overview',description:'Review source coverage, comparison metrics and engineering decisions.',root:()=>$('tab-verification-overview')},
       events:{label:'Event Review',title:'Verification event review',description:'Compare observed and modelled responses for a qualifying rainfall event.',root:()=>$('tab-verification-events')},
+      matrix:{label:'Verification matrix',title:'Multi-event verification',description:'Review independent agreement criteria across qualifying periods, monitored sites and scenarios.',component:'verificationMatrix',root:()=>optionalPanel('tab-verification-matrix')},
       rating:{label:'Depth / rating',title:'Depth agreement and flow–depth diagnostics',description:'Inspect depth agreement and Q/H rating evidence with sample support and validity limitations.',tab:'compare',root:()=>$('tab-compare')},
       dwf:{label:'DWF',title:'Dry-weather-flow baseline',description:'Review dry-weather qualification and baseline evidence without inferring dry periods from missing rainfall.',tab:'compare',root:()=>$('tab-compare')}
     }
   },
   hydraulics:{
     label:'Hydraulic Calculations',icon:'hydraulics',
-    pages:{capacity:{label:'Pipe capacity',title:'Hydraulic calculations',description:'Estimate full-bore uniform-flow capacity using Darcy–Weisbach.',root:()=>$('tab-hydraulics')}}
+    pages:{
+      capacity:{label:'Pipe capacity',title:'Hydraulic calculations',description:'Estimate full-bore uniform-flow capacity using Darcy–Weisbach.',root:()=>$('tab-hydraulics')},
+      gravity:{label:'Gravity sizing',title:'Gravity pipe sizing',description:'Assess Manning discharge and normal depth, or calculate a continuous full-bore sizing requirement.',component:'gravitySizing',root:()=>optionalPanel('tab-manning-sizing')},
+      'system-curve':{label:'System curve',title:'Pipe head loss and system curves',description:'Review the components of head loss in steady full-pipe systems.',component:'calculations',root:()=>optionalPanel('tab-pipe-system')},
+      'pump-duty':{label:'Pump duty',title:'Pump duty screening',description:'Compare measured pump curves against the pipe system.',component:'calculations',root:()=>optionalPanel('tab-pump-duty')},
+      structures:{label:'Structures',title:'Hydraulic structure screening',description:'Screen weir, orifice, sluice and supplied rating-curve discharge.',component:'calculations',root:()=>optionalPanel('tab-hydraulic-structures')},
+      'formula-a':{label:'Formula A',title:'Formula A and wastewater design flows',description:'Review continuation flow for the applicable framework or a documented project method.',component:'calculations',root:()=>optionalPanel('tab-formula-a')},
+      'treatment-flow':{label:'Treatment flows',title:'Dry weather flow and full treatment',description:'Review EA and SEPA treatment flows with distinct infiltration allowances.',component:'calculations',root:()=>optionalPanel('tab-design-treatment')},
+      'foul-loading':{label:'Peak foul flow',title:'Peak foul flow',description:'Review design foul loading from separate domestic, commercial, infiltration and trade components.',component:'calculations',root:()=>optionalPanel('tab-design-foul')},
+      'section-check':{label:'Velocity and shear',title:'Velocity and boundary shear',description:'Review a circular gravity section against the project velocity criterion and a uniform-flow shear assumption.',component:'calculations',root:()=>optionalPanel('tab-section-check')}
+    }
   },
-  detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment'},
+  detriment:{...window.ICMDetriment.routes,label:'Detriment assessment',icon:'detriment',pages:{...window.ICMDetriment.routes.pages,
+    comparison:{label:'Scenario comparison',title:'Detriment scenario comparison',description:'Review multiple proposals against the same assessed baseline.',
+      component:'detrimentScenarios',root:()=>optionalPanel('tab-detriment-scenarios')}}},
   about:{
     label:'About',icon:'about',
-    pages:{overview:{label:'Overview',title:'About Hydra Bench',description:'A practical workbench for hydraulic evidence, model verification and scenario assessment.',root:()=>$('tab-about')},security:{label:'IT Security',title:'IT Security',description:'Data handling, implemented controls and verification limits.',root:()=>$('tab-security')}}
+    pages:{overview:{label:'Overview',title:'About Hydra Bench',description:'A practical workbench for hydraulic evidence, model verification and scenario assessment.',root:()=>$('tab-about')},
+      security:{label:'IT Security',title:'IT Security',description:'Data handling, implemented controls and verification limits.',root:()=>$('tab-security')}}
   },
   reports:{
     label:'Reports',
     icon:'report',
     pages:{
       'report-generation':{label:'Report generation',title:'Report generation',description:'Review result readiness and export a coherent snapshot of current authoritative analyses.',tab:'workspace',root:()=>$('tab-workspace')},
+      revisions:{label:'Revision comparison',title:'Assessment revision comparison',description:'Compare saved assessment evidence, methods and engineering review decisions.',component:'assessmentRevision',root:()=>optionalPanel('tab-assessment-revision')},
       workspace:{label:'Workspace save / restore',title:'Workspace save and restore',description:'Persist configuration and source fingerprints without embedding raw engineering files.',tab:'workspace',root:()=>$('tab-workspace')}
     }
   }
@@ -266,6 +349,21 @@ function ensureDataHealthSurface(){
   const section=ensureSection('pwDataHealthSummary','FDV data health','Coverage and source quality by monitor.');
   section.classList.add('pw-data-health-summary');
   const head=qs('.pw-surface-head',section),run=$('runHealthBtn');if(run){run.classList.remove('primary');run.textContent='Run data health assessment';head.appendChild(run);}
+  const monitor=document.createElement('button'),monitorStatus=document.createElement('p');
+  monitor.className='btn';monitor.type='button';monitor.textContent='Investigate monitor readings';monitor.setAttribute('aria-haspopup','dialog');
+  monitorStatus.setAttribute('role','status');head.appendChild(monitor);section.appendChild(monitorStatus);
+  async function openClockDiagnostics(){
+    navigate('data','time-series',true);
+    try{await loadComponent('diagnostics');if(current.workspace==='data')window.HydraSeriesQuality.open();}
+    catch(error){$('mappingStatus').textContent=error.message+' Select Source diagnostics to retry.';}
+  }
+  monitor.onclick=async()=>{
+    if(monitor.getAttribute('aria-busy')==='true')return;
+    monitor.setAttribute('aria-busy','true');monitorStatus.textContent='';
+    try{await loadComponent('monitorDiagnostics');if(current.page==='fdv-check')window.HydraMonitorDiagnostics.open(openClockDiagnostics);}
+    catch(error){monitorStatus.textContent=error.message+' Select Investigate monitor readings to retry.';}
+    finally{monitor.removeAttribute('aria-busy');}
+  };
   const empty=document.createElement('div');empty.id='pwHealthSummaryEmpty';empty.className='pw-empty-state';empty.textContent='Run data health to review source coverage and quality.';
   const wrap=document.createElement('div');wrap.className='table-wrap pw-summary-table-wrap';wrap.tabIndex=0;wrap.setAttribute('role','region');wrap.setAttribute('aria-label','Flow survey health summary table');wrap.innerHTML='<table class="data-table pw-summary-table"><thead><tr><th>Monitor / source</th><th>Minimum coverage</th><th>Finding severity</th><th>Affected quantity</th><th>Next action</th></tr></thead><tbody id="pwHealthSummaryBody"></tbody></table>';
   const details=document.createElement('details');details.id='pwDataHealthDetails';details.className='pw-evidence-details';details.innerHTML='<summary>Channel / week evidence</summary><p>Full native assessment records remain available for audit and export.</p>';
@@ -278,6 +376,18 @@ function ensureSpillSurfaces(){
   const threshold=ensureSection('pwSpillThresholdSurface','Thresholds and exclusions','Define assessment thresholds and auditable exclusion periods before calculating spills.');
   const result=ensureSection('pwSpillResultsSurface','Spill assessment evidence','Yearly summaries and compact monthly count / duration comparisons.');
   const thresholdHead=qs('.pw-surface-head',threshold),run=$('runSpillsBtn');if(run){run.textContent='Calculate spills';run.classList.add('primary');thresholdHead.appendChild(run);}
+  const reviewActions=document.createElement('div');reviewActions.className='actions';qs('.pw-surface-head',result).append(reviewActions);
+  for(const [caption,method] of [['Investigate physical discharges','open'],['Compare spill scenarios','compare']]){
+    const button=document.createElement('button');button.className='btn';button.type='button';button.setAttribute('aria-haspopup','dialog');
+    button.textContent=caption;reviewActions.append(button);
+    button.onclick=async()=>{
+      if(button.getAttribute('aria-busy')==='true')return;
+      button.setAttribute('aria-busy','true');
+      try{await loadComponent('spillInquiry');if(current.workspace==='spills')window.HydraSpillInquiry[method]();}
+      catch(error){$('spillRunStatus').textContent=error.message+' Select '+caption+' to retry.';}
+      finally{button.removeAttribute('aria-busy');}
+    };
+  }
   const map=qs('#tab-spills .mapping-grid.compact'),exclude=$('exclusionRows')?.closest('.subpanel');if(map)threshold.appendChild(map);if(exclude)threshold.appendChild(exclude);
   const basis=document.createElement('div');basis.className='spill-local-basis';
   for(const [id,text] of [['timeBasisConfirmed','Sources share the same model-clock time basis'],['levelDatumConfirmed','Absolute levels share a unit and datum (if undeclared)']]){
@@ -309,6 +419,133 @@ function refreshReportScenarioOptions(){
   const shouldSelectAll=select.options.length===0||previous.size===0;
   select.innerHTML=mapped.map(o=>'<option value="'+esc(o.value)+'" '+((shouldSelectAll||previous.has(o.value))?'selected':'')+'>'+esc(o.textContent)+'</option>').join('');
 }
+function mountReportSheetSelection(options,enabled){
+  const group=document.createElement('fieldset'),legend=document.createElement('legend'),list=document.createElement('div');
+  const note=document.createElement('p'),open=document.createElement('button');
+  legend.textContent='Calculation sheets';note.setAttribute('role','status');list.className='mapping-grid';
+  open.textContent='Open hydraulic calculations';open.type='button';
+  open.onclick=()=>navigate('hydraulics','capacity',true);
+  group.append(legend,list,note,open);options.append(group);
+  const wanted=new Set();
+  let pendingCatalog=false;
+  const catalog=()=>new Map((window.HydraDesignCalculations?.sheetStatus()||[]).map(entry=>[entry.id,entry]));
+  function refresh(){
+    group.hidden=!enabled.checked;
+    if(group.hidden)return;
+    if(!readyComponents.has('calculations')){
+      if(!pendingCatalog){
+        pendingCatalog=true;note.textContent='Loading calculation sheets…';
+        void loadComponent('calculations').then(()=>{pendingCatalog=false;refresh();},()=>{
+          pendingCatalog=false;note.textContent='Calculation sheets could not load. Reopen this report section to retry.';
+        });
+      }
+      return;
+    }
+    const choices=catalog();
+    for(const id of wanted)if(!choices.has(id))choices.set(id,{id,title:id.replace(/Form$/,'').replace(/([a-z])([A-Z])/g,'$1 $2'),current:false});
+    list.replaceChildren();
+    for(const entry of choices.values()){
+      if(!entry.current&&!wanted.has(entry.id))continue;
+      const label=document.createElement('label'),input=document.createElement('input');
+      input.type='checkbox';input.checked=wanted.has(entry.id);
+      input.onchange=()=>{if(input.checked)wanted.add(entry.id);else wanted.delete(entry.id);};
+      label.append(input,document.createTextNode(entry.title+(entry.current?'':' · calculate again')));list.append(label);
+    }
+    note.textContent=list.childElementCount?'Select the current sheets to include. Unavailable selections require a new calculation or removal.':
+      'Run a supported hydraulic or storage calculation to include its sheet.';
+  }
+  diagnostic.reportSheetChoices=()=>[...wanted];
+  diagnostic.restoreReportSheetChoices=ids=>{
+    wanted.clear();
+    if(Array.isArray(ids))for(const id of ids.slice(0,16))if(typeof id==='string'&&/^[a-zA-Z0-9]{1,64}$/.test(id))wanted.add(id);
+    refresh();
+  };
+  enabled.addEventListener('change',refresh);
+  window.addEventListener('icm:calculation-sheets-changed',refresh);
+  window.addEventListener('icm:route-changed',({detail})=>{if(detail.page==='report-generation')refresh();});
+  refresh();return refresh;
+}
+function mountReportLayout(options){
+  const list=options.querySelector('#reportSectionList'),template=options.querySelector('#reportTemplate');
+  const sections=[
+    ['time-series','reportIncludeTimeSeries','Full-period time series'],
+    ['spill-storage','reportIncludeSpillsStorage','Spills & storage'],
+    ['comparison','reportIncludeComparison','Comparison diagnostics'],
+    ['survey','reportIncludeSurvey','Flow-survey evidence'],
+    ['network','reportIncludeNetwork','Network schematic'],
+    ['calculations','reportIncludeCalculations','Engineering calculation sheets'],
+  ];
+  const presets={general:sections.slice(0,4).map(([key])=>key),
+    verification:['comparison','time-series'],spills:['spill-storage','time-series'],survey:['survey','time-series'],network:['network'],calculations:['calculations']};
+  const rows=new Map();
+  const announce=options.querySelector('#reportSectionStatus');
+  function updateButtons(){
+    const items=[...list.children];
+    items.forEach((row,index)=>{
+      const [up,down]=row.querySelectorAll('button');
+      up.disabled=index===0;down.disabled=index===items.length-1;
+    });
+  }
+  function applyOrder(order){
+    for(const key of reportSectionOrder(order))list.append(rows.get(key));
+    updateButtons();
+  }
+  for(const [key,id,caption] of sections){
+    const row=document.createElement('li'),label=document.createElement('label'),input=document.createElement('input');
+    const actions=makeActionGroup('pw-report-section-moves');
+    input.type='checkbox';input.id=id;input.checked=presets.general.includes(key);
+    input.onchange=()=>{template.value='';};
+    label.append(input,document.createTextNode(caption));row.dataset.reportSection=key;row.append(label,actions);
+    for(const [offset,arrow,phrase] of [[-1,'↑',' earlier'],[1,'↓',' later']]){
+      const button=document.createElement('button');button.type='button';button.textContent=arrow;
+      button.setAttribute('aria-label','Move '+caption+phrase);
+      button.onclick=()=>{
+        const neighbor=offset<0?row.previousElementSibling:row.nextElementSibling;
+        if(!neighbor)return;
+        list.insertBefore(row,offset<0?neighbor:neighbor.nextElementSibling);
+        template.value='';updateButtons();
+        (button.disabled?row.querySelector('input'):button).focus();
+        announce.textContent=caption+' moved to position '+([...list.children].indexOf(row)+1)+'.';
+      };
+      actions.append(button);
+    }
+    rows.set(key,row);list.append(row);
+  }
+  const updateSheetChoices=mountReportSheetSelection(options,rows.get('calculations').querySelector('input'));
+  template.onchange=()=>{
+    const chosen=presets[template.value];
+    if(!chosen)return;
+    for(const [key,row] of rows)row.querySelector('input').checked=chosen.includes(key);
+    applyOrder(chosen);updateSheetChoices();announce.textContent=template.selectedOptions[0].textContent+' template applied.';
+  };
+  window.__ICM_WORKBENCH__.restoreReportSectionOrder=order=>{template.value='';applyOrder(order);};
+  updateButtons();
+}
+function mountAssessmentPreview(actions,builder){
+  const preview=document.createElement('button');preview.type='button';preview.textContent='Preview assessment report';
+  const dialog=document.createElement('dialog');dialog.className='hb-report-preview';dialog.setAttribute('aria-label','Assessment report preview');
+  const controls=makeActionGroup(),close=document.createElement('button'),save=document.createElement('button');
+  close.type=save.type='button';close.textContent='Close';save.textContent='Download preview';
+  const frame=document.createElement('iframe');frame.title='Assessment report document';frame.setAttribute('sandbox','allow-scripts');
+  let packet=null;
+  close.onclick=()=>dialog.close();
+  save.onclick=()=>{if(packet)downloadAssessmentReport(packet);};
+  dialog.addEventListener('close',()=>{
+    packet=null;frame.remove();frame.removeAttribute('srcdoc');preview.focus();
+  });
+  preview.onclick=()=>guarded('workspaceStatus',async()=>{
+    preview.disabled=true;$('workspaceStatus').textContent='Preparing the report preview…';
+    try{
+      packet=await compileAssessmentReport();
+      if(!preview.getClientRects().length){packet=null;return;}
+      frame.srcdoc=packet.html;
+      dialog.append(frame);
+      dialog.showModal();$('workspaceStatus').textContent='Report preview ready.';
+    }finally{preview.disabled=false;}
+  });
+  controls.append(save,close);dialog.append(controls);
+  actions.prepend(preview);builder.append(dialog);
+}
 function ensureReportSurfaces(){
   const panel=qs('#tab-workspace .panel');if(!panel||$('pwWorkspaceSurface'))return;
   const builder=ensureSection('pwReportBuilderSurface','Report generation','Check result readiness, choose the report sections/scenarios and report view, then export the engineering report.');
@@ -320,12 +557,18 @@ function ensureReportSurfaces(){
   const options=document.createElement('section');options.id='pwReportOptions';options.className='subpanel pw-report-options';
   options.innerHTML='<div class="subhead"><div><h3>Report options</h3><p>Select the authoritative sections and model scenarios to include. These settings are saved with the workspace.</p></div></div>'+
     '<div class="mapping-grid compact-wide">'+
-      '<div class="pw-report-sections" role="group" aria-labelledby="pwReportSectionsLabel"><span id="pwReportSectionsLabel">Sections</span><div class="pw-check-stack"><label><input id="reportIncludeTimeSeries" type="checkbox" checked> Full-period time series</label><label><input id="reportIncludeSpillsStorage" type="checkbox" checked> Spills & storage</label><label><input id="reportIncludeComparison" type="checkbox" checked> Comparison diagnostics</label><label><input id="reportIncludeSurvey" type="checkbox" checked> Flow-survey evidence</label></div></div>'+
+      '<div class="pw-report-sections" role="group" aria-labelledby="pwReportSectionsLabel"><span id="pwReportSectionsLabel">Sections</span>'+
+        '<label>Report template<select id="reportTemplate" aria-label="Report template"><option value="">Custom selection</option>'+
+        '<option value="general">Engineering assessment</option><option value="verification">Model verification</option>'+
+        '<option value="spills">Spills and storage</option><option value="survey">Flow survey</option><option value="network">Network investigation</option>'+
+        '<option value="calculations">Engineering calculations</option></select></label>'+
+        '<ol id="reportSectionList"></ol><small role="status" id="reportSectionStatus"></small></div>'+
       '<label>Scatter view<select id="reportScatterScale"><option value="current">Current Plots view</option><option value="linear">Linear</option><option value="log">Log₁₀ (positive pairs only)</option></select><small>Report statistics follow the eligible pair population for this selected view.</small></label>'+
       '<label>Comparison scenarios<select id="reportScenarioSelect" multiple size="4"></select><small>Only currently mapped model scenarios are available.</small></label>'+
     '</div>';
-  builder.appendChild(options);refreshReportScenarioOptions();
+  builder.appendChild(options);mountReportLayout(options);refreshReportScenarioOptions();
   const reportActions=makeActionGroup();for(const id of ['downloadReportBtn','downloadFourPeriodBtn']){const b=$(id);if(b){b.classList.toggle('primary',id==='downloadReportBtn');b.textContent=id==='downloadReportBtn'?'Export assessment report':'Export four-period report';reportActions.appendChild(b);}}builder.appendChild(reportActions);
+  mountAssessmentPreview(reportActions,builder);
   const mirror=document.createElement('div');mirror.id='pwReportStatusMirror';mirror.className='report-status pw-status-mirror';mirror.textContent=wsStatus?.textContent||'Report export ready when required analyses are current.';builder.appendChild(mirror);
   if(wsStatus)new MutationObserver(()=>{mirror.textContent=wsStatus.textContent;}).observe(wsStatus,{childList:true,subtree:true,characterData:true});
   panel.append(builder,workspace);
@@ -339,8 +582,27 @@ function installSectionHierarchy(){
   }
 }
 window.__ICM_WORKBENCH__.installSectionHierarchy=installSectionHierarchy;
+function installRainfallReviewActions(){
+  const section=$('surveyRainfallReview');
+  if(!section||$('hbRainfallReviewActions'))return;
+  const actions=document.createElement('div'),status=document.createElement('p');
+  actions.className='actions';actions.id='hbRainfallReviewActions';status.setAttribute('role','status');
+  qs(':scope > .subhead',section).append(actions);$('surveyRainfallSummary').before(status);
+  for(const [caption,component,open] of [['Compare rain gauges','rainfallSpatial',()=>window.HydraRainfallSpatial.open()],
+    ['Review verification suitability','surveySuitability',()=>window.HydraSurveySuitability.open()]]){
+    const button=document.createElement('button');button.type='button';button.className='btn';button.textContent=caption;
+    button.setAttribute('aria-haspopup','dialog');actions.append(button);
+    button.onclick=async()=>{
+      if(button.getAttribute('aria-busy')==='true')return;
+      button.setAttribute('aria-busy','true');status.textContent='';
+      try{await loadComponent(component);if(current.workspace==='survey'&&current.page==='rainfall-check')open();}
+      catch(error){status.textContent=error.message+' Select '+caption+' to retry.';}
+      finally{button.removeAttribute('aria-busy');}
+    };
+  }
+}
 function preparePageComposition(){
-  ensureDataTimeSeriesSurface();ensureDataHealthSurface();ensureSpillSurfaces();ensureReportSurfaces();
+  ensureDataTimeSeriesSurface();ensureDataHealthSurface();ensureSpillSurfaces();ensureReportSurfaces();installRainfallReviewActions();
   const professional=qs('.survey-professional');
   const completeSurvey=$('completeSurveyPanel');
   own($('pwDataSetupSurface'),['data/time-series']);
@@ -565,6 +827,8 @@ function parseHash(){
 function navigate(workspace,page,push=false){
   const resolved=canonicalRoute(workspace,page);if(!resolved)return;
   workspace=resolved.workspace;page=resolved.page;
+  if(routeMounted&&(current.workspace!==workspace||current.page!==page))
+    window.dispatchEvent(new CustomEvent('icm:route-leaving',{detail:{...current}}));
   const mobileRouteFocus=matchMedia('(max-width:620px)').matches&&Boolean(qs('.pw-rail.is-open')?.contains(document.activeElement));
   rememberRouteScroll();cancelScrollRestore();
   restoreDocked();
@@ -579,6 +843,7 @@ function navigate(workspace,page,push=false){
   qsa('main.shell>.tab-panel').forEach(x=>{x.hidden=true;x.style.setProperty('display','none','important');});
   const root=p.root?.();
   if(root){
+    startOptionalPanel(p,root);
     root.classList.add('pw-route-visible');
     if(root.classList.contains('tab-panel')){root.hidden=false;root.style.removeProperty('display');}
     let ancestor=root.parentElement;
@@ -790,6 +1055,42 @@ function buildAboutPage(){
   const source=$('hbBuildSource')?.cloneNode(true);
   if(source){source.removeAttribute('id');panel.querySelector('#hbAboutSource').append(source);}
   qsa('[data-about-workspace]',panel).forEach(button=>button.addEventListener('click',()=>navigate(button.dataset.aboutWorkspace,button.dataset.aboutPage,true)));
+  window.HydraMethodLibrary.install(panel,navigate,ROUTES);
+}
+function installReleaseAssurance(article){
+  const details=document.createElement('details'),heading=document.createElement('summary'),note=document.createElement('p');
+  details.id='hbReleaseAssurance';details.className='subpanel';heading.textContent='Release assurance';details.append(heading,note);
+  const statuses={production:'Production-verified revision',candidate:'Verified candidate milestone'};
+  let records=[];
+  try{
+    const packet=JSON.parse($('releaseAssurance')?.textContent||'null');
+    if(packet?.schema_version===1&&Array.isArray(packet.records))records=packet.records.filter(record=>
+      /^[a-f0-9]{40}$/.test(record?.revision)&&Object.hasOwn(statuses,record.status));
+  }catch{}
+  note.textContent=records.some(record=>record.revision===buildToken)?'The register includes evidence for this exact revision.':
+    'This build is awaiting an exact-revision record. Each entry identifies its tested revision.';
+  const cards=document.createElement('div');cards.className='pw-security-cards';
+  for(const record of records){
+    const card=document.createElement('section'),name=document.createElement('h3'),identity=document.createElement('p');
+    const revision=document.createElement('code'),coverage=document.createElement('dl');
+    name.textContent=record.version;revision.textContent=record.revision;revision.style.overflowWrap='anywhere';
+    identity.append(statuses[record.status],document.createElement('br'),revision);
+    for(const [label,field] of [['Scope','scope'],['Engineering checks','engineering'],['Security checks','security'],
+      ['Compatibility','compatibility'],['Limitations','limitations']]){
+      const term=document.createElement('dt'),description=document.createElement('dd');
+      term.textContent=label;description.textContent=record[field];coverage.append(term,description);
+    }
+    const checks=document.createElement('ul');
+    for(const check of Array.isArray(record.checks)?record.checks:[]){
+      if(!/^[0-9]{1,20}$/.test(check?.run))continue;
+      const item=document.createElement('li'),link=document.createElement('a');
+      link.href='https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/'+check.run;
+      link.target='_blank';link.rel='noopener noreferrer';link.referrerPolicy='no-referrer';link.textContent=check.label;
+      item.append(link);checks.append(item);
+    }
+    card.append(name,identity,coverage,checks);cards.append(card);
+  }
+  details.append(cards);article.append(details);
 }
 function buildSecurityPage(){
   const panel=document.createElement('section');panel.id='tab-security';panel.className='tab-panel';panel.hidden=true;
@@ -808,7 +1109,18 @@ function buildSecurityPage(){
     }
     article.appendChild(cards);
   }else{const message=document.createElement('p');message.textContent='Security information is unavailable for this build.';article.appendChild(message);}
+  const runtime=document.createElement('button'),runtimeStatus=document.createElement('p');
+  runtime.type='button';runtime.className='btn';runtime.textContent='Open local data diagnostics';runtime.setAttribute('aria-haspopup','dialog');
+  runtimeStatus.setAttribute('role','status');article.append(runtime,runtimeStatus);
+  runtime.onclick=async()=>{
+    if(runtime.getAttribute('aria-busy')==='true')return;
+    runtime.setAttribute('aria-busy','true');runtimeStatus.textContent='';
+    try{await loadComponent('localSecurity');if(current.page==='security')window.HydraLocalSecurity.open(navigate);}
+    catch(error){runtimeStatus.textContent=error.message+' Select Open local data diagnostics to retry.';}
+    finally{runtime.removeAttribute('aria-busy');}
+  };
   const links=document.createElement('p');links.innerHTML='<a href="security/dependencies.json">Dependency inventory</a> · <a href="security/security-audit.md">Assessment and limitations</a> · <a href="security/claims.json">Claim–evidence register</a> · <a href="security/SECURITY.md">Security disclosure guidance</a>';article.appendChild(links);
+  installReleaseAssurance(article);
   panel.appendChild(article);qs('main.shell').appendChild(panel);
 }
 function wireGuidedImport(){
@@ -1077,6 +1389,23 @@ function wireVerificationEvents(){
     try{await window.ICMGraph.draw(range);}
     catch(error){$('mappingStatus').textContent=conciseErrorMessage(error);}
   });
+  diagnostic.resumeVerificationEvent={
+    capture(){
+      if(!rainEventsFresh()||!events.value||!models.value)return null;
+      const signature=analysisSignature(),rainfall=state.rainEventSignature;
+      return {event:events.value,model:models.value,signature,rainfall,
+        reviewed:plottedEvent?.signature===signature&&plottedEvent?.rainfall===rainfall};
+    },
+    restore(context){
+      if(!active()||!rainEventsFresh()||state.rainEventSignature!==context.rainfall||
+         analysisSignature()!==context.signature)return;
+      if(![...events.options].some(option=>option.value===context.event)||
+         ![...models.options].some(option=>option.value===context.model))return;
+      events.value=context.event;models.value=context.model;
+      events.dispatchEvent(new Event('change'));
+      if(context.reviewed)run.click();
+    },
+  };
   window.addEventListener('icm:route-changed',()=>{if(active())refresh();else ++generation;});
   window.addEventListener('icm:source-pool-changed',()=>{if(active())refresh();});
 }
@@ -1087,9 +1416,54 @@ function wirePipeCapacity(){
   const trials=[];
   const precision=value=>value===null?'—':Number(value.toPrecision(5)).toLocaleString(undefined,{maximumSignificantDigits:5});
   const capacity=trial=>trial.design?trial.values.full_capacity_m3_s:trial.values.discharge_m3_s;
-  let generation=0,current=null;
+  const reportSheet={id:'pipeCapacityForm',title:'Circular pipe capacity calculation sheet',content:document.createElement('div'),
+    snapshot:null,revision:null,isCurrent:()=>Boolean(reportSheet.snapshot)};
+  diagnostic.pipeCapacityReportSheet=()=>reportSheet;
+  const announceSheet=()=>window.dispatchEvent(new Event('icm:calculation-sheets-changed'));
+  let generation=0,current=null,sourceTrial=null,invertBasis=null;
   function resetResult(){
     ++generation;current=null;keep.disabled=true;sectionViews.replaceChildren();
+    if(reportSheet.snapshot){
+      reportSheet.snapshot=null;reportSheet.revision=null;reportSheet.content.replaceChildren();announceSheet();
+    }
+  }
+  function publishReport(trial){
+    const {design,inputs,values}=trial;
+    const method=design?'circular-darcy-colebrook-normal-depth-si-v1':'circular-darcy-colebrook-full-bore-si-v1';
+    const results=[['Full-bore capacity (m³/s)',capacity(trial)],['Flow status',design?values.status:values.regime]];
+    const reviewInputs=[['Calculation',design?'Design-flow normal depth':'Full-bore capacity'],
+      ['Internal diameter (m)',inputs.diameter_m],['Energy gradient (m/m)',inputs.gradient],
+      ['Absolute roughness (m)',inputs.roughness_m],['Kinematic viscosity (m²/s)',inputs.viscosity_m2_s]];
+    if(sourceTrial)reviewInputs.push(['Geometry, roughness and gradient copied from source conduit',sourceTrial]);
+    if(invertBasis)reviewInputs.push(...invertBasis);
+    if(design){
+      reviewInputs.push(['Design discharge (m³/s)',inputs.discharge_m3_s]);
+      results.push(['Imposed full-bore velocity (m/s)',values.imposed_full_velocity_m_s]);
+      for(const [index,point] of values.depths.entries()){
+        const label='Solution '+(index+1)+' ';
+        results.push([label+'depth (m)',point.depth_m],[label+'velocity (m/s)',point.velocity_m_s],
+          [label+'area (m²)',point.area_m2],[label+'hydraulic radius (m)',point.hydraulic_radius_m],
+          [label+'Reynolds number',point.reynolds],[label+'Darcy f',point.friction_factor]);
+      }
+    }else{
+      results.push(['Mean velocity (m/s)',values.velocity_m_s],['Reynolds number',values.reynolds],['Darcy f',values.friction_factor]);
+    }
+    const applicability=document.createElement('p');
+    applicability.textContent='Steady, uniform flow in one circular barrel with one effective roughness. Review backwater, surcharge and controls with dynamic hydraulic results.';
+    const rendered=result.cloneNode(true);rendered.removeAttribute('id');rendered.removeAttribute('role');rendered.removeAttribute('aria-live');
+    const geometry=sectionViews.cloneNode(true);geometry.removeAttribute('id');
+    reportSheet.content.replaceChildren(rendered,geometry,applicability);
+    reportSheet.snapshot={title:reportSheet.title,summary:reviewInputs[0][1]+' screening',inputs:reviewInputs,
+      identity:[['Hydra Bench version',document.querySelector('meta[name="hydra-bench-version"]')?.content||'Unavailable'],
+        ['Application revision',buildToken],['Calculation engine revision',diagnostic.workerBuildToken||'Unavailable'],
+        ['Method version',method],['Calculated at (UTC)',new Date().toISOString()]],
+      rows:[['Reference','C. F. Colebrook (1939) and DOE Fundamentals Handbook DOE-HDBK-1012/3-92, Fluid Flow'],
+        ['Equation','S = f V²/(2gDₕ); Q = A V; Re = VDₕ/ν; g = 9.80665 m/s².'],
+        ['Equation','1/√f = −2 log₁₀(kₛ/(3.7Dₕ) + 2.51/(Re√f)) for turbulent flow.'],
+        design?['Section basis','Dₕ = 4A/P with circular-segment area A and wetted perimeter P. The solver checks both limbs and withholds unsupported depths.']:
+          ['Laminar basis','f = 64/Re when laminar. Capacity is withheld in the transitional range.'],
+        ...(invertBasis?[['Gradient derivation','S = (upstream invert − downstream invert) / conduit length.']]:[]),...results]};
+    reportSheet.revision='capacity:'+generation;announceSheet();
   }
   function drawSection(fraction,label){
     const figure=document.createElement('figure'),circle=document.createElement('div');
@@ -1138,7 +1512,9 @@ function wirePipeCapacity(){
     const csv=[headers,...rows].map(row=>row.map(ICMSafeCSV.cell).join(',')).join('\r\n');
     downloadBlob('hydrabench-pipe-comparison.csv',csv,'text/csv');
   });
-  form.addEventListener('input',()=>{
+  form.addEventListener('input',event=>{
+    if(event.target===form||['diameter','roughness','gradient'].includes(event.target.name))sourceTrial=null;
+    if(event.target===form||event.target.name==='gradient')invertBasis=null;
     resetResult();
     const viscosity=form.elements.viscosity.value;
     $('pipeActiveViscosity').textContent=viscosity?'ν = '+viscosity+' m²/s':'ν required';
@@ -1156,6 +1532,8 @@ function wirePipeCapacity(){
       return;
     }
     resetResult();
+    sourceTrial=null;
+    invertBasis=[['Upstream invert used for gradient (m)',us],['Downstream invert used for gradient (m)',ds],['Conduit length used for gradient (m)',length]];
     form.elements.gradient.value=String(gradient);
     result.textContent='Calculated gradient applied. Calculate to refresh capacity.';
   });
@@ -1202,31 +1580,42 @@ function wirePipeCapacity(){
             'No positive turbulent normal depth · '+values.status+'.';
           result.append(note);
         }
+        publishReport(current);
         return;
       }
       if(values.regime==='transitional'){
         result.textContent='Capacity unavailable in the transitional flow range.';
+        publishReport(current);
         return;
       }
       if(values.discharge_m3_s>0)drawSection(1,'Flowing just full');
       result.textContent=precision(values.discharge_m3_s*1000)+' L/s · '+precision(values.velocity_m_s)+
         ' m/s · Re '+precision(values.reynolds)+' · Darcy f '+precision(values.friction_factor)+' · '+values.regime;
+      publishReport(current);
     }catch(error){
       if(request===generation)result.textContent=typeof conciseErrorMessage==='function'?conciseErrorMessage(error):String(error.message);
     }
   });
-}
-function openPipeTrial(inputs){
-  navigate('hydraulics','capacity',true);
-  const form=$('pipeCapacityForm');
-  for(const key of ['diameter','roughness','gradient'])form.elements[key].value=String(inputs[key]);
-  form.elements.discharge.value='';
-  form.dispatchEvent(new Event('input',{bubbles:true}));
-  $('pipeCapacityResult').textContent='Independent trial from '+inputs.label+'. Review fluid properties before calculating.';
+  window.addEventListener('icm:assessment-context-restored',()=>{
+    sourceTrial=null;invertBasis=null;resetResult();
+    result.textContent='Workspace restored. Calculate to refresh capacity.';
+  });
+  return inputs=>{
+    navigate('hydraulics','capacity',true);
+    for(const key of ['diameter','roughness','gradient'])form.elements[key].value=String(inputs[key]);
+    form.elements.discharge.value='';
+    form.dispatchEvent(new Event('input',{bubbles:true}));
+    sourceTrial=inputs.label;
+    result.textContent='Independent trial from '+inputs.label+'. Review fluid properties before calculating.';
+  };
 }
 function mount(){
   const networkPanel=document.createElement('section');networkPanel.id='tab-spill-network';networkPanel.className='tab-panel';networkPanel.hidden=true;qs('main.shell').appendChild(networkPanel);
-  buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wireVerificationEvents();wirePipeCapacity();identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
+  window.HydraProjectHome.mount(navigate,ROUTES);
+  installDiagnosticLauncher();
+  buildAboutPage();buildSecurityPage();wireGuidedImport();wireVerificationOverview();wireVerificationEvents();
+  const openPipeTrial=wirePipeCapacity();
+  identifySubpanels();buildShell();preparePageComposition();createScenarioChecklist();wireContextUpdates();wireLegacyNavigation();wireScrollMemory();
   const initial=parseHash()||DEFAULT_ROUTE;navigate(initial.workspace,initial.page,false);
   window.__ICM_PRECISION_WORKBENCH__={version:6,navigate,openPipeTrial,route:()=>({...current}),routes:ROUTES,focus:()=>document.body.classList.contains('pw-focus-canvas'),setFocus:value=>{focusPreference=Boolean(value);applyFocusCanvas(true);},railCollapsed:()=>railCollapsed};
   const startup=$('hbStartup');

@@ -309,9 +309,9 @@ def _spill_values(source,asset,mode):
     return Decimal(len(raw_rows)),sum(durations,Decimal(0)) if all(v is not None for v in durations) else None
 
 
-def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_json="null",detail_a_json="null",detail_b_json="null"):
+def _compare_detriment(kind,a_config,b_config,criteria,ground_config,detail_a,detail_b,load_source=_source,row_limit=None):
     if kind not in ('flooding','level','spill'):raise ValueError("Unsupported detriment assessment.")
-    criteria=json.loads(criteria_json);a_config=json.loads(scenario_a_json);b_config=json.loads(scenario_b_json)
+    a_config,b_config=dict(a_config),dict(b_config)
     if not criteria.get('scope_confirmed'):raise ValueError("Please confirm matching assessment scope and completed ICM runs.")
     if kind=='level' and not criteria.get('elevation_confirmed'):
         raise ValueError("Please confirm maximum water-level elevations and the common vertical datum.")
@@ -347,7 +347,7 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
         except (ValueError,TypeError):raise ValueError("The spill assessment period must have a valid start and later end.") from None
         if mode=='summary' and any(s.get('report_kind')=='spill_detail' or not s.get('mapping',{}).get('count') for s in (a_config,b_config)):
             raise ValueError("Upload Exceedance Summary for authoritative Spill count, or explicitly select the exported detail counting mode.")
-    a=_source(a_config,kind,detail=kind=='spill' and mode!='summary');b=_source(b_config,kind,detail=kind=='spill' and mode!='summary')
+    a=load_source(a_config,kind,detail=kind=='spill' and mode!='summary');b=load_source(b_config,kind,detail=kind=='spill' and mode!='summary')
     for context_key in ('datum','period','template','storm_set'):
         av=a.get('source_context',{}).get(context_key,{}).get('value')
         bv=b.get('source_context',{}).get(context_key,{}).get('value')
@@ -372,15 +372,18 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
         if any('depth' in _token(s['mapping']['value']) for s in (a,b)):raise ValueError("Maximum depth cannot substitute for water-level elevation.")
     if kind=='spill' and mode=='summary' and any('exceed' in _token(s['mapping']['count']) for s in (a,b)):
         raise ValueError("Exceedance count is not an authoritative block Spill count.")
-    ground_config=json.loads(ground_json);ground=_source(ground_config,'ground') if ground_config else None
+    ground=load_source(ground_config,'ground') if ground_config else None
     if kind=='level' and ground and _datum(ground,'ground')!=_datum(a):raise ValueError("Ground levels must use the same vertical datum as water levels.")
-    detail_sources=[_source(json.loads(raw),'spill',detail=True) if json.loads(raw) else None for raw in (detail_a_json,detail_b_json)]
+    detail_sources=[load_source(config,'spill',detail=True) if config else None for config in (detail_a,detail_b)]
     if kind=='spill':
         start=_report_datetime(a_config['period_start']);end=_report_datetime(a_config['period_end'])
         for source in ([a,b] if mode!='summary' else [])+[d for d in detail_sources if d]:
             _validate_detail_period(source,start,end)
+    asset_ids=set(a['groups'])|set(b['groups'])
+    if row_limit is not None and len(asset_ids)>row_limit:
+        raise ValueError("The batch exceeds 120,000 compared rows. Use a narrower report scope or fewer scenarios.")
     rows=[]
-    for asset in sorted(set(a['groups'])|set(b['groups'])):
+    for asset in sorted(asset_ids):
         ra=(a['groups'].get(asset) or [None])[0];rb=(b['groups'].get(asset) or [None])[0]
         values=[];durations=[]
         for source,raw in ((a,ra),(b,rb)):
@@ -482,7 +485,7 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
         'source_context_b':b.get('source_context',{}),
     }
     result={'kind':kind,'rows':rows,'summary':summary,'criteria':criteria,'scenario_a':a_config,'scenario_b':b_config,
-            'ground_source':ground_config,'detail_source_a':json.loads(detail_a_json),'detail_source_b':json.loads(detail_b_json),
+            'ground_source':ground_config,'detail_source_a':detail_a,'detail_source_b':detail_b,
             'provenance':provenance,
             'date_convention':'ISO or day/month/year model clock','boundary_policy':'reject crossing or out-of-period detail rows','status':'partial' if summary['unresolved'] else 'complete',
             'method':'Matched report assets; unrounded canonical B minus A; explicit policy criteria; missing assets never zero',
@@ -491,4 +494,59 @@ def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_j
             'count_tolerance':float(count_tolerance) if kind=='spill' else None,
             'duration_tolerance_hours':float(duration_tolerance) if kind=='spill' else None,
             'counting_mode':mode if kind=='spill' else None,'count_unit':count_unit if kind=='spill' else None}
+    return result
+
+
+def _result_json(result):
     return json.dumps(result,default=lambda v:float(v) if isinstance(v,Decimal) else str(v),ensure_ascii=False,allow_nan=False)
+
+
+def detriment_result(kind,scenario_a_json,scenario_b_json,criteria_json,ground_json="null",detail_a_json="null",detail_b_json="null"):
+    sources = map(json.loads, (scenario_a_json, scenario_b_json, criteria_json, ground_json, detail_a_json, detail_b_json))
+    return _result_json(_compare_detriment(kind, *sources))
+
+
+def detriment_scenario_batch(kind, baseline_json, candidates_json, criteria_json, ground_json="null", detail_a_json="null"):
+    """Compare reviewed report scenarios independently against one baseline basis."""
+    baseline, candidates, criteria, ground, detail_a = map(json.loads, (baseline_json, candidates_json, criteria_json,
+                                                                         ground_json, detail_a_json))
+    if not isinstance(baseline, dict) or not str(baseline.get("scope") or "").strip():
+        raise ValueError("Declare the common review scope before comparing scenarios.")
+    if not isinstance(candidates, list) or not 1 <= len(candidates) <= 6:
+        raise ValueError("Choose one to six reviewed proposed scenarios in this group.")
+    labels = [str(entry.get("label") or "").strip() if isinstance(entry, dict) else "" for entry in candidates]
+    if any(not label or len(label)>120 for label in labels) or len({label.casefold() for label in labels})!=len(labels):
+        raise ValueError("Provide unique proposal names of 1–120 characters.")
+    basis = ("scope", "period_start", "period_end", "template", "datum")
+    cached = {}
+    shared_inputs = [config for config in (baseline, ground, detail_a) if config]
+
+    def load_source(config, category, detail=False):
+        if config not in shared_inputs:
+            return _source(config, category, detail)
+        key = category, detail, json.dumps(config, sort_keys=True)
+        if key not in cached:
+            cached[key] = _source(config, category, detail)
+        # Flooding calculations annotate the returned source record.
+        return dict(cached[key])
+
+    groups = []
+    retained = 0
+    for entry, label in zip(candidates, labels):
+        proposed = entry.get("report")
+        result, unavailable = None, ""
+        try:
+            if not isinstance(proposed, dict) or not proposed.get("path") or proposed["path"] == baseline.get("path"):
+                raise ValueError("Choose a separate proposed report from Data Sources.")
+            if any(proposed.get(field)!=baseline.get(field) for field in basis):
+                raise ValueError("The declared scope, period, template and datum must match the reviewed baseline.")
+            result = _compare_detriment(kind, baseline, proposed, criteria, ground, detail_a, entry.get("detail"),
+                                        load_source, row_limit=120000-retained)
+        except ValueError as error:
+            unavailable = str(error)
+        except OSError:
+            unavailable = "A required local report is unavailable. Add it again in Data Sources."
+        if result is not None:
+            retained += len(result["rows"])
+        groups.append(dict(label=label, result=result, unavailable=unavailable))
+    return _result_json(dict(kind=kind, scenarios=groups))
