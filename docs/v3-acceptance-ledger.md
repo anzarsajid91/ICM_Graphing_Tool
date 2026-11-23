@@ -162,7 +162,17 @@ Development is in PR #119. The branch configures the v3.0.0 milestone through th
   deliberately delayed sibling-import probes now retain diagnostics from
   their affected page. The live acceptance suite still needs to pass on
   the released build.
-- The current Python suite passed 493 tests and 111 subtests. The 28 privacy
+- The source pool shows the actionable FDV header validation message in the
+  failed row and retains the full diagnostic locally. A cold Chromium probe
+  and another with one analysis worker request delayed by 1,200 ms both kept
+  the valid CSV mapped, reported the invalid sibling, and observed 103
+  guarded requests each with zero violations. The unchanged mixed-import
+  timeout and strengthened error assertions also run in hosted acceptance.
+- Run `45202618102` found that cold-start acceptance recognised only major
+  version 2 of the semantic release scheme. The replacement checks the
+  version format and the footer against the built artifact metadata while
+  retaining the cold-shell time, deferred engine and first import checks.
+- The Python suite on `c26c83b` passed 494 tests and 111 subtests. The 28 privacy
   tests, network contract and static source/digest checks passed. The
   production governance regression passed the owner-record and settings
   assertions and 48 negative cases. CodeQL JavaScript and Python, dependency

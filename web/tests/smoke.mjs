@@ -380,6 +380,9 @@ async function verifyMixedSiblingImport(workerDelayMs=0){
       summary:document.querySelector('#poolSummary')?.textContent||'',
     }));
     if(!result.validMapped||!result.summary.includes('1 parsed successfully'))throw new Error('Valid sibling did not remain usable after another file failed: '+JSON.stringify(result));
+    const invalidRow=result.rows.find(row=>row.includes('sibling-invalid.fdv'));
+    if(!invalidRow?.includes('FDV header is incomplete')||/Traceback|\/workbench\//.test(invalidRow))
+      throw new Error('Mixed import did not present a concise file-validation message: '+invalidRow);
     if(probeErrors.length)throw new Error('Mixed sibling import produced browser errors: '+probeErrors.join(' | '));
     if(workerDelayMs&&!delayedWorkerRequests)throw new Error('The delayed analysis worker request was not exercised.');
     return {...result,workerDelayMs,delayedWorkerRequests};
@@ -390,6 +393,7 @@ async function verifyMixedSiblingImport(workerDelayMs=0){
       engine:document.querySelector('#engineStatus')?.textContent||null,
       route:window.__ICM_PRECISION_WORKBENCH__?.route()||null,
       rows:[...document.querySelectorAll('#poolBody tr')].map(row=>row.textContent),
+      sourceErrors:(window.__ICM_WORKBENCH__?.errors||[]).filter(item=>item.target==='source-pool').map(item=>item.message),
     })).catch(()=>({unavailable:true}));
     console.error('Mixed sibling import probe:',JSON.stringify({state,requestFailures,probeErrors,workerDelayMs,delayedWorkerRequests}));
     if(process.env.ICM_EVIDENCE_DIR){

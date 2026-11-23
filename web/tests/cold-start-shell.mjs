@@ -44,7 +44,9 @@ try{
   }));
   assert.equal(initial.status,'idle');
   const version=await page.locator('#appVersion').textContent();
-  assert.match(version,/^v(?:\d+\.\d{3}(?:-preview)?|2\.\d+\.\d+(?:-rc\.\d+|-preview)?)$/);
+  const artifactVersion=await page.locator('meta[name="hydra-bench-version"]').getAttribute('content');
+  assert.match(artifactVersion,/^v(?:\d+\.\d{3}(?:-preview)?|\d+\.\d+\.\d+(?:-rc\.\d+|-preview)?)$/);
+  assert.equal(version,artifactVersion,'the footer must identify the built app version');
   assert.match(await page.locator('footer').innerText(),/Anzar Sajid/);
   assert.equal(initial.deferred,true,'desktop cold start must defer the heavyweight Python runtime');
   assert.equal(initial.engineReadyAt,null,'authoritative engine must not be ready before a workflow needs it');
