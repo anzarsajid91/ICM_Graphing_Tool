@@ -17,7 +17,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 
 | Requirement | Existing feature to build on | Acceptance and evidence | Status |
 |---|---|---|---|
-| 1–2 | Protected Pages, versioned artifacts and v2.2 release evidence | Live SHA, PR #117, baseline suite and matched benchmarks, architecture and security audit, one development PR | Partial |
+| 1–2 | Protected Pages, versioned artifacts and v2.2 release evidence | Live SHA, PR #117, baseline suite and matched benchmarks, architecture and security audit, one development PR | Verified for the v2.2 baseline and draft PR #119 |
 | 3.1 | Home shortcuts, source pool, registry and assessment freshness APIs | Dashboard status reconciles to authoritative data and opens each relevant workspace | Verified locally |
 | 3.2 | Home default, route state, named workspaces | Restore user-selected assessment context safely while preserving the default landing route and legacy saves | Verified locally for in-tab network and verification review, route history, source invalidation and default landing |
 | 3.3 | Current help text and workspace routes | Six guided journeys with actual prerequisites, results and next actions | Verified locally |
@@ -32,7 +32,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Verified locally for imported result layers, reviewed flow direction, same-datum freeboard, source geometry and positive imported full-capacity utilisation |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Verified locally for exact shared-clock comparison, reviewed independent revision geometry and whole-window extrema |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Verified locally for desktop profile geometry, exact shared and separate proposal plots, drag and keyboard navigation, and portable route reviews |
-| 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for indexed ingestion and lookup. Broader capacity and release checks remain open |
+| 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for exact event and annual data, typed results, bounded CSV and file-backed intake, cancellation and selective retrieval |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
 | 7.2 | Gauge qualification, cumulative/event data | Common-clock spatial comparison, event totals, correlation, peak offset, coverage, suspect bins and WAPUG linkage | Verified locally |
 | 7.3 | Weekly review, coverage and WAPUG/FSAT | Suitability screen for a selected monitored location and rainfall candidate, using measured support, reviewed range, site evidence and current qualification | Verified locally for candidate screening |
@@ -57,16 +57,107 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 12.3 | Build metadata, security claims and release evidence | Versioned assurance covering actual feature, numerical, confidentiality and compatibility outcomes | Verified locally for revision-scoped historical and milestone entries. Final v3 production evidence remains gated by §20 |
 | 13 | Shared registry, workspace serialization and storage | Shared typed results and route context; deterministic stale state, bounded imports and prior workspace compatibility | Verified locally for current cross-workspace source, comparison, reports, calculation, schematic and survey flows. Full candidate integration regressions remain required |
 | 14 | Precision Workbench / shared design tokens | Desktop usability, keyboard, responsive layout, contrast, reduced motion, progress and understandable empty/error states | Open |
-| 15 | Existing numerical and browser regressions | Independent reference cases for every new method, mandatory invalid/boundary cases, tolerances and genuine ICM comparisons where available | Open |
-| 16 | CI baseline comparison and v2.2 matched startup measures | Matched lifecycle benchmarks at 400, 1,600 and 10,000 assets and varying duration, throughput, memory, cancellation and state integrity | Partial. Native network interaction and dense annual file-backed playback measured in both desktop browsers. A complete matched performance matrix on the final release candidate remains open |
-| 17 | Local worker, CSP, approvals, SBOM and request observers | Review every affected trust boundary, malformed inputs and resource limits. Repeat source, claim, licence, CodeQL, dependency, secret and browser checks | Open |
+| 15 | Existing numerical and browser regressions | Independent reference cases for every new method, mandatory invalid/boundary cases, tolerances and genuine ICM comparisons where available | Verified locally for the implemented equations and evidence methods recorded below. Comparisons inside an independently licensed ICM environment remain external |
+| 16 | CI baseline comparison and v2.2 matched startup measures | Matched lifecycle benchmarks at 400, 1,600 and 10,000 assets and varying duration, throughput, memory, cancellation and state integrity | Locally verified on `c1fd6a3` for matched lifecycle, three network scales, short and long profiles and file-backed annual playback. Exact release-candidate checks remain required |
+| 17 | Local worker, CSP, approvals, SBOM and request observers | Review every affected trust boundary, malformed inputs and resource limits. Repeat source, claim, licence, CodeQL, dependency, secret and browser checks | Source, confidentiality, pinned dependencies and hosted security contexts verified for `c1fd6a3`. Alert inventories return 403. Release checks remain exact-head requirements |
 | 18 | Chromium/Firefox release suites | Complete per-control and cross-workspace checks and documented review passes. Distinguish AI review, real ICM and available browser/platform coverage | Open |
-| 19 | Git and this ledger | Preserve implementation commits, exact evidence, outstanding limitations and recovery context | Partial |
+| 19 | Git and this ledger | Preserve implementation commits, exact evidence, outstanding limitations and recovery context | Verified for the preserved milestone commits, local evidence and recovery ledger |
 | 20 | Semantic milestone mapping, protected Pages and live verifier | Verified exact final head, authenticated owner acknowledgement, live v3.0.0 SHA, smoke and release report. Release readiness depends on the full matrix | Open |
 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Matched desktop lifecycle benchmark
+
+- The exact v2.2.0 production artifact at `5882ebf60da8ee89d0ec10a0374b95fc548cc569`
+  and draft `c1fd6a346c72da822069bdd16146599d60bc2ac7` were served locally on
+  the same machine. The same scenarios used 2,881 synthetic one-minute flow
+  samples (83,571 bytes), a 1,440 × 1,000 viewport, alternating app order,
+  new browser contexts and three repetitions. Both versions preserved the
+  2,881 native samples, minimum 0.11 and maximum 0.19 m³/s. No browser
+  requests violated confidentiality.
+
+| Median operation | Chromium v2.2.0 | Chromium draft | Firefox v2.2.0 | Firefox draft |
+| --- | ---: | ---: | ---: | ---: |
+| Cold-context shell | 196 ms | 200 ms | 383 ms | 331 ms |
+| Open Data | 94 ms | 80 ms | 173 ms | 159 ms |
+| Import and authoritative worker ready | 9,973 ms | 10,174 ms | 31,681 ms | 32,024 ms |
+| Mapping and chart paint | 213 ms | 192 ms | 448 ms | 439 ms |
+| Native chart zoom | 45 ms | 48 ms | 63 ms | 67 ms |
+| Open Reports | 84 ms | 84 ms | 133 ms | 149 ms |
+| Local static report export | 243 ms | 142 ms | 375 ms | 250 ms |
+
+- The static HTML assessment on this selection was 5,245,280 bytes at
+  v2.2.0 and 481,467 bytes in the draft. Chromium median renderer heap at
+  the end of the workload was 35.1 MB and 27.6 MB respectively. Firefox
+  did not expose a comparable renderer heap value. The timing includes the
+  complete authoritative import on a fresh browser context. Normal shell
+  startup remains separate. Raw results and the repeatable harness are in
+  `/workspace/hydra-evidence/v3/matched-lifecycle` and
+  `/workspace/hydra-evidence/v3/matched-desktop-lifecycle.mjs`.
+- On `c1fd6a3`, matched network interaction used the same generated 399,
+  1,599 and 10,001-asset sources as the earlier network milestone. At 1,599
+  assets, Chromium pan went from 3,711 to 1,272 ms and Firefox from 3,937
+  to 1,919 ms. The scripted gesture contains twelve pointer steps. The
+  1,599-asset Chromium zoom increased from 297 to 383 ms, while Firefox
+  zoom was 520 and 548 ms. Both drafts imported and fit 10,001 assets with
+  96 interactive marks at full extent, spanning 540 ms in Chromium and
+  674 ms in Firefox. v2.2 rejected that source at its native point limit.
+  Chromium's renderer reported 85.0 MB before an explicit garbage
+  collection at full-size overview. This is not a retained heap measure.
+  Raw interaction times and screenshots are in
+  `/workspace/hydra-evidence/v3/matched-network-c1fd6a3`.
+- The same two builds produced 4-link, 100 m and 199-link, 4,975 m profiles.
+  Both retained every route row and exact end chainage. The medians to the
+  next two paints were 83 → 84 ms and 213 → 245 ms in Chromium, and
+  118 → 122 ms and 248 → 325 ms in Firefox. The long profile costs up to
+  77 ms more in this comparison while making chamber, independent-axis
+  and review controls available. Both remained below 0.5 seconds for this
+  route. Evidence is in `/workspace/hydra-evidence/v3/matched-profiles`.
+- Desktop regression review uses 0.5 seconds for a median cold shell or
+  short supported profile on this machine and 2 seconds for the 10,001-asset
+  schematic import preview and fit combined. Control responses, exact
+  numerical output, cancellation and retained resources are checked as
+  distinct outcomes. First authoritative worker startup is measured
+  separately because it loads the numerical engine and dependencies.
+- The exact draft also passed the annual playback fixture in both browsers.
+  The 81,595,147-byte package contains 105,121 recorded samples and 96
+  channels. Initial typed storage reserved 1,049,000 bytes. File-backed
+  validation and indexing took 1,353 ms in Chromium and 906 ms in Firefox.
+  The first visible frame read two channels, and the exact final timestamp
+  read three. End jumps took 33 and 56 ms. Whole-window extrema took 333
+  and 892 ms and covered all reviewed channels. Chromium exposed 16.6 MB
+  retained renderer JavaScript heap after collection and 2.27 MB backing
+  storage. These exclude browser-native memory. Exhaustion, cancellation,
+  exact data, cleanup and confidentiality passed. v2.2 has no corresponding
+  annual index or playback workflow. Evidence is in
+  `/workspace/hydra-evidence/v3/dense-annual-c1fd6a3`.
+
+### Release control read-back
+
+- An authenticated GitHub API read identified the repository-owner account
+  and administrative permission. Active ruleset `25314721` exposes an empty
+  bypass list, strict up-to-date checks, all fourteen required contexts,
+  PR and conversation-resolution requirements, and CodeQL's error/high
+  thresholds. The Pages environment allows `main` and disables admin bypass.
+  These are pre-release observations. Repeat the administrative checks at
+  final release and post the authenticated record only after merging the
+  verified head.
+- The repository-wide open Code Scanning, Secret Scanning and Dependabot
+  alert-list endpoints returned HTTP 403 under the available integration.
+  These inventories cannot be inferred from workflow results. Issue #100
+  remains open for the historic mixed-import timeout. Both the cold and
+  deliberately delayed sibling-import probes now retain diagnostics from
+  their affected page. The live acceptance suite still needs to pass on
+  the released build.
+- The current Python suite passed 493 tests and 111 subtests. The 28 privacy
+  tests, network contract and static source/digest checks passed. The
+  production governance regression passed the owner-record and settings
+  assertions and 48 negative cases. CodeQL JavaScript and Python, dependency
+  review, secret detection and security assurance passed on draft `c1fd6a3`.
+  Source and engineering review have been AI-assisted. No independent human
+  review or regulated product certification is asserted.
 
 ### Saved interval overlays on monitoring plots
 

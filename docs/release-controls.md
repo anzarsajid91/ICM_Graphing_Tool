@@ -1,28 +1,33 @@
 # Required main-branch release controls
 
 `SECURITY.md` requires server-side enforcement in addition to repository gates.
-The connected GitHub API used for source/PR operations does not expose a branch
-protection administration action. These settings require an administrator with
-that capability; committing this document does **not** configure them.
+Verify the effective settings on GitHub before releasing. Changes to this
+document do not configure branch rules or the Pages environment.
 
-For `main`, require a pull request and at least one independent approving review,
-dismiss stale approvals, require conversation resolution and up-to-date status
-checks, block force pushes/deletion and restrict bypass permissions. Protect
-policy, source approval inventory, confidentiality guard and workflows with
-maintainer review. Do not invent a reviewer or self-approve the author's PR.
+For `main`, require a pull request, resolved review conversations, an exact
+up-to-date check result, blocked force pushes and deletion, and an empty bypass
+list. The [single-maintainer policy](security-governance.md) requires owner
+verification and the applicable GitHub review conditions. GitHub currently
+requires zero ordinary approving reviews and dismisses stale voluntary
+reviews. AI-assisted review must be identified as such.
 
-Required check contexts from the current workflows:
+The active ruleset currently requires the following check contexts.
 
-- `confidentiality` (workflow: Data confidentiality)
+- `confidentiality`, `security`, `secrets`, `dependency-review`
 - `verify`, `browser-smoke`, `browser-firefox-shell`, `browser-interactions`,
   `baseline-performance` (workflow: GitHub Pages Workbench)
+- `analyze (javascript-typescript)`, `analyze (python)`
+- `test (ubuntu-latest, 3.12)`, `test (windows-latest, 3.12)`
+- `security-release / security`
 
-Check GitHub's actual check-run names before saving rules; workflow display names
-and check contexts are different concepts. Restrict rules to the actual `main`
-branch and verify the returned protection/ruleset after configuration. Keep any
-necessary emergency bypass narrow and auditable; never disable confidentiality.
+Check GitHub's actual check-run names and source integrations on the exact
+reviewed head. Recheck the CodeQL gate, active ruleset identities and complete
+bypass lists. The `pages-release` environment permits `main` only and disables
+administrator bypass. Keep confidentiality and the other release gates active.
 
-The current deployment workflow depends on all browser/performance gates before
-building/deploying main. A PR green at one head must be rechecked after head changes.
-The deployed footer/build SHA must match the merged revision. Repository policies
-and CI do not substitute for employer approval to use a public hosting service.
+After the protected merge, post the [authenticated owner release record](security-release-acknowledgement.md)
+for the actual reviewed head and merged SHA. The production workflow verifies
+that record and the same workflow's tested artifact before Pages publishes it.
+Verify the deployed build and footer against the merged SHA and rerun the live
+regression and confidentiality checks. Employer approval for the hosting
+service remains a separate decision.
