@@ -19,7 +19,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 |---|---|---|---|
 | 1–2 | Protected Pages, versioned artifacts and v2.2 release evidence | Live SHA, PR #117, baseline suite and matched benchmarks, architecture and security audit, one development PR | Partial |
 | 3.1 | Home shortcuts, source pool, registry and assessment freshness APIs | Dashboard status reconciles to authoritative data and opens each relevant workspace | Verified locally |
-| 3.2 | Home default, route state, named workspaces | Restore user-selected assessment context safely while preserving the default landing route and legacy saves | Partial |
+| 3.2 | Home default, route state, named workspaces | Restore user-selected assessment context safely while preserving the default landing route and legacy saves | Verified locally for in-tab network and verification review, route history, source invalidation and default landing |
 | 3.3 | Current help text and workspace routes | Six guided journeys with actual prerequisites, results and next actions | Verified locally |
 | 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Partial |
 | 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Verified locally with documentary unit and quantity findings and exact-basis workspace decisions |
@@ -67,6 +67,30 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Home resume checks
+
+- Recent destinations retain only canonical route codes in session
+  storage. Selected review context lives in the active tab and clears
+  with workspace restore, recent-history removal or source-pool clear.
+- A network investigation reopens the same selected asset and inspector
+  tab, or its expanded long section, when the original asset and profile
+  revision still exist. An analysis dialog requires the exact current
+  source signature before reopening. Browser Back releases the expanded
+  dialog before returning to Home.
+- Event Review restores the selected event and model only when the
+  qualifying weather and complete assessment signatures still match. A
+  completed comparison uses the existing local engine to reconstruct
+  the display. Removing the source pool withdraws all reviewed values.
+- Chromium and Firefox tested normal network loading, keyboard-
+  accessible Home navigation, browser Back, reopened profile, retained
+  review note and reload to the default Home. In Event Review the browser
+  tests reproduced the same 38.7 m³ observed and 40.5 m³ modelled
+  comparison, then withdrew it when the sources were cleared. Home had
+  135 and 125 guarded requests and Event Review had 105 and 103, all
+  with zero confidentiality violations. Evidence is in
+  `/workspace/hydra-evidence/v3/resume-review` and
+  `/workspace/hydra-evidence/v3/resume-review-final`.
 
 ### Circular capacity and gravity sizing report integration
 

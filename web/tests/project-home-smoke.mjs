@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import {chromium,firefox} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
+import {controlProfileNetwork} from './network-route-fixture.mjs';
 
 const engine=process.env.ICM_BROWSER||'chromium',base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browser=await (engine==='firefox'?firefox:chromium).launch(browserLaunchOptions());
@@ -33,6 +34,29 @@ try{
   await guides.getByRole('button',{name:'Open Network investigation'}).click();
   await page.locator('#nsSvg').waitFor();
   assert.deepEqual(await route(),{workspace:'network',page:'schematic'});
+  await page.setInputFiles('#nsLoadInput',{name:'synthetic-home-network.csv',mimeType:'text/csv',
+    buffer:Buffer.from(controlProfileNetwork)});
+  await page.check('#nsContextUnits');await page.click('#nsContextApply');
+  await page.getByLabel('Find asset',{exact:true}).fill('A');
+  await page.getByLabel('Find asset',{exact:true}).press('Enter');
+  const inspector=page.getByRole('complementary',{name:'Selected asset evidence'});
+  await inspector.getByRole('heading',{name:'A',exact:true}).waitFor();
+  await inspector.getByRole('tab',{name:'Properties',exact:true}).click();
+  await page.click('#nsLongSection');await page.selectOption('#nsRouteStart','A');await page.selectOption('#nsRouteEnd','B');
+  await page.click('#nsOpenProfile');await page.locator('#nsRouteNote').fill('Synthetic profile review stays in this tab.');
+  await page.click('#nsExpandProfile');
+  const profile=page.getByRole('dialog',{name:'Expanded route long section'});
+  await profile.waitFor();
+  await page.goBack();
+  await dashboard.waitFor();
+  assert(await profile.isHidden());
+  assert.deepEqual(JSON.parse(await page.evaluate(()=>sessionStorage.getItem('icm-pw-recent-pages-v1')))[0],
+    {workspace:'network',page:'schematic'});
+  await recent.getByRole('button',{name:'Network Schematic · Schematic',exact:true}).click();
+  await profile.waitFor();
+  await profile.getByRole('button',{name:'Close expanded profile'}).click();
+  assert.equal(await page.locator('#nsRouteNote').inputValue(),'Synthetic profile review stays in this tab.');
+  assert.equal(await inspector.getByRole('tab',{name:'Properties',exact:true}).getAttribute('aria-selected'),'true');
   await page.locator('[data-workspace="home"]').click();
   await dashboard.waitFor();
   await guard.navigate(page,base,{waitUntil:'domcontentloaded'});
@@ -40,6 +64,10 @@ try{
   assert.deepEqual(await route(),{workspace:'home',page:'overview'});
   assert.equal(await recent.getByRole('button',{name:'Network Schematic · Schematic',exact:true}).count(),1);
   assert.match(await dashboard.innerText(),/0 ready of 0/,'Reload reports the actual unloaded source pool');
+  await recent.getByRole('button',{name:'Network Schematic · Schematic',exact:true}).click();
+  await page.locator('#nsSvg [data-ns-node="A"]').waitFor();
+  assert(await profile.isHidden());
+  await page.locator('[data-workspace="home"]').click();
   await recent.getByRole('button',{name:'Clear recent pages'}).click();
   assert.match(await recent.innerText(),/Open a workspace/);
   await page.setViewportSize({width:1024,height:850});

@@ -136,9 +136,19 @@ try{
   assert.match(event,/38\.7 m³.*Observed volume/);
   assert.match(event,/40\.5 m³.*Modelled volume/);
   assert.match(event,/0\.01 m³\/s.*Peak error/);
+  await page.locator('button[data-workspace="home"]').click();
+  const resumeEvent=page.locator('#hbRecentWork').getByRole('button',{name:'Verification · Event Review',exact:true});
+  await resumeEvent.click();
+  await page.waitForFunction(()=>document.querySelector('#verificationEventResult').textContent.includes('Observed volume'));
+  assert.equal(await page.locator('#verificationEventResult').textContent(),event);
   await page.getByRole('button',{name:'Open event in Time Series'}).click();
   await page.waitForFunction(()=>window.__ICM_PRECISION_WORKBENCH__.route().workspace==='data'&&
     JSON.stringify(window.__ICM_WORKBENCH__.uiV2.graphRange)===JSON.stringify(['2026-01-01T00:00:00','2026-01-01T00:03:00']));
+  await page.locator('#clearPoolBtn').click();
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.stateSummary().files===0);
+  await page.locator('button[data-workspace="home"]').click();await resumeEvent.click();
+  assert(await page.getByRole('button',{name:'Compare selected event'}).isDisabled());
+  assert(!/Observed volume/.test(await page.locator('#verificationEventResult').textContent()));
   privacy.assertClean();
   console.log('Verification overview rendered authoritative metrics and blocked review of stale evidence.');
 }finally{try{await writeControlEvidence?.();}finally{await browser.close();}}

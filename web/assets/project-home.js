@@ -67,7 +67,7 @@ function mount(navigate,routes){
   recent.id="hbRecentWork";recent.className="panel";recent.setAttribute("aria-labelledby","hbRecentHeading");
   const recentHeading=node("h2","Resume work");recentHeading.id="hbRecentHeading";
   const recentList=node("div");
-  recent.append(recentHeading,node("p","Reopen pages used in this browser tab. Use Workspace save / restore for a portable review context."),recentList);
+  recent.append(recentHeading,node("p","Reopen recent pages. An active network investigation or verification event can resume in this tab while its evidence is still available."),recentList);
   workflows.className="panel";workflows.id="hbGuidedWorkflows";
   workflows.append(node("h2","Guided workflows"));
   for(const [workspace,page,title,requires,output,next] of guides){
@@ -91,6 +91,13 @@ function mount(navigate,routes){
       Object.hasOwn(routes,value.workspace)&&Object.hasOwn(routes[value.workspace].pages,value.page);
   }
   let records=[];
+  const resumeContexts=new Map();
+  const key=route=>route.workspace+"/"+route.page;
+  function resumeAdapter(route){
+    if(key(route)==="network/schematic")return window.ICMNetworkSchematic?.resumeReview;
+    if(key(route)==="graphs/events")return window.__ICM_WORKBENCH__?.resumeVerificationEvent;
+    return null;
+  }
   try{
     const saved=JSON.parse(sessionStorage.getItem(storeKey)||"[]");
     if(Array.isArray(saved))records=saved.filter(routeValid).slice(0,6).map(({workspace,page})=>({workspace,page}));
@@ -105,10 +112,14 @@ function mount(navigate,routes){
     for(const route of records){
       const item=node("li"),workspace=routes[route.workspace];
       item.append(button(workspace.label+" · "+workspace.pages[route.page].label,
-        ()=>navigate(route.workspace,route.page,true)));
+        ()=>{
+          const context=resumeContexts.get(key(route));
+          navigate(route.workspace,route.page,true);
+          if(context)resumeAdapter(route)?.restore(context);
+        }));
       list.append(item);
     }
-    recentList.append(list,button("Clear recent pages",()=>{records=[];persist();renderRecent();}));
+    recentList.append(list,button("Clear recent pages",()=>{records=[];resumeContexts.clear();persist();renderRecent();}));
   }
   function renderStatus(){
     const wb=window.__ICM_WORKBENCH__,summary=wb.stateSummary(),registry=window.ICMProjectRegistry;
@@ -158,11 +169,23 @@ function mount(navigate,routes){
   }
   for(const event of ["icm:source-pool-changed","icm:assessment-published"])
     window.addEventListener(event,()=>{if(!home.hidden)renderStatus();});
+  window.addEventListener("icm:assessment-context-restored",()=>resumeContexts.clear());
+  window.addEventListener("icm:source-pool-changed",({detail})=>{
+    if(detail.reason==="clear")resumeContexts.clear();
+  });
+  window.addEventListener("icm:route-leaving",({detail})=>{
+    if(!routeValid(detail))return;
+    const context=resumeAdapter(detail)?.capture();
+    if(context)resumeContexts.set(key(detail),context);
+    else resumeContexts.delete(key(detail));
+  });
   window.addEventListener("icm:route-changed",({detail})=>{
     if(detail.workspace==="home"){renderRecent();renderStatus();return;}
     if(!routeValid(detail))return;
     records=[{workspace:detail.workspace,page:detail.page},...records.filter(route=>
       route.workspace!==detail.workspace||route.page!==detail.page)].slice(0,6);
+    const recentKeys=new Set(records.map(key));
+    for(const route of resumeContexts.keys())if(!recentKeys.has(route))resumeContexts.delete(route);
     persist();
   });
 }

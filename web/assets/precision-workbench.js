@@ -827,6 +827,8 @@ function parseHash(){
 function navigate(workspace,page,push=false){
   const resolved=canonicalRoute(workspace,page);if(!resolved)return;
   workspace=resolved.workspace;page=resolved.page;
+  if(routeMounted&&(current.workspace!==workspace||current.page!==page))
+    window.dispatchEvent(new CustomEvent('icm:route-leaving',{detail:{...current}}));
   const mobileRouteFocus=matchMedia('(max-width:620px)').matches&&Boolean(qs('.pw-rail.is-open')?.contains(document.activeElement));
   rememberRouteScroll();cancelScrollRestore();
   restoreDocked();
@@ -1351,6 +1353,23 @@ function wireVerificationEvents(){
     try{await window.ICMGraph.draw(range);}
     catch(error){$('mappingStatus').textContent=conciseErrorMessage(error);}
   });
+  diagnostic.resumeVerificationEvent={
+    capture(){
+      if(!rainEventsFresh()||!events.value||!models.value)return null;
+      const signature=analysisSignature(),rainfall=state.rainEventSignature;
+      return {event:events.value,model:models.value,signature,rainfall,
+        reviewed:plottedEvent?.signature===signature&&plottedEvent?.rainfall===rainfall};
+    },
+    restore(context){
+      if(!active()||!rainEventsFresh()||state.rainEventSignature!==context.rainfall||
+         analysisSignature()!==context.signature)return;
+      if(![...events.options].some(option=>option.value===context.event)||
+         ![...models.options].some(option=>option.value===context.model))return;
+      events.value=context.event;models.value=context.model;
+      events.dispatchEvent(new Event('change'));
+      if(context.reviewed)run.click();
+    },
+  };
   window.addEventListener('icm:route-changed',()=>{if(active())refresh();else ++generation;});
   window.addEventListener('icm:source-pool-changed',()=>{if(active())refresh();});
 }

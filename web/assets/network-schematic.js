@@ -1639,8 +1639,9 @@ function renderAnalysisSettings(n){
     return '<div class="ns-source-row" data-ns-binding="'+html(b.id)+'"><strong>'+html((b.role==='observed'?'Observed':b.scenario)+' · '+b.sourceName)+'</strong>'+fields('Channel',selectHtml('data-ns-binding-field="column"',(source?.parsed.columns||[b.column]).map(c=>[c,c]),b.column))+'<div class="ns-two">'+fields('Quantity',selectHtml('data-ns-binding-field="quantity"',[['depth','Depth'],['level','Level'],['flow','Overflow flow'],['status','Spill status']],b.quantity))+fields('Values / threshold unit',selectHtml('data-ns-binding-field="unit"',unitOptions(b.quantity),b.unit))+'</div><div class="ns-two">'+fields('Threshold ('+html(b.unit||'assign unit')+')','<input data-ns-binding-field="threshold" type="number" step="any" value="'+html(b.threshold)+'" placeholder="Asset default">')+fields('Spill when',selectHtml('data-ns-binding-field="comparison"',[['gt','Above (>)'],['ge','At or above (≥)']],C.thresholdRule(b)))+'</div>'+(b.quantity==='level'?fields('Level datum','<input data-ns-binding-field="datum" value="'+html(b.datum||'')+'">'):'')+'<small>'+html(metadata.unit?'Stored values: '+metadata.unit+'. Unit changes convert values and thresholds.':'Unit not detected. Assign the unit of the existing numbers; values and thresholds are retained.')+'</small></div>';
   }).join('');
 }
-async function openAnalysis(mode='series'){
-  const n=node();if(!n||!asset(n))return;hideHover();const generation=++analysisGeneration,years=R.years(n),year=network.year==='all'?years.at(-1):Number(network.year);
+async function openAnalysis(mode='series',preferredYear=null){
+  const n=node();if(!n||!asset(n))return;hideHover();const generation=++analysisGeneration,years=R.years(n);
+  const year=years.includes(preferredYear)?preferredYear:network.year==='all'?years.at(-1):Number(network.year);
   if(!year){status('Assign reporting years first.');return;}
   analysisContext={id:n.id,year,mode,signature:signature(n)};
   analysisReturnFocus=document.activeElement;
@@ -3095,7 +3096,11 @@ function mountRouteReview(){
   const expanded=$('nsProfileExpanded'),profileControls=$('nsProfileDisplay');
   $('nsExpandProfile').onclick=()=>{$('nsExpandedProfileContent').append(profileControls);expanded.showModal();};
   $('nsCloseExpandedProfile').onclick=()=>expanded.close();
-  expanded.onclose=()=>{$('nsProfilePreview').append(profileControls);if(!$('nsRoute').hidden)$('nsExpandProfile').focus();};
+  expanded.onclose=()=>{
+    if(expanded.open)return;
+    $('nsProfilePreview').append(profileControls);
+    if(!$('nsRoute').hidden&&!root().hidden)$('nsExpandProfile').focus();
+  };
   window.addEventListener('icm:route-changed',({detail})=>{if((detail.workspace!=='network'||detail.page!=='schematic')&&expanded.open)expanded.close();});
   let profileFrame=0;
   const redrawProfile=()=>{
@@ -3443,5 +3448,28 @@ async function open(){
     if(inOverview())fit();
   }else render();
 }
-window.ICMNetworkSchematic={open,snapshot,restore,capture,calculate,openMonitorImport,showDetrimentHotspots,reportGeometry,core:C,debug:()=>({selected,editing,busy,fresh:network.nodes.map(n=>({id:n.id,fresh:isFresh(n)}))})};
+const resumeReview={
+  capture(){
+    if(!mounted||editing)return null;
+    const item=node()||edge(),expanded=$('nsProfileExpanded').open;
+    if(!item&&!expanded)return null;
+    const analysis=item&&analysisContext?.id===item.id&&analysisContext.signature===signature(item)?
+      {mode:analysisContext.mode,year:Number($('nsAnalysisYear').value),basis:analysisContext.signature}:null;
+    return {item,kind:selectionKind,tab:inspectorTab,popup:popupVisible,analysis,
+      profileRevision:expanded?routeRevision:null};
+  },
+  restore(context){
+    if(!mounted||editing)return;
+    const objects=context.kind==='node'?network.nodes:network.edges;
+    if(context.item&&objects.includes(context.item)){
+      selected=context.item.id;selectionKind=context.kind;inspectorTab=context.tab;popupVisible=context.popup;
+      multi=context.kind==='node'?new Set([selected]):new Set();hideHover();renderCanvas();renderReview();
+      if(context.analysis&&context.analysis.basis===signature(context.item))
+        void openAnalysis(context.analysis.mode,context.analysis.year);
+    }
+    if(context.profileRevision===routeRevision&&!$('nsProfile').hidden&&!$('nsProfileExpanded').open)
+      $('nsExpandProfile').click();
+  },
+};
+window.ICMNetworkSchematic={open,snapshot,restore,capture,calculate,openMonitorImport,showDetrimentHotspots,reportGeometry,resumeReview,core:C,debug:()=>({selected,editing,busy,fresh:network.nodes.map(n=>({id:n.id,fresh:isFresh(n)}))})};
 })();
