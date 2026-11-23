@@ -3,7 +3,30 @@ import {createHash} from 'node:crypto';
 import fs from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {runInNewContext} from 'node:vm';
 import '../assets/simulation-results-core.js';
+
+const workerSource=await fs.readFile(new URL('../assets/simulation-results-worker.js',import.meta.url),'utf8');
+class MockDedicatedWorker {}
+const workerReplies=[];
+let receiveWorkerMessage;
+const workerScope=Object.assign(new MockDedicatedWorker(),{
+  location:{href:'https://synthetic.invalid/assets/simulation-results-worker.js?v=local'},
+  HydraSimulationResults:{inspectCsv:value=>value},
+  addEventListener(type,handler){assert.equal(type,'message');receiveWorkerMessage=handler;},
+  postMessage(reply){workerReplies.push(reply);},
+});
+const workerGlobals={URL,importScripts(){},DedicatedWorkerGlobalScope:MockDedicatedWorker};
+assert.throws(()=>runInNewContext(workerSource,{...workerGlobals,self:{...workerScope}}),/dedicated browser worker/);
+runInNewContext(workerSource,{...workerGlobals,self:workerScope});
+const workerRequest={id:1,name:'preview',data:{file:'synthetic preview'}};
+receiveWorkerMessage({isTrusted:true,origin:'https://untrusted.invalid',data:workerRequest});
+receiveWorkerMessage({isTrusted:false,origin:'',data:workerRequest});
+receiveWorkerMessage({isTrusted:true,origin:'',data:workerRequest});
+await Promise.resolve();
+assert.equal(workerReplies.length,1);
+assert.equal(workerReplies[0].type,'result');
+assert.equal(workerReplies[0].value,'synthetic preview');
 
 const {assetKey,inspectCsv,importCsv,inspectPackage,importPackage,streamPackageFromCsv}=globalThis.HydraSimulationResults;
 const asset={kind:'link',table:'hw_conduit',upstream:'00127',suffix:'b'};

@@ -2,6 +2,10 @@
  * SPDX-License-Identifier: AGPL-3.0-only */
 "use strict";
 
+if (typeof DedicatedWorkerGlobalScope === "undefined" || !(self instanceof DedicatedWorkerGlobalScope)) {
+  throw new Error("Simulation results require a dedicated browser worker.");
+}
+
 const token = new URL(self.location.href).searchParams.get("v") || "local";
 if (!/^(?:[0-9a-f]{40}|local)$/.test(token)) throw new Error("Unexpected result worker build token.");
 importScripts("simulation-results-core.js?v="+encodeURIComponent(token));
@@ -123,7 +127,10 @@ async function operation(id, name, data) {
   }
 }
 
-self.addEventListener("message", ({data:message}) => {
+self.addEventListener("message", event => {
+  // The dedicated worker's implicit port delivers trusted events with an empty origin.
+  if (event.origin !== "" || !event.isTrusted) return;
+  const message=event.data;
   if (!message || !Number.isSafeInteger(message.id)) return;
   const {id,name,data}=message;
   if (name === "cancel") {

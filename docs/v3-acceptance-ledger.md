@@ -147,6 +147,25 @@ Development is in PR #119. The branch configures the v3.0.0 milestone through th
 
 ### Release control read-back
 
+- At `6e7b63a`, all fourteen required checks passed, including the full
+  Chromium and Firefox workflow and control suites. GitHub's candidate
+  merge artifact `081b3fb` had the same source tree as the reviewed head.
+  Protected merge remained blocked by the open CodeQL review conversation
+  for alert 46 on the simulation results worker's message handler. The
+  check summaries alone did not identify that review requirement.
+- The worker now requires `DedicatedWorkerGlobalScope` and accepts only
+  trusted message events carrying the empty origin of the browser's
+  implicit message port. The local transport, results indexing and fixed
+  resource addresses remain the same. The new regression first reproduced
+  the missing scope guard, then passed scope, unexpected origin, untrusted
+  event and valid channel cases. Chromium and Firefox passed the full
+  simulation workflow and repeated the 105,121-sample annual playback
+  benchmark with zero request-guard violations. The 28 privacy tests and
+  153-resource asset checks passed. Exact protected checks and review-thread
+  resolution apply after this change.
+  [Dedicated worker messages](https://html.spec.whatwg.org/multipage/workers.html#communicating-with-a-dedicated-worker)
+  · [CodeQL finding](https://github.com/anzarsajid91/ICM_Graphing_Tool/pull/119#discussion_r4651657441)
+  · [Prior passed required workflows](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/45204317632)
 - An authenticated GitHub API read identified the repository-owner account
   and administrative permission. Active ruleset `25314721` exposes an empty
   bypass list, strict up-to-date checks, all fourteen required contexts,
