@@ -7,7 +7,8 @@ import {installPrivacyGuard} from './privacy-network.mjs';
 const engine=process.env.ICM_BROWSER||'chromium',base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
 const browser=await (engine==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),acceptDownloads:true,viewport:{width:1024,height:900}});
-const guard=installPrivacyGuard(context,base,{canaries:['SYNTHETIC-REFERENCE-TRANSFORM','SYNTHETIC-ORIGINAL-TRANSFORM','SYNTHETIC-DERIVED-REVIEW']});
+const guard=installPrivacyGuard(context,base,{canaries:['SYNTHETIC-REFERENCE-TRANSFORM','SYNTHETIC-ORIGINAL-TRANSFORM',
+  'SYNTHETIC-DERIVED-REVIEW','SYNTHETIC-STATE-REVIEW','SYNTHETIC-ALARM']});
 const page=await context.newPage(),errors=[];
 page.on('pageerror',error=>errors.push(error.message));
 const dialog=page.getByRole('dialog',{name:'Transform time series'});
@@ -115,6 +116,43 @@ try{
   await dialog.getByRole('button',{name:'Close transformation'}).click();
   assert.equal(await page.evaluate(()=>window.__ICM_WORKBENCH__.stateSummary().readyFiles),2);
 
+  await page.setInputFiles('#fileInput',upload('synthetic-control-states.csv','Operating status',[
+    ['00:00','001'],['01:00','=SYNTHETIC-ALARM'],['02:00','"OPEN, lead"'],
+    ['02:30','001'],['03:00','NO-RECORD'],['04:00','001'],
+  ]));
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.stateSummary().readyFiles===3,null,{timeout:90000});
+  await open.click();await selectSource('Source series','Operating status · Recorded state');
+  assert(await select('Operation').isDisabled());
+  assert.equal(await select('Result type').inputValue(),'distribution');
+  await get('Source time shift (s)').fill('0');
+  await get('Start on project clock (optional)').fill('');
+  await get('End on project clock (optional)').fill('2025-01-01T00:05');
+  await get('Output interval (s)').fill('60');await get('Maximum valid source gap (s)').fill('60');
+  await get('Missing state token (optional)').fill('NO-RECORD');
+  const stateSupport=get('I confirmed that each state label applies until the next recorded timestamp');
+  assert(!(await stateSupport.isChecked()));
+  await derive.click();assert(await table.isHidden());
+  await stateSupport.check();await derive.click();
+  await summary.getByText('3 complete periods.',{exact:false}).waitFor();
+  assert.deepEqual(await readings(),['001','=SYNTHETIC-ALARM','Unavailable','Unavailable','Unavailable']);
+  await table.getByText('Mixed states',{exact:true}).waitFor();
+  assert.match(await table.locator('tbody').innerText(),/OPEN, lead · 30/);
+  await dialog.getByRole('button',{name:'Show interval plot',exact:true}).click();
+  await dialog.getByText('Plot ready for uniform states.',{exact:false}).waitFor();
+  const categoryPlot=await dialog.locator('#hbTransformPlot').evaluate(plot=>({labels:plot.layout.yaxis.ticktext,values:plot.data[0].y}));
+  assert.deepEqual(categoryPlot.labels,['001','=SYNTHETIC-ALARM']);
+  assert.deepEqual(categoryPlot.values,[0,0,null,1,1,null]);
+  const stateAudit=await download('Download audit CSV');
+  assert.match(stateAudit,/'=SYNTHETIC-ALARM/);
+  const stateArchive=JSON.parse(await download('Download derived series JSON'));
+  assert.equal(stateArchive.result.inputs[0].missing_token,'NO-RECORD');
+  assert.deepEqual(stateArchive.result.rows[2].slice(2),[null,60,'mixed',[['001',30],['OPEN, lead',30]]]);
+  assert.deepEqual(stateArchive.result.rows[4].slice(2),[null,0,'unavailable',[]]);
+  if(evidence)await dialog.screenshot({path:evidence+'/v3-recorded-states-'+engine+'.png'});
+  await get('Derived series name').fill('SYNTHETIC-STATE-REVIEW');await keep.click();
+  await dialog.getByText('Kept in this session.',{exact:false}).waitFor();
+  await dialog.getByRole('button',{name:'Close transformation'}).click();
+
   await page.locator('button[data-workspace="reports"]').click();
   await page.getByRole('tab',{name:'Workspace save / restore',exact:true}).click();
   const downloadWorkspace=page.waitForEvent('download');await page.click('#downloadWorkspaceBtn');
@@ -122,6 +160,8 @@ try{
   const savedWorkspace=JSON.parse(workspace);
   const reference=savedWorkspace.project_registry.derived[0];
   assert.equal(reference.name,'SYNTHETIC-DERIVED-REVIEW');assert.equal(reference.periods,3);assert.equal(reference.rows,undefined);
+  const stateReference=savedWorkspace.project_registry.derived.find(entry=>entry.name==='SYNTHETIC-STATE-REVIEW');
+  assert.equal(stateReference.quantity,'status');assert.equal(stateReference.rows,undefined);
   const colleague=await context.newPage();colleague.on('pageerror',error=>errors.push(error.message));
   await guard.navigate(colleague,base);
   await colleague.locator('button[data-workspace="reports"]').click();
@@ -145,6 +185,14 @@ try{
   assert.deepEqual((await review.locator('tbody tr td:nth-child(3)').allTextContents()).map(value=>Number(value.replaceAll(',',''))),[8000,32000,8000]);
   await review.getByRole('button',{name:'Remove selected record',exact:true}).click();
   assert(await review.getByRole('table').isHidden());
+  await restored.selectOption(stateReference.fingerprint);
+  const corruptStates=structuredClone(stateArchive);corruptStates.result.rows[2][5][0][1]=20;
+  await attach(corruptStates);
+  await review.getByText('recorded state durations conflict',{exact:false}).waitFor();
+  await attach(stateArchive);
+  await review.getByText('Derived interval record opened locally.',{exact:true}).waitFor();
+  assert.deepEqual(await review.locator('tbody tr td:nth-child(3)').allTextContents(),
+    ['001','=SYNTHETIC-ALARM','Unavailable','Unavailable','Unavailable']);
   assert.equal(await colleague.evaluate(()=>window.__ICM_WORKBENCH__.stateSummary().readyFiles),0);
   await colleague.close();
   assert.deepEqual(errors,[]);guard.assertClean();

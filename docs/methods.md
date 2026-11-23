@@ -60,6 +60,27 @@ accepts up to 8 MiB per portable file. A session holds up to 20 records and
 CSV and JSON output contain source hashes, assumptions and explicit interval
 bounds. The generic CSV importer continues to use its own temporal semantics.
 
+For **Recorded state**, choose a timestamped CSV column labelled as a state,
+status, alarm or mode. Labels remain text, including values such as
+`001`. Confirm that each label applies from its timestamp until the next
+recorded timestamp. Optionally declare a literal missing token. A blank
+label, a gap above the reviewed limit or a period after the last sample
+has no state support. Excluded time and source shifts follow the same
+interval boundary rules as the numerical transforms.
+
+The state calculation sums the exact overlap duration of each label
+inside the output interval. It distinguishes one supported state,
+mixed states, partial support and unavailable periods. The graph
+displays intervals supported by one state. The table and local archive
+retain the duration of each label in mixed or partially supported
+intervals. State labels have their own quantity and cannot be averaged,
+converted to another unit or used as operands for arithmetic. The
+source uses the existing numerical and timestamp limits, with a
+32 MiB state CSV ceiling and up to 64 distinct labels. The state
+archive includes the source fingerprint, timing, missing token and
+durations. Reduce the reviewed window or use larger intervals if the
+state result exceeds its evidence size limit.
+
 The U.S. Army Corps of Engineers documentation distinguishes instantaneous
 values, period means and period accumulations, and describes integrating source
 support to compute a period mean. [HEC-DSSVue time conventions](https://www.hec.usace.army.mil/confluence/dssdocs/dssvueum/introduction/time-series-conventions) · [HEC-DSSVue time functions](https://www.hec.usace.army.mil/confluence/dssdocs/dssvueum/math-and-statistical-functions/time-functions)

@@ -3,8 +3,8 @@ import json
 import numpy as np
 import pytest
 
-from icm_workbench.analysis.series_transform import integrate_periods, period_boundaries
-from icm_workbench.browser_api import series_data, transform_local_series
+from icm_workbench.analysis.series_transform import integrate_periods, period_boundaries, summarise_state_periods
+from icm_workbench.browser_api import parse_source, series_data, transform_local_series, transform_recorded_states
 
 
 def test_grid_preserves_signed_integral_and_partial_final_period():
@@ -35,6 +35,78 @@ def test_interval_depth_and_intensity_are_conservative_and_do_not_invent_dry_sup
                                             maximum_gap=240, trailing_support=120, exclusions=((180, 240),))
         assert totals == pytest.approx([1, 4, 3, 3])
         assert support.tolist() == [60, 120, 60, 60]
+
+
+def test_recorded_state_periods_distinguish_mixed_labels_gaps_and_exclusions():
+    times = np.array([0., 30., 50., 120., 140., 160.])
+    values = ["001", "ON", "OFF", None, "=Alarm", "UNKNOWN"]
+    edges = np.array([0., 60., 120., 180.])
+    records = summarise_state_periods(times, values, edges, maximum_gap=60, exclusions=((10, 19), (17, 20)))
+    assert records == [
+        {"state": None, "status": "partial", "support_s": 40., "states": [["001", 20.], ["ON", 20.]]},
+        {"state": None, "status": "unavailable", "support_s": 0., "states": []},
+        {"state": None, "status": "partial", "support_s": 20., "states": [["=Alarm", 20.]]},
+    ]
+    assert values == ["001", "ON", "OFF", None, "=Alarm", "UNKNOWN"]
+    assert summarise_state_periods(times, values, edges, maximum_gap=90)[:2] == [
+        {"state": None, "status": "mixed", "support_s": 60., "states": [["001", 30.], ["OFF", 10.], ["ON", 20.]]},
+        {"state": "OFF", "status": "uniform", "support_s": 60., "states": [["OFF", 60.]]},
+    ]
+
+
+def test_recorded_state_rejects_duplicate_times_labels_and_unbounded_categories():
+    with pytest.raises(ValueError, match="duplicate"):
+        summarise_state_periods(np.array([0., 0.]), ["Off", "On"], np.array([0., 20.]), maximum_gap=30)
+    with pytest.raises(ValueError, match="printable"):
+        summarise_state_periods(np.array([0., 10.]), ["\x00", "On"], np.array([0., 20.]), maximum_gap=30)
+    with pytest.raises(ValueError, match="64 distinct"):
+        summarise_state_periods(np.arange(65.), [str(i) for i in range(65)], np.array([0., 65.]), maximum_gap=30)
+
+
+def test_local_state_csv_preserves_labels_and_uses_the_shifted_project_clock(tmp_path):
+    path = tmp_path / "signals.csv"
+    raw = (
+        'Timestamp,Operating status\n2025-01-01 00:00:00,001\n2025-01-01 00:00:30,"ON, lead"\n'
+        '2025-01-01 00:01:30,001\n2025-01-01 00:02:00,END\n'
+    )
+    path.write_text(raw)
+    source = json.loads(parse_source(path))
+    assert source["columns"] == []
+    assert source["metadata"]["status_columns"] == ["Operating status"]
+    settings = dict(path=str(path), column="Operating status", shift_s=60)
+    with pytest.raises(ValueError, match="Confirm"):
+        transform_recorded_states(settings, 60, 60)
+    result = json.loads(transform_recorded_states(settings, 60, 60, end="2025-01-01T00:04:00", support_confirmed=True))
+    assert result["method"] == "categorical-state-grid-v1"
+    assert result["quantity"] == "status"
+    assert result["inputs"][0]["shift_s"] == 60
+    assert result["rows"] == [
+        ["2025-01-01T00:01:00", "2025-01-01T00:02:00", None, 60, "mixed", [["001", 30], ["ON, lead", 30]]],
+        ["2025-01-01T00:02:00", "2025-01-01T00:03:00", None, 60, "mixed", [["001", 30], ["ON, lead", 30]]],
+        ["2025-01-01T00:03:00", "2025-01-01T00:04:00", None, 0, "unavailable", []],
+    ]
+    assert path.read_text() == raw
+    from icm_workbench.analysis.series_transform import parse_derived_series_record
+
+    record = dict(schema="hydra-derived-series-v1", build="local",
+                  source=dict(name="Signals", sha256="b"*64, column="Operating status", source_unit=None, exclusions=[]),
+                  reference=None, result=result)
+    assert parse_derived_series_record(json.dumps(record)) == record
+    result["rows"][1][5][0][1] = 28
+    with pytest.raises(ValueError, match="durations conflict"):
+        parse_derived_series_record(json.dumps(record))
+    result["rows"][1][5][0][1] = 30
+    result["rows"][1][2] = "001"
+    with pytest.raises(ValueError, match="summary conflicts"):
+        parse_derived_series_record(json.dumps(record))
+
+
+def test_legacy_numeric_status_column_stays_available_for_existing_consumers(tmp_path):
+    spec = local_csv(tmp_path, "spill-indicator.csv", "Spill status", [("00:00", 0), ("01:00", 1), ("02:00", 0)])
+    response = json.loads(parse_source(spec["path"]))
+    assert response["columns"] == response["metadata"]["status_columns"] == ["Spill status"]
+    result = json.loads(transform_recorded_states(spec, 60, 60, support_confirmed=True))
+    assert [row[2] for row in result["rows"]] == ["0", "1"]
 
 
 def local_csv(tmp_path, name, channel, values):

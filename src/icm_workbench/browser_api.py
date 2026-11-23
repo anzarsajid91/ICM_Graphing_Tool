@@ -1884,6 +1884,54 @@ def transform_local_series(source, interval_s, max_gap_s, operation="single", re
                        "inputs": metadata, "rows": rows}, allow_nan=False)
 
 
+def transform_recorded_states(source, interval_s, max_gap_s, start=None, end=None, support_confirmed=False, missing_token=None):
+    """Apply explicitly reviewed left-labelled state support on the project clock."""
+    from icm_workbench.analysis.series_transform import MAX_SOURCE_SAMPLES, period_boundaries, summarise_state_periods, valid_state_label
+    from icm_workbench.parsers.csv import read_tabular_status
+
+    if support_confirmed is not True:
+        raise ValueError("Confirm that each recorded state applies until the next valid timestamp.")
+    if missing_token is not None and not valid_state_label(missing_token):
+        raise ValueError("Use a printable missing token up to 128 characters.")
+    path, column = source["path"], source["column"]
+    parsed = _require_model_clock(_load(path), "Recorded state source")
+    if parsed.format_name != "tabular_csv" or column not in parsed.metadata.get("status_columns", ()):
+        raise ValueError("Select a recorded state column from a local time-series CSV.")
+    if len(parsed.frame) > MAX_SOURCE_SAMPLES:
+        raise ValueError("This transformation supports up to 500,000 source samples.")
+    times, labels = read_tabular_status(path, parsed.metadata["status_timestamp_column"], column, missing_token)
+    if len(times) < 2 or times.hasnans or times.has_duplicates or not times.is_monotonic_increasing:
+        raise ValueError("Resolve invalid, duplicate or out-of-order state timestamps before transforming.")
+    shift = float(source.get("shift_s", 0))
+    if not np.isfinite(shift):
+        raise ValueError("Time shifts must be finite.")
+    offset = pd.to_timedelta(shift, unit="s")
+    times = times + offset
+    origin = _model_clock_timestamp(start) if start else times[0]
+    last = _model_clock_timestamp(end) if end else times[-1]
+    if pd.isna(origin) or pd.isna(last):
+        raise ValueError("Choose valid transformation limits on the project clock.")
+    edges = period_boundaries((last - origin).value / 1e9, float(interval_s))
+    omissions = _exclusions(source.get("exclusions", ()))
+    blocked = tuple((_relative_clock_seconds(origin, (pd.Timestamp(item.start) + offset).value),
+                     _relative_clock_seconds(origin, (pd.Timestamp(item.end) + offset).value)) for item in omissions)
+    periods = summarise_state_periods(_relative_clock_seconds(origin, times.asi8), labels, edges,
+                                      maximum_gap=float(max_gap_s), exclusions=blocked)
+    stamps = origin + pd.to_timedelta(edges, unit="s")
+    rows = [[stamps[i].isoformat(), stamps[i+1].isoformat(), item["state"], item["support_s"], item["status"], item["states"]]
+            for i, item in enumerate(periods)]
+    contract = dict(quantity="status", original_unit=None, canonical_unit="state", unit_status="resolved", unit_source="state-label")
+    inputs = [dict(contract=contract, convention="left_state", shift_s=offset.value / 1e9,
+                   source_samples=len(times), exclusions=len(omissions), missing_token=missing_token)]
+    encoded = json.dumps(dict(method="categorical-state-grid-v1", quantity="status", operation="single", output="distribution", unit="state",
+                              datum=None, interval_s=interval_s, max_gap_s=max_gap_s, inputs=inputs, rows=rows,
+                              complete_periods=sum(item["status"] in {"uniform","mixed"} for item in periods)),
+                         allow_nan=False, separators=(",", ":"))
+    if len(encoded) > 6 * 1024 * 1024:
+        raise ValueError("The recorded state evidence exceeds 6 MiB. Review a shorter window or larger intervals.")
+    return encoded
+
+
 def read_derived_series_record(text):
     from icm_workbench.analysis.series_transform import parse_derived_series_record
 

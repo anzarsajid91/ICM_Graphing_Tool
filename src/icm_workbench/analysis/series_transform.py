@@ -10,6 +10,12 @@ import numpy as np
 
 MAX_OUTPUT_PERIODS = 25_000
 MAX_SOURCE_SAMPLES = 500_000
+MAX_STATE_LABELS = 64
+
+
+def valid_state_label(value):
+    return (isinstance(value, str) and bool(value.strip()) and len(value) <= 128 and
+            not any(ord(character) < 32 or ord(character) == 127 for character in value))
 
 
 def parse_derived_series_record(text):
@@ -80,16 +86,21 @@ def parse_derived_series_record(text):
         return dict(name=entry["name"], sha256=entry["sha256"], column=entry["column"], source_unit=entry.get("source_unit"), exclusions=reviewed)
 
     result = raw.get("result")
-    if not bounded(raw.get("build"), 128) or not isinstance(result, dict) or result.get("method") != "temporal-support-grid-v1":
+    if not bounded(raw.get("build"), 128) or not isinstance(result, dict) or result.get("method") not in (
+            "temporal-support-grid-v1", "categorical-state-grid-v1"):
         raise ValueError("The derived record method or build is unsupported.")
+    state_grid = result["method"] == "categorical-state-grid-v1"
     quantity, operation, output, unit = (result.get(key) for key in ("quantity", "operation", "output", "unit"))
-    if quantity not in ("flow", "rainfall", "depth", "level", "velocity") or operation not in ("single", "add", "subtract"):
+    if state_grid:
+        if (quantity, operation, output, unit, result.get("datum")) != ("status", "single", "distribution", "state", None):
+            raise ValueError("Recorded state intervals require one categorical source without arithmetic or a vertical datum.")
+    elif quantity not in ("flow", "rainfall", "depth", "level", "velocity") or operation not in ("single", "add", "subtract"):
         raise ValueError("The derived quantity or arithmetic method is unsupported.")
     if operation == "add" and quantity not in ("flow", "rainfall"):
         raise ValueError("The derived addition uses an unsupported quantity.")
     expected = {"flow": ("m³", "L"), "rainfall": ("mm",)}
-    if not bounded(unit, 128) or not ((output == "total" and unit in expected.get(quantity, ())) or
-            (output == "mean" and canonical_unit(quantity, unit)[0] is not None and (quantity != "rainfall" or unit == "mm/h"))):
+    if not state_grid and (not bounded(unit, 128) or not ((output == "total" and unit in expected.get(quantity, ())) or
+            (output == "mean" and canonical_unit(quantity, unit)[0] is not None and (quantity != "rainfall" or unit == "mm/h")))):
         raise ValueError("The derived result unit or period statistic is incompatible.")
     datum = result.get("datum")
     if not bounded(datum, 128, True) or quantity == "level" and operation == "subtract" and not datum:
@@ -106,31 +117,43 @@ def parse_derived_series_record(text):
     if not isinstance(inputs, list) or len(inputs) != operand_count:
         raise ValueError("The derived record does not describe each operand.")
     reviewed_inputs = []
+    conventions = ("left_state",) if state_grid else ("instantaneous", "interval_average", "interval_depth")
     for entry in inputs:
-        if not isinstance(entry, dict) or entry.get("convention") not in ("instantaneous", "interval_average", "interval_depth"):
+        if not isinstance(entry, dict) or entry.get("convention") not in conventions:
             raise ValueError("The source interval convention in the derived record is unsupported.")
         contract = entry.get("contract")
         keys = ("quantity", "original_unit", "canonical_unit", "unit_status", "unit_source")
         if not isinstance(contract, dict) or contract.get("quantity") != quantity or any(not bounded(contract.get(key), 256, True) for key in keys):
             raise ValueError("The source quantity contract in the derived record is invalid.")
         convention = entry["convention"]
-        expected_unit = ({"interval_average": "mm/h", "interval_depth": "mm"}.get(convention) if quantity == "rainfall"
+        expected_unit = ("state" if state_grid else {"interval_average": "mm/h", "interval_depth": "mm"}.get(convention) if quantity == "rainfall"
                          else {"flow": "m³/s", "depth": "m", "level": "m", "velocity": "m/s"}[quantity] if convention == "instantaneous" else None)
         if expected_unit is None or contract.get("canonical_unit") != expected_unit:
             raise ValueError("The derived source unit conflicts with its interval convention.")
         scale = contract.get("scale_to_canonical")
         shift, samples, excluded = (entry.get(key) for key in ("shift_s", "source_samples", "exclusions"))
-        if not (number(scale) and scale > 0 and number(shift) and type(samples) is int and 1 <= samples <= MAX_SOURCE_SAMPLES
+        if not (number(shift) and type(samples) is int and 1 <= samples <= MAX_SOURCE_SAMPLES
                 and type(excluded) is int and 0 <= excluded <= 1000):
-            raise ValueError("The derived source scaling, shift or counts are invalid.")
-        reviewed_inputs.append(dict(contract={**{key: contract.get(key) for key in keys}, "scale_to_canonical": scale},
-                                    convention=entry["convention"], shift_s=shift, source_samples=samples, exclusions=excluded))
+            raise ValueError("The derived source shift or counts are invalid.")
+        reviewed = dict(contract={key: contract.get(key) for key in keys},
+                        convention=convention, shift_s=shift, source_samples=samples, exclusions=excluded)
+        if state_grid:
+            missing = entry.get("missing_token")
+            if scale is not None or samples < 2 or missing is not None and not valid_state_label(missing):
+                raise ValueError("The derived state label, missing token or source scaling is invalid.")
+            reviewed["missing_token"] = missing
+        else:
+            if not number(scale) or scale <= 0:
+                raise ValueError("The derived source scaling is invalid.")
+            reviewed["contract"]["scale_to_canonical"] = scale
+        reviewed_inputs.append(reviewed)
     rows = result.get("rows")
     if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_OUTPUT_PERIODS:
         raise ValueError("The derived record needs 1 to 25,000 intervals.")
     previous, complete = None, 0
+    state_labels = set()
     for index, row in enumerate(rows):
-        if not isinstance(row, list) or len(row) != 3 + operand_count:
+        if not isinstance(row, list) or len(row) != (6 if state_grid else 3 + operand_count):
             raise ValueError("The derived interval shape is incompatible with its operands.")
         first, last = clock(row[0]), clock(row[1])
         period = (last-first)/1e9
@@ -140,8 +163,28 @@ def parse_derived_series_record(text):
         tolerance = 1e-8 + period*1e-12
         if period > width+tolerance or (index < len(rows)-1 and abs(period-width) > tolerance):
             raise ValueError("The derived interval widths conflict with its declared period.")
-        if any(not number(valid) or valid < 0 or valid > period+tolerance for valid in row[3:]):
+        support = row[3:4] if state_grid else row[3:]
+        if any(not number(valid) or valid < 0 or valid > period+tolerance for valid in support):
             raise ValueError("The derived interval has invalid source support.")
+        if state_grid:
+            distribution = row[5]
+            if not isinstance(distribution, list) or len(distribution) > MAX_STATE_LABELS or any(
+                    not isinstance(item, list) or len(item) != 2 or not valid_state_label(item[0])
+                    or not number(item[1]) or not 0 < item[1] <= period+tolerance for item in distribution):
+                raise ValueError("The recorded state duration evidence is invalid.")
+            labels = {label for label, _ in distribution}
+            state_labels.update(labels)
+            covered = row[3]
+            if len(labels) != len(distribution) or len(state_labels) > MAX_STATE_LABELS or (
+                    abs(math.fsum(seconds for _, seconds in distribution) - covered) > tolerance):
+                raise ValueError("The recorded state durations conflict with the supported interval.")
+            supported = abs(covered-period) <= tolerance
+            expected_status = ("uniform" if len(labels) == 1 else "mixed") if supported else "partial" if covered else "unavailable"
+            expected_state = distribution[0][0] if expected_status == "uniform" else None
+            if (row[2], row[4]) != (expected_state, expected_status):
+                raise ValueError("The recorded state summary conflicts with its interval evidence.")
+            complete += supported
+            continue
         has_value = row[2] is not None
         # ISO timestamps retain nanoseconds, while period widths originate as floats.
         if (has_value and (not number(row[2]) or any(abs(valid-period) > tolerance+1e-9 for valid in row[3:]))) or (
@@ -166,6 +209,29 @@ def period_boundaries(duration: float, interval: float) -> np.ndarray:
         raise ValueError("Choose a shorter period or larger timestep. The output limit is 25,000 periods.")
     edges = np.arange(max(1, math.ceil(ratio)), dtype=float) * interval
     return np.append(edges[edges < duration], duration)
+
+
+def _period_pieces(times, left, right, edges, maximum_gap, exclusions):
+    # Split each interval at source, output and exclusion boundaries.
+    first, last = edges[0], edges[-1]
+    trimmed = [(max(first, a), min(last, b)) for a, b in exclusions if a < last and b > first and b > a]
+    source_boundaries = times[(times > first) & (times < last)]
+    final = [right[-1]] if first < right[-1] < last else []
+    points = np.unique(np.concatenate((edges, source_boundaries, final, np.ravel(trimmed))))
+    a, b = points[:-1], points[1:]
+    index = np.searchsorted(left, a, side="right") - 1
+    safe = np.clip(index, 0, len(left) - 1)
+    period = np.searchsorted(edges, a, side="right") - 1
+    duration = right[safe] - left[safe]
+    keep = (index >= 0) & (b <= right[safe]) & (duration <= maximum_gap)
+    if trimmed:
+        # Difference marking applies the union of overlapping exclusions.
+        excluded = np.zeros(len(points), dtype=np.int64)
+        starts, ends = np.asarray(trimmed, dtype=float).T
+        np.add.at(excluded, np.searchsorted(points, starts), 1)
+        np.add.at(excluded, np.searchsorted(points, ends), -1)
+        keep &= np.cumsum(excluded[:-1]) == 0
+    return a, b, period, safe, duration, keep
 
 
 def integrate_periods(
@@ -204,28 +270,9 @@ def integrate_periods(
     if not len(left):
         return np.zeros(len(edges) - 1), np.zeros(len(edges) - 1)
 
-    # Insert every internal source/segment boundary, so each elementary
-    # piece lies within one source interval and one requested period.
-    first, last = edges[0], edges[-1]
-    trimmed_exclusions = [(max(first, a), min(last, b)) for a, b in exclusions if a < last and b > first and b > a]
-    source_boundaries = times[(times > first) & (times < last)]
-    final = [right[-1]] if first < right[-1] < last else []
-    points = np.unique(np.concatenate((edges, source_boundaries, final, np.ravel(trimmed_exclusions))))
-    a, b = points[:-1], points[1:]
-    index = np.searchsorted(left, a, side="right") - 1
-    safe = np.clip(index, 0, len(left) - 1)
-    period = np.searchsorted(edges, a, side="right") - 1
-    duration = right[safe] - left[safe]
+    a, b, period, safe, duration, keep = _period_pieces(times, left, right, edges, maximum_gap, exclusions)
     opened = opening[safe]
-    keep = (index >= 0) & (b <= right[safe]) & (duration <= maximum_gap) & np.isfinite(opened)
-    if trimmed_exclusions:
-        # Difference marking computes the union of overlapping exclusions
-        # without scanning every source sample for each decision.
-        excluded = np.zeros(len(points), dtype=np.int64)
-        starts, ends = np.asarray(trimmed_exclusions, dtype=float).T
-        np.add.at(excluded, np.searchsorted(points, starts), 1)
-        np.add.at(excluded, np.searchsorted(points, ends), -1)
-        keep &= np.cumsum(excluded[:-1]) == 0
+    keep &= np.isfinite(opened)
     if convention == "instantaneous":
         keep &= np.isfinite(closing[safe])
     else:
@@ -254,3 +301,38 @@ def integrate_periods(
     if not np.isfinite(totals).all():
         raise ValueError("A resampled integral exceeded the finite supported range.")
     return totals, support
+
+
+def summarise_state_periods(times, values, edges, *, maximum_gap, exclusions=()):
+    """Summarise reviewed left-held states without turning labels into measurements."""
+    if not math.isfinite(maximum_gap) or maximum_gap < .001:
+        raise ValueError("The valid source gap must be at least 0.001 seconds.")
+    if len(times) != len(values) or len(times) > MAX_SOURCE_SAMPLES:
+        raise ValueError("A transformation supports up to 500,000 source samples.")
+    if not np.isfinite(times).all() or np.any(np.diff(times) <= 0):
+        raise ValueError("Resolve invalid, out-of-order and duplicate source timestamps before transforming.")
+    if not 2 <= len(edges) <= MAX_OUTPUT_PERIODS + 1 or not np.isfinite(edges).all() or np.any(np.diff(edges) <= 0):
+        raise ValueError("Use increasing finite output intervals within the period limit.")
+    if any(value is not None and not valid_state_label(value) for value in values):
+        raise ValueError("Use printable state labels up to 128 characters.")
+    labels = sorted({value for value in values if value is not None})
+    if len(labels) > MAX_STATE_LABELS:
+        raise ValueError("This transformation supports up to 64 distinct state labels.")
+    distributions = [[] for _ in range(len(edges) - 1)]
+    if len(times) >= 2 and labels:
+        code = {label: i for i, label in enumerate(labels)}
+        a, b, period, source, _, keep = _period_pieces(times, times[:-1], times[1:], edges, maximum_gap, exclusions)
+        state = np.array([code.get(value, -1) for value in values], dtype=int)[source]
+        keep &= state >= 0
+        groups, inverse = np.unique(period[keep] * len(labels) + state[keep], return_inverse=True)
+        durations = np.bincount(inverse, weights=b[keep] - a[keep])
+        for group, duration in zip(groups, durations):
+            interval, label = divmod(int(group), len(labels))
+            distributions[interval].append([labels[label], float(duration)])
+    records = []
+    for width, states in zip(np.diff(edges), distributions):
+        support = math.fsum(duration for _, duration in states)
+        complete = math.isclose(support, width, rel_tol=1e-12, abs_tol=1e-8)
+        status = ("uniform" if len(states) == 1 else "mixed") if complete else "partial" if support else "unavailable"
+        records.append(dict(state=states[0][0] if status == "uniform" else None, status=status, support_s=support, states=states))
+    return records

@@ -169,7 +169,7 @@
       if(Array.isArray(references))for(const ref of references.slice(0,40)){
         if(this.derivedReferences.size>=40)break;
         if(!ref||typeof ref.fingerprint!=='string'||!/^[a-f0-9]{64}$/.test(ref.fingerprint)||this.derivedReferences.has(ref.fingerprint)||
-           typeof ref.name!=='string'||!ref.name||ref.name.length>256||!['flow','rainfall','depth','level','velocity'].includes(ref.quantity)||
+           typeof ref.name!=='string'||!ref.name||ref.name.length>256||!['flow','rainfall','depth','level','velocity','status'].includes(ref.quantity)||
            typeof ref.unit!=='string'||ref.unit.length>128||!Number.isInteger(ref.periods)||ref.periods<1||ref.periods>25000||
            ![ref.start,ref.end].every(value=>typeof value==='string'&&value.length<=40))continue;
         const {fingerprint,name,quantity,unit,periods,start,end}=ref;

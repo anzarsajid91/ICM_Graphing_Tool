@@ -23,7 +23,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 3.3 | Current help text and workspace routes | Six guided journeys with actual prerequisites, results and next actions | Verified locally |
 | 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Partial |
 | 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Verified locally with documentary unit and quantity findings and exact-basis workspace decisions |
-| 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Partial. Numerical transforms, interval plots and exact local record reattachment verified. Categorical states and wider analytical handoffs remain open |
+| 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Numerical and recorded-state transformations, interval plots and exact local record reattachment verified locally. Wider transform handoffs remain open under §13 |
 | 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Verified locally |
 | 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Verified locally |
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Verified locally |
@@ -67,6 +67,13 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Recorded-state transformation
+
+- Data / Time Series reads reviewed state labels from the original local CSV as text, including leading zeros. The existing interval engine bounds their support by the next reported sample and configured maximum gap. It reports mixed, partial and unavailable periods, raw time by state, and applied exclusions without changing the original data or assigning numeric meaning to labels.
+- Chromium and Firefox exercised the native status import, clock shift and interval controls, state duration plot, CSV, exact-source archive reopening and rejection of inconsistent archives. Requests observed were 205 and 202 respectively with zero confidentiality violations. Evidence is in `/workspace/hydra-evidence/v3/recorded-states-final`.
+- A 105,121-sample synthetic year at five-minute steps retained 31,449,600 valid seconds and 24 excluded hours across 8,760 reporting periods. Direct CPython elapsed time was 279 ms. The status source, exact result transfer and portable archive limits are 32 MiB, 6 MiB and 8 MiB respectively. This timing is for the Python method. The browser workflows used the smaller assurance fixture.
+- Python passed 493 tests and 111 subtests. Privacy passed 28 tests and the browser network contract. The source gate and local staged check passed with 153 resources.
 
 ### Reviewed revision long sections
 
