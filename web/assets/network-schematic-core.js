@@ -234,15 +234,26 @@ function validateRouteWorkspace(result){
     throw new Error('Duplicate saved monitor names.');
   records('monitorReview',10000,row=>row&&text(row.monitor,256)&&text(row.assetId,256)&&text(row.status,128));
   records('overviewPins',7000,reference);
-  records('routeReviews',30,review=>review&&text(review.name,100)&&review.name.trim()&&text(review.note,10000)&&
-    text(review.start,256)&&text(review.end,256)&&Array.isArray(review.steps)&&review.steps.length>0&&review.steps.length<=5000&&
-    review.steps.every(step=>step&&text(step.id,256)&&text(step.from,256)&&text(step.to,256)&&text(step.name,256)&&
+  function validStep(step){
+    return step&&text(step.id,256)&&text(step.from,256)&&text(step.to,256)&&text(step.name,256)&&
       text(step.type,128)&&['known','missing','structure'].includes(step.lengthStatus)&&
       ['length','us','ds','groundFrom','groundTo','height','chainageStart','chainageEnd'].every(key=>nullableNumber(step[key]))&&
-      ['chamberFrom','chamberTo','widthMm','heightMm'].every(key=>!Object.hasOwn(step,key)||nullableNumber(step[key]))&&
+      ['chamberFrom','chamberTo','widthMm','heightMm','roofFrom','roofTo'].every(key=>!Object.hasOwn(step,key)||nullableNumber(step[key]))&&
       (step.shape==null||text(step.shape,128))&&
+      (step.controlLevels===undefined||Array.isArray(step.controlLevels)&&step.controlLevels.length<=16&&
+        step.controlLevels.every(control=>control&&text(control.label,128)&&Number.isFinite(control.value)))&&
       Array.isArray(step.sources)&&step.sources.length<=3&&step.sources.every(source=>source&&text(source.file,512)&&
-        text(source.table,128)&&Number.isSafeInteger(source.row)&&source.row>=1))&&
+        text(source.table,128)&&Number.isSafeInteger(source.row)&&source.row>=1);
+  }
+  function validRevisedGeometry(geometry,baseline){
+    return geometry===undefined||geometry&&text(geometry.revision,128)&&geometry.revision.trim()&&
+      text(geometry.datum,128)&&geometry.datum.trim()&&text(geometry.sha256,64)&&/^[a-f0-9]{64}$/.test(geometry.sha256)&&
+      Array.isArray(geometry.steps)&&geometry.steps.length===baseline.length&&geometry.steps.every((step,index)=>
+        validStep(step)&&['id','type','from','to'].every(key=>step[key]===baseline[index][key]));
+  }
+  records('routeReviews',30,review=>review&&text(review.name,100)&&review.name.trim()&&text(review.note,10000)&&
+    text(review.start,256)&&text(review.end,256)&&Array.isArray(review.steps)&&review.steps.length>0&&review.steps.length<=5000&&
+    review.steps.every(validStep)&&validRevisedGeometry(review.revisedGeometry,review.steps)&&
     Array.isArray(review.trials)&&review.trials.length<=100&&review.trials.every(trial=>trial&&text(trial.id,256)&&
       ['diameter','gradient','roughness','viscosity'].every(key=>Number.isFinite(trial[key]))&&
       Number.isFinite(trial.capacity)&&trial.capacity>=0)&&validModel(review.model)&&validProfileView(review.profileView));

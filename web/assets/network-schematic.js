@@ -1836,8 +1836,16 @@ function mountReview(){
 const defaultProfileView={zoomX:1,zoomY:1,panX:.5,panY:.5,groundShading:false};
 let routeDraft={start:'',end:'',choices:new Map(),steps:[],trials:[],model:null,profileView:{...defaultProfileView}};
 let routeRevision=0;
+let proposedRouteGeometry=null;
+const reviewedRouteGeometry=()=>proposedRouteGeometry?.baseline===routeDraft.steps?proposedRouteGeometry:null;
+async function routeGeometryDigest(steps){
+  const bytes=new TextEncoder().encode(JSON.stringify(steps));
+  const digest=await crypto.subtle.digest('SHA-256',bytes);
+  return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
 function resetRouteDraft(){
   routeDraft={start:'',end:'',choices:new Map(),steps:[],trials:[],model:null,profileView:{...defaultProfileView}};
+  proposedRouteGeometry=null;
   ++routeRevision;
   clearHotspots();
   if($('nsRoute')){
@@ -2046,6 +2054,7 @@ function reviewRoute(){
   return {edges,branches,issue:edges.length?'':planner.issue()};
 }
 function clearProfile(){
+  proposedRouteGeometry=null;
   routeDraft.steps=[];routeDraft.trials=[];routeDraft.model=null;++routeRevision;
   $('nsRouteSavedMessage').textContent='';$('nsModelLevelsMessage').textContent='';
   displayProfile();
@@ -2110,9 +2119,34 @@ function renderRoute(){
   saved.value=active;
   if(saved.selectedIndex<0)saved.selectedIndex=0;
 }
+function profileModelForView(){
+  const model=simulationView?.profile()||routeDraft.model,proposal=model?.proposal;
+  if(proposal&&(proposal.ends||proposal.geometry)&&
+     (proposal.routeRevision!==routeRevision||proposal.geometry&&proposal.geometry!==reviewedRouteGeometry()))
+    return {...model,proposal:null,proposalReviewPending:true};
+  return model;
+}
 function plotProfile(steps){
   const view=$('nsProfilePlot');view.replaceChildren();
-  const settings=routeDraft.profileView;
+  const settings=routeDraft.profileView,model=profileModelForView(),reviewed=reviewedRouteGeometry();
+  if(reviewed){
+    const proposal=model?.proposal?.geometry===reviewed?model.proposal:null;
+    for(const [phase,title,geometry,overlay] of [
+      ['baseline','Baseline source geometry',steps,model?{...model,proposal:null}:null],
+      ['proposal','Revised source geometry · '+reviewed.revision,reviewed.steps,proposal?
+        {scenario:proposal.scenario,time:model.time,datum:model.datum,ends:proposal.ends,
+          values:proposal.levels.map(row=>({node:row.id,level:row.level}))}:null],
+    ]){
+      const section=inspectorElement('section',undefined,'ns-profile-variant');
+      section.dataset.nsProfileVariant=phase;
+      section.append(inspectorElement('h4',title+(overlay?.scenario?' · '+overlay.scenario:'')));view.append(section);
+      drawProfile(section,geometry,settings,overlay,phase,phase==='proposal'?reviewed.datum:'');
+    }
+  }else drawProfile(view,steps,settings,model,'baseline');
+  updateProfileSelection();
+}
+function drawProfile(view,steps,settings,model,phase,geometryDatum=''){
+  const datum=model?.datum||geometryDatum;
   const segments=[];
   let chainage=0,section=[],controls=[];
   function closeSection(){
@@ -2128,7 +2162,6 @@ function plotProfile(steps){
   }
   closeSection();
   const plotted=segments.flatMap(segment=>segment.pipes);
-  const model=simulationView?.profile()||routeDraft.model;
   const routeNodes=new Set(steps.flatMap(step=>[step.from,step.to]));
   const imported=new Map((model?.values||[]).filter(record=>routeNodes.has(record.node)).map(record=>[record.node,record.level]));
   const conduitLevels=new Map((model?.ends||[]).map(record=>[record.edge,record]));
@@ -2139,7 +2172,7 @@ function plotProfile(steps){
   const shownEndLevels=plotted.flatMap(step=>[conduitLevels.get(step.id),proposedConduitLevels.get(step.id)]
     .flatMap(ends=>ends?[ends.upstream,ends.downstream]:[])).filter(Number.isFinite);
   const levels=steps.flatMap(step=>[step.us,step.ds,step.groundFrom,step.groundTo,step.chamberFrom,step.chamberTo,step.roofFrom,step.roofTo,
-    ...step.controlLevels.map(control=>control.value),
+    ...(step.controlLevels||[]).map(control=>control.value),
     step.us!==null&&step.height!==null?step.us+step.height:null,
     step.ds!==null&&step.height!==null?step.ds+step.height:null]).filter(Number.isFinite)
     .concat([...imported.values()],shownEndLevels,[...proposalLevels.values()].map(row=>row.level));
@@ -2158,7 +2191,7 @@ function plotProfile(steps){
     const x=value=>76+(value-horizontal.low)/horizontal.span*774,y=value=>245-(value-vertical.low)/vertical.span*213;
     const label=(absolute?'Chainage ':'Local distance ')+f(origin+horizontal.low,2)+' to '+f(origin+horizontal.high,2)+' m';
     const svg=svgElement('svg',{viewBox:'0 0 890 285','aria-label':label,role:'group'});
-    const clipId='nsProfileClip'+index,clip=svgElement('clipPath',{id:clipId}),defs=svgElement('defs');
+    const clipId='nsProfileClip-'+phase+'-'+index,clip=svgElement('clipPath',{id:clipId}),defs=svgElement('defs');
     clip.append(svgElement('rect',{x:76,y:27,width:774,height:220}));defs.append(clip);svg.append(defs);
     const plot=svgElement('g',{'clip-path':'url(#'+clipId+')'}),linkLayer=svgElement('g'),pointLayer=svgElement('g');
     plot.append(linkLayer,pointLayer);
@@ -2168,7 +2201,7 @@ function plotProfile(steps){
         svgElement('text',{x:68,y:y(level)+4,'text-anchor':'end'},f(level,2)),
         svgElement('text',{x:x(offset),y:265,'text-anchor':'middle'},f(origin+offset,2)));
     }
-    svg.append(svgElement('text',{x:12,y:18},'Level (m'+(model?.datum?' '+model.datum:'')+')'),svgElement('text',{x:460,y:283,'text-anchor':'middle'},absolute?'Chainage (m)':'Local distance (m)'),
+    svg.append(svgElement('text',{x:12,y:18},'Level (m'+(datum?' '+datum:'')+')'),svgElement('text',{x:460,y:283,'text-anchor':'middle'},absolute?'Chainage (m)':'Local distance (m)'),
       svgElement('text',{x:850,y:18,'text-anchor':'end'},'Vertical exaggeration '+f((213/vertical.span)/(774/horizontal.span),2)+'×'));
     const drawnLevels=new Set(),drawnProposals=new Set(),drawnNodes=new Set(),structures=new Map();
     const proposalMark=(station,level,id,location,ground,aboveSoffit)=>{
@@ -2186,14 +2219,15 @@ function plotProfile(steps){
     for(const [station,items] of structures){
       for(const [index,step] of items.entries()){
         const coordinate=x(station),badgeX=coordinate+(index-(items.length-1)/2)*19;
-        const type=step.type.slice(3).replaceAll('_',' '),levels=step.controlLevels.map(control=>control.label+' '+f(control.value,3)+' m');
+        const controls=step.controlLevels||[];
+        const type=step.type.slice(3).replaceAll('_',' '),levels=controls.map(control=>control.label+' '+f(control.value,3)+' m');
         const caption=[step.name,type,...levels].join(' · '),marker=svgElement('g',{'data-ns-profile-link':step.id,
           'data-ns-profile-structure':step.type,tabindex:0,role:'button','aria-label':'Inspect '+caption});
         marker.append(svgElement('title',{},caption),
           svgElement('path',{d:'M'+badgeX+' 46L'+coordinate+' 55',stroke:'#6947a1',fill:'none'}),
           svgElement('rect',{x:badgeX-8,y:29,width:16,height:17,rx:4,fill:'#6947a1'}),
           svgElement('text',{x:badgeX,y:41,'text-anchor':'middle',fill:'#fff','font-size':10},structureCodes[step.type]||'C'));
-        for(const control of step.controlLevels){
+        for(const control of controls){
           const level=svgElement('line',{'data-ns-profile-control-level':'',x1:coordinate-8,x2:coordinate+8,
             y1:y(control.value),y2:y(control.value),stroke:'#6947a1','stroke-width':2});
           level.append(svgElement('title',{},control.label+' '+f(control.value,3)+' m'));marker.append(level);
@@ -2303,7 +2337,6 @@ function plotProfile(steps){
     svg.append(plot);
     view.append(svg);
   }
-  updateProfileSelection();
 }
 function renderProfileControls(){
   const view=routeDraft.profileView;
@@ -2311,23 +2344,33 @@ function renderProfileControls(){
   $('nsProfilePanX').value=view.panX;$('nsProfilePanY').value=view.panY;
   $('nsProfilePanX').disabled=view.zoomX===1;$('nsProfilePanY').disabled=view.zoomY===1;
   $('nsProfileShading').checked=view.groundShading;
+  $('nsProfilePlot').toggleAttribute('data-ns-profile-pannable',view.zoomX>1||view.zoomY>1);
   $('nsProfileSvgDownload').disabled=!$('nsProfilePlot').querySelector('svg');
+  const geometry=reviewedRouteGeometry();
+  $('nsClearRevisedGeometry').hidden=!geometry;
+  $('nsRevisedGeometryInfo').textContent=geometry?'Revised geometry '+geometry.revision+' · '+geometry.datum+' · Route SHA-256 '+geometry.sha256+'. Chainage and elevation scales are shown independently.':'';
 }
 function exportProfileSvg(){
   plotProfile(routeDraft.steps);
   const graphs=[...$('nsProfilePlot').querySelectorAll('svg')];
   if(!graphs.length)return;
-  const height=285*graphs.length;
+  const geometry=reviewedRouteGeometry(),model=profileModelForView();
+  const stamp=model?'Recorded levels · '+model.time+' (project clock) · '+model.datum:'';
+  const titled=Boolean(geometry),panelHeight=titled?309:285,header=stamp?26:0,height=header+panelHeight*graphs.length;
   const output=svgElement('svg',{width:890,height,viewBox:'0 0 890 '+height,fill:'#182732','font-family':'sans-serif','font-size':13});
   output.append(svgElement('title',{},'Hydra Bench route long section'),svgElement('rect',{width:890,height,fill:'#fff'}));
+  if(geometry)output.append(svgElement('desc',{},'Revised geometry '+geometry.revision+' · '+geometry.datum+' · Route SHA-256 '+geometry.sha256));
+  if(stamp)output.append(svgElement('text',{x:76,y:17},stamp));
   for(const [index,graph] of graphs.entries()){
-    const copy=graph.cloneNode(true);copy.setAttribute('x',0);copy.setAttribute('y',285*index);copy.setAttribute('width',890);copy.setAttribute('height',285);
+    const top=header+index*panelHeight;
+    if(titled)output.append(svgElement('text',{x:76,y:top+17},graph.closest('section').querySelector('h4').textContent));
+    const copy=graph.cloneNode(true);copy.setAttribute('x',0);copy.setAttribute('y',top+(titled?24:0));copy.setAttribute('width',890);copy.setAttribute('height',285);
     output.append(copy);
   }
   downloadBlob('hydra-long-section.svg',new XMLSerializer().serializeToString(output),'image/svg+xml');
 }
 function renderProfileModel(){
-  const active=simulationView?.profile(),model=active||routeDraft.model;
+  const active=simulationView?.profile(),model=profileModelForView();
   const routeNodes=new Set(routeDraft.steps.flatMap(step=>[step.from,step.to]));
   const routeLinks=new Set(routeDraft.steps.map(step=>step.id));
   let comparison='';
@@ -2335,8 +2378,10 @@ function renderProfileModel(){
     const proposal=model.proposal;
     const count=proposal.ends?proposal.ends.filter(row=>routeLinks.has(row.edge)).flatMap(end=>[end.upstream,end.downstream]).filter(Number.isFinite).length:
       proposal.levels.filter(row=>routeNodes.has(row.id)).length;
-    comparison=' '+proposal.scenario+' exact proposal level samples: '+count+'. Purple rings mark available proposal levels.'+
-      (proposal.ends?' The dashed purple line joins wet proposal ends on the reviewed shared geometry.':'');
+    comparison=' '+proposal.scenario+' exact proposal level samples: '+count+'. '+(proposal.geometry?
+      'The revised plot uses its reviewed conduit geometry and source levels.':
+      'Purple rings mark available proposal levels.'+
+      (proposal.ends?' The dashed purple line joins wet proposal ends on the reviewed shared geometry.':''));
   }
   if(model?.proposalReviewPending)comparison=' Review the shared geometry and apply the proposal again for this route.';
   $('nsProfileModelLegend').hidden=!model;
@@ -2421,7 +2466,7 @@ function mountSimulationView(){
     '<p id="nsSimulationSourceInfo"></p><p><label><input name="confirm" type="checkbox" required> I reviewed the model revision, typed asset mappings and result convention against this network</label></p>'+
     '<p id="nsSimulationComparison" hidden><span id="nsSimulationProposalInfo"></span><br><label><input name="verifyProposal" type="checkbox"> The proposal uses these same assets, event, result convention and project clock</label></p>'+
     '<div id="nsSimulationProposalProfile" class="ns-review-actions" hidden><label id="nsSimulationProposalEnd">Proposal other conduit end'+
-    '<select name="proposalEnd" aria-label="Proposal other conduit end"></select></label><label><input name="verifyProfileGeometry" type="checkbox"> Both revisions use the displayed route geometry and datum</label></div>'+
+    '<select name="proposalEnd" aria-label="Proposal other conduit end"></select></label><label><input name="verifyProfileGeometry" type="checkbox"> <span id="nsSimulationGeometryText">Both revisions use the displayed route geometry and datum</span></label></div>'+
     '<div class="ns-review-actions"><button type="submit">Apply results layer</button><button type="button" id="nsClearSimulation" disabled>Remove results layer</button></div></form>'+
     '<div id="nsSimulationTransport" class="ns-review-actions" hidden><label>Simulation sample<input id="nsSimulationTime" type="range" min="0" max="0" step="1" value="0"></label>'+
     '<button type="button" id="nsSimulationBack">Previous sample</button><button type="button" id="nsSimulationPlay" aria-pressed="false">Play</button><button type="button" id="nsSimulationNext">Next sample</button>'+
@@ -2462,8 +2507,10 @@ function mountSimulationView(){
     const active=document.activeElement;
     const focused=active.closest('#nsProfilePlot [data-ns-profile-link],#nsProfilePlot [data-ns-profile-node]');
     const kind=focused?.hasAttribute('data-ns-profile-link')?'nsProfileLink':'nsProfileNode';
+    const variant=focused?.closest('[data-ns-profile-variant]')?.dataset.nsProfileVariant;
     plotProfile(routeDraft.steps);renderProfileModel();
-    if(focused)[...$('nsProfilePlot').querySelectorAll('[tabindex="0"]')].find(item=>item.dataset[kind]===focused.dataset[kind])?.focus({preventScroll:true});
+    if(focused)[...$('nsProfilePlot').querySelectorAll('[tabindex="0"]')].find(item=>item.dataset[kind]===focused.dataset[kind]&&
+      item.closest('[data-ns-profile-variant]')?.dataset.nsProfileVariant===variant)?.focus({preventScroll:true});
   }
   function removeMarks(){
     for(const group of groups.values()){
@@ -2625,11 +2672,15 @@ function mountSimulationView(){
   }
   function showProposal(){
     const source=proposals.get(Number(fields.proposal.value)),proposal=source?.source,column=source?.columns[0];
+    const reviewed=reviewedRouteGeometry();
     $('nsSimulationComparison').hidden=!proposal;
-    $('nsSimulationProposalProfile').hidden=!(column?.quantity==='level'&&column.asset.kind==='link');
+    $('nsSimulationProposalProfile').hidden=!(column?.quantity==='level'&&(column.asset.kind==='link'||reviewed));
     proposalEnds=matchingEnds(proposal,column);
     chooseCompanion(fields.proposalEnd,proposalEnds);
     $('nsSimulationProposalEnd').hidden=!proposalEnds.size;
+    $('nsSimulationGeometryText').textContent=reviewed?
+      'The proposal uses the separately reviewed revision geometry and datum':
+      'Both revisions use the displayed route geometry and datum';
     fields.verifyProposal.required=Boolean(proposal);
     $('nsSimulationProposalInfo').textContent=proposal?'Proposal '+proposal.scenario+' · Simulation '+proposal.simulation+
       ' · Revision '+proposal.modelRevision+' · '+proposal.event+'. Only exact shared timestamps are compared.'+
@@ -2739,10 +2790,12 @@ function mountSimulationView(){
           const id=current.matches.get(column.series).id,level=values[index];
           return Number.isFinite(level)?[{id,level,location:column.location}]:[];
         });
+        const proposedProfile=current.proposal&&(!conduits&&!current.proposal.geometry||showProposalEnds);
         profile={scenario:current.source.scenario,time:timestamp,datum,ends:conduits,
           values:conduits?[]:levels(values).map(({id,level})=>({node:id,level})),
-          proposalReviewPending:Boolean(conduits&&current.proposal&&!showProposalEnds),
-          proposal:current.proposal&&(!conduits||showProposalEnds)?{scenario:current.proposal.source.scenario,ends:proposedConduits,
+          proposalReviewPending:Boolean(current.proposal&&!proposedProfile),
+          proposal:proposedProfile?{scenario:current.proposal.source.scenario,ends:proposedConduits,routeRevision:current.profileRouteRevision,
+            geometry:current.proposal.geometry,
             levels:proposedConduits?[]:levels(proposedValues)}:null};
       }
       if(profile)redrawProfile();
@@ -2848,11 +2901,20 @@ function mountSimulationView(){
       companion={...companion,columns:peerColumns,matches:peerMatches};
     }
     let proposal=proposals.get(Number(fields.proposal.value));
-    const geometryReviewed=Boolean(proposal&&datum&&first.asset.kind==='link'&&first.quantity==='level'&&routeDraft.steps.length);
+    const geometryReviewed=Boolean(proposal&&datum&&first.quantity==='level'&&routeDraft.steps.length&&
+      (first.asset.kind==='link'||reviewedRouteGeometry()));
     if(proposal){
       if(!fields.verifyProposal.checked)return;
       if(geometryReviewed&&!fields.verifyProfileGeometry.checked||!geometryReviewed&&fields.proposalEnd.value){
-        note.textContent='Review the shared route geometry and datum before showing proposal conduit-end levels.';return;
+        note.textContent=reviewedRouteGeometry()?'Review the separately supplied route geometry and datum before showing proposal conduit-end levels.':
+          'Review the shared route geometry and datum before showing proposal conduit-end levels.';return;
+      }
+      const geometry=geometryReviewed?reviewedRouteGeometry():null;
+      if(geometry&&(geometry.revision!==proposal.source.modelRevision||geometry.datum!==datum)){
+        note.textContent='Choose proposal results matching the reviewed revised model revision and geometry datum.';return;
+      }
+      if(geometry&&derivedFreeboard()){
+        note.textContent='Choose recorded level for the separate geometry comparison. The map freeboard comparison requires a reviewed common ground basis.';return;
       }
       const baseAssets=new Set(columns.map(column=>R.refKey(matches.get(column.series))));
       const proposedMatches=R.simulationBindings(network,proposal.columns);
@@ -2866,7 +2928,7 @@ function mountSimulationView(){
         if(!peerColumns.length){note.textContent='The proposal’s other end has no matching typed links in the selected comparison.';return;}
         otherEnd={...otherEnd,columns:peerColumns,matches:peerMatches};
       }
-      proposal={...proposal,columns:proposedColumns,matches:proposedMatches,companion:otherEnd,
+      proposal={...proposal,columns:proposedColumns,matches:proposedMatches,companion:otherEnd,geometry,
         alignment:columns.map(column=>positions.get(R.refKey(matches.get(column.series)))??-1)};
     }
     let capacities=null,proposalCapacities=null;
@@ -3052,10 +3114,10 @@ function mountRouteReview(){
     '<label>Horizontal pan<input id="nsProfilePanX" type="range" min="0" max="1" step="0.01"></label>'+
     '<label>Elevation pan<input id="nsProfilePanY" type="range" min="0" max="1" step="0.01"></label>'+
     '<label><input id="nsProfileShading" type="checkbox"> Ground shading</label><button type="button" id="nsResetProfile">Reset profile view</button>'+
-    '<button type="button" id="nsProfileSvgDownload">Download profile SVG</button></div>'+
+    '<button type="button" id="nsProfileSvgDownload">Download profile SVG</button><button type="button" id="nsClearRevisedGeometry" hidden>Remove revised geometry</button></div>'+
     '<p class="ns-profile-legend"><span>Invert</span><span>Soffit</span><span>Ground</span><span>Structure</span><span id="nsProfileModelLegend" hidden>Modelled node level</span></p>'+
-    '<p class="ns-note">Levels use the source datum. Shaft widths are symbolic. Modelled node markers show samples at individual nodes.</p>'+
-    '<p id="nsProfileModelInfo"></p><div id="nsProfilePlot"></div></div></div>'+
+    '<p class="ns-note">Levels use the source datum. Shaft widths are symbolic. Modelled node markers show samples at individual nodes. Drag a zoomed plot background to pan.</p>'+
+    '<p id="nsProfileModelInfo"></p><p id="nsRevisedGeometryInfo" class="ns-note"></p><div id="nsProfilePlot"></div></div></div>'+
     '<dialog class="ns-review-dialog ns-profile-expanded" id="nsProfileExpanded" aria-labelledby="nsExpandedProfileTitle">'+
     '<header class="ns-review-heading"><h3 id="nsExpandedProfileTitle">Expanded route long section</h3><button type="button" id="nsCloseExpandedProfile">Close expanded profile</button></header>'+
     '<div id="nsExpandedProfileContent"></div></dialog><div id="nsProfileRows" class="ns-review-table"></div>'+
@@ -3107,12 +3169,41 @@ function mountRouteReview(){
     renderProfileControls();
     if(!profileFrame)profileFrame=requestAnimationFrame(()=>{profileFrame=0;plotProfile(routeDraft.steps);renderProfileControls();});
   };
+  const plot=$('nsProfilePlot');
+  let profileDrag=null;
+  plot.addEventListener('pointerdown',event=>{
+    const graph=event.target.closest('svg'),view=routeDraft.profileView;
+    if(profileDrag||!graph||view.zoomX===1&&view.zoomY===1||
+       event.button!==1&&(event.button!==0||event.target.closest('[role="button"]')))return;
+    const matrix=graph.getScreenCTM();
+    if(!matrix||!matrix.a||!matrix.d)return;
+    profileDrag={id:event.pointerId,view,x:event.clientX,y:event.clientY,panX:view.panX,panY:view.panY,
+      width:Math.abs(matrix.a)*774,height:Math.abs(matrix.d)*213};
+    plot.setPointerCapture(event.pointerId);plot.setAttribute('data-ns-profile-dragging','');
+    event.preventDefault();
+  });
+  plot.addEventListener('pointermove',event=>{
+    const grab=profileDrag,view=routeDraft.profileView;
+    if(!grab||grab.id!==event.pointerId||grab.view!==view)return;
+    const bound=value=>Math.max(0,Math.min(1,value));
+    if(view.zoomX>1)view.panX=bound(grab.panX-(event.clientX-grab.x)/grab.width/(view.zoomX-1));
+    if(view.zoomY>1)view.panY=bound(grab.panY+(event.clientY-grab.y)/grab.height/(view.zoomY-1));
+    redrawProfile();
+  });
+  for(const type of ['pointerup','pointercancel','lostpointercapture'])plot.addEventListener(type,event=>{
+    if(profileDrag?.id!==event.pointerId)return;
+    profileDrag=null;plot.removeAttribute('data-ns-profile-dragging');
+  });
   for(const [id,key] of [['nsProfileZoomX','zoomX'],['nsProfileZoomY','zoomY'],['nsProfilePanX','panX'],['nsProfilePanY','panY']]){
     $(id).oninput=()=>{routeDraft.profileView[key]=Number($(id).value);redrawProfile();};
   }
   $('nsProfileShading').onchange=()=>{routeDraft.profileView.groundShading=$('nsProfileShading').checked;redrawProfile();};
   $('nsResetProfile').onclick=()=>{routeDraft.profileView={...defaultProfileView,groundShading:routeDraft.profileView.groundShading};redrawProfile();};
   $('nsProfileSvgDownload').onclick=exportProfileSvg;
+  $('nsClearRevisedGeometry').onclick=()=>{
+    proposedRouteGeometry=null;simulationView?.reset('Revised route geometry removed. Review any proposal before applying playback.');
+    redrawProfile();$('nsProfileSvgDownload').focus();
+  };
   $('nsOpenMonitorImport').onclick=openMonitorImport;
   for(const [id,key] of [['nsRouteStart','start'],['nsRouteEnd','end']])$(id).onchange=()=>{
     setRouteEndpoint(key,$(id).value);
@@ -3124,13 +3215,15 @@ function mountRouteReview(){
     clearProfile();renderRoute();
   }
   $('nsOpenProfile').onclick=()=>{
+    proposedRouteGeometry=null;
     routeDraft.steps=R.longSection(network,reviewRoute().edges);routeDraft.trials=[];routeDraft.model=null;++routeRevision;
     routeDraft.profileView={...defaultProfileView,groundShading:routeDraft.profileView.groundShading};
     displayProfile();$('nsFitRoute').focus();
   };
-  $('nsSavedRoutes').onchange=()=>{
+  $('nsSavedRoutes').onchange=async()=>{
     const saved=(network.routeReviews||[]).find(entry=>entry.name===$('nsSavedRoutes').value);
     if(!saved)return;
+    proposedRouteGeometry=null;
     routeDraft={...structuredClone(saved),choices:new Map(saved.steps.map(step=>[step.from,step.id]))};++routeRevision;
     routeDraft.profileView={...defaultProfileView,...saved.profileView};
     $('nsRouteName').value=saved.name;$('nsRouteNote').value=saved.note;
@@ -3141,14 +3234,27 @@ function mountRouteReview(){
     const same=R.sameProfileSteps(R.longSection(network,live.edges),saved.steps);
     $('nsRouteSavedMessage').textContent=same?'Saved profile and screening assumptions restored.':
       'Saved profile restored. Source geometry or route has changed. Confirm the current route before recalculating.';
+    if(!same||!saved.revisedGeometry)return;
+    const baseline=routeDraft.steps,geometry=routeDraft.revisedGeometry;
+    try{
+      const digest=await routeGeometryDigest(geometry.steps);
+      if(routeDraft.steps!==baseline)return;
+      if(digest!==geometry.sha256)throw new Error('The saved revised geometry digest does not match its recorded values.');
+      proposedRouteGeometry={...geometry,baseline};displayProfile();
+      $('nsRouteSavedMessage').textContent='Saved baseline and revised geometry restored with the screening assumptions.';
+    }catch(error){
+      if(routeDraft.steps===baseline)$('nsRouteSavedMessage').textContent=conciseErrorMessage(error);
+    }
   };
   $('nsSaveRoute').onclick=()=>{
     const name=$('nsRouteName').value.trim(),message=$('nsRouteSavedMessage');
     if(!name){message.textContent='Enter a review name.';$('nsRouteName').focus();return;}
     const others=(network.routeReviews||[]).filter(entry=>entry.name!==name);
     if(others.length>=30){message.textContent='The network supports up to 30 saved route reviews.';return;}
+    const comparison=reviewedRouteGeometry();
+    const revisedGeometry=comparison?{steps:comparison.steps,revision:comparison.revision,datum:comparison.datum,sha256:comparison.sha256}:undefined;
     checkpoint();network.routeReviews=[...others,structuredClone({name,note:$('nsRouteNote').value,
-      start:routeDraft.start,end:routeDraft.end,steps:routeDraft.steps,trials:routeDraft.trials,model:routeDraft.model,profileView:routeDraft.profileView})];
+      start:routeDraft.start,end:routeDraft.end,steps:routeDraft.steps,trials:routeDraft.trials,model:routeDraft.model,profileView:routeDraft.profileView,revisedGeometry})];
     persist();renderRoute();$('nsSavedRoutes').value=name;message.textContent='Route review saved. Use Save network for a portable copy.';
   };
   $('nsFitRoute').onclick=()=>{
@@ -3281,6 +3387,54 @@ function revisionImpact(comparison,row){
   }
   return impacts;
 }
+function appendRevisedRouteReview(root,comparison){
+  if(network.contextFormat!=='icm-csv-v1'||!routeDraft.steps.length)return;
+  const baseline=routeDraft.steps,section=inspectorElement('details',undefined,'ns-review-section');
+  const sources=side=>({nodes:[...comparison[side].nodes.values()],edges:[...comparison[side].edges.values()]});
+  const original=R.revisedLongSection(sources('before'),baseline);
+  const revised=R.revisedLongSection(sources('after'),baseline);
+  section.append(inspectorElement('summary','Compare the open long section'));root.append(section);
+  if(!R.sameProfileSteps(original.steps,baseline)){
+    section.append(inspectorElement('p','Reopen the baseline route from the current source geometry before comparing revisions.'));return;
+  }
+  if(revised.issues.length){
+    const reasons={'missing-link':'Link missing from the revised model','changed-endpoints':'Endpoints changed',
+      'unconfirmed-direction':'Direction needs review','changed-classification':'Link type changed','source-route-gap':'Route continuity needs review'};
+    const report=tableWithHeaders(['Link','Route comparison issue']);
+    for(const issue of revised.issues)addCells(report.tBodies[0].insertRow(),[issue.name,reasons[issue.reason]]);
+    section.append(inspectorElement('p','Review a route in the revised model to compare these assets.'),report);return;
+  }
+  const formatChainage=step=>step.chainageEnd===null?'Unknown after a source length gap':f(step.chainageEnd,4)+' m';
+  section.append(inspectorElement('p',baseline.length+' typed links match in their original order. Baseline end chainage: '+
+    formatChainage(baseline.at(-1))+'. Revised end chainage: '+formatChainage(revised.steps.at(-1))+'.'));
+  const form=inspectorElement('form',undefined,'ns-review-actions');
+  const revisionLabel=inspectorElement('label','Revised model revision'),revision=inspectorElement('input');
+  const datumLabel=inspectorElement('label','Revised geometry datum'),datum=inspectorElement('input');
+  const reviewLabel=inspectorElement('label','I reviewed the revised route source and datum'),confirm=inspectorElement('input');
+  for(const control of [revision,datum]){control.type='text';control.maxLength=128;control.required=true;}
+  confirm.type='checkbox';confirm.required=true;
+  revisionLabel.append(revision);datumLabel.append(datum);reviewLabel.prepend(confirm);
+  const apply=inspectorButton('Use revised route geometry'),message=inspectorElement('p');
+  apply.type='submit';message.setAttribute('role','status');
+  form.append(revisionLabel,datumLabel,reviewLabel,apply);section.append(form,message);
+  form.onsubmit=async event=>{
+    event.preventDefault();
+    if(!$('nsContextUnits').checked){message.textContent='Confirm the exported source geometry units first.';return;}
+    const revisionId=revision.value.trim(),verticalDatum=datum.value.trim(),dialog=root.closest('dialog');
+    if(!revisionId||!verticalDatum){message.textContent='Enter the reviewed model revision and datum.';return;}
+    apply.disabled=true;
+    try{
+      const sha256=await routeGeometryDigest(revised.steps);
+      if(!form.isConnected||!dialog.open||routeDraft.steps!==baseline)return;
+      proposedRouteGeometry={baseline,steps:revised.steps,revision:revisionId,datum:verticalDatum,sha256};
+      simulationView?.reset('Reviewed revised route geometry is available. Apply matching indexed results to compare exact samples.');
+      dialog.close();$('nsRoute').hidden=false;displayProfile();
+      status('Revised route geometry added to the open profile. The detailed schematic uses the baseline network.');
+      $('nsClearRevisedGeometry').focus();
+    }catch(error){message.textContent=conciseErrorMessage(error);}
+    finally{apply.disabled=false;}
+  };
+}
 function renderRevisionComparison(comparison){
   const root=$('nsRevisionComparison');
   root.replaceChildren();root.hidden=!comparison;root.open=false;
@@ -3290,6 +3444,7 @@ function renderRevisionComparison(comparison){
   const heading=inspectorElement('summary','Revision comparison · '+comparison.rows.length+' changed assets');
   root.append(heading,inspectorElement('p',groups.map(group=>group+' '+totals[group]).join(' · ')),
     inspectorElement('p','Nominal model changes identify evidence to review. Confirm any hydraulic impact using compatible simulation results.'));
+  appendRevisedRouteReview(root,comparison);
   if(!comparison.rows.length)return;
   const controls=inspectorElement('div',undefined,'ns-review-actions');
   const statusLabel=inspectorElement('label','Change type'),statusSelect=inspectorElement('select');

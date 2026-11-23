@@ -30,8 +30,8 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
 | 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Verified locally for full source geometry context, affected evidence and monitor audit, cancel and revised application |
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Verified locally for imported result layers, reviewed flow direction, same-datum freeboard, source geometry and positive imported full-capacity utilisation |
-| 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Verified locally for exact shared-clock comparison and independent layer extrema. Geometry-sensitive scenario review remains open under 6.1 and 6.4 |
-| 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial. Source geometry, structure levels and paired exact proposal endpoints on reviewed shared route geometry verified in both desktop browsers. Revision-specific geometry and expanded profile interaction remain open |
+| 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Verified locally for exact shared-clock comparison, reviewed independent revision geometry and whole-window extrema |
+| 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Verified locally for desktop profile geometry, exact shared and separate proposal plots, drag and keyboard navigation, and portable route reviews |
 | 6.5 | Local worker, series parser, source identity and registry | Native streaming CSV, portable formats and producer, typed provenance, bounded memory and file-backed access, cancellation and exact selective lookup | Verified locally for indexed ingestion and lookup. Broader capacity and release checks remain open |
 | 7.1 | Flow Survey FDV health, evidence and ratings | Paired channel review, circular-area cross-check, suspect periods, local source timing handoff and engineer audit | Verified locally for configurable diagnostics. Real site diagnosis requires independent evidence |
 | 7.2 | Gauge qualification, cumulative/event data | Common-clock spatial comparison, event totals, correlation, peak offset, coverage, suspect bins and WAPUG linkage | Verified locally |
@@ -67,6 +67,32 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Reviewed revision long sections
+
+- The native revision audit can compare the open ordered typed route
+  without applying the revised model to the detailed map. It reports
+  missing links, changed endpoints, changed structure type and nominal
+  direction conflicts. A reviewed matching revision and datum can use
+  independent baseline and proposal chainage, inverts, soffits and
+  ground profiles at the exact same recorded clock sample.
+- The synthetic baseline and proposal retained 100 m and 125 m of
+  source length. At 00:15 they showed 0.60 m and 0.25 m above their
+  own soffits. A missing proposal end at 00:07 withheld the fill
+  even though a nearby 00:08 sample existed. Both browsers also checked
+  source-unit confirmation, blocked changed endpoints, the two export
+  axes, UTC-free project clock, exact datum and reviewed geometry digest.
+- Saved route reviews restore reviewed source geometry, controls and
+  notes through the normal network JSON route. A modified geometry value
+  with the original digest was withheld on reopening. Indexed hydraulic
+  result times are read afresh from their local sources. Older route
+  geometry without chamber roof or structure-level fields is accepted.
+- Chromium and Firefox passed 32 guarded requests each in indexed
+  playback and 136 and 135 respectively in the route smoke. Tests covered
+  independent pan and zoom, drag, expanded dialog, keyboard, engineering
+  trial, reporting and restore. The source gate and 153-resource artifact
+  check passed. Evidence and profile screenshots are in
+  `/workspace/hydra-evidence/v3/comparative-route`.
 
 ### Full-network revision review
 

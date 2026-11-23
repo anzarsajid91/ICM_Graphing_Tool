@@ -385,6 +385,22 @@ function longSection(network,edges){
   });
 }
 
+function revisedLongSection(network,baseline){
+  const edges=new Map(network.edges.map(edge=>[edge.id,edge]));
+  const ordered=[],issues=[];
+  for(const [index,step] of baseline.entries()){
+    const edge=edges.get(step.id);
+    const reason=!edge?'missing-link':
+      edge.from!==step.from||edge.to!==step.to?'changed-endpoints':
+      !nominal(edge)?'unconfirmed-direction':
+      (edge.icm?.table||'Connector')!==step.type?'changed-classification':
+      index>0&&baseline[index-1].to!==step.from?'source-route-gap':null;
+    if(reason)issues.push({id:step.id,name:step.name,reason});
+    else ordered.push(edge);
+  }
+  return {steps:issues.length?[]:longSection(network,ordered),issues};
+}
+
 function conduitEndProfile(step,upstream,downstream){
   const {height}=step;
   const ends=[[upstream,step.us,step.groundFrom],[downstream,step.ds,step.groundTo]].map(([sample,invert,ground])=>{
@@ -511,5 +527,5 @@ function sourceConduitLayer(link,quantity){
   }
   return null;
 }
-globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand,recordedFlowDirection,groundFreeboard,sourceConduitLayer,capacityUtilisation};
+globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,revisedLongSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand,recordedFlowDirection,groundFreeboard,sourceConduitLayer,capacityUtilisation};
 })();

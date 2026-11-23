@@ -343,6 +343,14 @@ deployment can appear on the revised map. Apply the import to update the
 network. Check hydraulic impact separately using compatible simulation
 results.
 
+With a confirmed long section open, **Compare the open long section**
+reviews the corresponding typed route in the proposed export. **Use
+revised route geometry** adds a separately scaled profile while the map
+continues to show the baseline. The route requires the same ordered links,
+recorded endpoints and reviewed direction. See the [simulation results
+guide](simulation-results.md#compare-reviewed-revision-geometry) for exact
+sample playback and the local saved review.
+
 ## Network review
 
 Use **Overview** for topology, discharges, controls, pumping stations and branches. Ordinary intermediate points can be represented by a single selectable reach. Use its source-asset selector to open the original node or link in the detailed network. Pin an asset from its inspector to include it in the overview. If the source lacks a recognised asset type, inspect the attributes and set the classification explicitly in Edit mode. The overview uses schematic positions. Its arrows follow nominal from/to connectivity.

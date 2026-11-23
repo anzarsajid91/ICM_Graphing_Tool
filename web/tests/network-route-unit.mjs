@@ -73,6 +73,34 @@ const steps=R.longSection(network,[e1,e2,e3]);
 assert.deepEqual(steps.map(({chainageStart,chainageEnd,us,ds,height})=>[chainageStart,chainageEnd,us,ds,height]),[
   [0,100,10,9.8,.6],[100,220,9.75,9.35,.6],[220,null,9.3,null,.6]]);
 assert.deepEqual(steps[0].sources.map(({table,row})=>[table,row]),[['hw_conduit',12],['hw_node',3],['hw_node',4]]);
+const revisedNetwork=C.importNativeContext([{name:'synthetic-revised-route.csv',text:nativeNetwork.replace(
+  '00127,B,1,CIRC,100,600,600,10,9.8','00127,B,1,CIRC,125,750,750,9.9,9.65')}]).network;
+const rebuilt=R.revisedLongSection(revisedNetwork,steps);
+assert.deepEqual(rebuilt.issues,[]);
+assert.deepEqual(rebuilt.steps.map(({chainageStart,chainageEnd,us,ds,height})=>[chainageStart,chainageEnd,us,ds,height]),[
+  [0,125,9.9,9.65,.75],[125,245,9.75,9.35,.6],[245,null,9.3,null,.6]]);
+assert.equal(rebuilt.steps[0].sources[0].file,'synthetic-revised-route.csv');
+assert.equal(steps[0].chainageEnd,100);
+const revisedGeometry={revision:'R2',datum:'AOD',sha256:'a'.repeat(64),steps:rebuilt.steps};
+const portableReview={name:'Reviewed route',note:'Two geometries',start:'00127',end:'E',steps,
+  trials:[],revisedGeometry};
+assert.deepEqual(C.validateNetwork({...network,routeReviews:[portableReview]}).routeReviews[0].revisedGeometry,revisedGeometry);
+assert.throws(()=>C.validateNetwork({...network,routeReviews:[{...portableReview,revisedGeometry:{...revisedGeometry,
+  steps:[{...revisedGeometry.steps[0],to:'C'},...revisedGeometry.steps.slice(1)]}}]}),/Invalid saved routeReviews/);
+assert.throws(()=>C.validateNetwork({...network,routeReviews:[{...portableReview,revisedGeometry:{...revisedGeometry,sha256:'unknown'}}]}),
+  /Invalid saved routeReviews/);
+const legacyControlReview={...portableReview,revisedGeometry:undefined,
+  steps:controlledProfile.map(({controlLevels,roofFrom,roofTo,...step})=>step)};
+assert.equal(C.validateNetwork({...controls,routeReviews:[legacyControlReview]}).routeReviews[0].steps[1].controlLevels,undefined);
+const candidate=(change)=>({...revisedNetwork,edges:revisedNetwork.edges.flatMap(edge=>edge.id===e1.id?change(edge):[edge])});
+for(const [change,reason] of [
+  [()=>[],'missing-link'],[edge=>[{...edge,to:'C'}],'changed-endpoints'],[edge=>[{...edge,direction:'unknown'}],'unconfirmed-direction'],
+]){
+  const checked=R.revisedLongSection(candidate(change),steps);
+  assert.deepEqual(checked.steps,[]);
+  assert.equal(checked.issues[0].reason,reason);
+  assert.equal(checked.issues[0].id,e1.id);
+}
 const paired=R.conduitEndProfile(steps[0],11.2,10.1);
 assert.equal(paired.status,'surcharge');
 assert.deepEqual(paired.waterTop,[10.6,10.1],'Water fill is clipped to the pipe soffit at each end');

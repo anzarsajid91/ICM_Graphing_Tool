@@ -238,6 +238,29 @@ Each source remains separate
 in the local index. Removing either source or changing network geometry
 clears the comparison.
 
+### Compare reviewed revision geometry
+
+Open the baseline long section, then load the proposed native geometry
+CSV. In the import audit open **Revision comparison** and **Compare the
+open long section**. The audit matches the reviewed ordered typed links
+and their recorded endpoints. Changed endpoints, an unconfirmed direction
+or a missing link require a new route review.
+
+Check the source units and enter the proposed result run's exact model
+revision and vertical datum. Choose **Use revised route geometry** to
+add its long section alongside the baseline. For playback, select the
+matching proposal results and confirm the separately reviewed geometry
+and datum. Each plot uses its own conduit lengths, inverts, elevations and
+soffits at the same recorded project-clock sample. The map uses the baseline
+source plan. The map freeboard comparison requires a reviewed common
+ground basis, so use **Recorded level** for this separate profile review.
+
+**Save route review** retains the reviewed source route, chart settings,
+geometry digest and note in the local network file. Reopening verifies
+the saved geometry digest against the recorded values. Open the matching
+result sources again to play model samples. The SVG export includes both
+profiles, their independent axes and the active sample's time and datum.
+
 ### Review independent window extrema
 
 Choose **Independent minimum** or **Independent maximum** in **Map results**.

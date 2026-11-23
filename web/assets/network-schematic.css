@@ -191,7 +191,10 @@
 #nsWorkbench .ns-profile-legend span:nth-child(2)::before{border-top:2px dashed #477384}
 #nsWorkbench .ns-profile-legend span:nth-child(3)::before{border-top:2px solid #936329}
 #nsWorkbench #nsProfilePlot{overflow:auto;margin-block:12px;background:var(--hb-soft);border-radius:var(--hb-radius-control)}
+#nsWorkbench .ns-profile-variant h4{margin:12px 16px 6px;overflow-wrap:anywhere}
 #nsWorkbench #nsProfilePlot svg{display:block;width:100%;min-width:560px;max-height:390px;font-size:13px;fill:var(--hb-text)}
+#nsWorkbench #nsProfilePlot[data-ns-profile-pannable] svg{cursor:grab;touch-action:none}
+#nsWorkbench #nsProfilePlot[data-ns-profile-dragging] svg{cursor:grabbing}
 #nsWorkbench #nsProfilePlot g[role="button"]{cursor:pointer}
 #nsWorkbench #nsProfilePlot g[aria-pressed="true"] rect,#nsWorkbench #nsProfilePlot g[role="button"]:focus-visible rect{fill:#00789219;stroke:#087b82}
 #nsWorkbench .ns-review-table,.ns-review-dialog .ns-review-table{overflow:auto;max-height:380px;margin-block:12px}
