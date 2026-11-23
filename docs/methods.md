@@ -1010,3 +1010,81 @@ partially contracted and high-tailwater cases. The worksheet preserves
 the installation limits and numerical result when exported locally.
 
 [USBR V-notch equation and applicability conditions](https://www.usbr.gov/tsc/techreferences/mands/wmm/chap07_07.html)
+
+## Weekly flow survey review and volume balance
+
+Hydra Bench retains weekly flow, depth and velocity QA, the recorded WAPUG
+network qualification, and the existing FSAT-derived event response and
+volume-balance methods. These have separate inputs and decisions. Source
+fingerprints, gauge associations, reviewed units, assessment windows and
+excluded support remain part of the evidence. Coverage and time are read from
+valid source records. Missing gauge data must remain unassessed.
+
+In weekly volume balance v2, consecutive valid samples bound the trapezoidal
+integral of flow in m³/s over elapsed seconds. The integration uses approved
+exclusions, a maximum valid sample gap and the applicable survey time bounds.
+The workbook provides the monitored upstream branches for comparison with
+the downstream volume in m³. The displayed ratio compares downstream with
+the summed upstream volume when supported. The legacy signed FSAT check and
+the support-aware RAG criterion remain independent and visible. An engineer's
+reported rating has its own decision record and freshness basis.
+
+A synthetic seven-day series measured at 5-minute intervals with 2017
+boundary samples has 2016 integration intervals. A downstream series twice
+the flow of either of two identical upstream series gives 120,960 m³ on both
+sides and a ratio of 1.0. Local continuity screening can identify differences
+to investigate. Storage, timing, lateral inflows and unmonitored branches
+limit the inference that can be drawn from that ratio.
+
+The UK references describe good practice for survey planning, rainfall and
+hydraulic response. Project acceptance still depends on the relevant model
+purpose and local criteria. [CIWEM UDG Code of Practice for Hydraulic Modelling, 2017](https://www.ciwem.org/assets/pdf/Special%20Interest%20Groups/Urban%20Drainage%20Group/Code%20of%20Practice%20for%20the%20Hydraulic%20Modelling%20of%20Ur.pdf) · [WaPUG User Note 6, version 2](https://www.ciwem.org/assets/pdf/Special%20Interest%20Groups/Urban%20Drainage%20Group/WAPUG_User_Note_06.pdf)
+
+## Simulation results and long-section interpretation
+
+The local result contract indexes recorded instantaneous samples by scenario,
+simulation, model revision, typed asset, location and project clock. An exact
+matched timestamp is required for comparison. Flow arrows need a reviewed
+sign convention. Independent extrema summarize the selected window for each
+asset. They can occur at different times.
+
+The source conduit lengths define chainage along the reviewed route. The
+ordered end inverts, chamber geometry and supported pipe dimensions provide
+the section. Incompatible datums, missing levels and incomplete geometry
+produce gaps. A separately supplied proposal needs its own reviewed source
+geometry and datum. Freeboard subtracts the exact water level from the
+reviewed ground level in that same datum. Hydraulic level above a valid
+soffit is shown as available head above the pipe crown. An available node
+level can only approximate an adjacent conduit end. Screen interpolation
+between valid ends provides a visual guide to the recorded samples.
+
+Autodesk's 2026 field definitions distinguish instantaneous level, depth and
+flood volume from simulation maxima. A flood-depth field is referenced to a
+node's flood level. Autodesk describes a notional above-surface volume for
+2D nodes. Use the result and geometry metadata when interpreting the plot.
+[InfoWorks ICM 2026 node results](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-18FD4962-1E97-491A-AD6E-6DF35191301D.htm) · [InfoWorks ICM 2026 link results](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm)
+
+## Detriment criteria and matched report evidence
+
+Match the projected and baseline reports by exact textual asset ID and
+review their purpose, storm or year scope, output types and compatible units.
+Retain the original critical simulation for each worst-case row. Flood and
+water-level assessments need the corresponding independent worst-case
+reports. The largest flood volume and largest water level can occur in
+different simulations, and the sum of independent asset maxima has no
+simultaneous event interpretation.
+
+Supported changes use unrounded B minus A. Flood volume is in m³ and level
+is an elevation in m on the reviewed datum. A mode-specific tolerance is
+applied to a strict increase. Freeboard is ground elevation minus maximum
+reviewed water-level elevation. A new freeboard breach occurs where baseline
+freeboard meets the minimum and proposed freeboard falls below it. Spill
+count and duration have separate tolerances and independently recorded
+criterion states. The scope and counting mode distinguish physical event
+detail and exported counts. Missing or unmatched report rows remain
+unavailable. Unknown hydraulic causation requires review of the model.
+
+The reference flood change from 2 to 8 m³ exceeds a 5 m³ tolerance. The
+separate +0.30 m level case reduces freeboard from 0.65 to 0.35 m against a
+0.5 m minimum. These are project criteria examples. The exact source and
+threshold are recorded with each independent assessment. [InfoWorks ICM 2025 Worst Case Report View](https://help.autodesk.com/cloudhelp/2025/ENU/ICM-Help/files/GUID-6A81E877-D9EC-4B17-9657-88BFD165223A.htm) · [InfoWorks ICM 2027 Statistical Report View](https://help.autodesk.com/cloudhelp/2027/ENU/ICM-Help/files/GUID-5BB2DE60-D4B8-465A-8883-9C942B791037.htm)

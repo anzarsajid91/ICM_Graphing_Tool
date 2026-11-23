@@ -53,7 +53,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Partial. Reports includes v3 hydraulic design, legacy circular capacity and normal depth, and gravity sizing sheets. Coverage of remaining workspace calculations remains open |
 | 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Partial. Portable Reports snapshots include current calculation sheets, legacy and multi-event verification, spill and Storage, scoped Detriment records, decisions and actions. Detailed survey capture remains open |
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
-| 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Partial |
+| 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Verified locally for the 34-method library, including survey balance, recorded-result profiles and the matched Detriment criteria |
 | 12.3 | Build metadata, security claims and release evidence | Versioned assurance covering actual feature, numerical, confidentiality and compatibility outcomes | Verified locally for revision-scoped historical and milestone entries. Final v3 production evidence remains gated by §20 |
 | 13 | Shared registry, workspace serialization and storage | Shared typed results and route context; deterministic stale state, bounded imports and prior workspace compatibility | Open |
 | 14 | Precision Workbench / shared design tokens | Desktop usability, keyboard, responsive layout, contrast, reduced motion, progress and understandable empty/error states | Open |
@@ -67,6 +67,11 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Method coverage for project evidence
+
+- The 34-entry library covers weekly Flow Survey QA and supported volume balance, exact-time ICM result and long-section review, and independent Detriment criteria with scope, datum and report limitations. It cites the existing CIWEM and WaPUG references and Autodesk node/link field and report definitions. Autodesk's official Worst Case and Statistical Report View pages returned their documented titles during review.
+- Chromium and Firefox exercised the new search entries, their no-referrer official links and live workspace shortcuts. They retained the existing load failure/retry, jurisdiction/category, restricted-reference, keyboard and narrow-viewport checks. The observed request counts were 33 and 34 with zero confidentiality violations. Evidence is in `/workspace/hydra-evidence/v3/method-library-complete`.
 
 ### Multi-event verification report handoff
 

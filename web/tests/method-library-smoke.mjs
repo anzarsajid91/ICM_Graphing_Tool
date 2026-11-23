@@ -7,6 +7,7 @@ const engine=process.env.ICM_BROWSER||'chromium',base=process.env.ICM_BASE_URL||
 const browser=await (engine==='firefox'?firefox:chromium).launch(browserLaunchOptions());
 const context=await browser.newContext({...browserContextOptions(),viewport:{width:1280,height:900}});
 const guard=installPrivacyGuard(context,base,{canaries:['SYNTHETIC-USER-METHOD-FILTER']});
+const methodCount=34;
 const page=await context.newPage();
 const errors=[];page.on('pageerror',error=>errors.push(error.message));
 
@@ -25,12 +26,12 @@ try {
   const panel=page.locator('#tab-method-library'),status=panel.getByRole('status');
   await status.filter({hasText:'could not be loaded'}).waitFor();
   await panel.getByRole('button',{name:'Retry loading methods'}).click();
-  await status.filter({hasText:'31 of 31 methods'}).waitFor();
+  await status.filter({hasText:`${methodCount} of ${methodCount} methods`}).waitFor();
   const search=panel.getByLabel('Search methods');
   await search.fill('SYNTHETIC-USER-METHOD-FILTER');
-  assert.equal(await status.innerText(),'0 of 31 methods');
+  assert.equal(await status.innerText(),`0 of ${methodCount} methods`);
   await search.fill('Villemonte');
-  assert.equal(await status.innerText(),'1 of 31 methods');
+  assert.equal(await status.innerText(),`1 of ${methodCount} methods`);
   const structure=panel.locator('summary').filter({hasText:'Hydraulic structures and supplied ratings'});
   await structure.focus();await page.keyboard.press('Space');
   const source=panel.getByRole('link',{name:'USBR reference describing the Villemonte relation'});
@@ -50,13 +51,13 @@ try {
   assert.match(await panel.innerText(),/0\.0198966004009 m³\/s/);
   await search.fill('');
   await panel.getByLabel('Jurisdiction').selectOption('England');
-  assert.equal(await status.innerText(),'2 of 31 methods');
+  assert.equal(await status.innerText(),`2 of ${methodCount} methods`);
   await panel.getByLabel('Category').selectOption('Hydraulics');
-  assert.equal(await status.innerText(),'0 of 31 methods');
+  assert.equal(await status.innerText(),`0 of ${methodCount} methods`);
   await panel.getByLabel('Category').selectOption('Design flows');
-  assert.equal(await status.innerText(),'2 of 31 methods');
+  assert.equal(await status.innerText(),`2 of ${methodCount} methods`);
   await panel.getByLabel('Jurisdiction').selectOption('Scotland');
-  assert.equal(await status.innerText(),'2 of 31 methods');
+  assert.equal(await status.innerText(),`2 of ${methodCount} methods`);
   await panel.getByText('Scotland municipal treatment design flows',{exact:true}).click();
   const sepa=panel.getByRole('link',{name:'SEPA municipal sewage treatment works guide'});
   assert.match(await sepa.getAttribute('href'),/^https:\/\/www\.sepa\.org\.uk\/media\//);
@@ -76,7 +77,7 @@ try {
   const irish=panel.getByRole('link',{name:'EPA-published storm overflow design guidance'});
   assert.match(await irish.getAttribute('href'),/^https:\/\/www\.epa\.ie\/.*UrbanWasteWater2\.pdf$/);
   await panel.getByLabel('Jurisdiction').selectOption('Wales');
-  assert.equal(await status.innerText(),'1 of 31 methods');
+  assert.equal(await status.innerText(),`1 of ${methodCount} methods`);
   await panel.getByText('Wales GN066 continuation-flow screening',{exact:true}).click();
   const wales=panel.getByRole('link',{name:'NRW GN066 performance classification guidance'});
   assert.match(await wales.getAttribute('href'),/^https:\/\/cdnfd\.cyfoethnaturiol\.cymru\/.*gn066/);
@@ -134,6 +135,21 @@ try {
   await search.fill('Derived time-series intervals');
   await panel.getByText('Derived time-series intervals',{exact:true}).click();
   await panel.getByText(/half-open/).first().waitFor();
+  for(const [title,source,route] of [
+    ['Weekly flow survey review and volume balance','CIWEM UDG Code of Practice for Hydraulic Modelling, 2017','Volume balance'],
+    ['Simulation results and long-section interpretation','InfoWorks ICM 2026 link results','Simulation results'],
+    ['Detriment criteria and matched report evidence','InfoWorks ICM 2025 Worst Case Report View','Scenario comparison'],
+  ]){
+    await search.fill(title);
+    assert.equal(await status.innerText(),`1 of ${methodCount} methods`);
+    const entry=panel.getByText(title,{exact:true});await entry.click();
+    const reference=panel.getByRole('link',{name:source,exact:true});
+    assert.match(await reference.getAttribute('href'),/^https:\/\/(?:www\.ciwem\.org|help\.autodesk\.com)\//);
+    assert.equal(await reference.getAttribute('referrerpolicy'),'no-referrer');
+    await panel.getByRole('button',{name:'Open '+route,exact:true}).click();
+    await page.getByRole('tab',{name:route,exact:true,selected:true}).waitFor();
+    await page.getByRole('button',{name:'About',exact:true}).click();await open.click();
+  }
   await page.setViewportSize({width:400,height:850});
   const sizes=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
   assert(sizes[0]<=sizes[1]+2);

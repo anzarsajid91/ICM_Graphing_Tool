@@ -17,6 +17,7 @@ METHODS = {
     "Paired flow-monitor investigation": ("Flow survey", "General", "survey", "fdv-check"),
     "Spatial rainfall comparison": ("Flow survey", "UK", "survey", "rainfall-check"),
     "Flow survey verification suitability": ("Flow survey", "UK", "survey", "rainfall-check"),
+    "Weekly flow survey review and volume balance": ("Flow survey", "UK", "survey", "volume-balance"),
     "Multi-event verification matrix": ("Verification", "UK", "graphs", "matrix"),
     "Circular-pipe capacity and design flow preview": ("Hydraulics", "General", "hydraulics", "capacity"),
     "Manning circular gravity sizing": ("Hydraulics", "General", "hydraulics", "gravity"),
@@ -37,6 +38,8 @@ METHODS = {
     "Documented project continuation-flow method": ("Design flows", "General", "hydraulics", "formula-a"),
     "Hydraulic structures and supplied ratings": ("Hydraulics", "General", "hydraulics", "structures"),
     "Fully contracted V-notch weirs": ("Hydraulics", "General", "hydraulics", "structures"),
+    "Simulation results and long-section interpretation": ("Network results", "General", "network", "simulation-results"),
+    "Detriment criteria and matched report evidence": ("Detriment", "General", "detriment", "comparison"),
 }
 REFERENCES = {
     "www.gov.uk", "www.scottishwater.co.uk", "www.sepa.org.uk", "www1.eere.energy.gov",
