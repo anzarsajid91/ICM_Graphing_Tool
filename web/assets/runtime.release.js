@@ -2484,7 +2484,30 @@ function reportComparisonScatterFigure(entries,log=false){
 function reportStorageHtml(){
   const r=state.storage;
   if(!r)return '<p class="muted">Storage Assessment not calculated.</p>';
-  return '<div class="note">Whole-episode capture assumes storage reset between episodes. Partial capture, drawdown and tank routing are outside this screening. Episode totals follow counting-year attribution; calendar totals split discharge at 1 January.</div>'+storageSummaryHtml(r)+'<h3>Calendar-year discharge volume</h3>'+storageCalendarHtml(r.calendar_volumes||[])+'<h3>Monthly discharge volume and support</h3>'+monthlyVolumeHtml(r.monthly_volumes||[]);
+  const settings=state.storageSignature?JSON.parse(state.storageSignature):{},physical=r.physical||{};
+  const units=(source,contract)=>[source?.original_unit||source?.unit||contract?.original_unit,contract?.canonical_unit].filter(Boolean).join(' → ');
+  const sources=[['Modelled level',settings.level,r.level_contract],['Overflow flow',settings.flow,r.flow_contract]];
+  const sourceRows=sources.map(([role,source,contract])=>'<tr>'+[role,source?.display_name||source?.name,source?.column,
+    units(source,contract)].map(value=>'<td>'+esc(value||'Unavailable')+'</td>').join('')+
+    '<td class="hash">'+esc(source?.sha256||'Unavailable')+'</td></tr>').join('');
+  const assumptions=[['Assessment clock',settings.analysis?JSON.parse(settings.analysis).time_basis:null],
+    ['Supported assessment window',[physical.analysis_start,physical.analysis_end].filter(Boolean).join(' to ')],
+    ['Threshold',fmt(r.threshold_canonical_m,6)+' m'],['Target compatibility count',settings.target_count],
+    ['Valid level support',fmt(physical.valid_seconds,3)+' s'],['Unknown level support',fmt(physical.unknown_seconds,3)+' s'],
+    ['Excluded level time',fmt(physical.excluded_seconds,3)+' s'],['Method',r.method],['Build revision',buildToken]];
+  const assumptionRows=assumptions.map(([name,value])=>'<tr><th scope="row">'+esc(name)+'</th><td>'+esc(value===''?'Unavailable':value??'Unavailable')+'</td></tr>').join('');
+  const blocks=r.screening||[];
+  const quantities=blocks.map(row=>'<tr>'+[row.year,fmt(row.max_block_volume_m3,3),fmt(row.annual_block_volume_m3,3),
+    fmt(row.coverage_fraction==null?null:100*row.coverage_fraction,3)].map(value=>'<td>'+esc(value)+'</td>').join('')+'</tr>').join('');
+  return '<div class="note">Whole-episode capture assumes storage reset between episodes. Partial capture, drawdown and tank routing are outside this screening. Episode totals follow counting-year attribution. Calendar totals split discharge at 1 January.</div>'+
+    '<h3>Storage calculation sheet</h3><p>Integrate positive overflow on its supported discharge intervals to obtain each episode volume V<sub>i</sub> in m³. '+
+    'Choose the smallest capacity C for which the sum of retained 12/24 counts from episodes with V<sub>i</sub> &gt; C meets the target. '+
+    'This screening uses the Hydra Bench Storage screening and 12/24 methods.</p>'+
+    '<div class="table-wrap"><table><caption>Storage calculation inputs</caption><tbody>'+assumptionRows+'</tbody></table></div>'+
+    '<div class="table-wrap"><table><caption>Mapped storage sources</caption><thead><tr><th scope="col">Input</th><th scope="col">Source</th><th scope="col">Channel</th><th scope="col">Recorded → working unit</th><th scope="col">SHA-256</th></tr></thead><tbody>'+sourceRows+'</tbody></table></div>'+
+    (quantities?'<div class="table-wrap"><table><caption>Storage intermediate volumes</caption><thead><tr><th scope="col">Episode year</th><th scope="col">Largest episode (m³)</th><th scope="col">Total episode volume (m³)</th><th scope="col">Discharge coverage (%)</th></tr></thead><tbody>'+quantities+'</tbody></table></div>':'')+
+    storageSummaryHtml(r)+'<h3>Calendar-year discharge volume</h3>'+storageCalendarHtml(r.calendar_volumes||[])+
+    '<h3>Monthly discharge volume and support</h3>'+monthlyVolumeHtml(r.monthly_volumes||[]);
 }
 async function staticReportFallbackHtml(html,reason='Interactive Plotly runtime could not be embedded.'){
   const doc=new DOMParser().parseFromString(html,'text/html');
@@ -2662,6 +2685,7 @@ async function compileAssessmentReport(){
   const options=reportOptions();
   assertFreshResults(options);
   const mapped=Boolean(state.mapping.observed||state.mapping.models?.length||state.mapping.rain);
+  const storageEvidence=options.include_spills_storage&&Boolean(state.storage&&state.storageSignature===storageInputSignature());
   const survey=options.include_survey?diagnostic.reportSurveyContents?.():null;
   const professional=options.include_survey?diagnostic.professionalSurveyReportHtml||'':'';
   const selectedSheets=()=>{
@@ -2679,9 +2703,11 @@ async function compileAssessmentReport(){
     if(!network)throw new Error('Import or create a network in Network Schematic to include its diagram.');
   }
   const surveyOnly=!mapped&&!network&&!sheets&&survey;
-  if(!mapped&&!network&&!survey&&!professional&&!sheets)throw new Error('Apply at least one observed, modelled or rainfall mapping before exporting the report.');
+  if(!mapped&&!network&&!survey&&!professional&&!sheets&&!storageEvidence)
+    throw new Error('Apply a series mapping or add current assessment evidence before exporting the report.');
   if(options.include_time_series&&mapped&&!$('timeChart')?.data?.length)await drawTimeChart();
-  const reportSignature=analysisSignature(),period=reportAnalysisPeriod();
+  const reportSignature=analysisSignature(),period=!mapped&&storageEvidence?
+    [state.storage.physical?.analysis_start,state.storage.physical?.analysis_end]:reportAnalysisPeriod();
   const reportSettings=JSON.stringify(options);
   const sections={};
   let timeFigure='';

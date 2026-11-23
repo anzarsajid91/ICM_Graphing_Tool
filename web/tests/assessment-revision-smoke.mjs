@@ -141,6 +141,27 @@ try{
   await page.locator('#storageThreshold').fill('1');
   await page.locator('#targetCount').fill('0');
   await runStorage();
+
+  await page.locator('button[data-workspace="reports"]').click();
+  await page.getByRole('tab',{name:'Report generation',exact:true}).click();
+  const builder=page.locator('#pwReportBuilderSurface');
+  await builder.getByLabel('Report template',{exact:true}).selectOption('spills');
+  await builder.getByRole('checkbox',{name:'Full-period time series',exact:true}).uncheck();
+  await builder.getByRole('button',{name:'Preview assessment report',exact:true}).click();
+  const preview=builder.getByRole('dialog',{name:'Assessment report preview'}),frame=preview.frameLocator('iframe');
+  await frame.getByRole('heading',{name:'Storage calculation sheet',exact:true}).waitFor();
+  const inputs=frame.getByRole('table',{name:'Storage calculation inputs',exact:true});
+  assert.match(await inputs.getByRole('row',{name:/Target compatibility count/}).innerText(),/\b0\b/);
+  assert.match(await inputs.getByRole('row',{name:/Threshold/}).innerText(),/\b1 m\b/);
+  const sources=frame.getByRole('table',{name:'Mapped storage sources',exact:true});
+  assert.match(await sources.innerText(),/synthetic-storage-support\.csv.*[a-f0-9]{64}/s);
+  assert.match(await frame.getByRole('table',{name:'Storage intermediate volumes',exact:true}).innerText(),/2026\s+24\s+24\s+100/);
+  if(process.env.ICM_EVIDENCE_DIR)await preview.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-storage-calculation-sheet-'+engine+'.png'});
+  const localReport=page.waitForEvent('download');
+  await preview.getByRole('button',{name:'Download preview',exact:true}).click();
+  const sheet=await fs.readFile(await (await localReport).path(),'utf8');
+  assert.match(sheet,/Storage calculation sheet/);assert.match(sheet,/smallest capacity C/);assert.doesNotMatch(sheet,/<script\b/);
+  await preview.getByRole('button',{name:'Close',exact:true}).click();
   await openRevisions();
   const assetId=revisions.getByLabel('Detriment asset ID (optional)',{exact:true});
   await assetId.fill('1');await button('Capture baseline').click();await status(/No current Detriment evidence matched/);

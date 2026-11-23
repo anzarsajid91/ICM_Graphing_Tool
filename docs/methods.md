@@ -240,6 +240,21 @@ An exclusion is a reviewer decision that a known interval must not contribute to
 ## Storage screening
 The first-release capability is **Idealised spill-volume screening**. All physical discharge volumes are aggregated into their 12/24 counting block and annual block volumes can be screened against a configurable target count. This is not dynamic routing and is not a guaranteed engineered storage size.
 
+For each episode i, integrate positive overflow over the supported physical
+discharge intervals to obtain Vᵢ in m³. Retain its original compatibility
+count wᵢ. The required capture capacity is the smallest C for which the sum
+of wᵢ over episodes with Vᵢ greater than C meets the target. Zero capacity
+is evaluated. The comparison assumes an empty tank at the start of each
+episode and whole-episode capture. Episode-year volumes use episode
+attribution. Calendar discharge volumes integrate across each 1 January
+boundary. Missing or excluded support withholds whole-period conclusions.
+
+An independently checked 0.1 m³/s over 240 seconds gives 24 m³ for one
+captured episode at a zero-count target. A target of one can leave the
+episode unretained and requires zero capture under these assumptions. The
+worksheet records supporting source fingerprints, units, thresholds, period
+and coverage for the reviewed project clock.
+
 **Storage routing** screens physical volumes via a separate continuity model.
 Inputs are reviewed nonnegative instantaneous inflow on the project clock,
 initial occupied volume, capacity, a fixed pass-forward cap and maximum valid

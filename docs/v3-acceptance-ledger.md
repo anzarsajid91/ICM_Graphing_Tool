@@ -50,7 +50,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 10.2 | Category result tables and evidence | Combined typed asset and proposal register retaining each independent result, criterion, period and threshold | Verified locally for session review and explicit CSV audit |
 | 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
 | 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Verified locally for assessment templates, section order, schematic, current calculation-sheet selection and local preview/export. Exact final full regressions remain open |
-| 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Partial. Reports includes v3 hydraulic design, legacy circular capacity and normal depth, and gravity sizing sheets. Coverage of remaining workspace calculations remains open |
+| 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Verified locally for supported v3 hydraulic calculators, existing circular capacity/normal depth and gravity sizing, and the whole-episode Storage Assessment |
 | 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Verified locally for worksheet, verification, spills, storage, survey and Detriment snapshots, provenance, inputs, outcomes, decisions and support-aware comparison |
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
 | 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Verified locally for the 34-method library, including survey balance, recorded-result profiles and the matched Detriment criteria |
@@ -67,6 +67,11 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Storage Assessment calculation sheet
+
+- Reports gives a current Storage Assessment its own support, source hashes, units, thresholds, target, intermediate volumes, assumptions, method and build identity. The same preview and explicit local HTML export can be opened directly from Storage evidence without an unrelated graph mapping. The original numerical engine and all freshness checks are retained.
+- The reference episode produced 24 m³ over 240 seconds. Chromium and Firefox rendered the same maximum and total volume, 100% support, the 1 m threshold and zero-count target. Their guarded report runs observed 108 and 105 requests and zero confidentiality violations. The first concurrent Firefox run timed out before its initial pipe calculation. The same assertions passed on the sequential rerun. Evidence is in `/workspace/hydra-evidence/v3/storage-calculation-sheet`. The source and claim gates, 28 privacy tests and 153-resource build validation passed.
 
 ### Flow Survey revision evidence
 
