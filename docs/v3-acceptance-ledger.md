@@ -420,6 +420,15 @@ other state.
 - ICM runtime compatibility, native flags and inherited values, dedicated
   storage volume outputs, and authoritative detriment report round-trips
   remain open. The guide gives native CSV workflows for those use cases.
+- The strengthened synthetic round-trip indexes the exported overflow
+  discharge, storage level, monitored signed conduit velocity, node inflow,
+  flood depth and flood volume as typed local time series. It checks exact
+  timestamps, withheld intermediate samples, reviewed datum, units and
+  independently calculated source fingerprints against the emitted metadata.
+  Ruby 3.3.13 syntax, read-only mocked execution, indexed result imports and
+  the native catchment import passed. Evidence is in
+  `/workspace/hydra-evidence/v3/toolkit-contract-roundtrip`. Autodesk's 2026
+  reference distinguishes snapshot flood volume from the independent maximum.
 
 ### Source diagnostics and reviewed exclusions
 

@@ -47,7 +47,9 @@ The final line accepts an optional Ruby hash. `:link_tables` restricts the
 geometry job. `:extra_fields` adds reviewed scalar geometry or catchment
 field names by table. `:result_fields` replaces the documented default
 table-to-attribute-and-unit mapping for a result job. Check the relevant
-Autodesk data-field reference and units before passing any override.
+Autodesk data-field reference and units before passing any override. Choose
+time-varying result fields that are available for replay. Compare report
+maxima through the relevant ICM report workflow.
 
 ```ruby
 HydraIcmExport.run(:simulation, {
@@ -83,6 +85,14 @@ Geometry and catchment native markers preserve textual identifiers such as
 Use the accompanying `result_sources.csv` for the type, API code, units and
 run metadata. A separate source is required for each location or quantity.
 
+For indexed import, map `depnod` as an absolute node level with the reviewed
+vertical datum. `qnode` is total node inflow. `flooddepth` is the difference
+between the node level and the flood level at that timestamp. `floodvolume`
+is the flood volume at that timestep. Autodesk describes the above-surface
+volume for 2D nodes as notional. Preserve that interpretation when using
+the series for investigation. Use the manual report workflow for
+authoritative detriment summaries.
+
 ```csv
 Timestamp,00127.B,00129.C
 ,m³/s,m³/s
@@ -105,3 +115,5 @@ Autodesk references checked 2026-11-21
 - [Native network export](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-85146D52-4303-412A-B9EE-149B9CAE1488.htm)
 - [Subcatchment fields and inherited values](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1F3FA957-FE1B-4BD6-A73C-3DF2F6ACD839.htm)
 - [Native model result CSV dialog](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-30AFF9A8-86D6-418C-A17F-127D09EC8B4D.htm)
+- [Node result field definitions](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-18FD4962-1E97-491A-AD6E-6DF35191301D.htm)
+- [Link result field definitions](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm)
