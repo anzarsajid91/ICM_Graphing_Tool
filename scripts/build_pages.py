@@ -126,8 +126,16 @@ def build() -> None:
     for source, target in [('security/claims.json','claims.json'),('web/vendor/manifest.json','dependencies.json'),('docs/security-audit.md','security-audit.md'),('SECURITY.md','SECURITY.md')]:
         shutil.copy2(ROOT / source, security_root / target)
     claim_data = (ROOT / 'security/claims.json').read_text().replace('<', '\\u003c')
+    assurance = json.loads((ROOT / "security" / "release-assurance.json").read_text(encoding="utf-8"))
+    if assurance.get("schema_version") != 1 or not isinstance(assurance.get("records"), list):
+        raise ValueError("Invalid release assurance schema.")
+    assurance_data = json.dumps(assurance, separators=(",", ":")).replace("<", "\\u003c")
     index = SITE / 'index.html'
-    index.write_text(index.read_text().replace('</head>', '<script id="securityClaims" type="application/json">'+claim_data+'</script>\n</head>'))
+    security_metadata = (
+        f'<script id="securityClaims" type="application/json">{claim_data}</script>\n'
+        f'<script id="releaseAssurance" type="application/json">{assurance_data}</script>\n'
+    )
+    index.write_text(index.read_text().replace("</head>", security_metadata + "</head>"), encoding="utf-8")
 
     python_root = SITE / "python"
     python_root.mkdir(parents=True, exist_ok=True)

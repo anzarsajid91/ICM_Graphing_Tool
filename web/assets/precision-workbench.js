@@ -1057,6 +1057,41 @@ function buildAboutPage(){
   qsa('[data-about-workspace]',panel).forEach(button=>button.addEventListener('click',()=>navigate(button.dataset.aboutWorkspace,button.dataset.aboutPage,true)));
   window.HydraMethodLibrary.install(panel,navigate,ROUTES);
 }
+function installReleaseAssurance(article){
+  const details=document.createElement('details'),heading=document.createElement('summary'),note=document.createElement('p');
+  details.id='hbReleaseAssurance';details.className='subpanel';heading.textContent='Release assurance';details.append(heading,note);
+  const statuses={production:'Production-verified revision',candidate:'Verified candidate milestone'};
+  let records=[];
+  try{
+    const packet=JSON.parse($('releaseAssurance')?.textContent||'null');
+    if(packet?.schema_version===1&&Array.isArray(packet.records))records=packet.records.filter(record=>
+      /^[a-f0-9]{40}$/.test(record?.revision)&&Object.hasOwn(statuses,record.status));
+  }catch{}
+  note.textContent=records.some(record=>record.revision===buildToken)?'The register includes evidence for this exact revision.':
+    'This build is awaiting an exact-revision record. Each entry identifies its tested revision.';
+  const cards=document.createElement('div');cards.className='pw-security-cards';
+  for(const record of records){
+    const card=document.createElement('section'),name=document.createElement('h3'),identity=document.createElement('p');
+    const revision=document.createElement('code'),coverage=document.createElement('dl');
+    name.textContent=record.version;revision.textContent=record.revision;revision.style.overflowWrap='anywhere';
+    identity.append(statuses[record.status],document.createElement('br'),revision);
+    for(const [label,field] of [['Scope','scope'],['Engineering checks','engineering'],['Security checks','security'],
+      ['Compatibility','compatibility'],['Limitations','limitations']]){
+      const term=document.createElement('dt'),description=document.createElement('dd');
+      term.textContent=label;description.textContent=record[field];coverage.append(term,description);
+    }
+    const checks=document.createElement('ul');
+    for(const check of Array.isArray(record.checks)?record.checks:[]){
+      if(!/^[0-9]{1,20}$/.test(check?.run))continue;
+      const item=document.createElement('li'),link=document.createElement('a');
+      link.href='https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/'+check.run;
+      link.target='_blank';link.rel='noopener noreferrer';link.referrerPolicy='no-referrer';link.textContent=check.label;
+      item.append(link);checks.append(item);
+    }
+    card.append(name,identity,coverage,checks);cards.append(card);
+  }
+  details.append(cards);article.append(details);
+}
 function buildSecurityPage(){
   const panel=document.createElement('section');panel.id='tab-security';panel.className='tab-panel';panel.hidden=true;
   const article=document.createElement('article');article.className='panel pw-about-page';
@@ -1085,6 +1120,7 @@ function buildSecurityPage(){
     finally{runtime.removeAttribute('aria-busy');}
   };
   const links=document.createElement('p');links.innerHTML='<a href="security/dependencies.json">Dependency inventory</a> · <a href="security/security-audit.md">Assessment and limitations</a> · <a href="security/claims.json">Claim–evidence register</a> · <a href="security/SECURITY.md">Security disclosure guidance</a>';article.appendChild(links);
+  installReleaseAssurance(article);
   panel.appendChild(article);qs('main.shell').appendChild(panel);
 }
 function wireGuidedImport(){

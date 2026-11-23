@@ -56,6 +56,27 @@ try{
  const identity=await page.locator('#securityBuildIdentity').innerText();
  const sha=await page.locator('meta[name="icm-build-sha"]').getAttribute('content');
  const version=await page.locator('#appVersion').innerText();assert.ok(identity.includes(sha)&&identity.includes(version));
+ const assurance=panel.locator('#hbReleaseAssurance');
+ const records=await page.evaluate(()=>JSON.parse(document.getElementById('releaseAssurance').textContent).records);
+ await assurance.locator('summary').focus();await page.keyboard.press('Space');
+ assert(await assurance.evaluate(details=>details.open));
+ const assuranceText=await assurance.innerText();
+ assert.match(assuranceText,/Production-verified revision/);
+ assert.match(assuranceText,/Verified candidate milestone/);
+ for(const record of records){
+  assert(assuranceText.includes(record.revision));
+  for(const {label,run} of record.checks){
+   const link=assurance.getByRole('link',{name:label,exact:true});
+   assert.equal(await link.getAttribute('href'),'https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/'+run);
+   assert.equal(await link.getAttribute('referrerpolicy'),'no-referrer');
+   assert.equal(await link.getAttribute('rel'),'noopener noreferrer');
+  }
+ }
+ const exact=records.some(record=>record.revision===sha);
+ assert.match(assuranceText,exact?/includes evidence for this exact revision/:/awaiting an exact-revision record/);
+ await page.setViewportSize({width:390,height:900});
+ assert(await assurance.evaluate(details=>details.scrollWidth<=details.clientWidth+2));
+ await page.setViewportSize({width:1440,height:1000});
  // All security content is embedded: navigation adds no resource request.
  await page.waitForTimeout(300);const before=requests.length;
  await page.getByRole('tab',{name:'Overview',exact:true}).click();await security.click();await page.waitForTimeout(200);

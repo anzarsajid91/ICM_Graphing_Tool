@@ -54,7 +54,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Partial. Portable Reports snapshots, reviewed inputs, current calculation-sheet results, mapped comparison/spill support, decisions and action register. Coverage of the remaining workspace evidence is open |
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
 | 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Partial |
-| 12.3 | Build metadata, security claims and release evidence | Versioned assurance covering actual feature, numerical, confidentiality and compatibility outcomes | Open |
+| 12.3 | Build metadata, security claims and release evidence | Versioned assurance covering actual feature, numerical, confidentiality and compatibility outcomes | Verified locally for revision-scoped historical and milestone entries. Final v3 production evidence remains gated by §20 |
 | 13 | Shared registry, workspace serialization and storage | Shared typed results and route context; deterministic stale state, bounded imports and prior workspace compatibility | Open |
 | 14 | Precision Workbench / shared design tokens | Desktop usability, keyboard, responsive layout, contrast, reduced motion, progress and understandable empty/error states | Open |
 | 15 | Existing numerical and browser regressions | Independent reference cases for every new method, mandatory invalid/boundary cases, tolerances and genuine ICM comparisons where available | Open |
@@ -67,6 +67,33 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Release assurance register
+
+- IT Security presents distinct production and candidate records with
+  exact tested commits, scope, engineering tests, security checks,
+  compatible browser evidence, limitations and explicitly opened workflow
+  links. A later head displays that its own exact evidence is pending.
+  The production identity was rechecked as v2.2.0 at
+  `5882ebf60da8ee89d0ec10a0374b95fc548cc569` on 2026-11-23.
+- The candidate entry records the completed hosted Workbench run
+  [45060706817](https://github.com/anzarsajid91/ICM_Graphing_Tool/actions/runs/45060706817)
+  at `e8c3efdaae5bd369970a74383d21dd2fd07afc54`. Verification,
+  browser smoke, browser interactions, Firefox shell, baseline performance
+  and security passed. Workbench CI, dependency/licence, CodeQL, secret
+  detection and confidentiality also passed at that head.
+- SC-02 and SC-06 source review confirmed that the Pages packager embeds
+  static record text in the existing HTML manifest entry. No library,
+  executable asset, persistence or request was added. Explicit links
+  use the fixed repository Actions path, a validated numeric run ID and
+  no referrer or opener. The existing neutral exact-build security claim
+  is preserved.
+- Chromium and Firefox passed the keyboard disclosure, narrow layout,
+  build identity, fixed links and no-request navigation checks with
+  27 and 28 guarded requests. Both local security workflow checks,
+  153 staged artifact files, 28 Python privacy tests and the JavaScript
+  request contract passed. Browser evidence is in
+  `/workspace/hydra-evidence/v3/release-assurance`.
 
 ### Home resume checks
 
