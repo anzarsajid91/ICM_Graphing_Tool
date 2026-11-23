@@ -28,9 +28,9 @@ end
 class UiNetwork
   def initialize
     n1 = ReadOnlyAsset.new({ 'node_id' => '00127', 'node_type' => 'Manhole', 'x' => 100, 'y' => 80, 'ground_level' => 7.0, 'chamber_floor' => 4.2 },
-                           { 'depnod' => [5.0, 5.2, nil], 'qnode' => [0, 0.1, 0.03], 'flooddepth' => [-1, 0, 0.2], 'floodvolume' => [0, 0, 3] })
+                           { 'depnod' => [5.0, 5.2, nil], 'qnode' => [0, 0.1, 0.03], 'flooddepth' => [-1, 0, 0.2], 'floodvolume' => [0, 0, 3], 'VOLUME' => [5, 18, nil] })
     n2 = ReadOnlyAsset.new({ 'node_id' => '00129', 'node_type' => 'Outfall', 'x' => 123.0, 'y' => 95.0, 'ground_level' => 6.8, 'chamber_floor' => 4.1 },
-                           { 'depnod' => [4.5, 5.3, 5.7], 'qnode' => [0, 0.035, 0.05], 'flooddepth' => [-2, -1, -1], 'floodvolume' => [0, 0, 0] })
+                           { 'depnod' => [4.5, 5.3, 5.7], 'qnode' => [0, 0.035, 0.05], 'flooddepth' => [-2, -1, -1], 'floodvolume' => [0, 0, 0], 'VOLUME' => [3, 11, 17] })
     link = ReadOnlyAsset.new({ 'us_node_id' => '00127', 'ds_node_id' => '00129', 'link_suffix' => 'B', 'shape' => 'CIRC',
                               'conduit_length' => 27.0, 'conduit_width' => 500.0, 'conduit_height' => 500.0,
                               'us_invert' => 4.3, 'ds_invert' => 4.19, 'gradient' => 0.004, 'roughness_type' => 'CW',

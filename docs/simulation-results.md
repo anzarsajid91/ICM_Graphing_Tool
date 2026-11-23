@@ -18,6 +18,11 @@ head have different definitions. Flood depth is referenced to a node's flood
 level. Some 2D flood volumes are notional values. Preserve those distinctions
 when interpreting results.
 
+Map the documented `VOLUME` node field as **Storage volume**, in m³ or with
+an explicit conversion from L. It is an instantaneous total node volume,
+distinct from flood volume, available capacity and cumulative discharge.
+Autodesk treats the above-surface part as notional for applicable 2D nodes.
+
 ## Import contract v1
 
 Open **Network Schematic → Simulation results** and choose the local CSV. Set

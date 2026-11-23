@@ -2482,7 +2482,7 @@ function mountSimulationView(){
   const transport=$('nsSimulationTransport'),time=$('nsSimulationTime'),play=$('nsSimulationPlay');
   const back=$('nsSimulationBack'),next=$('nsSimulationNext'),clear=$('nsClearSimulation');
   const titles={level:'Level',flow:'Flow',velocity:'Velocity',depth:'Depth','total-head':'Total head',
-    'flood-depth':'Flood depth','flood-volume':'Flood volume','surcharge-state':'Surcharge state'};
+    'flood-depth':'Flood depth','flood-volume':'Flood volume','storage-volume':'Storage volume','surcharge-state':'Surcharge state'};
   const shade=$('nsSimulationShade'),display=$('nsSimulationDisplay'),cancelExtrema=$('nsSimulationCancelExtrema');
   let layer=null,profile=null,generation=0,playing=0,timer=null,groups=new Map(),sampleWindow=null,layerChoices=new Map(),companions=new Map(),proposals=new Map(),proposalEnds=new Map(),extremaJob=null;
   let viewportPaint=null;

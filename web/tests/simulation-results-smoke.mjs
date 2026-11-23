@@ -631,6 +631,34 @@ try {
   await wire.waitFor();assert.match(await wire.getAttribute('aria-label'),/Flow · -0\.2 m³\/s/);
   assert.equal(await page.locator('#nsSvg [data-ns-node][data-ns-sample]').count(),0);
 
+  await page.getByRole('tab',{name:'Simulation results',exact:true}).click();
+  await upload('synthetic-node-volume.csv','Timestamp,B\n,L\n2025-01-01 00:00:00,5000\n2025-01-01 00:07:00,18000\n2025-01-01 00:15:00,\n');
+  await panel.getByText('Preview ready.',{exact:false}).waitFor();
+  await panel.getByLabel('Asset type',{exact:true}).selectOption('node');
+  await panel.getByLabel('Result quantity',{exact:true}).selectOption('storage-volume');
+  await panel.getByLabel('Source unit',{exact:true}).selectOption('L');
+  await panel.getByLabel('Scenario',{exact:true}).fill('Baseline');
+  await panel.getByLabel('Source result attribute',{exact:true}).fill('VOLUME');
+  await panel.getByLabel('Mapping 1 CSV column number',{exact:true}).fill('2');
+  await panel.getByLabel('Mapping 1 Node or upstream ID',{exact:true}).fill('B');
+  await panel.getByLabel('The next record contains units',{exact:true}).check();
+  await panel.getByLabel('The file contains instantaneous samples on the confirmed project clock',{exact:true}).check();
+  await submit.click();await status.filter({hasText:'3 timestamps indexed for 1 result series'}).waitFor();
+  await sample.filter({hasText:'00:00:00.000 (project clock) · 5 m³'}).waitFor();
+  await page.getByRole('tab',{name:'Schematic',exact:true}).click();
+  await indexed.selectOption({label:'Baseline · synthetic-node-volume.csv'});
+  await playback.getByLabel('Scale minimum',{exact:true}).fill('0');
+  await playback.getByLabel('Scale maximum',{exact:true}).fill('25');
+  await confirmation.check();await layer.click();
+  const storageNode=page.locator('#nsSvg [data-ns-node="B"]');
+  await storageNode.locator('title').filter({hasText:'Storage volume · 5 m³'}).waitFor({state:'attached'});
+  await playback.getByRole('button',{name:'Next sample'}).click();
+  await storageNode.locator('title').filter({hasText:'Storage volume · 18 m³'}).waitFor({state:'attached'});
+  await playback.getByRole('button',{name:'Next sample'}).click();
+  await clock.getByText('00:15:00.000',{exact:false}).waitFor();
+  await storageNode.locator('title').filter({hasText:'Storage volume · Missing sample'}).waitFor({state:'attached'});
+  if(process.env.ICM_EVIDENCE_DIR)await playback.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-storage-volume-playback-'+engine+'.png'});
+
   const denseIds=['00001','00125','02010','04000'];
   const denseIndex=await globalThis.HydraSimulationResults.importCsv(new Blob([
     'Time,'+denseIds.join(',')+'\n2025-01-01 00:00:00,0.5,1.5,2.5,3.5\n2025-01-01 00:05:00,0.7,1.7,2.7,3.7\n'

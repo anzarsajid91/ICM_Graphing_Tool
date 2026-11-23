@@ -76,7 +76,7 @@ the approximate size of the numeric cells before writing each CSV.
 | Network geometry | `network_geometry.csv` with `**** hw_` sections, typed IDs, metric nodes, supported links and any readable bends. Selected links include their endpoint nodes. Import in Network Schematic. | Use Network → Export to CSV files with native units, field descriptions, unit labels and link vertices. Keep node and link tables together. |
 | Simulation series | One results CSV per selected object table and attribute, with sample clock and units. Import mapped results in Network Schematic. Choose a single mapped column when using a conventional timeseries. | Use Results → CSV export with Results timestep, header, units and selected objects. Preserve the simulation and model revision metadata alongside it. |
 | Formula A catchments | `formula_a_catchments.csv` with reviewed `hw_subcatchment` source fields. Import through Formula A. Pair with the matching `hw_land_use` CSV to review native population, connectivity and profile defaults. Review contributing systems and daily allowances separately. | Export `hw_subcatchment` and `hw_land_use` from the same revision with row flags, field descriptions and native units. Keep applicable wastewater and trade event settings as separate evidence. Use Formula A review to map supported confirmed values. |
-| Spill, storage and continuation flow | Selected overflow and continuation link-end flow and water levels at storage nodes. Engineers choose the effective discharge and continuation sides. Available script results contain water level. Use verified storage curves or ICM's applicable volume outputs for storage volume. | Use Results → CSV export for overflow links, continuation links, storage levels or applicable documented storage volume. Export the storage curve where needed. Import each time series with its own observed or modelled quantity. |
+| Spill, storage and continuation flow | Selected overflow and continuation link-end flow, levels and current total node volume where ICM exposes `VOLUME`. Engineers choose the effective discharge and continuation sides. Map node volume as Storage volume for exact replay. | Use Results → CSV export for overflow links, continuation links, storage levels and documented node volume. Export the storage curve where needed. Import each time series with its own observed or modelled quantity. |
 | Monitoring results | Node levels and node inflow when available, plus conduit-end flow, depth and velocity. Review the installed host and sensor datum before mapping. | Export native ICM results for the monitored links or nodes and selected compatible quantities. Keep the flow survey observations and deployment mapping as independent inputs. |
 | Detriment results | Node level and flooding results plus selected overflow flows. Freeboard requires compatible ground and water levels in the same datum. The time-series files support investigation. | Use ICM's appropriate flooding and level reports and export matched baseline and proposed evidence. Follow Hydra Bench Detriment's report field and scenario requirements for authoritative comparisons. |
 
@@ -92,6 +92,12 @@ is the flood volume at that timestep. Autodesk describes the above-surface
 volume for 2D nodes as notional. Preserve that interpretation when using
 the series for investigation. Use the manual report workflow for
 authoritative detriment summaries.
+
+`VOLUME` is the total volume at the node at the recorded timestep. This
+applies the documented result definition, including Autodesk's notional
+above-surface volume for applicable 2D nodes. A recorded node volume does
+not establish available tank capacity or spill discharge. Use the applicable
+storage curve and hydraulic context to assess those quantities.
 
 ```csv
 Timestamp,00127.B,00129.C

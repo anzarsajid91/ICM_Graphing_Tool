@@ -22,7 +22,7 @@ const dimensions = new Map([
   ["flow", ["m³/s", new Map([["m³/s", 1], ["L/s", .001]])]],
   ["velocity", ["m/s", new Map([["m/s", 1], ["mm/s", .001]])]],
   ...["level", "depth", "total-head", "flood-depth"].map(quantity => [quantity, ["m", new Map([["m", 1], ["mm", .001]])]]),
-  ["flood-volume", ["m³", new Map([["m³", 1], ["L", .001]])]],
+  ...["flood-volume", "storage-volume"].map(quantity => [quantity, ["m³", new Map([["m³", 1], ["L", .001]])]]),
   ["surcharge-state", ["1", new Map([["1", 1]])]]
 ]);
 
@@ -167,7 +167,7 @@ function compile(config) {
       throw new Error("Map each CSV column only once.");
     indexes.add(raw.column);
     const {quantity,location}=raw;
-    const allowed = raw.asset.kind === "node" ? location === "node" && ["level","flow","flood-depth","flood-volume"].includes(quantity) :
+    const allowed = raw.asset.kind === "node" ? location === "node" && ["level","flow","flood-depth","flood-volume","storage-volume"].includes(quantity) :
       ["upstream","downstream"].includes(location) && ["level","depth","flow","velocity","total-head","surcharge-state"].includes(quantity);
     if (!allowed) throw new Error("The quantity and result location must match the asset type.");
     const [unit,factors] = dimensions.get(quantity);

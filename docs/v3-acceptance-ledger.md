@@ -437,9 +437,22 @@ other state.
   native result allocation limits. The scoped Gitleaks check on the toolkit
   downloads returned zero matches. Three findings in an extra whole-artifact
   scan were verified fixed SHA-256 digests in the integrity manifest.
-- ICM runtime compatibility, native flags and inherited values, dedicated
-  storage volume outputs, and authoritative detriment report round-trips
-  remain open. The guide gives native CSV workflows for those use cases.
+- Licensed ICM runtime compatibility, native flags and authoritative
+  detriment report round-trips remain unverified. The guide gives manual
+  workflows where the available Ruby contracts cannot establish provenance.
+- The Storage Ruby export now includes the documented `VOLUME` parameter
+  when the replay exposes it. The existing simulation index and schematic
+  playback map it separately as Storage volume. Both desktop browsers
+  explicitly mapped 5,000 L and 18,000 L to 5 m³ and 18 m³ at the exact
+  synthetic timestamps and showed a missing value at the next sample.
+  Autodesk's definition includes notional above-surface volume for applicable
+  2D nodes. The recorded volume does not imply available capacity.
+- Ruby syntax, mock replay and read-back passed for `VOLUME`, including
+  the absent third sample. The exact volume playback runs observed 32
+  requests each, and the download runs observed 26 and 34, with zero
+  confidentiality violations. The download runs compared the exact staged
+  bytes. Evidence is in `/workspace/hydra-evidence/v3/icm-node-storage-volume`
+  and `/workspace/hydra-evidence/v3/icm-node-storage-volume-final`.
 - The strengthened synthetic round-trip indexes the exported overflow
   discharge, storage level, monitored signed conduit velocity, node inflow,
   flood depth and flood volume as typed local time series. It checks exact

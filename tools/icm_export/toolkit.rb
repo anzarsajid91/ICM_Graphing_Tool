@@ -20,7 +20,7 @@ module HydraIcmExport
   RESULT_PROFILES = {
     :simulation => { 'hw_node' => { 'depnod' => 'm' },
                      'hw_conduit' => { 'us_flow' => 'm³/s', 'ds_flow' => 'm³/s', 'us_depth' => 'm', 'ds_depth' => 'm' } },
-    :spill_storage => { 'hw_node' => { 'depnod' => 'm' }, 'hw_conduit' => { 'us_flow' => 'm³/s', 'ds_flow' => 'm³/s' },
+    :spill_storage => { 'hw_node' => { 'depnod' => 'm', 'volume' => 'm³' }, 'hw_conduit' => { 'us_flow' => 'm³/s', 'ds_flow' => 'm³/s' },
                         'hw_weir' => { 'us_flow' => 'm³/s', 'ds_flow' => 'm³/s' },
                         'hw_orifice' => { 'us_flow' => 'm³/s', 'ds_flow' => 'm³/s' } },
     :monitoring => { 'hw_node' => { 'depnod' => 'm', 'qnode' => 'm³/s' },

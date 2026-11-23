@@ -3,9 +3,9 @@
 (() => {
 "use strict";
 
-const quantities={node:["level","flow","flood-depth","flood-volume"],link:["flow","velocity","level","depth","total-head","surcharge-state"]};
+const quantities={node:["level","flow","flood-depth","flood-volume","storage-volume"],link:["flow","velocity","level","depth","total-head","surcharge-state"]};
 const units={level:["m","mm"],depth:["m","mm"],"total-head":["m","mm"],flow:["m³/s","L/s"],
-  velocity:["m/s","mm/s"],"flood-depth":["m","mm"],"flood-volume":["m³","L"],"surcharge-state":["1"]};
+  velocity:["m/s","mm/s"],"flood-depth":["m","mm"],"flood-volume":["m³","L"],"storage-volume":["m³","L"],"surcharge-state":["1"]};
 const formatTime=value=>value===null||value===undefined?"Unavailable":new Date(value).toISOString().slice(0,-1).replace("T"," ");
 const formatValue=value=>value===null?"Missing":new Intl.NumberFormat(undefined,{maximumSignificantDigits:8}).format(value);
 const title=value=>value[0].toUpperCase()+value.slice(1).replaceAll("-"," ");
@@ -127,11 +127,11 @@ function mount() {
         <label>Header record<input type="number" name="header" value="1" min="1" max="20" step="1" required></label>
         <label>Time column number<input type="number" name="time" value="1" min="1" max="20001" step="1" required></label>
         <label>Optional missing-value token<input name="missing" maxlength="32" placeholder="#N/A"></label>
-        <label>Asset type<select name="kind"><option value="node">Node</option><option value="link">Link</option></select></label>
+        <label>Asset type<select name="kind" aria-label="Asset type"><option value="node">Node</option><option value="link">Link</option></select></label>
         <label id="hbResultAssetTable">Link table<select name="assetTable"></select></label>
         <label id="hbResultLocation">Link end<select name="location"><option value="upstream">Upstream</option><option value="downstream">Downstream</option></select></label>
-        <label>Result quantity<select name="quantity"></select></label>
-        <label>Source unit<select name="unit"></select></label>
+        <label>Result quantity<select name="quantity" aria-label="Result quantity"></select></label>
+        <label>Source unit<select name="unit" aria-label="Source unit"></select></label>
         <label id="hbResultDatum">Vertical datum<input name="datum" maxlength="128"></label>
         <label>Source result attribute<input name="attribute" maxlength="128" required></label>
       </div>

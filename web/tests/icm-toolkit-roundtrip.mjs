@@ -32,6 +32,7 @@ const link=(table,suffix)=>({kind:'link',table,upstream:'00127',suffix});
 const checks=[
   ['spill_storage','hw_weir','ds_flow','m³/s',link('hw_weir','W'),'flow','downstream',[0,0,.06]],
   ['spill_storage','hw_node','depnod','m',node,'level','node',[5,5.2,null]],
+  ['spill_storage','hw_node','volume','m³',node,'storage-volume','node',[5,18,null]],
   ['monitoring','hw_conduit','us_vel','m/s',link('hw_conduit','B'),'velocity','upstream',[0,-.2,null]],
   ['monitoring','hw_node','qnode','m³/s',node,'flow','node',[0,.1,.03]],
   ['detriment','hw_node','flooddepth','m',node,'flood-depth','node',[-1,0,.2]],
