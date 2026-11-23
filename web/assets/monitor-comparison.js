@@ -18,6 +18,7 @@ function mount(){
       <label>Quantity<select name="quantity"><option value="flow">Flow</option><option value="depth">Depth</option><option value="level">Level</option><option value="velocity">Velocity</option></select></label>
       <label>Filter monitoring sources<input type="search" name="query" maxlength="120" placeholder="Find an ID or filename"></label>
       <label>Rainfall overlay<select name="rain"></select></label>
+      <label>Saved interval overlay<select name="derived" aria-label="Saved interval overlay"></select></label>
       <label>Start on project clock (optional)<input name="start" type="datetime-local" step="1"></label>
       <label>End on project clock (optional)<input name="end" type="datetime-local" step="1"></label>
       <label>Maximum valid gap (s)<input name="gap" type="number" step="any" min="0.001" value="900" required></label>
@@ -48,8 +49,13 @@ function mount(){
   const candidate=row=>isMonitor(row)&&quantity(row)===fields.quantity.value;
   const candidates=()=>series().filter(candidate);
   const pickRain=()=>series().find(row=>row.key===fields.rain.value&&quantity(row)==='rainfall');
+  const registry=()=>window.ICMProjectRegistry;
+  const overlays=()=>registry()?.listDerived().filter(ref=>ref.available&&ref.quantity===fields.quantity.value&&
+    registry().derivedSeries(ref.fingerprint)?.result?.output==='mean')||[];
+  const pickOverlay=()=>overlays().find(ref=>ref.fingerprint===fields.derived.value);
   const fingerprint=({item,col})=>[item.hash,col,seriesQuantity(item,col),seriesUnit(item,col),seriesReference(item,col)];
-  const selectionSignature=()=>JSON.stringify([...candidates().filter(row=>selected.has(row.key)),pickRain()].filter(Boolean).map(fingerprint));
+  const selectionSignature=()=>JSON.stringify({sources:[...candidates().filter(row=>selected.has(row.key)),pickRain()].filter(Boolean).map(fingerprint),
+    interval:pickOverlay()?.fingerprint||null});
   function clearResult(message){
     ++request;view.hidden=true;record=null;prepared=null;
     if(chart.data)globalThis.Plotly?.purge(chart);
@@ -80,6 +86,11 @@ function mount(){
     const rain=series().filter(row=>quantity(row)==='rainfall'&&rainfallSemanticsFor(row.item,row.col)!=='unresolved');
     fields.rain.replaceChildren(new Option('No rainfall overlay',''),...rain.map(row=>new Option(row.label,row.key)));
     fields.rain.value=rain.some(row=>row.key===old)?old:'';
+    const saved=fields.derived.value,available=overlays();
+    fields.derived.replaceChildren(new Option(available.length?'No saved interval overlay':'No compatible saved interval means',''),
+      ...available.map(ref=>new Option(`${ref.name} · ${ref.unit}`,ref.fingerprint)));
+    fields.derived.value=available.some(ref=>ref.fingerprint===saved)?saved:'';
+    fields.derived.disabled=!available.length;
     renderChoices(rows);
     const level=fields.quantity.value==='level';
     $('hbMonitorCompareDatum').hidden=!level;fields.datum.required=level;fields.datum.disabled=!level;
@@ -87,19 +98,31 @@ function mount(){
   }
   fields.quantity.onchange=()=>{selected.clear();clearResult();refresh();};
   fields.query.oninput=()=>renderChoices();
-  for(const name of ['rain','start','end','gap','datum','clock'])fields[name].onchange=()=>
+  for(const name of ['rain','derived','start','end','gap','datum','clock'])fields[name].onchange=()=>
     clearResult(record||submit.disabled?'Settings changed. Plot the current monitoring series.':'');
 
   form.onsubmit=async event=>{
     event.preventDefault();clearResult();
-    const rows=candidates().filter(row=>selected.has(row.key)),rain=pickRain();
-    if(rows.length<2||rows.length>MAX_CHANNELS){status.textContent='Select between two and eight compatible monitoring series.';return;}
+    const rows=candidates().filter(row=>selected.has(row.key)),rain=pickRain(),overlay=pickOverlay();
+    if(rows.length<(overlay?1:2)||rows.length>MAX_CHANNELS){status.textContent=overlay?'Select a compatible monitoring series for the saved interval overlay.':
+      'Select between two and eight compatible monitoring series.';return;}
     const unit=seriesUnit(rows[0].item,rows[0].col),start=fields.start.value||null,end=fields.end.value||null;
     if(rows.some(row=>seriesUnit(row.item,row.col)!==unit)){status.textContent='Resolve canonical units before comparing these channels.';return;}
     if(start&&end&&start>=end){status.textContent='Choose a later end time.';return;}
     const datum=fields.datum.disabled?'':fields.datum.value.trim();
     if(!fields.datum.disabled&&(!datum||rows.some(row=>seriesReference(row.item,row.col)&&seriesReference(row.item,row.col)!==datum))){
       status.textContent='Confirm a common vertical datum that agrees with each declared source datum.';return;
+    }
+    let interval=null;
+    if(overlay){
+      const archive=registry().derivedSeries(overlay.fingerprint),result=archive.result;
+      if(result.unit!==unit||datum&&result.datum!==datum){status.textContent='Choose a saved interval mean with the same working unit and, for levels, the same reviewed datum.';return;}
+      const clock=value=>Date.parse(value.replace(' ','T')+'Z');
+      const left=start?clock(start):-Infinity,right=end?clock(end):Infinity;
+      const grid=result.rows.filter(row=>clock(row[1])>left&&clock(row[0])<right);
+      if(!grid.some(row=>row[2]!==null)){status.textContent='The selected window contains no fully supported saved interval means.';return;}
+      if(grid.length*3>MAX_DISPLAY_POINTS){status.textContent='Choose a shorter time window for the saved interval overlay.';return;}
+      interval={overlay,archive,grid};
     }
     const sequence=++request,identity=selectionSignature(),gap=fields.gap.valueAsNumber,q=fields.quantity.value;
     prepared=identity;submit.disabled=true;status.textContent='Loading a local plot slice for each series…';
@@ -123,6 +146,13 @@ function mount(){
         line:{color:item.rain?'#137da1':palette[index],width:1.8,shape:item.rain?'hv':'linear'},marker:{size:3},
         hovertemplate:'%{x}<br>%{y:.5g} '+esc(item.unit)+'<extra></extra>'
       }));
+      if(interval){
+        const complete=interval.grid.filter(row=>row[2]!==null);
+        traces.push({name:esc(interval.overlay.name)+' · Saved interval mean',x:complete.flatMap(row=>[row[0],row[1],null]),
+          y:complete.flatMap(row=>[row[2],row[2],null]),customdata:complete.flatMap(row=>[[row[0],row[1]],[row[0],row[1]],null]),
+          type:complete.length>800?'scattergl':'scatter',mode:'lines',connectgaps:false,line:{color:'#a34416',width:2.3,dash:'dash'},
+          hovertemplate:'%{customdata[0]} to %{customdata[1]}<br>Saved interval mean %{y:.5g} '+esc(unit)+'<extra></extra>'});
+      }
       const layout={...(window.HydraDesign?.chartLayout()||{}),height:410,showlegend:false,hovermode:'x unified',
         margin:{l:70,r:rain?68:30,t:20,b:60},xaxis:{title:{text:'Project clock'},type:'date'},
         yaxis:{title:{text:quantities[q]+' ('+esc(unit)+')'+(datum?' · '+esc(datum):'')}},
@@ -131,16 +161,19 @@ function mount(){
       view.hidden=false;
       await plotly.react(chart,traces,layout,plotConfig('hydra-monitor-comparison',{modeBarButtonsToRemove:['select2d','lasso2d']}));
       if(sequence!==request||identity!==selectionSignature()){clearResult();return;}
-      visibility.replaceChildren(...data.map((item,index)=>{
+      const visibleSeries=data.map(item=>item.name);
+      if(interval)visibleSeries.push(interval.overlay.name+' · Saved interval mean');
+      visibility.replaceChildren(...visibleSeries.map((name,index)=>{
         const label=node('label'),input=node('input'),swatch=node('span');
         input.type='checkbox';input.checked=true;
         input.onchange=()=>void plotly.restyle(chart,{visible:input.checked},[index]);
         swatch.className='hb-monitor-swatch';swatch.style.background=traces[index].line.color;swatch.setAttribute('aria-hidden','true');
-        label.append(input,swatch,node('span',item.name));return label;
+        label.append(input,swatch,node('span',name));return label;
       }));
-      record={data,datum,gap,quantity:q};prepared=identity;
+      record={data,datum,gap,quantity:q,interval};prepared=identity;
       const summaries=data.map(row=>row.name+' · '+formatCount(row.result.display_count)+' of '+formatCount(row.result.raw_count)+' source samples displayed');
-      $('hbMonitorCompareCoverage').textContent=summaries.join(' · ')+'. Zoom uses the rendered series.';
+      $('hbMonitorCompareCoverage').textContent=summaries.join(' · ')+'. Zoom uses the rendered series.'+
+        (interval?' Dashed segments show completed saved interval means. Unavailable intervals leave gaps. The archive keeps its own clock and source review.':'');
       status.textContent='Plot ready. '+(sampled===rows.length?'Review relative timing and gaps before comparing measurements.':
         (rows.length-sampled)+' selected monitoring series have no samples in this window.');
     }catch(error){if(sequence===request)clearResult(conciseErrorMessage(error));}
@@ -159,11 +192,20 @@ function mount(){
     for(const {name,hash,unit,result} of record.data)for(const [index,time] of result.timestamp.entries()){
       if(time!==null)rows.push([name,hash,time,result.value[index],unit]);
     }
+    if(record.interval){
+      const {overlay,archive,grid}=record.interval;
+      rows.push([],['Saved interval archive',overlay.name,overlay.fingerprint],['Method',archive.result.method],
+        ['Operation',archive.result.operation],['Source SHA-256',archive.source.sha256],['Reference SHA-256',archive.reference?.sha256??''],
+        ['Archived datum',archive.result.datum??''],['Saved interval (s)',archive.result.interval_s],['Saved maximum gap (s)',archive.result.max_gap_s],
+        ['Source time shift (s)',archive.result.inputs?.[0]?.shift_s??''],['Reference time shift (s)',archive.result.inputs?.[1]?.shift_s??''],
+        ['Interval start','Interval end',`Saved mean (${overlay.unit})`,'Source valid seconds','Reference valid seconds'],...grid);
+    }
     downloadBlob('hydra-monitor-comparison.csv',rows.map(row=>row.map(ICMSafeCSV.cell).join(',')).join('\r\n'),'text/csv');
   };
   $('hbMonitorCompareClose').onclick=()=>dialog.close();
   dialog.addEventListener('close',()=>{clearResult();status.textContent='';});
   window.addEventListener('icm:source-pool-changed',refresh);
+  window.addEventListener('icm:derived-series-changed',refresh);
   window.addEventListener('icm:rainfall-interpretation-changed',refresh);
   window.addEventListener('icm:route-changed',({detail})=>{if(detail.workspace!=='data'&&dialog.open)dialog.close();});
   return ()=>{refresh();if(!dialog.open)dialog.showModal();};

@@ -23,7 +23,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 3.3 | Current help text and workspace routes | Six guided journeys with actual prerequisites, results and next actions | Verified locally |
 | 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Verified locally for six supported script contracts and fallback instructions. Licensed ICM execution, native field flags and ICM-generated authoritative report examples remain external validation |
 | 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Verified locally with documentary unit and quantity findings and exact-basis workspace decisions |
-| 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Numerical and recorded-state transformations, interval plots and exact local record reattachment verified locally. Wider transform handoffs remain open under §13 |
+| 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Verified locally for numeric and recorded-state transformations, exact local record reattachment and supported interval means overlaid on monitoring plots |
 | 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Verified locally |
 | 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Verified locally |
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Verified locally |
@@ -55,7 +55,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
 | 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Verified locally for the 34-method library, including survey balance, recorded-result profiles and the matched Detriment criteria |
 | 12.3 | Build metadata, security claims and release evidence | Versioned assurance covering actual feature, numerical, confidentiality and compatibility outcomes | Verified locally for revision-scoped historical and milestone entries. Final v3 production evidence remains gated by §20 |
-| 13 | Shared registry, workspace serialization and storage | Shared typed results and route context; deterministic stale state, bounded imports and prior workspace compatibility | Open |
+| 13 | Shared registry, workspace serialization and storage | Shared typed results and route context; deterministic stale state, bounded imports and prior workspace compatibility | Verified locally for current cross-workspace source, comparison, reports, calculation, schematic and survey flows. Full candidate integration regressions remain required |
 | 14 | Precision Workbench / shared design tokens | Desktop usability, keyboard, responsive layout, contrast, reduced motion, progress and understandable empty/error states | Open |
 | 15 | Existing numerical and browser regressions | Independent reference cases for every new method, mandatory invalid/boundary cases, tolerances and genuine ICM comparisons where available | Open |
 | 16 | CI baseline comparison and v2.2 matched startup measures | Matched lifecycle benchmarks at 400, 1,600 and 10,000 assets and varying duration, throughput, memory, cancellation and state integrity | Partial. Native network interaction and dense annual file-backed playback measured in both desktop browsers. A complete matched performance matrix on the final release candidate remains open |
@@ -67,6 +67,11 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Saved interval overlays on monitoring plots
+
+- The multi-monitor plot reads compatible saved interval means from the existing local project registry, together with the original monitoring and rainfall series. It does not create a duplicate source file or apply an interval mean as a point observation. Comparisons require matching units and, for absolute levels, a matching reviewed datum. The local audit separates source samples and interval evidence and retains operand hashes, shifts, support and unavailable rows.
+- The reference plot independently integrates the first 600 seconds between 0 and 1 m³/s to a mean of 0.5 m³/s. The next two intervals remain unavailable. Both desktop browsers exercised the same clock, the visible dashed segment, legend visibility, incomplete windows, exact provenance and formula-safe export. Requests observed were 105 and 103 with zero violations. Evidence is in `/workspace/hydra-evidence/v3/saved-interval-overlay-final`.
 
 ### Storage Assessment calculation sheet
 

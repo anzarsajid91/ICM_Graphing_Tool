@@ -85,6 +85,15 @@ The U.S. Army Corps of Engineers documentation distinguishes instantaneous
 values, period means and period accumulations, and describes integrating source
 support to compute a period mean. [HEC-DSSVue time conventions](https://www.hec.usace.army.mil/confluence/dssdocs/dssvueum/introduction/time-series-conventions) · [HEC-DSSVue time functions](https://www.hec.usace.army.mil/confluence/dssdocs/dssvueum/math-and-statistical-functions/time-functions)
 
+**Compare monitoring locations** can overlay one saved interval mean beside
+the original monitoring observations. The saved mean and plotted observations
+must have the same quantity and working unit. Absolute levels also use the
+same reviewed datum. Dashed horizontal segments show complete intervals
+without inventing between-interval observations. The plot keeps gaps where
+support is missing. The separate CSV block retains interval boundaries,
+support, operand fingerprints, time shifts and method. Hydraulic assessment
+mappings continue to use their original source series independently.
+
 ## Paired flow-monitor investigation
 
 **Flow Survey → FDV health → Investigate monitor readings** reviews concurrent
