@@ -237,7 +237,82 @@ function verificationMatrixRecords(snapshot){
   });
 }
 
-async function collectAssessment(name,note,action,assetId){
+function surveyReviewFields(state){
+  const review=state?.review;
+  return review?[['Review evidence',state.review_current?'Current':'Historical'],['Recorded engineer rating',review.reviewed_status],
+    ['Reported rating',state.review_current?state.reviewed:state.calculated],['Calculated at review',review.calculated_status_at_review],
+    ['Engineer rationale',review.reason],['Reviewer',review.reviewer],['Reviewed at',review.reviewed_at]]:[];
+}
+
+function* surveyAssessmentRecords(batch,balance,context,analysisBasis,monitorId,sourceAt,reviews){
+  const specs=context.monitor_sources||[],rain=context.rain_sources||[];
+  const names=new Map((context.association||[]).map(entry=>[entry.monitor,entry]));
+  const monitorSources=new Map(specs.map(({path,monitor,match_status,depth_col,velocity_col,flow_col})=>
+    [monitor,{source:sourceAt(path),match:match_status,depth:depth_col,velocity:velocity_col,flow:flow_col}]));
+  const gaugeSources=new Map(rain.map(({path,gauge,column,rainfall_semantics,match_status})=>
+    [gauge,{source:sourceAt(path),column,interpretation:rainfall_semantics,match:match_status}]));
+  const networkGauges=recordedJSON([...gaugeSources]);
+  const base=[...analysisBasis,['Workbook SHA-256',context.association_source?.sha256],['Workbook sheet',context.association_source?.sheet],
+    ['Population basis exceeds 50,000',context.population_above_50k],['Rain gauge fault cutoff applied',context.apply_fault_cutoff]];
+  const applies=name=>!monitorId||name===monitorId;
+  if(batch&&!monitorId){
+    const monitors=batch.monitors||[],complete=monitors.filter(row=>row.status==='complete').length,network=batch.network;
+    yield evidence('survey:overview','Flow survey','Complete survey assessment',network?.method||'',{
+      basis:[...base,['Rainfall criteria',recordedJSON(network?.criteria)],['Mapped gauges',networkGauges]],
+      results:[['Monitor count',monitors.length],['Fully assessed monitors',complete],['Partial or unavailable monitors',monitors.length-complete],
+        ['Network-qualified WAPUG events',network?.qualified_wapug_events?.length??0]]
+    });
+  }
+  for(const monitor of batch?.monitors||[]){
+    if(!applies(monitor.monitor))continue;
+    const id=monitor.monitor,weekly=monitor.weekly,response=monitor.event_response,comment=reviews?.monitorComment(id);
+    const basis=[...base,['Monitor ID',id],['Hydraulic channels',recordedJSON(monitorSources.get(id))],
+      ['Mapped rainfall gauge',monitor.rain_gauge],['Mapped rain source',recordedJSON(gaugeSources.get(monitor.rain_gauge))],
+      ['Workbook diameter',monitor.diameter_mm,'mm'],['Channel interpretation',recordedJSON(monitor.contracts)]];
+    yield evidence('survey:monitor:'+id,'Flow survey',id,weekly?.method||'complete-survey-context-v1',{
+      basis,results:[['Survey assessment status',monitor.status],['Assessed weeks',weekly?.weeks?.length],['Response events',response?.rows?.length]],
+      review:comment?[['Monitor engineering comment',comment.text],['Comment author',comment.author],['Comment recorded at',comment.updated_at]]:[],
+      actions:monitor.reason?[['Investigation',monitor.reason]]:[]
+    });
+    for(const week of weekly?.weeks||[]){
+      yield evidence('survey:week:'+JSON.stringify([id,week.week_ending]),'Flow survey',`${id} · week ending ${week.week_ending}`,weekly.method,{
+        basis:[...basis,['Week start',week.start],['Week end',week.end],['Weekly criteria',recordedJSON(weekly.criteria)]],
+        results:[['Rainfall',week.rain_total_mm,'mm'],['Depth coverage',week.depth_coverage_percent,'%'],
+          ['Velocity coverage',week.velocity_coverage_percent,'%'],['Flow coverage',week.flow_coverage_percent,'%'],
+          ['Assessable samples',week.assessable_samples],['Excluded samples',week.excluded_samples],['RAG decision',week.rag],
+          ['WAPUG storm',week.wapug_storm],['Survey suitability',week.iw_suitability]],
+        review:[['Decision basis',week.decision_path],...surveyReviewFields(reviews?.reviewedWeekState('monitor-week',id,week))]
+      });
+    }
+    for(const event of response?.rows||[]){
+      yield evidence('survey:event:'+JSON.stringify([id,event.event,event.event_start,event.event_end]),'Flow survey',`${id} · ${event.event_start}`,response.method,{
+        basis:[...basis,['Event start',event.event_start],['Event end',event.event_end],['Event label',event.event],
+          ['Event criteria',recordedJSON(response.criteria)],['Network qualification criteria',recordedJSON(batch.network?.criteria)],
+          ['Network rainfall sources',networkGauges]],
+        results:[['Depth and velocity response',event.depth_velocity_response],['Depth at peak flow',event.min_depth_at_peak_flow_m,'m'],
+          ['Minimum depth criterion',event.min_depth_threshold_m,'m'],['Depth criterion status',event.min_depth_pass],
+          ['Response ratio',event.response_ratio],['Response ratio criterion',event.response_ratio_threshold],
+          ['Ratio criterion status',event.response_ratio_pass]],review:[['Recorded comments',(event.comments||[]).join(' · ')]]
+      });
+    }
+  }
+  for(const row of balance?.rows||[]){
+    if(!applies(row.downstream_monitor))continue;
+    const id=row.downstream_monitor,upstream=row.upstream_monitors||[];
+    const scope=[id,...upstream].map(name=>[name,monitorSources.get(name),names.get(name)]);
+    yield evidence('survey:balance:'+JSON.stringify([id,row.week_ending]),'Flow survey',`${id} · volume balance ${row.week_ending}`,balance.method,{
+      basis:[...base,['Monitored branch',recordedJSON(scope)],['Week ending',row.week_ending],['Scope start',balance.period?.start],
+        ['Scope end',balance.period?.end],['Balance criteria',recordedJSON(balance.criteria)],['Least common coverage',row.minimum_coverage_fraction]],
+      results:[['Downstream volume',row.downstream_volume_m3,'m³'],['Upstream volume',row.upstream_sum_m3,'m³'],
+        ['Deficit',row.deficit_m3,'m³'],['Deficit percentage',row.deficit_percent,'%'],['Balance ratio',row.balance_ratio],
+        ['Analytical RAG',row.rag],['Legacy FSAT status',row.legacy_fsat_status]],
+      review:[['RAG rationale',row.rag_reason],['Applicability',balance.caveat],...surveyReviewFields(reviews?.reviewedBalanceState(row))],
+      actions:[['Review',row.recommendation]]
+    });
+  }
+}
+
+async function collectAssessment(name,note,action,assetId,monitorId){
   text(name,'revision name',160);
   const verification=await window.HydraVerificationMatrix?.assessmentSnapshot(name);
   const settings=workspaceObject(false),analysis=settings.analysis||{},signature=analysisSignature();
@@ -246,7 +321,8 @@ async function collectAssessment(name,note,action,assetId){
   const sourceMetadata=source=>JSON.stringify([source?.sha256,source?.column,source?.quantity,source?.unit,source?.reference]);
   const notes=$('reviewNotes')?.value||'';
   const records=[evidence('project-context','Reports','Assessment record','workspace-context-v1',{
-    inputs:[...analysisBasis,['Model shift',analysis.time_offset_minutes,'min'],['Rainfall scale',analysis.rain_factor],['Detriment capture asset ID',assetId||null]],
+    inputs:[...analysisBasis,['Model shift',analysis.time_offset_minutes,'min'],['Rainfall scale',analysis.rain_factor],
+      ['Detriment capture asset ID',assetId||null],['Survey capture monitor ID',monitorId||null]],
     review:[['Workspace review note',notes],['Revision review note',note]],actions:[['Engineer action',action]]
   }),...(window.HydraDesignCalculations?.assessmentRecords()||[]),...verificationMatrixRecords(verification)];
   const comparison=state.comparisonSnapshot;
@@ -305,15 +381,22 @@ async function collectAssessment(name,note,action,assetId){
       review:[['Decision',review.decision],['Comments',review.comments],['References',review.references]]
     }));
 
-  const survey=diagnostic.survey;
-  if(survey?.batch&&diagnostic.surveyFresh?.('complete')){
-    const monitors=survey.batch.monitors||[],evaluated=monitors.filter(row=>row.status==='complete').length;
-    records.push(evidence('survey:overview','Flow survey','Complete survey assessment','',{
-      basis:[...analysisBasis,['Association source',JSON.stringify(survey.associationSource)]],
-      results:[['Monitor count',monitors.length],['Fully assessed monitors',evaluated],['Partial or unavailable monitors',monitors.length-evaluated],
-        ['Network-qualified WAPUG events',survey.batch.network?.qualified_wapug_events?.length??0]]
-    }));
-  }else if(survey?.batch)records.push(evidence('stale:survey','Flow survey','Survey evidence freshness','',{
+  const survey=diagnostic.survey,batch=diagnostic.surveyFresh?.('complete')?survey.batch:null;
+  const separateBalance=diagnostic.surveyFresh?.('balance')?survey.balance:null;
+  if(batch||separateBalance){
+    const context=JSON.parse(batch?survey.batchSignature:survey.balanceSignature);
+    const byPath=new Map([...state.files.values()].filter(item=>item.status==='ready').map(item=>[item.virtualPath,item.hash]));
+    let bytes=new Blob([JSON.stringify(records)]).size,matches=0;
+    for(const record of surveyAssessmentRecords(batch,separateBalance||batch?.volume_balance,context,analysisBasis,monitorId,
+      path=>byPath.get(path)||null,diagnostic.workflow26)){
+      bytes+=new Blob([JSON.stringify(record)]).size+1;
+      if(records.length>=1024||bytes>=maximumSnapshotSize)
+        throw new Error('The snapshot exceeds its evidence limit. Specify an exact Flow survey monitor ID or use the Flow survey report.');
+      records.push(record);matches++;
+    }
+    if(monitorId&&!matches)throw new Error('No current survey evidence matched that exact monitor ID.');
+  }else if(monitorId)throw new Error('Calculate a current survey assessment before filtering by monitor ID.');
+  if(survey?.batch&&!batch)records.push(evidence('stale:survey','Flow survey','Survey evidence freshness','',{
     actions:[['Recalculate','The complete survey assessment is stale for the current inputs.']]}));
 
   includeDetriment(records,assetId);
@@ -327,6 +410,7 @@ function mount(){
     <div class="mapping-grid"><label>Revision name<input id="hbAssessmentName" type="text" maxlength="160"></label>
     <div><label>Detriment asset ID (optional)<input id="hbAssessmentAsset" type="text" maxlength="384" placeholder="Exact report ID" aria-describedby="hbAssessmentAssetHelp"></label>
     <small id="hbAssessmentAssetHelp">Limits Detriment evidence to this exact ID. Other assessment evidence is included as usual.</small></div>
+    <label>Flow survey monitor ID (optional)<input id="hbAssessmentMonitor" type="text" maxlength="384" placeholder="Exact monitor ID"></label>
     <label>Revision review note<textarea id="hbAssessmentNote" maxlength="10000" rows="3"></textarea></label>
     <label>Outstanding engineering action<textarea id="hbAssessmentAction" maxlength="10000" rows="3"></textarea></label></div>
     <div id="hbAssessmentSides" class="mapping-grid"></div>
@@ -362,7 +446,7 @@ function mount(){
       const generation=++side.generation;
       try{
         const packet=await collectAssessment($('hbAssessmentName').value.trim(),$('hbAssessmentNote').value,$('hbAssessmentAction').value,
-          $('hbAssessmentAsset').value.trim());
+          $('hbAssessmentAsset').value.trim(),$('hbAssessmentMonitor').value.trim());
         if(generation!==side.generation)return;
         announce(side,packet);
         status.textContent=name+' assessment captured from current local evidence.';

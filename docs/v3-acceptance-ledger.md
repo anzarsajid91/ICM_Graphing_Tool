@@ -51,7 +51,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
 | 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Verified locally for assessment templates, section order, schematic, current calculation-sheet selection and local preview/export. Exact final full regressions remain open |
 | 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Partial. Reports includes v3 hydraulic design, legacy circular capacity and normal depth, and gravity sizing sheets. Coverage of remaining workspace calculations remains open |
-| 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Partial. Portable Reports snapshots include current calculation sheets, legacy and multi-event verification, spill and Storage, scoped Detriment records, decisions and actions. Detailed survey capture remains open |
+| 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Verified locally for worksheet, verification, spills, storage, survey and Detriment snapshots, provenance, inputs, outcomes, decisions and support-aware comparison |
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
 | 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Verified locally for the 34-method library, including survey balance, recorded-result profiles and the matched Detriment criteria |
 | 12.3 | Build metadata, security claims and release evidence | Versioned assurance covering actual feature, numerical, confidentiality and compatibility outcomes | Verified locally for revision-scoped historical and milestone entries. Final v3 production evidence remains gated by §20 |
@@ -67,6 +67,11 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Flow Survey revision evidence
+
+- Current survey snapshots retain the authoritative weekly QA results, selected monitor event-response metrics, workbook and record fingerprints, eligibility evidence, and branch volume balance. Calculated outcomes, recorded engineering reviews and historical reviews remain identifiable. The exact monitor scope never treats FM3 as FM03 and preserves upstream branch source references when reporting a downstream record.
+- Both desktop browsers exercised all existing survey process controls, keyboard disclosures, and Reports capture. A separate trapezoidal sum for 2016 intervals reproduced 120,960 m³ on each side and a ratio of 1.0 for FM01 + FM02 → FM03. The snapshot included its current Green review and reported source hashes. Request guards observed 105 and 103 requests with zero violations. Evidence is in `/workspace/hydra-evidence/v3/survey-report-handoff`.
 
 ### Method coverage for project evidence
 
