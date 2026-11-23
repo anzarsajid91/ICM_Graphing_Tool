@@ -77,6 +77,7 @@ Development is in draft PR #119. Version assignment is deferred until the comple
 
 - Reports gives a current Storage Assessment its own support, source hashes, units, thresholds, target, intermediate volumes, assumptions, method and build identity. The same preview and explicit local HTML export can be opened directly from Storage evidence without an unrelated graph mapping. The original numerical engine and all freshness checks are retained.
 - The reference episode produced 24 m³ over 240 seconds. Chromium and Firefox rendered the same maximum and total volume, 100% support, the 1 m threshold and zero-count target. Their guarded report runs observed 108 and 105 requests and zero confidentiality violations. The first concurrent Firefox run timed out before its initial pipe calculation. The same assertions passed on the sequential rerun. Evidence is in `/workspace/hydra-evidence/v3/storage-calculation-sheet`. The source and claim gates, 28 privacy tests and 153-resource build validation passed.
+- A distinct rerun verified the graph mapping was empty before calculating and opening the Storage worksheet, using the workspace-restore empty mapping path as preparation. Chromium and Firefox exported the same current source-backed sheet. Screenshots were scrolled to the worksheet itself. Evidence is in `/workspace/hydra-evidence/v3/storage-without-graph-maps`.
 
 ### Flow Survey revision evidence
 

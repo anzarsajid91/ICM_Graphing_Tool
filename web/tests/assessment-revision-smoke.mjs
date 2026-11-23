@@ -130,6 +130,15 @@ try{
   await scenarios.getByRole('button',{name:'Use this category',exact:true}).click();
   await scenarios.getByRole('status').filter({hasText:'Flooding included'}).waitFor();
 
+  // Use the same empty-mapping pathway as workspace restoration.
+  await page.evaluate(async()=>{
+    document.getElementById('observedSelect').value='';
+    document.getElementById('modelSelect').selectedIndex=-1;
+    document.getElementById('rainSelect').value='';
+    await applyMapping({allowEmpty:true});
+  });
+  assert.deepEqual(await page.evaluate(()=>state.mapping),{observed:'',models:[],rain:''});
+
   await openStorage();
   for(const [selector,quantity] of [['#storageLevelSelect','depth'],['#storageFlowSelect','flow']]){
     const key=await page.locator(`${selector} option`).evaluateAll((options,term)=>
@@ -156,7 +165,10 @@ try{
   const sources=frame.getByRole('table',{name:'Mapped storage sources',exact:true});
   assert.match(await sources.innerText(),/synthetic-storage-support\.csv.*[a-f0-9]{64}/s);
   assert.match(await frame.getByRole('table',{name:'Storage intermediate volumes',exact:true}).innerText(),/2026\s+24\s+24\s+100/);
-  if(process.env.ICM_EVIDENCE_DIR)await preview.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-storage-calculation-sheet-'+engine+'.png'});
+  if(process.env.ICM_EVIDENCE_DIR){
+    await frame.getByRole('heading',{name:'Storage calculation sheet',exact:true}).scrollIntoViewIfNeeded();
+    await preview.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-storage-calculation-sheet-'+engine+'.png'});
+  }
   const localReport=page.waitForEvent('download');
   await preview.getByRole('button',{name:'Download preview',exact:true}).click();
   const sheet=await fs.readFile(await (await localReport).path(),'utf8');
