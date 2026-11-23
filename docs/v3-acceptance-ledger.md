@@ -21,7 +21,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 3.1 | Home shortcuts, source pool, registry and assessment freshness APIs | Dashboard status reconciles to authoritative data and opens each relevant workspace | Verified locally |
 | 3.2 | Home default, route state, named workspaces | Restore user-selected assessment context safely while preserving the default landing route and legacy saves | Verified locally for in-tab network and verification review, route history, source invalidation and default landing |
 | 3.3 | Current help text and workspace routes | Six guided journeys with actual prerequisites, results and next actions | Verified locally |
-| 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Partial |
+| 3.4.1–6 | Native geometry import, native result parsers, detriment import | Geometry, time series, subcatchments, spill/storage/PFF, monitor results and detriment scripts. Each has documented Autodesk contracts and manual export, verified syntax, contract and round-trip. Record real ICM runtime availability separately | Verified locally for six supported script contracts and fallback instructions. Licensed ICM execution, native field flags and ICM-generated authoritative report examples remain external validation |
 | 4.1 | FDV and rainfall quality checks; source exclusions | Inspect and adjudicate configurable flatlines, discontinuities, gaps, irregular timesteps, duplicate timestamps, clock offset/drift, implausible values, unit conflicts | Verified locally with documentary unit and quantity findings and exact-basis workspace decisions |
 | 4.2 | Time offset, canonical units, supported temporal integration | Test rate/accumulation/level/status resampling, shifting, conversions, arithmetic and derived series using immutable originals and complete provenance | Numerical and recorded-state transformations, interval plots and exact local record reattachment verified locally. Wider transform handoffs remain open under §13 |
 | 4.3 | Plotly, shared graph state and rainfall overlays | Multi-monitor display with same axes, sync zoom, unit distinctions, visibility and local export | Verified locally |
@@ -453,6 +453,16 @@ other state.
   confidentiality violations. The download runs compared the exact staged
   bytes. Evidence is in `/workspace/hydra-evidence/v3/icm-node-storage-volume`
   and `/workspace/hydra-evidence/v3/icm-node-storage-volume-final`.
+- The Formula A script reads and exports the land-use rows referenced by
+  the selected catchments when available. Autodesk's 2026 Land Use Data
+  Fields confirms the exact field codes for population density, connectivity
+  and wastewater profile. The script retains raw values. The exact synthetic
+  Ruby-to-Hydra Bench review retained the explicit zero profile, proposed
+  0.5 ha × 60 people/ha = 30 people and 80% connectivity (24 connected),
+  preserved leading-zero IDs, and reported the absent land use as unresolved.
+  Both desktop browsers downloaded the exact staged files and guide with
+  26 and 34 app requests and zero violations. Evidence is in
+  `/workspace/hydra-evidence/v3/toolkit-land-use-roundtrip`.
 - The strengthened synthetic round-trip indexes the exported overflow
   discharge, storage level, monitored signed conduit velocity, node inflow,
   flood depth and flood volume as typed local time series. It checks exact

@@ -40,10 +40,16 @@ class UiNetwork
                                'ds_depth' => [0, 0.2, 0.3], 'us_vel' => [0, -0.2, nil], 'ds_vel' => [0, 0.5, 0.5] })
     weir = ReadOnlyAsset.new({ 'us_node_id' => '00127', 'ds_node_id' => '00129', 'link_suffix' => 'W', 'point_array' => [] },
                              { 'us_flow' => [0, 0, 0.06], 'ds_flow' => [0, 0, 0.06] })
-    catchment = ReadOnlyAsset.new({ 'subcatchment_id' => '0001', 'system_type' => 'Combined', 'population' => 100, 'base_flow' => nil,
-                                    'connectivity' => 90, 'node_id' => '00127', 'trade_flow' => 0.01, 'additional_foul_flow' => 0 })
-    @tables = { 'hw_node' => [n1], 'hw_conduit' => [link], 'hw_weir' => [weir], 'hw_subcatchment' => [catchment] }
+    catchment = { 'subcatchment_id' => '0001', 'system_type' => 'Combined', 'population' => 100, 'base_flow' => nil,
+                  'connectivity' => 90, 'node_id' => '00127', 'trade_flow' => 0.01, 'additional_foul_flow' => 0,
+                  'land_use_id' => '01', 'contributing_area' => 0.25, 'wastewater_profile' => 0 }
+    inherited = catchment.merge({ 'subcatchment_id' => '0002', 'population' => nil, 'contributing_area' => 0.5,
+                                  'connectivity' => nil, 'wastewater_profile' => nil })
+    unresolved = inherited.merge({ 'subcatchment_id' => '0003', 'land_use_id' => '02' })
+    @tables = { 'hw_node' => [n1], 'hw_conduit' => [link], 'hw_weir' => [weir],
+                'hw_subcatchment' => [catchment, inherited, unresolved].map { |row| ReadOnlyAsset.new(row) } }
     @nodes = { '00127' => n1, '00129' => n2 }
+    @land_uses = { '01' => ReadOnlyAsset.new({ 'land_use_id' => '01', 'population_density' => 60, 'connectivity' => 80, 'wastewater_profile' => 2 }) }
   end
 
   def row_objects_selection(table)
@@ -55,8 +61,9 @@ class UiNetwork
   end
 
   def row_object(table, id)
-    raise 'Unexpected lookup' unless table == 'hw_node'
-    @nodes.fetch(id)
+    return @nodes.fetch(id) if table == 'hw_node'
+    return @land_uses[id] if table == 'hw_land_use'
+    raise 'Unexpected lookup'
   end
 
   def list_timesteps

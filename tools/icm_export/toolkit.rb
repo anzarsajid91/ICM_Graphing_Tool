@@ -17,6 +17,7 @@ module HydraIcmExport
   LINK_COLUMNS = %w[us_node_id ds_node_id link_suffix point_array].freeze
   CATCHMENTS = %w[subcatchment_id system_type population contributing_area land_use_id wastewater_profile
                   drains_to node_id link_suffix ground_node connectivity trade_flow trade_profile base_flow additional_foul_flow].freeze
+  LAND_USE = %w[land_use_id population_density connectivity wastewater_profile].freeze
   RESULT_PROFILES = {
     :simulation => { 'hw_node' => { 'depnod' => 'm' },
                      'hw_conduit' => { 'us_flow' => 'm³/s', 'ds_flow' => 'm³/s', 'us_depth' => 'm', 'ds_depth' => 'm' } },
@@ -135,9 +136,26 @@ module HydraIcmExport
   def self.catchments(net, folder, scope, options)
     rows = table_rows(net, 'hw_subcatchment', scope)
     raise ArgumentError, 'Select the reviewed contributing subcatchments in the active GeoPlan.' if rows.empty?
+    extras = options.fetch(:extra_fields, {})
     write_csv(folder, 'formula_a_catchments.csv') do |csv|
-      add_table(csv, 'hw_subcatchment', rows, CATCHMENTS + options.fetch(:extra_fields, {}).fetch('hw_subcatchment', []),
-                %w[subcatchment_id], {})
+      add_table(csv, 'hw_subcatchment', rows, CATCHMENTS + extras.fetch('hw_subcatchment', []), %w[subcatchment_id], {})
+    end
+    references = fields_for(rows.first, :fields)['land_use_id']
+    return puts('Land Use ID is unavailable. Follow the native land-use and field-flag export instructions.') unless references
+    ids = rows.map { |row| row[references].to_s.strip }.reject(&:empty?).uniq
+    return puts('The selected subcatchments have no recorded land-use reference.') if ids.empty?
+    land_use = ids.map do |id|
+      begin
+        net.row_object('hw_land_use', id)
+      rescue StandardError
+        nil
+      end
+    end.compact
+    missing = ids.size - land_use.size
+    puts "Land-use references unavailable for #{missing} selected ID(s). Review these using native ICM export." if missing.positive?
+    return if land_use.empty?
+    write_csv(folder, 'formula_a_land_use.csv') do |csv|
+      add_table(csv, 'hw_land_use', land_use, LAND_USE + extras.fetch('hw_land_use', []), %w[land_use_id], {})
     end
   end
 

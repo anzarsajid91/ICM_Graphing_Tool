@@ -44,8 +44,8 @@ is part of the scripts.
 ## Selection, fields and clocks
 
 The final line accepts an optional Ruby hash. `:link_tables` restricts the
-geometry job. `:extra_fields` adds reviewed scalar geometry or catchment
-field names by table. `:result_fields` replaces the documented default
+geometry job. `:extra_fields` adds reviewed scalar geometry, catchment or
+land-use field names by table. `:result_fields` replaces the documented default
 table-to-attribute-and-unit mapping for a result job. Check the relevant
 Autodesk data-field reference and units before passing any override. Choose
 time-varying result fields that are available for replay. Compare report
@@ -75,7 +75,7 @@ the approximate size of the numeric cells before writing each CSV.
 | --- | --- | --- |
 | Network geometry | `network_geometry.csv` with `**** hw_` sections, typed IDs, metric nodes, supported links and any readable bends. Selected links include their endpoint nodes. Import in Network Schematic. | Use Network → Export to CSV files with native units, field descriptions, unit labels and link vertices. Keep node and link tables together. |
 | Simulation series | One results CSV per selected object table and attribute, with sample clock and units. Import mapped results in Network Schematic. Choose a single mapped column when using a conventional timeseries. | Use Results → CSV export with Results timestep, header, units and selected objects. Preserve the simulation and model revision metadata alongside it. |
-| Formula A catchments | `formula_a_catchments.csv` with reviewed `hw_subcatchment` source fields. Import through Formula A. Pair with the matching `hw_land_use` CSV to review native population, connectivity and profile defaults. Review contributing systems and daily allowances separately. | Export `hw_subcatchment` and `hw_land_use` from the same revision with row flags, field descriptions and native units. Keep applicable wastewater and trade event settings as separate evidence. Use Formula A review to map supported confirmed values. |
+| Formula A catchments | `formula_a_catchments.csv` and local `formula_a_land_use.csv` for referenced land uses available in the active network. Import both through Formula A and confirm the area and density units. Review contributing systems and daily allowances separately. | Export `hw_subcatchment` and `hw_land_use` from the same revision with row flags, field descriptions and native units. Keep applicable wastewater and trade event settings as separate evidence. Use Formula A review to map supported confirmed values. |
 | Spill, storage and continuation flow | Selected overflow and continuation link-end flow, levels and current total node volume where ICM exposes `VOLUME`. Engineers choose the effective discharge and continuation sides. Map node volume as Storage volume for exact replay. | Use Results → CSV export for overflow links, continuation links, storage levels and documented node volume. Export the storage curve where needed. Import each time series with its own observed or modelled quantity. |
 | Monitoring results | Node levels and node inflow when available, plus conduit-end flow, depth and velocity. Review the installed host and sensor datum before mapping. | Export native ICM results for the monitored links or nodes and selected compatible quantities. Keep the flow survey observations and deployment mapping as independent inputs. |
 | Detriment results | Node level and flooding results plus selected overflow flows. Freeboard requires compatible ground and water levels in the same datum. The time-series files support investigation. | Use ICM's appropriate flooding and level reports and export matched baseline and proposed evidence. Follow Hydra Bench Detriment's report field and scenario requirements for authoritative comparisons. |
@@ -106,7 +106,12 @@ Timestamp,00127.B,00129.C
 2025-01-01 00:05:00.000,,0.02
 ```
 
-The catchment export carries native model fields. Nominal trade flow and
+The catchment export carries native model fields. If any referenced land-use
+rows are unavailable, the log gives the number omitted. Use the standalone
+native export with flags to distinguish an inherited value from a value
+stored explicitly in the model. Select the relevant contributing catchments
+before opening the Formula A catchment mapping workflow, which reviews up to
+100 catchment rows per calculation. Nominal trade flow and
 model base flow require review before use as regulatory daily allowances.
 Model system type does not establish separate-foul eligibility. Native flags
 and inherited profiles remain a manual export dependency when the Ruby row
@@ -120,6 +125,7 @@ Autodesk references checked 2026-11-21
 - [Autodesk's simulation-result Ruby example](https://github.com/innovyze/Open-Source-Support/blob/main/01%20InfoWorks%20ICM/01%20Ruby/01%20InfoWorks/0062%20-%20Export%20simulation%20results%20to%20CSV/readme.md)
 - [Native network export](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-85146D52-4303-412A-B9EE-149B9CAE1488.htm)
 - [Subcatchment fields and inherited values](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-1F3FA957-FE1B-4BD6-A73C-3DF2F6ACD839.htm)
+- [Land Use Data Fields](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-16A33809-93A2-4A23-B0AA-B41B0C1A2D12.htm)
 - [Native model result CSV dialog](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-30AFF9A8-86D6-418C-A17F-127D09EC8B4D.htm)
 - [Node result field definitions](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-18FD4962-1E97-491A-AD6E-6DF35191301D.htm)
 - [Link result field definitions](https://help.autodesk.com/cloudhelp/2026/ENU/ICM-Help/files/GUID-174D9482-C7A3-4A12-B8E3-993F2C088F46.htm)
