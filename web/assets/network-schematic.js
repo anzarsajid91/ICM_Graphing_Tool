@@ -2745,7 +2745,6 @@ function mountSimulationView(){
       const showProposalEnds=Boolean(current.proposal&&current.profileRouteRevision===routeRevision);
       if(datum&&current.columns[0].asset.kind==='link'){
         const steps=new Set(routeDraft.steps.map(step=>step.id));
-        if(!showProposalEnds)fields.verifyProfileGeometry.checked=false;
         const ends=async (run,samples)=>{
           const byEdge=new Map();
           const collect=(columns,matches,values)=>{
@@ -2983,15 +2982,19 @@ function mountSimulationView(){
   panel.addEventListener('toggle',()=>{if(panel.open)refreshSources();else stop();});
   window.addEventListener('icm:simulation-sources-changed',refreshSources);
   window.addEventListener('icm:route-changed',({detail})=>{if(detail.page!=='schematic')stop();else if(panel.open)refreshSources();});
-  simulationView={decorate,reset,refreshSources,profile:()=>profile,refreshProfile:()=>{if(layer?.geometryDatum)void drawFrame();}};
+  simulationView={decorate,reset,refreshSources,profile:()=>profile,refreshProfile:()=>{
+    if(!layer?.geometryDatum)return;
+    if(layer.profileRouteRevision!==routeRevision)fields.verifyProfileGeometry.checked=false;
+    if(routeDraft.steps.length)void drawFrame();
+  }};
 }
 
 function displayProfile(){
   const steps=routeDraft.steps;
   $('nsProfile').hidden=!steps.length;$('nsCapacityScreen').hidden=true;renderRouteTrace();
+  simulationView?.refreshProfile();
   if(!steps.length)return;
   plotProfile(steps);
-  simulationView?.refreshProfile();
   renderProfileControls();
   const model=routeDraft.model;
   const nodes=new Set(steps.flatMap(step=>[step.from,step.to]));

@@ -77,6 +77,7 @@ Development is in draft PR #119. Version assignment is deferred until the comple
 
 ### Reviewed revision long sections
 
+- Hosted browser-interactions run 45144631142 exposed an asynchronous confirmation race when the route endpoint changes. The route now clears its proposal-geometry confirmation synchronously, before reading another playback frame. The same Playwright assertion is retained, plus an assertion immediately after the endpoint edit and before opening the new profile. Both desktop browsers passed the full simulation and network-route tests on the correction. Observed app requests were 32 each for simulation and 136 and 135 for route review with zero confidentiality violations. A new hosted run must verify the correction.
 - The native revision audit can compare the open ordered typed route
   without applying the revised model to the detailed map. It reports
   missing links, changed endpoints, changed structure type and nominal

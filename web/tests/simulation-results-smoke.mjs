@@ -391,7 +391,9 @@ try {
   await playback.getByRole('button',{name:'Next sample'}).click();
   await clock.getByText('00:20:00.000',{exact:false}).waitFor();
   assert.equal(await proposedEnds.count(),2);assert.equal(await proposedGrade.count(),0);
-  await page.selectOption('#nsRouteEnd','D');await page.click('#nsOpenProfile');
+  await page.selectOption('#nsRouteEnd','D');
+  assert.equal(await sharedGeometry.isChecked(),false);
+  await page.click('#nsOpenProfile');
   await page.locator('#nsProfileModelInfo').getByText('Review the shared geometry and apply the proposal again',{exact:false}).waitFor();
   assert.equal(await proposedEnds.count(),0);assert.equal(await sharedGeometry.isChecked(),false);
   await page.selectOption('#nsRouteEnd','B');await page.click('#nsOpenProfile');
