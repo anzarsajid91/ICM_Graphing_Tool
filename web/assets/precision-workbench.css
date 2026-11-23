@@ -595,6 +595,7 @@ body.precision-workbench{
 .hb-calculation-sheet :is(p,th,td){overflow-wrap:anywhere}
 .hb-calculation-sheet svg{max-width:100%;height:auto}
 .hb-calculation-sheet main>table{display:block;overflow:auto}
+#hbAssessmentRows :is(th,td){overflow-wrap:anywhere}
 
 /* Additional reference: inset desktop navigation, with existing collapse/focus geometry. */
 @media(min-width:901px){.pw-rail{top:12px;height:calc(100vh - 24px);margin:12px 0 12px 12px;border:1px solid var(--pw-border);border-radius:var(--hb-radius-card)}.precision-workbench.pw-rail-collapsed .pw-rail,.precision-workbench.pw-focus-canvas .pw-rail{padding-inline:8px}.pw-rail-collapsed .pw-primary-nav button,.pw-focus-canvas .pw-primary-nav button,.pw-rail-collapsed .pw-about-nav button,.pw-focus-canvas .pw-about-nav button{padding-inline:8px}}

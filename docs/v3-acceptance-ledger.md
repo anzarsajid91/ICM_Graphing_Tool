@@ -51,7 +51,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
 | 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Verified locally for assessment templates, section order, schematic, current calculation-sheet selection and local preview/export. Exact final full regressions remain open |
 | 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Partial. Reports includes v3 hydraulic design, legacy circular capacity and normal depth, and gravity sizing sheets. Coverage of remaining workspace calculations remains open |
-| 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Partial. Portable Reports snapshots, reviewed inputs, current calculation-sheet results, mapped comparison/spill support, decisions and action register. Coverage of the remaining workspace evidence is open |
+| 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Partial. Portable Reports snapshots include current calculation sheets, mapped verification/spill support, Storage and scoped Detriment records, decisions and actions. Qualifying multi-event verification and survey detail remain open |
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
 | 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Partial |
 | 12.3 | Build metadata, security claims and release evidence | Versioned assurance covering actual feature, numerical, confidentiality and compatibility outcomes | Verified locally for revision-scoped historical and milestone entries. Final v3 production evidence remains gated by §20 |
@@ -67,6 +67,12 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Storage and Detriment revision evidence
+
+- Reports captures the existing Storage Assessment only while its recorded inputs are current. The snapshot preserves episode-attributed and calendar-year records separately, with source references, assumptions, coverage, exclusions, threshold and target. A calendar comparison with unsupported discharge is withheld.
+- Detriment capture uses the current report scope and the explicitly classified, current combined scenario register. An exact optional ID preserves leading zeros. The report retains raw paired values, thresholds, scope, dates, datum, report fingerprints and independent outcomes. It keeps report IDs, typed assets and proposals separate and rejects snapshots beyond their record or size limit. Changed basis or absent reviewed scope withholds numerical comparison.
+- Both desktop browsers used the normal report and calculation controls. A synthetic 0.1 m³/s discharge for 240 s gave 24 m³ in both storage summaries. Moving the count target from 0 to 1 left 0 m³ required with a changed assessment basis. Flooding rose from 2 to 8 m³. The 6 m³ change was withheld for comparison after a threshold change, and the previous combined register entry was removed from current evidence. Exact-ID matching, local CSV and HTML exports, bounded inputs and keyboard access were exercised. Revision evidence had 106 and 104 observed requests with zero confidentiality violations. Evidence is in `/workspace/hydra-evidence/v3/revision-stored-evidence-final`.
 
 ### Recorded-state transformation
 

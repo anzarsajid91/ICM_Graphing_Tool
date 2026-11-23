@@ -7,6 +7,7 @@ const measured=(value,unit='')=>value==null?'Unavailable':(value<0?'−':'')+mag
 const fields=['Asset ID','Proposal','Baseline','Proposed','Change','Criterion status','Review'];
 const supplementary={level:['Level criterion','Freeboard A','Freeboard B','Freeboard change','Freeboard criterion'],
   spill:['Duration A','Duration B','Duration change','Count criterion','Duration criterion']};
+let assessmentGroups=()=>[];
 const make=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
 function button(text,handler){const el=make('button',text);el.type='button';el.onclick=handler;return el;}
 function labelled(text,el){const label=make('label');label.className='dt-field';el.setAttribute('aria-label',text);label.append(make('span',text),el);return label;}
@@ -223,7 +224,7 @@ function mountCombined(currentCategory,currentBatch,inspect,navigate){
   }
   reference.onchange=rebuild;search.oninput=()=>{page=0;render();};
   mapProposal.onchange=()=>{mapConfirmed.checked=false;mapStatus.textContent='';};
-  return {controls,dialog,refresh};
+  return {controls,dialog,refresh,eligible};
 }
 function mount(navigate){
   const api=window.ICMDetriment,root=document.getElementById('tab-detriment-scenarios');
@@ -252,6 +253,7 @@ function mount(navigate){
   let active=null,running=false,page=0;
   const category=()=>select.value;
   const combined=mountCombined(category,currentBatch,showEvidence,navigate);
+  assessmentGroups=combined.eligible;
   article.append(intro,controls,basis,mapping,draft,confirmLabel,actions,message,output,combined.controls,combined.dialog,dialog);root.replaceChildren(article);
   function drafts(){
     if(!savedDrafts.has(category())){const context=api.batchContext(category());
@@ -381,5 +383,5 @@ function mount(navigate){
   window.addEventListener('icm:route-changed',event=>{if(event.detail.workspace==='detriment'&&event.detail.page==='comparison')refresh();});
   refresh();
 }
-window.HydraDetrimentScenarios={mount,buildRegister};
+window.HydraDetrimentScenarios={mount,buildRegister,assessmentGroups:()=>assessmentGroups()};
 })();

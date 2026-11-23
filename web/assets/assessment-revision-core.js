@@ -69,6 +69,10 @@ function compareSnapshots(baseline,current){
     if(left.method!==right.method)return 'The recorded calculation method changed.';
     if(!left.method)return 'The calculation method is unavailable.';
     const other=index(right.basis);
+    if(left.basis.some(field=>field.key==='Reviewed scope supplied'&&field.value===false)||other.get('Reviewed scope supplied')?.value===false)
+      return 'A reviewed assessment scope or dated period is unavailable.';
+    if(left.basis.some(field=>field.key==='Complete discharge support'&&field.value===false)||other.get('Complete discharge support')?.value===false)
+      return 'Complete discharge support is unavailable for a calendar volume comparison.';
     return left.basis.length!==other.size||left.basis.some(field=>!sameValue(field,other.get(field.key)))?
       'The recorded assessment basis changed.':null;
   }
@@ -106,14 +110,108 @@ function evidence(id,workspace,title,method,{basis=[],inputs=[],results=[],revie
   return {id,workspace,title,method,...Object.fromEntries(Object.entries({basis,inputs,results,review,actions}).map(([key,values])=>[key,fields(values)]))};
 }
 
-function collectAssessment(name,note,action){
+const recordedJSON=value=>value==null?null:JSON.stringify(value,(_key,item)=>object(item)?
+  Object.fromEntries(Object.entries(item).sort(([a],[b])=>a<b?-1:a>b?1:0)):item);
+
+function storageAssessmentRecords(result,settings,workspaceBasis){
+  const physical=result.physical||{};
+  const basis=[...workspaceBasis,['Coverage start',physical.analysis_start],['Coverage end',physical.analysis_end],
+    ['Supported level time',physical.valid_seconds,'s'],['Unknown level time',physical.unknown_seconds,'s'],
+    ['Excluded level time',physical.excluded_seconds,'s'],['Level quantity',result.level_contract?.quantity],
+    ['Threshold',result.threshold_canonical_m,'m'],['Target 12/24 count',settings.target_count],
+    ['Applied source exclusions',recordedJSON(settings.exclusions)]];
+  const sources=[['Level source',recordedJSON(settings.level)],['Flow source',recordedJSON(settings.flow)],
+    ['Level conversion',recordedJSON(result.level_contract)],['Flow conversion',recordedJSON(result.flow_contract)],
+    ['Entered threshold',settings.threshold,settings.threshold_unit]];
+  const saved=[evidence('storage:assessment','Spills','Storage Assessment',result.method,{
+    basis,inputs:sources,results:[['Assessment status',result.calculation_status]],
+    review:[['Volume accounting',result.volume_year_basis]]
+  })];
+  for(const year of result.screening||[]){
+    saved.push(evidence(`storage:episode:${year.year}`,'Spills',`Storage Assessment · episode year ${year.year}`,result.method,{
+      basis:[...basis,['Volume attribution','Episode year'],['Discharge coverage fraction',year.coverage_fraction]],
+      results:[['Required storage',year.required_storage_m3,'m³'],['Physical episodes',year.physical_blocks],
+        ['Original 12/24 count',year.compatibility_spill_count],['Remaining 12/24 count',year.remaining_spill_count],
+        ['Episode-attributed discharge',year.annual_block_volume_m3,'m³'],['Screening status',year.status]],
+      review:[['Applicability',year.reason]]
+    }));
+  }
+  for(const year of result.calendar_volumes||[]){
+    saved.push(evidence(`storage:calendar:${year.year}`,'Spills',`Storage Assessment · calendar year ${year.year}`,result.method,{
+      basis:[...basis,['Volume attribution','Calendar year'],['Complete discharge support',year.status==='complete']],
+      results:[['Physical discharge',year.volume_m3,'m³'],['Retained supported discharge',year.volume_m3_partial,'m³'],
+        ['Volume status',year.status]]
+    }));
+  }
+  return saved;
+}
+
+function reportSource(source,includeName=true){
+  if(!source)return null;
+  const {path,id,name,reference,...provenance}=source;
+  return includeName?{name,...provenance}:provenance;
+}
+
+function detrimentAssessmentRecord(result,row,{assetKind='report',baseline=null,proposal=null}={}){
+  const anchor=reportSource(result.scenario_a),candidate=reportSource(result.scenario_b);
+  const categories={flooding:'Flood volume',level:'Maximum level',spill:result.count_unit==='spills'?'Spill count':'Exported count'};
+  const category=categories[result.kind],title=[row.asset_id,category,proposal].filter(Boolean).join(' · ');
+  const reviewedScope=[anchor,candidate].every(source=>Boolean(source.scope||source.period_start&&source.period_end));
+  const basis=[['Asset identity',assetKind],['Reviewed scope supplied',reviewedScope],['Reviewed common baseline revision',baseline],
+    ['Baseline extraction',recordedJSON(reportSource(result.scenario_a,false))],
+    ['Proposal scope',candidate.scope],['Proposal period start',candidate.period_start],['Proposal period end',candidate.period_end],
+    ['Proposal datum',candidate.datum],['Proposal template',candidate.template],
+    ['Proposal flood volume interpretation',candidate.flood_measure],['Proposal attribute filter',candidate.attribute_value],
+    ['Criteria',recordedJSON(result.criteria)],['New flooding policy',result.new_flooding_policy],
+    ['Spill combination policy',result.spill_combination_policy],['Count tolerance',result.count_tolerance,row.unit],
+    ['Duration tolerance',result.duration_tolerance_hours,'h'],['Counting mode',result.counting_mode],
+    ['Date convention',result.date_convention],['Boundary policy',result.boundary_policy],
+    ['Ground extraction',recordedJSON(reportSource(result.ground_source,false))],
+    ['Baseline detail extraction',recordedJSON(reportSource(result.detail_source_a,false))]];
+  const results=[[`${category} A`,row.a,row.unit],[`${category} B`,row.b,row.unit],[`Change in ${category.toLowerCase()}`,row.delta,row.unit],
+    ['Assessment status',row.status],['Assessment flags',row.flags.join('; ')]];
+  if(result.kind==='level')results.push(['Freeboard A',row.freeboard_a,'m'],['Freeboard B',row.freeboard_b,'m'],
+    ['Change in freeboard',row.freeboard_change,'m']);
+  if(result.kind==='spill')results.push(['Actual duration A',row.duration_a_hours,'h'],['Actual duration B',row.duration_b_hours,'h'],
+    ['Change in actual duration',row.duration_delta_hours,'h'],['Count criterion status',row.count_status],
+    ['Duration criterion status',row.duration_status]);
+  return evidence('detriment:'+JSON.stringify([result.kind,assetKind,row.asset_id,proposal]),'Detriment assessment',title,result.method,{
+    basis,inputs:[['Baseline report',anchor.name],['Proposed extraction',recordedJSON(candidate)],
+      ['Proposal detail extraction',recordedJSON(reportSource(result.detail_source_b))],
+      ['Baseline raw report values',recordedJSON(row.evidence_a)],['Proposed raw report values',recordedJSON(row.evidence_b)]],results
+  });
+}
+
+function includeDetriment(records,assetId){
+  let matches=0,bytes=new Blob([JSON.stringify(records)]).size;
+  const exact=row=>!assetId||row.asset_id===assetId;
+  function append(result,row,identity){
+    const record=detrimentAssessmentRecord(result,row,identity);
+    bytes+=new Blob([JSON.stringify(record)]).size+1;
+    if(records.length>=1024||bytes>=maximumSnapshotSize)
+      throw new Error('The snapshot exceeds its evidence limit. Specify an exact Detriment asset ID or use the full Detriment audit export.');
+    records.push(record);matches++;
+  }
+  for(const {result,assetIds} of window.ICMDetriment?.assessmentPairs()||[]){
+    const selected=new Set(assetIds);
+    for(const row of result.rows)if(exact(row)&&(!selected.size||selected.has(row.asset_id)))append(result,row);
+  }
+  for(const {assetKind,baseline,data} of window.HydraDetrimentScenarios?.assessmentGroups()||[]){
+    for(const {label:proposal,result} of data.scenarios){
+      for(const row of result?.rows||[])if(exact(row))append(result,row,{assetKind,baseline,proposal});
+    }
+  }
+  if(assetId&&!matches)throw new Error('No current Detriment evidence matched that exact asset ID. Review the assessment and its applied asset list.');
+}
+
+function collectAssessment(name,note,action,assetId){
   const settings=workspaceObject(false),analysis=settings.analysis||{},signature=analysisSignature();
   const analysisBasis=[['Project clock',settings.time_basis],['Start',analysis.analysis_start],['End',analysis.analysis_end],
     ['Maximum sample gap',analysis.max_gap_seconds,'s'],['Applied exclusions',JSON.stringify(settings.exclusions||[])]];
   const sourceMetadata=source=>JSON.stringify([source?.sha256,source?.column,source?.quantity,source?.unit,source?.reference]);
   const notes=$('reviewNotes')?.value||'';
   const records=[evidence('project-context','Reports','Assessment record','workspace-context-v1',{
-    inputs:[...analysisBasis,['Model shift',analysis.time_offset_minutes,'min'],['Rainfall scale',analysis.rain_factor]],
+    inputs:[...analysisBasis,['Model shift',analysis.time_offset_minutes,'min'],['Rainfall scale',analysis.rain_factor],['Detriment capture asset ID',assetId||null]],
     review:[['Workspace review note',notes],['Revision review note',note]],actions:[['Engineer action',action]]
   }),...(window.HydraDesignCalculations?.assessmentRecords()||[])];
   const comparison=state.comparisonSnapshot;
@@ -158,6 +256,13 @@ function collectAssessment(name,note,action){
   }else if(spills)records.push(evidence('stale:spills','Spills','Spill evidence freshness','',{
     actions:[['Recalculate','Spill evidence is stale for the current inputs.']]}));
 
+  if(state.storage){
+    const storageSignature=storageInputSignature();
+    if(state.storageSignature===storageSignature)records.push(...storageAssessmentRecords(state.storage,JSON.parse(storageSignature),analysisBasis));
+    else records.push(evidence('stale:storage','Spills','Storage evidence freshness','',{
+      actions:[['Recalculate','Storage evidence is stale for the current inputs.']]}));
+  }
+
   const reviews=diagnostic.verificationReviews?.report()||[];
   for(const review of reviews)records.push(evidence('review:'+JSON.stringify([review.asset,review.scenario,review.period]),
     'Verification',`${review.asset} · ${review.scenario}`,'engineer-review-v1',{
@@ -176,6 +281,7 @@ function collectAssessment(name,note,action){
   }else if(survey?.batch)records.push(evidence('stale:survey','Flow survey','Survey evidence freshness','',{
     actions:[['Recalculate','The complete survey assessment is stale for the current inputs.']]}));
 
+  includeDetriment(records,assetId);
   return readSnapshot(JSON.stringify({schema_version:1,name,build:buildToken,created:new Date().toISOString(),records}));
 }
 
@@ -184,6 +290,8 @@ function mount(){
   root.innerHTML=`<article class="panel"><div class="panel-head"><div><h2>Assessment revision comparison</h2>
     <p>Capture current evidence or open a local snapshot. Compare reviewed inputs, results and decisions with their recorded basis.</p></div></div>
     <div class="mapping-grid"><label>Revision name<input id="hbAssessmentName" type="text" maxlength="160"></label>
+    <div><label>Detriment asset ID (optional)<input id="hbAssessmentAsset" type="text" maxlength="384" placeholder="Exact report ID" aria-describedby="hbAssessmentAssetHelp"></label>
+    <small id="hbAssessmentAssetHelp">Limits Detriment evidence to this exact ID. Other assessment evidence is included as usual.</small></div>
     <label>Revision review note<textarea id="hbAssessmentNote" maxlength="10000" rows="3"></textarea></label>
     <label>Outstanding engineering action<textarea id="hbAssessmentAction" maxlength="10000" rows="3"></textarea></label></div>
     <div id="hbAssessmentSides" class="mapping-grid"></div>
@@ -218,7 +326,8 @@ function mount(){
     capture.onclick=()=>{
       ++side.generation;
       try{
-        announce(side,collectAssessment($('hbAssessmentName').value.trim(),$('hbAssessmentNote').value,$('hbAssessmentAction').value));
+        announce(side,collectAssessment($('hbAssessmentName').value.trim(),$('hbAssessmentNote').value,$('hbAssessmentAction').value,
+          $('hbAssessmentAsset').value.trim()));
         status.textContent=name+' assessment captured from current local evidence.';
       }catch(error){status.textContent=error.message;}
     };
@@ -241,7 +350,8 @@ function mount(){
   const display=value=>value===null?'Unavailable':String(value);
   function renderTable(records){
     const wrapper=elem('div'),table=elem('table'),heading=table.createTHead().insertRow();
-    wrapper.className='table-wrap';table.createCaption().textContent='Assessment changes';
+    wrapper.className='table-wrap';wrapper.tabIndex=0;wrapper.setAttribute('role','region');wrapper.setAttribute('aria-label','Assessment change table');
+    table.className='data-table';table.createCaption().textContent='Assessment changes';
     for(const label of labels){const th=elem('th',label);th.scope='col';heading.append(th);}
     const body=table.createTBody();
     for(const record of records){const row=body.insertRow();for(const value of cells(record))row.insertCell().textContent=display(value);}
@@ -277,5 +387,5 @@ function mount(){
   };
 }
 
-globalThis.HydraAssessmentRevision={readSnapshot,compareSnapshots,mount};
+globalThis.HydraAssessmentRevision={readSnapshot,compareSnapshots,storageAssessmentRecords,detrimentAssessmentRecord,mount};
 })();

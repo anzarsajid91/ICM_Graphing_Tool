@@ -34,6 +34,25 @@ async function download(name){
 const upload=(side,packet)=>revisions.getByLabel('Open '+side+' snapshot',{exact:true}).setInputFiles({
   name:'synthetic-'+side+'.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(packet))});
 
+const detrimentField=key=>page.locator(`#dtForm [data-key="${key}"]`);
+async function runFloodAssessment(){
+  await page.locator('#runDetrimentBtn').click();
+  await page.locator('#dtStatus').filter({hasText:'Assessment complete'}).waitFor({timeout:90000});
+}
+async function openDetriment(){
+  await page.locator('button[data-workspace="detriment"]').click();
+  await page.getByRole('tab',{name:'Flooding detriment',exact:true}).click();
+}
+async function openStorage(){
+  await page.locator('button[data-workspace="spills"]').click();
+  await page.getByRole('tab',{name:'Storage assessment',exact:true}).click();
+}
+async function runStorage(){
+  await page.locator('#runStorageBtn').click();
+  await page.waitForFunction(()=>state.storage&&state.storageSignature===storageInputSignature()&&
+    !document.body.classList.contains('operation-busy'),null,{timeout:90000});
+}
+
 try{
   await guard.navigate(page,base);
   await calculate({static_head_m:-1,flow_m3_s:.05,curve_max_m3_s:.15,diameter_m:.3,length_m:1000,
@@ -83,5 +102,79 @@ try{
   }
   await button('Clear baseline').click();await status(/Baseline snapshot cleared/);assert(await compare.isDisabled());
   await upload('baseline',baseline);await status(/Baseline snapshot opened locally/);assert(await compare.isEnabled());
+
+  await page.locator('button[data-workspace="data"]').click();
+  const times=[0,2,2,0,0,0].map((depth,index)=>`2026-01-01 00:${String(index*2).padStart(2,'0')}:00,${depth},0.1`);
+  await page.setInputFiles('#fileInput',{name:'synthetic-storage-support.csv',mimeType:'text/csv',
+    buffer:Buffer.from(['Timestamp,Depth (m),Flow (m3/s)',...times,''].join('\n'))});
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.stateSummary().readyFiles===1,null,{timeout:90000});
+  await page.setInputFiles('#dtFileInput',['tests/fixtures/detriment/flood-a.csv','tests/fixtures/detriment/flood-b.csv']);
+  await page.waitForFunction(()=>window.__ICM_WORKBENCH__.stateSummary().readyFiles===3,null,{timeout:90000});
+
+  await openDetriment();
+  await detrimentField('a.id').selectOption({label:'flood-a.csv'});
+  await detrimentField('b.id').selectOption({label:'flood-b.csv'});
+  await detrimentField('scope').fill('Synthetic matched design storms');
+  await detrimentField('scope_confirmed').check();
+  await detrimentField('threshold').fill('5');
+  await runFloodAssessment();
+  await page.getByRole('tab',{name:'Scenario comparison',exact:true}).click();
+  const scenarios=page.locator('#tab-detriment-scenarios');
+  await scenarios.getByLabel('Proposal 1 name',{exact:true}).fill('Expansion');
+  await scenarios.getByLabel('I reviewed the shared proposal mapping and basis',{exact:true}).check();
+  await scenarios.getByRole('button',{name:'Compare against baseline'}).click();
+  await scenarios.getByRole('status').filter({hasText:'1 scenarios compared · 0 unavailable'}).waitFor({timeout:90000});
+  await scenarios.getByText('Include category in combined register',{exact:true}).click();
+  await scenarios.getByLabel('Baseline model revision',{exact:true}).fill('Synthetic baseline release');
+  await scenarios.getByLabel('Report asset identity',{exact:true}).selectOption('node');
+  await scenarios.getByRole('button',{name:'Use this category',exact:true}).click();
+  await scenarios.getByRole('status').filter({hasText:'Flooding included'}).waitFor();
+
+  await openStorage();
+  for(const [selector,quantity] of [['#storageLevelSelect','depth'],['#storageFlowSelect','flow']]){
+    const key=await page.locator(`${selector} option`).evaluateAll((options,term)=>
+      options.find(option=>option.textContent.includes('synthetic-storage-support')&&option.textContent.toLowerCase().includes(term))?.value,quantity);
+    assert(key);
+    await page.selectOption(selector,key);
+  }
+  for(const [selector,unit] of [['#storageLevelUnit','m'],['#storageFlowUnit','m3/s'],['#storageThresholdUnit','m']])await page.selectOption(selector,unit);
+  await page.locator('#storageThreshold').fill('1');
+  await page.locator('#targetCount').fill('0');
+  await runStorage();
+  await openRevisions();
+  const assetId=revisions.getByLabel('Detriment asset ID (optional)',{exact:true});
+  await assetId.fill('1');await button('Capture baseline').click();await status(/No current Detriment evidence matched/);
+  await assetId.fill('001');await button('Capture baseline').click();await status(/Baseline assessment captured/);
+  const reviewed=JSON.parse(await download('Download baseline snapshot'));
+  const value=(record,group,key)=>record[group].find(field=>field.key===key).value;
+  const assessment=reviewed.records.find(record=>record.id==='storage:episode:2026');
+  assert.equal(value(assessment,'results','Required storage'),24);
+  assert.equal(value(reviewed.records.find(record=>record.id==='storage:calendar:2026'),'results','Physical discharge'),24);
+  const matched=reviewed.records.filter(record=>record.id.startsWith('detriment:'));
+  assert.deepEqual(matched.map(record=>JSON.parse(record.id.slice(10))),[
+    ['flooding','report','001',null],['flooding','node','001','Expansion']]);
+  const [flood,typed]=matched;
+  assert.equal(value(flood,'results','Change in flood volume'),6);
+  assert.equal(value(flood,'results','Assessment status'),'detriment');
+  assert.match(value(flood,'basis','Baseline extraction'),/"sha256":"[a-f0-9]{64}"/);
+  assert.equal(value(typed,'basis','Reviewed common baseline revision'),'Synthetic baseline release');
+
+  await openDetriment();await detrimentField('threshold').fill('6');await runFloodAssessment();
+  await openStorage();await page.locator('#targetCount').fill('1');await runStorage();
+  await openRevisions();await button('Capture proposed').click();await status(/Proposed assessment captured/);
+  const changed=JSON.parse(await download('Download proposed snapshot'));
+  assert.deepEqual(changed.records.filter(record=>record.id.startsWith('detriment:')).map(record=>record.id),[flood.id]);
+  assert.equal(value(changed.records.find(record=>record.id===assessment.id),'results','Required storage'),0);
+  await compare.click();await filter.selectOption('Not comparable');
+  await table.getByRole('row',{name:/Required storage.*24 m³.*0 m³.*basis changed/}).waitFor();
+  await table.getByRole('row',{name:/Change in flood volume.*6 m³.*6 m³.*basis changed/}).waitFor();
+  const scopedAudit=await download('Download revision audit CSV');
+  assert.match(scopedAudit,/"001 · Flood volume · Expansion","Evidence","Evidence record".*"Removed"/);
+  if(process.env.ICM_EVIDENCE_DIR)await revisions.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-storage-and-flood-revision-'+engine+'.png'});
+  await page.setViewportSize({width:1024,height:850});
+  const changeTable=revisions.getByRole('region',{name:'Assessment change table'});
+  await changeTable.focus();
+  assert.equal(await changeTable.evaluate(element=>element===document.activeElement),true);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),true);
   assert.deepEqual(errors,[]);guard.assertClean();console.log('ASSESSMENT_REVISION_PASS',engine);
 }finally{await browser.close();}

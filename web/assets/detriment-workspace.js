@@ -344,7 +344,11 @@ function openSchematicEvidence(page,id){
   renderDrawer();
   $('dtClose')?.focus();
 }
-window.ICMDetriment={schematicEvidence,openSchematicEvidence,escape,csvCell,csv,sectionData,timelineData,pairedData,relinkSource,reportOnlyWorkspace,filterRows,parseIdList,selectIdRows,idMatchSummary,summariseRows,idSelectionEvidence,visibleRows,scopedRows,isReport,detectReport,reportKind,assessmentErrorMessage,refresh,batchContext,batchArguments,calculateBatch,currentCategory:()=>kind,result:()=>results[kind],config:()=>config(),routes:{label:'Detriment Assessment',icon:'verify',pages:Object.fromEntries(Object.entries(titles).map(([k,t])=>[k,{label:t,title:t,description:'Compare baseline A with proposed B using ICM report evidence, explicit criteria and auditable asset-level results.',tab:'detriment',root:()=>$('tab-detriment')}]))}};
+function assessmentPairs(){
+  return Object.entries(results).filter(([page,result])=>result&&result.scenario_a.sha256&&result.scenario_b.sha256)
+    .map(([page,result])=>({result,assetIds:configs[page]?.asset_ids||[]}));
+}
+window.ICMDetriment={schematicEvidence,openSchematicEvidence,assessmentPairs,escape,csvCell,csv,sectionData,timelineData,pairedData,relinkSource,reportOnlyWorkspace,filterRows,parseIdList,selectIdRows,idMatchSummary,summariseRows,idSelectionEvidence,visibleRows,scopedRows,isReport,detectReport,reportKind,assessmentErrorMessage,refresh,batchContext,batchArguments,calculateBatch,currentCategory:()=>kind,result:()=>results[kind],config:()=>config(),routes:{label:'Detriment Assessment',icon:'verify',pages:Object.fromEntries(Object.entries(titles).map(([k,t])=>[k,{label:t,title:t,description:'Compare baseline A with proposed B using ICM report evidence, explicit criteria and auditable asset-level results.',tab:'detriment',root:()=>$('tab-detriment')}]))}};
 window.addEventListener('icm:source-pool-changed',refresh);
 window.addEventListener('icm:route-changed',e=>{if(e.detail.workspace==='detriment'&&Object.hasOwn(titles,e.detail.page)){if(kind!==e.detail.page){kind=e.detail.page;generation++;selected=null;}renderForm();renderResults();$('dtTitle').textContent=titles[kind];}});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();

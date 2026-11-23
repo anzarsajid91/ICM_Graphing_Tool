@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import '../assets/assessment-revision-core.js';
 
-const {readSnapshot, compareSnapshots}=globalThis.HydraAssessmentRevision;
+const {readSnapshot,compareSnapshots,detrimentAssessmentRecord,storageAssessmentRecords}=globalThis.HydraAssessmentRevision;
 const field=(key,value,unit)=>({key,label:key,value,unit});
 const baseline={schema_version:1,name:'Baseline',build:'1'.repeat(40),records:[{
   id:'hydraulic:pipe:S1',workspace:'Hydraulic calculations',title:'Pipe S1',method:'method-v1',
@@ -39,4 +39,36 @@ assert.throws(()=>readSnapshot(JSON.stringify({...baseline,records:[{...pipe,res
 assert.throws(()=>readSnapshot('{"schema_version":3}'),/snapshot schema/i);
 const cells={...baseline,records:[{...baseline.records[0],id:'__proto__',review:[field('__proto__','Safe text')]}]};
 assert.equal(find(compare(cells,cells),'__proto__').status,'Unchanged');
+
+const criterion={kind:'level',method:'test criterion version',criteria:{threshold:.1,freeboard_required:.5},
+  scenario_a:{name:'baseline.csv',sha256:'a'.repeat(64),scope:'Matched summer storms',datum:'AOD'},
+  scenario_b:{name:'proposal.csv',sha256:'b'.repeat(64),scope:'Matched summer storms',datum:'AOD'}};
+const flood={asset_id:'001',a:10.25,b:10.7,delta:.45,unit:'m',status:'detriment',freeboard_a:.75,freeboard_b:.30,
+  freeboard_change:-.45,flags:['new_freeboard_breach'],evidence_a:{'Water level (m)':'10.25'},evidence_b:{'Water level (m)':'10.7'}};
+const capture=(example,values,assetKind='node')=>({...baseline,records:[detrimentAssessmentRecord(example,values,{assetKind,proposal:'Design'})]});
+const assessed=capture(criterion,flood);
+const improved=capture(criterion,{...flood,b:10.4,delta:.15,freeboard_b:.6,freeboard_change:-.15,flags:['level_detriment']});
+assert.equal(find(compare(assessed,improved),'Freeboard B').status,'Changed');
+assert.equal(find(compare(assessed,improved),'Freeboard B').current,'0.6 m');
+const scopeChanged=structuredClone(criterion);
+scopeChanged.scenario_b.scope='Different events';
+assert.match(find(compare(assessed,capture(scopeChanged,flood)),'Maximum level B').note,/basis changed/);
+const unspecified=structuredClone(criterion);
+unspecified.scenario_a.scope=unspecified.scenario_b.scope='';
+assert.match(find(compare(capture(unspecified,flood),capture(unspecified,flood)),'Maximum level B').note,/scope or dated period/);
+const renamed=structuredClone(criterion);
+renamed.scenario_a.name='same-source-new-filename.csv';
+assert.equal(find(compare(assessed,capture(renamed,flood)),'Maximum level B').status,'Unchanged');
+assert.deepEqual(compare(assessed,capture(criterion,flood,'link')).map(row=>row.status),['Removed','Added']);
+
+const storage={method:'whole episode test',physical:{analysis_start:'2026-01-01',analysis_end:'2026-01-02',valid_seconds:86400},
+  calculation_status:'complete',threshold_canonical_m:1,screening:[{year:2026,required_storage_m3:24,coverage_fraction:1,status:'complete'}],
+  calendar_volumes:[{year:2026,volume_m3:24,requested_seconds:240,valid_seconds:240,status:'complete'}]};
+const storageCapture=(value,settings)=>({...baseline,records:storageAssessmentRecords(value,settings,[])});
+const firstStorage=storageCapture(storage,{target_count:0});
+const shortSupport=storageCapture({...storage,calendar_volumes:[{year:2026,volume_m3:null,volume_m3_partial:12,
+  requested_seconds:240,valid_seconds:120,status:'partial'}]},{target_count:0});
+assert.equal(find(compare(firstStorage,shortSupport),'Required storage').status,'Unchanged');
+assert.equal(find(compare(firstStorage,shortSupport),'Physical discharge').status,'Not comparable');
+assert.equal(find(compare(firstStorage,storageCapture(storage,{target_count:1})),'Required storage').status,'Not comparable');
 console.log('Assessment revision comparisons passed: method and unit compatibility, changed inputs and decisions, missing evidence and bounded validation.');
