@@ -1071,34 +1071,55 @@ function mountStructures(worker) {
   const article=panel("tab-hydraulic-structures","Hydraulic structure screening",
     "Use steady water levels in one datum and a measured or justified discharge coefficient. Check approach effects, venting and gate geometry before relying on the screen.");
   const form=element("form");form.id="structureScreenForm";
+  const notchKeys=["notch_angle_deg","approach_width_m","vertex_height_m","head_correction_m"];
   const inputs=fields([
-    {key:"kind",label:"Structure",options:[["sharp-crested-weir","Sharp-crested rectangular weir"],["orifice","Orifice"],["sluice","Sluice gate"]]},
+    {key:"kind",label:"Structure",options:[["sharp-crested-weir","Sharp-crested rectangular weir"],["v-notch-weir","Fully contracted V-notch weir"],
+      ["orifice","Orifice"],["sluice","Sluice gate"]]},
     number("level_up","Nominal upstream water level (m)",-1e5,1e5),number("level_down","Nominal downstream water level (m)",-1e5,1e5),
     number("sill_m","Crest or opening invert level (m)",-1e5,1e5),{key:"datum",label:"Common vertical datum",type:"text",maxLength:128},
     {key:"orifice_shape",label:"Orifice shape",options:[["rectangular","Rectangular"],["circular","Circular"]]},
     number("width_m","Effective width (m)",1e-6,10000),number("opening_m","Opening height or diameter (m)",1e-6,10000),
+    number("notch_angle_deg","Notch angle (degrees)",25,100),number("approach_width_m","Average approach width (m)",1e-6,10000),
+    number("vertex_height_m","Notch vertex height above pool invert (m)",1e-6,10000),
+    number("head_correction_m","Chart head correction (m)",0,.0036576),
     {...number("coefficient","Free-flow discharge coefficient",1e-9,1),required:false},
     {...number("submerged_coefficient","Submerged-opening discharge coefficient",1e-9,1),required:false},
     {key:"coefficientEvidence",label:"Coefficient source and applicable range",type:"text",maxLength:2000},
     {key:"allow_reverse",label:"Confirm symmetric, reversible flow",type:"checkbox",required:false},
     {key:"applicability_confirmed",label:"I reviewed the setup, datum and applicability",type:"checkbox"}
   ]);
-  form.append(inputs.group);
+  const notchBasis=element("p","Use USBR figures 7-6a and 7-6b for the selected angle. Enter the reviewed effective coefficient and head correction. Confirm a fully contracted, aerated nappe and a suitable approach section on the driving side.");
+  form.append(inputs.group,notchBasis);
   function showControl(key,shown,required=false) {
     const control=inputs.controls[key];control.parentElement.hidden=!shown;control.disabled=!shown;control.required=shown&&required;
   }
   function configure() {
-    const kind=inputs.controls.kind.value,orifice=kind==="orifice",weir=kind==="sharp-crested-weir";
+    const kind=inputs.controls.kind.value,orifice=kind==="orifice",notch=kind==="v-notch-weir",weir=kind==="sharp-crested-weir"||notch;
     const circular=orifice&&inputs.controls.orifice_shape.value==="circular";
-    showControl("orifice_shape",orifice,true);showControl("width_m",!circular,true);
+    showControl("orifice_shape",orifice,true);showControl("width_m",!circular&&!notch,true);
     showControl("opening_m",!weir,true);showControl("submerged_coefficient",!weir);
+    for(const key of notchKeys)showControl(key,notch,true);
+    notchBasis.hidden=!notch;
+    const coefficient=inputs.controls.coefficient;
+    coefficient.required=notch;coefficient.min=notch ? .56 : 1e-9;coefficient.max=notch ? .60 : 1;
   }
-  inputs.controls.kind.onchange=configure;inputs.controls.orifice_shape.onchange=configure;configure();
+  let previousKind=inputs.controls.kind.value;
+  inputs.controls.kind.onchange=()=>{
+    const kind=inputs.controls.kind.value;
+    if(kind==="v-notch-weir"||previousKind==="v-notch-weir"){
+      inputs.controls.applicability_confirmed.checked=false;
+      inputs.controls.coefficient.value="";inputs.controls.coefficientEvidence.value="";
+    }
+    previousKind=kind;configure();
+  };
+  inputs.controls.orifice_shape.onchange=configure;configure();
   const clean=value=>typeof value==="number"&&!Number.isFinite(value)?null:value;
   const reference="USBR Water Measurement Manual chapters 2, 7 and 9, USBR PAP-0668 and USACE HEC-RAS Hydraulic Reference Manual gated spillways";
   results(article,form,async()=>{
     const {coefficientEvidence,...values}=inputs.values();
-    const arguments_=Object.fromEntries(Object.entries(values).map(([key,value])=>[key,inputs.controls[key].disabled?null:clean(value)]));
+    const notch=values.kind==="v-notch-weir";
+    const arguments_=Object.fromEntries(Object.entries(values).filter(([key])=>notch||!notchKeys.includes(key))
+      .map(([key,value])=>[key,inputs.controls[key].disabled?null:clean(value)]));
     const r=await worker("hydraulic_structure",{inputs:arguments_});
     const metrics=[["Regime",r.regime],["Flow (m³/s)",r.flow_m3_s],["Flow (L/s)",r.flow_m3_s===null?null:1000*r.flow_m3_s],
       ["Signed level difference (m)",r.signed_level_difference_m],["Headwater rise above sill (m)",r.high_head_m],
@@ -1106,7 +1127,8 @@ function mountStructures(worker) {
       ["Opening area (m²)",r.area_m2],["Discharge coefficient used",r.coefficient_used],["Equation",r.equation]];
     return {content:[table(["Quantity","Value"],metrics,"Steady discharge screen"),element("p",r.explanation)],
       summary:r.status==="available"?"Hydraulic structure screen completed.":"Discharge withheld for the selected conditions.",filename:"hydra-structure-screening.csv",
-      rows:[["Method",r.method],["References",reference],["Coefficient source and applicability",coefficientEvidence],
+      rows:[["Method",r.method],["References",notch?"USBR Water Measurement Manual chapter 7, section 7, equation 7-3 and figures 7-6a and 7-6b":reference],
+        ["Coefficient source and applicability",coefficientEvidence],
         ...Object.entries(arguments_),...metrics,["Review note",r.explanation]]};
   });
 

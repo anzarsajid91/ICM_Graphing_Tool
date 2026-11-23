@@ -36,6 +36,7 @@ METHODS = {
     "Ireland combined overflow design screening": ("Design flows", "Ireland", "hydraulics", "formula-a"),
     "Documented project continuation-flow method": ("Design flows", "General", "hydraulics", "formula-a"),
     "Hydraulic structures and supplied ratings": ("Hydraulics", "General", "hydraulics", "structures"),
+    "Fully contracted V-notch weirs": ("Hydraulics", "General", "hydraulics", "structures"),
 }
 REFERENCES = {
     "www.gov.uk", "www.scottishwater.co.uk", "www.sepa.org.uk", "www1.eere.energy.gov",

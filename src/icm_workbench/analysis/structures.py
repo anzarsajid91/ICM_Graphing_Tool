@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Steady hydraulic screening with explicit applicability and coefficients."""
 from bisect import bisect_left
-from math import isfinite, pi, sqrt
+from math import isfinite, pi, radians, sqrt, tan
 
 
 GRAVITY = 9.80665
 METHOD = "hydraulic-structure-screening-v1"
 WEIR_MIN_HEAD_M = 0.06096  # USBR sharp-crested weir nappe recommendation (0.2 ft).
+V_NOTCH_METHOD = "usbr-kindsvater-shen-fully-contracted-v1"
+V_NOTCH_FACTOR_SI = 4.28 * sqrt(.3048)  # Convert equation 7-3 from ft and ft³/s to m and m³/s.
 
 
 def _checked(value, name, minimum, maximum):
@@ -18,8 +20,9 @@ def _checked(value, name, minimum, maximum):
 
 def screen_structure(kind, level_up, level_down, sill_m, datum, coefficient,
                      width_m=None, opening_m=None, orifice_shape=None,
-                     submerged_coefficient=None, allow_reverse=False, applicability_confirmed=False):
-    if kind not in {"sharp-crested-weir", "orifice", "sluice"}:
+                     submerged_coefficient=None, allow_reverse=False, applicability_confirmed=False,
+                     notch_angle_deg=None, approach_width_m=None, vertex_height_m=None, head_correction_m=None):
+    if kind not in {"sharp-crested-weir", "v-notch-weir", "orifice", "sluice"}:
         raise ValueError("Choose a supported structure type.")
     if not isinstance(datum, str) or not datum.strip() or len(datum) > 128:
         raise ValueError("Enter the common vertical datum for both levels and the structure.")
@@ -28,9 +31,19 @@ def screen_structure(kind, level_up, level_down, sill_m, datum, coefficient,
     up = _checked(level_up, "Nominal upstream level in m", -1e5, 1e5)
     down = _checked(level_down, "Nominal downstream level in m", -1e5, 1e5)
     sill = _checked(sill_m, "Crest or opening invert in m", -1e5, 1e5)
-    cd = None if coefficient is None else _checked(coefficient, "Free-flow coefficient", 1e-9, 1)
+    v_notch = kind == "v-notch-weir"
+    if v_notch:
+        cd = _checked(coefficient, "V-notch effective discharge coefficient", .56, .60)
+    else:
+        cd = None if coefficient is None else _checked(coefficient, "Free-flow coefficient", 1e-9, 1)
     submerged_cd = None if submerged_coefficient is None else _checked(submerged_coefficient, "Submerged-flow coefficient", 1e-9, 1)
-    if kind == "sharp-crested-weir":
+    if v_notch:
+        angle = _checked(notch_angle_deg, "Notch angle in degrees", 25, 100)
+        approach_width = _checked(approach_width_m, "Average approach width in m", 1e-6, 10000)
+        vertex_height = _checked(vertex_height_m, "Height of the notch vertex in m", 1e-6, 10000)
+        head_correction = _checked(head_correction_m, "Chart head correction in m", 0, .0036576)
+        width = opening = area = None
+    elif kind == "sharp-crested-weir":
         width = _checked(width_m, "Effective crest width in m", 1e-6, 10000)
         opening = area = None
     elif kind == "orifice" and orifice_shape == "circular":
@@ -46,11 +59,14 @@ def screen_structure(kind, level_up, level_down, sill_m, datum, coefficient,
     high, low = max(up, down) - sill, min(up, down) - sill
     signed = up - down
     ratio = max(0, low) / high if high > 0 else None
-    evidence = dict(method=METHOD, structure=kind, datum=datum.strip(), nominal_upstream_level_m=up,
+    evidence = dict(method=V_NOTCH_METHOD if v_notch else METHOD, structure=kind, datum=datum.strip(), nominal_upstream_level_m=up,
                     nominal_downstream_level_m=down, sill_m=sill, reverse_confirmed=allow_reverse is True,
                     signed_level_difference_m=signed, high_head_m=high, low_head_m=low, tailwater_ratio=ratio,
                     width_m=width, opening_m=opening, area_m2=area, orifice_shape=orifice_shape,
                     free_coefficient=cd, submerged_coefficient=submerged_coefficient)
+    if v_notch:
+        evidence.update(notch_angle_deg=angle, approach_width_m=approach_width, vertex_height_m=vertex_height,
+                        head_correction_m=head_correction)
 
     def result(status, regime, flow_magnitude, formula, explanation, effective_head=None, used_cd=None):
         flow = None if flow_magnitude is None else (-flow_magnitude if signed < 0 and flow_magnitude else flow_magnitude)
@@ -61,6 +77,23 @@ def screen_structure(kind, level_up, level_down, sill_m, datum, coefficient,
         return result("available", "no-driving-head", 0.0, "Q = 0", "Both levels are below the structure or the driving levels are equal.")
     if signed < 0 and allow_reverse is not True:
         return result("withheld", "reverse-not-confirmed", None, None, "Confirm a symmetric, reversible structure without a flap or directional loss.")
+
+    if v_notch:
+        # Compare nominal boundaries at a nanometre to avoid datum subtraction artefacts.
+        head, tailwater = round(high, 9), round(low, 9)
+        if not WEIR_MIN_HEAD_M < head < .381:
+            return result("withheld", "v-notch-head-range", None, None,
+                          "The fully contracted V-notch requires a measuring head above 0.06096 m and below 0.381 m.")
+        if tailwater > -WEIR_MIN_HEAD_M:
+            return result("withheld", "v-notch-tailwater", None, None,
+                          "Use a free nappe with tailwater at least 0.06096 m below the notch vertex.")
+        if approach_width <= .9144 or vertex_height < .4572 or head > round(.2 * approach_width, 9):
+            return result("withheld", "v-notch-contraction", None, None,
+                          "Fully contracted geometry requires approach width above 0.9144 m, vertex height at least 0.4572 m and head at most 20% of approach width.")
+        effective_head = high + head_correction
+        flow = V_NOTCH_FACTOR_SI * cd * tan(radians(angle) / 2) * effective_head ** 2.5
+        return result("available", "free-v-notch", flow, "Q = 4.28 √(0.3048) Ce tan(θ/2) (H + kh)^2.5",
+                      "USBR equation 7-3 in SI for a fully contracted, aerated V-notch with reviewed effective coefficient and head correction.", effective_head, cd)
 
     if kind == "sharp-crested-weir":
         if high < WEIR_MIN_HEAD_M:

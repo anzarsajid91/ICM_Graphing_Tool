@@ -42,7 +42,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 9.1 | Circular full/part-full Colebrook–White and comparisons | Shared circular solver, Manning capacity and depth, full-bore Manning and Darcy diameter/gradient, section and depth chart, pipe trials | Verified locally for circular hydraulics and documented rectangular/trapezoidal uniform-flow sections |
 | 9.2 | SI circular pipe engine | Head-loss components, signed static/dynamic head, series/parallel, fixed and calculated Darcy factors, supported curve intervals and calculation sheets | Verified locally for steady forward full-pipe screening |
 | 9.3 | Candidate system-curve model | Manual and mapped CSV pump curves, exact specified-factor intersections including multiple and absent duties, identical arrangements, power and operating limits | Verified locally for the specified-factor system model |
-| 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Partial |
+| 9.4 | ICM structure metadata only | Primary equation evidence and tests for applicable free/submerged/reversible weir, orifice and sluice conditions | Verified locally for supported rectangular and V-notch weirs, orifices, sluices and passive measured ratings. ICM parity requires an external comparison |
 | 9.5 England and framework research | Official permitting guidance | Versioned methods for England, Scotland, Wales and the reviewed Irish combined setting, with a documented project method | Verified locally within the cited applicability. Northern Ireland continuation uses the reviewed project consent basis |
 | 9.5 input modes and upstream tracing | Native network importer, explicit source attributes, graph trace | Manual, mapped ICM files and reviewed network allocation with inherited/missing/duplicate/bifurcating/loop/transfer cases | Verified locally for reviewed source fields, native fixed event profiles and explicit contributing allocations. Real ICM runtime and project-specific regulatory applicability remain separate |
 | 9.5 outputs and related calculations | Existing capacity and spill evidence | Catchment audit, conversions, sensitivity, compatible comparison and sheets; distinct DWF, FFT, peak flow, self-cleansing and boundary shear methods | Verified locally for the supported frameworks, circular sections and same-run typed link results. Inheritance remains a separate input criterion |
@@ -67,6 +67,27 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Fully contracted V-notch weir
+
+- The additional structure option implements USBR Water Measurement
+  Manual chapter 7, section 7, equation 7-3 in SI. The reviewed
+  chart coefficient and head correction are required. Invalid
+  angle, measuring range, tailwater and approach geometry are bounded
+  or withheld with the reason. The existing rectangular weir, orifice,
+  sluice and measured rating calculations use their existing equations.
+- The independent customary-unit benchmark uses a 60° notch with
+  0.75 ft head and 0.004 ft head correction. Its 0.7026418120485214
+  ft³/s converts to 0.019896600400902877 m³/s. Unit checks use a
+  1×10⁻¹³ m³/s absolute tolerance and cover reversal, dry and
+  unsupported boundary conditions. The full local Python run passed
+  489 tests and 111 subtests.
+- Chromium and Firefox verified the controls, exact result, withheld
+  tailwater and contraction conditions, the local CSV audit, 31-entry
+  method library and existing hydraulic design regression. The three
+  checks observed 101/100, 31/32 and 109/106 requests with zero
+  confidentiality violations. The 153-resource artifact and source gate
+  passed. Browser logs are in `/workspace/hydra-evidence/v3/v-notch`.
 
 ### Release assurance register
 

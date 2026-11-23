@@ -23,6 +23,51 @@ def test_thin_plate_weir_reference_calculations():
     assert structure("sharp-crested-weir", 100.5, 100.5, width_m=1)["flow_m3_s"] == 0
 
 
+V_NOTCH = dict(sill_m=0, coefficient=.576, notch_angle_deg=60, approach_width_m=1.524,
+               vertex_height_m=.6096, head_correction_m=.0012192)
+
+
+def test_fully_contracted_v_notch_reference():
+    # USBR 7-3 in customary units, then ft³ to m³. tan(30°) = 1 / √3.
+    # 4.28 × .576 × (0.75 + 0.004)^2.5 / √3 = 0.7026418120485214 ft³/s.
+    rated = structure("v-notch-weir", .2286, -.09144, **V_NOTCH)
+    assert rated["method"] == "usbr-kindsvater-shen-fully-contracted-v1"
+    assert rated["regime"] == "free-v-notch"
+    assert rated["effective_head_m"] == pytest.approx(.2298192)
+    assert rated["flow_m3_s"] == pytest.approx(.019896600400902877, abs=1e-13)
+    reverse = structure("v-notch-weir", -.09144, .2286, allow_reverse=True, **V_NOTCH)
+    assert reverse["flow_m3_s"] == pytest.approx(-.019896600400902877, abs=1e-13)
+    assert structure("v-notch-weir", -.09144, .2286, **V_NOTCH)["regime"] == "reverse-not-confirmed"
+    assert structure("v-notch-weir", -.05, -.09, **V_NOTCH)["flow_m3_s"] == 0
+
+
+@pytest.mark.parametrize("up,down,changes,regime", [
+    (.06096, -.1, {}, "v-notch-head-range"),
+    (.381, -.1, {}, "v-notch-head-range"),
+    (.25, -.05, {}, "v-notch-tailwater"),
+    (.25, .10, {}, "v-notch-tailwater"),
+    (.25, -.10, {"approach_width_m": 1.0}, "v-notch-contraction"),
+    (.15, -.10, {"approach_width_m": .9144}, "v-notch-contraction"),
+    (.15, -.10, {"vertex_height_m": .4}, "v-notch-contraction"),
+])
+def test_v_notch_withholds_unsupported_regimes(up, down, changes, regime):
+    setup = V_NOTCH | changes
+    rated = structure("v-notch-weir", up, down, **setup)
+    assert rated["regime"] == regime
+    assert rated["flow_m3_s"] is None
+
+
+@pytest.mark.parametrize("setting,value,message", [
+    ("notch_angle_deg", 20, "Notch angle"),
+    ("coefficient", .63, "effective discharge coefficient"),
+    ("head_correction_m", .004, "head correction"),
+    ("vertex_height_m", None, "notch vertex"),
+])
+def test_v_notch_rejects_unreviewed_or_invalid_parameters(setting, value, message):
+    with pytest.raises(ValueError, match=message):
+        structure("v-notch-weir", .2286, -.09144, **(V_NOTCH | {setting: value}))
+
+
 def test_orifice_full_free_and_reverse_submerged_reference_cases():
     free = structure("orifice", 101, 99.8, coefficient=.62, opening_m=.5, orifice_shape="circular")
     assert free["effective_head_m"] == pytest.approx(.75)

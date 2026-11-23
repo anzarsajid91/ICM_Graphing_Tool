@@ -40,7 +40,37 @@ try {
   const firstDownload=page.waitForEvent('download');await form.getByRole('button',{name:'Download calculation CSV'}).click();
   assert.match(await fs.readFile(await (await firstDownload).path(),'utf8'),/"Coefficient source and applicability","SYNTHETIC-COEFFICIENT-PROVENANCE"/);
 
+  await form.getByLabel('Structure',{exact:true}).selectOption('v-notch-weir');
+  assert(await form.getByLabel('Effective width (m)').isHidden());
+  assert(await form.getByLabel('Submerged-opening discharge coefficient').isHidden());
+  assert.equal(await form.getByLabel('I reviewed the setup, datum and applicability').isChecked(),false);
+  assert.equal(await form.getByLabel('Free-flow discharge coefficient').inputValue(),'');
+  for(const [label,value] of [
+    ['Nominal upstream water level (m)',.2286],['Nominal downstream water level (m)',-.09144],
+    ['Crest or opening invert level (m)',0],['Notch angle (degrees)',60],['Average approach width (m)',1.524],
+    ['Notch vertex height above pool invert (m)',.6096],['Chart head correction (m)',.0012192],
+    ['Free-flow discharge coefficient',.576],['Coefficient source and applicable range','Synthetic USBR chart review'],
+  ])await fill(label,value);
+  await form.getByLabel('I reviewed the setup, datum and applicability').check();
+  await formButton.click();await structureResult.getByText('free-v-notch',{exact:true}).waitFor();
+  assert.match(await structureResult.innerText(),/0\.0198966004/);
+  const notchDownload=page.waitForEvent('download');
+  await form.getByRole('button',{name:'Download calculation CSV',exact:true}).click();
+  const notchCsv=await fs.readFile(await (await notchDownload).path(),'utf8');
+  assert.match(notchCsv,/usbr-kindsvater-shen-fully-contracted-v1[\s\S]*equation 7-3[\s\S]*0\.0012192/);
+  await fill('Nominal downstream water level (m)',-.03);
+  assert(await structureResult.isHidden());
+  await formButton.click();await structureResult.getByText('v-notch-tailwater',{exact:true}).waitFor();
+  await fill('Nominal downstream water level (m)',-.09144);
+  await fill('Average approach width (m)',.95);
+  await formButton.click();await structureResult.getByText('v-notch-contraction',{exact:true}).waitFor();
+  await fill('Notch angle (degrees)',20);
+  assert.equal(await form.getByLabel('Notch angle (degrees)').evaluate(input=>input.validity.rangeUnderflow),true);
+
   await form.getByLabel('Structure',{exact:true}).selectOption('orifice');
+  await fill('Crest or opening invert level (m)',100);
+  await fill('Coefficient source and applicable range','Synthetic orifice review');
+  await form.getByLabel('I reviewed the setup, datum and applicability').check();
   await form.getByLabel('Orifice shape').selectOption('circular');
   assert(await form.getByLabel('Effective width (m)').isHidden());
   await fill('Opening height or diameter (m)',.5);
@@ -52,6 +82,7 @@ try {
   await formButton.click();await structureResult.getByText('submerged-opening',{exact:true}).waitFor();
   assert.match(await structureResult.innerText(),/-0\.340978433/);
   await form.getByLabel('Structure',{exact:true}).selectOption('sluice');
+  await fill('Free-flow discharge coefficient',.6);
   await fill('Nominal upstream water level (m)',101);
   await fill('Nominal downstream water level (m)',100.72);
   await formButton.click();await structureResult.getByText('gate-transition',{exact:true}).waitFor();

@@ -958,3 +958,34 @@ over reviewed head and flow pairs. It has no extrapolation and supports a
 symmetric reverse rating only when confirmed. These methods provide screening
 calculations with explicit formula and regime output. Agreement with an ICM
 structure needs a verified comparison using its selected hydraulic model.
+
+## Fully contracted V-notch weirs
+
+The optional V-notch screen applies the Bureau of Reclamation *Water
+Measurement Manual*, third edition, chapter 7, section 7, equation 7-3.
+In SI, discharge is `4.28 × √0.3048 × Ce × tan(θ/2) × (H + kh)^2.5`
+in m³/s, with uncorrected measuring head `H` and head correction `kh`
+in metres. The conversion uses exactly 0.3048 m/ft. The reviewed effective
+coefficient `Ce` is dimensionless. Enter both chart values for the selected
+notch angle from figures 7-6b and 7-6a. The screen does not derive a
+coefficient from angle alone.
+
+The scope is a fully contracted, aerated thin-plate notch from 25° to
+100°, measuring head above 0.06096 m and below 0.381 m, tailwater at
+least 0.06096 m below the vertex, average approach width above 0.9144 m,
+vertex at least 0.4572 m above the pool invert, and uncorrected head no
+greater than 20% of average approach width. Both levels and the vertex
+must use the reviewed common datum. Confirm the approach geometry,
+measurement location, contraction and ventilation on the driving side.
+Reverse use requires explicit symmetry and valid conditions on both sides.
+Partially contracted, submerged and clinging nappes require a suitable
+separate method.
+
+A 60° reference notch with 0.75 ft measuring head, 0.004 ft correction and
+`Ce = 0.576` gives 0.7026418120 ft³/s and 0.0198966004009 m³/s.
+The independent customary-unit calculation uses tan 30° = 1/√3. Tests
+compare the SI result within 1×10⁻¹³ m³/s and withhold out-of-range,
+partially contracted and high-tailwater cases. The worksheet preserves
+the installation limits and numerical result when exported locally.
+
+[USBR V-notch equation and applicability conditions](https://www.usbr.gov/tsc/techreferences/mands/wmm/chap07_07.html)
