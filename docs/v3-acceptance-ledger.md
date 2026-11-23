@@ -56,7 +56,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Verified locally for the 34-method library, including survey balance, recorded-result profiles and the matched Detriment criteria |
 | 12.3 | Build metadata, security claims and release evidence | Versioned assurance covering actual feature, numerical, confidentiality and compatibility outcomes | Verified locally for revision-scoped historical and milestone entries. Final v3 production evidence remains gated by §20 |
 | 13 | Shared registry, workspace serialization and storage | Shared typed results and route context; deterministic stale state, bounded imports and prior workspace compatibility | Verified locally for current cross-workspace source, comparison, reports, calculation, schematic and survey flows. Full candidate integration regressions remain required |
-| 14 | Precision Workbench / shared design tokens | Desktop usability, keyboard, responsive layout, contrast, reduced motion, progress and understandable empty/error states | Open |
+| 14 | Precision Workbench / shared design tokens | Desktop usability, keyboard, responsive layout, contrast, reduced motion, progress and understandable empty/error states | Verified locally across 35 routes and four desktop widths in both browsers. Exact release-candidate workflows remain required |
 | 15 | Existing numerical and browser regressions | Independent reference cases for every new method, mandatory invalid/boundary cases, tolerances and genuine ICM comparisons where available | Verified locally for the implemented equations and evidence methods recorded below. Comparisons inside an independently licensed ICM environment remain external |
 | 16 | CI baseline comparison and v2.2 matched startup measures | Matched lifecycle benchmarks at 400, 1,600 and 10,000 assets and varying duration, throughput, memory, cancellation and state integrity | Locally verified on `c1fd6a3` for matched lifecycle, three network scales, short and long profiles and file-backed annual playback. Exact release-candidate checks remain required |
 | 17 | Local worker, CSP, approvals, SBOM and request observers | Review every affected trust boundary, malformed inputs and resource limits. Repeat source, claim, licence, CodeQL, dependency, secret and browser checks | Source, confidentiality, pinned dependencies and hosted security contexts verified for `c1fd6a3`. Alert inventories return 403. Release checks remain exact-head requirements |
@@ -66,7 +66,18 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 
 ## Work in progress
 
-Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+Development is in PR #119. The branch configures the v3.0.0 milestone through the existing Git release history. The PR build is v3.0.0-rc.1. Production remains on v2.2.0 until protected checks, merge, authenticated acknowledgement and live verification succeed.
+
+### Desktop interface review
+
+- The candidate `c1fd6a3` completed the full 35-route inventory and four
+  desktop viewport configurations in Chromium and Firefox. Both runs
+  checked shared navigation, focus mode, disclosure behaviour, labels and
+  route surfaces. They observed 87 and 72 application requests with zero
+  confidentiality violations. Evidence is in
+  `/workspace/hydra-evidence/v3/uiux-c1fd6a3`.
+- This is desktop browser verification and AI-assisted review. Safari and
+  physical mobile devices were unavailable for this release review.
 
 ### Matched desktop lifecycle benchmark
 
@@ -158,6 +169,10 @@ Development is in draft PR #119. Version assignment is deferred until the comple
   review, secret detection and security assurance passed on draft `c1fd6a3`.
   Source and engineering review have been AI-assisted. No independent human
   review or regulated product certification is asserted.
+- The release-version claim evidence tracks the change to the existing
+  `SEMVER_MILESTONES` map. PR #119 is the only new milestone. Its review label
+  is `v3.0.0-rc.1`; `v3.0.0` requires its main-history merge marker. The
+  standard one-increment-per-merge and subsequent patch rule remain in force.
 
 ### Saved interval overlays on monitoring plots
 

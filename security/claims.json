@@ -133,7 +133,7 @@
     "scripts/verify_vendor.py": "26272a33a524532c21d591a917a45096f79eccd7761690dcf73499804f8824c2",
     "web/tests/privacy-network.mjs": "d9de1960118a7d97938e7bbcb0f577079f7d1b123826f20a4f9e14da46711ef5",
     "tests/privacy/test_source_gate.py": "d684e98611d756764ef5f268a1bb0c808b52e7ddb5e5f47939017c4c0b735c1b",
-    "scripts/app_version.py": "79302aa05028ef3b2fab7b9d8909e0f0833af3e0c410347420e4fca7ce435fad",
+    "scripts/app_version.py": "40f4c0cf34906f15417ab49781e845d11092945ea68d6c8cf44e0bd69136e3c4",
     "docs/security-audit.md": "252e1499ae41235e4f0ad0059c3ffbc6b00d446b81986f34324e15c6cf4a99a3",
     "AGENTS.md": "4f54bc69115e55eacf5650a0375b5a175eb73d7e408a151af5fcff3086ab2e5c",
     "docs/security-governance.md": "e6e73035833f2f63ec2ab891456e65cbb2da054570b1d888c45c633b946de27b",
