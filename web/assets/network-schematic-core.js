@@ -518,7 +518,12 @@ function revisionChanges(current,imported){
   }
   const position=node=>node&&(node.sourcePosition||{x:node.x,y:node.y});
   const bends=edge=>edge.sourceBends||edge.bends||[];
-  const assignments=new Set((current.monitorLocations||[]).map(({asset})=>JSON.stringify([asset.kind,asset.id])));
+  const assignments=new Map();
+  for(const {asset,monitor} of current.monitorLocations||[]){
+    const key=JSON.stringify([asset.kind,asset.id]);
+    if(!assignments.has(key))assignments.set(key,[]);
+    assignments.get(key).push(monitor);
+  }
   for(const kind of ['node','edge']){
     const oldObjects=kind==='node'?before.nodes:before.edges,newObjects=kind==='node'?after.nodes:after.edges;
     const changed=kind==='node'?changedNodes:changedEdges;
@@ -550,10 +555,10 @@ function revisionChanges(current,imported){
       changed.add(id);
       rows.push({kind,id,name:next?.name||old?.sourceName||old?.name||id,status:!old?'Added':!next?'Removed':'Modified',
         changes,monitorReview:Boolean(old&&(old.monitorId||assignments.has(JSON.stringify([kind,id])))),
-        evidenceReview:Boolean(old&&(old.applied||old.detrimentLinks||old.bindings?.length||old.seriesLinks?.length))});
+        evidenceReview:Boolean(old&&(old.applied||Object.keys(old.detrimentLinks||{}).length||old.bindings?.length||old.seriesLinks?.length))});
     }
   }
-  return {rows,changedNodes,changedEdges,before,after};
+  return {rows,changedNodes,changedEdges,before,after,assignments};
 }
 function applyContextRevision(current,imported,format){
   if(current.nodes.length&&current.contextFormat!==format)

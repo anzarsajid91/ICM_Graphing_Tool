@@ -245,7 +245,9 @@
 #nsRevisionComparison summary{font-weight:650;cursor:pointer}
 #nsRevisionComparison .ns-review-actions{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin-block:10px}
 #nsRevisionComparison label{display:grid;gap:5px}
+#nsRevisionComparison label.ns-revision-impact-filter{display:flex;align-items:center;min-block-size:36px}
 #nsRevisionComparison .ns-revision-preview svg{width:100%;max-height:210px;display:block;background:var(--hb-soft);margin-top:8px}
+#nsRevisionComparison .ns-revision-preview svg[data-ns-full-revision]{max-height:310px}
 #nsRevisionComparison .ns-review-table{max-height:260px;overflow:auto;overflow-wrap:anywhere}
 #nsRevisionComparison table{width:100%;text-align:left;font-size:13px}
 #nsRevisionComparison td,#nsRevisionComparison th{padding:6px;border-bottom:1px solid var(--hb-border)}

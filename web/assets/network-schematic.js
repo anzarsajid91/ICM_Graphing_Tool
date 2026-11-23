@@ -3190,27 +3190,67 @@ function mountRouteReview(){
   mountMonitorImport();
 }
 
-function revisionGeometry(comparison,rows,layer){
-  const svg=svgElement('svg',{viewBox:'0 0 620 300',role:'img','aria-label':'Changed source geometry in the current page'});
+function revisionGeometry(comparison,rows,layer,full){
+  const svg=svgElement('svg',{viewBox:'0 0 620 300',role:'img',
+    'aria-label':full?'Full network source geometry with filtered changes':'Changed source geometry in the current page'});
+  if(full)svg.setAttribute('data-ns-full-revision','');
+  const variants=[['before','#993e55'],['after','#236b77']].filter(([name])=>layer==='both'||layer===name);
+  const position=node=>node?.sourcePosition||node;
+  const vertices=edge=>edge.sourceBends||edge.bends||[];
+  const pointsFor=(graph,kind,object)=>kind==='node'?[position(object)]:
+    [position(graph.nodes.get(object.from)),...vertices(object),position(graph.nodes.get(object.to))];
+  const finitePoint=point=>Number.isFinite(point?.x)&&Number.isFinite(point?.y);
   const features=[];
-  for(const [name,color] of [['before','#993e55'],['after','#236b77']]){
-    if(layer!=='both'&&layer!==name)continue;
+  const ext=[Infinity,-Infinity,Infinity,-Infinity];
+  function extend(point){
+    if(!finitePoint(point))return;
+    ext[0]=Math.min(ext[0],point.x);ext[1]=Math.max(ext[1],point.x);
+    ext[2]=Math.min(ext[2],point.y);ext[3]=Math.max(ext[3],point.y);
+  }
+  if(full){
+    for(const graph of [comparison.before,comparison.after]){
+      for(const node of graph.nodes.values())extend(position(node));
+      for(const edge of graph.edges.values())for(const point of vertices(edge))extend(point);
+    }
+  }
+  for(const [name,color] of variants){
     const graph=comparison[name];
-    const position=node=>node?.sourcePosition||node;
     for(const row of rows){
       const object=(row.kind==='node'?graph.nodes:graph.edges).get(row.id);
       if(!object)continue;
-      const points=row.kind==='node'?[position(object)]:[position(graph.nodes.get(object.from)),
-        ...(object.sourceBends||object.bends||[]),position(graph.nodes.get(object.to))];
-      if(points.every(p=>Number.isFinite(p?.x)&&Number.isFinite(p?.y)))features.push({name,color,row,points});
+      const points=pointsFor(graph,row.kind,object);
+      if(!points.every(finitePoint))continue;
+      features.push({name,color,row,points});
+      if(!full)for(const point of points)extend(point);
     }
   }
-  if(!features.length)return svg;
-  const ext=features.flatMap(feature=>feature.points).reduce(([left,right,top,bottom],p)=>
-    [Math.min(left,p.x),Math.max(right,p.x),Math.min(top,p.y),Math.max(bottom,p.y)],
-    [Infinity,-Infinity,Infinity,-Infinity]);
+  if(!ext.every(Number.isFinite))return svg;
   const scale=Math.min(550/Math.max(1,ext[1]-ext[0]),240/Math.max(1,ext[3]-ext[2]));
   const project=p=>[310+(p.x-(ext[0]+ext[1])/2)*scale,150+(p.y-(ext[2]+ext[3])/2)*scale];
+  if(full){
+    const coordinate=point=>project(point).map(value=>value.toFixed(1)).join(' ');
+    function drawPaths(features,stroke,phase){
+      for(const [kind,width] of [['edge',phase==='before'?5:phase==='after'?2:1],['node',phase==='context'?2:6]]){
+        const path=features.filter(item=>item.kind===kind)
+          .map(({points})=>'M'+points.map(coordinate).join('L')+(kind==='node'?'h.1':'')).join('');
+        if(path)svg.append(svgElement('path',{'data-ns-revision-phase':phase,'data-ns-revision-kind':kind,d:path,fill:'none',
+          stroke,'stroke-width':width,'stroke-dasharray':phase==='before'&&kind==='edge'?'5 3':'',
+          'stroke-linecap':'round',opacity:phase==='context'?.5:phase==='before'&&kind==='node'?.65:1}));
+      }
+    }
+    const graph=comparison[layer==='before'?'before':'after'];
+    const context=[];
+    for(const [kind,objects] of [['edge',graph.edges],['node',graph.nodes]]){
+      for(const object of objects.values()){
+        const points=pointsFor(graph,kind,object);
+        if(points.every(finitePoint))context.push({kind,points});
+      }
+    }
+    drawPaths(context,'#73848d','context');
+    for(const [name,color] of variants)drawPaths(features.filter(feature=>feature.name===name)
+      .map(({row,points})=>({kind:row.kind,points})),color,name);
+    return svg;
+  }
   // The revised line is drawn solid and narrow so a coincident baseline stays visible.
   for(const {name,color,row,points} of features){
     const coords=points.map(project),[cx,cy]=coords[0];
@@ -3221,6 +3261,25 @@ function revisionGeometry(comparison,rows,layer){
     svg.append(shape);
   }
   return svg;
+}
+function revisionImpact(comparison,row){
+  const bucket=row.kind==='node'?'nodes':'edges',previous=comparison.before[bucket].get(row.id),revised=comparison.after[bucket].get(row.id);
+  if(!previous)return [];
+  const compatible=revised&&(row.kind==='node'?previous.type===revised.type:previous.from===revised.from&&previous.to===revised.to);
+  const impacts=[],monitors=new Set(comparison.assignments.get(R.refKey(row))||[]);
+  if(previous.monitorId)monitors.add(previous.monitorId);
+  for(const name of monitors)impacts.push(['Monitor deployment',name,'',compatible?
+    'Review the confirmed host against the revised source geometry.':'The original host changed. Review and confirm a compatible asset.']);
+  if(previous.applied)impacts.push(['Applied spill assessment',previous.applied.calculated_at||previous.name,'',
+    'Previous results are withdrawn when this revision is applied. Recalculate on the revised basis.']);
+  for(const [kind,link] of Object.entries(previous.detrimentLinks||{})){
+    impacts.push(['Detriment association',kind+' · '+link.id,'','Review the changed asset and link compatible detriment evidence again.']);
+  }
+  for(const binding of [...(previous.bindings||[]),...(previous.seriesLinks||[])]){
+    impacts.push(['Source series',binding.sourceName+' · '+binding.column,binding.sha256,compatible?
+      'The assignment is retained for review. Confirm applicability to the revision.':'The assignment is withdrawn because the original asset changed.']);
+  }
+  return impacts;
 }
 function renderRevisionComparison(comparison){
   const root=$('nsRevisionComparison');
@@ -3241,39 +3300,71 @@ function renderRevisionComparison(comparison){
   const layerLabel=inspectorElement('label','Geometry layer'),layer=inspectorElement('select');
   for(const [name,label] of [['both','Baseline and revised'],['before','Baseline · dashed'],['after','Revised · solid']])
     layer.add(new Option(label,name));
-  layerLabel.append(layer);controls.append(statusLabel,searchLabel,layerLabel);
+  const scopeLabel=inspectorElement('label','Preview scope'),scope=inspectorElement('select');
+  scope.setAttribute('aria-label','Preview scope');
+  scope.add(new Option('Changed assets on this page','page'));scope.add(new Option('Full network context','network'));
+  const impactLabel=inspectorElement('label','Only changes affecting assignments or evidence','ns-revision-impact-filter');
+  const impactsOnly=inspectorElement('input');
+  impactsOnly.setAttribute('aria-label','Only changes affecting assignments or evidence');
+  impactsOnly.type='checkbox';
+  layerLabel.append(layer);scopeLabel.append(scope);impactLabel.prepend(impactsOnly);
+  const audit=inspectorButton('Download revision audit');
+  controls.append(statusLabel,searchLabel,layerLabel,scopeLabel,impactLabel,audit);
   const preview=inspectorElement('div',undefined,'ns-revision-preview'), register=inspectorElement('div',undefined,'ns-review-table'),
     detail=inspectorElement('div',undefined,'ns-review-table'),nav=inspectorElement('div',undefined,'ns-review-actions'),
-    currentPage=inspectorElement('span');
+    currentPage=inspectorElement('span'),legend=inspectorElement('small');
   currentPage.setAttribute('role','status');
   let number=0,limit=30;
   const previous=inspectorButton('Previous page'),next=inspectorButton('Next page');
   nav.append(previous,next,currentPage);
-  root.append(controls,inspectorElement('small','Baseline geometry is dashed red. Revised geometry is solid teal. The diagram shows changed assets on this page.'),
-    preview,nav,register,detail);
+  root.append(controls,legend,preview,nav,register,detail);
   const value=entry=>{
     if(entry===null)return 'Unavailable';
     if(typeof entry==='object'&&Object.hasOwn(entry,'value'))return String(entry.value)+(entry.unit?' '+entry.unit:'');
     return typeof entry==='object'?JSON.stringify(entry):String(entry);
   };
-  function display(){
+  function matching(){
     const needle=search.value.trim().toLowerCase();
-    const filtered=comparison.rows.filter(row=>(statusSelect.value==='All'||row.status===statusSelect.value)&&
+    return comparison.rows.filter(row=>(statusSelect.value==='All'||row.status===statusSelect.value)&&
+      (!impactsOnly.checked||row.monitorReview||row.evidenceReview)&&
       (!needle||row.id.toLowerCase().includes(needle)||row.name.toLowerCase().includes(needle)));
+  }
+  audit.onclick=()=>{
+    const rows=[['Asset ID','Kind','Source name','Change','Field','Baseline','Revised','Affected item','Reference','Source SHA-256','Disposition']];
+    for(const row of matching()){
+      const asset=[row.id,row.kind==='edge'?'Link':'Node',row.name,row.status];
+      if(row.changes.length){
+        for(const change of row.changes)rows.push([...asset,change.field,value(change.before),value(change.after),'','','','']);
+      }else rows.push([...asset,'','','','','','','']);
+      for(const impact of revisionImpact(comparison,row))rows.push([...asset,'','','',...impact]);
+    }
+    downloadBlob('hydra-network-revision.csv',rows.map(row=>row.map(ICMSafeCSV.cell).join(',')).join('\r\n'),'text/csv');
+  };
+  function display(){
+    const filtered=matching();audit.disabled=!filtered.length;
     const rows=filtered.slice(number*limit,(number+1)*limit);
+    const full=scope.value==='network';
     previous.disabled=number===0;next.disabled=(number+1)*limit>=filtered.length;
     currentPage.textContent=filtered.length?'Showing '+(number*limit+1)+'–'+(number*limit+rows.length)+' of '+filtered.length:'No matching changes.';
-    preview.replaceChildren(revisionGeometry(comparison,rows,layer.value));
+    legend.textContent='Baseline geometry is red. Revised geometry is teal. '+(full?
+      'Gray shows the network around all filtered changes.':'The diagram shows changed assets on this page.');
+    preview.replaceChildren(revisionGeometry(comparison,full?filtered:rows,layer.value,full));
     const table=tableWithHeaders(['Asset','Kind','Change','Fields','Review']);
     for(const row of rows){
       const inspect=inspectorButton(row.name);
       inspect.onclick=()=>{
-        if(!row.changes.length){
-          detail.replaceChildren(inspectorElement('p',row.name+' · '+row.status));return;
+        detail.replaceChildren(inspectorElement('h4',row.name+' · '+row.status+' · '+row.id));
+        if(row.changes.length){
+          const fields=tableWithHeaders(['Field','Baseline','Revised']);
+          for(const item of row.changes)addCells(fields.tBodies[0].insertRow(),[item.field,value(item.before),value(item.after)]);
+          detail.append(fields);
         }
-        const fields=tableWithHeaders(['Field','Baseline','Revised']);
-        for(const item of row.changes)addCells(fields.tBodies[0].insertRow(),[item.field,value(item.before),value(item.after)]);
-        detail.replaceChildren(inspectorElement('h4',row.name+' · '+row.id),fields);
+        const impacts=revisionImpact(comparison,row);
+        if(impacts.length){
+          const affected=tableWithHeaders(['Affected item','Reference','Review on apply']);
+          for(const [kind,reference,,review] of impacts)addCells(affected.tBodies[0].insertRow(),[kind,reference,review]);
+          detail.append(inspectorElement('h4','Affected assignments and evidence'),affected);
+        }
       };
       const impacts=[row.monitorReview?'Monitor location':'',row.evidenceReview?'Linked assessment or source evidence':''].filter(Boolean);
       addCells(table.tBodies[0].insertRow(),[inspect,row.kind==='edge'?'Link':'Node',row.status,
@@ -3282,8 +3373,8 @@ function renderRevisionComparison(comparison){
     detail.replaceChildren();register.replaceChildren(table);
   }
   previous.onclick=()=>{number--;display();};next.onclick=()=>{number++;display();};
-  statusSelect.onchange=search.oninput=()=>{number=0;display();};
-  layer.onchange=display;display();
+  statusSelect.onchange=impactsOnly.onchange=search.oninput=()=>{number=0;display();};
+  layer.onchange=scope.onchange=display;display();
 }
 
 function mount(){

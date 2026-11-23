@@ -28,7 +28,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 5.1 | Physical spills, calendar counts and analysis graphs | Filter/rank investigation events with exact support, rainfall, eligible volume and source navigation | Verified locally |
 | 5.2 | Annual schematic and common-period comparison | Compare several scenarios and count/duration/volume independently across assets, years and comparable periods | Verified locally |
 | 5.3 | Idealised block-volume storage screening | Distinct mass-conservative routing/sensitivity with inflow/outflow assumptions, capacity, initial state, discharge rules and missing-period handling | Verified locally |
-| 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Partial |
+| 6.1 | Native typed ICM import, revision reimport and stale evidence | Added/removed, geometry/attribute/endpoint/topology/type diff, map/register and audited evidence/monitor effects | Verified locally for full source geometry context, affected evidence and monitor audit, cancel and revised application |
 | 6.2 | Schematic evidence layers and result indicators | Flow, velocity, utilisation, surcharge, flooding, freeboard, gradient and dimensions with quantities, scales, scenario, direction and missingness | Verified locally for imported result layers, reviewed flow direction, same-datum freeboard, source geometry and positive imported full-capacity utilisation |
 | 6.3 | Exact-time selected model-level samples and overview | Synchronized recorded map/profile playback, event filtering, exact sample windows, speed controls, comparable scenario layers and independent extrema | Verified locally for exact shared-clock comparison and independent layer extrema. Geometry-sensitive scenario review remains open under 6.1 and 6.4 |
 | 6.4 | v2.2 route profile, source chainage and links | Engineering profile with shaft/pipe/structure geometry, exact and approximate hydraulic levels, freeboard, surcharge, independent scales, navigation, inspection and export | Partial. Source geometry, structure levels and paired exact proposal endpoints on reviewed shared route geometry verified in both desktop browsers. Revision-specific geometry and expanded profile interaction remain open |
@@ -67,6 +67,29 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Full-network revision review
+
+- Native revision previews retain a stable source-coordinate context
+  across baseline, proposal and combined views. Engineers can show all
+  filtered changes on that context or inspect the existing page detail.
+  The register identifies affected deployments, assigned source
+  channels and withdrawn assessments. The same reviewed filter applies
+  to the explicit formula-safe local CSV audit.
+- Both desktop tests used the normal source and deployment imports and
+  linked an actual time series to a rewired typed conduit. The audit
+  recorded the old and new endpoints, source fingerprint and disposition.
+  The old deployment remained reviewable and lost its marker because
+  its host endpoints changed. Its incompatible series link was
+  withdrawn. The compatible node deployment remained visible.
+- Chromium and Firefox opened a 10,001-asset context in 121 ms and
+  330 ms in one local run, including browser automation and path checks.
+  Six aggregate SVG paths represented source context and changed
+  geometry. They verified the exact counts and cancellation without
+  applying the staged network. Revision tests checked 106 and 104
+  requests with zero violations. Existing route and context smoke
+  tests and typed network unit suites also passed. See
+  `/workspace/hydra-evidence/v3/revision-context-final`.
 
 ### Fully contracted V-notch weir
 

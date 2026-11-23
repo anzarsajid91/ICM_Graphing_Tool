@@ -222,8 +222,9 @@ loop-affected nodes and parallel links before changing the canvas. On first
 import, choose geographic coordinates or engineering schematic layout.
 Re-importing a revised export requires the same format and shared imported
 node IDs. Compatible manual positions, labels, bends and manual additions are
-retained. The import clears calculated spill results on imported assets and
-clears saved views. Undo restores the previous local schematic.
+retained. The import withdraws affected calculated spill results and preserves
+compatible saved views and unaffected evidence. Undo restores the previous
+local schematic.
 
 ### Native InfoWorks CSV preview
 
@@ -326,6 +327,21 @@ source fields change, the previous attached calculation and Detriment evidence
 must be re-established. Original units remain visible without conversion, and
 unsupported declared units for engineering fields are rejected. The importer
 creates or updates only the Hydra Bench project and never writes to ICM.
+
+In the import audit, open **Revision comparison** before applying a revised
+export. **Preview scope** starts with the changes on the current register
+page. Choose **Full network context** for a fixed source-coordinate view
+around all filtered changes. **Geometry layer** shows baseline, revised
+or both. Gray supplies context. Red and teal identify the selected old
+and new changes.
+
+Select a changed asset to inspect its source fields and affected monitor
+deployments, series references and assessments. Filter to changes affecting
+assignments or evidence, or download the filtered revision audit locally.
+A changed typed host requires confirmation before its previous monitor
+deployment can appear on the revised map. Apply the import to update the
+network. Check hydraulic impact separately using compatible simulation
+results.
 
 ## Network review
 
