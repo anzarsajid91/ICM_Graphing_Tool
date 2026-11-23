@@ -51,7 +51,7 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 | 10.3 | Detriment schematic overlay | Reviewed typed proposal hotspots, independent criterion and severity filters, nominal branch trace and direct report evidence | Verified locally for compatible imported networks |
 | 11.1 | Report builder and local HTML/print exports | Configurable arrangement, engineering comments, preview and export | Verified locally for assessment templates, section order, schematic, current calculation-sheet selection and local preview/export. Exact final full regressions remain open |
 | 11.2 | Existing print and local downloads | Engineering sheets with equations, units, component results, provenance, assumptions, methods and exact version | Partial. Reports includes v3 hydraulic design, legacy circular capacity and normal depth, and gravity sizing sheets. Coverage of remaining workspace calculations remains open |
-| 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Partial. Portable Reports snapshots include current calculation sheets, mapped verification/spill support, Storage and scoped Detriment records, decisions and actions. Qualifying multi-event verification and survey detail remain open |
+| 11.3 | Workspace and schematic snapshots | Reproducible change report with explicit evidence comparability | Partial. Portable Reports snapshots include current calculation sheets, legacy and multi-event verification, spill and Storage, scoped Detriment records, decisions and actions. Detailed survey capture remains open |
 | 12.1 | IT Security and claim register | Runtime-supported diagnostics/inventory/clear controls and reliable storage information | Verified locally |
 | 12.2 | Methods documentation and About page | Searchable and sourced method library with revision, scopes and limitations | Partial |
 | 12.3 | Build metadata, security claims and release evidence | Versioned assurance covering actual feature, numerical, confidentiality and compatibility outcomes | Verified locally for revision-scoped historical and milestone entries. Final v3 production evidence remains gated by §20 |
@@ -67,6 +67,11 @@ Status terms are Open, Partial, Verified and External validation. A Partial row 
 ## Work in progress
 
 Development is in draft PR #119. Version assignment is deferred until the complete acceptance and protected release gates can be verified.
+
+### Multi-event verification report handoff
+
+- Reports captures current matrix rows through the established Verification snapshot builder. The assessment retains the exact observed identity, dates, measured support, qualifications, rainfall fingerprint, project criteria, model provenance and engineer comments. A different basis, incomplete events and ambiguous multiple scenarios affect comparability explicitly.
+- Chromium and Firefox passed the 24-comparison scenario workflow and Reports captures through the normal controls. The first synthetic event used 120 supported seconds and the same rainfall digest across model revisions, with peak error changing from 10% to −5% within a 10⁻¹² assertion tolerance. The canonical Verification improvement and its criterion statuses remained unchanged. The recorded signed values and comment appeared in Reports. Browser request guards observed 105 and 103 requests with zero violations. The separate Reports regression observed 106 and 104 requests with zero violations. Evidence is in `/workspace/hydra-evidence/v3/verification-report-handoff-final`.
 
 ### Storage and Detriment revision evidence
 

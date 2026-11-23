@@ -7,6 +7,7 @@ const node=(tag,text)=>{const item=document.createElement(tag);if(text!==undefin
 const print=value=>Number.isFinite(value)?Number(value.toPrecision(6)).toString():'Unavailable';
 const titles={coverage:'Common event coverage',peak:'Peak error',volume:'Volume error',timing:'Peak delay'};
 const pairsLimit=16,cellLimit=512,pageSize=20;
+let assessmentSnapshot=async()=>null;
 
 function mount(){
   const root=document.getElementById('tab-verification-matrix');
@@ -316,10 +317,10 @@ function mount(){
     return [mode,survey.batch.network.method,survey.batch.network.criteria,gauges,Number(document.getElementById('rainFactor').value),
       survey.associationSource?.sha256||null,exclusions(applied)];
   }
-  async function captureSnapshot(){
+  async function captureSnapshot(label=revisionName.value.trim()){
     const known=result;
     if(!known||known.signature!==JSON.stringify(plan()))throw new Error('Calculate a fresh matrix before capturing a revision.');
-    const label=revisionName.value.trim();if(!label)throw new Error('Enter a revision name.');
+    if(!label)throw new Error('Enter a revision name.');
     const {input,rows}=known;
     const rainfall=await sha256Bytes(new TextEncoder().encode(JSON.stringify(rainBasis(input.rain))));
     if(known!==result||known.signature!==JSON.stringify(plan()))throw new Error('The matrix changed while reading its evidence.');
@@ -333,6 +334,12 @@ function mount(){
         observed_exclusions:pair.observed.exclusions,model_exclusions:pair.scenario.exclusions}))};
     return frozen;
   }
+  assessmentSnapshot=async label=>{
+    if(!result)return null;
+    try{if(result.signature!==JSON.stringify(plan()))return null;}
+    catch{return null;}
+    return captureSnapshot(label);
+  };
   async function revisionOperation(action){
     if(revisionBusy)return;
     const run=revisionGeneration;revisionBusy=true;revisionControls();revisionStatus.textContent='Preparing local revision evidence…';
@@ -555,5 +562,5 @@ function mountCalibration(root, context, plan){
   return {reset,open(){refresh();root.hidden=false;$('hbCalibrationTitle').focus();}};
 }
 
-window.HydraVerificationMatrix={mount};
+window.HydraVerificationMatrix={mount,assessmentSnapshot:label=>assessmentSnapshot(label)};
 })();

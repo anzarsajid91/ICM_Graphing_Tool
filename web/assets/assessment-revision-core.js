@@ -73,6 +73,10 @@ function compareSnapshots(baseline,current){
       return 'A reviewed assessment scope or dated period is unavailable.';
     if(left.basis.some(field=>field.key==='Complete discharge support'&&field.value===false)||other.get('Complete discharge support')?.value===false)
       return 'Complete discharge support is unavailable for a calendar volume comparison.';
+    if(left.basis.some(field=>field.key==='Complete verification window'&&field.value===false)||other.get('Complete verification window')?.value===false)
+      return 'The verification comparison requires the full event window with zero exclusions.';
+    if(left.basis.some(field=>field.key==='Unique verification baseline'&&field.value===false)||other.get('Unique verification baseline')?.value===false)
+      return 'More than one scenario uses this observed record and event. Review the pairings in Verification.';
     return left.basis.length!==other.size||left.basis.some(field=>!sameValue(field,other.get(field.key)))?
       'The recorded assessment basis changed.':null;
   }
@@ -204,7 +208,38 @@ function includeDetriment(records,assetId){
   if(assetId&&!matches)throw new Error('No current Detriment evidence matched that exact asset ID. Review the assessment and its applied asset list.');
 }
 
-function collectAssessment(name,note,action,assetId){
+function verificationMatrixRecords(snapshot){
+  if(!snapshot)return [];
+  const keys=['coverage','peak','volume','timing'],labels={coverage:'Common event coverage',peak:'Peak error',volume:'Volume error',timing:'Peak delay'};
+  const identity=row=>JSON.stringify([snapshot.quantity,row.observed_sha256,row.observed_column,row.start,row.end]);
+  const count=new Map();
+  for(const row of snapshot.rows){const key=identity(row);count.set(key,(count.get(key)||0)+1);}
+  return snapshot.rows.map(row=>{
+    const key=identity(row),unique=count.get(key)===1,raw=row.evidence||{};
+    const checks=keys.filter(item=>Object.hasOwn(row.checks,item)).map(item=>[labels[item],row.checks[item]]);
+    const full=row.complete_support&&raw.status==='complete'&&raw.requested_seconds===raw.common_support_seconds&&raw.excluded_seconds===0;
+    const id='verification-matrix:'+key+(unique?'':':'+JSON.stringify([row.model_sha256,row.model_column]));
+    return evidence(id,'Verification',`${row.observed_name} · ${row.start} to ${row.end}`,snapshot.method,{
+      basis:[['Quantity',snapshot.quantity],['Observed channel',row.observed_column],['Observed SHA-256',row.observed_sha256],
+        ['Event start',row.start],['Event end',row.end],['Rainfall qualification',snapshot.rainfall_basis],
+        ['Rainfall evidence SHA-256',row.rainfall_provenance],['Maximum sample gap',snapshot.maximum_gap_seconds,'s'],
+        ['Model clock shift',snapshot.model_offset_minutes,'min'],['Project criteria',recordedJSON(snapshot.criteria)],
+        ['Unique verification baseline',unique],['Complete verification window',Boolean(full)],['Requested support',raw.requested_seconds,'s'],
+        ['Common support',raw.common_support_seconds,'s'],['Exclusions',raw.excluded_seconds,'s'],['Observed peak',raw.observed_peak,raw.unit],
+        ['Observed event volume',raw.observed_volume_m3,'m³']],
+      inputs:[['Model source',row.model_name],['Model channel',row.model_column],['Model SHA-256',row.model_sha256],
+        ['Observed exclusions',recordedJSON(row.observed_exclusions)],['Model exclusions',recordedJSON(row.model_exclusions)]],
+      results:[['Modelled peak',raw.modelled_peak,raw.unit],['Modelled event volume',raw.modelled_volume_m3,'m³'],
+        ...checks.map(([label,metric])=>[label,metric.status==='Withheld'?null:metric.value,metric.unit])],
+      review:[['Engineer comment',row.comment],...checks.map(([label,metric])=>[label+' review',[metric.status,metric.reason].filter(Boolean).join(' · ')])],
+      actions:row.error?[['Result investigation',row.error]]:[]
+    });
+  });
+}
+
+async function collectAssessment(name,note,action,assetId){
+  text(name,'revision name',160);
+  const verification=await window.HydraVerificationMatrix?.assessmentSnapshot(name);
   const settings=workspaceObject(false),analysis=settings.analysis||{},signature=analysisSignature();
   const analysisBasis=[['Project clock',settings.time_basis],['Start',analysis.analysis_start],['End',analysis.analysis_end],
     ['Maximum sample gap',analysis.max_gap_seconds,'s'],['Applied exclusions',JSON.stringify(settings.exclusions||[])]];
@@ -213,7 +248,7 @@ function collectAssessment(name,note,action,assetId){
   const records=[evidence('project-context','Reports','Assessment record','workspace-context-v1',{
     inputs:[...analysisBasis,['Model shift',analysis.time_offset_minutes,'min'],['Rainfall scale',analysis.rain_factor],['Detriment capture asset ID',assetId||null]],
     review:[['Workspace review note',notes],['Revision review note',note]],actions:[['Engineer action',action]]
-  }),...(window.HydraDesignCalculations?.assessmentRecords()||[])];
+  }),...(window.HydraDesignCalculations?.assessmentRecords()||[]),...verificationMatrixRecords(verification)];
   const comparison=state.comparisonSnapshot;
   if(comparison?.signature===signature){
     const observed=comparison.config?.mapping?.observed;
@@ -323,13 +358,15 @@ function mount(){
     const clear=elem('button','Clear '+name.toLowerCase());
     capture.type=download.type=clear.type='button';
     const side={packet:null,summary,download,clear,generation:0};sides.set(name,side);announce(side,null);
-    capture.onclick=()=>{
-      ++side.generation;
+    capture.onclick=async()=>{
+      const generation=++side.generation;
       try{
-        announce(side,collectAssessment($('hbAssessmentName').value.trim(),$('hbAssessmentNote').value,$('hbAssessmentAction').value,
-          $('hbAssessmentAsset').value.trim()));
+        const packet=await collectAssessment($('hbAssessmentName').value.trim(),$('hbAssessmentNote').value,$('hbAssessmentAction').value,
+          $('hbAssessmentAsset').value.trim());
+        if(generation!==side.generation)return;
+        announce(side,packet);
         status.textContent=name+' assessment captured from current local evidence.';
-      }catch(error){status.textContent=error.message;}
+      }catch(error){if(generation===side.generation)status.textContent=error.message;}
     };
     upload.onchange=async()=>{
       const generation=++side.generation,file=upload.files[0];upload.value='';if(!file)return;
@@ -387,5 +424,5 @@ function mount(){
   };
 }
 
-globalThis.HydraAssessmentRevision={readSnapshot,compareSnapshots,storageAssessmentRecords,detrimentAssessmentRecord,mount};
+globalThis.HydraAssessmentRevision={readSnapshot,compareSnapshots,storageAssessmentRecords,detrimentAssessmentRecord,verificationMatrixRecords,mount};
 })();

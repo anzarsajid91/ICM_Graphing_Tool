@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import '../assets/assessment-revision-core.js';
 
-const {readSnapshot,compareSnapshots,detrimentAssessmentRecord,storageAssessmentRecords}=globalThis.HydraAssessmentRevision;
+const {readSnapshot,compareSnapshots,detrimentAssessmentRecord,storageAssessmentRecords,verificationMatrixRecords}=globalThis.HydraAssessmentRevision;
 const field=(key,value,unit)=>({key,label:key,value,unit});
 const baseline={schema_version:1,name:'Baseline',build:'1'.repeat(40),records:[{
   id:'hydraulic:pipe:S1',workspace:'Hydraulic calculations',title:'Pipe S1',method:'method-v1',
@@ -71,4 +71,19 @@ const shortSupport=storageCapture({...storage,calendar_volumes:[{year:2026,volum
 assert.equal(find(compare(firstStorage,shortSupport),'Required storage').status,'Unchanged');
 assert.equal(find(compare(firstStorage,shortSupport),'Physical discharge').status,'Not comparable');
 assert.equal(find(compare(firstStorage,storageCapture(storage,{target_count:1})),'Required storage').status,'Not comparable');
+
+const verificationRow={start:'2025-01-01T10:00:00',end:'2025-01-01T10:10:00',observed_name:'Observed 001',
+  observed_sha256:'c'.repeat(64),observed_column:'Flow',model_sha256:'d'.repeat(64),model_column:'Modelled Q',model_name:'Proposed ICM run',
+  rainfall_provenance:'a'.repeat(64),checks:{peak:{unit:'%',status:'Meets',value:10}},complete_support:true,
+  evidence:{status:'complete',requested_seconds:600,common_support_seconds:600,excluded_seconds:0,unit:'m³/s',observed_peak:1,modelled_peak:1.1}};
+const matrix=(rows,criteria={peak:10})=>({...baseline,records:verificationMatrixRecords({method:'project-event-screens-v1',quantity:'flow',
+  rainfall_basis:'survey',maximum_gap_seconds:120,model_offset_minutes:5,criteria,rows})});
+const firstMatrix=matrix([verificationRow]);
+const newModel={...verificationRow,model_sha256:'e'.repeat(64),checks:{peak:{unit:'%',status:'Meets',value:-5}}};
+assert.equal(find(compare(firstMatrix,matrix([newModel])),'Peak error').status,'Changed');
+assert.equal(find(compare(firstMatrix,matrix([newModel],{peak:8})),'Peak error').status,'Not comparable');
+assert.match(find(compare(firstMatrix,matrix([{...newModel,complete_support:false}])),'Peak error').note,/full event window/);
+const competing=matrix([verificationRow,newModel]);
+assert.notEqual(competing.records[0].id,competing.records[1].id);
+assert.match(find(compare(competing,competing),'Peak error').note,/More than one scenario/);
 console.log('Assessment revision comparisons passed: method and unit compatibility, changed inputs and decisions, missing evidence and bounded validation.');

@@ -106,6 +106,18 @@ try{
   assert(await calibration.isHidden());assert(await investigate.evaluate(button=>button===document.activeElement));
 
   const tracking=root.getByRole('region',{name:'Scenario revision tracking'}),revisionStatus=tracking.getByRole('status');
+  async function captureReport(side,name){
+    await page.locator('button[data-workspace="reports"]').click();
+    await page.getByRole('tab',{name:'Revision comparison',exact:true}).click();
+    const reports=page.locator('#tab-assessment-revision');
+    await reports.getByLabel('Revision name',{exact:true}).fill(name);
+    await reports.getByRole('button',{name:'Capture '+side,exact:true}).click();
+    await reports.locator('#hbAssessmentStatus').filter({hasText:'assessment captured from current local evidence'}).waitFor();
+    const request=page.waitForEvent('download');
+    await reports.getByRole('button',{name:'Download '+side+' snapshot',exact:true}).click();
+    const packet=JSON.parse(await fs.readFile(await (await request).path(),'utf8'));
+    return {reports,records:packet.records.filter(record=>record.id.startsWith('verification-matrix:'))};
+  }
   await tracking.getByRole('textbox',{name:'Revision name',exact:true}).fill('=SYNTHETIC-BASELINE-REVISION');
   await tracking.getByRole('button',{name:'Use current as baseline',exact:true}).click();
   await revisionStatus.getByText('Baseline ready.',{exact:false}).waitFor();
@@ -114,6 +126,13 @@ try{
   assert.equal(snapshot.schema,'hydra-verification-snapshot-v1');assert.equal(snapshot.rows.length,24);
   assert.equal(snapshot.rows[0].comment,'=SYNTHETIC-MATRIX-COMMENT');
   assert.equal(snapshot.rows[0].evidence.observed_volume_m3,180);assert.match(snapshot.rows[0].rainfall_provenance,/^[a-f0-9]{64}$/);
+  const reportBaseline=await captureReport('baseline','Matched baseline');
+  assert.equal(reportBaseline.records.length,24);
+  const field=(record,section,key)=>record[section].find(item=>item.key===key).value;
+  assert.equal(field(reportBaseline.records[0],'basis','Rainfall evidence SHA-256'),snapshot.rows[0].rainfall_provenance);
+  assert.equal(field(reportBaseline.records[0],'basis','Common support'),120);
+  assert.equal(field(reportBaseline.records[0],'review','Engineer comment'),'=SYNTHETIC-MATRIX-COMMENT');
+  await open();
   await tracking.getByRole('button',{name:'Clear baseline',exact:true}).click();
   assert(await tracking.getByRole('button',{name:'Compare with baseline',exact:true}).isDisabled());
   await tracking.getByLabel('Open baseline snapshot').setInputFiles({name:'review.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(snapshot))});
@@ -136,6 +155,16 @@ try{
   const revisionsAudit=await fs.readFile(await (await revisionsRequested).path(),'utf8');
   assert.match(revisionsAudit,/'=SYNTHETIC-BASELINE-REVISION/);assert.match(revisionsAudit,/'=SYNTHETIC-MATRIX-COMMENT/);assert.match(revisionsAudit,/"Unchanged"/);
   if(process.env.ICM_EVIDENCE_DIR)await tracking.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-verification-revisions-'+engine+'.png'});
+  const reportProposed=await captureReport('proposed','Matched proposal');
+  assert.equal(reportProposed.records.length,24);
+  assert.equal(reportProposed.records[0].id,reportBaseline.records[0].id);
+  assert(Math.abs(field(reportBaseline.records[0],'results','Peak error')-10)<1e-12);
+  assert(Math.abs(field(reportProposed.records[0],'results','Peak error')+5)<1e-12);
+  await reportProposed.reports.getByRole('button',{name:'Compare assessment snapshots',exact:true}).click();
+  await reportProposed.reports.getByLabel('Change status',{exact:true}).selectOption('Changed');
+  await reportProposed.reports.getByRole('table',{name:'Assessment changes'}).getByRole('row',{name:/Peak error 10(?:\.\d+)? % -5(?:\.\d+)? % Changed/}).first().waitFor();
+  if(process.env.ICM_EVIDENCE_DIR)await reportProposed.reports.screenshot({path:process.env.ICM_EVIDENCE_DIR+'/v3-qualification-report-'+engine+'.png'});
+  await open();
   await root.locator('[name=flow_volume_error_percent]').fill('4');
   assert(await revisionTable.isHidden());
   await run.click();await status.getByText('Verification matrix ready. 24 comparisons · 0 unavailable.',{exact:true}).waitFor();
