@@ -26,4 +26,11 @@ Do not merge or release with an unresolved confidentiality failure.
 - Effective server-side rules verified (otherwise Not Enforced):
 - Approved final head, release/rollback plan and actual live SHA after deployment:
 
+## Dual-expert release review
+
+For a release candidate, link the [versioned review dossier](../docs/reviews/README.md)
+and record the exact candidate head, independent technical verdict, independent
+UI/UX verdict, and the evidence and disposition of each release blocker. Apply the
+[framework](../docs/dual-expert-review.md) before requesting a protected merge.
+
 No confidential data in this PR or its evidence. No automatic repair grants merge authority.

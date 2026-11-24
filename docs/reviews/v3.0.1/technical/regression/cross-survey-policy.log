@@ -1,0 +1,16 @@
+..                                                                       [100%]
+=============================== warnings summary ===============================
+../hydra-venv/lib/python3.12/site-packages/dash/testing/plugin.py:104
+  /workspace/hydra-venv/lib/python3.12/site-packages/dash/testing/plugin.py:104: PytestRemovedIn10Warning: The hookimpl pytest_addhooks uses old-style configuration options (marks or attributes).
+  Please use the pytest.hookimpl(tryfirst=True) decorator instead
+   to configure the hooks.
+   See https://docs.pytest.org/en/latest/deprecations.html#configuring-hook-specs-impls-using-markers
+    @pytest.mark.tryfirst
+
+tests/unit/test_survey_context.py::test_volume_balance_exclusions_are_removed_not_counted_as_non_flow
+tests/unit/test_survey_scope_integrity.py::test_volume_balance_exclusion_for_one_monitor_does_not_apply_to_another
+  /workspace/hydra-v301-production/src/icm_workbench/analysis/survey_context.py:725: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    week_end = min(pd.Timestamp(period.end_time).floor("D") + pd.Timedelta(days=1), domain_end)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2 passed, 3 warnings in 0.80s

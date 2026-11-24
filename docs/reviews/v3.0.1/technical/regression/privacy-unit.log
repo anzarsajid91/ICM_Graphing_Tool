@@ -1,0 +1,53 @@
+test_excludes_generated_bytecode_and_tests_at_every_depth (test_browser_source_staging.BrowserStagingTests.test_excludes_generated_bytecode_and_tests_at_every_depth) ... ok
+test_exact_reviewed_vendor_and_advisory (test_dependency_applicability.ApplicabilityTests.test_exact_reviewed_vendor_and_advisory) ... ok
+test_other_package_and_version_fail (test_dependency_applicability.ApplicabilityTests.test_other_package_and_version_fail) ... ok
+test_tampered_vendor_fails (test_dependency_applicability.ApplicabilityTests.test_tampered_vendor_fails) ... ok
+test_unreviewed_id_and_changed_advisory_fail (test_dependency_applicability.ApplicabilityTests.test_unreviewed_id_and_changed_advisory_fail) ... ok
+test_delete_flag_is_rejected_before_network_access (test_evidence_inventory.EvidenceInventoryTests.test_delete_flag_is_rejected_before_network_access) ... ok
+test_incomplete_history_tree_does_not_produce_success (test_evidence_inventory.EvidenceInventoryTests.test_incomplete_history_tree_does_not_produce_success) ... ok
+test_real_candidate_inventory_cannot_delete_artifacts_or_logs (test_evidence_inventory.EvidenceInventoryTests.test_real_candidate_inventory_cannot_delete_artifacts_or_logs) ... ok
+test_workflow_is_manual_read_only_and_main_only (test_evidence_inventory.EvidenceInventoryTests.test_workflow_is_manual_read_only_and_main_only) ... ok
+test_other_errors_fail_immediately (test_live_integrity_retry.LiveDownloadTests.test_other_errors_fail_immediately) ... ok
+test_persistent_failure_is_bounded_and_fatal (test_live_integrity_retry.LiveDownloadTests.test_persistent_failure_is_bounded_and_fatal) ... Fixed-resource HTTP 503; retry 1/3 in 1s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+Fixed-resource HTTP 503; retry 2/3 in 2s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+Fixed-resource HTTP 503; retry 3/3 in 4s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+ok
+test_redirect_escape_fails_without_retry (test_live_integrity_retry.LiveDownloadTests.test_redirect_escape_fails_without_retry) ... ok
+test_timeouts_retry_but_certificate_failures_do_not (test_live_integrity_retry.LiveDownloadTests.test_timeouts_retry_but_certificate_failures_do_not) ... Fixed-resource timeout; retry 1/3 in 1s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+Fixed-resource timeout; retry 1/3 in 1s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+Fixed-resource timeout; retry 1/3 in 1s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+Fixed-resource timeout; retry 2/3 in 2s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+Fixed-resource timeout; retry 3/3 in 4s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+ok
+test_transient_failure_recovers_same_url (test_live_integrity_retry.LiveDownloadTests.test_transient_failure_recovers_same_url) ... Fixed-resource HTTP 429; retry 1/3 in 1s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+Fixed-resource HTTP 500; retry 1/3 in 1s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+Fixed-resource HTTP 502; retry 1/3 in 1s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+Fixed-resource HTTP 503; retry 1/3 in 1s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+Fixed-resource HTTP 504; retry 1/3 in 1s: https://synthetic.invalid/app/index.html?v=0000000000000000000000000000000000000000
+ok
+test_artifact_tamper_fails (test_security_contract.SecurityContractTests.test_artifact_tamper_fails) ... ok
+test_canonical_bytes_survive_autocrlf_checkout (test_security_contract.SecurityContractTests.test_canonical_bytes_survive_autocrlf_checkout) ... ok
+test_claim_evidence_change_fails (test_security_contract.SecurityContractTests.test_claim_evidence_change_fails) ... ok
+test_claim_evidence_matches (test_security_contract.SecurityContractTests.test_claim_evidence_matches) ... ok
+test_deployment_control_is_explicit_not_a_served_asset (test_security_contract.SecurityContractTests.test_deployment_control_is_explicit_not_a_served_asset) ... ok
+test_live_resources_require_every_http_asset_not_deployment_controls (test_security_contract.SecurityContractTests.test_live_resources_require_every_http_asset_not_deployment_controls) ... ok
+test_missing_hidden_artifact_file_fails (test_security_contract.SecurityContractTests.test_missing_hidden_artifact_file_fails) ... ok
+test_nonempty_deployment_control_is_rejected (test_security_contract.SecurityContractTests.test_nonempty_deployment_control_is_rejected) ... ok
+test_pages_publication_cli_checks_actual_tar_bytes (test_security_contract.SecurityContractTests.test_pages_publication_cli_checks_actual_tar_bytes) ... ok
+test_changed_and_new_network_sources_fail_closed (test_source_gate.SourceGateTests.test_changed_and_new_network_sources_fail_closed) ... ok
+test_local_analysis_is_not_a_network_sink (test_source_gate.SourceGateTests.test_local_analysis_is_not_a_network_sink) ... ok
+test_network_sinks_require_review (test_source_gate.SourceGateTests.test_network_sinks_require_review) ... ok
+test_python_network_and_dynamic_execution_require_review (test_source_gate.SourceGateTests.test_python_network_and_dynamic_execution_require_review) ... ok
+test_remote_resources_require_review (test_source_gate.SourceGateTests.test_remote_resources_require_review) ... ok
+
+----------------------------------------------------------------------
+Ran 28 tests in 0.356s
+
+OK
+Artifact integrity: 2 files; synthetic
+Security claim structure and evidence digests match; semantic review remains mandatory.
+Artifact integrity: 4 files; 0000000000000000000000000000000000000000
+Live artifact verified: 0000000000000000000000000000000000000000, 3 HTTP resources; 1 deployment controls verified in the review build, not published as HTTP assets
+Artifact integrity: 4 files; 0000000000000000000000000000000000000000
+Artifact integrity: 4 files; 0000000000000000000000000000000000000000
+Artifact integrity: 3 files; synthetic

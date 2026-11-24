@@ -1,0 +1,491 @@
+{
+  "identity": {
+    "title": "Hydra Bench · Hydra Bench",
+    "build": "ccc36427c12f003e5d9b1fee61632770b31952cc",
+    "version": "v3.0.1",
+    "url": "https://anzarsajid91.github.io/ICM_Graphing_Tool/"
+  },
+  "browser": "140.0.7339.186",
+  "modes": [
+    {
+      "label": "detailed",
+      "mode": "Detailed network",
+      "canvas": {
+        "width": 1190,
+        "height": 660
+      },
+      "nodes": 101,
+      "connectors": 101,
+      "sourceNodes": 101,
+      "sourceEdges": 101,
+      "groupCount": 0,
+      "groupExamples": [],
+      "renderedLabelCount": 30,
+      "labelOverlaps": 0,
+      "overlapExamples": [],
+      "controls": [
+        [
+          "SPLIT",
+          true
+        ],
+        [
+          "CSO-01",
+          true
+        ],
+        [
+          "PS-01",
+          true
+        ],
+        [
+          "WEIR-IN",
+          true
+        ],
+        [
+          "WEIR-OUT",
+          true
+        ],
+        [
+          "OUT-MAIN",
+          true
+        ],
+        [
+          "OUT-SPILL",
+          true
+        ],
+        [
+          "W-06",
+          true
+        ]
+      ],
+      "monitors": [],
+      "zoom": "92.8%",
+      "keyboardStops": 202,
+      "viewport": {
+        "w": 1440,
+        "h": 1000,
+        "scrollWidth": 1440
+      },
+      "text": "M\nIN-N\nPS-01\nOUT-SPILL\nOUT-MAIN\nW-01\nW-03\nW-05\nM\nW-07\nN-02\nN-03\nN-04\nN-05\nN-06\nN-07\nP-01\nP-04\nP-06\nP-08\nG-03\nG-05\nG-07\nG-09\nG-11\nS-02\nS-06\nO-01\nD-02\nD-04\nD-06\nD-08\nConnections show topology only · M: installed monitor\nPan\nZoom\n−\n92.8%\n+\nFit\nFocus selected\nReset view",
+      "export": {
+        "saved": "network-detailed-chromium.svg",
+        "suggested": "hydra-network-schematic.svg",
+        "bytes": 608118,
+        "viewBox": "0 0 1242 556",
+        "knownLabels": [
+          "SPLIT",
+          "CSO-01",
+          "PS-01",
+          "OUT-MAIN",
+          "OUT-SPILL",
+          "FM-01",
+          "FM-02",
+          "W-06"
+        ],
+        "textNodes": 207,
+        "scriptPresent": false,
+        "title": "IN-W.1"
+      }
+    },
+    {
+      "label": "engineering",
+      "mode": "Engineering schematic",
+      "canvas": {
+        "width": 1190,
+        "height": 660
+      },
+      "nodes": 14,
+      "connectors": 14,
+      "sourceNodes": 101,
+      "sourceEdges": 101,
+      "groupCount": 0,
+      "groupExamples": [],
+      "renderedLabelCount": 14,
+      "labelOverlaps": 0,
+      "overlapExamples": [],
+      "controls": [
+        [
+          "SPLIT",
+          true
+        ],
+        [
+          "CSO-01",
+          true
+        ],
+        [
+          "PS-01",
+          true
+        ],
+        [
+          "WEIR-IN",
+          true
+        ],
+        [
+          "WEIR-OUT",
+          true
+        ],
+        [
+          "OUT-MAIN",
+          true
+        ],
+        [
+          "OUT-SPILL",
+          true
+        ],
+        [
+          "W-06",
+          true
+        ]
+      ],
+      "monitors": [],
+      "zoom": "71.8%",
+      "keyboardStops": 28,
+      "viewport": {
+        "w": 1440,
+        "h": 1000,
+        "scrollWidth": 1440
+      },
+      "text": "P\nM\nW\nCSO-01\nIN-N\nIN-W\nMERGE\nOUT-MAIN\nOUT-SPILL\nPS-01\nPS-DIS\nR-04\nR-05\nSPLIT\nW-06\nM\nWEIR-IN\nWEIR-OUT\nNominal flow direction · Crossings join at a marked node · M: monitor\nPan\nZoom\n−\n71.8%\n+\nFit\nFocus selected\nReset view",
+      "export": {
+        "saved": "network-engineering-chromium.svg",
+        "suggested": "hydra-network-schematic.svg",
+        "bytes": 490012,
+        "viewBox": "0 0 1532 351",
+        "knownLabels": [
+          "SPLIT",
+          "CSO-01",
+          "PS-01",
+          "OUT-MAIN",
+          "OUT-SPILL",
+          "FM-01",
+          "FM-02",
+          "W-06",
+          "Nominal direction"
+        ],
+        "textNodes": 25,
+        "scriptPresent": false,
+        "title": "CSO-01 to MERGE · Conduit or general connection · 13 source links"
+      },
+      "png": {
+        "saved": "network-engineering-chromium.png",
+        "suggested": "hydra-network-schematic.png",
+        "bytes": 231209
+      },
+      "pdf": {
+        "title": "Hydra Bench network diagram",
+        "lines": "Print / save PDF\nSynthetic expanded network | engineering\nP\nM\nW\nCSO-01\nIN-N\nIN-W\nMERGE\nOUT-MAIN\nOUT-SPILL\nPS-01\nPS-DIS\nR-04\nR-05\nSPLIT\nW-06\nM\nWEIR-IN\nWEIR-OUT\nSchematic positions · Nominal direction · Connections join at marked nodes\nConduit or general connection\nPumped route\nP · pump\nW · weir\nM · Installed monitor"
+      }
+    },
+    {
+      "label": "strategic",
+      "mode": "Strategic asset diagram",
+      "canvas": {
+        "width": 1190,
+        "height": 660
+      },
+      "nodes": 14,
+      "connectors": 14,
+      "sourceNodes": 101,
+      "sourceEdges": 101,
+      "groupCount": 2,
+      "groupExamples": [
+        "Upstream branch · 9 source nodes",
+        "Upstream branch · 6 source nodes"
+      ],
+      "renderedLabelCount": 11,
+      "labelOverlaps": 0,
+      "overlapExamples": [],
+      "controls": [
+        [
+          "SPLIT",
+          true
+        ],
+        [
+          "CSO-01",
+          true
+        ],
+        [
+          "PS-01",
+          true
+        ],
+        [
+          "WEIR-IN",
+          true
+        ],
+        [
+          "WEIR-OUT",
+          true
+        ],
+        [
+          "OUT-MAIN",
+          true
+        ],
+        [
+          "OUT-SPILL",
+          true
+        ],
+        [
+          "W-06",
+          true
+        ]
+      ],
+      "monitors": [],
+      "zoom": "71.8%",
+      "keyboardStops": 28,
+      "viewport": {
+        "w": 1440,
+        "h": 1000,
+        "scrollWidth": 1440
+      },
+      "text": "P\nM\nW\nCSO-01\nMERGE\nUpstream branch\n9 nodes\nOUT-MAIN\nOUT-SPILL\nPS-01\nSPLIT\nUpstream branch\n6 nodes\nW-06\nM\nNominal flow direction · Crossings join at a marked node · M: monitor\nPan\nZoom\n−\n71.8%\n+\nFit\nFocus selected\nReset view",
+      "export": {
+        "saved": "network-strategic-chromium.svg",
+        "suggested": "hydra-network-schematic.svg",
+        "bytes": 490027,
+        "viewBox": "0 0 1546.5 361",
+        "knownLabels": [
+          "SPLIT",
+          "CSO-01",
+          "PS-01",
+          "OUT-MAIN",
+          "OUT-SPILL",
+          "FM-01",
+          "FM-02",
+          "W-06",
+          "Nominal direction"
+        ],
+        "textNodes": 22,
+        "scriptPresent": false,
+        "title": "CSO-01 to MERGE · Conduit or general connection · 13 source links"
+      }
+    }
+  ],
+  "journey": [
+    {
+      "stage": "network audit",
+      "text": "Model Context Import Audit\n\n101 imported nodes and 101 imported links. Arrows show nominal topology.\n\nSome conduits omit shape or length metadata.\nExport uses metres for coordinates, lengths and levels, and millimetres for conduit dimensions and Colebrook–White roughness.\nLayout\nGeographic coordinates\nEngineering schematic\n\nApply network context\nCancel"
+    },
+    {
+      "stage": "monitor preview",
+      "text": "Row\tMonitor name\tInstalled asset ID\tMatch and review\n2\tFM-01\tW-06\t\nMatched · W-06\n\n3\tFM-02\tR-04.1\t\nMatched · R-04.1"
+    },
+    {
+      "stage": "monitor apply",
+      "text": "2 applied · 0 unresolved. Save the network to share these locations locally."
+    },
+    {
+      "stage": "strategic find W-06",
+      "popup": "W-06\nManhole\n×\nProperties\nUpload data\nData linking\nEvidence\nYear\tScenario\tO count\tM count\tO h\tM h\nAssign datasets and calculate.\nReview notes\nPin in overview\nReview Formula A catchments\nEdit asset",
+      "reach": "",
+      "focus": "nsAssetSearch",
+      "current": "Strategic asset diagram"
+    },
+    {
+      "stage": "switch to engineering while W-06 selected",
+      "popup": "W-06\nManhole\n×\nProperties\nUpload data\nData linking\nEvidence\nYear\tScenario\tO count\tM count\tO h\tM h\nAssign datasets and calculate.\nReview notes\nPin in overview\nReview Formula A catchments\nEdit asset",
+      "reach": "",
+      "focus": "nsOverview",
+      "current": "Engineering schematic"
+    },
+    {
+      "stage": "downstream trace on SPLIT",
+      "status": "Showing only the traced branch.",
+      "label": "trace",
+      "mode": "Engineering schematic",
+      "canvas": {
+        "width": 750,
+        "height": 660
+      },
+      "nodes": 11,
+      "connectors": 11,
+      "sourceNodes": 101,
+      "sourceEdges": 101,
+      "groupCount": 0,
+      "groupExamples": [],
+      "renderedLabelCount": 9,
+      "labelOverlaps": 0,
+      "overlapExamples": [],
+      "controls": [
+        [
+          "SPLIT",
+          true
+        ],
+        [
+          "CSO-01",
+          true
+        ],
+        [
+          "PS-01",
+          true
+        ],
+        [
+          "WEIR-IN",
+          true
+        ],
+        [
+          "WEIR-OUT",
+          true
+        ],
+        [
+          "OUT-MAIN",
+          true
+        ],
+        [
+          "OUT-SPILL",
+          true
+        ],
+        [
+          "W-06",
+          false
+        ]
+      ],
+      "monitors": [],
+      "zoom": "71.8%",
+      "keyboardStops": 22,
+      "viewport": {
+        "w": 1440,
+        "h": 1000,
+        "scrollWidth": 1440
+      },
+      "text": "P\nM\nW\nCSO-01\nMERGE\nOUT-MAIN\nOUT-SPILL\nPS-01\nPS-DIS\nR-05\nWEIR-IN\nSPLIT\nNominal flow direction · Crossings join at a marked node · M: monitor\nPan\nZoom\n−\n71.8%\n+\nFit\nFocus selected\nReset view"
+    },
+    {
+      "stage": "ambiguous route",
+      "message": "Multiple forward routes reach the endpoint. Confirm the branch to continue.",
+      "openProfileDisabled": true,
+      "choices": [
+        "Choose a branch",
+        "SPLIT.1 → C-01",
+        "SPLIT.2 → P-01"
+      ]
+    },
+    {
+      "stage": "route IN-W to OUT-MAIN",
+      "text": "Fit route\nFocus selected\nCheck pipe capacity\nExpand profile\nHorizontal zoom\nFit\n2×\n4×\n8×\nVertical zoom\nFit\n2×\n4×\n8×\nHorizontal pan\nElevation pan\nGround shading\nReset profile view\nDownload profile SVG\n\nInvert\nSoffit\nGround\nStructure\n\nLevels use the source datum. Shaft widths are symbolic. Modelled node markers show samples at individual nodes. Drag a zoomed plot background to pan.\n\nA profile needs source conduit lengths and levels. Review the source data in the asset table.\n\nLink\tChainage (m)\tLength (m)\tInvert upstream / downstream (m)\tWidth × height (mm)\tGradient (m/m)\tReview\tSource\nIN-W.1\t0 → —\t—\t— / —\t—\t—\tMissing length · Missing invert\thw_conduit · row 106 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 3 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 14 · HYDRA-SYNTHETIC-B-network-expanded.csv\nW-01.1\t— → —\t—\t— / —\t—\t—\tMissing length · Missing invert\thw_conduit · row 107 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 14 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 15 · HYDRA-SYNTHETIC-B-network-expanded.csv\nW-02.1\t— → —\t—\t— / —\t—\t—\tMissing length · Missing invert\thw_conduit · row 108 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 15 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 16 · HYDRA-SYNTHETIC-B-network-expanded.csv\nW-03.1\t— → —\t—\t— / —\t—\t—\tMissing length · Missing invert\thw_conduit · row 109 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 16 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 17 · HYDRA-SYNTHETIC-B-network-expanded.csv\nW-04.1\t— → —\t—\t— / —\t—\t—\tMissing length · Missing invert\thw_conduit · row 110 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 17 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 18 · HYDRA-SYNTHETIC-B-network-expanded.csv\nW-05.1\t— → —\t—\t— / —\t—\t—\tMissing length · Missing invert\thw_conduit · row 111 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 18 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 19 · HYDRA-SYNTHETIC-B-network-expanded.csv\nW-06.1\t— → —\t—\t— / —\t—\t—\tMissing length · Missing invert\thw_conduit · row 112 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 19 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 20 · HYDRA-SYNTHETIC-B-network-expanded.csv\nW-07.1\t— → —\t—\t— / —\t—\t—\tMissing length · Missing invert\thw_conduit · row 113 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 20 · HYDRA-SYNTHETIC-B-network-expanded.csv / hw_node · row 21 · HYDRA-SYNTHETIC-B-network-expanded.csv"
+    }
+  ],
+  "loadEntry": "Save network\nLoad network or context CSV\nExport evidence CSV\nPublish diagram\nArea\nEntire current view\nVisible area\nTraced branch\nTitle (optional)\n Legend\n Monitor badges\n Assessment badges\nExport SVG\nExport PNG\nDiagram PDF\nAnnual report / PDF",
+  "narrow": {
+    "label": "engineering1024",
+    "mode": "Engineering schematic",
+    "canvas": {
+      "width": 454,
+      "height": 523
+    },
+    "nodes": 14,
+    "connectors": 14,
+    "sourceNodes": 101,
+    "sourceEdges": 101,
+    "groupCount": 0,
+    "groupExamples": [],
+    "renderedLabelCount": 6,
+    "labelOverlaps": 0,
+    "overlapExamples": [],
+    "controls": [
+      [
+        "SPLIT",
+        true
+      ],
+      [
+        "CSO-01",
+        true
+      ],
+      [
+        "PS-01",
+        true
+      ],
+      [
+        "WEIR-IN",
+        true
+      ],
+      [
+        "WEIR-OUT",
+        true
+      ],
+      [
+        "OUT-MAIN",
+        true
+      ],
+      [
+        "OUT-SPILL",
+        true
+      ],
+      [
+        "W-06",
+        true
+      ]
+    ],
+    "monitors": [],
+    "zoom": "22.9%",
+    "keyboardStops": 28,
+    "viewport": {
+      "w": 1024,
+      "h": 768,
+      "scrollWidth": 1024
+    },
+    "text": "P\nM\nW\nCSO-01\nIN-N\nMERGE\nOUT-SPILL\nW-06\nM\nSPLIT\nNominal flow direction · Crossings join at a marked node · M: monitor\nPan\nZoom\n−\n22.9%\n+\nFit\nFocus selected\nReset view"
+  },
+  "fullscreen": {
+    "label": "engineering1024-full",
+    "mode": "Engineering schematic",
+    "canvas": {
+      "width": 629,
+      "height": 603
+    },
+    "nodes": 14,
+    "connectors": 14,
+    "sourceNodes": 101,
+    "sourceEdges": 101,
+    "groupCount": 0,
+    "groupExamples": [],
+    "renderedLabelCount": 9,
+    "labelOverlaps": 0,
+    "overlapExamples": [],
+    "controls": [
+      [
+        "SPLIT",
+        true
+      ],
+      [
+        "CSO-01",
+        true
+      ],
+      [
+        "PS-01",
+        true
+      ],
+      [
+        "WEIR-IN",
+        true
+      ],
+      [
+        "WEIR-OUT",
+        true
+      ],
+      [
+        "OUT-MAIN",
+        true
+      ],
+      [
+        "OUT-SPILL",
+        true
+      ],
+      [
+        "W-06",
+        true
+      ]
+    ],
+    "monitors": [],
+    "zoom": "35.5%",
+    "keyboardStops": 28,
+    "viewport": {
+      "w": 1024,
+      "h": 768,
+      "scrollWidth": 1024
+    },
+    "text": "P\nM\nW\nCSO-01\nIN-N\nIN-W\nMERGE\nOUT-SPILL\nR-04\nR-05\nW-06\nM\nSPLIT\nNominal flow direction · Crossings join at a marked node · M: monitor\nPan\nZoom\n−\n35.5%\n+\nFit\nFocus selected\nReset view"
+  },
+  "fullscreenEscaped": "false",
+  "errors": [],
+  "blocked": [],
+  "privacy": "pass"
+}

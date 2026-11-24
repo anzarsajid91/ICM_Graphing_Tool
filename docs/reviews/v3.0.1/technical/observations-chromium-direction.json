@@ -1,0 +1,34 @@
+{
+  "direction": {
+    "identity": "ccc36427c12f003e5d9b1fee61632770b31952cc",
+    "browser": "140.0.7339.186",
+    "errors": [],
+    "audit": "Model Context Import Audit\n\n3 imported nodes and 2 imported links. Arrows show nominal topology.\n\nSome conduits omit shape or length metadata.\nExport uses metres for coordinates, lengths and levels, and millimetres for conduit dimensions and Colebrook–White roughness.\nLayout\nGeographic coordinates\nEngineering schematic\n\nApply network context\nCancel",
+    "detailed": {
+      "caption": "Connector A.1",
+      "arrow": true,
+      "dash": ""
+    },
+    "engineering": {
+      "caption": "Connector A to B · Direction unconfirmed · 1 source links",
+      "arrow": false,
+      "dash": "2 6"
+    },
+    "strategic": {
+      "caption": "Connector A to B · Direction unconfirmed · 1 source links",
+      "arrow": false,
+      "dash": "2 6"
+    },
+    "routeMessage": "2 ordered links. Open the long section to review levels and chainage.",
+    "profileVisible": true,
+    "routeTable": "Link\tChainage (m)\tLength (m)\tInvert upstream / downstream (m)\tWidth × height (mm)\tGradient (m/m)\tReview\tSource\nA.1\t0 → 100\t100\t10 / 9\t600 × 600\t0.01\t\thw_conduit · row 8 · A-TECH-network-direction.csv / hw_node · row 3 · A-TECH-network-direction.csv / hw_node · row 4 · A-TECH-network-direction.csv\nB.1\t100 → 200\t100\t9 / 8\t600 × 600\t0.01\t\thw_conduit · row 9 · A-TECH-network-direction.csv / hw_node · row 4 · A-TECH-network-direction.csv / hw_node · row 5 · A-TECH-network-direction.csv",
+    "sourceDirection": null,
+    "sourceField": {
+      "name": "flow_direction",
+      "label": "",
+      "unit": "",
+      "value": "Unknown"
+    },
+    "guard": "pass"
+  }
+}

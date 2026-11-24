@@ -1,0 +1,285 @@
+{
+  "identity": {
+    "title": "Hydra Bench · Hydra Bench",
+    "build": "ccc36427c12f003e5d9b1fee61632770b31952cc",
+    "version": "v3.0.1",
+    "url": "https://anzarsajid91.github.io/ICM_Graphing_Tool/"
+  },
+  "browser": "140.0.7339.186",
+  "stages": [
+    {
+      "name": "home",
+      "guide": "Model verification\nPrepare\nMap observed and modelled series and confirm units and comparison time basis.\nReview\nReview comparable coverage and agreement, then examine rainfall response in Event Review.\nNext action\nRecord a decision for each reviewed scenario.\nOpen Model verification",
+      "empty": {
+        "dialogEvents": [],
+        "text": "Observed vs modelled scatter\n\nGenerate a direct observed-versus-modelled scatter using the complete common series by default. Bounded interpolation never bridges gaps longer than the configured maximum.\n\nGenerate scatter\nMain workflow\nCollapse\nOperation failed: Apply an observed and at least one modelled series first.\nScenario comparison\n\nDetailed observed-versus-modelled calibration statistics for each selected model scenario.\n\nCollapse\nScenario\tPairs\tObserved mean\tModelled mean\tObserved peak\tModelled peak\tPearson r\tRegression R²\tSlope\tIntercept\tRMSE\tMAE\tBias (M−O)\tNSE\tKGE\tValid support",
+        "active": "runCompareBtn"
+      },
+      "pageErrors": []
+    },
+    {
+      "name": "time-series",
+      "pool": "HYDRA-SYNTHETIC-B-invalid.csv\n0.00 MB · SHA 654fea1bfc\t—\t0\t—\tNo numeric value columns found\tError\t×\n\nHYDRA-SYNTHETIC-B-observed-depth.csv\n0.00 MB · SHA fecd240c87\ttabular_csv\t8\t2025-01-01T00:00:00 → 2025-01-01T00:07:00\t0 sentinel; 0 malformed/invalid\tReady · preview validated · 0.1 s\t×\n\nHYDRA-SYNTHETIC-B-model-depth.csv\n0.00 MB · SHA cc34498fd0\ttabular_csv\t8\t2025-01-01T00:00:00 → 2025-01-01T00:07:00\t0 sentinel; 0 malformed/invalid\tReady · preview validated · 0.1 s\t×",
+      "importReview": "Import Review",
+      "chart": {
+        "role": null,
+        "ariaLabel": null,
+        "traces": [
+          {
+            "name": "Observed Depth",
+            "points": 10
+          },
+          {
+            "name": "Simulated: Depth (m)",
+            "points": 8
+          },
+          {
+            "name": "Rainfall",
+            "points": 8
+          },
+          {
+            "name": "Statistics"
+          }
+        ],
+        "controls": [
+          {
+            "title": "Download plot as a PNG",
+            "tabIndex": 0,
+            "role": null,
+            "href": null
+          },
+          {
+            "title": "Zoom",
+            "tabIndex": 0,
+            "role": null,
+            "href": null
+          },
+          {
+            "title": "Pan",
+            "tabIndex": 0,
+            "role": null,
+            "href": null
+          },
+          {
+            "title": "Zoom in",
+            "tabIndex": 0,
+            "role": null,
+            "href": null
+          },
+          {
+            "title": "Zoom out",
+            "tabIndex": 0,
+            "role": null,
+            "href": null
+          },
+          {
+            "title": "Autoscale",
+            "tabIndex": 0,
+            "role": null,
+            "href": null
+          },
+          {
+            "title": "Reset axes",
+            "tabIndex": 0,
+            "role": null,
+            "href": null
+          },
+          {
+            "title": "Use visible period for analysis",
+            "tabIndex": 0,
+            "role": null,
+            "href": null
+          },
+          {
+            "title": "Fit Y axes to visible period",
+            "tabIndex": 0,
+            "role": null,
+            "href": null
+          },
+          {
+            "title": "Add multiple exclusion periods",
+            "tabIndex": 0,
+            "role": null,
+            "href": null
+          }
+        ],
+        "semanticText": [
+          "Download plot as a PNG",
+          "Zoom",
+          "Pan",
+          "Zoom in",
+          "Zoom out",
+          "Autoscale",
+          "Reset axes",
+          "Use visible period for analysis",
+          "Fit Y axes to visible period",
+          "Add multiple exclusion periods"
+        ]
+      },
+      "mapping": "Observed: HYDRA-SYNTHETIC-B-observed-depth.csv — Depth (m) · 1 comparison scenario(s) · rainfall mapped.",
+      "pageErrors": []
+    },
+    {
+      "name": "spills",
+      "empty": "Calculate current spill evidence before opening the investigation register.",
+      "focusAfterEscape": "Investigate physical discharges",
+      "assessmentChoices": [
+        "Choose a calculated assessment",
+        "Observed · HYDRA-SYNTHETIC-B-observed-depth.csv — Depth (m)",
+        "Modelled · HYDRA-SYNTHETIC-B-model-depth.csv — Depth (m)"
+      ],
+      "text": "Investigate physical discharges\n\nRank the identified discharge intervals and review their supporting evidence. The 12/24 regulatory count is shown separately.\n\nClose investigation\nLatest spill assessment\nChoose a calculated assessment\nObserved · HYDRA-SYNTHETIC-B-observed-depth.csv — Depth (m)\nModelled · HYDRA-SYNTHETIC-B-model-depth.csv — Depth (m)\nSpill flow source (optional)\nNo flow evidence\nHYDRA-SYNTHETIC-B-flow.csv — Flow (m3/s)\nRepresentative rainfall gauge (optional)\nNo rainfall evidence\nHYDRA-SYNTHETIC-B-rain.csv — Rainfall (mm/h)\n\nThe supporting records share the project clock. A selected flow channel measures discharge at this overflow.\n\nReview discharge intervals\n\nDischarge evidence is ready. Review each record’s support before interpreting volume or rainfall.\n\nHYDRA-SYNTHETIC-B-observed-depth.csv — Depth (m) · 2025-01-01T00:00:00 → 2025-01-01T00:07:00 · 2 physical intervals · 12/24 assessment count 1 (partial/unknown-gap). Intervals separated by unobserved time may be part of the same discharge.\n\nSort by\nEarliest first\nLongest first\nLargest volume first\nHighest rainfall first\nMinimum duration (min)\nPrevious page\nNext page\nDownload discharge register CSV\n\nShowing 1–2 of 2 matching intervals.\n\nPhysical discharge intervals and locally linked evidence\nInterval\tSupport / duration (min)\tSince previous interval (min)\tDischarge volume (m³)\tRainfall (mm)\tEvidence\n2025-01-01T00:00:30 → 2025-01-01T00:02:30\t2 / 2\tFirst detected interval\tUnlinked\tUnlinked\tPlot interval\n2025-01-01T00:05:30 → 2025-01-01T00:06:30\t1 / 1\t3 · interrupted evidence\tUnlinked\tUnlinked\tPlot interval",
+      "download": {
+        "saved": "spills-physical-chromium.csv",
+        "suggested": "hydra-physical-discharge-register.csv",
+        "bytes": 791
+      },
+      "dest": {
+        "route": {
+          "workspace": "data",
+          "page": "time-series"
+        },
+        "active": "",
+        "timeRange": [
+          "2025-01-01T00:00:00",
+          "2025-01-01T00:07:00"
+        ]
+      },
+      "pageErrors": []
+    },
+    {
+      "name": "verification",
+      "metrics": {
+        "pairs": 7,
+        "rmse": 0.12535663410560174,
+        "mae": 0.09999999999999999,
+        "mean_bias": -0.01428571428571426,
+        "obs_mean": 0.8571428571428571,
+        "sim_mean": 0.8428571428571427,
+        "obs_peak": 2,
+        "sim_peak": 2.1,
+        "regression_slope": 0.9249999999999999,
+        "regression_intercept": 0.05000000000000012,
+        "regression_r2": 0.9882098171318575,
+        "correlation": 0.9940874293199051,
+        "r2_correlation": 0.9882098171318574,
+        "kge_2009": 0.9282869887994951,
+        "nse": 0.9839583333333334,
+        "peak_timing_minutes_model_minus_observed": 1,
+        "unavailable_reasons": {}
+      },
+      "evidence": [
+        {
+          "scenario": "[\"HYDRA-SYNTHETIC-B-observed-depth\",\"cc34498fd07b0b044da3d2b7c2e097f19525f07491a713e41c8d4f7e8c5ccea9\",\"Depth (m)\",\"depth\",\"m\"]",
+          "key": "[\"{\\\"mapping\\\":{\\\"observed\\\":{\\\"sha256\\\":\\\"fecd240c87d84b0b999693e60c0d464334bafcda45c1ffe760d726ea2dbe9579\\\",\\\"display_name\\\":\\\"HYDRA-SYNTHETIC-B-observed-depth.csv\\\",\\\"file_name\\\":\\\"HYDRA-SYNTHETIC-B-observed-depth.csv\\\",\\\"column\\\":\\\"Depth (m)\\\",\\\"asset_id\\\":\\\"HYDRA-SYNTHETIC-B-observed-depth\\\",\\\"role\\\":\\\"observed\\\",\\\"quantity\\\":\\\"depth\\\",\\\"unit\\\":\\\"m\\\",\\\"reference\\\":null},\\\"models\\\":[{\\\"sha256\\\":\\\"cc34498fd07b0b044da3d2b7c2e097f19525f07491a713e41c8d4f7e8c5ccea9\\\",\\\"display_name\\\":\\\"HYDRA-SYNTHETIC-B-model-depth.csv\\\",\\\"file_name\\\":\\\"HYDRA-SYNTHETIC-B-model-depth.csv\\\",\\\"column\\\":\\\"Depth (m)\\\",\\\"asset_id\\\":\\\"HYDRA-SYNTHETIC-B-model-depth\\\",\\\"role\\\":\\\"model\\\",\\\"quantity\\\":\\\"depth\\\",\\\"unit\\\":\\\"m\\\",\\\"reference\\\":null}],\\\"rain\\\":{\\\"sha256\\\":\\\"545a907b444dd09ef54fdc0c8e2c45b296a418a2f283c246a4980c74dee5fc58\\\",\\\"display_name\\\":\\\"HYDRA-SYNTHETIC-B-rain.csv\\\",\\\"file_name\\\":\\\"HYDRA-SYNTHETIC-B-rain.csv\\\",\\\"column\\\":\\\"Rainfall (mm/h)\\\",\\\"asset_id\\\":\\\"HYDRA-SYNTHETIC-B-rain\\\",\\\"role\\\":\\\"rainfall\\\",\\\"quantity\\\":\\\"rainfall\\\",\\\"unit\\\":\\\"mm/h\\\",\\\"reference\\\":null}},\\\"series_quantity_overrides\\\":[],\\\"rainfall_semantics_overrides\\\":[],\\\"analysis\\\":{\\\"max_gap_seconds\\\":900,\\\"observed_threshold\\\":1,\\\"model_threshold\\\":1,\\\"observed_threshold_series\\\":{\\\"sha256\\\":\\\"fecd240c87d84b0b999693e60c0d464334bafcda45c1ffe760d726ea2dbe9579\\\",\\\"display_name\\\":\\\"HYDRA-SYNTHETIC-B-observed-depth.csv\\\",\\\"file_name\\\":\\\"HYDRA-SYNTHETIC-B-observed-depth.csv\\\",\\\"column\\\":\\\"Depth (m)\\\",\\\"asset_id\\\":\\\"HYDRA-SYNTHETIC-B-observed-depth\\\",\\\"role\\\":\\\"observed\\\",\\\"quantity\\\":\\\"depth\\\",\\\"unit\\\":\\\"m\\\",\\\"reference\\\":null},\\\"model_threshold_series\\\":{\\\"sha256\\\":\\\"cc34498fd07b0b044da3d2b7c2e097f19525f07491a713e41c8d4f7e8c5ccea9\\\",\\\"display_name\\\":\\\"HYDRA-SYNTHETIC-B-model-depth.csv\\\",\\\"file_name\\\":\\\"HYDRA-SYNTHETIC-B-model-depth.csv\\\",\\\"column\\\":\\\"Depth (m)\\\",\\\"asset_id\\\":\\\"HYDRA-SYNTHETIC-B-model-depth\\\",\\\"role\\\":\\\"model\\\",\\\"quantity\\\":\\\"depth\\\",\\\"unit\\\":\\\"m\\\",\\\"reference\\\":null},\\\"time_offset_minutes\\\":0,\\\"analysis_start\\\":null,\\\"analysis_end\\\":null,\\\"storage_threshold\\\":null,\\\"storage_threshold_unit\\\":null,\\\"target_count\\\":10,\\\"storage_level\\\":{\\\"sha256\\\":\\\"fecd240c87d84b0b999693e60c0d464334bafcda45c1ffe760d726ea2dbe9579\\\",\\\"display_name\\\":\\\"HYDRA-SYNTHETIC-B-observed-depth.csv\\\",\\\"file_name\\\":\\\"HYDRA-SYNTHETIC-B-observed-depth.csv\\\",\\\"column\\\":\\\"Depth (m)\\\",\\\"asset_id\\\":\\\"HYDRA-SYNTHETIC-B-observed-depth\\\",\\\"role\\\":\\\"observed\\\",\\\"quantity\\\":\\\"depth\\\",\\\"unit\\\":\\\"m\\\",\\\"reference\\\":null},\\\"storage_flow\\\":{\\\"sha256\\\":\\\"7aa6133885ed1d7155408ffad5dc9e1fbfcc260b0e735187be85d3f3df055408\\\",\\\"display_name\\\":\\\"HYDRA-SYNTHETIC-B-flow.csv\\\",\\\"file_name\\\":\\\"HYDRA-SYNTHETIC-B-flow.csv\\\",\\\"column\\\":\\\"Flow (m3/s)\\\",\\\"asset_id\\\":\\\"HYDRA-SYNTHETIC-B-flow\\\",\\\"role\\\":\\\"unclassified\\\",\\\"quantity\\\":\\\"flow\\\",\\\"unit\\\":\\\"m³/s\\\",\\\"reference\\\":null},\\\"storage_level_unit\\\":null,\\\"storage_flow_unit\\\":null,\\\"dwf_flow\\\":null,\\\"dwf_flow_unit\\\":null,\\\"dwf_dry_day_mm\\\":1,\\\"dwf_baseline_days\\\":28,\\\"dwf_adp_hours\\\":6,\\\"rating_obs_depth_unit\\\":null,\\\"rating_obs_flow_unit\\\":null,\\\"rating_model_depth_unit\\\":null,\\\"rating_model_flow_unit\\\":null,\\\"rain_factor\\\":1},\\\"exclusions\\\":[],\\\"active_spill_model\\\":{\\\"sha256\\\":\\\"cc34498fd07b0b044da3d2b7c2e097f19525f07491a713e41c8d4f7e8c5ccea9\\\",\\\"display_name\\\":\\\"HYDRA-SYNTHETIC-B-model-depth.csv\\\",\\\"file_name\\\":\\\"HYDRA-SYNTHETIC-B-model-depth.csv\\\",\\\"column\\\":\\\"Depth (m)\\\",\\\"asset_id\\\":\\\"HYDRA-SYNTHETIC-B-model-depth\\\",\\\"role\\\":\\\"model\\\",\\\"quantity\\\":\\\"depth\\\",\\\"unit\\\":\\\"m\\\",\\\"reference\\\":null},\\\"rain_events\\\":{\\\"rainMinIntensity\\\":\\\"5\\\",\\\"rainIntensityDuration\\\":\\\"6\\\",\\\"rainEventDuration\\\":\\\"60\\\",\\\"rainTotalDepth\\\":\\\"5\\\",\\\"rainDryGap\\\":\\\"15\\\"},\\\"time_basis\\\":\\\"model clock/engineer-confirmed\\\",\\\"level_datum_confirmed\\\":false,\\\"project_context\\\":{\\\"relationships\\\":[],\\\"issues\\\":[],\\\"associationSource\\\":null}}\",[[\"fecd240c87d84b0b999693e60c0d464334bafcda45c1ffe760d726ea2dbe9579\",\"Depth (m)\",\"depth\",\"m\"],[\"cc34498fd07b0b044da3d2b7c2e097f19525f07491a713e41c8d4f7e8c5ccea9\",\"Depth (m)\",\"depth\",\"m\"]],[[{\"pairs\":7,\"rmse\":0.12535663410560174,\"mae\":0.09999999999999999,\"mean_bias\":-0.01428571428571426,\"obs_mean\":0.8571428571428571,\"sim_mean\":0.8428571428571427,\"obs_peak\":2,\"sim_peak\":2.1,\"regression_slope\":0.9249999999999999,\"regression_intercept\":0.05000000000000012,\"regression_r2\":0.9882098171318575,\"correlation\":0.9940874293199051,\"r2_correlation\":0.9882098171318574,\"kge_2009\":0.9282869887994951,\"nse\":0.9839583333333334,\"peak_timing_minutes_model_minus_observed\":1,\"unavailable_reasons\":{}},{\"status\":\"partial\",\"coverage_fraction\":0.7142857142857143,\"observed\":{\"requested_seconds\":420,\"valid_seconds\":300,\"missing_seconds\":120,\"unknown_seconds\":0,\"excluded_seconds\":0,\"uncovered_seconds\":0,\"coverage_fraction\":0.7142857142857143,\"status\":\"partial\",\"validity\":{\"model\":\"validity-v1\",\"states\":{\"valid\":300,\"suspect\":0,\"invalid\":0,\"excluded\":0,\"missing\":120,\"unknown\":0},\"requested_seconds\":420,\"assessable_seconds\":420,\"valid_seconds\":300,\"suspect_seconds\":0,\"invalid_seconds\":0,\"excluded_seconds\":0,\"missing_seconds\":120,\"unknown_seconds\":0,\"uncovered_seconds\":0,\"coverage_fraction\":0.7142857142857143,\"requested_coverage_fraction\":0.7142857142857143,\"calculation_status\":\"partial\"}},\"modelled\":{\"requested_seconds\":420,\"valid_seconds\":420,\"missing_seconds\":0,\"unknown_seconds\":0,\"excluded_seconds\":0,\"uncovered_seconds\":0,\"coverage_fraction\":1,\"status\":\"complete\",\"validity\":{\"model\":\"validity-v1\",\"states\":{\"valid\":420,\"suspect\":0,\"invalid\":0,\"excluded\":0,\"missing\":0,\"unknown\":0},\"requested_seconds\":420,\"assessable_seconds\":420,\"valid_seconds\":420,\"suspect_seconds\":0,\"invalid_seconds\":0,\"excluded_seconds\":0,\"missing_seconds\":0,\"unknown_seconds\":0,\"uncovered_seconds\":0,\"coverage_fraction\":1,\"requested_coverage_fraction\":1,\"calculation_status\":\"complete\"}},\"validity_model\":\"validity-v1\",\"coverage_basis\":\"minimum of observed/modelled eligible support; metrics use bounded valid pairs\"},\"m\",null]]]",
+          "decision": "Requires investigation",
+          "comments": "Synthetic alignment review",
+          "references": "Synthetic reference B"
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "name": "reports",
+      "readiness": "Report readiness\nShows current result state only; it does not recalculate engineering analyses.\nComparison\nPartial\nDependencies match the current analytical state.\nSpill / EDM\nPartial\nDependencies match the current analytical state.\nStorage Assessment\nNot run\nStorage Assessment has not been calculated.\nProfessional survey\nNot run\nProfessional survey has not been calculated.\nComplete survey\nNot run\nComplete survey has not been calculated.\nVolume balance\nNot run\nVolume balance has not been calculated.\nRating / fitted relationship\nNot run\nRating / fitted relationship has not been calculated.\nSurvey association\nNot run\nNo association workbook is loaded; association-dependent survey workflows are blocked until one is supplied.",
+      "download": {
+        "saved": "engineering-review-chromium.html",
+        "suggested": "icm-workbench-report-2026-11-24.html",
+        "bytes": 5313794
+      },
+      "rendered": {
+        "title": "Hydra Bench — Engineering Assessment",
+        "headings": [
+          "Hydra Bench — Engineering Assessment",
+          "Assessment configuration",
+          "Mapped series",
+          "Analysis settings",
+          "Full time-period graph",
+          "Observed vs modelled comparison",
+          "Exclusions",
+          "Reviewer notes",
+          "Project data context",
+          "Source provenance",
+          "Verification engineer review",
+          "HYDRA-SYNTHETIC-B-observed-depth · HYDRA-SYNTHETIC-B-model-depth.csv — Depth (m)",
+          "Audit appendix"
+        ],
+        "plots": 2,
+        "missingImages": 0
+      },
+      "referencePresent": true,
+      "workspace": {
+        "saved": "workspace-chromium.json",
+        "suggested": "icm-workbench-2026-11-24.json",
+        "bytes": 22772
+      },
+      "workspaceKeys": [
+        "schema_version",
+        "application",
+        "time_basis",
+        "time_basis_confirmed",
+        "level_datum_confirmed",
+        "saved_at",
+        "network_schematic",
+        "navigation",
+        "verification_reviews",
+        "source_references",
+        "series_quantity_overrides",
+        "series_unit_overrides",
+        "rainfall_semantics_overrides",
+        "mapping",
+        "analysis",
+        "appearance",
+        "rain_events",
+        "exclusions",
+        "exclusion_history",
+        "review_notes",
+        "project_registry",
+        "report_options",
+        "active_spill_model",
+        "model_styles",
+        "survey",
+        "detriment"
+      ],
+      "missingSource": "Workspace loaded with unresolved sources. 0/4 source fingerprint(s) matched. Reattach missing or changed files in Data / Time Series; derived results remain Not run or Stale until dependencies are verified and recalculated.",
+      "pageErrors": []
+    },
+    {
+      "name": "hydraulics",
+      "capacity": "202.65 L/s · 1.2742 m/s · Re 573,380 · Darcy f 0.027182 · turbulent",
+      "design": "Imposed full-bore velocity 1.3379 m/s · Available full-flow capacity 202.65 L/s\n\nPartially full normal depth 396.24 mm · 1.4348 m/s · Area 0.1483 m² · Hydraulic radius 0.1353 m\nPartially full normal depth 442.74 mm · 1.3425 m/s · Area 0.15849 m² · Hydraulic radius 0.122 m",
+      "comparison": "Trial\tDiameter (mm)\tGradient (m/m)\tkₛ (mm)\tν (m²/s)\tFull capacity (L/s)\tDesign flow (L/s)\tNormal depth(s) (mm)\tCalculation status\n1\t450\t0.005\t1.5\t0.000001\t202.65\n\t—\t—\tturbulent\n2\t450\t0.005\t1.5\t0.000001\t202.65\n\t212.78\t396.24 / 442.74\tsupported",
+      "missing": "Enter both invert levels and a positive conduit length.",
+      "pageErrors": []
+    },
+    {
+      "name": "detriment",
+      "blockedBy": {
+        "status": "Confirm matching assessment scope and completed ICM runs.",
+        "focus": "scope_confirmed"
+      },
+      "summary": {
+        "assets": 6,
+        "matched": 4,
+        "detriment": 1,
+        "risk": 2,
+        "improved": 1,
+        "unresolved": 2,
+        "max_increase": 6
+      },
+      "controls": "flood-a.csv → flood-b.csv\n· 4/6 matched · partial evidence\nMatched assets\n4\nDetriment\n1\nMaximum increase\n+6\nm³\nRisk / unresolved\n2 / 2\nChange by asset\n\nPositive values show an increase from baseline A. Dashed line marks the tolerance. Largest 20 comparable changes by absolute magnitude shown.\n\n−6\n−4\n−2\n0\n2\n4\n6\n002\n004\n001\n003\nB − A (m³)\nShow\nDetriment only\nAll assets\nRisk / within tolerance\nNew flooding\nImproved\nUnresolved\nFind asset\nSort\nSeverity\nLargest increase\nAsset ID\n1 shown\nAsset\tStatus\tA (m³)\tB (m³)\tΔ B − A\tAssessment flags\tEvidence\n001\tDetriment\t2\t8\t+6 m³\tflood detriment\tInspect",
+      "detail": "×\nASSET EVIDENCE\n001\nDetriment\n\nflood detriment\n\nΔ +6 m³\n\nScenario A · raw report\nNode ID\n001\nFlood volume (m³)\n2\nSimulation\n30y-60min\nScenario B · raw report\nNode ID\n001\nFlood volume (m³)\n8\nSimulation\n30y-120min\n\nDisplay values use up to six decimal places. CSV retains calculated numeric precision and raw source evidence.",
+      "focusAfterEscape": "001",
+      "pageErrors": []
+    },
+    {
+      "name": "survey",
+      "survey": "Flow survey\nAssessment review\n\nSelect a monitor or gauge, review its week, and record your rating and comment.\n\nRun flow survey assessment\nMonthly review\nExport monthly PDF\nAssessment period\nFull available period\nAssociation workbook\nReady\n3 monitors\nMonitor assessment\nCurrent\n3 loaded\nRainfall assessment\nCurrent\n1 gauge\nVolume balance\nCurrent\nComplete survey assessment calculated. Workbook mappings were authoritative · 17.3 s.\nAssessment settings & methodology",
+      "monthly": "Monthly review\nSurvey synthesis and engineering actions\nEvent Response not assessed from network rainfall. 7 WAPUG candidate events were identified, but none met the network suitability criteria. This is rainfall/network-quality evidence, not a monitor-response failure.\nMonitor status\n0 G · 0 A · 3 R · 0 Grey\nRain gauges\n1 G · 0 A · 0 R · 0 Grey\nNetwork WAPUG events\n7 candidates · 0 qualified\nVolume balance\n1 G · 0 A · 0 R · 0 Grey\nReview integrity\nCurrent\nEngineering action register\n\nExceptions only. Reviewed outcomes drive this register; all calculated evidence remains available underneath.\n\nCollapse\nArea\tSubject\tSeverity\tAction / rationale\nEvent suitability\tNetwork rainfall\tAmber\t7 WAPUG candidate event(s) were assessed but none met the network spatial/coverage criteria. Event Response is not assessed for this period; review Rainfall Check evidence or extend the monitoring period.\nMonitor\tFM03 · week ending 2026-01-11\tRed\tSevere data-quality evidence (coverage or flatline).\nMonitor\tFM03 · week ending 2026-01-18\tAmber\tLow-rain week with moderate data-quality evidence.\nMonitor\tFM01 · week ending 2026-01-11\tRed\tSevere data-quality evidence (coverage or flatline).\nMonitor\tFM01 · week ending 2026-01-18\tAmber\tLow-rain week with moderate data-quality evidence.\nMonitor\tFM02 · week ending 2026-01-11\tRed\tSevere data-quality evidence (coverage or flatline).\nMonitor\tFM02 · week ending 2026-01-18\tAmber\tLow-rain week with moderate data-quality evidence.\nWeekly assurance matrix\n\nReported monitor-week status; R marks an engineer review and ! marks a review that needs reconfirmation.\n\nCollapse\nMonitor / gauge\t2026-01-11\t2026-01-18\nFM03\t\nRed\n\t\nAmber\n\nFM01\t\nRed\n\t\nAmber\n\nFM02\t\nRed\n\t\nAmber\nWeekly reviewer comments\n\nEach comment belongs to a specific monitor or gauge week.\n\nCollapse\n\nNo weekly reviews recorded.",
+      "pageErrors": []
+    }
+  ],
+  "errors": [],
+  "blocked": [],
+  "privacy": "pass"
+}
