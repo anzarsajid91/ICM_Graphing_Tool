@@ -4,6 +4,7 @@ import {chromium,firefox} from 'playwright';
 import {browserLaunchOptions,browserContextOptions} from './browser-environment.mjs';
 import {installPrivacyGuard} from './privacy-network.mjs';
 import {trackControls} from './control-evidence.mjs';
+import {nativeNetwork} from './network-route-fixture.mjs';
 
 const engine=process.env.ICM_BROWSER||'chromium';
 const base=process.env.ICM_BASE_URL||'http://127.0.0.1:8000/';
@@ -95,6 +96,9 @@ try{
   await ui('#nsShowMonitors').check();
 
   const node=ui('#nsSvg [data-ns-node="FM2961"]');
+  await ui('#nsAssetSearch').fill('FM2961');
+  await ui('#nsAssetSearch').press('Enter');
+  assert.match(await ui('#nsPopup').getByRole('heading').first().textContent(),/FM2961/);
   await node.press('Enter');
   await click('#nsPinDiagramPosition');
   const pinned=(await settings(page)).engineering.positions.find(point=>point.id==='FM2961');
@@ -168,6 +172,21 @@ try{
   await ui('#nsPublicationResults').uncheck();
   const crop=await download('#nsSvgExport','.svg');
   assert.doesNotMatch(crop.toString(),/Schematic positions · Nominal direction/);
+  await node.press('Shift+F10');
+  await click('[data-ns-context="down"]');
+  await click('#nsReviewTools > summary');
+  await click('#nsIsolateBranch');
+  assert.equal(await ui('#nsSvg [data-ns-node]').count(),2);
+  await click('#nsFit');
+  await click('.ns-export-menu > summary');
+  await ui('#nsPublicationScope').selectOption('branch');
+  const branch=await download('#nsSvgExport','.svg');
+  assert.match(branch.toString(),/FM7307/);
+  assert.doesNotMatch(branch.toString(),/FM9320/);
+  await click('#nsClearTrace');
+  await click('#nsReviewTools > summary');
+  await ui('#nsMinimap').press('ArrowRight');
+  await ui('#nsMinimap').press('Enter');
   const save=await download('#nsSave','.json');
   assert.equal(JSON.parse(save).diagrams.engineering.orientation,'horizontal');
   await click('#nsClearMap');
@@ -184,6 +203,32 @@ try{
   assert.equal(await ui('#nsDetailed').getAttribute('aria-pressed'),'true');
   assert.equal(await ui('#nsSimulation').isVisible(),true);
   assert.deepEqual(await geometry(page),original);
+
+  if(await ui('.ns-export-menu').evaluate(menu=>menu.open))await click('.ns-export-menu > summary');
+  await click('#nsClearMap');
+  await click('#nsConfirmClearMap');
+  await load('synthetic-structures.csv',nativeNetwork);
+  await ui('#nsContextUnits').check();
+  await click('#nsContextApply');
+  await click('#nsOverview');
+  const mark=ui('#nsSvg [data-ns-structure]').filter({hasText:'weir'});
+  const onHost=await mark.evaluate(marker=>{
+    const point=marker.transform.baseVal.getItem(0).matrix;
+    const path=marker.parentElement.querySelector('[data-ns-wire]').getAttribute('d');
+    const vertices=path.match(/-?\d+(?:\.\d+)?/g).map(Number);
+    return vertices.some((x,i)=>i%2===0&&i>0&&(
+      x===vertices[i-2]&&Math.abs(point.e-x)<.01&&Math.min(vertices[i-1],vertices[i+1])<=point.f&&Math.max(vertices[i-1],vertices[i+1])>=point.f||
+      vertices[i+1]===vertices[i-1]&&Math.abs(point.f-vertices[i+1])<.01&&Math.min(vertices[i-2],x)<=point.e&&Math.max(vertices[i-2],x)>=point.e));
+  });
+  assert(onHost,'Structure symbol belongs to its own conduit centreline');
+  await click('#nsDiagramOptions > summary');
+  assert.equal(await ui('#nsDiagramComponent option').count(),4);
+  await ui('#nsDiagramComponent').selectOption({label:'Component 2 · 1 points'});
+  assert.equal(await ui('#nsSvg [data-ns-node]').count(),1);
+  assert.equal(await ui('#nsSvg [data-ns-edge]').count(),0);
+  await ui('#nsDiagramComponent').selectOption('');
+  await click('#nsStrategic');
+  assert.equal(await ui('#nsSvg [data-ns-structure]').count(),2);
   assert.deepEqual(errors,[]);
   guard.assertClean();
   await writeControls();

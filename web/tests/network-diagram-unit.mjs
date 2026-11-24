@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {nativeNetwork} from './network-route-fixture.mjs';
 import '../assets/network-schematic-core.js';
 import '../assets/network-review-core.js';
 
@@ -106,6 +107,25 @@ for(const mode of ['engineering','strategic']){
   verifyLayout(diagram,D.layout(diagram,{orientation:'vertical'}));
 }
 assert.deepEqual(mixed,mixedOriginal);
+const legacy=structuredClone(sample);
+legacy.preferences={...legacy.preferences,overview:true};
+assert.equal(C.validateNetwork(legacy).preferences.diagramMode,'engineering');
+const imported=text=>C.importNativeContext([{name:'review.csv',text}]).network;
+const base=C.applyContextRevision(C.empty(),imported(nativeNetwork),'icm-csv-v1');
+const known=base.edges.find(edge=>edge.from==='B'&&edge.to==='C'&&edge.name==='B.1');
+assert(known);
+const layoutPreferences={...D.defaults('engineering'),positions:[{id:'B',x:620,y:128}],
+  routes:[{key:'reach:'+known.id,members:[known.id],points:[{x:420,y:210}]}]};
+base.diagrams={version:1,engineering:layoutPreferences};
+const restored=C.validateNetwork(base);
+assert.deepEqual(restored.diagrams,base.diagrams);
+assert.throws(()=>C.validateNetwork({...base,diagrams:{version:1,engineering:{...layoutPreferences,
+  positions:[{id:'B',x:Infinity,y:0}]}}}),/Invalid diagram/);
+const compatible=C.applyContextRevision(restored,imported(nativeNetwork.replace('11,9.95','11,9.96')),'icm-csv-v1');
+assert.deepEqual(compatible.diagrams,base.diagrams);
+const revised=C.applyContextRevision(restored,imported(nativeNetwork.replace('B,C,1,CIRC','B,D,1,CIRC')),'icm-csv-v1');
+assert.deepEqual(revised.diagrams.engineering.positions,layoutPreferences.positions);
+assert.deepEqual(revised.diagrams.engineering.routes,[]);
 const routedReach=engineering.edges[0];
 const waypoint={x:400,y:85};
 const routedWithPin=D.layout(engineering,{routes:[{key:routedReach.key,members:routedReach.sourceEdges,points:[waypoint]}]});

@@ -156,7 +156,10 @@ function project(network,mode,settings={},showMonitors=true){
   // Expanded reach interiors are retained after the traversal. Their links are already owned above.
   const projectedNodes=visibleNodes.filter(node=>retain.has(node.id)||exposed.has(node.id)).map(node=>{
     const group=nodeToGroup.get(node.id);
+    const diagramLabel=mode!=='strategic'||group||primaryNodes.has(node.type)||pins.has(R.refKey({kind:'node',id:node.id}))||
+      sourceGraph.up.get(node.id).length!==1||sourceGraph.down.get(node.id).length!==1;
     return {...node,pinned:false,labelOffset:undefined,nameOffset:undefined,
+      diagramLabel:Boolean(diagramLabel),
       ...(group?{name:'Upstream branch',diagramGroup:group}:{})};
   });
   return {nodes:projectedNodes,edges:projectedEdges,groups:folded,nodeToGroup,edgeToGroup,nodeToReach,edgeToReach,

@@ -94,12 +94,13 @@ function schematicRoutes(graph,edges,scale){
   return routes;
 }
 const structureCodes={hw_pump:'P',hw_weir:'W',hw_orifice:'OR',hw_sluice:'SL',hw_flap_valve:'FV',hw_screen:'SC',hw_user_control:'UC',hw_outlet:'OT'};
+const structureLabel=kind=>kind.slice(3).replaceAll('_',' ');
 function structureMarker(link,x,y){
   const kind=link.icm?.table;
   if(!Object.hasOwn(structureCodes,kind))return null;
   const code=structureCodes[kind];
   const marker=svgElement('g',{'data-ns-structure':'',transform:translate(x,y)});
-  marker.append(svgElement('title',{},kind.slice(3).replaceAll('_',' ')),
+  marker.append(svgElement('title',{},structureLabel(kind)),
     svgElement('rect',{x:-9,y:-9,width:18,height:18,rx:3,fill:'#f8f5ff',stroke:'#6947a1'}),
     svgElement('text',{y:3.5,'text-anchor':'middle',fill:'#513885','font-size':10,'font-weight':700},code));
   return marker;
@@ -445,9 +446,9 @@ function renderScene(includeHandles=true){
     const hotspot=results&&hotspotBadge('edge',e.id,route.label.x-23,route.label.y+10);
     if(hotspot)group.append(hotspot);
     const centre=route.marker||route.label;
-    const structure=diagram&&structureMarker(e,centre.x,centre.y+13);
+    const structure=diagram&&structureMarker(e,centre.x,centre.y);
     if(structure)group.append(structure);
-    const monitor=monitorMarker('edge',e.id,centre.x+14,centre.y-13);
+    const monitor=monitorMarker('edge',e.id,centre.x+(diagram?(structure?19:0):14),centre.y-(diagram?(structure?15:0):13));
     if(monitor)group.append(monitor);
     if(includeHandles&&editing&&selectionKind==='edge'&&e.id===selected)renderEdgeHandles(group,route,(e.bends||[]).length);
     if(geometry){
@@ -489,7 +490,7 @@ function renderScene(includeHandles=true){
       const leader=svgElement('g',{'data-ns-node-leader':''});
       renderNodeLeader(leader,n,scale);group.append(leader);
     }
-    if(includeLabels&&diagram){
+    if(includeLabels&&diagram&&(n.diagramLabel||!exportPresentation&&n.id===selected)){
       const top=-(n.diagramGroup?20:box.y)*scale-10;
       const text=svgElement('text',{'data-ns-label':n.id,x:0,y:top,'text-anchor':'middle',
         'font-size':small?12:14,'font-weight':small?500:700,fill:'#142c38'});
@@ -499,7 +500,7 @@ function renderScene(includeHandles=true){
       group.append(text);
       if(n.diagramGroup)group.append(svgElement('text',{'data-ns-label':n.id,x:0,y:18*scale+17,
         'text-anchor':'middle','font-size':11,fill:'#415b67'},n.diagramGroup.sourceNodes.length+' nodes'));
-    }else if(includeLabels)group.append(svgElement('text',{'data-ns-label':n.id,x:Number(offset.x)+(small?5:0),y:Number(offset.y),
+    }else if(includeLabels&&!diagram)group.append(svgElement('text',{'data-ns-label':n.id,x:Number(offset.x)+(small?5:0),y:Number(offset.y),
       'text-anchor':small?'start':'middle','font-size':small?13:14,'font-weight':small?400:600,fill:'#182732'},n.name));
     for(const badge of [results&&asset(n)&&!n.diagramGroup&&resultBadge(n),verificationLayer&&verificationBadge(n,evidence,reviews),
       surveyLayer&&flowSurveyBadge(n,surveyView),detrimentLayer&&detrimentBadge(n,comparison,52,24),hotspotBadge('node',n.id,-29,19)]){
@@ -1738,7 +1739,10 @@ function publicationSvg(options){
     exportPresentation=before.exportPresentation;
   }
   if(!box.width||!box.height)throw new Error('Show a diagram or selected region before exporting.');
-  const header=options.title?62:20,footer=options.legend?104:20,width=Math.max(570,box.width+48),height=Math.max(180,box.height)+header+footer;
+  const routeKinds=inOverview()?new Set(sceneGraph().edges.map(edge=>edge.direction==='unknown'?'uncertain':edge.routeKind)):new Set();
+  const types=inOverview()?new Set(sceneGraph().edges.map(edge=>edge.icm?.table).filter(kind=>Object.hasOwn(structureCodes,kind))):new Set();
+  const header=options.title?62:20,footer=options.legend?62+14*(Math.ceil(routeKinds.size/2)+Math.ceil(types.size/4)):20;
+  const width=Math.max(570,box.width+48),height=Math.max(180,box.height)+header+footer;
   paper.setAttribute('width',Math.ceil(width));paper.setAttribute('height',Math.ceil(height));
   paper.setAttribute('viewBox',`0 0 ${width} ${height}`);
   paper.setAttribute('font-family','Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif');
@@ -1759,11 +1763,14 @@ function publicationSvg(options){
       svgElement('text',{x:24,y:y+16,fill:'#455b68','font-size':11},
         (inOverview()?'Schematic positions · Nominal direction · Connections join at marked nodes':'Geographic view · Nominal connections')));
     if(inOverview()){
-      const kinds=new Set(sceneGraph().edges.map(edge=>edge.direction==='unknown'?'uncertain':edge.routeKind));
-      [...kinds].forEach((kind,index)=>{
+      [...routeKinds].forEach((kind,index)=>{
         const {label,line,dash}=routeStyles[kind],x=24+index%2*252,py=y+32+Math.floor(index/2)*14;
         paper.append(svgElement('path',{d:`M${x} ${py}h34`,stroke:line,'stroke-width':2,'stroke-dasharray':dash,fill:'none'}),
           svgElement('text',{x:x+42,y:py+4,'font-size':11,fill:'#142c38'},label));
+      });
+      [...types].forEach((kind,index)=>{
+        const x=24+index%4*132,py=y+34+(Math.ceil(routeKinds.size/2)+Math.floor(index/4))*14;
+        paper.append(svgElement('text',{x,y:py+4,'font-size':11,fill:'#513885'},structureCodes[kind]+' · '+structureLabel(kind)));
       });
     }
     if(options.monitors)paper.append(svgElement('text',{x:24,y:height-9,'font-size':11,fill:'#142c38'},'M · Installed monitor'));
@@ -2047,7 +2054,9 @@ function mountReview(){
     const results=matchingAssets(query),item=results.find(item=>[item.name,item.id].some(value=>String(value).toLowerCase()===query))||results[0];
     if(!item){status('Asset not found.');return;}
     const p=prefs();
-    if(selected===item.id&&selectionKind===item.kind&&p.type==='all'&&p.health==='all'&&p.result==='all'&&!branchIsolated)return;
+    if(selected===item.id&&selectionKind===item.kind&&p.type==='all'&&p.health==='all'&&p.result==='all'&&!branchIsolated&&popupVisible){
+      focusSelected();return;
+    }
     network.preferences={...p,type:'all',health:'all',result:'all'};
     branchIsolated=false;
     if(item.kind==='node')centre(item.id);else{selectConnector(item.id);focusSelected();}
@@ -2322,6 +2331,8 @@ function updateDiagramControls(){
     item.append(preview,document.createTextNode(style.label));return item;
   }));
   if(graph.groups.length)legend.append(inspectorElement('span','Double chevron · grouped feeder'));
+  const types=new Set(graph.edges.map(edge=>edge.icm?.table).filter(kind=>Object.hasOwn(structureCodes,kind)));
+  for(const kind of types)legend.append(inspectorElement('span',structureCodes[kind]+' · '+structureLabel(kind)));
 }
 function renderReviewControls(){
   if(!$('nsOverview'))return;
