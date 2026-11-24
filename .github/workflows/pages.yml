@@ -74,6 +74,7 @@ jobs:
           node web/tests/network-schematic-unit.mjs
           node --check web/assets/network-review-core.js
           node web/tests/network-review-unit.mjs
+          node web/tests/network-diagram-unit.mjs
           node web/tests/network-route-unit.mjs
           node web/tests/network-revision-unit.mjs
           node web/tests/simulation-results-unit.mjs
@@ -466,6 +467,7 @@ jobs:
           ICM_BROWSER=chromium node web/tests/network-route-smoke.mjs
           ICM_BROWSER=chromium node web/tests/network-revision-smoke.mjs
           ICM_BROWSER=chromium node web/tests/network-scale-smoke.mjs
+          ICM_BROWSER=chromium node web/tests/network-diagram-smoke.mjs
           node web/tests/network-review-smoke.mjs
           node web/tests/network-layout-smoke.mjs
           node web/tests/network-context-smoke.mjs
@@ -495,6 +497,7 @@ jobs:
           ICM_BROWSER=firefox node web/tests/network-route-smoke.mjs
           ICM_BROWSER=firefox node web/tests/network-revision-smoke.mjs
           ICM_BROWSER=firefox node web/tests/network-scale-smoke.mjs
+          ICM_BROWSER=firefox node web/tests/network-diagram-smoke.mjs
           ICM_BROWSER=firefox node web/tests/hydraulic-design-smoke.mjs
           ICM_BROWSER=firefox node web/tests/assessment-revision-smoke.mjs
           ICM_BROWSER=firefox node web/tests/manning-sizing-smoke.mjs
