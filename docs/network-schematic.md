@@ -174,9 +174,8 @@ settings with build and methodology metadata; source files are not embedded.
 Asset/connector review notes and status persist with the network. Schema 1 layouts
 load into schema 2 without discarding their previous evidence.
 
-**Export SVG** includes the whole network, regardless of camera and asset
-filters, with the chosen scenarios/year/metric. **Annual report / PDF** opens a
-printable vector schematic and all-year tables, differences and comments. Use its
+**Export SVG** uses the selected diagram and publication scope. **Annual report /
+PDF** opens a printable vector schematic and all-year tables, differences and comments. Use its
 Print / Save PDF button. Assessment-basis sections remain collapsed unless opened.
 
 The test-branch preview lives at `preview/network-annual-review/` on the existing
@@ -353,14 +352,49 @@ sample playback and the local saved review.
 
 ## Network review
 
-Use **Overview** for topology, discharges, controls, pumping stations and branches. Ordinary intermediate points can be represented by a single selectable reach. Use its source-asset selector to open the original node or link in the detailed network. Pin an asset from its inspector to include it in the overview. If the source lacks a recognised asset type, inspect the attributes and set the classification explicitly in Edit mode. The overview uses schematic positions. Its arrows follow nominal from/to connectivity.
+Choose the view that suits the review.
+
+| View | Use |
+| --- | --- |
+| **Detailed network** | Inspect the imported geometry and attributes. Use the conduit geometry layer and simulation playback here. A confirmed route always uses source assets, lengths and levels. |
+| **Engineering schematic** | Follow nominal upstream-to-downstream connectivity through junctions, discharges, pumps and controls. Ordinary runs become selectable reaches with ordered original assets. Expand a reach or open one of its assets in the detailed network. |
+| **Strategic asset diagram** | Present the main assets and routes. An unpinned upstream feeder without a significant asset or uncertain connection can be shown as one group with its original downstream exit. Expand the group to inspect its contributing assets. |
+
+Pin an asset from its inspector to retain it during simplification. Inspect any
+unrecognised classification against its imported attributes and confirm the type
+in Edit mode. **Diagram options** sets orientation, feeder detail, secondary
+controls and visible components. Use **Flow monitors** to show installed monitors
+and retain their host asset. A link marker identifies the host conduit.
+Select a point or link in an expanded branch and choose **Collapse selected
+branch** to fold it individually. **Collapse expanded branches** folds them all.
+
+Schematic positions are diagram coordinates. Arrows show the nominal connection
+direction, with dotted routes and no arrow where direction is uncertain. Pump
+links and routes with explicit pumped, overflow or storage-return metadata have
+distinct line styles. Junction symbols mark actual joins. Parallel links, loops
+and separate discharge destinations retain their own source paths.
+
+In **Manual layout**, drag an asset or use its arrow keys to place and pin it.
+Select a connector and use **Place connector bend** to route it through a manual
+point. Choose **Arrange automatically** to recalculate unpinned positions and
+clear manual routes. Use Undo or Redo to restore a layout edit. Save a named view
+from **Tools → Views & snapshots**. Saved projects keep each diagram's options,
+positions and routing separately. Old Overview saves open in Engineering
+schematic. Reimport retains compatible pins and preferences and removes routes
+whose recorded source members changed identity or endpoints.
+
+Use **Save / Export / Load → Diagram publication** for SVG, high-resolution PNG
+or a print document you can save to PDF locally. Choose the full visible view,
+viewport or traced branch, and set the title, legend and evidence badges.
+For a large drawing, export one component, viewport or traced route at a time
+to keep the report readable.
 
 Native ICM context imports support up to 6,000 nodes and 6,000 links within
 the existing 32 MiB CSV selection limit. On a dense detailed map, individual
 ordinary assets are drawn together at wide extents. Their source lines and
 bends still follow their original locations. Zoom in or use **Find asset**
 to open the individual node or link. This visual optimisation is separate
-from **Overview**, which groups runs into selectable schematic reaches.
+from either schematic view, which groups runs into selectable schematic reaches.
 The full detail and source attributes remain in **Save network**. Use that
 local JSON file to reopen a large network if browser recovery storage is full.
 

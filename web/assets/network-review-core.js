@@ -527,5 +527,5 @@ function sourceConduitLayer(link,quantity){
   }
   return null;
 }
-globalThis.ICMNetworkReviewCore={preferences,index,trace,components,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,revisedLongSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand,recordedFlowDirection,groundFreeboard,sourceConduitLayer,capacityUtilisation};
+globalThis.ICMNetworkReviewCore={preferences,index,trace,components,strongComponents,audit,autoLayout,health,years,annualGroups,delta,review,refKey,monitorIndex,monitorMatches,mapDetrimentHotspots,overview,routePlanner,contributingCatchments,longSection,revisedLongSection,conduitEndProfile,profileAxis,sameProfileSteps,simulationBindings,simulationLayers,compatibleSimulationColumns,compareSimulationSamples,simulationBand,recordedFlowDirection,groundFreeboard,sourceConduitLayer,capacityUtilisation};
 })();

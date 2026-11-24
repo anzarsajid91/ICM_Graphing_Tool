@@ -163,6 +163,39 @@ function validateInspectorProperties(object){
   }
 }
 const nativeAssetLimit=6000;
+const diagramModes=['detailed','engineering','strategic'];
+const diagramCoordinate=p=>p&&[p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6);
+const diagramId=value=>typeof value==='string'&&value.length>0&&value.length<=512;
+function validateDiagramWorkspace(network){
+  const preferences=network.preferences;
+  preferences.diagramMode??=preferences.overview?'engineering':'detailed';
+  if(!diagramModes.includes(preferences.diagramMode))throw new Error('Invalid schematic diagram mode.');
+  preferences.overview=preferences.diagramMode!=='detailed';
+  if(network.diagrams===undefined)return;
+  const diagrams=network.diagrams;
+  if(!diagrams||diagrams.version!==1)throw new Error('Unsupported saved diagram settings.');
+  const validateList=(value,limit,valid)=>Array.isArray(value)&&value.length<=limit&&value.every(valid);
+  const camera=value=>value&&Number.isFinite(value.x)&&Number.isFinite(value.y)&&Number.isFinite(value.zoom)&&
+    value.zoom>=.002&&value.zoom<=maxCameraZoom;
+  const result={version:1};
+  for(const mode of diagramModes){
+    const options=diagrams[mode];if(options===undefined)continue;
+    if(!options||options.camera!==undefined&&!camera(options.camera))throw new Error('Invalid diagram camera.');
+    if(mode==='detailed'){result.detailed=options.camera?{camera:options.camera}:{};continue;}
+    if(!['horizontal','vertical'].includes(options.orientation)||!['standard','compact'].includes(options.level)||
+      typeof options.controls!=='boolean'||options.component!==undefined&&!diagramId(options.component)||
+      !validateList(options.expanded,6000,key=>diagramId(key)&&/^(?:reach|group):/.test(key))||
+      !validateList(options.positions,6000,point=>diagramCoordinate(point)&&diagramId(point.id))||
+      !validateList(options.routes,6000,route=>route&&diagramId(route.key)&&route.key.startsWith('reach:')&&
+        validateList(route.points,32,diagramCoordinate)&&validateList(route.members,6000,diagramId))||
+      !validateList(options.hidden,6000,ref=>ref&&['node','edge'].includes(ref.kind)&&diagramId(ref.id)))
+      throw new Error('Invalid diagram layout or visibility settings.');
+    const {orientation,level,controls,expanded,positions,routes,hidden,component}=options;
+    result[mode]={orientation,level,controls,expanded,positions,routes,hidden,
+      ...(options.camera?{camera:options.camera}:{}),...(component?{component}:{})};
+  }
+  network.diagrams=result;
+}
 function validateNetwork(value){
   if(!value||![1,2].includes(value.schema)||!Array.isArray(value.nodes)||!Array.isArray(value.edges))throw new Error('Unsupported network schematic file.');
   const native=value.contextFormat==='icm-csv-v1';
@@ -199,6 +232,7 @@ function validateNetwork(value){
   result.schema=2;
   result.preferences={snap:false,locked:false,detail:'auto',showLabels:true,showMonitors:true,overview:false,type:'all',health:'all',result:'all',scenarios:null,...result.preferences};
   if(!['auto','full','minimal'].includes(result.preferences.detail)||!['all',...Object.keys(types)].includes(result.preferences.type)||!['all','ready','missing','stale','provisional','short','unassigned','uncalculated'].includes(result.preferences.health)||!['all','green','amber','red','neutral'].includes(result.preferences.result)||![result.preferences.snap,result.preferences.locked,result.preferences.showLabels,result.preferences.showMonitors,result.preferences.overview].every(v=>typeof v==='boolean')||result.preferences.scenarios!==null&&(!Array.isArray(result.preferences.scenarios)||result.preferences.scenarios.length>1000||result.preferences.scenarios.some(s=>typeof s!=='string'||s.length>100)))throw new Error('Invalid schematic display preferences.');
+  validateDiagramWorkspace(result);
   for(const n of result.nodes){if(n.pinned!==undefined&&typeof n.pinned!=='boolean')throw new Error('Invalid pinned point.');if(n.review&&(typeof n.review.comment!=='string'||n.review.comment.length>10000||!['unreviewed','in-review','reviewed'].includes(n.review.status)))throw new Error('Invalid review note.');}
   for(const e of result.edges){if(e.labelOffset&&![e.labelOffset.x,e.labelOffset.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=10000))throw new Error('Invalid connector label placement.');if(e.review&&(typeof e.review.comment!=='string'||e.review.comment.length>10000||!['unreviewed','in-review','reviewed'].includes(e.review.status)))throw new Error('Invalid connector review.');}
   validateRouteWorkspace(result);
@@ -207,7 +241,8 @@ function validateNetwork(value){
   for(const view of result.views)if(typeof view.name!=='string'||view.name.length>100||!Array.isArray(view.positions)||view.positions.length>pointLimit||!view.camera||![view.camera.x,view.camera.y,view.camera.zoom].every(Number.isFinite)||view.camera.zoom<.002||view.camera.zoom>maxCameraZoom||view.positions.some(p=>typeof p.id!=='string'||![p.x,p.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)))throw new Error('Invalid saved view.');
   for(const view of result.views){
     if(view.edges!==undefined&&(!Array.isArray(view.edges)||view.edges.length>linkLimit)||view.evidenceMode!==undefined&&!['single','combined'].includes(view.evidenceMode)||view.metric!==undefined&&!['spill_count','duration_hours'].includes(view.metric))throw new Error('Invalid saved view display.');
-    const test={...result,views:[],reviewSnapshots:[],camera:view.camera,preferences:view.preferences||result.preferences};
+    const test={...result,views:[],reviewSnapshots:[],camera:view.camera,preferences:view.preferences||result.preferences,
+      diagrams:view.diagrams??result.diagrams};
     const positions=new Map(view.positions.map(p=>[p.id,p])),geometry=new Map((view.edges||[]).map(e=>[e.id,e]));
     test.nodes=result.nodes.map(n=>({...n,...positions.get(n.id)}));test.edges=result.edges.map(e=>({...e,...geometry.get(e.id)}));
     validateNetwork(test);
@@ -615,9 +650,28 @@ function applyContextRevision(current,imported,format){
       const old=previousEdges.get(id),next=nextEdges.get(id);
       return old&&next&&old.from===next.from&&old.to===next.to;
     });
-    return positions.length||geometry.length?[{...view,positions,edges:geometry}]:[];
+    return positions.length||geometry.length||view.diagrams?[{...view,positions,edges:geometry}]:[];
   });
-  return validateNetwork({...current,contextFormat:format,nodes,edges,views});
+  const compatibleNode=id=>nextNodes.has(id)&&previousNodes.get(id)?.type===nextNodes.get(id).type;
+  const compatibleEdge=id=>{
+    const old=previousEdges.get(id),next=nextEdges.get(id);
+    return old&&next&&old.from===next.from&&old.to===next.to&&old.icm?.table===next.icm?.table;
+  };
+  function carryDiagrams(saved){
+    if(!saved)return undefined;
+    const record={...saved};
+    for(const mode of ['engineering','strategic'])if(saved[mode]){
+      const options=saved[mode];
+      record[mode]={...options,positions:options.positions.filter(point=>compatibleNode(point.id)),
+        routes:options.routes.filter(route=>route.members.every(compatibleEdge)),
+        hidden:options.hidden.filter(ref=>(ref.kind==='node'?compatibleNode:compatibleEdge)(ref.id)),
+        expanded:options.expanded.filter(key=>key.startsWith('group:')?compatibleNode(key.slice(6)):compatibleEdge(key.slice(6)))};
+      if(options.component&&!compatibleNode(options.component))delete record[mode].component;
+    }
+    return record;
+  }
+  return validateNetwork({...current,contextFormat:format,nodes,edges,diagrams:carryDiagrams(current.diagrams),
+    views:views.map(view=>({...view,diagrams:carryDiagrams(view.diagrams)}))});
 }
 function conduitTrial(edge){
   const fields=edge?.icm;

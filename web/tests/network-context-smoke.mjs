@@ -239,10 +239,15 @@ try{
     assert.equal(conduit.from,'001');
     assert.equal(conduit.to,'Out');
     assert.equal(conduit.icm.conduit_width,450);
-    assert.deepEqual(conduit.bends,[]);
+    assert.deepEqual(conduit.bends,[{x:350030,y:-425025}]);
     assert.equal(laidOut.nodes[0].sourcePosition.x,350000);
-    assert.notEqual(laidOut.nodes[0].x,laidOut.nodes[0].sourcePosition.x);
+    assert.equal(laidOut.nodes[0].x,laidOut.nodes[0].sourcePosition.x);
+    assert.equal(laidOut.preferences.diagramMode,'engineering');
     assert.equal(await layoutPage.locator('[data-ns-edge]').count(),1);
+    const diagramPath=await layoutPage.locator('[data-ns-wire]').getAttribute('d');
+    await layoutPage.locator('#nsDetailed').click();
+    assert.notEqual(await layoutPage.locator('[data-ns-wire]').getAttribute('d'),diagramPath);
+    assert.deepEqual(await layoutPage.evaluate(()=>ICMNetworkSchematic.snapshot().edges[0].bends),conduit.bends);
     layoutPrivacy.assertClean();
   }finally{try{await writeLayoutEvidence?.();}finally{await layoutContext.close();}}
   privacy.assertClean();
