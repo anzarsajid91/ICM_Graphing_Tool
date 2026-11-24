@@ -99,6 +99,9 @@ try{
   await ui('#nsAssetSearch').fill('FM2961');
   await ui('#nsAssetSearch').press('Enter');
   assert.match(await ui('#nsPopup').getByRole('heading').first().textContent(),/FM2961/);
+  const inspectedAction=await ui('#nsPopup [data-ns-edit-selected]').elementHandle();
+  await ui('#nsAssetSearch').dispatchEvent('change');
+  assert(await inspectedAction.evaluate(action=>action.isConnected),'The repeated search change preserves the active inspector action');
   await node.press('Enter');
   await click('#nsPinDiagramPosition');
   const pinned=(await settings(page)).engineering.positions.find(point=>point.id==='FM2961');

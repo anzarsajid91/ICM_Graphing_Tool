@@ -2054,9 +2054,8 @@ function mountReview(){
     const results=matchingAssets(query),item=results.find(item=>[item.name,item.id].some(value=>String(value).toLowerCase()===query))||results[0];
     if(!item){status('Asset not found.');return;}
     const p=prefs();
-    if(selected===item.id&&selectionKind===item.kind&&p.type==='all'&&p.health==='all'&&p.result==='all'&&!branchIsolated&&popupVisible){
-      focusSelected();return;
-    }
+    // The input's change event can run on pointer blur while an inspector button is being clicked.
+    if(selected===item.id&&selectionKind===item.kind&&p.type==='all'&&p.health==='all'&&p.result==='all'&&!branchIsolated&&popupVisible)return;
     network.preferences={...p,type:'all',health:'all',result:'all'};
     branchIsolated=false;
     if(item.kind==='node')centre(item.id);else{selectConnector(item.id);focusSelected();}
