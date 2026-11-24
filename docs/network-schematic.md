@@ -365,6 +365,8 @@ unrecognised classification against its imported attributes and confirm the type
 in Edit mode. **Diagram options** sets orientation, feeder detail, secondary
 controls and visible components. Use **Flow monitors** to show installed monitors
 and retain their host asset. A link marker identifies the host conduit.
+Select a point or link in an expanded branch and choose **Collapse selected
+branch** to fold it individually. **Collapse expanded branches** folds them all.
 
 Schematic positions are diagram coordinates. Arrows show the nominal connection
 direction, with dotted routes and no arrow where direction is uncertain. Pump

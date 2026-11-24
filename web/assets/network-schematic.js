@@ -2285,6 +2285,9 @@ function diagramSelection(){
   const graph=overviewGraph();
   return selectionKind==='node'?graph.nodes.find(item=>item.id===selected):graph.edges.find(item=>item.id===selected);
 }
+function selectedExpansion(graph){
+  return (selectionKind==='node'?graph.expandedByNode:graph.expandedByEdge).get(selected);
+}
 function updateDiagramControls(){
   const mode=viewMode(),active=inOverview(),panel=$('nsDiagramOptions');
   $('nsDetailed').setAttribute('aria-pressed',String(!active));
@@ -2315,6 +2318,7 @@ function updateDiagramControls(){
   $('nsPinDiagramPosition').textContent=focus?.positionPinned?'Unpin position':'Pin position';
   $('nsHideDiagramAsset').disabled=!focus;
   $('nsRestoreDiagramAssets').disabled=!options.hidden.length;
+  $('nsDiagramCollapseSelection').disabled=!focus||!selectedExpansion(graph);
   $('nsDiagramCollapse').disabled=!options.expanded.length;
   $('nsDiagramUndo').disabled=!history.length;
   $('nsDiagramRedo').disabled=!redo.length;
@@ -3459,6 +3463,7 @@ function mountDiagramTools(controls){
     '<button id="nsDiagramWaypoint" type="button">Place connector bend</button><button id="nsDiagramResetRoute" type="button">Reset connector routing</button>'+
     '<button id="nsDiagramUndo" type="button">Undo layout edit</button><button id="nsDiagramRedo" type="button">Redo layout edit</button></div>'+
     '<div class="ns-diagram-action-row"><button id="nsHideDiagramAsset" type="button">Hide selection</button><button id="nsRestoreDiagramAssets" type="button">Restore hidden items</button>'+
+    '<button id="nsDiagramCollapseSelection" type="button">Collapse selected branch</button>'+
     '<button id="nsDiagramCollapse" type="button">Collapse expanded branches</button><span id="nsDiagramVisibleCount"></span></div></details>'+
     '<div id="nsDiagramLegend" class="ns-diagram-legend" aria-label="Schematic legend" hidden></div>');
   const change=(name,property,read,refit=true)=>$(name).onchange=()=>{
@@ -3488,6 +3493,9 @@ function mountDiagramTools(controls){
     status('Selection hidden in this diagram.');
   };
   $('nsRestoreDiagramAssets').onclick=()=>changeDiagram(options=>({...options,hidden:[]}),true);
+  $('nsDiagramCollapseSelection').onclick=()=>{
+    const key=selectedExpansion(overviewGraph());if(key)expandDiagram(key,false);
+  };
   $('nsDiagramCollapse').onclick=()=>changeDiagram(options=>({...options,expanded:[]}),true);
   $('nsDiagramWaypoint').onclick=()=>{
     const item=diagramSelection();if(!item?.sourceEdges)return;

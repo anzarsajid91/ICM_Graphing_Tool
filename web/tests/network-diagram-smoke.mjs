@@ -73,11 +73,17 @@ try{
   assert.equal(await grouped.first().getByText('Upstream branch',{exact:true}).isVisible(),true);
   await screenshot('survey-strategic');
   const compactCount=await ui('#nsSvg [data-ns-node]').count();
+  const groupId=await grouped.first().getAttribute('data-ns-node');
   await grouped.first().press('Enter');
   assert.match(await ui('#nsReach').innerText(),/one nominal connection downstream/);
   await ui('#nsReach').getByRole('button',{name:'Expand branch'}).click();
   assert((await ui('#nsSvg [data-ns-node]').count())>compactCount);
   await click('#nsDiagramOptions > summary');
+  await ui('#nsSvg [data-ns-node="'+groupId+'"]').press('Enter');
+  await click('#nsDiagramCollapseSelection');
+  assert.equal(await ui('#nsSvg [data-ns-node]').count(),compactCount);
+  await grouped.first().press('Enter');
+  await ui('#nsReach').getByRole('button',{name:'Expand branch'}).click();
   await click('#nsDiagramCollapse');
   assert.equal(await ui('#nsSvg [data-ns-node]').count(),compactCount);
   await click('#nsOverview');
