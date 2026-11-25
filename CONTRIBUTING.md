@@ -15,3 +15,9 @@ Explain changes to numerical methods, units, time support or validity and
 include reproducible reference checks. Run the relevant repository checks
 and report what passed. Upstream changes use the existing code ownership,
 security review and release controls.
+
+Release candidates require both expert verdicts under the
+[Dual-Expert Review Framework](docs/dual-expert-review.md). Give reviewers
+the candidate revision, a synthetic reproduction, expected engineering
+outcomes and the evidence needed to check them. Record findings, decisions and
+reassessment in the [release review history](docs/reviews/README.md).

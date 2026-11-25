@@ -1,0 +1,9 @@
+**** hw_node
+node_id,node_type,x,y,ground_level,chamber_floor
+A,manhole,0,0,12,10
+B,manhole,100,0,11,9
+C,outfall,200,0,10,8
+**** hw_conduit
+us_node_id,ds_node_id,link_suffix,conduit_length,conduit_width,conduit_height,us_invert,ds_invert,flow_direction
+A,B,1,100,600,600,10,9,Unknown
+B,C,1,100,600,600,9,8,Nominal

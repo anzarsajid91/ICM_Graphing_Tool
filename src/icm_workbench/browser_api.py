@@ -14,6 +14,7 @@ from icm_workbench.analysis import (
     rating_curve_fit, weekly_data_assessment, dry_weather_flow, event_response_summary,
     rainfall_accumulation,
 )
+from icm_workbench.analysis.verification_events import joint_support_intervals
 from icm_workbench.domain import ExclusionPeriod
 from icm_workbench.analysis.screening import calendar_spill_volumes
 
@@ -436,6 +437,42 @@ def series_data(path, column=None, max_points=5000, start=None, end=None, max_ga
     return json.dumps(payload, ensure_ascii=False)
 
 
+def series_point(path, column=None, start=None, end=None, index=0, timestamp=None, max_gap_seconds=900.0, exclusions_json="[]"):
+    """One exact recorded sample from the same prepared cohort as series_data.
+
+    Bounds are inclusive project-clock bounds. Missing recorded values count as
+    samples; Plotly gap separators do not. The response stays constant-sized even
+    when the visible source has millions of samples.
+    """
+    source, col = _prepared_series(path, column)
+    stamps = source["timestamp"].to_numpy(dtype="datetime64[ns]")
+    first, last = _model_clock_timestamp(start), _model_clock_timestamp(end)
+    lo = 0 if first is None else int(np.searchsorted(stamps, first.to_datetime64(), side="left"))
+    hi = len(source) if last is None else int(np.searchsorted(stamps, last.to_datetime64(), side="right"))
+    lo = max(0, min(lo, len(source)))
+    hi = max(lo, min(hi, len(source)))
+    count = hi - lo
+    if not count:
+        return json.dumps({"count": 0, "index": None, "timestamp": None, "value": None})
+    if timestamp is not None:
+        target = _model_clock_timestamp(timestamp)
+        index = int(np.searchsorted(stamps, target.to_datetime64(), side="left")) - lo
+    selected = max(0, min(int(index), count - 1))
+    row = source.iloc[lo + selected]
+    clock = pd.Timestamp(row["timestamp"])
+    next_time = pd.Timestamp(source.iloc[lo + selected + 1]["timestamp"]) if selected + 1 < count else None
+    support = None if next_time is None else float((next_time - clock).total_seconds())
+    excluded = any(pd.Timestamp(item.start) <= clock < pd.Timestamp(item.end) for item in _exclusions(exclusions_json))
+    return json.dumps(_jsonable({
+        "count": count, "index": selected, "source_index": lo + selected,
+        "timestamp": clock.isoformat(), "value": row[col], "excluded": excluded,
+        "next_timestamp": None if next_time is None else next_time.isoformat(),
+        "next_sample_seconds": support,
+        "interval_supported": support is not None and support <= float(max_gap_seconds) and not pd.isna(row[col]) and not pd.isna(source.iloc[lo + selected + 1][col]),
+        "cohort": "recorded samples, timestamp-sorted, duplicate timestamps retain last; no display gap separators",
+    }), ensure_ascii=False)
+
+
 def _graph_statistics(path, col, source, view, start, end, max_gap_seconds, exclusions=()):
     """Raw native-sample summaries and clipped interval support, never display data.
 
@@ -540,13 +577,15 @@ def _comparison_domain(observed, modelled, start=None, end=None):
         return None,None
     s=_model_clock_timestamp(start) if start is not None else max(pd.Timestamp(obs_ts.min()),pd.Timestamp(mod_ts.min()))
     e=_model_clock_timestamp(end) if end is not None else min(pd.Timestamp(obs_ts.max()),pd.Timestamp(mod_ts.max()))
-    return (s,e) if e>s else (None,None)
+    return s,e
 
 
-def _comparison_coverage(observed, obs_col, modelled, model_col, domain_start, domain_end, max_gap_seconds, exclusions):
-    if domain_start is None or domain_end is None:
+def _comparison_coverage(observed, obs_col, modelled, model_col, domain_start, domain_end, max_gap_seconds, exclusions, paired):
+    if domain_start is None or domain_end is None or domain_end <= domain_start:
         empty={"status":"unavailable","coverage_fraction":None,"requested_seconds":0.0,"valid_seconds":0.0,"excluded_seconds":0.0,"missing_seconds":0.0,"unknown_seconds":0.0,"uncovered_seconds":0.0,"validity":None}
-        return {"status":"unavailable","coverage_fraction":None,"observed":dict(empty),"modelled":dict(empty),"validity_model":"validity-v1"}
+        return {"status":"unavailable","coverage_fraction":None,"observed":dict(empty),"modelled":dict(empty),
+                "requested_seconds":0.0,"excluded_seconds":0.0,"eligible_seconds":0.0,
+                "common_support_seconds":0.0,"supported_pairs":0,"validity_model":"validity-v1","comparison_method":"joint-support-v2"}
     observed_coverage=time_coverage(
         observed,obs_col,domain_start,domain_end,
         max_gap_seconds=float(max_gap_seconds),exclusions=exclusions,
@@ -555,22 +594,31 @@ def _comparison_coverage(observed, obs_col, modelled, model_col, domain_start, d
         modelled,model_col,domain_start,domain_end,
         max_gap_seconds=float(max_gap_seconds),exclusions=exclusions,
     )
-    fractions=[x.get("coverage_fraction") for x in (observed_coverage,modelled_coverage) if x.get("coverage_fraction") is not None]
-    coverage=min(fractions) if len(fractions)==2 else None
-    statuses={observed_coverage.get("status"),modelled_coverage.get("status")}
-    if "unavailable" in statuses or coverage is None:
-        status="unavailable"
-    elif statuses=={"complete"}:
-        status="complete"
-    else:
-        status="partial"
+    # Pair statistics include isolated exact observations. Only paired instants
+    # on an interval with shared positive duration support a review decision.
+    instants = pd.DatetimeIndex(paired.dropna(subset=["obs", "sim"]).timestamp.unique()).sort_values()
+    common_ns = 0
+    supported_pairs = 0
+    for lo, hi, _, _ in joint_support_intervals(
+        observed, modelled, obs_col, model_col, domain_start, domain_end, max_gap_seconds, exclusions
+    ):
+        common_ns += hi.value - lo.value
+        supported_pairs += int(instants.searchsorted(hi, side="right") - instants.searchsorted(lo))
+    requested = observed_coverage["requested_seconds"]
+    excluded = observed_coverage["excluded_seconds"]
+    eligible = max(0.0, requested - excluded)
+    common = common_ns / 1e9
     return {
-        "status":status,
-        "coverage_fraction":coverage,
-        "observed":observed_coverage,
-        "modelled":modelled_coverage,
-        "validity_model":"validity-v1",
-        "coverage_basis":"minimum of observed/modelled eligible support; metrics use bounded valid pairs",
+        "status": "unavailable" if not common_ns else "complete" if abs(common - eligible) < 1e-6 else "partial",
+        "coverage_fraction": min(1.0, common / eligible) if eligible else None,
+        "requested_start": domain_start.isoformat(), "requested_end": domain_end.isoformat(),
+        "requested_seconds": requested, "excluded_seconds": excluded, "eligible_seconds": eligible,
+        "requested_coverage_fraction": common / requested,
+        "common_support_seconds": common, "supported_pairs": supported_pairs,
+        "full_requested_support": common_ns > 0 and common_ns == domain_end.value - domain_start.value,
+        "observed": observed_coverage, "modelled": modelled_coverage,
+        "validity_model": "validity-v1", "comparison_method": "joint-support-v2",
+        "coverage_basis": "intersection of native valid intervals after exclusions; point metrics use all bounded valid pairs",
     }
 
 
@@ -650,13 +698,17 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
         start=domain_start, end=domain_end,
     )
     exclusions=_exclusions(exclusions_json)
-    coverage=_comparison_coverage(
-        obs,obs_col,mod,model_col,domain_start,domain_end,
-        float(max_gap_seconds),exclusions,
-    )
     paired=paired_raw.copy()
     for exc in exclusions:
         paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
+    coverage=_comparison_coverage(
+        obs,obs_col,mod,model_col,domain_start,domain_end,
+        float(max_gap_seconds),exclusions,paired,
+    )
+    coverage["comparable_quantities"] = bool(
+        not generic_numeric_comparison and obs_contract["canonical_unit"]
+        and obs_contract["canonical_unit"] == model_contract["canonical_unit"]
+    )
     metrics = calibration_metrics(paired)
     metrics["unavailable_reasons"] = _comparison_metric_reasons(paired, metrics)
     positive_mask = (
@@ -678,7 +730,7 @@ def compare_series(obs_path, obs_col, model_path, model_col, max_gap_seconds=900
         "calculation_status":coverage.get("status","unavailable"),
         "coverage_fraction":coverage.get("coverage_fraction"),
         "coverage":coverage,
-        "validity_model":"validity-v1",
+        "validity_model":coverage["validity_model"],
         "observed_quantity": "value" if generic_numeric_comparison else oq,
         "modelled_quantity": "value" if generic_numeric_comparison else mq,
         "source_observed_quantity": oq,
@@ -861,13 +913,13 @@ def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=
         start=domain_start,end=domain_end,
     )
     exclusions=_exclusions(exclusions_json)
-    coverage=_comparison_coverage(
-        obs,obs_col,mod,model_col,domain_start,domain_end,
-        float(max_gap_seconds),exclusions,
-    )
     paired=paired_raw.copy()
     for exc in exclusions:
         paired.loc[(paired.timestamp >= exc.start) & (paired.timestamp < exc.end), ["obs", "sim"]] = np.nan
+    coverage=_comparison_coverage(
+        obs,obs_col,mod,model_col,domain_start,domain_end,
+        float(max_gap_seconds),exclusions,paired,
+    )
     residual=residual_series(paired) if not paired.empty else pd.DataFrame()
     obs_contract=_series_contract(obs_path,obs_col)
     mod_contract=_series_contract(model_path,model_col)
@@ -905,7 +957,7 @@ def diagnostic_result(obs_path, obs_col, model_path, model_col, max_gap_seconds=
         "calculation_status":coverage.get("status","unavailable"),
         "coverage_fraction":coverage.get("coverage_fraction"),
         "coverage":coverage,
-        "validity_model":"validity-v1",
+        "validity_model":coverage["validity_model"],
     }),ensure_ascii=False)
 
 def _exclusions(raw):

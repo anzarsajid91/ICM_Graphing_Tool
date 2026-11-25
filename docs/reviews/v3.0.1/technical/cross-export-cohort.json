@@ -1,0 +1,38 @@
+{
+  "identity": "ccc36427c12f003e5d9b1fee61632770b31952cc",
+  "browser": "140.0.7339.186",
+  "errors": [],
+  "displayedRows": [
+    "A-CROSS-ID-001"
+  ],
+  "chartIds": [
+    "A-CROSS-ID-003",
+    "A-CROSS-ID-002",
+    "A-CROSS-ID-001"
+  ],
+  "exportedRows": [
+    "A-CROSS-ID-001"
+  ],
+  "chartCapture": [
+    {
+      "id": "dtChart",
+      "series": [
+        {
+          "x": [
+            0,
+            1,
+            7
+          ],
+          "y": [
+            "A-CROSS-ID-003",
+            "A-CROSS-ID-002",
+            "A-CROSS-ID-001"
+          ]
+        }
+      ]
+    }
+  ],
+  "embeddedChartSha256": "93c4eb0634b937974bc8fd0140c9bd97df11aa13fa6e3866c3cea0066f68a44f",
+  "filename": "icm-flooding-detriment-current-view.html",
+  "guard": "pass"
+}

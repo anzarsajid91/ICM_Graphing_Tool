@@ -2,6 +2,26 @@
   "schema_version": 1,
   "records": [
     {
+      "version": "v3.0.1",
+      "revision": "ccc36427c12f003e5d9b1fee61632770b31952cc",
+      "status": "production",
+      "scope": "Detailed, Engineering and Strategic schematic views and local publication. The subsequent dual-expert review identified outstanding decision and diagram findings.",
+      "engineering": "Independent synthetic tests checked nominal reachability and ordered source-link accounting on the 101-node reference. Direction uncertainty and formal evidence decisions require the corrections in the v3.0.1 review.",
+      "security": "Live Pages Verification confirmed the published revision and resource integrity. Guarded synthetic browser journeys observed zero confidentiality violations in the exercised flows.",
+      "compatibility": "Desktop Chromium and Firefox workflow evidence is recorded in the versioned dual-expert dossier.",
+      "limitations": "These checks use synthetic engineering inputs. Licensed InfoWorks ICM, actual survey validation, organisation approval and private alert inventories are outside this record.",
+      "checks": [
+        {
+          "label": "Production build and deployment",
+          "run": "45373544469"
+        },
+        {
+          "label": "Live Pages Verification",
+          "run": "45384027648"
+        }
+      ]
+    },
+    {
       "version": "v3.0.0 target",
       "revision": "e8c3efdaae5bd369970a74383d21dd2fd07afc54",
       "status": "candidate",

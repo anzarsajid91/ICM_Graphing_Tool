@@ -11,6 +11,14 @@ verification and the applicable GitHub review conditions. GitHub currently
 requires zero ordinary approving reviews and dismisses stale voluntary
 reviews. AI-assisted review must be identified as such.
 
+Before authorising the merge, the maintainer applies the
+[Dual-Expert Review Framework](dual-expert-review.md). Open the versioned review
+dossier and confirm both independent specialist verdicts for the exact candidate
+head, the evidence for closed findings and the disposition of any disagreement.
+Missing verdicts, insufficient coverage of a release-critical workflow or an
+unresolved blocker withhold release approval. This maintainer gate and the
+server-side gates below are both required.
+
 The active ruleset currently requires the following check contexts.
 
 - `confidentiality`, `security`, `secrets`, `dependency-review`

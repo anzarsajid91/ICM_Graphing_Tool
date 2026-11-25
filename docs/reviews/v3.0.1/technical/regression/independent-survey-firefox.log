@@ -1,0 +1,69 @@
+DATA_CONFIDENTIALITY_NETWORK_PASS: 102 requests; zero violations.
+{
+  "before": [
+    {
+      "week_ending": "2026-01-11T00:00:00",
+      "downstream_monitor": "FM02",
+      "upstream_monitors": [
+        "FM01"
+      ],
+      "downstream_volume_m3": 24.000000000000004,
+      "upstream_sum_m3": 24.000000000000004,
+      "balance_ratio": 1,
+      "deficit_m3": 0,
+      "deficit_percent": 0,
+      "legacy_fsat_status": "OK",
+      "rag": "Green",
+      "rag_reason": "Downstream volume is at least the summed upstream measured volume.",
+      "minimum_coverage_fraction": 1,
+      "likely_source": "No specific monitor indicated",
+      "recommendation": "No measured volume deficit is indicated. A downstream excess may reflect legitimate lateral/unmonitored inflow; investigate only if the magnitude is implausible.",
+      "workbook_diameter_mm": 600,
+      "mapped_rain_gauge": "RG01"
+    }
+  ],
+  "upstreamExcluded": [
+    {
+      "week_ending": "2026-01-11T00:00:00",
+      "downstream_monitor": "FM02",
+      "upstream_monitors": [
+        "FM01"
+      ],
+      "downstream_volume_m3": 24.000000000000004,
+      "upstream_sum_m3": 12,
+      "balance_ratio": 2.0000000000000004,
+      "deficit_m3": 12.000000000000004,
+      "deficit_percent": -100.00000000000003,
+      "legacy_fsat_status": "OK",
+      "rag": "Green",
+      "rag_reason": "Downstream volume is at least the summed upstream measured volume.",
+      "minimum_coverage_fraction": 1,
+      "likely_source": "No specific monitor indicated",
+      "recommendation": "No measured volume deficit is indicated. A downstream excess may reflect legitimate lateral/unmonitored inflow; investigate only if the magnitude is implausible.",
+      "workbook_diameter_mm": 600,
+      "mapped_rain_gauge": "RG01"
+    }
+  ],
+  "downstreamExcluded": [
+    {
+      "week_ending": "2026-01-11T00:00:00",
+      "downstream_monitor": "FM02",
+      "upstream_monitors": [
+        "FM01"
+      ],
+      "downstream_volume_m3": 12,
+      "upstream_sum_m3": 24.000000000000004,
+      "balance_ratio": 0.49999999999999994,
+      "deficit_m3": -12.000000000000004,
+      "deficit_percent": 50.000000000000014,
+      "legacy_fsat_status": "Not OK",
+      "rag": "Red",
+      "rag_reason": "Downstream volume is materially below the summed upstream measured volume.",
+      "minimum_coverage_fraction": 1,
+      "likely_source": "FM01 (largest upstream contributor; not proof of fault)",
+      "recommendation": "Measured downstream volume is 50.0% below the upstream sum. No direct single-monitor fault is proven by the balance alone. Check source QA, monitor zero/flatline behaviour, clock alignment, sign convention and sensor/installation performance before attributing the imbalance. Lateral and unmonitored inflows mean this is a diagnostic, not a closed-system mass balance.",
+      "workbook_diameter_mm": 600,
+      "mapped_rain_gauge": "RG01"
+    }
+  ]
+}

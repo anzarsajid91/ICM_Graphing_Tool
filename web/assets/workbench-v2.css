@@ -212,3 +212,13 @@ footer{max-width:1600px;padding:0 26px}
   #tab-spills .subhead{flex-wrap:wrap}
   #tab-spills .subhead .btn{margin-left:0}
 }
+
+/* Exact-source keyboard point navigation; bounded worker reads (DE-06). */
+.v2-point-inspector{flex-wrap:wrap;align-items:flex-start}
+.v2-point-inspector>span{flex-basis:100%}
+.v2-point-navigator{display:flex;align-items:end;flex-wrap:wrap;gap:8px;min-width:0;flex:1 1 100%}
+.v2-point-navigator label{display:flex;flex-direction:column;gap:4px;min-width:0;max-width:100%;font-size:12px}
+.v2-point-navigator label:first-child{flex:1 1 220px}
+.v2-point-navigator select{max-width:100%;min-width:0}
+#v2PointPosition{width:100px}
+#v2PointCohort{flex-basis:100%;margin:0;font-size:12px;overflow-wrap:anywhere}

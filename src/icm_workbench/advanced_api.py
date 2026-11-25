@@ -1359,7 +1359,7 @@ def professional_survey_batch_result(
         "rows": [],
         "summary": {"Green": 0, "Amber": 0, "Red": 0, "Grey": 0},
         "reason": "No mapped flow channels available for volume balance.",
-        "method": "weekly-volume-balance-v2",
+        "method": "weekly-volume-balance-v3-common-support",
     }
     performance["volume_balance_seconds"] = float(
         time.perf_counter() - volume_started

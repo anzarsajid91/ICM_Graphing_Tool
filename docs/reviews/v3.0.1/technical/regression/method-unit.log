@@ -1,0 +1,66 @@
+........................................................................ [ 80%]
+.................                                                        [100%]
+=============================== warnings summary ===============================
+../hydra-venv/lib/python3.12/site-packages/dash/testing/plugin.py:104
+  /workspace/hydra-venv/lib/python3.12/site-packages/dash/testing/plugin.py:104: PytestRemovedIn10Warning: The hookimpl pytest_addhooks uses old-style configuration options (marks or attributes).
+  Please use the pytest.hookimpl(tryfirst=True) decorator instead
+   to configure the hooks.
+   See https://docs.pytest.org/en/latest/deprecations.html#configuring-hook-specs-impls-using-markers
+    @pytest.mark.tryfirst
+
+tests/unit/test_verification_matrix.py::test_independent_peak_volume_timing_and_whole_event_support
+tests/unit/test_verification_matrix.py::test_independent_peak_volume_timing_and_whole_event_support
+tests/unit/test_verification_matrix.py::test_incomplete_event_preserves_support_and_withholds_full_event_criteria
+tests/unit/test_verification_matrix.py::test_repeated_peaks_and_zero_flow_withhold_timing_and_relative_terms
+tests/unit/test_verification_matrix.py::test_depth_error_is_absolute_units_and_signed_offset_is_preserved
+  /workspace/hydra-v301-production/tests/unit/test_verification_matrix.py:22: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    result = compare_event_support(observed, scenario, "v", "v", T0, T0 + pd.Timedelta(seconds=120), gap)
+
+tests/unit/test_verification_matrix.py::test_worker_slices_native_bounds_and_reuses_recorded_units_and_offset
+tests/unit/test_verification_matrix.py::test_worker_slices_native_bounds_and_reuses_recorded_units_and_offset
+tests/unit/test_verification_matrix.py::test_worker_slices_native_bounds_and_reuses_recorded_units_and_offset
+tests/unit/test_verification_matrix.py::test_worker_slices_native_bounds_and_reuses_recorded_units_and_offset
+tests/unit/test_verification_matrix.py::test_worker_slices_native_bounds_and_reuses_recorded_units_and_offset
+tests/unit/test_verification_matrix.py::test_worker_slices_native_bounds_and_reuses_recorded_units_and_offset
+tests/unit/test_verification_matrix.py::test_worker_slices_native_bounds_and_reuses_recorded_units_and_offset
+tests/unit/test_verification_matrix.py::test_worker_slices_native_bounds_and_reuses_recorded_units_and_offset
+  /workspace/hydra-v301-production/tests/unit/test_verification_matrix.py:83: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    f"{(T0 + pd.Timedelta(seconds=t)).isoformat()},{v}" for t, v in zip(times, values)))
+
+tests/unit/test_spills.py::test_exclusion_splits_physical_spill_and_removes_duration
+tests/unit/test_spills.py::test_exclusion_splits_physical_spill_and_removes_duration
+tests/unit/test_spills.py::test_exclusion_splits_physical_spill_and_removes_duration
+tests/unit/test_spills.py::test_large_vectorised_series_preserves_event_counting_semantics
+tests/unit/test_spills.py::test_large_vectorised_series_preserves_event_counting_semantics
+  /workspace/hydra-v301-production/src/icm_workbench/analysis/spills.py:46: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    if a <= merged[-1][1] + pd.Timedelta(microseconds=1):
+
+tests/unit/test_spills.py: 11 warnings
+  /workspace/hydra-v301-production/src/icm_workbench/analysis/spills.py:260: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    D = A + pd.Timedelta(hours=12) if C < 720 else A + pd.Timedelta(hours=12) + pd.Timedelta(days=_ceil_positive((C - 720) / 1440))
+
+tests/unit/test_spills.py::test_exclusion_splits_physical_spill_and_removes_duration
+tests/unit/test_spills.py::test_repeat_discharges_inside_count_window_keep_physical_events
+tests/unit/test_spills.py::test_screening_sums_later_zero_increment_discharge_volume
+tests/unit/test_spills.py::test_large_vectorised_series_preserves_event_counting_semantics
+  /workspace/hydra-v301-production/src/icm_workbench/analysis/spills.py:264: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    if (A - prev_E) >= pd.Timedelta(days=1):
+
+tests/unit/test_spills.py::test_exclusion_splits_physical_spill_and_removes_duration
+tests/unit/test_spills.py::test_repeat_discharges_inside_count_window_keep_physical_events
+tests/unit/test_spills.py::test_screening_sums_later_zero_increment_discharge_volume
+tests/unit/test_spills.py::test_large_vectorised_series_preserves_event_counting_semantics
+  /workspace/hydra-v301-production/src/icm_workbench/analysis/spills.py:272: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    F = prev_F + 1 if A >= (prev_E + pd.Timedelta(days=1)) else prev_F
+
+tests/unit/test_spills.py::test_exclusion_splits_physical_spill_and_removes_duration
+tests/unit/test_spills.py::test_missing_gap_makes_count_status_partial_not_zero_certainty
+tests/unit/test_spills.py::test_vectorised_detector_interpolates_crossings_at_half_interval
+tests/unit/test_spills.py::test_yearly_summary_includes_zero_spill_years
+tests/unit/test_spills.py::test_large_vectorised_series_preserves_event_counting_semantics
+tests/unit/test_spills.py::test_monthly_summary_keeps_zero_unknown_and_boundary_duration_distinct
+tests/unit/test_spills.py::test_monthly_summary_includes_dry_and_unavailable_months
+  /workspace/hydra-v301-production/src/icm_workbench/analysis/spills.py:346: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    for year in range(int(s.year), int((e - pd.Timedelta(nanoseconds=1)).year) + 1)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html

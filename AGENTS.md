@@ -53,3 +53,12 @@ workflows and deployment are high risk. Never fabricate independent review. The 
 blindly refresh approval hashes. Changes to claim evidence require semantic
 review; a matching digest alone does not establish truth. Record tests actually
 executed and leave missing settings/approvals explicitly Not Enforced.
+
+## Dual-expert release review
+
+Follow the [Dual-Expert Review Framework](docs/dual-expert-review.md) for every
+release candidate. Convene an independent wastewater hydraulic modelling review
+and an independent engineering-product design review. Preserve their first-pass
+records, cross-review, disposition of findings and final-head verdicts in the
+[release review history](docs/reviews/README.md). Both reviewers must approve
+the final candidate before the maintainer authorises a protected release.

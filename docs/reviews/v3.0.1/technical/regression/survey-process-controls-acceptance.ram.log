@@ -1,0 +1,27 @@
+SURVEY_PROCESS_PASS chromium fdv-check button:Expand
+SURVEY_PROCESS_PASS chromium fdv-check #surveyPopulation
+SURVEY_PROCESS_PASS chromium fdv-check #surveyBalanceTolerance
+SURVEY_PROCESS_PASS chromium fdv-check #surveyApplyFaultCutoff
+SURVEY_PROCESS_PASS chromium fdv-check #runCompleteSurveyBtn
+SURVEY_PROCESS_PASS chromium rainfall-check #surveyPopulation
+SURVEY_PROCESS_PASS chromium rainfall-check #surveyBalanceTolerance
+SURVEY_PROCESS_PASS chromium rainfall-check #surveyApplyFaultCutoff
+SURVEY_PROCESS_PASS chromium rainfall-check #runCompleteSurveyBtn
+SURVEY_PROCESS_PASS chromium volume-balance #surveyPopulation
+SURVEY_PROCESS_PASS chromium volume-balance #surveyBalanceTolerance
+SURVEY_PROCESS_PASS chromium volume-balance #surveyApplyFaultCutoff
+SURVEY_PROCESS_PASS chromium volume-balance #runCompleteSurveyBtn
+SURVEY_PROCESS_PASS chromium monthly-review #surveyPopulation
+SURVEY_PROCESS_PASS chromium monthly-review #surveyBalanceTolerance
+SURVEY_PROCESS_PASS chromium monthly-review #surveyApplyFaultCutoff
+SURVEY_PROCESS_PASS chromium monthly-review #runCompleteSurveyBtn
+BALANCE_DIAGNOSTIC {"row":{"week_ending":"2026-01-11T00:00:00","downstream_monitor":"FM03","upstream_monitors":["FM01","FM02"],"downstream_volume_m3":120960,"upstream_sum_m3":120960,"balance_ratio":1,"deficit_m3":0,"deficit_percent":0,"legacy_fsat_status":"OK","rag":"Green","rag_reason":"Downstream volume is at least the summed upstream measured volume.","minimum_coverage_fraction":1,"likely_source":"No specific monitor indicated","recommendation":"No measured volume deficit is indicated. A downstream excess may reflect legitimate lateral/unmonitored inflow; investigate only if the magnitude is implausible.","workbook_diameter_mm":600,"mapped_rain_gauge":"RG01"},"expectedUp":60479.999999999985}
+SURVEY_PROCESS_PASS chromium volume-balance #runSurveyBalanceBtn
+SURVEY_PROCESS_PASS chromium volume-balance button:Details / review
+SURVEY_PROCESS_PASS chromium volume-balance summary:Balance calculation evidence
+SURVEY_PROCESS_PASS chromium volume-balance button:Green
+SURVEY_PROCESS_PASS chromium volume-balance button:Apply engineer review
+SURVEY_PROCESS_PASS chromium monthly-review summary:Monthly reviewSurvey synthesis and engineering actions
+SURVEY_PROCESS_PASS chromium monthly-review Reports revision snapshot
+DATA_CONFIDENTIALITY_NETWORK_PASS: 105 requests; zero violations.
+EVIDENCE /tmp/hydra-survey-process/evidence-qssHiW/outcomes.json

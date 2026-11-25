@@ -296,11 +296,10 @@
 }
 .report-readiness-item>span{
   min-width:0;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+  overflow-wrap:anywhere;
   color:var(--hb-text);
 }
+.report-readiness-item>button{grid-column:1/-1;justify-self:start;white-space:normal}
 .report-readiness-state{
   white-space:nowrap;
   color:var(--hb-text);

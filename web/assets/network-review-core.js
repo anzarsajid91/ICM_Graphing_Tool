@@ -8,7 +8,7 @@ function index(nodes,edges){
   return {byId,up,down};
 }
 function trace(nodes,edges,start,direction='down'){
-  const graph=index(nodes,edges),ids=new Set(),wires=new Set(),queue=[start];
+  const graph=index(nodes,edges.filter(edge=>!C.directionInfo(edge).uncertain)),ids=new Set(),wires=new Set(),queue=[start];
   if(!graph.byId.has(start))return {ids,wires};
   while(queue.length){const id=queue.pop();if(ids.has(id))continue;ids.add(id);for(const next of (direction==='up'?graph.up:graph.down).get(id)){wires.add(next.edge);queue.push(next.id);}}
   return {ids,wires};
@@ -57,7 +57,7 @@ function delta(observed,model){if(observed==null||model==null||!Number.isFinite(
 function review(n){return {comment:'',status:'unreviewed',...n.review};}
 const refKey=({kind,id})=>JSON.stringify([kind,id]);
 const edgeType=edge=>edge.icm?.table||'';
-const nominal=edge=>edge.direction!=='unknown';
+const nominal=edge=>!C.directionInfo(edge).uncertain;
 const assetIdentity=(kind,asset)=>JSON.stringify(kind==='edge'?[asset.from,asset.to,edgeType(asset)]:[asset.type]);
 function monitorIndex(network){
   const byAsset=new Map(),byId=new Map();

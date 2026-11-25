@@ -350,3 +350,42 @@ def test_declared_rainfall_assignment_and_reset_preserve_values(tmp_path):
     reset = json.loads(set_series_quantity(str(source), column, "rainfall", unit=""))
     assert reset["canonical_unit"] == "mm/h"
     assert json.loads(series_data(str(source), column))["value"] == before
+
+
+@pytest.mark.parametrize(
+    ("obs", "mod", "offset", "mask", "expected"),
+    [
+        ([0, 1, 2, None, None], [None, None, 2, 3, 4], 0, None, (240, 240, 0, 1, 0)),
+        ([0, 1, 2, 3, 4], [0, 1, 2, 3, 4], 0, None, (240, 240, 240, 5, 5)),
+        ([0, 1, 2, 3, 4], [0, 1, 2, 3, 4], 0, (0, 2), (240, 120, 120, 3, 3)),
+        ([0, 1, 2, 3, 4], [0, 1, 2, 3, 4], 0, (0, 4), (240, 0, 0, 1, 0)),
+        ([0, 1, None, None, 4], [0, 1, 2, 3, 4], 0, None, (240, 240, 60, 3, 2)),
+        ([0, 1, 2, 3, 4], [0, 1, 2, 3, 4], 1, None, (240, 240, 180, 4, 4)),
+        ([0, 1, None, None, None], [None, None, None, 3, 4], 0, None, (240, 240, 0, 0, 0)),
+    ],
+)
+def test_verification_joint_support_and_exploratory_pairs(tmp_path, obs, mod, offset, mask, expected):
+    import json
+
+    def stamp(i):
+        return f"2026-04-11T00:0{i}:00"
+
+    def series(name, values):
+        path = tmp_path / name
+        rows = [f"{stamp(i)},{v if v is not None else ''}" for i,v in enumerate(values)]
+        path.write_text("\n".join(["Time,Flow (m3/s)", *rows]))
+        return str(path)
+
+    exc = [] if mask is None else [{"start":stamp(mask[0]), "end":stamp(mask[1]), "reason":"Survey exclusion"}]
+    result = json.loads(browser_api.compare_series(
+        series("observed.csv", obs), "Flow (m3/s)", series("model.csv", mod), "Flow (m3/s)",
+        start=stamp(0), end=stamp(4), offset_minutes=offset, exclusions_json=json.dumps(exc),
+    ))
+    c = result["coverage"]
+    assert (c["requested_seconds"], c["eligible_seconds"], c["common_support_seconds"],
+            result["metrics"]["pairs"], c["supported_pairs"]) == expected
+    assert c["full_requested_support"] == (expected[2] == expected[0])
+    assert c["comparable_quantities"]
+    if expected == (240, 240, 0, 1, 0):
+        assert result["metrics"]["rmse"] == 0
+        assert c["observed"]["valid_seconds"] == c["modelled"]["valid_seconds"] == 120

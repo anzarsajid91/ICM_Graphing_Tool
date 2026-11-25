@@ -123,15 +123,53 @@
     return true;
   }
   function inspectGraphPoint(event){
-    const point=(event?.points||[]).find(p=>p&&p.x!==undefined&&p.y!==undefined&&Number.isFinite(Number(p.y)));
+    const point=(event?.points||[]).find(p=>p&&p.x!==undefined&&p.x!==null&&p.y!==undefined&&(p.y===null||Number.isFinite(Number(p.y))));
     if(!point)return false;
-    const trace=point.fullData||point.data||{},series=String(trace.name||'Series'),timestamp=modelClock(point.x)||String(point.x),value=String(point.y);
-    const text=timestamp+' | '+series+' | '+value;
-    ui.lastInspectedPoint={timestamp,series,value,text};
+    const trace=point.fullData||point.data||{},entry=(ui.pointSources||[]).find(source=>source.uid===trace.uid);
+    const series=entry?.label||String(trace.name||'Series'),timestamp=modelClock(point.x)||String(point.x);
+    const value=point.y===null?'Missing':String(point.y),unit=point.unit??entry?.unit??'';
+    const text=timestamp+' (project clock) | '+series+' | '+value+(unit?' '+unit:'');
+    ui.lastInspectedPoint={timestamp,series,value,unit,text};
     const target=$('v2PointInspectorValue'),copy=$('v2PointInspectorCopy');
     if(target)target.textContent=text;
     if(copy)copy.disabled=false;
+    if(entry&&!point.nativeSample)void loadPointSample({uid:entry.uid,timestamp});
     return true;
+  }
+  async function loadPointSample({uid,index,timestamp}={}){
+    const select=$('v2PointTrace'),position=$('v2PointPosition'),note=$('v2PointCohort');
+    if(!select||!position||!note)return;
+    if(uid)select.value=uid;
+    const entry=(ui.pointSources||[]).find(source=>source.uid===select.value);
+    const generation=ui.pointGeneration=(ui.pointGeneration||0)+1;
+    if(!entry){position.disabled=true;$('v2PointPrevious').disabled=true;$('v2PointNext').disabled=true;$('v2PointInspectorCopy').disabled=true;note.textContent='Map a source trace to inspect recorded samples.';return;}
+    const mapped=mappingObject(entry.key),range=visibleGraphRange();
+    if(!mapped)return;
+    position.disabled=true;note.textContent='Loading exact recorded sample…';
+    try{
+      const point=await engine.call('series_point',{path:mapped.item.virtualPath,column:mapped.col,start:range?.[0]?modelClock(range[0]):null,end:range?.[1]?modelClock(range[1]):null,index:index??Math.max(0,Number(position.value||1)-1),timestamp:timestamp||null,max_gap_seconds:Number($('gapInput').value||900),exclusions_json:JSON.stringify(exclusionPayload(true,entry.role,entry.key))});
+      if(generation!==ui.pointGeneration)return;
+      position.max=String(Math.max(1,point.count));position.value=String((point.index??0)+1);position.disabled=!point.count;
+      $('v2PointPrevious').disabled=!point.count||point.index===0;$('v2PointNext').disabled=!point.count||point.index>=point.count-1;
+      $('v2PointClock').disabled=!point.count;
+      if(!point.count){note.textContent='No recorded samples lie within the visible graph window.';$('v2PointInspectorCopy').disabled=true;return;}
+      const trace=($('timeChart')?.data||[]).find(trace=>trace.uid===entry.uid);
+      const shown=(trace?.x||[]).some(clock=>clock&&modelClock(clock)===point.timestamp);
+      const y=point.value===null?null:Number(point.value)*entry.factor;
+      inspectGraphPoint({points:[{x:point.timestamp,y,unit:entry.unit,fullData:trace||{name:entry.label,uid:entry.uid},nativeSample:true}]});
+      $('v2PointClock').value=point.timestamp;
+      note.textContent='Recorded sample '+(point.index+1)+' of '+point.count+' in the visible window. '+(shown?'Timestamp is included in the plotted resolution. ':'Native sample omitted by plotted resolution. ')+(point.excluded?'Excluded from assessment; raw recorded value retained. ':'')+(entry.factor!==1?'Display conversion/scaling ×'+entry.factor+'. ':'')+(point.next_sample_seconds===null?'Last recorded sample; no following interval support. ':'Next recorded sample in '+point.next_sample_seconds+' s; '+(point.interval_supported?'valid source interval before exclusions.':'gap or Missing breaks interval support.'));
+      diagnostic.lastExactPoint={...point,key:entry.key,display_value:y,display_unit:entry.unit,plotted:shown};
+    }catch(error){if(generation===ui.pointGeneration){position.disabled=true;note.textContent='Exact sample unavailable: '+String(error?.message||error);$('v2PointInspectorCopy').disabled=true;}}
+  }
+  function updatePointNavigator(traces,sources){
+    const select=$('v2PointTrace');if(!select)return;
+    const previous=select.value;
+    ui.pointSources=sources.filter(source=>traces.some(trace=>trace.uid===source.uid&&trace.visible!=='legendonly')).map(source=>({...source,label:(traces.find(trace=>trace.uid===source.uid)?.name||'Series')+' · '+mappingObject(source.key)?.item.displayName}));
+    select.replaceChildren(...ui.pointSources.map(source=>new Option(source.label,source.uid)));
+    if(ui.pointSources.some(source=>source.uid===previous))select.value=previous;
+    select.disabled=!ui.pointSources.length;
+    void loadPointSample();
   }
   async function copyInspectedPoint(){
     const text=ui.lastInspectedPoint?.text;
@@ -294,10 +332,15 @@
       const inspector=document.createElement('div');
       inspector.id='v2PointInspector';
       inspector.className='v2-point-inspector';
-      inspector.innerHTML='<span><strong>Point inspector</strong><span id="v2PointInspectorValue">Click a plotted trace to inspect an exact timestamp/value.</span></span><button type="button" class="btn quiet" id="v2PointInspectorCopy" disabled>Copy point</button>';
+      inspector.innerHTML='<span><strong>Point inspector</strong><span id="v2PointInspectorValue" role="status" aria-live="polite">Choose a trace and recorded sample, or click a plotted trace.</span></span><div class="v2-point-navigator"><label>Source trace<select id="v2PointTrace" disabled></select></label><label>Recorded sample<input id="v2PointPosition" type="number" min="1" max="1" step="1" value="1" disabled></label><button type="button" class="btn quiet" id="v2PointPrevious" disabled>Previous point</button><button type="button" class="btn quiet" id="v2PointNext" disabled>Next point</button><label>At or after (project clock)<input id="v2PointClock" type="datetime-local" step="0.001" disabled></label></div><p id="v2PointCohort">Map a source trace to inspect recorded samples. Includes Missing values and native samples omitted by the plotted resolution; gap separators are not recorded samples.</p><button type="button" class="btn quiet" id="v2PointInspectorCopy" disabled>Copy point</button>';
       const stats=document.getElementById('graphStatistics');
       (stats||chart).insertAdjacentElement('afterend',inspector);
       $('v2PointInspectorCopy')?.addEventListener('click',()=>void copyInspectedPoint());
+      $('v2PointTrace').addEventListener('change',()=>void loadPointSample({index:0}));
+      $('v2PointPosition').addEventListener('change',()=>void loadPointSample());
+      $('v2PointPrevious').addEventListener('click',()=>void loadPointSample({index:Number($('v2PointPosition').value)-2}));
+      $('v2PointNext').addEventListener('click',()=>void loadPointSample({index:Number($('v2PointPosition').value)}));
+      $('v2PointClock').addEventListener('change',()=>void loadPointSample({timestamp:$('v2PointClock').value}));
     }
 
     if(chart&&!document.getElementById('v2CalibrationMetrics')){
@@ -864,6 +907,7 @@
   async function v2DrawGraph(range=ui.graphRange,options={}) {
     if (!state.mapping.observed && !(state.mapping.models||[]).length && !state.mapping.rain) {
       globalThis.Plotly?.purge('timeChart');
+      updatePointNavigator([],[]);
       return;
     }
     const generation=++ui.graphGeneration;
@@ -1129,6 +1173,11 @@
       }finally{
         ui.suppressRelayout=false;
       }
+      const exactSources=[];
+      for(const entry of observedEntries){const quantity=entry.quantity;exactSources.push({uid:traceUid('observed',entry.source.item.id,entry.source.col),key:entry.source.key||sourceKey(entry.source.item.id,entry.source.col),role:'observed',factor:displayFactorForQuantity(quantity),unit:displayUnitForQuantity(quantity)||'unit unresolved'});}
+      for(const entry of modelEntries){const quantity=entry.quantity;exactSources.push({uid:traceUid('model',entry.source.item.id,entry.source.col),key:sourceKey(entry.source.item.id,entry.source.col),role:'model',factor:displayFactorForQuantity(quantity),unit:displayUnitForQuantity(quantity)||'unit unresolved'});}
+      if(rainEntry)exactSources.push({uid:traceUid('rainfall',rainEntry.source.item.id,rainEntry.source.col),key:state.mapping.rain,role:'rain',factor:rainEntry.factor,unit:rainEntry.unit||'unit unresolved'});
+      updatePointNavigator(traces,exactSources);
       wireAdaptiveZoom();
       wireGraphInteractions();
       if(generation!==ui.graphGeneration)return;

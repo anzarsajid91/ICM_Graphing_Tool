@@ -179,7 +179,7 @@ function mount() {
       <div class="actions"><button type="button" id="hbResultBack">Previous sample</button><button type="button" id="hbResultPlay" aria-pressed="false">Play</button><button type="button" id="hbResultStep">Next sample</button>
       <label>Samples per second<select id="hbResultSpeed"><option>1</option><option selected>2</option><option>5</option></select></label>
       <button type="button" id="hbExportPortable">Download portable results</button><button type="button" id="hbRemoveResult">Remove indexed source</button></div>
-      <p id="hbResultSample"></p><p id="hbResultEnvelope"></p>
+      <p id="hbResultSample"></p><p id="hbResultSampleAnnouncement" class="hb-sr-only" role="status" aria-live="polite" aria-atomic="true"></p><p id="hbResultEnvelope"></p>
     </div>
     <p id="hbResultReviewStatus" role="status"></p>
   </article>`;
@@ -381,7 +381,7 @@ function mount() {
       datasets.set(updated.sourceId,updated);announceSources();updateCapacitySource(selection().dataset);
     }catch(error){capacityStatus.textContent=error.message;}
   };
-  function stop() {++playbackGeneration;if (playback!==null) clearTimeout(playback);playback=null;play.textContent="Play";play.setAttribute("aria-pressed","false");}
+  function stop(announce=false) {if(announce)$("hbResultSampleAnnouncement").textContent="Paused. "+(time.getAttribute("aria-valuetext")||"");++playbackGeneration;if (playback!==null) clearTimeout(playback);playback=null;play.textContent="Play";play.setAttribute("aria-pressed","false");}
   function refreshSources() {
     const filtered=eventSources(eventFilter,Array.from(datasets.values()));
     source.replaceChildren(option("Select a results source",""),...filtered.map(d=>option(d.scenario+" · "+d.filename,d.sourceId)));
@@ -389,7 +389,7 @@ function mount() {
     updateSource();
   }
   function updateSource() {
-    stop();review.textContent="";sample.textContent="";envelope.textContent="";displayGeneration++;envelopeGeneration++;
+    stop();review.textContent="";sample.textContent="";time.removeAttribute("aria-valuetext");$("hbResultSampleAnnouncement").textContent="";envelope.textContent="";displayGeneration++;envelopeGeneration++;
     const {dataset}=selection();
     updateCapacitySource(dataset);
     transport.hidden=!dataset;series.replaceChildren();
@@ -406,7 +406,7 @@ function mount() {
     setSliderWindow(time,range);
     updateSeries();
   }
-  async function updateFrame() {
+  async function updateFrame(announce=false) {
     const {dataset,column}=selection();if (!dataset||!column) return;
     const generation=++displayGeneration,index=time.valueAsNumber;
     back.disabled=index<=Number(time.min);step.disabled=index>=Number(time.max);play.disabled=time.min===time.max;
@@ -414,6 +414,9 @@ function mount() {
       const result=await client.request("frame",{sourceId:dataset.sourceId,index,keys:[column.series]}).result;
       if (generation!==displayGeneration) return;
       sample.textContent=`${formatTime(result.time)} (project clock) · ${formatValue(result.values[0])} ${column.unit}${column.datum?" · "+column.datum:""}`;
+      const accessible=series.selectedOptions[0].textContent+" · "+sample.textContent;
+      time.setAttribute("aria-valuetext",accessible);
+      if(announce)$("hbResultSampleAnnouncement").textContent=accessible;
     } catch(error) {if(generation===displayGeneration) review.textContent=error.message;}
   }
   async function updateSeries() {
@@ -426,7 +429,7 @@ function mount() {
       envelope.textContent=r.valid?`Independent series extrema: minimum ${formatValue(r.min)} ${column.unit} at ${formatTime(r.minTime)}. Maximum ${formatValue(r.max)} ${column.unit} at ${formatTime(r.maxTime)}. ${r.valid} of ${r.samples} samples valid.`:"No valid samples for this result series.";
     } catch(error) {if(generation===envelopeGeneration) review.textContent=error.message;}
   }
-  function stepBy(delta) {time.value=String(time.valueAsNumber+delta);return updateFrame();}
+  function stepBy(delta,announce=false) {time.value=String(time.valueAsNumber+delta);return updateFrame(announce);}
   function schedule(generation) {return setTimeout(()=>void tick(generation),1000/Number($("hbResultSpeed").value));}
   async function tick(generation) {
     if (generation!==playbackGeneration) return;
@@ -436,12 +439,12 @@ function mount() {
     playback=schedule(generation);
   }
   play.onclick=()=>{
-    if (playback!==null){stop();return;}
+    if (playback!==null){stop(true);return;}
     if (time.value===time.max){time.value=time.min;void updateFrame();}
     play.textContent="Pause";play.setAttribute("aria-pressed","true");playback=schedule(++playbackGeneration);
   };
-  back.onclick=()=>{stop();void stepBy(-1);};step.onclick=()=>{stop();void stepBy(1);};
-  time.oninput=()=>{stop();void updateFrame();};
+  back.onclick=()=>{stop();void stepBy(-1,true);};step.onclick=()=>{stop();void stepBy(1,true);};
+  time.oninput=()=>{stop();void updateFrame(true);};
   source.onchange=()=>{preferredSource=source.value;updateSource();};
   series.onchange=()=>{stop();void updateSeries();};
   eventFilter.onchange=()=>refreshSources();

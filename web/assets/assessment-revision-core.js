@@ -336,10 +336,10 @@ async function collectAssessment(name,note,action,assetId,monitorId){
       const values=outcome?.metrics||{};
       const quantities=[['RMSE',values.rmse,unit],['MAE',values.mae,unit],['Mean bias',values.mean_bias,unit],
         ['NSE',values.nse],['KGE 2009',values.kge_2009]];
-      records.push(evidence('verification:'+title,'Verification',title,outcome?.pairing_method||'',{
+      records.push(evidence('verification:'+title,'Verification',title,[outcome?.pairing_method,outcome?.coverage?.comparison_method].filter(Boolean).join(' · '),{
         basis:[...analysisBasis,['Observed source',sourceMetadata(observed)],['Quantity',outcome?.observed_quantity],
-          ['Metric weighting',outcome?.metric_weighting],['Requested support',outcome?.requested_seconds,'s'],
-          ['Common valid support',outcome?.valid_seconds,'s'],['Coverage',outcome?.coverage_fraction]],
+          ['Metric weighting',outcome?.metric_weighting],['Requested support',outcome?.coverage?.requested_seconds,'s'],
+          ['Common valid support',outcome?.coverage?.common_support_seconds,'s'],['Coverage',outcome?.coverage_fraction]],
         inputs:[['Model source',sourceMetadata(model)],['Model shift',analysis.time_offset_minutes,'min']],
         results:quantities,review:[['Calculation status',outcome?.calculation_status||'Unavailable']],
         actions:error?[['Result investigation',error]]:[]

@@ -216,6 +216,12 @@ def _source(config,kind,detail=False):
     id_column=mapping.get("asset_id")
     if id_column not in columns:raise ValueError("Map the asset ID column for every selected report.")
     required=['value'] if kind in ('flooding','level') else (['duration'] if detail else ['count','duration']) if kind=='spill' else ['ground']
+    if kind == 'spill' and not detail:
+        if report_kind == 'spill_detail' or _infer_kind(columns) == 'spill_detail':
+            raise ValueError('Use an Exceedance Summary or choose an explicit exported detail counting mode.')
+        required = [field for field in ('count', 'duration') if mapping.get(field)]
+        if not required or (required == ['duration'] and report_kind != 'spill_summary'):
+            raise ValueError('For a duration-only summary, select Spill / exceedance summary as the report type and map actual total duration.')
     for field in required:
         if mapping.get(field) not in columns:raise ValueError(f"Map the {field} column in {config.get('name') or 'report'}.")
     if kind=='spill':
@@ -309,6 +315,37 @@ def _spill_values(source,asset,mode):
     return Decimal(len(raw_rows)),sum(durations,Decimal(0)) if all(v is not None for v in durations) else None
 
 
+def _spill_criterion(change, tolerance):
+    if change is None:
+        return 'unavailable'
+    if change > tolerance:
+        return 'detriment'
+    if change > 0:
+        return 'risk'
+    return 'improvement' if change < 0 else 'unchanged'
+
+
+def _combined_spill_status(policy, count, duration, delta, hours):
+    if policy == 'count_primary':
+        return count
+    if policy == 'either_criterion':
+        # An observed breach is conclusive. Otherwise a missing companion
+        # leaves the overall assessment open, including at exact tolerance.
+        for status in ('detriment', 'unavailable', 'risk', 'improvement'):
+            if status in (count, duration):
+                return status
+        return 'unchanged'
+    # Preserve the legacy sign-based rule, including a positive count
+    # within tolerance. Duration alone cannot settle this policy.
+    if delta is not None and delta > 0:
+        return 'detriment'
+    if delta is None or hours is None:
+        return 'unavailable'
+    if hours > 0:
+        return 'risk'
+    return 'improvement' if delta < 0 or hours < 0 else 'unchanged'
+
+
 def _compare_detriment(kind,a_config,b_config,criteria,ground_config,detail_a,detail_b,load_source=_source,row_limit=None):
     if kind not in ('flooding','level','spill'):raise ValueError("Unsupported detriment assessment.")
     a_config,b_config=dict(a_config),dict(b_config)
@@ -345,7 +382,7 @@ def _compare_detriment(kind,a_config,b_config,criteria,ground_config,detail_a,de
         try:
             if datetime.fromisoformat(a_config['period_end'])<=datetime.fromisoformat(a_config['period_start']):raise ValueError('end before start')
         except (ValueError,TypeError):raise ValueError("The spill assessment period must have a valid start and later end.") from None
-        if mode=='summary' and any(s.get('report_kind')=='spill_detail' or not s.get('mapping',{}).get('count') for s in (a_config,b_config)):
+        if mode=='summary' and any(s.get('report_kind')=='spill_detail' for s in (a_config,b_config)):
             raise ValueError("Upload Exceedance Summary for authoritative Spill count, or explicitly select the exported detail counting mode.")
     a=load_source(a_config,kind,detail=kind=='spill' and mode!='summary');b=load_source(b_config,kind,detail=kind=='spill' and mode!='summary')
     for context_key in ('datum','period','template','storm_set'):
@@ -370,7 +407,7 @@ def _compare_detriment(kind,a_config,b_config,criteria,ground_config,detail_a,de
             if source['mapping'].get('ground') and _datum(source,'ground')!=_datum(source):
                 raise ValueError('Inline ground and water-level datum must match.')
         if any('depth' in _token(s['mapping']['value']) for s in (a,b)):raise ValueError("Maximum depth cannot substitute for water-level elevation.")
-    if kind=='spill' and mode=='summary' and any('exceed' in _token(s['mapping']['count']) for s in (a,b)):
+    if kind=='spill' and mode=='summary' and any('exceed' in _token(s['mapping'].get('count', '')) for s in (a,b)):
         raise ValueError("Exceedance count is not an authoritative block Spill count.")
     ground=load_source(ground_config,'ground') if ground_config else None
     if kind=='level' and ground and _datum(ground,'ground')!=_datum(a):raise ValueError("Ground levels must use the same vertical datum as water levels.")
@@ -435,43 +472,34 @@ def _compare_detriment(kind,a_config,b_config,criteria,ground_config,detail_a,de
             row.update(duration_a_hours=ta,duration_b_hours=tb,duration_delta_hours=dt,
                        details_a=_detail_events(detail_sources[0] or (a if mode!='summary' else None),asset),
                        details_b=_detail_events(detail_sources[1] or (b if mode!='summary' else None),asset))
-            if row['matched'] and (delta is None or dt is None):
-                row['status']='unavailable';flags.append('invalid_or_missing_count_or_duration')
-                row['count_status']=row['duration_status']='unavailable'
-            elif row['matched']:
-                if delta>count_tolerance:count_status='detriment';flags.append('spill_count_detriment')
-                elif delta>0:count_status='risk';flags.append('count_increase_within_tolerance')
-                elif delta<0:count_status='improvement';flags.append('count_improvement')
-                else:count_status='unchanged'
-                if dt>duration_tolerance:duration_status='detriment';flags.append('duration_detriment')
-                elif dt>0:duration_status='risk';flags.append('duration_increase_within_tolerance')
-                elif dt<0:duration_status='improvement';flags.append('duration_improvement')
-                else:duration_status='unchanged'
-                row['count_status']=count_status;row['duration_status']=duration_status
-                if delta<0 and dt>0:flags.append('mixed_result')
-                if spill_policy=='either_criterion':
-                    if 'detriment' in (count_status,duration_status):row['status']='detriment'
-                    elif 'risk' in (count_status,duration_status):row['status']='risk'
-                    elif 'improvement' in (count_status,duration_status):row['status']='improvement'
-                    else:row['status']='unchanged'
-                elif spill_policy=='count_primary':
-                    row['status']=count_status
-                else:
-                    # Backward-compatible behaviour for restored workspaces that
-                    # pre-date independent count/duration policies.
-                    if delta>0:row['status']='detriment'
-                    elif delta<0:row['status']='improvement'
-                    else:row['status']='unchanged'
-                    if dt>0:
-                        flags.append('duration_increase')
-                        if delta<=0:row['status']='risk'
-                    elif dt<0 and delta<=0:row['status']='improvement'
-                if not flags:flags.append('unchanged')
+            count_status = _spill_criterion(delta, count_tolerance)
+            duration_status = _spill_criterion(dt, duration_tolerance)
+            row.update(count_status=count_status, duration_status=duration_status)
+            if row['matched']:
+                for status, names in (
+                    (count_status, {'detriment':'spill_count_detriment', 'risk':'count_increase_within_tolerance',
+                                    'improvement':'count_improvement', 'unavailable':'count_unavailable'}),
+                    (duration_status, {'detriment':'duration_detriment', 'risk':'duration_increase_within_tolerance',
+                                       'improvement':'duration_improvement', 'unavailable':'duration_unavailable'}),
+                ):
+                    if status in names:
+                        flags.append(names[status])
+                if delta is not None and delta < 0 and dt is not None and dt > 0:
+                    flags.append('mixed_result')
+                if dt is not None and dt > 0:
+                    flags.append('duration_increase')
+                row['status'] = _combined_spill_status(spill_policy, count_status, duration_status, delta, dt)
+                if not flags:
+                    flags.append('unchanged')
         rows.append(row)
     summary={'assets':len(rows),'matched':sum(r['matched'] for r in rows),
              **{key:sum(r['status']==status for r in rows) for key,status in [('detriment','detriment'),('risk','risk'),('improved','improvement')]},
              'unresolved':sum(r['status'] in ('unmatched','unavailable') or 'freeboard_unavailable' in r['flags'] for r in rows),
              'max_increase':max([r['delta'] for r in rows if r['delta'] is not None]+[Decimal(0)])}
+    if kind == 'spill':
+        incomplete = sum('unavailable' in (r['count_status'], r['duration_status']) for r in rows)
+        summary.update(unresolved=incomplete, missing_criterion_assets=incomplete,
+                       adverse_criterion_assets=sum('detriment' in (r['count_status'], r['duration_status']) for r in rows))
     provenance={
         'scope':{
             'scenario_a':{'value':a_config.get('scope'),'basis':'engineer_declared' if a_config.get('scope') else 'unavailable'},

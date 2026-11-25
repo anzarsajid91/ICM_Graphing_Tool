@@ -1521,7 +1521,7 @@ async function ensureComparisonResults({background=false}={}){
     if(asset){
       registry.publishAssessment('verification:comparison',{
         asset:{id:asset.assetId,kind:asset.assetKind},
-        signature,
+        signature:'verification-joint-v2:'+signature,
         period:bounds,
         seriesKeys:[sourceKey(obs.id,obs.col),...models.map(m=>sourceKey(m.id,m.col))],
         scenarios:results.map(({model,result,error})=>({
@@ -1558,7 +1558,14 @@ async function ensureTimeSeriesComparisonMetrics(){
 }
 window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics=ensureTimeSeriesComparisonMetrics;
 window.__ICM_WORKBENCH__.readVerificationEvidence=()=>
-  window.ICMProjectRegistry?.readAssessment('verification:comparison',analysisSignature())??null;
+  window.ICMProjectRegistry?.readAssessment('verification:comparison','verification-joint-v2:'+analysisSignature())??null;
+function verificationSupportText(c){
+  if(c?.comparison_method!=='joint-support-v2')return 'Joint support unavailable. Recalculate the comparison.';
+  return c.common_support_seconds+' / '+c.requested_seconds+' s common / requested · '+
+    c.excluded_seconds+' s excluded · '+c.eligible_seconds+' s eligible · '+c.supported_pairs+' supported pairs'+
+    (c.requested_start?' · '+c.requested_start+' to '+c.requested_end:'');
+}
+window.__ICM_WORKBENCH__.verificationSupportText=verificationSupportText;
 const metricCard=(k,v,reason='')=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${reason?`<small>${esc(reason)}</small>`:''}</div>`;
 function metricPresentation(metrics,key,unit=''){
   const value=metrics?.[key],reason=metrics?.unavailable_reasons?.[key]||'';
@@ -2745,6 +2752,10 @@ async function compileAssessmentReport(){
 
   if(options.include_comparison){
     let comparison='<h2>Observed vs modelled comparison</h2><p class="muted">'+esc(comparisonPopulationNote)+'</p>';
+    for(const {model,result} of selectedComparisons){
+      comparison+='<p><strong>'+esc(model.item.displayName+' · '+model.col)+'</strong> · '+
+        esc(verificationSupportText(result.coverage))+'</p>';
+    }
     comparison+=reportComparisonScatterFigure(selectedComparisons,log);
     const allCurrent=state.comparisons.filter(x=>x.result);
     const allSelected=selectedComparisons.length===allCurrent.length;
@@ -2770,6 +2781,7 @@ async function compileAssessmentReport(){
     network.nodes+(network.overview?' points · ':' nodes · ')+network.links+(network.overview?' reaches and links · Simplified overview':' links · Detailed schematic')+
     ' · Nominal connectivity</figcaption></figure>';
   if(sheets)sections.calculations='<h2>Engineering calculation sheets</h2>'+sheets.html;
+  if(!calculationOnly)body+=diagnostic.reportReadinessSummary?.(options)||'';
   body+=arrangeReportSections(sections,options.section_order);
   if(!calculationOnly)body+='<h2>Exclusions</h2>'+reportExclusions(w);
   const notes=$('reviewNotes')&&$('reviewNotes').value||'';
@@ -2780,7 +2792,7 @@ async function compileAssessmentReport(){
     body+='<h2>Verification engineer review</h2>'+engineerReviews.map(review=>
       '<section><h3>'+esc(review.asset+' · '+review.scenario)+'</h3><p>'+esc(review.decision)+'</p>'+
       '<p>'+esc((review.period.start||'Start of common data')+' to '+(review.period.end||'end of common data'))+'</p>'+
-      '<p>'+esc(review.comments)+'</p><p>'+esc(review.references)+'</p></section>').join('');
+      '<p>'+esc(review.support)+'</p><p>'+esc(review.comments)+'</p><p>'+esc(review.references)+'</p></section>').join('');
   }
   if(!calculationOnly)body+='<h2>Audit appendix</h2><details><summary>Calculation snapshot and workspace state</summary><pre>'+esc(JSON.stringify({
     report_options:options,

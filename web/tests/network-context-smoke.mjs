@@ -69,9 +69,11 @@ try{
     registry.registerSource({id:'baseline',hash:'fixture-baseline',displayName:'Model.csv',parsed:{
       format:'tabular_csv',columns:['Flow (m³/s)'],metadata:{quantity:'flow',canonical_unit:'m³/s'}}});
     const observed=JSON.stringify(['monitor','flow']),model=JSON.stringify(['baseline','Flow (m³/s)']);
-    registry.publishAssessment('verification:comparison',{asset:{id:'FM01',kind:'flow-monitor'},signature:analysisSignature(),
+    registry.publishAssessment('verification:comparison',{asset:{id:'FM01',kind:'flow-monitor'},signature:'verification-joint-v2:'+analysisSignature(),
       period:{start:null,end:null},seriesKeys:[observed,model],scenarios:[{seriesKey:model,metrics:{pairs:4,rmse:.01},
-        coverage:{status:'complete',coverage_fraction:1},unit:'m³/s'}]});
+        coverage:{status:'complete',comparison_method:'joint-support-v2',coverage_fraction:1,requested_seconds:180,
+          common_support_seconds:180,eligible_seconds:180,excluded_seconds:0,supported_pairs:4,
+          comparable_quantities:true,full_requested_support:true},unit:'m³/s'}]});
     window.__ICM_PRECISION_WORKBENCH__.navigate('network','schematic');
   });
   const point=page.locator('[data-ns-node="001"]');

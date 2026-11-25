@@ -343,3 +343,44 @@ def test_spill_count_column_cannot_be_a_volume_unit(tmp_path):
         s['mapping']['count']='Spill count (m³)'
         s['path']=report(tmp_path,n,[{'CSO ID':'CSO01','Spill count (m³)':c,'Total duration of exceedances (h)':t}],s['mapping'])['path']
     with pytest.raises(ValueError,match='dimension|incompatible'):calculate('spill',a,b)
+
+
+@pytest.mark.parametrize("policy,count,duration,expected_count,expected_duration,overall", [
+    ("either_criterion", "15", "", "detriment", "unavailable", "detriment"),
+    ("either_criterion", "", "20.25", "unavailable", "detriment", "detriment"),
+    ("either_criterion", "14", "", "risk", "unavailable", "unavailable"),
+    ("either_criterion", "", "20", "unavailable", "risk", "unavailable"),
+    ("either_criterion", "", "17", "unavailable", "improvement", "unavailable"),
+    ("either_criterion", "12", "", "unchanged", "unavailable", "unavailable"),
+    ("count_primary", "15", "", "detriment", "unavailable", "detriment"),
+    ("count_primary", "14", "", "risk", "unavailable", "risk"),
+    ("count_primary", "", "21", "unavailable", "detriment", "unavailable"),
+    ("legacy", "13", "", "risk", "unavailable", "detriment"),
+    ("legacy", "10", "", "improvement", "unavailable", "unavailable"),
+    ("legacy", "", "21", "unavailable", "detriment", "unavailable"),
+    ("legacy", "", "", "unavailable", "unavailable", "unavailable"),
+])
+def test_independent_spill_criteria_with_missing_companion(
+        tmp_path, policy, count, duration, expected_count, expected_duration, overall):
+    result = calculate("spill", *spills(tmp_path, count, duration), criteria={
+        "count_tolerance": 2, "duration_tolerance_hours": 2, "spill_combination_policy": policy,
+    })
+    row = result["rows"][0]
+    assert (row["count_status"], row["duration_status"], row["status"]) == (expected_count, expected_duration, overall)
+    assert result["status"] == "partial"
+    assert result["summary"]["unresolved"] == 1
+    assert result["summary"]["detriment"] == int(overall == "detriment")
+    assert result["summary"]["adverse_criterion_assets"] == int("detriment" in (expected_count, expected_duration))
+
+
+@pytest.mark.parametrize('field,heading,value_a,value_b,expected',
+                         [('count','Spill count','2','5',3),
+                          ('duration','Total duration of exceedances (h)','1','3.25',2.25)])
+def test_confirmed_spill_summary_with_one_mapped_statistic(tmp_path, field, heading, value_a, value_b, expected):
+    sources = [report(tmp_path, name, [{'CSO ID':'S',heading:value}], {'asset_id':'CSO ID',field:heading},
+                      report_kind='spill_summary') for name,value in [('a.csv',value_a),('b.csv',value_b)]]
+    result = calculate('spill', *sources, criteria={'spill_combination_policy':'either_criterion'})
+    row = result['rows'][0]
+    assert row['status'] == row[field+'_status'] == 'detriment'
+    assert row['delta' if field == 'count' else 'duration_delta_hours'] == expected
+    assert result['summary']['unresolved'] == 1

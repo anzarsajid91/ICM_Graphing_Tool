@@ -1,0 +1,107 @@
+{
+  "commit": "ccc36427c12f003e5d9b1fee61632770b31952cc",
+  "version": "v3.0.1",
+  "engine": "chromium",
+  "browser": "140.0.7339.186",
+  "detailed": {
+    "points": 101,
+    "links": 101,
+    "monitorMarkers": 2,
+    "visibleLabels": [
+      "IN-N",
+      "PS-01",
+      "OUT-SPILL",
+      "OUT-MAIN",
+      "W-01",
+      "W-03",
+      "W-05",
+      "W-07",
+      "N-02",
+      "N-03",
+      "N-04",
+      "N-05",
+      "N-06",
+      "N-07",
+      "P-01",
+      "P-04",
+      "P-06",
+      "P-08",
+      "G-03",
+      "G-05",
+      "G-07",
+      "G-09",
+      "G-11",
+      "S-02",
+      "S-06",
+      "O-01",
+      "D-02",
+      "D-04",
+      "D-06",
+      "D-08"
+    ],
+    "exportBytes": 608131
+  },
+  "engineering": {
+    "points": 14,
+    "links": 14,
+    "monitorMarkers": 2,
+    "visibleLabels": [
+      "CSO-01",
+      "IN-N",
+      "IN-W",
+      "MERGE",
+      "OUT-MAIN",
+      "OUT-SPILL",
+      "PS-01",
+      "PS-DIS",
+      "R-04",
+      "R-05",
+      "SPLIT",
+      "W-06",
+      "WEIR-IN",
+      "WEIR-OUT"
+    ],
+    "sourcePathsTraceable": true,
+    "everySourceLinkAccountsOnce": true,
+    "retainedReachabilityMatches": true,
+    "folded": [],
+    "exportBytes": 490057
+  },
+  "strategic": {
+    "points": 14,
+    "links": 14,
+    "monitorMarkers": 2,
+    "visibleLabels": [
+      "CSO-01",
+      "MERGE",
+      "Upstream branch",
+      "9 nodes",
+      "OUT-MAIN",
+      "OUT-SPILL",
+      "PS-01",
+      "SPLIT",
+      "Upstream branch",
+      "6 nodes",
+      "W-06"
+    ],
+    "sourcePathsTraceable": true,
+    "everySourceLinkAccountsOnce": true,
+    "retainedReachabilityMatches": true,
+    "folded": [
+      {
+        "id": "N-08",
+        "to": "SPLIT",
+        "sourceNodes": 9,
+        "sourceLinks": 8
+      },
+      {
+        "id": "W-05",
+        "to": "W-06",
+        "sourceNodes": 6,
+        "sourceLinks": 5
+      }
+    ],
+    "exportBytes": 490076
+  },
+  "sourcePreserved": true
+}
