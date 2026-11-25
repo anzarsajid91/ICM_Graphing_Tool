@@ -638,7 +638,8 @@ function applyContextRevision(current,imported,format){
       if(JSON.stringify(old.bends||[])!==JSON.stringify(old.sourceBends||[]))next.bends=old.bends||[];
       if(old.name!==(old.sourceName??edge.name))next.name=old.name;
       if(!changedEdges.has(edge.id)&&old.detrimentLinks!==undefined)next.detrimentLinks=old.detrimentLinks;
-      for(const key of ['labelOffset','review','arrow','direction','customProperties','seriesLinks','colour','monitorId'])
+      if(!changedEdges.has(edge.id)&&old.icm?.table===edge.icm?.table&&old.direction!==undefined)next.direction=old.direction;
+      for(const key of ['labelOffset','review','arrow','customProperties','seriesLinks','colour','monitorId'])
         if(old[key]!==undefined)next[key]=old[key];
     }
     return next;
@@ -685,8 +686,19 @@ function conduitTrial(edge){
      roughness<0||roughness/width>.05||(top!==null&&top!==roughness)||gradient<0||gradient>1)return null;
   return {diameter:width,roughness,gradient,label:edge.name||edge.id};
 }
+// Source uncertainty takes precedence over legacy display flags. A plain nominal
+// flag is not an audited engineering override. Original typed attributes stay intact.
+function directionInfo(edge){
+  const normal=value=>String(value??'').trim().toLowerCase().replace(/[_-]/g,' ').replace(/\s+/g,' ');
+  const names=new Set(['direction','flow direction','direction confidence','flow regime']);
+  const values=new Set(['unknown','reversible','bidirectional','bi directional','uncertain','unconfirmed']);
+  const fields=(edge.sourceAttributes?.fields||[]).filter(field=>names.has(normal(field.name))&&values.has(normal(field.value)));
+  const uncertain=edge.direction==='unknown'||fields.length>0;
+  return {direction:uncertain?'unknown':'nominal',uncertain,fields,
+    basis:fields.length?'Explicit source uncertainty':edge.direction==='unknown'?'Unconfirmed topology':'Recorded from / to convention'};
+}
 function reportingConflicts(rows){
   const seen=new Set();for(const row of rows){for(const y of row.years){const key=row.role+'|'+(row.role==='model'?row.scenario:'Observed')+'|'+y;if(seen.has(key))throw new Error('Overlapping assignments for '+(row.role==='model'?row.scenario:'Observed')+' in '+y+'. Keep one authoritative source per reporting year.');seen.add(key);}}
 }
-globalThis.ICMNetworkCore={colours,types,cameraZoom,symbolScale,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,nativeContextText,applyContextRevision,revisionChanges,conduitTrial,monitorTable,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
+globalThis.ICMNetworkCore={directionInfo,colours,types,cameraZoom,symbolScale,mainYear,rag,comparable,validateYears,empty,validateNetwork,importNetworkContext,importNativeContext,nativeContextText,applyContextRevision,revisionChanges,conduitTrial,monitorTable,reportingConflicts,bounds,connector,connectionRoutes,labelOffset,labelLeader,summaryRows,summaryYears,unitFactor,valueScale,thresholdRule,effectiveThreshold,samePeriod,evidenceRows};
 })();

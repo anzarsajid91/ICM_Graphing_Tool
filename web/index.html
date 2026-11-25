@@ -139,7 +139,7 @@
         </div>
         <div class="table-wrap" tabindex="0" role="region" aria-label="Verification scenarios">
           <table id="verificationEvidenceTable" class="data-table compact" hidden>
-            <thead><tr><th>Scenario source</th><th>Valid pairs</th><th>Eligible support</th><th>RMSE</th><th>NSE</th><th>Review</th></tr></thead>
+            <thead><tr><th>Scenario source</th><th>Valid pairs</th><th>Joint time support</th><th>RMSE</th><th>NSE</th><th>Review</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -151,11 +151,12 @@
               <label>Scenario<select id="verificationReviewScenario"></select></label>
               <label>Decision<select id="verificationReviewDecision">
                 <option>Not reviewed</option><option>Acceptable</option><option>Acceptable with caveats</option>
-                <option>Requires investigation</option><option>Not suitable for acceptance</option>
+                <option>Insufficient evidence</option><option>Requires investigation</option><option>Not suitable for acceptance</option>
               </select></label>
               <label>Review comments<textarea id="verificationReviewComments" rows="3" maxlength="4000"></textarea></label>
               <label>Assumptions and evidence references<textarea id="verificationReviewReferences" rows="3" maxlength="4000"></textarea></label>
             </div>
+            <p id="verificationReviewBasis"></p>
             <button id="verificationReviewSave" type="button" class="btn primary">Save engineer review</button>
           </fieldset>
           <p id="verificationReviewStatus" role="status"></p>

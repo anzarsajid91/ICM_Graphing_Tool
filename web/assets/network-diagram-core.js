@@ -16,8 +16,7 @@ const routeId=(key,members)=>JSON.stringify([key,members]);
 function describeLink(edge){
   const table=edge.icm?.table || '';
   const fields=edge.sourceAttributes?.fields || [];
-  const uncertain=edge.direction==='unknown'||fields.some(field=>directionFields.has(normalise(field.name))&&
-    ['unknown','reversible','bidirectional','bi directional','uncertain','unconfirmed'].includes(normalise(field.value)));
+  const uncertain=C.directionInfo(edge).uncertain;
   const kinds=fields.filter(field=>kindFields.has(normalise(field.name))).map(field=>normalise(field.value));
   let kind='ordinary';
   if(table==='hw_pump'||kinds.some(value=>['rising main','pressure main','pumped','force main'].includes(value)))kind='pumped';
@@ -160,7 +159,7 @@ function project(network,mode,settings={},showMonitors=true){
       sourceGraph.up.get(node.id).length!==1||sourceGraph.down.get(node.id).length!==1;
     return {...node,pinned:false,labelOffset:undefined,nameOffset:undefined,
       diagramLabel:Boolean(diagramLabel),
-      ...(group?{name:'Upstream branch',diagramGroup:group}:{})};
+      ...(group?{name:group.id+' → '+(sourceGraph.byId.get(group.to)?.name||group.to),diagramGroup:group}:{})};
   });
   return {nodes:projectedNodes,edges:projectedEdges,groups:folded,nodeToGroup,edgeToGroup,nodeToReach,edgeToReach,
     expandedByNode,expandedByEdge};
@@ -204,7 +203,7 @@ function feederTree(nodes,graph,levels){
 }
 
 function layered(nodes,edges){
-  const nominal=edges.filter(edge=>edge.direction!=='unknown');
+  const nominal=edges.filter(edge=>!C.directionInfo(edge).uncertain);
   const graph=R.index(nodes,nominal),levels=ranks(graph,nodes,nominal),layers=[];
   const tree=nominal.length===edges.length?feederTree(nodes,graph,levels):null;
   if(tree)return tree;

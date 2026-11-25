@@ -401,7 +401,16 @@
   }
 
   function reviewedBalanceState(row) {
-    return reviewedState('balance', balanceRowKey(row), normaliseRag(row?.rag));
+    const result=reviewedState('balance', balanceRowKey(row), normaliseRag(row?.rag));
+    if(!surveyFresh(survey.balance?'balance':'complete')&&result.review){
+      result.review_current=false;result.historical_review=true;result.reviewed=result.calculated;
+    }
+    return result;
+  }
+
+  function balanceSupportText(row) {
+    if(row.common_valid_seconds==null)return 'Recalculate for common-support evidence.';
+    return 'Common valid support '+fmt(row.common_valid_seconds,0)+' / '+fmt(row.requested_seconds,0)+' requested s; '+fmt(row.eligible_retained_seconds,0)+' eligible retained s. '+(row.formal_decision_eligible?'Retained-period screening.':'Diagnostic ratio only; formal RAG withheld.');
   }
 
   function applyReview(kind, id, calculatedStatus, reviewedStatus, reason='', reviewer='', details={}) {
@@ -913,6 +922,8 @@
     };
     panel.addEventListener('input',captureDraft);panel.addEventListener('change',captureDraft);
     panel.addEventListener('click', event => {
+      const source=event.target.closest('[data-survey-input]');
+      if(source){$(source.dataset.surveyInput).click();return;}
       const node=event.target.closest('[data-survey-node],[data-survey-gauge]');
       if(node){const kind=node.hasAttribute('data-survey-gauge')?'gauge-week':'monitor-week',name=node.dataset.surveyGauge||node.dataset.surveyNode;selectReviewWeek(kind,name,null,survey.schematicWeek);return;}
       const matrixCell=event.target.closest('[data-matrix-cell]');
@@ -1056,15 +1067,20 @@
     const monitors = survey.batch?.monitors?.length || 0;
     const completeFresh = surveyFresh('complete');
     const balanceFresh = surveyFresh('balance');
+    const inputs=wb.surveyInputCounts();
+    const choose=(label,id)=>'<button type="button" class="btn quiet" data-survey-input="'+id+'">'+label+'</button>';
+    const associationAction=associationCount?'':choose('Load association workbook','assocFileInput');
+    const monitorAction=inputs.monitors?'':choose('Add FDV monitor files','fileInput');
+    const rainAction=inputs.gauges?'':choose('Add rainfall R files','fileInput');
     const associationState = associationCount ? statusPill('Ready','good') : statusPill('Required','warn');
     const monitorState = !survey.batch ? statusPill('Not run','neutral') : completeFresh ? statusPill('Current','good') : statusPill('Stale','warn');
     const rainState = !survey.batch ? statusPill('Not run','neutral') : completeFresh ? statusPill('Current','good') : statusPill('Stale','warn');
     const balanceState = !survey.balance ? statusPill('Not run','neutral') : balanceFresh ? statusPill('Current','good') : statusPill('Stale','warn');
     root.innerHTML =
       '<div><span>Assessment period</span><strong>'+esc(surveyPeriodText())+'</strong></div>' +
-      '<div><span>Association workbook</span><strong>'+associationState+' '+associationCount+' monitor'+(associationCount===1?'':'s')+'</strong></div>' +
-      '<div><span>Monitor assessment</span><strong>'+monitorState+' '+monitors+' loaded</strong></div>' +
-      '<div><span>Rainfall assessment</span><strong>'+rainState+' '+gauges+' gauge'+(gauges===1?'':'s')+'</strong></div>' +
+      '<div><span>Association workbook</span><strong>'+associationState+' '+associationCount+' monitor'+(associationCount===1?'':'s')+'</strong>'+associationAction+'</div>' +
+      '<div><span>Monitor assessment</span><strong>'+monitorState+' '+monitors+' assessed</strong>'+monitorAction+'</div>' +
+      '<div><span>Rainfall assessment</span><strong>'+rainState+' '+gauges+' assessed</strong>'+rainAction+'</div>' +
       '<div><span>Volume balance</span><strong>'+balanceState+'</strong></div>';
   }
 
@@ -1231,7 +1247,8 @@
     const path = (row.upstream_monitors || []).join(' + ')+' → '+String(row.downstream_monitor || '—');
     const context = [
       'Week '+String(row.week_ending || '—'),
-      row.balance_ratio == null ? null : 'ratio '+fmt(row.balance_ratio,3),
+      row.balance_ratio == null ? null : 'common-period ratio '+fmt(row.balance_ratio,3),
+      balanceSupportText(row),
       row.legacy_fsat_status ? 'legacy '+String(row.legacy_fsat_status) : null,
       row.coverage_fraction == null ? null : 'coverage '+fmt(Number(row.coverage_fraction)*100,1)+'%',
     ].filter(Boolean).join(' · ');
@@ -1440,7 +1457,7 @@
       const state = reviewedBalanceState(row);
       const path = (row.upstream_monitors || []).join(' + ')+' → '+String(row.downstream_monitor || '—');
       return '<tr><td>'+esc(row.week_ending || '—')+'</td><td>'+esc(path)+'</td><td>'+esc(state.calculated)+'</td><td>'+esc(state.reviewed)+'</td>'+
-        '<td>'+fmt(row.balance_ratio,3)+'</td><td>'+esc(row.likely_source || '—')+'</td><td>'+esc(row.recommendation || '—')+'</td></tr>';
+        '<td>'+fmt(row.balance_ratio,3)+'<small>'+esc(balanceSupportText(row))+'</small></td><td>'+esc(row.likely_source || '—')+'</td><td>'+esc(row.recommendation || '—')+'</td></tr>';
     }).join('');
 
     const actions = monthlyActions();

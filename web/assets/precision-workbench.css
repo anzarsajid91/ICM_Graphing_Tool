@@ -743,3 +743,17 @@ body.pw-route-about-security .panel:has(#reviewNotes){display:none!important}
 #hbManningForm .actions{grid-column:1/-1}
 #hbManningResult caption,#hbManningTrials caption{padding:8px 12px;text-align:left;color:var(--hb-muted)}
 #hbManningTrialRows td:last-child button{white-space:nowrap}
+
+/* Desktop control reflow and keyboard entry (DE-05/12). */
+.pw-skip-link{position:fixed;left:12px;top:8px;z-index:10000;padding:12px 18px;background:#fff;color:#33277c;border:2px solid currentColor;border-radius:4px;transform:translateY(-160%)}
+.pw-skip-link:focus{transform:none;outline:3px solid #6553c4;outline-offset:3px}
+#pwPageTitle{scroll-margin-top:100px}
+#pwPageTitle:focus{outline:3px solid #6553c4;outline-offset:4px}
+.hb-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important;border:0!important}
+.precision-workbench :is(.panel-head,.subhead,.pw-surface-head,.tool-main-head){min-width:0;flex-wrap:wrap}
+.precision-workbench :is(.panel-head,.subhead,.pw-surface-head,.tool-main-head)>div{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.precision-workbench :is(.panel-head,.subhead,.pw-surface-head,.tool-main-head)>:is(button,.tool-collapse-toggle){flex:0 0 auto;max-width:100%}
+.precision-workbench :is(.pw-report-options,.pw-report-options .mapping-grid,.pw-report-options label,#pwTimeSeriesEventSurface .mapping-grid,#pwTimeSeriesEventSurface label){min-width:0;max-width:100%}
+.precision-workbench #pwTimeSeriesEventSurface .mapping-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr))}
+.precision-workbench #pwTimeSeriesEventSurface :is(input,select){min-width:0;max-width:100%;width:100%;box-sizing:border-box}
+.precision-workbench .pw-report-options .mapping-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr))}

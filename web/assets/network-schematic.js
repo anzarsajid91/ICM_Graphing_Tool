@@ -364,7 +364,7 @@ function compactGeometry(scene,nodes,edges,byId,routes){
   for(const n of nodes)append(points,n.colour,highlight&&!highlight.ids.has(n.id),'M'+coordinate(n)+'h.1');
   for(const e of edges){
     const changed=highlight&&!(e.sourceEdges||[e.id]).some(id=>highlight.wires.has(id));
-    const style=routes?e.direction==='unknown'?'uncertain':e.routeKind:e.direction==='unknown'?e.colour+'-unknown':e.colour;
+    const style=routes?C.directionInfo(e).uncertain?'uncertain':e.routeKind:C.directionInfo(e).uncertain?e.colour+'-unknown':e.colour;
     const vertices=routes?.get(e.id)||[byId.get(e.from),...(e.bends||[]),byId.get(e.to)];
     const path=vertices.map(coordinate).join('L');
     append(lines,style,changed,'M'+path);
@@ -420,7 +420,7 @@ function renderScene(includeHandles=true){
   for(const e of displayEdges){
     const route=routes.get(e.id);if(!route)continue;
     const a=byId.get(e.from),b=byId.get(e.to);
-    const kind=e.direction==='unknown'?'uncertain':e.routeKind||'ordinary';
+    const kind=C.directionInfo(e).uncertain?'uncertain':e.routeKind||'ordinary';
     const style=diagram?routeStyles[kind]:null,colour=style?.line||C.colours[e.colour];
     const chosen=!exportPresentation&&(selectionKind==='edge'&&(e.id===selected||e.sourceEdges?.includes(selected))||
       selectionKind==='node'&&e.sourceNodes?.slice(1,-1).includes(selected));
@@ -431,8 +431,8 @@ function renderScene(includeHandles=true){
     if(diagram)group.append(svgElement('path',{d:route.path,fill:'none',stroke:'#fafaf8','stroke-width':chosen?7:5,'pointer-events':'none'}));
     group.append(
       svgElement('path',{'data-ns-wire':'',d:route.path,fill:'none',stroke:colour,'stroke-width':chosen?4:2,
-        'stroke-dasharray':style?.dash??(e.direction==='unknown'?'6 4':''),'stroke-linejoin':'round'}));
-    if(e.direction!=='unknown'&&e.arrow!==false&&route.arrow.length){
+        'stroke-dasharray':style?.dash??(C.directionInfo(e).uncertain?'6 4':''),'stroke-linejoin':'round'}));
+    if(!C.directionInfo(e).uncertain&&e.arrow!==false&&route.arrow.length){
       group.append(svgElement('polygon',{'data-ns-direction':'',points:polygonPoints(route.arrow),fill:colour}));
     }
     const showLinkLabel=editing||selectionKind==='edge'&&e.id===selected||!diagram&&
@@ -811,7 +811,7 @@ function renderDrawer(){
   if(!n&&!e){drawer.innerHTML='<h3>Edit network</h3><p>Add a point or select an existing asset to name it and assign imported evidence.</p><p>Use Connect and click two points to draw a directed wire. Drag points to arrange the site.</p>';return;}
   const common='<div class="ns-drawer-head"><h3>'+html(n?n.name:e.name||'Connector')+'</h3><button data-ns-close-selection aria-label="Close settings">×</button></div>'+
     fields('Name','<input id="nsName" value="'+html(n?n.name:e.name||'')+'" maxlength="160">')+fields('Network colour',colours((n||e).colour,'data-ns-object-colour'));
-  if(e){drawer.innerHTML=common+detrimentAssociation(e)+(e.icm?'<button type="button" id="nsPipeTrial">Open in Hydraulic Calculations</button>':'')+fields('Topology direction',selectHtml('id="nsTopologyDirection"',[['nominal','Nominal from / to'],['unknown','Unconfirmed']],e.direction||'nominal'))+'<label class="ns-check"><input id="nsArrow" type="checkbox" '+(e.arrow!==false?'checked':'')+'> Show direction</label><p class="ns-note">Click + on the line to add a bend; drag the round handles to position it.</p><button id="nsAddBend" '+((e.bends||[]).length>=32?'disabled':'')+'>+ Add bend</button> <button id="nsStraighten" '+(!(e.bends||[]).length?'disabled':'')+'>Straighten</button>'+((e.bends||[]).length?'<div class="ns-bend-list">'+e.bends.map((p,i)=>'<button data-ns-remove-bend="'+i+'">Remove bend '+(i+1)+'</button>').join('')+'</div>':'')+reviewFields(e)+'<button data-ns-delete class="ns-danger">Delete connector</button>';
+  if(e){drawer.innerHTML=common+detrimentAssociation(e)+(e.icm?'<button type="button" id="nsPipeTrial">Open in Hydraulic Calculations</button>':'')+fields('Topology direction',selectHtml('id="nsTopologyDirection"',[['nominal','Nominal from / to'],['unknown','Unconfirmed']],C.directionInfo(e).direction))+'<label class="ns-check"><input id="nsArrow" type="checkbox" '+(e.arrow!==false?'checked':'')+'> Show direction</label><p class="ns-note">Click + on the line to add a bend; drag the round handles to position it.</p><button id="nsAddBend" '+((e.bends||[]).length>=32?'disabled':'')+'>+ Add bend</button> <button id="nsStraighten" '+(!(e.bends||[]).length?'disabled':'')+'>Straighten</button>'+((e.bends||[]).length?'<div class="ns-bend-list">'+e.bends.map((p,i)=>'<button data-ns-remove-bend="'+i+'">Remove bend '+(i+1)+'</button>').join('')+'</div>':'')+reviewFields(e)+'<button data-ns-delete class="ns-danger">Delete connector</button>';
     const trial=$('nsPipeTrial');
     if(trial)trial.onclick=()=>{
       const inputs=C.conduitTrial(e);
@@ -1105,6 +1105,7 @@ function renderPopup(previous){
 }
 function render(){
   if(!mounted)return;
+  $('nsStartImport').hidden=Boolean(network.nodes.length);
   $('nsModeLabel').textContent=editing?'Edit mode':'Explore mode';
   $('nsEdit').textContent=editing?'Done editing':'Edit network';$('nsEdit').setAttribute('aria-pressed',String(editing));
   $('nsEditTools').hidden=!editing;$('nsLayout').classList.toggle('ns-editing',editing);
@@ -1198,6 +1199,7 @@ async function calculate(){
 function updateField(target){
   if(target.id==='nsTopologyDirection'){
     const link=edge();if(!link||prefs().locked||busy)return;
+    if(target.value==='nominal'&&C.directionInfo({...link,direction:undefined}).uncertain){target.value='unknown';status('Source direction is explicitly uncertain. Review the source record before using a nominal route.');return;}
     checkpoint();link.direction=target.value;highlight=null;branchIsolated=false;changed();return;
   }
   if(!target.closest('[data-ns-binding]')&&!['nsName','nsType','nsArrow','nsLabelX','nsLabelY','nsObservedDefault','nsModelDefault','nsNewScenario','nsGap','nsConfirmed','nsExclusions','nsPinned','nsReviewComment','nsReviewStatus'].includes(target.id))return;
@@ -1585,10 +1587,10 @@ function traceHotspot(direction){
   const evidence=hotspotAt(selectionKind,selected,true);
   if(!evidence)return;
   const object=edge(),start=selectionKind==='node'?selected:(direction==='up'?object?.from:object?.to);
-  if(!start||(selectionKind==='edge'&&object?.direction==='unknown')){
+  if(!start||(selectionKind==='edge'&&C.directionInfo(object||{}).uncertain)){
     $('nsHotspotNote').textContent='This link has unconfirmed direction. Select a mapped node to trace recorded connections.';return;
   }
-  highlight=R.trace(network.nodes,network.edges.filter(item=>item.direction!=='unknown'),start,direction);
+  highlight=R.trace(network.nodes,network.edges.filter(item=>!C.directionInfo(item).uncertain),start,direction);
   traceOwner='hotspot:'+R.refKey(evidence.matched.ref);branchIsolated=false;
   if(selectionKind==='edge')highlight.wires.add(selected);
   const count=highlight.ids.size;
@@ -1739,7 +1741,7 @@ function publicationSvg(options){
     exportPresentation=before.exportPresentation;
   }
   if(!box.width||!box.height)throw new Error('Show a diagram or selected region before exporting.');
-  const routeKinds=inOverview()?new Set(sceneGraph().edges.map(edge=>edge.direction==='unknown'?'uncertain':edge.routeKind)):new Set();
+  const routeKinds=inOverview()?new Set(sceneGraph().edges.map(edge=>C.directionInfo(edge).uncertain?'uncertain':edge.routeKind)):new Set();
   const types=inOverview()?new Set(sceneGraph().edges.map(edge=>edge.icm?.table).filter(kind=>Object.hasOwn(structureCodes,kind))):new Set();
   const header=options.title?62:20,footer=options.legend?62+14*(Math.ceil(routeKinds.size/2)+Math.ceil(types.size/4)):20;
   const width=Math.max(570,box.width+48),height=Math.max(180,box.height)+header+footer;
@@ -2066,7 +2068,7 @@ function mountReview(){
   $('nsRedo').onclick=()=>undoEdit(true);$('nsSaveView').onclick=saveView;$('nsViewSelect').onchange=()=>loadView($('nsViewSelect').value);$('nsSaveSnapshot').onclick=saveReviewSnapshot;$('nsSnapshotSelect').onchange=()=>downloadReviewSnapshot($('nsSnapshotSelect').value);
   $('nsAnnualTable').onclick=()=>{$('nsMatrix').hidden=!$('nsMatrix').hidden;renderMatrix();};$('nsCloseMatrix').onclick=()=>{$('nsMatrix').hidden=true;};$('nsMatrixSearch').oninput=renderMatrix;$('nsMatrixSelected').onchange=renderMatrix;
   $('nsIsolateBranch').onclick=toggleIsolation;
-  $('nsClearTrace').onclick=()=>{highlight=null;branchIsolated=false;renderCanvas();};$('nsAudit').onclick=()=>{const a=R.audit(network.nodes,network.edges);$('nsAuditResult').textContent=a.components.length+' components · '+a.isolated.length+' isolated · '+a.cycleAffected.length+' cycle-affected';highlight={ids:new Set([...a.isolated,...a.cycleAffected]),wires:new Set()};if(!highlight.ids.size)highlight=null;renderCanvas();};
+  $('nsClearTrace').onclick=()=>{highlight=null;branchIsolated=false;renderCanvas();status('Full network view · Trace cleared.');};$('nsAudit').onclick=()=>{const a=R.audit(network.nodes,network.edges);$('nsAuditResult').textContent=a.components.length+' components · '+a.isolated.length+' isolated · '+a.cycleAffected.length+' cycle-affected';highlight={ids:new Set([...a.isolated,...a.cycleAffected]),wires:new Set()};if(!highlight.ids.size)highlight=null;renderCanvas();};
   for(const [id,format] of [['nsSvgExport','svg'],['nsPngExport','png']])$(id).onclick=()=>{
     root().querySelector('.ns-export-menu').open=false;void diagramDownload(format).catch(error=>status(error.message));
   };
@@ -2325,7 +2327,7 @@ function updateDiagramControls(){
   $('nsDiagramWaypoint').disabled=selectionKind!=='edge'||!focus||
     (options.routes.find(route=>matchingRoute(route,focus))?.points.length||0)>=32;
   $('nsDiagramResetRoute').disabled=selectionKind!=='edge'||!focus||!options.routes.some(route=>matchingRoute(route,focus));
-  const classes=new Set(graph.edges.map(edge=>edge.direction==='unknown'?'uncertain':edge.routeKind));
+  const classes=new Set(graph.edges.map(edge=>C.directionInfo(edge).uncertain?'uncertain':edge.routeKind));
   const legend=$('nsDiagramLegend');
   legend.replaceChildren(...[...classes].map(kind=>{
     const style=routeStyles[kind],item=inspectorElement('span');
@@ -3990,6 +3992,10 @@ function mount(){
   $('nsFocusSelected').onclick=focusSelected;$('nsResetView').onclick=resetView;
   for(const [id,key] of [['nsYear','year'],['nsMetric','metric']])$(id).onchange=()=>{network[key]=$(id).value;changed(true);};
   $('nsScenario').onchange=()=>{const value=$('nsScenario').value;network.evidenceMode=value==='combined'?'combined':'single';if(value!=='combined')network.scenario=value==='observed'?'observed':value.slice(6);changed(true);};
+  const startImport=document.createElement('button');
+  startImport.type='button';startImport.id='nsStartImport';startImport.textContent='Import network';
+  $('nsEdit').before(startImport);
+  startImport.onclick=()=>$('nsLoadInput').click();
   $('nsSave').onclick=()=>downloadBlob('hydra-network-schematic.json',JSON.stringify(snapshot(),null,2),'application/json');$('nsLoad').onclick=()=>$('nsLoadInput').click();
   const importDialog=document.createElement('dialog');
   importDialog.setAttribute('aria-labelledby','nsContextTitle');

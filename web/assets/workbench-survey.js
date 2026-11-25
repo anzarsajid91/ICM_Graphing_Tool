@@ -374,6 +374,8 @@
     });
   }
 
+  window.__ICM_WORKBENCH__.surveyInputCounts=()=>({monitors:fdvItems().length,gauges:rainfallItems().length});
+
   function monitorIdentity(item) {
     const metadata = item.parsed && item.parsed.metadata || {};
     return token(metadata.monitor || stem(item.displayName));
@@ -576,6 +578,7 @@
     }));
     return JSON.stringify({
       kind,
+      volume_balance_method:'weekly-volume-balance-v3-common-support',
       analysis:typeof analysisSignature==='function'?analysisSignature():null,
       association,
       association_source:survey.associationSource?{name:survey.associationSource.name||null,sha256:survey.associationSource.sha256||null,sheet:survey.associationSource.sheet||null}:null,
@@ -759,14 +762,15 @@
       const upstream = (row.upstream_monitors || []).join(', ') || '—';
       const downstreamVolume = row.downstream_volume_m3 == null ? '—' : fmt(row.downstream_volume_m3, 1) + ' m³';
       const upstreamVolume = row.upstream_sum_m3 == null ? '—' : fmt(row.upstream_sum_m3, 1) + ' m³';
-      const coverage = row.minimum_coverage_fraction == null ? '—' : fmt(row.minimum_coverage_fraction * 100, 1) + '%';
+      const coverage = row.requested_coverage_fraction == null ? '—' : fmt(row.requested_coverage_fraction * 100, 1) + '%';
+      const basis = row.common_valid_seconds == null ? 'Recalculate for common-support evidence.' : fmt(row.common_valid_seconds, 0) + ' / ' + fmt(row.requested_seconds, 0) + ' requested s; ' + fmt(row.eligible_retained_seconds, 0) + ' eligible retained s. ' + (row.formal_decision_eligible ? 'Retained-period screening.' : 'Diagnostic only; formal RAG withheld.');
       const qa = (row.qa_evidence || []).map(x => x.monitor + ' ' + x.rag).join('; ') || '—';
       return '<tr>' +
         '<td class="balance-week">' + esc(row.week_ending || '—') + '</td>' +
         '<td class="balance-path"><strong>' + esc(downstream) + '</strong><span>Upstream: ' + esc(upstream) + '</span></td>' +
-        '<td class="balance-volumes"><span><strong>Downstream</strong> ' + esc(downstreamVolume) + '</span><span><strong>Upstream</strong> ' + esc(upstreamVolume) + '</span></td>' +
+        '<td class="balance-volumes"><span><strong>Downstream</strong> ' + esc(downstreamVolume) + '</span><span><strong>Upstream</strong> ' + esc(upstreamVolume) + '</span><small>Same common valid intervals. ' + esc(basis) + '</small></td>' +
         '<td class="balance-status"><strong>' + (row.balance_ratio == null ? '—' : fmt(row.balance_ratio, 3)) + '</strong><span>FSAT: ' + esc(row.legacy_fsat_status || 'NA') + '</span></td>' +
-        '<td class="balance-rag"><span class="rag-pill ' + ragClass(row.rag) + '">' + esc(row.rag || 'Grey') + '</span><span>' + esc(coverage) + ' support</span></td>' +
+        '<td class="balance-rag"><span class="rag-pill ' + ragClass(row.rag) + '">' + esc(row.rag || 'Grey') + '</span><span>' + esc(coverage) + ' requested support</span></td>' +
         '<td class="likely-source"><strong>' + esc(row.likely_source || '—') + '</strong><span>QA: ' + esc(qa) + '</span></td>' +
         '<td class="recommendation-cell">' + esc(row.recommendation || '—') + '</td>' +
       '</tr>';
@@ -789,7 +793,7 @@
     if (balance && (balance.rows || []).length) {
       html += '<h3>Flow continuity / volume balance</h3><div class="note">' + esc(balance.caveat || '') + '</div>';
       const rows = balance.rows.map(row =>
-        '<tr><td>' + esc(row.week_ending || '—') + '</td><td>' + esc(row.downstream_monitor) + '</td><td>' + esc((row.upstream_monitors || []).join(', ')) + '</td><td>' + (row.downstream_volume_m3 == null ? '—' : fmt(row.downstream_volume_m3, 1)) + '</td><td>' + (row.upstream_sum_m3 == null ? '—' : fmt(row.upstream_sum_m3, 1)) + '</td><td>' + (row.balance_ratio == null ? '—' : fmt(row.balance_ratio, 3)) + '</td><td>' + esc(row.legacy_fsat_status || 'NA') + '</td><td>' + esc(row.rag || 'Grey') + '</td><td>' + esc(row.likely_source || '—') + '</td><td>' + esc((row.qa_evidence || []).map(x => x.monitor + ' ' + x.rag).join('; ') || '—') + '</td><td>' + esc(row.recommendation || '—') + '</td></tr>'
+        '<tr><td>' + esc(row.week_ending || '—') + '</td><td>' + esc(row.downstream_monitor) + '</td><td>' + esc((row.upstream_monitors || []).join(', ')) + '</td><td>' + (row.downstream_volume_m3 == null ? '—' : fmt(row.downstream_volume_m3, 1)) + '</td><td>' + (row.upstream_sum_m3 == null ? '—' : fmt(row.upstream_sum_m3, 1)) + '</td><td>' + (row.balance_ratio == null ? '—' : fmt(row.balance_ratio, 3)) + '</td><td>' + esc(row.legacy_fsat_status || 'NA') + '</td><td>' + esc(row.rag || 'Grey') + '</td><td>' + esc(row.likely_source || '—') + '</td><td>' + esc((row.qa_evidence || []).map(x => x.monitor + ' ' + x.rag).join('; ') || '—') + '</td><td>' + esc(row.recommendation || '—') + (row.common_valid_seconds == null ? '' : '<small>Common valid support ' + fmt(row.common_valid_seconds,0) + ' / ' + fmt(row.requested_seconds,0) + ' requested s; ' + fmt(row.eligible_retained_seconds,0) + ' eligible retained s. ' + (row.formal_decision_eligible ? 'Retained-period screening.' : 'Diagnostic only; formal RAG withheld.') + '</small>') + '</td></tr>'
       ).join('');
       html += '<div class="table-wrap"><table><thead><tr><th>Week</th><th>Downstream</th><th>Upstream</th><th>Downstream m³</th><th>Upstream m³</th><th>Ratio</th><th>Legacy</th><th>RAG</th><th>First check</th><th>QA evidence</th><th>Recommendation</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
     }
@@ -955,28 +959,37 @@
   }
 
   function resultReadiness(payload,defaultReason='Dependencies match the current analytical state.') {
-    const statuses=[],reasons=[],seen=new Set();
-    const walk=(value,depth=0)=>{
-      if(value==null||depth>6)return;
-      if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')return;
-      if(Array.isArray(value)){value.slice(0,200).forEach(x=>walk(x,depth+1));return;}
-      if(typeof value!=='object'||seen.has(value))return;
+    const found=new Map(),seen=new Set();
+    const seconds=value=>Number(value.toFixed(3))+' s';
+    const children=new Set(['result','results','observed','model','modelled','screening','yearly_summary','monthly_summary','rows','monitors','volume_balance','network','monitor']);
+    function walk(value,depth=0,source=''){
+      if(!value||typeof value!=='object'||depth>6||seen.has(value))return;
       seen.add(value);
-      for(const [key,item] of Object.entries(value)){
-        const lower=String(key).toLowerCase();
-        if(['calculation_status','status'].includes(lower)&&typeof item==='string')statuses.push(item);
-        if(['reason','error','message'].includes(lower)&&typeof item==='string'&&item.trim())reasons.push(item.trim());
-        if(lower==='error'&&typeof item==='string'&&item.trim())statuses.push('error');
-        if(['result','results','observed','model','modelled','screening','yearly_summary','monthly_summary','rows','monitors','volume_balance','network','monitor'].includes(lower))walk(item,depth+1);
+      if(Array.isArray(value)){for(const item of value)walk(item,depth+1,source);return;}
+      const identity=value.model?.display_name||source;
+      const status=String([value.calculation_status,value.status,value.count_status].filter(Boolean).join(' ')).toLowerCase();
+      let state;
+      if(value.error||/error|failed|failure/.test(status))state='error';
+      else if(/blocked|unavailable|withheld|no[- ]?valid|insufficient/.test(status))state='blocked';
+      else if(/partial|provisional|incomplete|unknown/.test(status)||value.formal_decision_eligible===false)state='partial';
+      if(state&&!found.has(state)){
+        const coverage=value.coverage;
+        let reason=value.error||value.reason||value.rag_reason||value.message;
+        if(coverage&&Number.isFinite(coverage.common_support_seconds)&&Number.isFinite(coverage.requested_seconds))
+          reason='Joint time support '+seconds(coverage.common_support_seconds)+' of '+seconds(coverage.requested_seconds)+' requested; '+seconds(coverage.excluded_seconds||0)+' excluded.';
+        else if(Number.isFinite(value.valid_seconds)&&Number.isFinite(value.analysis_seconds))
+          reason='Supported '+seconds(value.valid_seconds)+' of '+seconds(value.analysis_seconds)+' requested; '+seconds(value.unknown_seconds||0)+' unknown and '+seconds(value.excluded_seconds||0)+' excluded.';
+        else if(Number.isFinite(value.common_valid_seconds)&&Number.isFinite(value.requested_seconds))
+          reason='Stations share '+seconds(value.common_valid_seconds)+' of '+seconds(value.requested_seconds)+' requested. '+(value.rag_reason||'Review the aligned station evidence.');
+        found.set(state,(identity?identity+' · ':'')+String(reason||('Calculated assessment status: '+(status||'incomplete evidence')+'.')));
       }
-    };
+      for(const key of children)if(value[key])walk(value[key],depth+1,
+        key==='observed'?'Observed':key==='model'||key==='modelled'?'Modelled':identity);
+    }
     walk(payload);
-    const tokens=statuses.map(x=>String(x).trim().toLowerCase());
-    const reason=reasons.find(Boolean)||defaultReason;
-    if(reasons.length&&reasons.some(x=>/error|failed|exception/i.test(x)))return {state:'error',label:'Error',reason};
-    if(tokens.some(x=>/error|failed|failure/.test(x)))return {state:'error',label:'Error',reason};
-    if(tokens.some(x=>/blocked|unavailable|withheld|no[- ]?valid|insufficient/.test(x)))return {state:'blocked',label:'Blocked',reason};
-    if(tokens.some(x=>/partial|provisional|incomplete|unknown/.test(x)))return {state:'partial',label:'Partial',reason};
+    for(const [state,label] of [['error','Error'],['blocked','Blocked'],['partial','Partial']]){
+      if(found.has(state))return {state,label,reason:found.get(state)};
+    }
     return {state:'current',label:'Current',reason:defaultReason};
   }
 
@@ -994,10 +1007,14 @@
     return resultReadiness(result,kind+' dependencies match the current workspace.');
   }
 
-  function renderReportPreflight() {
-    const root = document.getElementById('reportReadinessGrid');
-    if (!root) return;
-    const comparison = readinessState(state.comparisonSnapshot);
+  function reportReadinessRows(options) {
+    const comparisonInputs=state.comparisonSnapshot;
+    const selected=options.scenarios||[];
+    const sameSource=(a,b)=>a?.sha256===b?.sha256&&a?.column===b?.column&&a?.display_name===b?.display_name;
+    const comparisonResults=comparisonInputs?.results?.filter(row=>selected.some(source=>sameSource(source,row.model)));
+    const comparison=comparisonInputs&&!comparisonResults?.length?
+      {state:'not-run',label:'No scenario',reason:'Select a mapped model scenario in Report options to include its diagnostics.'}:
+      readinessState(comparisonInputs&&{...comparisonInputs,results:comparisonResults});
     const spill = readinessState(state.spillSnapshot);
     const professional = freshSurveyReadiness(
       window.__ICM_WORKBENCH__.lastProfessionalSurvey,
@@ -1019,26 +1036,49 @@
     const association = survey.association
       ?{state:'current',label:'Current',reason:'Association workbook context is loaded and participates in survey dependency signatures.'}
       :{state:'not-run',label:'Not run',reason:'No association workbook is loaded; association-dependent survey workflows are blocked until one is supplied.'};
-    const rows = [
-      ['comparison', 'Comparison', comparison],
-      ['spill', 'Spill / EDM', spill],
-      ['storage', 'Storage Assessment', storage],
-      ['professional-survey', 'Professional survey', professional],
-      ['complete-survey', 'Complete survey', complete],
-      ['volume-balance', 'Volume balance', balance],
-      ['rating', 'Rating / fitted relationship', rating],
-      ['survey-association', 'Survey association', association],
+    return [
+      ['comparison','Comparison',comparison,options.include_comparison,'graphs','overview'],
+      ['spill','Spill / EDM',spill,options.include_spills_storage,'spills','assessment'],
+      ['storage','Storage Assessment',storage,options.include_spills_storage,'spills','storage'],
+      ['professional-survey','Professional survey',professional,options.include_survey,'survey','fdv-check'],
+      ['complete-survey','Complete survey',complete,options.include_survey,'survey','monthly-review'],
+      ['volume-balance','Volume balance',balance,options.include_survey,'survey','volume-balance'],
+      ['rating','Rating / fitted relationship',rating,options.include_comparison,'graphs','rating'],
+      ['survey-association','Survey association',association,options.include_survey,'survey','fdv-check'],
     ];
-    root.innerHTML = rows.map(([key, label, status]) =>
+  }
+
+  function renderReportPreflight(){
+    const root=document.getElementById('reportReadinessGrid');
+    if(!root)return;
+    const options=reportOptions(),rows=reportReadinessRows(options);
+    root.innerHTML = rows.map(([key, label, status, included, workspace, page]) =>
       '<div class="report-readiness-item" data-result="' + esc(key) + '" title="' + esc(status.reason||'') + '">' +
       '<span>' + esc(label) + '</span>' +
       '<strong class="report-readiness-state" data-state="' + esc(status.state) + '">' + esc(status.label) + '</strong>' +
-      '<small class="report-readiness-reason">' + esc(status.reason||'') + '</small>' +
+      '<small class="report-readiness-reason">' + esc(status.reason||'') + (included?'':' · Omitted from this report.') + '</small>' +
+      (['partial','blocked','stale','error'].includes(status.state)?'<button class="btn quiet" type="button" data-review-workspace="'+workspace+'" data-review-page="'+page+'">Review '+esc(label)+'</button>':'') +
       '</div>'
     ).join('');
   }
 
   function wireReportPreflight() {
+    const root=document.getElementById('reportReadinessGrid');
+    root?.addEventListener('click',event=>{
+      const action=event.target.closest('[data-review-workspace]');
+      if(action)window.__ICM_PRECISION_WORKBENCH__?.navigate(action.dataset.reviewWorkspace,action.dataset.reviewPage,true);
+    });
+    window.addEventListener('icm:route-changed',event=>{
+      if(event.detail.page==='report-generation')renderReportPreflight();
+    });
+    document.addEventListener('change',event=>{
+      if(event.target.closest('#pwReportOptions'))renderReportPreflight();
+    });
+    window.__ICM_WORKBENCH__.reportReadinessSummary=options=>{
+      const items=reportReadinessRows(options).filter(row=>row[3]);
+      return items.length?'<h2>Evidence readiness</h2><dl>'+items.map(([,label,status])=>
+        '<dt>'+esc(label)+' · '+esc(status.label)+'</dt><dd>'+esc(status.reason)+'</dd>').join('')+'</dl>':'';
+    };
     document.addEventListener('click', event => {
       if (event.target && event.target.closest && event.target.closest('.tab[data-tab="workspace"]')) {
         renderReportPreflight();

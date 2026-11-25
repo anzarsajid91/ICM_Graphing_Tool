@@ -671,6 +671,10 @@ function buildShell(){
   const inspector=document.createElement('aside');inspector.className='pw-inspector';inspector.id='pwInspector';inspector.innerHTML='<div class="pw-inspector-head"><div><strong>Inspector</strong><span id="pwInspectorSubtitle">Context and settings</span></div><button class="pw-inspector-drawer-close" id="pwInspectorClose" type="button" aria-label="Close inspector">×</button></div><div class="pw-inspector-body" id="pwInspectorBody"></div>';
   const parent=topbar?.parentNode||document.body;
   parent.insertBefore(app,topbar||parent.firstChild);
+  const skip=document.createElement('a');skip.className='pw-skip-link';skip.href='#pwPageTitle';skip.textContent='Skip to workspace';
+  skip.addEventListener('click',event=>{event.preventDefault();const heading=$('pwPageTitle');heading?.focus({preventScroll:true});heading?.scrollIntoView({block:'start'});});
+  document.body.prepend(skip);
+  context.querySelector('#pwPageTitle').setAttribute('tabindex','-1');
   app.append(rail,stage);
   if(topbar)stage.appendChild(topbar);
   stage.appendChild(context);
@@ -1198,13 +1202,55 @@ function wireGuidedImport(){
     else review.hidden=!(window.ICMProjectRegistry?.listSeries().length);
   });
 }
+function wireComparisonRecovery(){
+  const head=$('runCompareBtn')?.closest('.panel-head');
+  if(!head)return;
+  const action=document.createElement('button');
+  action.type='button';action.className='btn';action.id='comparisonInputAction';
+  head.append(action);
+  function refresh(){
+    const observed=mappingObject(state.mapping.observed),models=currentModels();
+    const mismatch=observed&&models.some(model=>comparisonQuantityMismatch(observed,model));
+    action.hidden=Boolean(observed&&models.length&&!mismatch);
+    action.textContent=allSeries().length?'Review series assignments':'Add observation and model files';
+  }
+  action.onclick=()=>{
+    const hasSeries=allSeries().length>0;
+    navigate('data','time-series',true);
+    if(!hasSeries){$('fileInput').click();return;}
+    const target=$('observedSelect');
+    for(let parent=target.parentElement;parent;parent=parent.parentElement){
+      if(parent.tagName==='DETAILS')parent.open=true;
+      if(parent.classList.contains('tool-collapsed'))parent.querySelector('.tool-collapse-toggle')?.click();
+    }
+    target.focus();target.scrollIntoView({block:'center'});
+  };
+  window.addEventListener('icm:route-changed',({detail})=>{
+    if(detail.workspace==='graphs'&&detail.page==='comparison')refresh();
+  });
+  window.addEventListener('icm:source-pool-changed',refresh);
+  refresh();
+}
 function wireVerificationOverview(){
+  wireComparisonRecovery();
   const table=$('verificationEvidenceTable'),scenario=$('verificationReviewScenario');
   const fields=$('verificationReviewFields'),decision=$('verificationReviewDecision');
   const comments=$('verificationReviewComments'),references=$('verificationReviewReferences');
   const status=$('verificationReviewStatus'),reviews=new Map();
   let evidence=null;
-  const available=row=>Boolean(row?.metrics?.pairs&&['complete','partial'].includes(row.coverage?.status));
+  const available=row=>Boolean(row?.seriesKey);
+  function acceptanceBasis(row){
+    const support=row?.coverage;
+    return !row?.error && support?.comparison_method==='joint-support-v2' && support.comparable_quantities &&
+      support.common_support_seconds>0 && support.supported_pairs>=2;
+  }
+  function decisionAllowed(row,choice,note,reference){
+    if(!available(row))return false;
+    if(choice==='Acceptable')return acceptanceBasis(row)&&row.coverage.full_requested_support;
+    if(choice==='Acceptable with caveats')return acceptanceBasis(row)&&Boolean(note.trim()&&reference.trim());
+    return true;
+  }
+  const supportDescription=row=>window.__ICM_WORKBENCH__.verificationSupportText(row.coverage);
   function dependencyKey(dependency){
     const [,column]=JSON.parse(dependency.seriesKey);
     return [dependency.fingerprint,column,dependency.quantity,dependency.unit];
@@ -1226,10 +1272,21 @@ function wireVerificationOverview(){
     const review=selected&&reviewFor(selected.seriesKey);
     fields.disabled=evidence?.freshness!=='current'||!evidence.scenarios.some(available);
     decision.disabled=comments.disabled=references.disabled=$('verificationReviewSave').disabled=!available(selected);
+    const basis=acceptanceBasis(selected);
+    for(const option of decision.options){
+      option.disabled=(option.value==='Acceptable'&&!(basis&&selected.coverage.full_requested_support))||
+        (option.value==='Acceptable with caveats'&&!basis);
+    }
+    const decisionExplanation=!selected?'':!basis?
+      'Insufficient evidence for acceptance. Both series need confirmed comparable quantities and units, positive joint time and at least two supported paired timestamps. Point statistics remain exploratory.':
+      (selected.coverage.full_requested_support?'The full requested period has joint support. ':
+      'The full requested period lacks joint support. ')+
+      'For caveated acceptance, record the evidence gap or limitation in Review comments and the approved project criterion in Assumptions and evidence references.';
+    $('verificationReviewBasis').textContent=selected?[supportDescription(selected),decisionExplanation].join('. '):'';
     decision.value=review&&!review.stale?review.decision:'Not reviewed';
     comments.value=review&&!review.stale?review.comments:'';
     references.value=review&&!review.stale?review.references:'';
-    status.textContent=review?.stale?'A previous review is stale. Recheck the evidence before recording a decision.':'';
+    status.textContent=review?.stale?'Previous decision: '+review.decision+'. This review is stale. Recheck the evidence before recording a decision.':'';
   }
   function render(){
     evidence=window.__ICM_WORKBENCH__?.readVerificationEvidence?.();
@@ -1252,10 +1309,8 @@ function wireVerificationOverview(){
       const label=source||'Unavailable source';
       scenario.add(new Option(label,row.seriesKey));
       const review=reviewFor(row.seriesKey);
-      const values=[label,metric(row.metrics?.pairs),row.error||(
-        Number.isFinite(row.coverage?.coverage_fraction)?
-          metric(row.coverage.coverage_fraction*100)+'% · '+row.coverage.status:'Unavailable'
-      ),Number.isFinite(row.metrics?.rmse)?metric(row.metrics.rmse)+' '+(row.unit||'(unit unresolved)'):'—',metric(row.metrics?.nse),review?.stale?'Stale review':review?.decision||'Not reviewed'];
+      const values=[label,metric(row.metrics?.pairs),row.error||(row.coverage?.comparison_method==='joint-support-v2'?
+        row.coverage.common_support_seconds+' / '+row.coverage.requested_seconds+' s common / requested':'Unavailable'),Number.isFinite(row.metrics?.rmse)?metric(row.metrics.rmse)+' '+(row.unit||'(unit unresolved)'):'—',metric(row.metrics?.nse),review?.stale?'Stale review':review?.decision||'Not reviewed'];
       const tr=body.insertRow();
       for(const value of values)tr.insertCell().textContent=value;
     }
@@ -1269,7 +1324,13 @@ function wireVerificationOverview(){
     if(!evidence||latest?.freshness!=='current'||evidenceKey(latest)!==evidenceKey(evidence)){
       render();return;
     }
-    if(!latest.scenarios.some(row=>row.seriesKey===scenario.value&&available(row)))return;
+    const row=latest.scenarios.find(item=>item.seriesKey===scenario.value);
+    if(!decisionAllowed(row,decision.value,comments.value,references.value)){
+      status.textContent=decision.value==='Acceptable with caveats'?
+        'Caveated acceptance requires positive joint evidence, an approved project criterion reference and a rationale.':
+        'The evidence does not support this decision.';
+      return;
+    }
     if(decision.value==='Not reviewed'&&!comments.value.trim()&&!references.value.trim()){
       reviews.delete(scenarioKey(evidence,scenario.value));
     }else{
@@ -1302,10 +1363,10 @@ function wireVerificationOverview(){
       if(record?.freshness!=='current')return [];
       return record.scenarios.flatMap(row=>{
         const review=reviews.get(scenarioKey(record,row.seriesKey));
-        if(!review||review.key!==evidenceKey(record))return [];
+        if(!review||review.key!==evidenceKey(record)||!decisionAllowed(row,review.decision,review.comments,review.references))return [];
         const series=window.ICMProjectRegistry?.getSeries(row.seriesKey);
         return [{asset:record.asset.id,scenario:series?.label||row.seriesKey,decision:review.decision,
-          comments:review.comments,references:review.references,period:record.period}];
+          comments:review.comments,references:review.references,period:record.period,support:supportDescription(row)}];
       });
     },
   };

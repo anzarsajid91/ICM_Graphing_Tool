@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from icm_workbench.analysis.integration import integrate_series
+from icm_workbench.analysis.integration import integrate_series, _subtract
 from icm_workbench.analysis.validity import validity_summary
 
 
@@ -671,6 +671,73 @@ def _diagnostic_recommendation(
     )
 
 
+def _merge_support(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Canonical half-open intervals; adjacent valid sample pairs share support."""
+    merged: list[tuple[int, int]] = []
+    for a, b in sorted(intervals):
+        if b <= a:
+            continue
+        if merged and a <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(b, merged[-1][1]))
+        else:
+            merged.append((a, b))
+    return merged
+
+
+def _intersect_support(left: list[tuple[int, int]], right: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    out = []
+    i = j = 0
+    while i < len(left) and j < len(right):
+        a, b = max(left[i][0], right[j][0]), min(left[i][1], right[j][1])
+        if b > a:
+            out.append((a, b))
+        if left[i][1] <= right[j][1]:
+            i += 1
+        else:
+            j += 1
+    return _merge_support(out)
+
+
+def _flow_support_pieces(frame: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp,
+                         exclusions: list[Any], max_gap_seconds: float) -> list[tuple[int, int, float, float]]:
+    """Signed linear pairs, with identical finite/gap/exclusion rules to integrate_series.
+
+    Keep endpoint values on each clipped piece: later common-mask clipping must
+    interpolate the original pair, rather than stitch over missing/excluded time.
+    """
+    pieces = []
+    samples = list(frame.itertuples(index=False, name=None))
+    for (t0, v0), (t1, v1) in zip(samples, samples[1:]):
+        seconds = (t1 - t0).total_seconds()
+        if seconds <= 0 or seconds > max_gap_seconds or not np.isfinite(v0) or not np.isfinite(v1):
+            continue
+        a, b = max(t0, start), min(t1, end)
+        if b <= a:
+            continue
+        for x, y in _subtract(a, b, exclusions):
+            vx = v0 + (v1 - v0) * ((x - t0).total_seconds() / seconds)
+            vy = v0 + (v1 - v0) * ((y - t0).total_seconds() / seconds)
+            pieces.append((x.value, y.value, float(vx), float(vy)))
+    return pieces
+
+
+def _common_integral(pieces: list[tuple[int, int, float, float]], intervals: list[tuple[int, int]]) -> float:
+    total = 0.0
+    i = j = 0
+    while i < len(pieces) and j < len(intervals):
+        p, q, vp, vq = pieces[i]
+        a, b = max(p, intervals[j][0]), min(q, intervals[j][1])
+        if b > a:
+            va = vp + (vq - vp) * ((a - p) / (q - p))
+            vb = vp + (vq - vp) * ((b - p) / (q - p))
+            total += (va + vb) * 0.5 * ((b - a) / 1e9)
+        if q <= intervals[j][1]:
+            i += 1
+        else:
+            j += 1
+    return float(total)
+
+
 def survey_volume_balance(
     flows: dict[str, pd.DataFrame],
     associations: list[dict[str, Any]],
@@ -702,7 +769,7 @@ def survey_volume_balance(
             "rows": [],
             "monitor_weeks": [],
             "summary": {"Green": 0, "Amber": 0, "Red": 0, "Grey": 0},
-            "method": "weekly-volume-balance-v2",
+            "method": "weekly-volume-balance-v3-common-support",
             "reason": "No mapped flow data available.",
         }
     all_ts = pd.concat(timestamps, ignore_index=True).dropna()
@@ -726,6 +793,8 @@ def survey_volume_balance(
         if week_end <= week_start:
             continue
         week_volumes: dict[str, dict[str, Any]] = {}
+        source_pieces = {}
+        retained_support = {}
         for monitor, frame in flow_frames.items():
             monitor_exclusions = exclusions_by_monitor.get(monitor, exclusions)
             legacy_volume, zero_issue, n_valid = _legacy_signed_volume(
@@ -753,6 +822,10 @@ def survey_volume_balance(
                     exclusions=monitor_exclusions,
                 )
             )
+            source_pieces[monitor] = _flow_support_pieces(
+                support_frame, week_start, week_end, monitor_exclusions, float(max_gap_seconds)
+            )
+            retained_support[monitor] = [(a.value, b.value) for a, b in _subtract(week_start, week_end, monitor_exclusions)]
             volume = float(result["integral"]) if result.get("valid_seconds", 0.0) > 0 else None
             rec = {
                 "week_ending": pd.Timestamp(period.end_time).floor("D"),
@@ -762,6 +835,8 @@ def survey_volume_balance(
                 "zero_issue": zero_issue,
                 "n_valid": n_valid,
                 "coverage_fraction": result.get("coverage_fraction"),
+                "requested_seconds": result.get("requested_seconds"),
+                "requested_coverage_fraction": (float(result.get("valid_seconds", 0.0)) / float(result["requested_seconds"])),
                 "status": result.get("status"),
                 "valid_seconds": result.get("valid_seconds"),
                 "gap_seconds": result.get("gap_seconds"),
@@ -775,6 +850,18 @@ def survey_volume_balance(
             upstream = [str(x) for x in assoc.get("upstream", []) if str(x)]
             if not upstream:
                 continue
+            requested_seconds = float((week_end - week_start).total_seconds())
+            common = [(week_start.value, week_end.value)]
+            eligible = list(common)
+            required = [downstream, *upstream]
+            for name in required:
+                common = _intersect_support(common, _merge_support([(a, b) for a, b, _, _ in source_pieces.get(name, [])]))
+                eligible = _intersect_support(eligible, retained_support.get(name, []))
+            common_seconds = sum((b - a) / 1e9 for a, b in common)
+            eligible_seconds = sum((b - a) / 1e9 for a, b in eligible)
+            same_retained_basis = all(retained_support.get(name) == retained_support.get(downstream) for name in required)
+            formal_eligible = False
+            decision_basis = "incomplete-common-support"
             down = week_volumes.get(downstream)
             ups = [week_volumes.get(name) for name in upstream]
             if down is None or any(x is None for x in ups):
@@ -789,23 +876,28 @@ def survey_volume_balance(
                 legacy_status = "NA"
                 coverage = None
             else:
-                lhs = down.get("volume_m3")
-                rhs_values = [x.get("volume_m3") for x in ups]
-                rhs = (
-                    float(sum(float(x) for x in rhs_values))
-                    if all(x is not None for x in rhs_values)
-                    else None
+                lhs = _common_integral(source_pieces[downstream], common) if common_seconds > 0 else None
+                rhs = sum(_common_integral(source_pieces[name], common) for name in upstream) if common_seconds > 0 else None
+                formal_eligible = bool(
+                    same_retained_basis and common_seconds > 0
+                    and abs(common_seconds - eligible_seconds) < 1e-6
+                    and all(week_volumes[name].get("status") == "complete" for name in required)
                 )
-                complete = bool(
-                    down.get("status") == "complete"
-                    and all(x.get("status") == "complete" for x in ups)
-                )
+                decision_basis = ("complete-approved-retained-period" if formal_eligible
+                                  else "unapproved-common-period" if not same_retained_basis
+                                  else "incomplete-common-support")
+                # Retain the partial-window ratio, but it cannot authorise a
+                # whole requested/retained-period decision by itself.
                 classification = classify_volume_balance(
-                    lhs,
-                    rhs,
-                    complete=complete,
+                    lhs, rhs, complete=common_seconds > 0,
                     amber_tolerance_percent=amber_tolerance_percent,
                 )
+                if not formal_eligible:
+                    classification["rag"] = "Grey"
+                    classification["reason"] = ("Common valid intervals support a diagnostic only; source exclusions differ. Align and approve the retained basis before formal screening."
+                                                if not same_retained_basis else "Incomplete common valid support; formal screening withheld.")
+                else:
+                    classification["reason"] += " Retained-period screening over the same approved support; not a whole-week decision beyond that basis."
                 legacy_lhs = down.get("legacy_volume_m3")
                 legacy_rhs_values = [x.get("legacy_volume_m3") for x in ups]
                 if legacy_lhs is None or any(x is None for x in legacy_rhs_values):
@@ -815,15 +907,11 @@ def survey_volume_balance(
                     legacy_status = "OK" if float(legacy_lhs) >= legacy_rhs else "Not OK"
                     if down.get("zero_issue") or any(x.get("zero_issue") for x in ups):
                         legacy_status += "*"
-                source, recommendation = _diagnostic_recommendation(
-                    downstream, upstream, week_volumes, classification
-                )
-                fractions = [
-                    x.get("coverage_fraction")
-                    for x in [down, *ups]
-                    if x.get("coverage_fraction") is not None
-                ]
-                coverage = min(fractions) if fractions else None
+                if formal_eligible:
+                    source, recommendation = _diagnostic_recommendation(downstream, upstream, week_volumes, classification)
+                else:
+                    source, recommendation = "Common support requires review", classification["reason"]
+                coverage = min(float(week_volumes[name].get("coverage_fraction") or 0.0) for name in required)
 
             rag = classification["rag"]
             summary[rag] = summary.get(rag, 0) + 1
@@ -841,6 +929,15 @@ def survey_volume_balance(
                     "rag": rag,
                     "rag_reason": classification.get("reason"),
                     "minimum_coverage_fraction": coverage,
+                    "requested_seconds": requested_seconds,
+                    "common_valid_seconds": common_seconds,
+                    "eligible_retained_seconds": eligible_seconds,
+                    "requested_coverage_fraction": common_seconds / requested_seconds,
+                    "retained_coverage_fraction": common_seconds / eligible_seconds if eligible_seconds > 0 else None,
+                    "formal_decision_eligible": formal_eligible,
+                    "decision_basis": decision_basis,
+                    "common_valid_intervals": [{"start": pd.Timestamp(a), "end": pd.Timestamp(b)} for a, b in common],
+                    "source_support": {name: dict(week_volumes[name]) for name in required if name in week_volumes},
                     "likely_source": source,
                     "recommendation": recommendation,
                     "workbook_diameter_mm": assoc.get("diameter_mm"),
@@ -856,14 +953,14 @@ def survey_volume_balance(
         "criteria": {
             "week_grouping": "W-SUN",
             "legacy_method": "signed trapezoidal integration; OK when downstream >= summed upstream; * when any involved monitor has >50% exact-zero valid flow values",
-            "enhanced_method": "actual-timestep support-aware integration with analysis bounds, exclusions and maximum-gap validity",
+            "enhanced_method": "signed actual-timestep integration on the intersection of all required station valid intervals after source exclusions; formal RAG requires complete identical approved retained support",
             "green": "balance ratio >= 1.00",
             "amber": f"{1.0 - float(amber_tolerance_percent) / 100.0:.3f} <= ratio < 1.00",
             "red": f"ratio < {1.0 - float(amber_tolerance_percent) / 100.0:.3f}",
             "grey": "incomplete/unsupported calculation",
             "amber_tolerance_percent": float(amber_tolerance_percent),
         },
-        "method": "weekly-volume-balance-v2",
+        "method": "weekly-volume-balance-v3-common-support",
         "caveat": "Diagnostic continuity check only. Lateral inflows, unmonitored branches, storage and timing effects mean it is not a closed-system mass balance.",
     }
 

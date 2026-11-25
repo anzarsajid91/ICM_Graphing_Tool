@@ -52,7 +52,20 @@ try{
   const row=page.locator('#verificationEvidenceTable tbody tr');
   assert.match(await summary.textContent(),/Current evidence/);
   assert.match(await row.textContent(),/0\.01/);
-  await page.getByLabel('Decision').selectOption('Requires investigation');
+  const decision=page.getByLabel('Decision');
+  assert.equal(await decision.locator('option').filter({hasText:/^Acceptable$/}).isDisabled(),false);
+  await decision.selectOption('Acceptable with caveats');
+  await page.getByRole('button',{name:'Save engineer review'}).click();
+  assert.match(await page.locator('#verificationReviewStatus').textContent(),/approved project criterion/);
+  assert.equal(await page.evaluate(()=>workspaceObject().verification_reviews.length),0);
+  await page.getByLabel('Review comments').fill('Full requested period. Small synthetic bias requires follow-up.');
+  await page.getByLabel('Assumptions and evidence references').fill('Synthetic reviewed project acceptance criterion 1');
+  await page.getByRole('button',{name:'Save engineer review'}).click();
+  assert.match(await row.textContent(),/Acceptable with caveats/);
+  await decision.selectOption('Acceptable');
+  await page.getByRole('button',{name:'Save engineer review'}).click();
+  assert.equal(await row.locator('td').last().innerText(),'Acceptable');
+  await decision.selectOption('Requires investigation');
   await page.getByLabel('Review comments').fill('Synthetic check');
   await page.getByRole('button',{name:'Save engineer review'}).click();
   assert.match(await row.textContent(),/Requires investigation/);
@@ -103,6 +116,7 @@ try{
   assert.match(report,/Verification engineer review/);
   assert.match(report,/Requires investigation/);
   assert.match(report,/Synthetic check/);
+  assert.match(report,/180 \/ 180 s common \/ requested/);
   await page.evaluate(()=>window.__ICM_PRECISION_WORKBENCH__.navigate('graphs','overview'));
 
   await page.evaluate(()=>window.__ICM_WORKBENCH__.verificationReviews.restore([]));
@@ -149,6 +163,34 @@ try{
   await page.locator('button[data-workspace="home"]').click();await resumeEvent.click();
   assert(await page.getByRole('button',{name:'Compare selected event'}).isDisabled());
   assert(!/Observed volume/.test(await page.locator('#verificationEventResult').textContent()));
+  await page.locator('.pw-primary-nav [data-workspace="data"]').click();
+  const fixtures=new URL('../../docs/reviews/v3.0.1/technical/',import.meta.url);
+  await page.setInputFiles('#fileInput',['A-TECH-observed.csv','A-TECH-model.csv'].map(name=>new URL(name,fixtures).pathname));
+  await page.waitForFunction(()=>[...state.files.values()].filter(item=>item.status==='ready').length===2);
+  if(!await review.evaluate(element=>element.open))await review.locator('summary').click();
+  await review.getByRole('combobox',{name:/Role for A-TECH-observed/}).selectOption('observed');
+  await review.getByRole('combobox',{name:/Role for A-TECH-model/}).selectOption('model');
+  await review.getByRole('button',{name:'Apply suggested setup'}).click();
+  await page.locator('#timeBasisConfirmed').check();
+  await page.locator('#applyMappingBtn').click();
+  await page.waitForFunction(()=>state.mapping.observed&&state.mapping.models.length===1);
+  await page.evaluate(()=>window.__ICM_WORKBENCH__.ensureTimeSeriesComparisonMetrics());
+  await page.locator('.pw-primary-nav [data-workspace="graphs"]').click();
+  await page.getByRole('tab',{name:'Overview',exact:true}).click();
+  assert.equal(await row.locator('td').nth(1).innerText(),'1');
+  assert.match(await row.locator('td').nth(2).innerText(),/0 \/ 240 s common \/ requested/);
+  assert.equal(await row.locator('td').nth(3).innerText(),'0 m³/s');
+  for(const label of ['Acceptable','Acceptable with caveats']){
+    assert(await decision.getByRole('option',{name:label,exact:true}).isDisabled());
+  }
+  await decision.selectOption('Insufficient evidence');
+  await page.getByRole('button',{name:'Save engineer review'}).click();
+  assert.match(await row.textContent(),/Insufficient evidence/);
+  const records=await page.evaluate(()=>window.__ICM_WORKBENCH__.verificationReviews.report());
+  assert.equal(records.length,1);
+  assert.equal(records[0].decision,'Insufficient evidence');
+  assert.match(records[0].support,/0 supported pairs/);
+  if(evidence)await page.screenshot({path:evidence+'/verification-zero-joint-support.jpg',type:'jpeg',quality:75});
   privacy.assertClean();
   console.log('Verification overview rendered authoritative metrics and blocked review of stale evidence.');
 }finally{try{await writeControlEvidence?.();}finally{await browser.close();}}
